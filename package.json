@@ -1,0 +1,22 @@
+{
+  "name": "pio-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Pi extension for goal-driven project management with pio workflows",
+  "scripts": {
+    "clean": "echo 'nothing to clean'",
+    "build": "echo 'nothing to build'",
+    "check": "tsc --noEmit"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.74.0",
+    "typebox": "^1.1.24",
+    "typescript": "^5.8.0"
+  }
+}

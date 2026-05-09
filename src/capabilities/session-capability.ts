@@ -95,12 +95,12 @@ export function setupCapability(pi: ExtensionAPI) {
 
     // Project context first (if available)
     if (projectContext) {
-      prompts.push(projectContext);
+      prompts.push(`--- PROJECT OVERVIEW ---\n\n${projectContext}`);
     }
 
     // Capability-specific prompt (if available)
     if (systemPrompt) {
-      prompts.push(systemPrompt);
+      prompts.push(`--- YOUR INSTRUCTIONS ---\n\n${systemPrompt}`);
     }
 
     if (prompts.length === 0) return; // no injection needed

@@ -4,8 +4,8 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { launchCapability } from "./session-capability";
-import { enqueueTask, resolveGoalDir } from "../utils";
+import { launchCapability, type CapabilityConfig } from "./session-capability";
+import { enqueueTask, resolveGoalDir, CAPABILITY_SESSIONS } from "../utils";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -14,6 +14,23 @@ import { enqueueTask, resolveGoalDir } from "../utils";
 const PLAN_FILE = "PLAN.md";
 const TASK_FILE = "TASK.md";
 const TEST_FILE = "TEST.md";
+
+// ---------------------------------------------------------------------------
+// Config builder — single source of truth for this capability's session shape
+// ---------------------------------------------------------------------------
+
+export function buildEvolvePlanConfig(cwd: string, params?: Record<string, unknown>): CapabilityConfig {
+  const name = typeof params?.goalName === "string" ? params.goalName : "";
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
+  const goalDir = resolveGoalDir(cwd, name);
+  const folderName = `S${String(stepNumber).padStart(2, "0")}`;
+  return {
+    capability: "evolve-plan",
+    workingDir: goalDir,
+    validation: { files: [`${folderName}/TASK.md`, `${folderName}/TEST.md`] },
+    initialMessage: `Goal workspace is at ${goalDir}. PLAN.md exists. You are responsible for **Step ${stepNumber}**. Generate TASK.md and TEST.md inside the \`${folderName}/\` directory.`,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -113,12 +130,7 @@ const evolvePlanTool = defineTool({
 
     enqueueTask(ctx.cwd, {
       capability: "evolve-plan",
-      systemPromptName: "evolve-plan.md",
-      workingDir: result.goalDir,
-      validation: {
-        files: [`${folderName}/TASK.md`, `${folderName}/TEST.md`],
-      },
-      initialMessage: `Goal workspace is at ${result.goalDir}. PLAN.md exists. You are responsible for **Step ${result.stepNumber}**. Generate TASK.md and TEST.md inside the \`${folderName}/\` directory.`,
+      params: { goalName: params.name, stepNumber: result.stepNumber },
     });
 
     return {
@@ -157,14 +169,7 @@ async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandC
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  await launchCapability(ctx, {
-    systemPromptName: "evolve-plan.md",
-    workingDir: result.goalDir,
-    validation: {
-      files: [`${folderName}/TASK.md`, `${folderName}/TEST.md`],
-    },
-    initialMessage: `Goal workspace is at ${result.goalDir}. PLAN.md exists. You are responsible for **Step ${result.stepNumber}**. Generate TASK.md and TEST.md inside the \`${folderName}/\` directory.`,
-  });
+  await launchCapability(ctx, buildEvolvePlanConfig(ctx.cwd, { goalName: name, stepNumber: result.stepNumber }));
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +177,8 @@ async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandC
 // ---------------------------------------------------------------------------
 
 export function setupEvolvePlan(pi: ExtensionAPI) {
+  CAPABILITY_SESSIONS["evolve-plan"] = buildEvolvePlanConfig;
+
   pi.registerTool(evolvePlanTool);
   pi.registerCommand("pio-evolve-plan", {
     description:

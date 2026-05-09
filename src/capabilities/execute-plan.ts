@@ -1,8 +1,22 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 
-import { launchCapability } from "./session-capability";
-import { resolveGoalDir } from "../utils";
+import { launchCapability, type CapabilityConfig } from "./session-capability";
+import { resolveGoalDir, CAPABILITY_SESSIONS } from "../utils";
+
+// ---------------------------------------------------------------------------
+// Config builder
+// ---------------------------------------------------------------------------
+
+export function buildExecutePlanConfig(cwd: string, params?: Record<string, unknown>): CapabilityConfig {
+  const name = typeof params?.goalName === "string" ? params.goalName : "";
+  const goalDir = resolveGoalDir(cwd, name);
+  return {
+    capability: "execute-plan",
+    workingDir: goalDir,
+    initialMessage: `Goal workspace is at ${goalDir}. GOAL.md and PLAN.md exist. Implement all steps from PLAN.md in this session.`,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -60,11 +74,7 @@ async function handleExecutePlan(args: string | undefined, ctx: ExtensionCommand
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  await launchCapability(ctx, {
-    systemPromptName: "execute-plan.md",
-    workingDir: result.goalDir,
-    initialMessage: `Goal workspace is at ${result.goalDir}. GOAL.md and PLAN.md exist. Implement all steps from PLAN.md in this session.`,
-  });
+  await launchCapability(ctx, buildExecutePlanConfig(ctx.cwd, { goalName: name }));
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +82,8 @@ async function handleExecutePlan(args: string | undefined, ctx: ExtensionCommand
 // ---------------------------------------------------------------------------
 
 export function setupExecutePlan(pi: ExtensionAPI) {
+  CAPABILITY_SESSIONS["execute-plan"] = buildExecutePlanConfig;
+
   pi.registerCommand("pio-execute-plan", {
     description: "Implement all steps from an existing plan in a single session",
     handler: handleExecutePlan,

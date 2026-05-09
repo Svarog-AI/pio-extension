@@ -3,8 +3,24 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 
-import { launchCapability } from "./session-capability";
-import { enqueueTask, resolveGoalDir } from "../utils";
+import { launchCapability, type CapabilityConfig } from "./session-capability";
+import { enqueueTask, resolveGoalDir, CAPABILITY_SESSIONS } from "../utils";
+
+// ---------------------------------------------------------------------------
+// Config builder — single source of truth for this capability's session shape
+// ---------------------------------------------------------------------------
+
+export function buildCreatePlanConfig(cwd: string, params?: Record<string, unknown>): CapabilityConfig {
+  const name = typeof params?.goalName === "string" ? params.goalName : "";
+  const goalDir = resolveGoalDir(cwd, name);
+  return {
+    capability: "create-plan",
+    workingDir: goalDir,
+    validation: { files: ["PLAN.md"] },
+    readOnlyFiles: ["GOAL.md"],
+    initialMessage: `Goal workspace is at ${goalDir}. GOAL.md exists. Create PLAN.md in this directory.`,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Function
@@ -12,7 +28,6 @@ import { enqueueTask, resolveGoalDir } from "../utils";
 
 const GOAL_FILE = "GOAL.md";
 const PLAN_FILE = "PLAN.md";
-const READ_ONLY_FILES = [GOAL_FILE];
 
 /**
  * Validate that the goal workspace exists, has a GOAL.md, and does not yet have a PLAN.md.
@@ -60,11 +75,7 @@ const createPlanTool = defineTool({
 
     enqueueTask(ctx.cwd, {
       capability: "create-plan",
-      systemPromptName: "create-plan.md",
-      workingDir: result.goalDir,
-      validation: { files: ["PLAN.md"] },
-      readOnlyFiles: READ_ONLY_FILES,
-      initialMessage: `Goal workspace is at ${result.goalDir}. GOAL.md exists. Create PLAN.md in this directory.`,
+      params: { goalName: params.name },
     });
 
     return { content: [{ type: "text", text: `Task queued for goal "${params.name}" — run /pio-next-task to start it.` }], details: {} };
@@ -91,13 +102,7 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  await launchCapability(ctx, {
-    systemPromptName: "create-plan.md",
-    workingDir: result.goalDir,
-    validation: { files: ["PLAN.md"] },
-    readOnlyFiles: READ_ONLY_FILES,
-    initialMessage: `Goal workspace is at ${result.goalDir}. GOAL.md exists. Create PLAN.md in this directory.`,
-  });
+  await launchCapability(ctx, buildCreatePlanConfig(ctx.cwd, { goalName: name }));
 }
 
 // ---------------------------------------------------------------------------
@@ -105,6 +110,8 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
 // ---------------------------------------------------------------------------
 
 export function setupCreatePlan(pi: ExtensionAPI) {
+  CAPABILITY_SESSIONS["create-plan"] = buildCreatePlanConfig;
+
   pi.registerTool(createPlanTool);
   pi.registerCommand("pio-create-plan", {
     description: "Create an implementation plan for a goal and launch a create-plan session",

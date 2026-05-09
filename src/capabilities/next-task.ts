@@ -3,8 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { launchCapability } from "./session-capability";
-import type { SessionQueueTask } from "../utils";
-import { queueDir } from "../utils";
+import { CAPABILITY_SESSIONS, queueDir, type SessionQueueTask } from "../utils";
 
 // ---------------------------------------------------------------------------
 // Command
@@ -26,14 +25,14 @@ async function handleNextTask(_args: string | undefined, ctx: ExtensionCommandCo
   const task: SessionQueueTask = JSON.parse(raw);
 
   try {
-    await launchCapability(ctx, {
-      systemPromptName: task.systemPromptName,
-      workingDir: task.workingDir,
-      validation: task.validation,
-      readOnlyFiles: task.readOnlyFiles,
-      writeOnlyFiles: task.writeOnlyFiles,
-      initialMessage: task.initialMessage,
-    });
+    const buildConfig = CAPABILITY_SESSIONS[task.capability];
+    if (!buildConfig) {
+      ctx.ui.notify(`Unknown capability "${task.capability}" in queued task.`, "error");
+      return;
+    }
+
+    const config = buildConfig(ctx.cwd, task.params);
+    await launchCapability(ctx, config);
   } catch (err) {
     console.error(`pio-next-task: failed to launch ${task.capability}`, err);
     ctx.ui.notify(`Failed to start ${task.capability}: ${err instanceof Error ? err.message : String(err)}`, "error");

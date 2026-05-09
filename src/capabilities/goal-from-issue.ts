@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 
 import { launchCapability } from "./session-capability";
 import { enqueueTask, findIssuePath, goalExists, resolveGoalDir } from "../utils";
+import { buildCreateGoalConfig } from "./create-goal";
 
 // ---------------------------------------------------------------------------
 // Function
@@ -25,15 +26,13 @@ async function validateGoalFromIssue(
     return { ok: false, error: `Issue not found: ${issuePath}` };
   }
 
-  return { ok: true, issuePath: resolvedPath };
-
   // 2. Goal workspace must not already exist
   const goalDir = resolveGoalDir(cwd, name);
   if (goalExists(goalDir)) {
     return { ok: false, error: `Goal workspace already exists at ${goalDir}` };
   }
 
-  return { ok: true };
+  return { ok: true, issuePath: resolvedPath };
 }
 
 // ---------------------------------------------------------------------------
@@ -60,10 +59,10 @@ const goalFromIssueTool = defineTool({
 
     enqueueTask(ctx.cwd, {
       capability: "create-goal",
-      systemPromptName: "create-goal.md",
-      workingDir: goalDir,
-      validation: { files: ["GOAL.md"] },
-      initialMessage: `Convert the following issue into a goal:\n\nIssue file: ${validation.issuePath}`,
+      params: {
+        goalName: params.name,
+        initialMessage: `Convert the following issue into a goal:\n\nIssue file: ${validation.issuePath}`,
+      },
     });
 
     return {
@@ -103,12 +102,10 @@ async function handleGoalFromIssue(args: string | undefined, ctx: ExtensionComma
   fs.mkdirSync(goalDir, { recursive: true });
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
-  await launchCapability(ctx, {
-    systemPromptName: "create-goal.md",
-    workingDir: goalDir,
-    validation: { files: ["GOAL.md"] },
+  await launchCapability(ctx, buildCreateGoalConfig(ctx.cwd, {
+    goalName: name,
     initialMessage: `Convert the following issue into a goal:\n\nIssue file: ${validation.issuePath}`,
-  });
+  }));
 }
 
 // ---------------------------------------------------------------------------

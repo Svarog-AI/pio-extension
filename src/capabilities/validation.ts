@@ -3,6 +3,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { CAPABILITY_TRANSITIONS, enqueueTask } from "../utils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,6 +37,18 @@ let warningsThisSession = 0;
 
 /** Hard limit on total exit-gate warnings per session. */
 const MAX_WARNINGS = 3;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Derive the goal name from a workingDir path like `.pio/goals/my-feature/`. */
+function extractGoalName(workingDir: string): string {
+  const goalsIndex = workingDir.indexOf("/goals/");
+  if (goalsIndex === -1) return "";
+  const afterGoals = workingDir.slice(goalsIndex + 7);
+  return afterGoals.split(path.sep)[0] || "";
+}
 
 // ---------------------------------------------------------------------------
 // Core validation engine
@@ -79,7 +92,7 @@ const markCompleteTool = defineTool({
       return { content: [{ type: "text", text: "No validation rules configured for this session." }], details: {} };
     }
 
-    const config = entry.data as { workingDir?: string; validation?: ValidationRule };
+    const config = entry.data as { capability?: string; workingDir?: string; validation?: ValidationRule };
     const rules = config.validation;
     const dir = config.workingDir;
 
@@ -91,7 +104,28 @@ const markCompleteTool = defineTool({
     const result = validateOutputs(rules, dir);
 
     if (result.passed) {
-      return { content: [{ type: "text", text: "Validation passed. All expected outputs have been produced." }], details: {} };
+      let notification = "";
+
+      // Auto-enqueue next task in the happy path pipeline
+      const capability = config.capability;
+      const cwd = process.cwd();
+      const goalName = extractGoalName(dir);
+
+      const nextCapability = capability ? CAPABILITY_TRANSITIONS[capability] : undefined;
+      if (nextCapability) {
+        try {
+          enqueueTask(cwd, {
+            capability: nextCapability,
+            params: { goalName },
+          });
+
+          notification = `\n\nNext task enqueued: ${nextCapability}. Run /pio-next-task to start it.`;
+        } catch (err) {
+          console.warn(`pio: failed to enqueue next task: ${err}`);
+        }
+      }
+
+      return { content: [{ type: "text", text: `Validation passed. All expected outputs have been produced.${notification}` }], details: {} };
     } else {
       return { content: [{ type: "text", text: `Validation failed. Missing files:\n- ${result.missing.join("\n- ")}\n\nProduce these files and call pio_mark_complete again.` }], details: {} };
     }

@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ValidationRule } from "./capabilities/validation";
+import type { CapabilityConfig } from "./capabilities/session-capability";
 
 /** Resolve a goal workspace path under .pio/goals/<name>. */
 export function resolveGoalDir(cwd: string, name: string): string {
@@ -16,17 +16,10 @@ export function goalExists(goalDir: string): boolean {
 // Session queue utilities
 // ---------------------------------------------------------------------------
 
-/** A task descriptor written to `.pio/session-queue/` as JSON. */
+/** Minimal task descriptor written to `.pio/session-queue/` as JSON. */
 export interface SessionQueueTask {
   capability: string;
-  systemPromptName: string;
-  workingDir?: string;
-  validation?: ValidationRule;
-  initialMessage: string;
-  /** Files that must not be modified during this session (relative to workingDir) */
-  readOnlyFiles?: string[];
-  /** Files that MAY be written during this session (allowlist). Takes precedence over readOnlyFiles. */
-  writeOnlyFiles?: string[];
+  params?: Record<string, unknown>;
 }
 
 /** Returns the path to `.pio/session-queue/`, creating it if needed. */
@@ -103,3 +96,22 @@ export function enqueueTask(cwd: string, task: SessionQueueTask): string {
   fs.writeFileSync(filePath, JSON.stringify(task, null, 2), "utf-8");
   return filePath;
 }
+
+// ---------------------------------------------------------------------------
+// Capability transition helpers — deterministic task flow
+// ---------------------------------------------------------------------------
+
+/** Maps a capability name to the next capability name in the happy path. */
+export const CAPABILITY_TRANSITIONS: Record<string, string> = {
+  "create-goal": "create-plan",
+  "create-plan": "evolve-plan",
+};
+
+/**
+ * Builder that produces a CapabilityConfig from cwd and capability params.
+ * Each capability exports one of these; the registry maps names → builders.
+ */
+export type CapabilitySessionFactory = (cwd: string, params?: Record<string, unknown>) => CapabilityConfig;
+
+/** Registry of session factories — populated by each capability's setup. */
+export const CAPABILITY_SESSIONS: Record<string, CapabilitySessionFactory> = {};

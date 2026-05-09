@@ -14,6 +14,8 @@ import { setupEvolvePlan } from "./capabilities/evolve-plan";
 import { setupExecutePlan } from "./capabilities/execute-plan";
 import { setupNextTask } from "./capabilities/next-task";
 import { setupProjectContext } from "./capabilities/project-context";
+import { setupCreateIssue } from "./capabilities/create-issue";
+import { setupGoalFromIssue } from "./capabilities/goal-from-issue";
 import { setupCapability } from "./capabilities/session-capability";
 import { setupValidation } from "./capabilities/validation";
 
@@ -31,4 +33,6 @@ export default function (pi: ExtensionAPI) {
   setupExecutePlan(pi);
   setupNextTask(pi);
   setupProjectContext(pi);
+  setupCreateIssue(pi);
+  setupGoalFromIssue(pi);
 }

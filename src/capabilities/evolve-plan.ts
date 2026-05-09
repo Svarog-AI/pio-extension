@@ -4,8 +4,22 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { launchCapability, type CapabilityConfig } from "./session-capability";
-import { enqueueTask, resolveGoalDir, CAPABILITY_SESSIONS } from "../utils";
+import { launchCapability } from "./session-capability";
+import { enqueueTask, resolveGoalDir, resolveCapabilityConfig, type StaticCapabilityConfig } from "../utils";
+
+// ---------------------------------------------------------------------------
+// Capability config — single source of truth for this capability's session shape
+// ---------------------------------------------------------------------------
+
+export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
+  prompt: "evolve-plan.md",
+  // validation is set dynamically per-step; placeholder here since we override via params
+  defaultInitialMessage: (workingDir, params) => {
+    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
+    const folderName = `S${String(stepNumber).padStart(2, "0")}`;
+    return `Goal workspace is at ${workingDir}. PLAN.md exists. You are responsible for **Step ${stepNumber}**. Generate TASK.md and TEST.md inside the \`${folderName}/\` directory.`;
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -14,23 +28,6 @@ import { enqueueTask, resolveGoalDir, CAPABILITY_SESSIONS } from "../utils";
 const PLAN_FILE = "PLAN.md";
 const TASK_FILE = "TASK.md";
 const TEST_FILE = "TEST.md";
-
-// ---------------------------------------------------------------------------
-// Config builder — single source of truth for this capability's session shape
-// ---------------------------------------------------------------------------
-
-export function buildEvolvePlanConfig(cwd: string, params?: Record<string, unknown>): CapabilityConfig {
-  const name = typeof params?.goalName === "string" ? params.goalName : "";
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
-  const goalDir = resolveGoalDir(cwd, name);
-  const folderName = `S${String(stepNumber).padStart(2, "0")}`;
-  return {
-    capability: "evolve-plan",
-    workingDir: goalDir,
-    validation: { files: [`${folderName}/TASK.md`, `${folderName}/TEST.md`] },
-    initialMessage: `Goal workspace is at ${goalDir}. PLAN.md exists. You are responsible for **Step ${stepNumber}**. Generate TASK.md and TEST.md inside the \`${folderName}/\` directory.`,
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -124,10 +121,6 @@ const evolvePlanTool = defineTool({
       return { content: [{ type: "text", text: result.error }], details: {} };
     }
 
-    const folderName = stepFolderName(result.stepNumber);
-    const stepDir = path.join(result.goalDir, folderName);
-    fs.mkdirSync(stepDir, { recursive: true });
-
     enqueueTask(ctx.cwd, {
       capability: "evolve-plan",
       params: { goalName: params.name, stepNumber: result.stepNumber },
@@ -163,13 +156,20 @@ async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandC
     return;
   }
 
+  // launchCapability calls ctx.newSession() — after this, ctx is stale.
+  // All ctx-dependent work must happen before this line.
   const folderName = stepFolderName(result.stepNumber);
   const stepDir = path.join(result.goalDir, folderName);
   fs.mkdirSync(stepDir, { recursive: true });
 
-  // launchCapability calls ctx.newSession() — after this, ctx is stale.
-  // All ctx-dependent work must happen before this line.
-  await launchCapability(ctx, buildEvolvePlanConfig(ctx.cwd, { goalName: name, stepNumber: result.stepNumber }));
+  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "evolve-plan", goalName: name, stepNumber: result.stepNumber });
+  if (!config) {
+    ctx.ui.notify("Failed to resolve evolve-plan config.", "error");
+    return;
+  }
+  // Override validation since it's step-dependent
+  config.validation = { files: [`${folderName}/TASK.md`, `${folderName}/TEST.md`] };
+  await launchCapability(ctx, config);
 }
 
 // ---------------------------------------------------------------------------
@@ -177,8 +177,6 @@ async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandC
 // ---------------------------------------------------------------------------
 
 export function setupEvolvePlan(pi: ExtensionAPI) {
-  CAPABILITY_SESSIONS["evolve-plan"] = buildEvolvePlanConfig;
-
   pi.registerTool(evolvePlanTool);
   pi.registerCommand("pio-evolve-plan", {
     description:

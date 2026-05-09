@@ -12,6 +12,8 @@ const PROMPTS_DIR = path.join(__dirname, "..", "prompts");
 export interface CapabilityConfig {
   /** Logical capability name (e.g. "create-goal") — determines prompt and transitions */
   capability: string;
+  /** Prompt filename (e.g. "create-goal.md") — resolved from CAPABILITY_CONFIG.prompt */
+  prompt?: string;
   /** Kickoff prompt sent as a user message to trigger the agent */
   initialMessage?: string;
   /** Base directory for resolving validation file paths (the goal workspace dir) */
@@ -23,15 +25,6 @@ export interface CapabilityConfig {
   /** Files that MAY be written during this session (allowlist). When present, takes precedence over readOnlyFiles. */
   writeOnlyFiles?: string[];
 }
-
-/** Maps capability name → prompt filename. Centralized so prompts don't leak into config. */
-export const CAPABILITY_PROMPTS: Record<string, string> = {
-  "create-goal": "create-goal.md",
-  "create-plan": "create-plan.md",
-  "evolve-plan": "evolve-plan.md",
-  "execute-plan": "execute-plan.md",
-  "project-context": "project-context.md",
-};
 
 
 // Module-level cache per runtime instance
@@ -79,12 +72,11 @@ export function setupCapability(pi: ExtensionAPI) {
     if (!entry || entry.type !== "custom") return;
 
     const config = entry.data as CapabilityConfig;
-    const promptFilename = CAPABILITY_PROMPTS[config.capability];
-    if (!promptFilename) {
+    if (!config.prompt) {
       console.warn(`pio: no prompt configured for capability "${config.capability}"`);
       return;
     }
-    const promptPath = path.join(PROMPTS_DIR, promptFilename);
+    const promptPath = path.join(PROMPTS_DIR, config.prompt);
 
     if (fs.existsSync(promptPath)) {
       systemPrompt = fs.readFileSync(promptPath, "utf-8");

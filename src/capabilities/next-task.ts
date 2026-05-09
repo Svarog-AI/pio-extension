@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { launchCapability } from "./session-capability";
-import { CAPABILITY_SESSIONS, queueDir, type SessionQueueTask } from "../utils";
+import { resolveCapabilityConfig, queueDir, type SessionQueueTask } from "../utils";
 
 // ---------------------------------------------------------------------------
 // Command
@@ -25,13 +25,11 @@ async function handleNextTask(_args: string | undefined, ctx: ExtensionCommandCo
   const task: SessionQueueTask = JSON.parse(raw);
 
   try {
-    const buildConfig = CAPABILITY_SESSIONS[task.capability];
-    if (!buildConfig) {
+    const config = await resolveCapabilityConfig(ctx.cwd, { capability: task.capability, ...task.params });
+    if (!config) {
       ctx.ui.notify(`Unknown capability "${task.capability}" in queued task.`, "error");
       return;
     }
-
-    const config = buildConfig(ctx.cwd, task.params);
     await launchCapability(ctx, config);
   } catch (err) {
     console.error(`pio-next-task: failed to launch ${task.capability}`, err);

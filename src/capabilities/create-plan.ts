@@ -3,24 +3,19 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 
-import { launchCapability, type CapabilityConfig } from "./session-capability";
-import { enqueueTask, resolveGoalDir, CAPABILITY_SESSIONS } from "../utils";
+import { launchCapability } from "./session-capability";
+import { enqueueTask, resolveGoalDir, resolveCapabilityConfig, type StaticCapabilityConfig } from "../utils";
 
 // ---------------------------------------------------------------------------
-// Config builder — single source of truth for this capability's session shape
+// Capability config — single source of truth for this capability's session shape
 // ---------------------------------------------------------------------------
 
-export function buildCreatePlanConfig(cwd: string, params?: Record<string, unknown>): CapabilityConfig {
-  const name = typeof params?.goalName === "string" ? params.goalName : "";
-  const goalDir = resolveGoalDir(cwd, name);
-  return {
-    capability: "create-plan",
-    workingDir: goalDir,
-    validation: { files: ["PLAN.md"] },
-    readOnlyFiles: ["GOAL.md"],
-    initialMessage: `Goal workspace is at ${goalDir}. GOAL.md exists. Create PLAN.md in this directory.`,
-  };
-}
+export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
+  prompt: "create-plan.md",
+  validation: { files: ["PLAN.md"] },
+  readOnlyFiles: ["GOAL.md"],
+  defaultInitialMessage: (goalDir) => `Goal workspace is at ${goalDir}. GOAL.md exists. Create PLAN.md in this directory.`,
+};
 
 // ---------------------------------------------------------------------------
 // Function
@@ -102,7 +97,12 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  await launchCapability(ctx, buildCreatePlanConfig(ctx.cwd, { goalName: name }));
+  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "create-plan", goalName: name });
+  if (!config) {
+    ctx.ui.notify("Failed to resolve create-plan config.", "error");
+    return;
+  }
+  await launchCapability(ctx, config);
 }
 
 // ---------------------------------------------------------------------------
@@ -110,8 +110,6 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
 // ---------------------------------------------------------------------------
 
 export function setupCreatePlan(pi: ExtensionAPI) {
-  CAPABILITY_SESSIONS["create-plan"] = buildCreatePlanConfig;
-
   pi.registerTool(createPlanTool);
   pi.registerCommand("pio-create-plan", {
     description: "Create an implementation plan for a goal and launch a create-plan session",

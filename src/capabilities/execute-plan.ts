@@ -1,22 +1,17 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 
-import { launchCapability, type CapabilityConfig } from "./session-capability";
-import { resolveGoalDir, CAPABILITY_SESSIONS } from "../utils";
+import { launchCapability } from "./session-capability";
+import { resolveGoalDir, resolveCapabilityConfig, type StaticCapabilityConfig } from "../utils";
 
 // ---------------------------------------------------------------------------
-// Config builder
+// Capability config — single source of truth for this capability's session shape
 // ---------------------------------------------------------------------------
 
-export function buildExecutePlanConfig(cwd: string, params?: Record<string, unknown>): CapabilityConfig {
-  const name = typeof params?.goalName === "string" ? params.goalName : "";
-  const goalDir = resolveGoalDir(cwd, name);
-  return {
-    capability: "execute-plan",
-    workingDir: goalDir,
-    initialMessage: `Goal workspace is at ${goalDir}. GOAL.md and PLAN.md exist. Implement all steps from PLAN.md in this session.`,
-  };
-}
+export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
+  prompt: "execute-plan.md",
+  defaultInitialMessage: (goalDir) => `Goal workspace is at ${goalDir}. GOAL.md and PLAN.md exist. Implement all steps from PLAN.md in this session.`,
+};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -74,7 +69,12 @@ async function handleExecutePlan(args: string | undefined, ctx: ExtensionCommand
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  await launchCapability(ctx, buildExecutePlanConfig(ctx.cwd, { goalName: name }));
+  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "execute-plan", goalName: name });
+  if (!config) {
+    ctx.ui.notify("Failed to resolve execute-plan config.", "error");
+    return;
+  }
+  await launchCapability(ctx, config);
 }
 
 // ---------------------------------------------------------------------------
@@ -82,8 +82,6 @@ async function handleExecutePlan(args: string | undefined, ctx: ExtensionCommand
 // ---------------------------------------------------------------------------
 
 export function setupExecutePlan(pi: ExtensionAPI) {
-  CAPABILITY_SESSIONS["execute-plan"] = buildExecutePlanConfig;
-
   pi.registerCommand("pio-execute-plan", {
     description: "Implement all steps from an existing plan in a single session",
     handler: handleExecutePlan,

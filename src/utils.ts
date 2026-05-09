@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { ValidationRule } from "./capabilities/validation";
 import type { CapabilityConfig } from "./capabilities/session-capability";
 
 /** Resolve a goal workspace path under .pio/goals/<name>. */
@@ -98,6 +99,64 @@ export function enqueueTask(cwd: string, task: SessionQueueTask): string {
 }
 
 // ---------------------------------------------------------------------------
+// Capability config resolution
+// ---------------------------------------------------------------------------
+
+/** Static shape each capability exports as `CAPABILITY_CONFIG`. */
+export interface StaticCapabilityConfig {
+  prompt: string;                    // e.g. "create-goal.md"
+  validation?: ValidationRule;
+  readOnlyFiles?: string[];
+  writeOnlyFiles?: string[];
+  /** Derive initialMessage from workingDir (optional override via params.initialMessage) */
+  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => string;
+}
+
+/**
+ * Resolve a capability name to its full CapabilityConfig.
+ * Imports the capability module dynamically and reads its `CAPABILITY_CONFIG` export.
+ */
+export async function resolveCapabilityConfig(
+  cwd: string,
+  params?: Record<string, unknown>,
+): Promise<CapabilityConfig | undefined> {
+  const cap = typeof params?.capability === "string" ? params.capability : null;
+  if (!cap) return undefined;
+
+  let mod: { CAPABILITY_CONFIG: StaticCapabilityConfig } | undefined;
+  try {
+    // Convention: capability name matches the module filename under src/capabilities/
+    mod = await import(`./capabilities/${cap}`);
+  } catch (err) {
+    console.warn(`pio: could not load capability "${cap}": ${err}`);
+    return undefined;
+  }
+
+  const config = mod?.CAPABILITY_CONFIG;
+  if (!config) {
+    console.warn(`pio: no CAPABILITY_CONFIG found for "${cap}"`);
+    return undefined;
+  }
+
+  // Derive workingDir from params.goalName, or fall back to cwd for project-scoped capabilities
+  const goalName = typeof params?.goalName === "string" ? params.goalName : "";
+  const workingDir = goalName ? resolveGoalDir(cwd, goalName) : cwd;
+
+  return {
+    capability: cap,
+    prompt: config.prompt,
+    workingDir,
+    validation: config.validation,
+    readOnlyFiles: config.readOnlyFiles,
+    writeOnlyFiles: config.writeOnlyFiles,
+    initialMessage:
+      typeof params?.initialMessage === "string"
+        ? params.initialMessage
+        : config.defaultInitialMessage(workingDir, params),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Capability transition helpers — deterministic task flow
 // ---------------------------------------------------------------------------
 
@@ -106,12 +165,3 @@ export const CAPABILITY_TRANSITIONS: Record<string, string> = {
   "create-goal": "create-plan",
   "create-plan": "evolve-plan",
 };
-
-/**
- * Builder that produces a CapabilityConfig from cwd and capability params.
- * Each capability exports one of these; the registry maps names → builders.
- */
-export type CapabilitySessionFactory = (cwd: string, params?: Record<string, unknown>) => CapabilityConfig;
-
-/** Registry of session factories — populated by each capability's setup. */
-export const CAPABILITY_SESSIONS: Record<string, CapabilitySessionFactory> = {};

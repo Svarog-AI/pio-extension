@@ -3,26 +3,18 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 
-import { launchCapability, type CapabilityConfig } from "./session-capability";
-import { enqueueTask, goalExists, resolveGoalDir, CAPABILITY_SESSIONS } from "../utils";
+import { launchCapability } from "./session-capability";
+import { enqueueTask, goalExists, resolveGoalDir, resolveCapabilityConfig, type StaticCapabilityConfig } from "../utils";
 
 // ---------------------------------------------------------------------------
-// Config builder — single source of truth for this capability's session shape
+// Capability config — single source of truth for this capability's session shape
 // ---------------------------------------------------------------------------
 
-export function buildCreateGoalConfig(cwd: string, params?: Record<string, unknown>): CapabilityConfig {
-  const name = typeof params?.goalName === "string" ? params.goalName : "";
-  const goalDir = resolveGoalDir(cwd, name);
-  return {
-    capability: "create-goal",
-    workingDir: goalDir,
-    validation: { files: ["GOAL.md"] },
-    initialMessage:
-      typeof params?.initialMessage === "string"
-        ? params.initialMessage
-        : `Created goal workspace at ${goalDir}`,
-  };
-}
+export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
+  prompt: "create-goal.md",
+  validation: { files: ["GOAL.md"] },
+  defaultInitialMessage: (goalDir) => `Created goal workspace at ${goalDir}`,
+};
 
 // ---------------------------------------------------------------------------
 // Function
@@ -92,7 +84,12 @@ async function handleCreateGoal(args: string | undefined, ctx: ExtensionCommandC
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  await launchCapability(ctx, buildCreateGoalConfig(ctx.cwd, { goalName: name }));
+  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "create-goal", goalName: name });
+  if (!config) {
+    ctx.ui.notify("Failed to resolve create-goal config.", "error");
+    return;
+  }
+  await launchCapability(ctx, config);
 }
 
 // ---------------------------------------------------------------------------
@@ -100,8 +97,6 @@ async function handleCreateGoal(args: string | undefined, ctx: ExtensionCommandC
 // ---------------------------------------------------------------------------
 
 export function setupCreateGoal(pi: ExtensionAPI) {
-  CAPABILITY_SESSIONS["create-goal"] = buildCreateGoalConfig;
-
   pi.registerTool(createGoalTool);
   pi.registerCommand("pio-create-goal", {
     description: "Create a new goal workspace and launch a create-goal session",

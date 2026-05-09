@@ -4,8 +4,7 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 
 import { launchCapability } from "./session-capability";
-import { enqueueTask, findIssuePath, goalExists, resolveGoalDir } from "../utils";
-import { buildCreateGoalConfig } from "./create-goal";
+import { enqueueTask, findIssuePath, goalExists, resolveGoalDir, resolveCapabilityConfig } from "../utils";
 
 // ---------------------------------------------------------------------------
 // Function
@@ -102,10 +101,16 @@ async function handleGoalFromIssue(args: string | undefined, ctx: ExtensionComma
   fs.mkdirSync(goalDir, { recursive: true });
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
-  await launchCapability(ctx, buildCreateGoalConfig(ctx.cwd, {
+  const config = await resolveCapabilityConfig(ctx.cwd, {
+    capability: "create-goal",
     goalName: name,
     initialMessage: `Convert the following issue into a goal:\n\nIssue file: ${validation.issuePath}`,
-  }));
+  });
+  if (!config) {
+    ctx.ui.notify("Failed to resolve create-goal config.", "error");
+    return;
+  }
+  await launchCapability(ctx, config);
 }
 
 // ---------------------------------------------------------------------------

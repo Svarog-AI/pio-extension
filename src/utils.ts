@@ -47,31 +47,26 @@ export function issuesDir(cwd: string): string {
 
 /**
  * Resolve an issue identifier to a full filesystem path.
- * Accepts a bare filename (e.g. `20260101_120000.md`), a basename,
- * or a relative/absolute path. Returns `undefined` if not found.
+ * Accepts a slug (`my-issue`), filename (`my-issue.md`), or relative/absolute path.
+ * Returns `undefined` if not found.
  */
 export function findIssuePath(cwd: string, identifier: string): string | undefined {
-  // If it's already an absolute path and exists, use it directly
+  // Absolute path — check directly
   if (path.isAbsolute(identifier) && fs.existsSync(identifier)) {
     return identifier;
   }
 
-  // Extract the basename from whatever was passed
-  const basename = path.basename(identifier);
   const dir = path.join(cwd, ".pio", "issues");
+  const basename = path.basename(identifier);
 
-  // Check for exact match in the issues directory
-  const candidate = path.join(dir, basename);
-  if (fs.existsSync(candidate)) {
-    return candidate;
-  }
+  // Exact filename match (e.g. `my-issue.md`)
+  const exact = path.join(dir, basename);
+  if (fs.existsSync(exact)) return exact;
 
-  // If identifier is a relative path (not just a basename), try resolving it as-is
-  if (identifier.includes(path.sep) || identifier.includes("/")) {
-    const resolved = path.resolve(cwd, identifier);
-    if (fs.existsSync(resolved)) {
-      return resolved;
-    }
+  // Bare slug — append .md (e.g. `my-issue` → `my-issue.md`)
+  if (!basename.endsWith(".md")) {
+    const withExt = path.join(dir, basename + ".md");
+    if (fs.existsSync(withExt)) return withExt;
   }
 
   return undefined;

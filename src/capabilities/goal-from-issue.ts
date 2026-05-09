@@ -55,6 +55,7 @@ const goalFromIssueTool = defineTool({
 
     const goalDir = resolveGoalDir(ctx.cwd, params.name);
     fs.mkdirSync(goalDir, { recursive: true });
+    fs.rmSync(validation.issuePath!, { force: true });
 
     enqueueTask(ctx.cwd, {
       capability: "create-goal",
@@ -99,6 +100,7 @@ async function handleGoalFromIssue(args: string | undefined, ctx: ExtensionComma
 
   const goalDir = resolveGoalDir(ctx.cwd, name);
   fs.mkdirSync(goalDir, { recursive: true });
+  fs.rmSync(validation.issuePath!, { force: true });
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   const config = await resolveCapabilityConfig(ctx.cwd, {

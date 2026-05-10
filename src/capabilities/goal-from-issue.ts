@@ -1,8 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import * as fs from "node:fs";
-
 import { launchCapability } from "./session-capability";
 import { enqueueTask, findIssuePath, goalExists, resolveGoalDir, resolveCapabilityConfig } from "../utils";
 
@@ -53,9 +51,6 @@ const goalFromIssueTool = defineTool({
       return { content: [{ type: "text", text: validation.error! }], details: {} };
     }
 
-    const goalDir = resolveGoalDir(ctx.cwd, params.name);
-    fs.mkdirSync(goalDir, { recursive: true });
-
     enqueueTask(ctx.cwd, {
       capability: "create-goal",
       params: {
@@ -66,7 +61,7 @@ const goalFromIssueTool = defineTool({
     });
 
     return {
-      content: [{ type: "text", text: `Goal workspace created at ${goalDir}. Task queued from issue — run /pio-next-task to start it.` }],
+      content: [{ type: "text", text: `Task queued from issue — run /pio-next-task to start the goal definition session for "${params.name}".` }],
       details: {},
     };
   },
@@ -97,9 +92,6 @@ async function handleGoalFromIssue(args: string | undefined, ctx: ExtensionComma
     ctx.ui.notify(validation.error!, "warning");
     return;
   }
-
-  const goalDir = resolveGoalDir(ctx.cwd, name);
-  fs.mkdirSync(goalDir, { recursive: true });
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   const config = await resolveCapabilityConfig(ctx.cwd, {

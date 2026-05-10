@@ -24,6 +24,12 @@ let baseDir: string | undefined;
 let readOnlyFilePaths: string[] = [];
 let writeAllowlistPaths: string[] = [];
 
+/** Session working directory — the goal workspace dir (e.g. `/repo/.pio/goals/my-feature`). */
+let workingDir: string | undefined;
+
+/** Session capability name (e.g. "execute-task"). Captured for context; used for future policies. */
+let capabilityName: string | undefined;
+
 /** True after we've already warned once and let the switch through. */
 let warnedOnce = false;
 
@@ -169,9 +175,11 @@ export function setupValidation(pi: ExtensionAPI) {
 
     if (!entry || entry.type !== "custom") return;
 
-    const config = entry.data as { workingDir?: string; validation?: ValidationRule; readOnlyFiles?: string[]; writeAllowlist?: string[] };
+    const config = entry.data as { capability?: string; workingDir?: string; validation?: ValidationRule; readOnlyFiles?: string[]; writeAllowlist?: string[] };
     validationRules = config.validation;
     baseDir = config.workingDir;
+    workingDir = config.workingDir;
+    capabilityName = config.capability;
 
     // Resolve read-only file paths to absolute paths
     if (config.readOnlyFiles && config.workingDir) {
@@ -242,9 +250,17 @@ export function setupValidation(pi: ExtensionAPI) {
     for (const tp of pioWriteTargets) {
       if (tp.includes("/.pio/")) {
         // Permit if the path is in the session's write-allowlist
-        if (!writeAllowlistPaths.includes(tp)) {
-          return { block: true, reason: `Writing to .pio/ files is not allowed. These files are managed by the pio workflow and should not be modified directly from this session.` };
+        if (writeAllowlistPaths.includes(tp)) {
+          continue;
         }
+
+        // Permit if the path is inside the session's own workingDir (goal workspace)
+        if (workingDir && (tp.startsWith(workingDir + path.sep) || tp === workingDir)) {
+          continue;
+        }
+
+        // Block writes to .pio/ areas outside the session's goal workspace
+        return { block: true, reason: `Writing to .pio/ files is not allowed. These files are managed by the pio workflow and should not be modified directly from this session.` };
       }
     }
 

@@ -136,7 +136,7 @@ export async function resolveCapabilityConfig(
     workingDir,
     validation: config.validation,
     readOnlyFiles: config.readOnlyFiles,
-    writeOnlyFiles: config.writeOnlyFiles,
+    writeAllowlist: config.writeAllowlist,
     initialMessage:
       typeof params?.initialMessage === "string"
         ? params.initialMessage

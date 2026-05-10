@@ -11,7 +11,7 @@ import { enqueueTask, resolveCapabilityConfig, type StaticCapabilityConfig } fro
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "project-context.md",
-  writeOnlyFiles: [".pio/PROJECT.md"],
+  writeAllowlist: [".pio/PROJECT.md"],
   defaultInitialMessage: () => `Please explore this project and produce .pio/PROJECT.md.`,
 };
 

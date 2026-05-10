@@ -35,8 +35,8 @@ export interface CapabilityConfig {
   validation?: ValidationRule;
   /** Files that must not be modified during this session (relative to workingDir) */
   readOnlyFiles?: string[];
-  /** Files that MAY be written during this session (allowlist). When present, takes precedence over readOnlyFiles. */
-  writeOnlyFiles?: string[];
+  /** Allowlist of files that may be written during this session. When present, takes precedence over readOnlyFiles. */
+  writeAllowlist?: string[];
   /** Files to delete when validation passes (absolute paths). */
   fileCleanup?: string[];
 }
@@ -46,7 +46,7 @@ export interface StaticCapabilityConfig {
   prompt: string;                    // e.g. "create-goal.md"
   validation?: ValidationRule;
   readOnlyFiles?: string[];
-  writeOnlyFiles?: string[];
+  writeAllowlist?: string[];
   /** Derive initialMessage from workingDir (optional override via params.initialMessage) */
   defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => string;
 }

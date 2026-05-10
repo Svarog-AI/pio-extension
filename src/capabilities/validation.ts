@@ -22,7 +22,7 @@ interface ValidationResult {
 let validationRules: ValidationRule | undefined;
 let baseDir: string | undefined;
 let readOnlyFilePaths: string[] = [];
-let writeOnlyFilePaths: string[] = [];
+let writeAllowlistPaths: string[] = [];
 
 /** True after we've already warned once and let the switch through. */
 let warnedOnce = false;
@@ -157,7 +157,7 @@ export function setupValidation(pi: ExtensionAPI) {
 
     if (!entry || entry.type !== "custom") return;
 
-    const config = entry.data as { workingDir?: string; validation?: ValidationRule; readOnlyFiles?: string[]; writeOnlyFiles?: string[] };
+    const config = entry.data as { workingDir?: string; validation?: ValidationRule; readOnlyFiles?: string[]; writeAllowlist?: string[] };
     validationRules = config.validation;
     baseDir = config.workingDir;
 
@@ -168,21 +168,20 @@ export function setupValidation(pi: ExtensionAPI) {
       readOnlyFilePaths = [];
     }
 
-    // Resolve write-only file paths to absolute paths (allowlist mode)
-    if (config.writeOnlyFiles && config.workingDir) {
-      writeOnlyFilePaths = config.writeOnlyFiles.map((f) => path.resolve(config.workingDir!, f));
+    // Resolve write-allowlist paths to absolute paths
+    if (config.writeAllowlist && config.workingDir) {
+      writeAllowlistPaths = config.writeAllowlist.map((f) => path.resolve(config.workingDir!, f));
     } else {
-      writeOnlyFilePaths = [];
+      writeAllowlistPaths = [];
     }
 
     warnedOnce = false;
     warningsThisSession = 0;
   });
 
-  // 3. Reset one-shot gate and write-only cache when the agent starts a new turn (did work)
+  // 3. Reset one-shot gate when the agent starts a new turn
   pi.on("turn_start", async () => {
     warnedOnce = false;
-    writeOnlyFilePaths = [];
   });
 
   // // 4. Exit-gate: block the first switch if validation fails, then let it go.
@@ -230,15 +229,15 @@ export function setupValidation(pi: ExtensionAPI) {
     // Check if any target is inside a .pio/ directory
     for (const tp of pioWriteTargets) {
       if (tp.includes("/.pio/")) {
-        // Permit if the path is in the session's write-only allowlist
-        if (!writeOnlyFilePaths.includes(tp)) {
+        // Permit if the path is in the session's write-allowlist
+        if (!writeAllowlistPaths.includes(tp)) {
           return { block: true, reason: `Writing to .pio/ files is not allowed. These files are managed by the pio workflow and should not be modified directly from this session.` };
         }
       }
     }
 
     // --- Write-allowlist check (takes precedence over blocklist) ---
-    if (writeOnlyFilePaths.length > 0) {
+    if (writeAllowlistPaths.length > 0) {
       // Collect all target file paths from this tool call
       let targetPaths: string[] = [];
 
@@ -257,8 +256,8 @@ export function setupValidation(pi: ExtensionAPI) {
       // Block any write tool targeting a file NOT in the allowlist
       if (targetPaths.length > 0) {
         for (const tp of targetPaths) {
-          if (!writeOnlyFilePaths.includes(tp)) {
-            return { block: true, reason: `Writing is restricted during this session. Allowed write targets: ${writeOnlyFilePaths.join(", ")}. You attempted to write to a file outside this list.` };
+          if (!writeAllowlistPaths.includes(tp)) {
+            return { block: true, reason: `Writing is restricted during this session. Allowed write targets: ${writeAllowlistPaths.join(", ")}. You attempted to write to a file outside this list.` };
           }
         }
       }

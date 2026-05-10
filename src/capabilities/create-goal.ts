@@ -13,7 +13,7 @@ import { enqueueTask, goalExists, resolveGoalDir, resolveCapabilityConfig, type 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "create-goal.md",
   validation: { files: ["GOAL.md"] },
-  writeOnlyFiles: ["GOAL.md"],
+  writeAllowlist: ["GOAL.md"],
   defaultInitialMessage: (goalDir) => `Created goal workspace at ${goalDir}`,
 };
 

@@ -14,7 +14,7 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "create-plan.md",
   validation: { files: ["PLAN.md"] },
   readOnlyFiles: ["GOAL.md"],
-  writeOnlyFiles: ["PLAN.md"],
+  writeAllowlist: ["PLAN.md"],
   defaultInitialMessage: (goalDir) => `Goal workspace is at ${goalDir}. GOAL.md exists. Create PLAN.md in this directory.`,
 };
 

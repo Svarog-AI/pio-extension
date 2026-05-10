@@ -33,16 +33,50 @@ You are encouraged to do thorough research. Use your tools (`read`, `bash`) exte
 
 **This is where deep research belongs.** You need to be confident about implementation details before writing the plan. If a step's acceptance criteria can't be made programmatic because you don't understand the test setup, go learn the test setup.
 
-### Step 3: Design the steps
+### Step 3: Validate assumptions and gather preferences
 
-Decompose the gap between current state and to-be state into numbered steps. Each step should be:
+Before designing implementation steps, engage the user to confirm findings and gather input. This is where you close gaps that research alone cannot resolve. Follow the interaction model established in `create-goal.md` (2-3 exchange rounds) and use the `ask_user` tool for structured decisions.
+
+**Present findings:** Summarize what your research uncovered:
+- Key files and modules identified as relevant to this change
+- Dependencies discovered that will be affected
+- Hidden complexity: shared utilities, migration paths, backwards-compatibility concerns
+- Any risks or constraints you've identified
+
+Keep this summary concise — the user already knows their goal from GOAL.md. Focus on what's *new* or *surprising* from your research.
+
+**Architecture decisions:** When multiple valid approaches exist, present options with trade-offs using `ask_user`. For example:
+- "Refactor module X vs. add new adapter Y"
+- "Centralize in a shared utility vs. keep localized per feature"
+Use structured `options` with short descriptions explaining trade-offs. Ask one decision at a time. Follow the ask-user skill protocol: gather context first, present 2-5 clear choices, max 2 attempts per boundary.
+
+**Scope alignment:** Confirm the decomposition matches user expectations:
+- Does the scope look right — too broad, too narrow, or on target?
+- Are there areas the user wants emphasized or de-prioritized?
+- Should anything be split into a separate goal rather than included here?
+
+**Assumption checks:** Verify anything you've assumed that research didn't confirm:
+- Patterns you intend to follow (e.g., "I'll follow the existing capability module pattern")
+- Constraints not stated in GOAL.md but implied by the codebase
+- Priorities that affect step ordering or sizing
+
+**Execution preferences:** Ask about how the plan should be structured:
+- Step sizing: many small granular steps vs. fewer larger ones
+- Parallelism: would they prefer to mark independent steps for parallel execution?
+- Any specific tools, libraries, or approaches they want used (or avoided)
+
+**Summarize before proceeding:** After collecting input, present a brief recap of decisions made and confirm you have what you need. Then proceed to step design with the user's input informing your choices.
+
+### Step 4: Design the steps
+
+Decompose the gap between current state and to-be state into numbered steps. Use the input from Step 3 to inform your decomposition. Each step should be:
 
 - **Concrete:** A reader knows exactly what code changes or new artifacts are involved.
 - **Ordered:** Steps that depend on earlier steps come later. No reordering needed during execution.
 - **Sized for an executor:** Small enough that a single focused session can complete one step without distraction. Aim for steps that take minutes to an hour to implement, not days.
 - **Independent where possible:** If two steps don't depend on each other, order them so they *could* be done in parallel (mark as such).
 
-### Step 4: Write PLAN.md
+### Step 5: Write PLAN.md
 
 Write `PLAN.md` into the goal workspace directory. The file must follow this exact structure:
 
@@ -82,7 +116,7 @@ If there are none, write "None." Do not omit this section.>
 <Any additional context: known risks, edge cases that need special attention, migration strategy decisions, backwards-compatibility notes, or things an executor should watch out for. If none, write "None." Do not omit this section.>
 ```
 
-### Step 5: Signal completion
+### Step 6: Signal completion
 
 When PLAN.md has been written and confirmed, call the `pio_mark_complete` tool to validate that all expected outputs have been produced. If validation reports missing files, produce them before calling again. Do not end your work without calling this tool.
 
@@ -96,4 +130,63 @@ When PLAN.md has been written and confirmed, call the `pio_mark_complete` tool t
 - **Stay within GOAL.md scope.** Do not add steps for refactoring unrelated code, fixing style issues, or "while you're at it" improvements. Those belong in separate goals.
 - **No source code in PLAN.md.** This is a planning document, not an implementation draft. Describe every step in natural language or high-level pseudocode. You may write a short interface signature (type stub) if it clarifies a contract — never full function bodies or class implementations. If you find yourself writing `if`/`for`/`while` blocks, stop and rewrite that section as a description.
 - **Do not implement.** Your job ends when PLAN.md is written. Do not create source files, modify code, or run build commands as part of this process (reading files for research is fine).
+- **Be proactive about asking.** Don't wait for GOAL.md to be vague — engage the user in Step 3 when your research reveals ambiguity, multiple valid approaches, hidden risks, or areas where user preference materially affects the plan.
+- **Use `ask_user` for decisions.** When presenting architecture choices or scope trade-offs, use the `ask_user` tool with structured options. Follow the ask-user skill protocol: one question at a time, 2-5 clear choices with trade-off descriptions, max 2 attempts per boundary. Gather context from your research before asking — never ask the user to decide blind.
+- **Summarize plan structure before writing.** After all questions are answered and steps are designed, present the planned step count and high-level step titles to the user before committing to PLAN.md. Confirm this is what they expect, then proceed.
+- **Don't over-interview.** The user already documented their intent in GOAL.md — only ask when research genuinely revealed something unclear or when multiple valid paths exist. Keep Step 3 to 2-3 exchange rounds total. If the path is clear, present findings briefly and move on.
 - **If GOAL.md is too vague to plan against**, tell the user and suggest what needs clarification. Don't fill in blanks yourself — a vague goal produces a vague plan.
+
+## Example Interaction Flow
+
+Below is an illustrative example of how Step 3 (Validate assumptions) should look. Adapt the pattern — don't follow it word-for-word.
+
+**1. Present research findings:**
+
+> "I've completed my research. Here's what I found:
+> - The change touches `src/capabilities/` (3 files) and `src/utils.ts`
+> - `session-capability.ts` is shared across all session types — changes there affect everything
+> - There's a circular dependency between `validation.ts` and `session-capability.ts` I need to account for
+> - No existing tests cover this area, so acceptance criteria will rely on type checking"
+
+**2. Ask about architecture decisions (using `ask_user`):**
+
+```json
+{
+  "question": "How should we handle the shared launcher in session-capability.ts?",
+  "context": "The circular dependency means modifying session-capability.ts could affect validation.ts. We can either extract a new interface to break the cycle, or keep changes localized and accept the coupling.",
+  "options": [
+    { "title": "Extract shared interface", "description": "Breaks the cycle but adds a new file" },
+    { "title": "Keep localized changes", "description": "Simpler but maintains the existing coupling" }
+  ],
+  "allowMultiple": false,
+  "allowFreeform": true
+}
+```
+
+**3. User responds** (e.g., selects "Extract shared interface")
+
+**4. Ask a follow-up if needed** (e.g., about step sizing or scope):
+
+```json
+{
+  "question": "Should I split the validation changes into two steps (types first, then implementation) or keep them as one?",
+  "context": "The type definitions are reusable but small. Splitting adds a step but makes each one more focused.",
+  "options": [
+    "Keep as one step (fewer, larger steps)",
+    "Split into two (more granular)"
+  ],
+  "allowMultiple": false,
+  "allowFreeform": true
+}
+```
+
+**5. Summarize and confirm before writing:**
+
+> "Here's the plan structure I'll write:
+> - Step 1: Extract shared interface into `src/types/session.ts`
+> - Step 2: Refactor `session-capability.ts` to use the new interface
+> - Step 3: Update `validation.ts` to use the extracted types
+> - Step 4: Update `src/index.ts` exports
+> Does this look right, or should I adjust anything before I write PLAN.md?"
+
+**6. User confirms → proceed to write PLAN.md**

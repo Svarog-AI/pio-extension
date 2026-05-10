@@ -153,4 +153,6 @@ export async function resolveCapabilityConfig(
 export const CAPABILITY_TRANSITIONS: Record<string, string> = {
   "create-goal": "create-plan",
   "create-plan": "evolve-plan",
+  "evolve-plan": "execute-task",
+  "execute-task": "evolve-plan",
 };

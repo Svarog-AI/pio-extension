@@ -23,7 +23,7 @@ async function handleNextTask(_args: string | undefined, ctx: ExtensionCommandCo
   const task: SessionQueueTask = JSON.parse(raw);
 
   try {
-    const config = await resolveCapabilityConfig(ctx.cwd, { capability: task.capability, ...task.params });
+    const config = await resolveCapabilityConfig(ctx.cwd, { ...task.params, capability: task.capability });
     if (!config) {
       ctx.ui.notify(`Unknown capability "${task.capability}" in queued task.`, "error");
       return;

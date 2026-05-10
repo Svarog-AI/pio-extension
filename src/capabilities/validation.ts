@@ -107,14 +107,24 @@ const markCompleteTool = defineTool({
       const cwd = process.cwd();
       const goalName = extractGoalName(dir);
 
+      // Extract stepNumber explicitly so downstream consumers still find it at top level
+      const sessionParams = config.sessionParams || {};
+      const stepNumber = typeof sessionParams.stepNumber === "number"
+        ? sessionParams.stepNumber
+        : undefined;
+
       const nextCapability = capability
-        ? resolveNextCapability(capability, { capability, workingDir: dir, params: { goalName, ...(config.sessionParams || {}) } })
+        ? resolveNextCapability(capability, { capability, workingDir: dir, params: { goalName, stepNumber, _sessionContext: sessionParams } })
         : undefined;
       if (nextCapability) {
         try {
           enqueueTask(cwd, {
             capability: nextCapability,
-            params: { goalName, ...(config.sessionParams || {}) },
+            params: {
+              goalName,
+              ...(stepNumber != null ? { stepNumber } : {}),
+              _sessionContext: sessionParams,
+            },
           });
 
           notification = `\n\nNext task enqueued: ${nextCapability}. Run /pio-next-task to start it.`;

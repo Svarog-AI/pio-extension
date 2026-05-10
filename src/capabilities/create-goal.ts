@@ -48,6 +48,7 @@ const createGoalTool = defineTool({
   promptSnippet: "Create a new goal workspace and queue a session to define it.",
   parameters: Type.Object({
     name: Type.String({ description: "Name for the goal workspace" }),
+    initialMessage: Type.Optional(Type.String({ description: "Optional context to send as the kickoff message to the create-goal session" })),
   }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -59,7 +60,7 @@ const createGoalTool = defineTool({
 
     enqueueTask(ctx.cwd, {
       capability: "create-goal",
-      params: { goalName: params.name },
+      params: { goalName: params.name, initialMessage: typeof params.initialMessage === "string" ? params.initialMessage : undefined },
     });
 
     return { content: [{ type: "text", text: `Goal workspace created at ${goalDir}. Task queued — run /pio-next-task to start it.` }], details: {} };

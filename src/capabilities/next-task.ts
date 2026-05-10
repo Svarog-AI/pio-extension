@@ -11,16 +11,14 @@ import { resolveCapabilityConfig, queueDir, type SessionQueueTask } from "../uti
 
 async function handleNextTask(_args: string | undefined, ctx: ExtensionCommandContext) {
   const dir = queueDir(ctx.cwd);
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
+  const filePath = path.join(dir, "task.json");
 
-  if (files.length === 0) {
+  if (!fs.existsSync(filePath)) {
     ctx.ui.notify("No tasks queued.", "info");
     return;
   }
 
-  // Process the oldest file (timestamps in filenames ensure lexicographic = chronological order)
-  const oldest = files[0];
-  const filePath = path.join(dir, oldest);
+  // Single-slot: read the only task file
   const raw = fs.readFileSync(filePath, "utf-8");
   const task: SessionQueueTask = JSON.parse(raw);
 
@@ -35,7 +33,7 @@ async function handleNextTask(_args: string | undefined, ctx: ExtensionCommandCo
     console.error(`pio-next-task: failed to launch ${task.capability}`, err);
     ctx.ui.notify(`Failed to start ${task.capability}: ${err instanceof Error ? err.message : String(err)}`, "error");
   } finally {
-    // Always remove the queue file — avoid stuck tasks on error
+    // Always remove the task file — avoid stuck tasks on error
     try {
       fs.unlinkSync(filePath);
     } catch {
@@ -50,7 +48,7 @@ async function handleNextTask(_args: string | undefined, ctx: ExtensionCommandCo
 
 export function setupNextTask(pi: ExtensionAPI) {
   pi.registerCommand("pio-next-task", {
-    description: "Process the next queued session task from .pio/session-queue/",
+    description: "Process the pending session task",
     handler: handleNextTask,
   });
 }

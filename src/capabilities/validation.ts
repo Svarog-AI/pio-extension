@@ -101,7 +101,7 @@ const markCompleteTool = defineTool({
     if (result.passed) {
       let notification = "";
 
-      // Auto-enqueue next task in the happy path pipeline
+      // Auto-enqueue next task (single-slot, overwrites any existing pending task)
       const capability = config.capability;
       const cwd = process.cwd();
       const goalName = extractGoalName(dir);

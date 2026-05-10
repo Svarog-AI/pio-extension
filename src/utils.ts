@@ -13,10 +13,10 @@ export function goalExists(goalDir: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Session queue utilities
+// Session task slot utilities
 // ---------------------------------------------------------------------------
 
-/** Minimal task descriptor written to `.pio/session-queue/` as JSON. */
+/** Minimal task descriptor written to `.pio/session-queue/task.json` as JSON. */
 export interface SessionQueueTask {
   capability: string;
   params?: Record<string, unknown>;
@@ -82,14 +82,14 @@ export function readIssue(cwd: string, identifier: string): string | undefined {
   return fs.readFileSync(filePath, "utf-8");
 }
 
-/** Writes a JSON queue file and returns the file path. */
-export function enqueueTask(cwd: string, task: SessionQueueTask): string {
+/**
+ * Write the pending task to a single fixed file `.pio/session-queue/task.json`.
+ * Overwrites any existing task — only the most recently enqueued task survives.
+ */
+export function enqueueTask(cwd: string, task: SessionQueueTask): void {
   const dir = queueDir(cwd);
-  const ts = Date.now();
-  const filename = `${ts}-${task.capability}.json`;
-  const filePath = path.join(dir, filename);
+  const filePath = path.join(dir, "task.json");
   fs.writeFileSync(filePath, JSON.stringify(task, null, 2), "utf-8");
-  return filePath;
 }
 
 // ---------------------------------------------------------------------------

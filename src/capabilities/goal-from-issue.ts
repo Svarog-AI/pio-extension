@@ -55,13 +55,13 @@ const goalFromIssueTool = defineTool({
 
     const goalDir = resolveGoalDir(ctx.cwd, params.name);
     fs.mkdirSync(goalDir, { recursive: true });
-    fs.rmSync(validation.issuePath!, { force: true });
 
     enqueueTask(ctx.cwd, {
       capability: "create-goal",
       params: {
         goalName: params.name,
         initialMessage: `Convert the following issue into a goal:\n\nIssue file: ${validation.issuePath}`,
+        fileCleanup: [validation.issuePath!],
       },
     });
 
@@ -100,13 +100,13 @@ async function handleGoalFromIssue(args: string | undefined, ctx: ExtensionComma
 
   const goalDir = resolveGoalDir(ctx.cwd, name);
   fs.mkdirSync(goalDir, { recursive: true });
-  fs.rmSync(validation.issuePath!, { force: true });
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "create-goal",
     goalName: name,
     initialMessage: `Convert the following issue into a goal:\n\nIssue file: ${validation.issuePath}`,
+    fileCleanup: [validation.issuePath!],
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve create-goal config.", "error");

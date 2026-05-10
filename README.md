@@ -68,6 +68,10 @@ pio-extension/
 └── LICENSE
 ```
 
+## Dependencies
+
+- `pi-ask-user` — provides the `ask-user` skill, enabling decision handshakes before high-stakes changes in all pio sub-sessions.
+
 ## Development
 
 ```bash

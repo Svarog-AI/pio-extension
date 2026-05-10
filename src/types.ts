@@ -39,6 +39,8 @@ export interface CapabilityConfig {
   writeAllowlist?: string[];
   /** Files to delete when validation passes (absolute paths). */
   fileCleanup?: string[];
+  /** Original session params passed when this capability was launched. Used for downstream param propagation. */
+  sessionParams?: Record<string, unknown>;
 }
 
 /** Static shape each capability exports as `CAPABILITY_CONFIG`. */

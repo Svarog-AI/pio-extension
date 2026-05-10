@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ValidationRule } from "../types";
-import { CAPABILITY_TRANSITIONS, enqueueTask } from "../utils";
+import { resolveNextCapability, enqueueTask } from "../utils";
 
 // Re-export for backward compatibility
 export type { ValidationRule };
@@ -88,7 +88,7 @@ const markCompleteTool = defineTool({
       return { content: [{ type: "text", text: "No validation rules configured for this session." }], details: {} };
     }
 
-    const config = entry.data as { capability?: string; workingDir?: string; validation?: ValidationRule; fileCleanup?: string[] };
+    const config = entry.data as { capability?: string; workingDir?: string; validation?: ValidationRule; fileCleanup?: string[]; sessionParams?: Record<string, unknown> };
     const rules = config.validation;
     const dir = config.workingDir;
 
@@ -107,12 +107,14 @@ const markCompleteTool = defineTool({
       const cwd = process.cwd();
       const goalName = extractGoalName(dir);
 
-      const nextCapability = capability ? CAPABILITY_TRANSITIONS[capability] : undefined;
+      const nextCapability = capability
+        ? resolveNextCapability(capability, { capability, workingDir: dir, params: { goalName, ...(config.sessionParams || {}) } })
+        : undefined;
       if (nextCapability) {
         try {
           enqueueTask(cwd, {
             capability: nextCapability,
-            params: { goalName },
+            params: { goalName, ...(config.sessionParams || {}) },
           });
 
           notification = `\n\nNext task enqueued: ${nextCapability}. Run /pio-next-task to start it.`;

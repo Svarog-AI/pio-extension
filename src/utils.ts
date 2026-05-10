@@ -2,6 +2,23 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ValidationRule, CapabilityConfig, StaticCapabilityConfig } from "./types";
 
+// ---------------------------------------------------------------------------
+// Conditional transition types
+// ---------------------------------------------------------------------------
+
+/** Context passed to transition resolver callbacks. */
+export interface TransitionContext {
+  /** Current capability name (e.g. "review-code") */
+  capability: string;
+  /** Working directory (goal workspace directory) */
+  workingDir: string;
+  /** Session params from the completing session (goalName, stepNumber, …) */
+  params?: Record<string, unknown>;
+}
+
+/** A function that inspects runtime state and returns the next capability name. */
+export type CapabilityTransitionResolver = (ctx: TransitionContext) => string | undefined;
+
 /** Resolve a goal workspace path under .pio/goals/<name>. */
 export function resolveGoalDir(cwd: string, name: string): string {
   return path.join(cwd, ".pio", "goals", name);
@@ -142,6 +159,7 @@ export async function resolveCapabilityConfig(
         ? params.initialMessage
         : config.defaultInitialMessage(workingDir, params),
     fileCleanup: Array.isArray(params?.fileCleanup) ? params.fileCleanup : undefined,
+    sessionParams: params,
   };
 }
 
@@ -149,10 +167,33 @@ export async function resolveCapabilityConfig(
 // Capability transition helpers — deterministic task flow
 // ---------------------------------------------------------------------------
 
-/** Maps a capability name to the next capability name in the happy path. */
-export const CAPABILITY_TRANSITIONS: Record<string, string> = {
+/** Maps a capability name to the next capability name in the happy path.
+ * Values can be plain strings (deterministic) or resolver callbacks (conditional). */
+export const CAPABILITY_TRANSITIONS: Record<string, string | CapabilityTransitionResolver> = {
   "create-goal": "create-plan",
   "create-plan": "evolve-plan",
   "evolve-plan": "execute-task",
   "execute-task": "evolve-plan",
+  "review-code": (ctx): string => {
+    const stepNumber = typeof ctx.params?.stepNumber === "number" ? ctx.params.stepNumber : undefined;
+    if (stepNumber != null) {
+      const folder = `S${String(stepNumber).padStart(2, "0")}`;
+      const approvedPath = path.join(ctx.workingDir, folder, "APPROVED");
+      if (fs.existsSync(approvedPath)) {
+        return "evolve-plan";
+      }
+    }
+    return "execute-task";
+  },
 };
+
+/**
+ * Resolve the next capability name for a given capability.
+ * Handles both string entries (returned directly) and callback entries (invoked with context).
+ */
+export function resolveNextCapability(capability: string, ctx: TransitionContext): string | undefined {
+  const value = CAPABILITY_TRANSITIONS[capability];
+  if (value === undefined) return undefined;
+  if (typeof value === "string") return value;
+  return value(ctx);
+}

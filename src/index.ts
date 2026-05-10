@@ -14,6 +14,7 @@ import { setupDeleteGoal } from "./capabilities/delete-goal";
 import { setupCreatePlan } from "./capabilities/create-plan";
 import { setupEvolvePlan } from "./capabilities/evolve-plan";
 import { setupExecuteTask } from "./capabilities/execute-task";
+import { setupReviewCode } from "./capabilities/review-code";
 import { setupExecutePlan } from "./capabilities/execute-plan";
 import { setupNextTask } from "./capabilities/next-task";
 import { setupProjectContext } from "./capabilities/project-context";
@@ -36,6 +37,7 @@ export default function (pi: ExtensionAPI) {
     path.join(SKILLS_DIR, "evolve-plan"),
     path.join(SKILLS_DIR, "execute-task"),
     path.join(SKILLS_DIR, "execute-plan"),
+    path.join(SKILLS_DIR, "review-code"),
     path.join(SKILLS_DIR, "project-context"),
   ];
 
@@ -54,6 +56,7 @@ export default function (pi: ExtensionAPI) {
   setupCreatePlan(pi);
   setupEvolvePlan(pi);
   setupExecuteTask(pi);
+  setupReviewCode(pi);
   setupExecutePlan(pi);
   setupNextTask(pi);
   setupProjectContext(pi);

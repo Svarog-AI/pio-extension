@@ -32,13 +32,7 @@ export default function (pi: ExtensionAPI) {
   // Register pio capabilities as discoverable skills so they appear in
   // the <available_skills> section of pi's default system prompt.
   const skillPaths = [
-    path.join(SKILLS_DIR, "create-goal"),
-    path.join(SKILLS_DIR, "create-plan"),
-    path.join(SKILLS_DIR, "evolve-plan"),
-    path.join(SKILLS_DIR, "execute-task"),
-    path.join(SKILLS_DIR, "execute-plan"),
-    path.join(SKILLS_DIR, "review-code"),
-    path.join(SKILLS_DIR, "project-context"),
+    path.join(SKILLS_DIR, "pio"),
   ];
 
   pi.on("resources_discover", async () => {

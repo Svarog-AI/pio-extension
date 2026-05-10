@@ -207,9 +207,35 @@ export function setupValidation(pi: ExtensionAPI) {
   //   return { cancel: true };
   // });
 
-  // 5. File protection: write-allowlist (writeOnlyFiles) + read-only blocklist (readOnlyFiles)
+  // 5. File protection: default-deny for .pio/ writes + write-allowlist + read-only blocklist
   pi.on("tool_call", async (event) => {
     const input = event.input as Record<string, unknown> | undefined;
+
+    // --- Default-deny: block all writes to .pio/ unless explicitly allowed ---
+    // Collect all target file paths from write tools
+    let pioWriteTargets: string[] = [];
+
+    if (event.toolName === "write" && typeof input?.path === "string") {
+      pioWriteTargets = [path.resolve(input.path)];
+    } else if (event.toolName === "edit" && typeof input?.path === "string") {
+      pioWriteTargets = [path.resolve(input.path)];
+    } else if (event.toolName === "vscode_apply_workspace_edit" && Array.isArray(input?.edits)) {
+      for (const edit of input.edits as Array<Record<string, unknown>>) {
+        if (typeof edit.filePath === "string") {
+          pioWriteTargets.push(path.resolve(edit.filePath));
+        }
+      }
+    }
+
+    // Check if any target is inside a .pio/ directory
+    for (const tp of pioWriteTargets) {
+      if (tp.includes("/.pio/")) {
+        // Permit if the path is in the session's write-only allowlist
+        if (!writeOnlyFilePaths.includes(tp)) {
+          return { block: true, reason: `Writing to .pio/ files is not allowed. These files are managed by the pio workflow and should not be modified directly from this session.` };
+        }
+      }
+    }
 
     // --- Write-allowlist check (takes precedence over blocklist) ---
     if (writeOnlyFilePaths.length > 0) {

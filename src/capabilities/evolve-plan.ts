@@ -170,6 +170,13 @@ async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandC
   }
   // Override validation since it's step-dependent
   config.validation = { files: [`${folderName}/TASK.md`, `${folderName}/TEST.md`] };
+
+  // Restrict writes to the step spec files only (prevents .pio/ pre-writing)
+  config.writeOnlyFiles = [
+    `${folderName}/${TASK_FILE}`,
+    `${folderName}/${TEST_FILE}`,
+  ];
+
   await launchCapability(ctx, config);
 }
 

@@ -85,7 +85,7 @@ const markCompleteTool = defineTool({
 
     // No config — not a capability session, always pass
     if (!entry || entry.type !== "custom") {
-      return { content: [{ type: "text", text: "No validation rules configured for this session." }], details: {} };
+      return { content: [{ type: "text", text: "No validation rules configured for this session." }], details: {}, terminate: true };
     }
 
     const config = entry.data as { capability?: string; workingDir?: string; validation?: ValidationRule; fileCleanup?: string[]; sessionParams?: Record<string, unknown> };
@@ -94,7 +94,7 @@ const markCompleteTool = defineTool({
 
     // No validation rules defined — always pass
     if (!rules || !dir) {
-      return { content: [{ type: "text", text: "No validation rules configured for this session." }], details: {} };
+      return { content: [{ type: "text", text: "No validation rules configured for this session." }], details: {}, terminate: true };
     }
 
     const result = validateOutputs(rules, dir);
@@ -135,7 +135,7 @@ const markCompleteTool = defineTool({
         }
       }
 
-      return { content: [{ type: "text", text: `Validation passed. All expected outputs have been produced.${notification}` }], details: {} };
+      return { content: [{ type: "text", text: `Validation passed. All expected outputs have been produced.${notification}` }], details: {}, terminate: true };
     } else {
       return { content: [{ type: "text", text: `Validation failed. Missing files:\n- ${result.missing.join("\n- ")}\n\nProduce these files and call pio_mark_complete again.` }], details: {} };
     }

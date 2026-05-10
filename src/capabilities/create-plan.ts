@@ -57,6 +57,7 @@ const createPlanTool = defineTool({
   name: "pio_create_plan",
   label: "Pio Create Plan",
   description: "Create a detailed implementation plan (PLAN.md) for an existing goal. Queues the task — run /pio-next-task to start it.",
+  promptSnippet: "Create an implementation plan (PLAN.md) for an existing goal.",
   parameters: Type.Object({
     name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
   }),

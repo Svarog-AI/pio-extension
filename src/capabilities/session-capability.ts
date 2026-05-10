@@ -71,8 +71,10 @@ export function setupCapability(pi: ExtensionAPI) {
     }
   });
 
-  // 2. Apply system prompt for all turns (session identity)
-  //    Also injects .pio/PROJECT.md content when available.
+  // 2. Inject capability prompt as a custom conversation message for all turns.
+  //    This PRESERVES pi's default system prompt (identity, tools, guidelines,
+  //    skills, metadata) while layering our role-specific instructions on top
+  //    as a steering message in the conversation.
   pi.on("before_agent_start", async () => {
     // Discover project context if not yet loaded
     if (projectContext === undefined) {
@@ -96,6 +98,17 @@ export function setupCapability(pi: ExtensionAPI) {
     }
 
     if (prompts.length === 0) return; // no injection needed
-    return { systemPrompt: prompts.join("\n\n") };
+
+    // Return as a custom message instead of replacing the system prompt.
+    // This preserves pi's full default system prompt while delivering our
+    // capability instructions as conversation context.
+    return {
+      message: {
+        customType: "pio-capability-instructions",
+        content: [{ type: "text" as const, text: prompts.join("\n\n") }],
+        display: false,
+        details: {},
+      },
+    };
   });
 }

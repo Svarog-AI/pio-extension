@@ -44,6 +44,7 @@ const createGoalTool = defineTool({
   name: "pio_create_goal",
   label: "Pio Create Goal",
   description: "Create a new goal workspace under .pio/goals/<name> and queue a session with the create-goal system prompt. Run /pio-next-task to start it.",
+  promptSnippet: "Create a new goal workspace and queue a session to define it.",
   parameters: Type.Object({
     name: Type.String({ description: "Name for the goal workspace" }),
   }),

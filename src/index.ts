@@ -3,6 +3,8 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Capabilities
 import { setupInit } from "./capabilities/init";
@@ -19,7 +21,26 @@ import { setupGoalFromIssue } from "./capabilities/goal-from-issue";
 import { setupCapability } from "./capabilities/session-capability";
 import { setupValidation } from "./capabilities/validation";
 
+// ESM-compatible __dirname for resolving skill directories bundled with this extension
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const SKILLS_DIR = path.join(__dirname, "skills");
+
 export default function (pi: ExtensionAPI) {
+  // Register pio capabilities as discoverable skills so they appear in
+  // the <available_skills> section of pi's default system prompt.
+  const skillPaths = [
+    path.join(SKILLS_DIR, "create-goal"),
+    path.join(SKILLS_DIR, "create-plan"),
+    path.join(SKILLS_DIR, "evolve-plan"),
+    path.join(SKILLS_DIR, "execute-plan"),
+    path.join(SKILLS_DIR, "project-context"),
+  ];
+
+  pi.on("resources_discover", async () => {
+    return { skillPaths };
+  });
+
   // Shared session capability handlers (wired once)
   setupCapability(pi);
   setupValidation(pi);

@@ -74,6 +74,7 @@ const markCompleteTool = defineTool({
   name: "pio_mark_complete",
   label: "Pio Mark Complete",
   description: "Signal that your work is done. Validates that all expected output files have been produced.",
+  promptSnippet: "Signal that your work is done. Validates expected output files.",
   parameters: Type.Object({}),
 
   async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {

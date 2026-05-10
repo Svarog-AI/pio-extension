@@ -1,0 +1,10 @@
+{
+  "capability": "create-goal",
+  "params": {
+    "goalName": "fix-evolve-plan-step-skipping",
+    "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/evolve-plan-skips-completed-steps.md",
+    "fileCleanup": [
+      "/home/aleksj/git/pio-extension/.pio/issues/evolve-plan-skips-completed-steps.md"
+    ]
+  }
+}

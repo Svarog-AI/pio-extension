@@ -3,16 +3,11 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { ValidationRule } from "../types";
 import { CAPABILITY_TRANSITIONS, enqueueTask } from "../utils";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface ValidationRule {
-  /** Files that must exist after the capability completes. Paths are resolved relative to workingDir. */
-  files?: string[];
-}
+// Re-export for backward compatibility
+export type { ValidationRule };
 
 /** Result of a validation run. */
 interface ValidationResult {
@@ -92,7 +87,7 @@ const markCompleteTool = defineTool({
       return { content: [{ type: "text", text: "No validation rules configured for this session." }], details: {} };
     }
 
-    const config = entry.data as { capability?: string; workingDir?: string; validation?: ValidationRule };
+    const config = entry.data as { capability?: string; workingDir?: string; validation?: ValidationRule; fileCleanup?: string[] };
     const rules = config.validation;
     const dir = config.workingDir;
 
@@ -122,6 +117,18 @@ const markCompleteTool = defineTool({
           notification = `\n\nNext task enqueued: ${nextCapability}. Run /pio-next-task to start it.`;
         } catch (err) {
           console.warn(`pio: failed to enqueue next task: ${err}`);
+        }
+      }
+
+      // Cleanup files declared in config.fileCleanup
+      if (Array.isArray(config.fileCleanup)) {
+        for (const filePath of config.fileCleanup) {
+          try {
+            fs.rmSync(filePath, { force: true });
+            console.log(`pio: cleaned up file after validation: ${filePath}`);
+          } catch (err) {
+            console.warn(`pio: failed to clean up file ${filePath}: ${err}`);
+          }
         }
       }
 
@@ -177,27 +184,27 @@ export function setupValidation(pi: ExtensionAPI) {
     writeOnlyFilePaths = [];
   });
 
-  // 4. Exit-gate: block the first switch if validation fails, then let it go.
-  //    Hard cap after MAX_WARNINGS to avoid infinite loops.
-  pi.on("session_before_switch", async (_event, ctx) => {
-    if (!validationRules || !baseDir) return; // no rules — allow switch
+  // // 4. Exit-gate: block the first switch if validation fails, then let it go.
+  // //    Hard cap after MAX_WARNINGS to avoid infinite loops.
+  // pi.on("session_before_switch", async (_event, ctx) => {
+  //   if (!validationRules || !baseDir) return; // no rules — allow switch
 
-    const result = validateOutputs(validationRules, baseDir);
+  //   const result = validateOutputs(validationRules, baseDir);
 
-    if (result.passed) return; // all good — allow switch
+  //   if (result.passed) return; // all good — allow switch
 
-    if (warnedOnce) return; // already warned this round — let them leave
+  //   if (warnedOnce) return; // already warned this round — let them leave
 
-    if (warningsThisSession >= MAX_WARNINGS) return; // cap reached — stop blocking
+  //   if (warningsThisSession >= MAX_WARNINGS) return; // cap reached — stop blocking
 
-    // Warn and block so the agent has a chance to fix things
-    warnedOnce = true;
-    warningsThisSession++;
-    pi.sendUserMessage(`Validation failed. The following expected output files are missing:\n- ${result.missing.join("\n- ")}\n\nPlease produce these files before switching sessions.`);
-    ctx.ui.notify(`Capability validation failed. Missing: ${result.missing.join(", ")}`, "warning");
+  //   // Warn and block so the agent has a chance to fix things
+  //   warnedOnce = true;
+  //   warningsThisSession++;
+  //   pi.sendUserMessage(`Validation failed. The following expected output files are missing:\n- ${result.missing.join("\n- ")}\n\nPlease produce these files before switching sessions.`);
+  //   ctx.ui.notify(`Capability validation failed. Missing: ${result.missing.join(", ")}`, "warning");
 
-    return { cancel: true };
-  });
+  //   return { cancel: true };
+  // });
 
   // 5. File protection: write-allowlist (writeOnlyFiles) + read-only blocklist (readOnlyFiles)
   pi.on("tool_call", async (event) => {

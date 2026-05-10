@@ -2,29 +2,15 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ValidationRule } from "./validation";
+import type { CapabilityConfig } from "../types";
+
+// Re-export for backward compatibility
+export type { CapabilityConfig };
 
 // ESM-compatible __dirname for resolving prompts bundled with this extension
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROMPTS_DIR = path.join(__dirname, "..", "prompts");
-
-export interface CapabilityConfig {
-  /** Logical capability name (e.g. "create-goal") — determines prompt and transitions */
-  capability: string;
-  /** Prompt filename (e.g. "create-goal.md") — resolved from CAPABILITY_CONFIG.prompt */
-  prompt?: string;
-  /** Kickoff prompt sent as a user message to trigger the agent */
-  initialMessage?: string;
-  /** Base directory for resolving validation file paths (the goal workspace dir) */
-  workingDir?: string;
-  /** Validation rules declared by this capability */
-  validation?: ValidationRule;
-  /** Files that must not be modified during this session (relative to workingDir) */
-  readOnlyFiles?: string[];
-  /** Files that MAY be written during this session (allowlist). When present, takes precedence over readOnlyFiles. */
-  writeOnlyFiles?: string[];
-}
 
 
 // Module-level cache per runtime instance

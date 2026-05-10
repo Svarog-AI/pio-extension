@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ValidationRule } from "./capabilities/validation";
-import type { CapabilityConfig } from "./capabilities/session-capability";
+import type { ValidationRule, CapabilityConfig, StaticCapabilityConfig } from "./types";
 
 /** Resolve a goal workspace path under .pio/goals/<name>. */
 export function resolveGoalDir(cwd: string, name: string): string {
@@ -98,14 +97,8 @@ export function enqueueTask(cwd: string, task: SessionQueueTask): string {
 // ---------------------------------------------------------------------------
 
 /** Static shape each capability exports as `CAPABILITY_CONFIG`. */
-export interface StaticCapabilityConfig {
-  prompt: string;                    // e.g. "create-goal.md"
-  validation?: ValidationRule;
-  readOnlyFiles?: string[];
-  writeOnlyFiles?: string[];
-  /** Derive initialMessage from workingDir (optional override via params.initialMessage) */
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => string;
-}
+// Re-export for backward compatibility — moved to types.ts
+export type { StaticCapabilityConfig } from "./types";
 
 /**
  * Resolve a capability name to its full CapabilityConfig.
@@ -148,6 +141,7 @@ export async function resolveCapabilityConfig(
       typeof params?.initialMessage === "string"
         ? params.initialMessage
         : config.defaultInitialMessage(workingDir, params),
+    fileCleanup: Array.isArray(params?.fileCleanup) ? params.fileCleanup : undefined,
   };
 }
 

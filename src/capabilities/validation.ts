@@ -140,7 +140,7 @@ const markCompleteTool = defineTool({
             params: { goalName, ...(stepNumber != null ? { stepNumber } : {}), _sessionContext: sessionParams },
           });
 
-          notification = `\n\nNext task enqueued: ${nextCapability}. Run /pio-next-task to start it.`;
+          notification = `\n\nNext task enqueued: ${nextCapability}. Use \`/pio-next-task\` to start the sub-session.`;
         } catch (err) {
           console.warn(`pio: failed to enqueue next task: ${err}`);
         }

@@ -57,7 +57,7 @@ async function validateGoal(name: string, cwd: string): Promise<{ goalDir: strin
 const createPlanTool = defineTool({
   name: "pio_create_plan",
   label: "Pio Create Plan",
-  description: "Create a detailed implementation plan (PLAN.md) for an existing goal. Use this tool directly — no bash commands or manual file creation needed. Queues the task — run /pio-next-task to start it.",
+  description: "Create a detailed implementation plan (PLAN.md) for an existing goal. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Create an implementation plan (PLAN.md) for an existing goal.",
   parameters: Type.Object({
     name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
@@ -75,7 +75,7 @@ const createPlanTool = defineTool({
       params: { goalName: params.name },
     });
 
-    return { content: [{ type: "text", text: `Task queued for goal "${params.name}" — run /pio-next-task to start it.` }], details: {} };
+    return { content: [{ type: "text", text: `Task queued for goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.` }], details: {} };
   },
 });
 

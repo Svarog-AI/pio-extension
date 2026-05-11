@@ -110,7 +110,7 @@ const evolvePlanTool = defineTool({
   name: "pio_evolve_plan",
   label: "Pio Evolve Plan",
   description:
-    "Generate a step-by-step specification (TASK.md + TEST.md) for the next step in an existing PLAN.md. Use this tool directly — no bash commands or manual file creation needed. Queues the task — run /pio-next-task to start it.",
+    "Generate a step-by-step specification (TASK.md + TEST.md) for the next step in an existing PLAN.md. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Generate TASK.md + TEST.md for the next plan step.",
   parameters: Type.Object({
     name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
@@ -132,7 +132,7 @@ const evolvePlanTool = defineTool({
       content: [
         {
           type: "text",
-          text: `Task queued for Step ${result.stepNumber} of goal "${params.name}" — run /pio-next-task to start it.`,
+          text: `Task queued for Step ${result.stepNumber} of goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.`,
         },
       ],
       details: {},

@@ -209,7 +209,7 @@ const executeTaskTool = defineTool({
   name: "pio_execute_task",
   label: "Pio Execute Task",
   description:
-    "Execute a single plan step using a test-first workflow. Reads TASK.md and TEST.md, writes tests first, then implements the feature. Use this tool directly — no bash commands or manual file creation needed. Queues the task — run /pio-next-task to start it.",
+    "Execute a single plan step using a test-first workflow. Reads TASK.md and TEST.md, writes tests first, then implements the feature. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Execute a single plan step (test-first implementation).",
   parameters: Type.Object({
     name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
@@ -234,7 +234,7 @@ const executeTaskTool = defineTool({
       content: [
         {
           type: "text",
-          text: `Task queued for Step ${result.stepNumber} of goal "${params.name}" — run /pio-next-task to start it.`,
+          text: `Task queued for Step ${result.stepNumber} of goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.`,
         },
       ],
       details: {},

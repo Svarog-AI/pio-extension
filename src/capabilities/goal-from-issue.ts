@@ -39,7 +39,7 @@ async function validateGoalFromIssue(
 const goalFromIssueTool = defineTool({
   name: "pio_goal_from_issue",
   label: "Pio Goal From Issue",
-  description: "Convert an existing issue into a structured goal by queuing a create-goal session. Use this tool directly — no bash commands or manual file creation needed. Run /pio-next-task to start it.",
+  description: "Convert an existing issue into a structured goal by queuing a create-goal session. Use this tool directly — no bash commands or manual file creation needed. The user can run `/pio-next-task` to start the sub-session.",
   parameters: Type.Object({
     name: Type.String({ description: "Name for the goal workspace" }),
     issuePath: Type.String({ description: "Issue filename or identifier (e.g. 20260101_120000.md)" }),
@@ -61,7 +61,7 @@ const goalFromIssueTool = defineTool({
     });
 
     return {
-      content: [{ type: "text", text: `Task queued from issue — run /pio-next-task to start the goal definition session for "${params.name}".` }],
+      content: [{ type: "text", text: `Task queued from issue. Use \`/pio-next-task\` to start the goal definition session for "${params.name}".` }],
       details: {},
     };
   },

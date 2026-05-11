@@ -65,3 +65,4 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-code` →
 - **Call tools directly:** Use `pio_create_goal`, `pio_create_plan`, `pio_evolve_plan`, etc. instead of trying to set up workspace files yourself with bash or the write tool.
 - **No manual file creation in `.pio/`:** Never use `bash` (`date`, `ls`, `mkdir`) or the `write` tool to create files under `.pio/` when a pio tool exists for that purpose. The tools manage the directory structure automatically.
 - **No bash workarounds:** Commands like `date +%Y%m%d_%H%M%S` or `ls .pio/issues/` are unnecessary. Use the appropriate pio tool directly.
+- **Never auto-start queued tasks:** After calling a `pio_*` tool that queues work, report completion and wait for the user to run `/pio-next-task`. Do not attempt to execute `/pio-next-task` or any variant of it programmatically — it is an interactive TUI command for human use only.

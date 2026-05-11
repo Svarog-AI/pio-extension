@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { launchCapability } from "./session-capability";
-import { enqueueTask, resolveGoalDir, resolveCapabilityConfig, type StaticCapabilityConfig } from "../utils";
+import { enqueueTask, resolveGoalDir, resolveCapabilityConfig, stepFolderName, discoverNextStep, type StaticCapabilityConfig } from "../utils";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -16,29 +16,18 @@ const TASK_FILE = "TASK.md";
 const TEST_FILE = "TEST.md";
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Format a step number as a zero-padded folder name (S01, S02, ...).
- */
-function stepFolderName(stepNumber: number): string {
-  return `S${String(stepNumber).padStart(2, "0")}`;
-}
-
-// ---------------------------------------------------------------------------
 // Capability config — single source of truth for this capability's session shape
 // ---------------------------------------------------------------------------
 
 // Callbacks for step-dependent config fields (used by resolveCapabilityConfig)
-function resolveEvolveValidation(_dir: string, params?: Record<string, unknown>): { files: string[] } {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
+function resolveEvolveValidation(workingDir: string, params?: Record<string, unknown>): { files: string[] } {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : discoverNextStep(workingDir);
   const folder = stepFolderName(stepNumber);
   return { files: [`${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`] };
 }
 
-function resolveEvolveWriteAllowlist(_dir: string, params?: Record<string, unknown>): string[] {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
+function resolveEvolveWriteAllowlist(workingDir: string, params?: Record<string, unknown>): string[] {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : discoverNextStep(workingDir);
   const folder = stepFolderName(stepNumber);
   return [`${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`];
 }
@@ -48,8 +37,8 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   validation: resolveEvolveValidation,
   writeAllowlist: resolveEvolveWriteAllowlist,
   defaultInitialMessage: (workingDir, params) => {
-    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
-    const folderName = `S${String(stepNumber).padStart(2, "0")}`;
+    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : discoverNextStep(workingDir);
+    const folderName = stepFolderName(stepNumber);
     return `Goal workspace is at ${workingDir}. PLAN.md exists. You are responsible for **Step ${stepNumber}**. Generate TASK.md and TEST.md inside the \`${folderName}/\` directory.`;
   },
 };
@@ -97,23 +86,9 @@ async function validateAndFindNextStep(
 
   // Find the highest-numbered step folder that has both TASK.md and TEST.md.
   // Return N + 1 (or 1 if no defined steps found).
-  let highestDefined = 0;
-  for (let i = 1; ; i++) {
-    const folder = stepFolderName(i);
-    const stepDir = path.join(goalDir, folder);
-    if (!fs.existsSync(stepDir)) {
-      // No more step folders — stop scanning.
-      break;
-    }
-    if (
-      fs.existsSync(path.join(stepDir, TASK_FILE)) &&
-      fs.existsSync(path.join(stepDir, TEST_FILE))
-    ) {
-      highestDefined = i;
-    }
-  }
+  const nextStep = discoverNextStep(goalDir);
 
-  return { goalDir, ready: true, stepNumber: highestDefined + 1 };
+  return { goalDir, ready: true, stepNumber: nextStep };
 }
 
 // ---------------------------------------------------------------------------

@@ -16,8 +16,16 @@ export interface TransitionContext {
   params?: Record<string, unknown>;
 }
 
+/** Result of resolving a transition: capability name plus optionally adjusted params. */
+export interface TransitionResult {
+  /** Next capability name (e.g. "evolve-plan") */
+  capability: string;
+  /** Adjusted params to propagate (e.g. incremented stepNumber). If omitted, use ctx.params as-is. */
+  params?: Record<string, unknown>;
+}
+
 /** A function that inspects runtime state and returns the next capability name. */
-export type CapabilityTransitionResolver = (ctx: TransitionContext) => string | undefined;
+export type CapabilityTransitionResolver = (ctx: TransitionContext) => string | TransitionResult | undefined;
 
 /** Resolve a goal workspace path under .pio/goals/<name>. */
 export function resolveGoalDir(cwd: string, name: string): string {
@@ -172,6 +180,43 @@ export function deriveSessionName(goalName: string, capability: string, stepNumb
 }
 
 // ---------------------------------------------------------------------------
+// Step folder helpers
+// ---------------------------------------------------------------------------
+
+/** Format a step number as a zero-padded folder name (S01, S02, ...). */
+export function stepFolderName(stepNumber: number): string {
+  return `S${String(stepNumber).padStart(2, "0")}`;
+}
+
+/**
+ * Auto-discover the next step number by scanning for completed step folders.
+ * A step folder is considered complete when it contains both TASK.md and TEST.md.
+ * Returns N+1 where N is the highest complete step (or 1 if none found).
+ */
+export function discoverNextStep(goalDir: string): number {
+  const TASK_FILE = "TASK.md";
+  const TEST_FILE = "TEST.md";
+
+  let highestDefined = 0;
+  for (let i = 1; ; i++) {
+    const folder = stepFolderName(i);
+    const stepDir = path.join(goalDir, folder);
+    if (!fs.existsSync(stepDir)) {
+      // No more step folders — stop scanning.
+      break;
+    }
+    if (
+      fs.existsSync(path.join(stepDir, TASK_FILE)) &&
+      fs.existsSync(path.join(stepDir, TEST_FILE))
+    ) {
+      highestDefined = i;
+    }
+  }
+
+  return highestDefined + 1;
+}
+
+// ---------------------------------------------------------------------------
 // Capability config resolution
 // ---------------------------------------------------------------------------
 
@@ -246,32 +291,65 @@ export async function resolveCapabilityConfig(
 // ---------------------------------------------------------------------------
 
 /** Maps a capability name to the next capability name in the happy path.
- * Values can be plain strings (deterministic) or resolver callbacks (conditional). */
+ * Values can be plain strings (deterministic) or resolver callbacks (conditional).
+ * Callbacks may return a plain string or a TransitionResult with adjusted params. */
 export const CAPABILITY_TRANSITIONS: Record<string, string | CapabilityTransitionResolver> = {
   "create-goal": "create-plan",
   "create-plan": "evolve-plan",
-  "evolve-plan": "execute-task",
-  "execute-task": "review-code",
-  "review-code": (ctx): string => {
+  "evolve-plan": (ctx): string | TransitionResult => {
     const stepNumber = typeof ctx.params?.stepNumber === "number" ? ctx.params.stepNumber : undefined;
     if (stepNumber != null) {
-      const folder = `S${String(stepNumber).padStart(2, "0")}`;
+      return { capability: "execute-task", params: { goalName: ctx.params?.goalName, stepNumber } };
+    }
+    return "execute-task";
+  },
+  "execute-task": (ctx): string | TransitionResult => {
+    const stepNumber = typeof ctx.params?.stepNumber === "number" ? ctx.params.stepNumber : undefined;
+    if (stepNumber != null) {
+      return { capability: "review-code", params: { goalName: ctx.params?.goalName, stepNumber } };
+    }
+    return "review-code";
+  },
+  "review-code": (ctx): string | TransitionResult => {
+    const stepNumber = typeof ctx.params?.stepNumber === "number" ? ctx.params.stepNumber : undefined;
+    if (stepNumber != null) {
+      const folder = stepFolderName(stepNumber);
       const approvedPath = path.join(ctx.workingDir, folder, "APPROVED");
       if (fs.existsSync(approvedPath)) {
-        return "evolve-plan";
+        // Approval: evolve-plan targets the NEXT step
+        return { capability: "evolve-plan", params: { goalName: ctx.params?.goalName, stepNumber: stepNumber + 1 } };
       }
+    }
+    // Rejection or no stepNumber: re-execute the same step
+    if (stepNumber != null) {
+      return { capability: "execute-task", params: { goalName: ctx.params?.goalName, stepNumber } };
     }
     return "execute-task";
   },
 };
 
 /**
- * Resolve the next capability name for a given capability.
- * Handles both string entries (returned directly) and callback entries (invoked with context).
+ * Resolve the next capability for a given capability.
+ * Returns { capability, params? } so callers get both the target and any adjusted params
+ * (e.g. incremented stepNumber from review-code → evolve-plan).
  */
-export function resolveNextCapability(capability: string, ctx: TransitionContext): string | undefined {
+export function resolveNextCapability(capability: string, ctx: TransitionContext): TransitionResult | undefined {
   const value = CAPABILITY_TRANSITIONS[capability];
   if (value === undefined) return undefined;
-  if (typeof value === "string") return value;
-  return value(ctx);
+
+  if (typeof value === "string") {
+    // Plain string transition — wrap in consistent shape, preserving params as-is
+    return { capability: value, params: ctx.params };
+  }
+
+  const result = value(ctx);
+  if (!result) return undefined;
+
+  // Callback returned a TransitionResult object
+  if (typeof result === "object" && "capability" in result) {
+    return result;
+  }
+
+  // Callback returned a plain string — wrap in consistent shape
+  return { capability: result, params: ctx.params };
 }

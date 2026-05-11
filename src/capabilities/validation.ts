@@ -119,16 +119,18 @@ const markCompleteTool = defineTool({
         ? sessionParams.stepNumber
         : undefined;
 
-      const nextCapability = capability
+      const result = capability
         ? resolveNextCapability(capability, { capability, workingDir: dir, params: { goalName, stepNumber, _sessionContext: sessionParams } })
         : undefined;
-      if (nextCapability && goalName && capability) {
+      if (result && goalName && capability) {
         try {
+          // Use adjusted params from the transition (may contain incremented stepNumber)
+          const adjustedParams = result.params || {};
           enqueueTask(cwd, goalName, {
-            capability: nextCapability,
+            capability: result.capability,
             params: {
               goalName,
-              ...(stepNumber != null ? { stepNumber } : {}),
+              ...adjustedParams,
               _sessionContext: sessionParams,
             },
           });
@@ -140,11 +142,11 @@ const markCompleteTool = defineTool({
             params: { goalName, ...(stepNumber != null ? { stepNumber } : {}), _sessionContext: sessionParams },
           });
 
-          notification = `\n\nNext task enqueued: ${nextCapability}. Use \`/pio-next-task\` to start the sub-session.`;
+          notification = `\n\nNext task enqueued: ${result.capability}. Use \`/pio-next-task\` to start the sub-session.`;
         } catch (err) {
           console.warn(`pio: failed to enqueue next task: ${err}`);
         }
-      } else if (capability && goalName) {
+      } else if (result && goalName && capability) {
         // No next capability — record the final completed task
         try {
           const goalDir = resolveGoalDir(cwd, goalName);

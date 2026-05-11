@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { launchCapability } from "./session-capability";
-import { enqueueTask, resolveGoalDir, resolveCapabilityConfig, type StaticCapabilityConfig } from "../utils";
+import { enqueueTask, resolveGoalDir, resolveCapabilityConfig, stepFolderName, type StaticCapabilityConfig } from "../utils";
 
 // ---------------------------------------------------------------------------
 // Capability config — single source of truth for this capability's session shape
@@ -13,13 +13,19 @@ import { enqueueTask, resolveGoalDir, resolveCapabilityConfig, type StaticCapabi
 
 // Callbacks for step-dependent config fields (used by resolveCapabilityConfig)
 function resolveReviewValidation(_dir: string, params?: Record<string, unknown>): { files: string[] } {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+  if (stepNumber == null) {
+    throw new Error("stepNumber is required for review-code. Ensure the task was enqueued with a valid step number.");
+  }
   const folder = stepFolderName(stepNumber);
   return { files: [`${folder}/${REVIEW_FILE}`] };
 }
 
 function resolveReviewReadOnlyFiles(_dir: string, params?: Record<string, unknown>): string[] {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+  if (stepNumber == null) {
+    throw new Error("stepNumber is required for review-code. Ensure the task was enqueued with a valid step number.");
+  }
   const folder = stepFolderName(stepNumber);
   return [
     GOAL_FILE,
@@ -31,7 +37,10 @@ function resolveReviewReadOnlyFiles(_dir: string, params?: Record<string, unknow
 }
 
 function resolveReviewWriteAllowlist(_dir: string, params?: Record<string, unknown>): string[] {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+  if (stepNumber == null) {
+    throw new Error("stepNumber is required for review-code. Ensure the task was enqueued with a valid step number.");
+  }
   const folder = stepFolderName(stepNumber);
   return [`${folder}/${REVIEW_FILE}`, `${folder}/APPROVED`];
 }
@@ -42,8 +51,11 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   readOnlyFiles: resolveReviewReadOnlyFiles,
   writeAllowlist: resolveReviewWriteAllowlist,
   defaultInitialMessage: (workingDir, params) => {
-    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
-    const folderName = `S${String(stepNumber).padStart(2, "0")}`;
+    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+    if (stepNumber == null) {
+      return "Error: stepNumber is required for review-code. The task was not enqueued with a valid step number.";
+    }
+    const folderName = stepFolderName(stepNumber);
     return `Goal workspace is at ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md, TEST.md, and SUMMARY.md inside the \`${folderName}/\` directory. Review the implementation, write REVIEW.md, and decide whether to approve or reject.`;
   },
 };
@@ -60,17 +72,6 @@ const COMPLETED_MARKER = "COMPLETED";
 const BLOCKED_MARKER = "BLOCKED";
 const SUMMARY_FILE = "SUMMARY.md";
 const REVIEW_FILE = "REVIEW.md";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Format a step number as a zero-padded folder name (S01, S02, ...).
- */
-function stepFolderName(stepNumber: number): string {
-  return `S${String(stepNumber).padStart(2, "0")}`;
-}
 
 /**
  * Check whether a step has been completed and is ready for review:

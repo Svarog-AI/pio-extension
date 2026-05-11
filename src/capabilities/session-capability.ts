@@ -59,6 +59,12 @@ export function setupCapability(pi: ExtensionAPI) {
     if (!entry || entry.type !== "custom") return;
 
     const config = entry.data as CapabilityConfig;
+
+    // Set human-readable session name (if derived)
+    if (config.sessionName) {
+      pi.setSessionName(config.sessionName);
+    }
+
     if (!config.prompt) {
       console.warn(`pio: no prompt configured for capability "${config.capability}"`);
       return;

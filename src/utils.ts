@@ -150,6 +150,28 @@ export function writeLastTask(goalDir: string, task: SessionQueueTask): void {
 }
 
 // ---------------------------------------------------------------------------
+// Session name derivation
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive a human-readable session name from goal name, capability, and optional step number.
+ *
+ * Format:
+ * - `<goal-name> <capability> s{N}` when all three are present
+ * - `<goal-name> <capability>` when only goal name is present
+ * - `<capability>` for non-goal sessions (empty or missing goalName)
+ */
+export function deriveSessionName(goalName: string, capability: string, stepNumber?: number): string {
+  if (!goalName) return capability;
+
+  let name = `${goalName} ${capability}`;
+  if (typeof stepNumber === "number") {
+    name += ` s${stepNumber}`;
+  }
+  return name;
+}
+
+// ---------------------------------------------------------------------------
 // Capability config resolution
 // ---------------------------------------------------------------------------
 
@@ -187,6 +209,9 @@ export async function resolveCapabilityConfig(
   const goalName = typeof params?.goalName === "string" ? params.goalName : "";
   const workingDir = goalName ? resolveGoalDir(cwd, goalName) : cwd;
 
+  // Resolve step number from params (used for session name and step-dependent config)
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+
   // Resolve step-dependent config fields: callbacks are invoked with (workingDir, params);
   // static values pass through unchanged. This mirrors the defaultInitialMessage pattern.
   const validation = typeof config.validation === "function"
@@ -212,6 +237,7 @@ export async function resolveCapabilityConfig(
         : config.defaultInitialMessage(workingDir, params),
     fileCleanup: Array.isArray(params?.fileCleanup) ? params.fileCleanup : undefined,
     sessionParams: params,
+    sessionName: deriveSessionName(goalName, cap, stepNumber),
   };
 }
 

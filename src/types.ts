@@ -41,6 +41,8 @@ export interface CapabilityConfig {
   fileCleanup?: string[];
   /** Original session params passed when this capability was launched. Used for downstream param propagation. */
   sessionParams?: Record<string, unknown>;
+  /** Human-readable name applied to the sub-session via `setSessionName()`. Derived automatically from goal name + capability. */
+  sessionName?: string;
 }
 
 /** Callback signature for step-dependent config fields. */

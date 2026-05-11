@@ -34,7 +34,24 @@ Read the `PLAN.md` file in the goal workspace directory. Find the step assigned 
 
 Also note any prerequisites listed at the top of the plan.
 
-### Step 3: Research supporting context
+**Important — check if this step exists in the plan:** Search PLAN.md for your assigned step number (e.g., look for "Step 3" or "### Step 3"). If you **cannot find** your assigned step in PLAN.md, it means all steps have already been specified. In that case:
+
+1. Write an empty file called `PLANNED` in the goal workspace root (next to `PLAN.md`, not inside any `S{NN}/` folder).
+2. Call `pio_mark_complete` and stop — you are done.
+
+If the step **does** exist, continue with the normal process below.
+
+### Step 3: Read previous step context (optional enrichment)
+
+If you are working on Step N and N > 1, read outputs from the previous step for background context:
+
+1. Check if `S{NN-1}/SUMMARY.md` exists (e.g., `S02/SUMMARY.md` when writing Step 3). If it does, read it — it describes what was built in that step.
+2. Check if `S{NN-1}/REVIEW.md` exists. If it does, read it — it contains the review feedback on that step's implementation.
+3. Also look for any other files in the previous step folder (e.g., implementation files referenced in SUMMARY.md) that might help you understand the code changes made.
+
+This is **optional enrichment only**. Proceed gracefully if these files don't exist or are empty — never treat them as prerequisites. If there is no previous step (you are Step 1), skip this section entirely.
+
+### Step 4: Research supporting context
 
 Use your tools (`read`, `bash`) to understand the codebase areas your step touches:
 
@@ -45,7 +62,7 @@ Use your tools (`read`, `bash`) to understand the codebase areas your step touch
 
 Be thorough — this research ensures your specification is grounded in reality and your acceptance criteria can be checked programmatically.
 
-### Step 4: Write TASK.md
+### Step 5: Write TASK.md
 
 Write `TASK.md` into the `S{NN}/` folder. This file is a focused, actionable specification of exactly what needs to be built in this step. It must contain:
 
@@ -95,7 +112,7 @@ criteria discovered during research that strengthen programmatic verification.>
 <Potential pitfalls, edge cases, or things the executor should watch out for.>
 ```
 
-### Step 5: Write TEST.md
+### Step 6: Write TEST.md
 
 Write `TEST.md` into the `S{NN}/` folder. This file is a TDD-style test plan specifying the exact tests that must pass for the task to be considered complete. Structure:
 
@@ -120,7 +137,7 @@ Write `TEST.md` into the `S{NN}/` folder. This file is a TDD-style test plan spe
 <If tests have dependencies, specify the order they should be run. E.g., "Type checking must pass before integration checks.">
 ```
 
-### Step 6: Signal completion
+### Step 7: Signal completion
 
 When both `TASK.md` and `TEST.md` are written and confirmed, call the `pio_mark_complete` tool to validate that all expected outputs have been produced. If validation reports missing files, produce them before calling again. Do not end your work without calling this tool.
 

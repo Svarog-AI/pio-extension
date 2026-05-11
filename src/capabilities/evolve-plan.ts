@@ -40,20 +40,6 @@ function stepFolderName(stepNumber: number): string {
   return `S${String(stepNumber).padStart(2, "0")}`;
 }
 
-/**
- * Check whether a step folder has both TASK.md and TEST.md.
- */
-function isStepSpecComplete(goalDir: string, stepNumber: number): boolean {
-  const folder = stepFolderName(stepNumber);
-  const stepDir = path.join(goalDir, folder);
-  if (!fs.existsSync(stepDir)) return false;
-
-  return (
-    fs.existsSync(path.join(stepDir, TASK_FILE)) &&
-    fs.existsSync(path.join(stepDir, TEST_FILE))
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Validation / Preparation
 // ---------------------------------------------------------------------------
@@ -61,8 +47,10 @@ function isStepSpecComplete(goalDir: string, stepNumber: number): boolean {
 /**
  * Validate that the goal workspace exists and has a PLAN.md.
  * Then find the next step to evolve by scanning for existing S{NN}/ folders:
- *   - Check S01, S02, ... in order — if both TASK.md and TEST.md exist, move on.
- *   - The first incomplete or missing folder is the target.
+ *   - Scan S01, S02, ... in order — track the highest step number where
+ *     both TASK.md and TEST.md exist.
+ *   - Stop when a folder doesn't exist (no more steps defined).
+ *   - Return highestDefined + 1 (or 1 if no defined steps found).
  *
  * Returns { goalDir, ready, stepNumber } on success, or { goalDir, error } when not ready.
  * Does NOT use ctx so it can be called safely before newSession().
@@ -93,12 +81,25 @@ async function validateAndFindNextStep(
     };
   }
 
-  // Find the first step number (starting at 1) whose spec folder doesn't have both TASK.md and TEST.md.
+  // Find the highest-numbered step folder that has both TASK.md and TEST.md.
+  // Return N + 1 (or 1 if no defined steps found).
+  let highestDefined = 0;
   for (let i = 1; ; i++) {
-    if (!isStepSpecComplete(goalDir, i)) {
-      return { goalDir, ready: true, stepNumber: i };
+    const folder = stepFolderName(i);
+    const stepDir = path.join(goalDir, folder);
+    if (!fs.existsSync(stepDir)) {
+      // No more step folders — stop scanning.
+      break;
+    }
+    if (
+      fs.existsSync(path.join(stepDir, TASK_FILE)) &&
+      fs.existsSync(path.join(stepDir, TEST_FILE))
+    ) {
+      highestDefined = i;
     }
   }
+
+  return { goalDir, ready: true, stepNumber: highestDefined + 1 };
 }
 
 // ---------------------------------------------------------------------------
@@ -109,8 +110,8 @@ const evolvePlanTool = defineTool({
   name: "pio_evolve_plan",
   label: "Pio Evolve Plan",
   description:
-    "Generate a step-by-step specification (TASK.md + TEST.md) for the next uncompleted step in an existing PLAN.md. Queues the task — run /pio-next-task to start it.",
-  promptSnippet: "Generate TASK.md + TEST.md for the next incomplete plan step.",
+    "Generate a step-by-step specification (TASK.md + TEST.md) for the next step in an existing PLAN.md. Queues the task — run /pio-next-task to start it.",
+  promptSnippet: "Generate TASK.md + TEST.md for the next plan step.",
   parameters: Type.Object({
     name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
   }),
@@ -188,7 +189,7 @@ export function setupEvolvePlan(pi: ExtensionAPI) {
   pi.registerTool(evolvePlanTool);
   pi.registerCommand("pio-evolve-plan", {
     description:
-      "Generate a step specification for the next uncompleted step in an existing plan",
+      "Generate a step specification for the next step in an existing plan",
     handler: handleEvolvePlan,
   });
 }

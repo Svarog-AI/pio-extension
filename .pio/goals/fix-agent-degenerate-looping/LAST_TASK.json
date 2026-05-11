@@ -1,0 +1,18 @@
+{
+  "capability": "create-plan",
+  "params": {
+    "goalName": "fix-agent-degenerate-looping",
+    "_sessionContext": {
+      "goalName": "fix-agent-degenerate-looping",
+      "_sessionContext": {
+        "goalName": "fix-agent-degenerate-looping",
+        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/agent-degenerate-looping-instead-of-tool-use.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/agent-degenerate-looping-instead-of-tool-use.md"
+        ],
+        "capability": "create-goal"
+      },
+      "capability": "create-plan"
+    }
+  }
+}

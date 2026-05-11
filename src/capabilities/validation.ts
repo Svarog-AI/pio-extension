@@ -4,6 +4,7 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ValidationRule } from "../types";
+import { getSessionParams, getStepNumber } from "./session-capability";
 import { resolveNextCapability, enqueueTask, writeLastTask, resolveGoalDir } from "../utils";
 
 // Re-export for backward compatibility
@@ -113,11 +114,12 @@ const markCompleteTool = defineTool({
       const cwd = process.cwd();
       const goalName = extractGoalName(dir);
 
-      // Extract stepNumber explicitly so downstream consumers still find it at top level
-      const sessionParams = config.sessionParams || {};
-      const stepNumber = typeof sessionParams.stepNumber === "number"
-        ? sessionParams.stepNumber
-        : undefined;
+      // Read enriched session params from session-capability (centralized source of truth).
+      // Falls back to config.sessionParams if not yet populated.
+      const sessionParams = getSessionParams() || config.sessionParams || {};
+
+      // Get canonical stepNumber from enriched params (auto-discovered if needed)
+      const stepNumber = getStepNumber();
 
       const result = capability
         ? resolveNextCapability(capability, { capability, workingDir: dir, params: { goalName, stepNumber, _sessionContext: sessionParams } })
@@ -126,12 +128,20 @@ const markCompleteTool = defineTool({
         try {
           // Use adjusted params from the transition (may contain incremented stepNumber)
           const adjustedParams = result.params || {};
+
+          // After spreading adjusted params and _sessionContext, explicitly set stepNumber last
+          // to guarantee it appears at top level (cannot be shadowed by nested _sessionContext).
+          const finalStepNumber = typeof adjustedParams.stepNumber === "number"
+            ? adjustedParams.stepNumber
+            : stepNumber;
+
           enqueueTask(cwd, goalName, {
             capability: result.capability,
             params: {
               goalName,
               ...adjustedParams,
               _sessionContext: sessionParams,
+              ...(finalStepNumber != null ? { stepNumber: finalStepNumber } : {}),
             },
           });
 

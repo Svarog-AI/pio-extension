@@ -20,14 +20,20 @@ const TEST_FILE = "TEST.md";
 // ---------------------------------------------------------------------------
 
 // Callbacks for step-dependent config fields (used by resolveCapabilityConfig)
-function resolveEvolveValidation(workingDir: string, params?: Record<string, unknown>): { files: string[] } {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : discoverNextStep(workingDir);
+function resolveEvolveValidation(_workingDir: string, params?: Record<string, unknown>): { files: string[] } {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+  if (stepNumber == null) {
+    throw new Error("stepNumber is required for evolve-plan. Ensure the task was enqueued with a valid step number.");
+  }
   const folder = stepFolderName(stepNumber);
   return { files: [`${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`] };
 }
 
-function resolveEvolveWriteAllowlist(workingDir: string, params?: Record<string, unknown>): string[] {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : discoverNextStep(workingDir);
+function resolveEvolveWriteAllowlist(_workingDir: string, params?: Record<string, unknown>): string[] {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+  if (stepNumber == null) {
+    throw new Error("stepNumber is required for evolve-plan. Ensure the task was enqueued with a valid step number.");
+  }
   const folder = stepFolderName(stepNumber);
   return [`${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`];
 }
@@ -37,7 +43,10 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   validation: resolveEvolveValidation,
   writeAllowlist: resolveEvolveWriteAllowlist,
   defaultInitialMessage: (workingDir, params) => {
-    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : discoverNextStep(workingDir);
+    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+    if (stepNumber == null) {
+      return "Error: stepNumber is required for evolve-plan. The task was not enqueued with a valid step number.";
+    }
     const folderName = stepFolderName(stepNumber);
     return `Goal workspace is at ${workingDir}. PLAN.md exists. You are responsible for **Step ${stepNumber}**. Generate TASK.md and TEST.md inside the \`${folderName}/\` directory.`;
   },

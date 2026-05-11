@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CapabilityConfig } from "../types";
+import { discoverNextStep } from "../utils";
 
 // Re-export for backward compatibility
 export type { CapabilityConfig };
@@ -17,6 +18,9 @@ const PROMPTS_DIR = path.join(__dirname, "..", "prompts");
 let systemPrompt: string | undefined;
 let projectContext: string | undefined;
 let skillLoadingInstructions: string | undefined;
+
+// Enriched session params — populated during resources_discover, used downstream
+let enrichedSessionParams: Record<string, unknown> | undefined;
 
 // ---------------------------------------------------------------------------
 // Launcher — used by command handlers in session-based capabilities
@@ -63,6 +67,21 @@ export function setupCapability(pi: ExtensionAPI) {
     // Set human-readable session name (if derived)
     if (config.sessionName) {
       pi.setSessionName(config.sessionName);
+    }
+
+    // Enrich session params with stepNumber for goal workspaces.
+    // Preserve explicit stepNumber if already present; auto-discover only when missing/invalid.
+    const rawParams = config.sessionParams || {};
+    const existingStepNumber = typeof rawParams.stepNumber === "number" ? rawParams.stepNumber : undefined;
+
+    enrichedSessionParams = { ...rawParams };
+
+    if (existingStepNumber == null && config.workingDir) {
+      // Only auto-discover for goal workspaces (path contains /goals/)
+      if (config.workingDir.includes("/goals/")) {
+        const discovered = discoverNextStep(config.workingDir);
+        enrichedSessionParams.stepNumber = discovered;
+      }
     }
 
     if (!config.prompt) {
@@ -131,4 +150,27 @@ export function setupCapability(pi: ExtensionAPI) {
       },
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Public getters — downstream modules read enriched params from here
+// ---------------------------------------------------------------------------
+
+/**
+ * Return a copy of the enriched session params.
+ * Includes auto-discovered stepNumber for goal workspaces.
+ */
+export function getSessionParams(): Record<string, unknown> | undefined {
+  if (enrichedSessionParams === undefined) return undefined;
+  return { ...enrichedSessionParams };
+}
+
+/**
+ * Return the canonical stepNumber from enriched session params.
+ * Returns a number when working in a goal workspace, or undefined otherwise.
+ */
+export function getStepNumber(): number | undefined {
+  if (enrichedSessionParams === undefined) return undefined;
+  const n = enrichedSessionParams.stepNumber;
+  return typeof n === "number" ? n : undefined;
 }

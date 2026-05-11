@@ -187,13 +187,25 @@ export async function resolveCapabilityConfig(
   const goalName = typeof params?.goalName === "string" ? params.goalName : "";
   const workingDir = goalName ? resolveGoalDir(cwd, goalName) : cwd;
 
+  // Resolve step-dependent config fields: callbacks are invoked with (workingDir, params);
+  // static values pass through unchanged. This mirrors the defaultInitialMessage pattern.
+  const validation = typeof config.validation === "function"
+    ? config.validation(workingDir, params)
+    : config.validation;
+  const readOnlyFiles = typeof config.readOnlyFiles === "function"
+    ? config.readOnlyFiles(workingDir, params)
+    : config.readOnlyFiles;
+  const writeAllowlist = typeof config.writeAllowlist === "function"
+    ? config.writeAllowlist(workingDir, params)
+    : config.writeAllowlist;
+
   return {
     capability: cap,
     prompt: config.prompt,
     workingDir,
-    validation: config.validation,
-    readOnlyFiles: config.readOnlyFiles,
-    writeAllowlist: config.writeAllowlist,
+    validation,
+    readOnlyFiles,
+    writeAllowlist,
     initialMessage:
       typeof params?.initialMessage === "string"
         ? params.initialMessage

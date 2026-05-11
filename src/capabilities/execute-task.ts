@@ -11,9 +11,23 @@ import { enqueueTask, resolveGoalDir, resolveCapabilityConfig, type StaticCapabi
 // Capability config — single source of truth for this capability's session shape
 // ---------------------------------------------------------------------------
 
+// Callbacks for step-dependent config fields (used by resolveCapabilityConfig)
+function resolveExecuteValidation(_dir: string, params?: Record<string, unknown>): { files: string[] } {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
+  const folder = stepFolderName(stepNumber);
+  return { files: [`${folder}/${SUMMARY_FILE}`] };
+}
+
+function resolveExecuteReadOnlyFiles(_dir: string, params?: Record<string, unknown>): string[] {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
+  const folder = stepFolderName(stepNumber);
+  return [`${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`];
+}
+
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "execute-task.md",
-  // validation is set dynamically per-step; placeholder here since we override via params
+  validation: resolveExecuteValidation,
+  readOnlyFiles: resolveExecuteReadOnlyFiles,
   defaultInitialMessage: (workingDir, params) => {
     const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
     const folderName = `S${String(stepNumber).padStart(2, "0")}`;
@@ -282,15 +296,6 @@ async function handleExecuteTask(args: string | undefined, ctx: ExtensionCommand
     ctx.ui.notify("Failed to resolve execute-task config.", "error");
     return;
   }
-
-  // Override validation: SUMMARY.md is always required; marker (COMPLETED or BLOCKED) is enforced by prompt contract
-  config.validation = { files: [`${folderName}/${SUMMARY_FILE}`] };
-
-  // Protect the input spec files from being modified
-  config.readOnlyFiles = [
-    `${folderName}/${TASK_FILE}`,
-    `${folderName}/${TEST_FILE}`,
-  ];
 
   await launchCapability(ctx, config);
 }

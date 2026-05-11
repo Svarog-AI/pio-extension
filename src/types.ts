@@ -43,12 +43,15 @@ export interface CapabilityConfig {
   sessionParams?: Record<string, unknown>;
 }
 
+/** Callback signature for step-dependent config fields. */
+export type ConfigCallback<T> = (workingDir: string, params?: Record<string, unknown>) => T;
+
 /** Static shape each capability exports as `CAPABILITY_CONFIG`. */
 export interface StaticCapabilityConfig {
   prompt: string;                    // e.g. "create-goal.md"
-  validation?: ValidationRule;
-  readOnlyFiles?: string[];
-  writeAllowlist?: string[];
+  validation?: ValidationRule | ConfigCallback<ValidationRule>;
+  readOnlyFiles?: string[] | ConfigCallback<string[]>;
+  writeAllowlist?: string[] | ConfigCallback<string[]>;
   /** Derive initialMessage from workingDir (optional override via params.initialMessage) */
   defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => string;
 }

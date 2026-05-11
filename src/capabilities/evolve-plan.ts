@@ -8,20 +8,6 @@ import { launchCapability } from "./session-capability";
 import { enqueueTask, resolveGoalDir, resolveCapabilityConfig, type StaticCapabilityConfig } from "../utils";
 
 // ---------------------------------------------------------------------------
-// Capability config — single source of truth for this capability's session shape
-// ---------------------------------------------------------------------------
-
-export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
-  prompt: "evolve-plan.md",
-  // validation is set dynamically per-step; placeholder here since we override via params
-  defaultInitialMessage: (workingDir, params) => {
-    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
-    const folderName = `S${String(stepNumber).padStart(2, "0")}`;
-    return `Goal workspace is at ${workingDir}. PLAN.md exists. You are responsible for **Step ${stepNumber}**. Generate TASK.md and TEST.md inside the \`${folderName}/\` directory.`;
-  },
-};
-
-// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -39,6 +25,34 @@ const TEST_FILE = "TEST.md";
 function stepFolderName(stepNumber: number): string {
   return `S${String(stepNumber).padStart(2, "0")}`;
 }
+
+// ---------------------------------------------------------------------------
+// Capability config — single source of truth for this capability's session shape
+// ---------------------------------------------------------------------------
+
+// Callbacks for step-dependent config fields (used by resolveCapabilityConfig)
+function resolveEvolveValidation(_dir: string, params?: Record<string, unknown>): { files: string[] } {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
+  const folder = stepFolderName(stepNumber);
+  return { files: [`${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`] };
+}
+
+function resolveEvolveWriteAllowlist(_dir: string, params?: Record<string, unknown>): string[] {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
+  const folder = stepFolderName(stepNumber);
+  return [`${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`];
+}
+
+export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
+  prompt: "evolve-plan.md",
+  validation: resolveEvolveValidation,
+  writeAllowlist: resolveEvolveWriteAllowlist,
+  defaultInitialMessage: (workingDir, params) => {
+    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
+    const folderName = `S${String(stepNumber).padStart(2, "0")}`;
+    return `Goal workspace is at ${workingDir}. PLAN.md exists. You are responsible for **Step ${stepNumber}**. Generate TASK.md and TEST.md inside the \`${folderName}/\` directory.`;
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Validation / Preparation
@@ -169,14 +183,6 @@ async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandC
     ctx.ui.notify("Failed to resolve evolve-plan config.", "error");
     return;
   }
-  // Override validation since it's step-dependent
-  config.validation = { files: [`${folderName}/TASK.md`, `${folderName}/TEST.md`] };
-
-  // Restrict writes to the step spec files only (prevents .pio/ pre-writing)
-  config.writeAllowlist = [
-    `${folderName}/${TASK_FILE}`,
-    `${folderName}/${TEST_FILE}`,
-  ];
 
   await launchCapability(ctx, config);
 }

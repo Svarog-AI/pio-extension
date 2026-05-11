@@ -11,9 +11,36 @@ import { enqueueTask, resolveGoalDir, resolveCapabilityConfig, type StaticCapabi
 // Capability config — single source of truth for this capability's session shape
 // ---------------------------------------------------------------------------
 
+// Callbacks for step-dependent config fields (used by resolveCapabilityConfig)
+function resolveReviewValidation(_dir: string, params?: Record<string, unknown>): { files: string[] } {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
+  const folder = stepFolderName(stepNumber);
+  return { files: [`${folder}/${REVIEW_FILE}`] };
+}
+
+function resolveReviewReadOnlyFiles(_dir: string, params?: Record<string, unknown>): string[] {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
+  const folder = stepFolderName(stepNumber);
+  return [
+    GOAL_FILE,
+    PLAN_FILE,
+    `${folder}/${TASK_FILE}`,
+    `${folder}/${TEST_FILE}`,
+    `${folder}/${SUMMARY_FILE}`,
+  ];
+}
+
+function resolveReviewWriteAllowlist(_dir: string, params?: Record<string, unknown>): string[] {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
+  const folder = stepFolderName(stepNumber);
+  return [`${folder}/${REVIEW_FILE}`, `${folder}/APPROVED`];
+}
+
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "review-code.md",
-  // validation is set dynamically per-step; placeholder here since we override via params
+  validation: resolveReviewValidation,
+  readOnlyFiles: resolveReviewReadOnlyFiles,
+  writeAllowlist: resolveReviewWriteAllowlist,
   defaultInitialMessage: (workingDir, params) => {
     const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : 1;
     const folderName = `S${String(stepNumber).padStart(2, "0")}`;
@@ -308,23 +335,6 @@ async function handleReviewCode(args: string | undefined, ctx: ExtensionCommandC
     ctx.ui.notify("Failed to resolve review-code config.", "error");
     return;
   }
-
-  // Override validation: REVIEW.md is always required
-  config.validation = { files: [`${folderName}/${REVIEW_FILE}`] };
-
-  // Protect input files from being modified; allow writing REVIEW.md and APPROVED marker
-  config.readOnlyFiles = [
-    GOAL_FILE,
-    PLAN_FILE,
-    `${folderName}/${TASK_FILE}`,
-    `${folderName}/${TEST_FILE}`,
-    `${folderName}/${SUMMARY_FILE}`,
-  ];
-
-  config.writeAllowlist = [
-    path.join(result.goalDir, folderName, REVIEW_FILE),
-    path.join(result.goalDir, folderName, "APPROVED"),
-  ];
 
   await launchCapability(ctx, config);
 }

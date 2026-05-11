@@ -16,6 +16,7 @@ const PROMPTS_DIR = path.join(__dirname, "..", "prompts");
 // Module-level cache per runtime instance
 let systemPrompt: string | undefined;
 let projectContext: string | undefined;
+let skillLoadingInstructions: string | undefined;
 
 // ---------------------------------------------------------------------------
 // Launcher — used by command handlers in session-based capabilities
@@ -69,6 +70,14 @@ export function setupCapability(pi: ExtensionAPI) {
     } else {
       console.warn(`pio: prompt file not found: ${promptPath}`);
     }
+
+    // Load skill-loading instructions (shared across all capabilities)
+    const skillLoadingPath = path.join(PROMPTS_DIR, "_skill-loading.md");
+    if (fs.existsSync(skillLoadingPath)) {
+      skillLoadingInstructions = fs.readFileSync(skillLoadingPath, "utf-8");
+    } else {
+      console.warn(`pio: skill-loading instructions not found: ${skillLoadingPath}`);
+    }
   });
 
   // 2. Inject capability prompt as a custom conversation message for all turns.
@@ -84,12 +93,17 @@ export function setupCapability(pi: ExtensionAPI) {
       }
     }
 
-    // Merge capability prompt with project context
+    // Merge capability prompt with project context and skill-loading instructions
     const prompts: string[] = [];
 
     // Project context first (if available)
     if (projectContext) {
       prompts.push(`--- PROJECT OVERVIEW ---\n\n${projectContext}`);
+    }
+
+    // Skill-loading instructions (if available) — injected between project context and capability prompt
+    if (skillLoadingInstructions) {
+      prompts.push(skillLoadingInstructions);
     }
 
     // Capability-specific prompt (if available)

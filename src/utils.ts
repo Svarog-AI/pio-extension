@@ -225,7 +225,7 @@ export const CAPABILITY_TRANSITIONS: Record<string, string | CapabilityTransitio
   "create-goal": "create-plan",
   "create-plan": "evolve-plan",
   "evolve-plan": "execute-task",
-  "execute-task": "evolve-plan",
+  "execute-task": "review-code",
   "review-code": (ctx): string => {
     const stepNumber = typeof ctx.params?.stepNumber === "number" ? ctx.params.stepNumber : undefined;
     if (stepNumber != null) {

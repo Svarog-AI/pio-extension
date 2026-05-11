@@ -253,7 +253,7 @@ const reviewCodeTool = defineTool({
       return { content: [{ type: "text", text: result.error }], details: {} };
     }
 
-    enqueueTask(ctx.cwd, {
+    enqueueTask(ctx.cwd, params.name, {
       capability: "review-code",
       params: { goalName: params.name, stepNumber: result.stepNumber },
     });

@@ -51,7 +51,7 @@ const goalFromIssueTool = defineTool({
       return { content: [{ type: "text", text: validation.error! }], details: {} };
     }
 
-    enqueueTask(ctx.cwd, {
+    enqueueTask(ctx.cwd, params.name, {
       capability: "create-goal",
       params: {
         goalName: params.name,

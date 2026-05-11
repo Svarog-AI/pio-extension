@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ValidationRule } from "../types";
-import { resolveNextCapability, enqueueTask } from "../utils";
+import { resolveNextCapability, enqueueTask, writeLastTask, resolveGoalDir } from "../utils";
 
 // Re-export for backward compatibility
 export type { ValidationRule };
@@ -122,9 +122,9 @@ const markCompleteTool = defineTool({
       const nextCapability = capability
         ? resolveNextCapability(capability, { capability, workingDir: dir, params: { goalName, stepNumber, _sessionContext: sessionParams } })
         : undefined;
-      if (nextCapability) {
+      if (nextCapability && goalName && capability) {
         try {
-          enqueueTask(cwd, {
+          enqueueTask(cwd, goalName, {
             capability: nextCapability,
             params: {
               goalName,
@@ -133,9 +133,27 @@ const markCompleteTool = defineTool({
             },
           });
 
+          // Record the completed task in the goal directory
+          const goalDir = resolveGoalDir(cwd, goalName);
+          writeLastTask(goalDir, {
+            capability,
+            params: { goalName, ...(stepNumber != null ? { stepNumber } : {}), _sessionContext: sessionParams },
+          });
+
           notification = `\n\nNext task enqueued: ${nextCapability}. Run /pio-next-task to start it.`;
         } catch (err) {
           console.warn(`pio: failed to enqueue next task: ${err}`);
+        }
+      } else if (capability && goalName) {
+        // No next capability — record the final completed task
+        try {
+          const goalDir = resolveGoalDir(cwd, goalName);
+          writeLastTask(goalDir, {
+            capability,
+            params: { goalName, ...(stepNumber != null ? { stepNumber } : {}), _sessionContext: sessionParams },
+          });
+        } catch (err) {
+          console.warn(`pio: failed to write last task: ${err}`);
         }
       }
 

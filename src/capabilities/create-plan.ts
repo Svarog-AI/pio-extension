@@ -70,7 +70,7 @@ const createPlanTool = defineTool({
       return { content: [{ type: "text", text: result.error! }], details: {} };
     }
 
-    enqueueTask(ctx.cwd, {
+    enqueueTask(ctx.cwd, params.name, {
       capability: "create-plan",
       params: { goalName: params.name },
     });

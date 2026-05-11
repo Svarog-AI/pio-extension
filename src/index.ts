@@ -20,6 +20,7 @@ import { setupNextTask } from "./capabilities/next-task";
 import { setupProjectContext } from "./capabilities/project-context";
 import { setupCreateIssue } from "./capabilities/create-issue";
 import { setupGoalFromIssue } from "./capabilities/goal-from-issue";
+import { setupListGoals } from "./capabilities/list-goals";
 import { setupCapability } from "./capabilities/session-capability";
 import { setupValidation } from "./capabilities/validation";
 
@@ -56,4 +57,5 @@ export default function (pi: ExtensionAPI) {
   setupProjectContext(pi);
   setupCreateIssue(pi);
   setupGoalFromIssue(pi);
+  setupListGoals(pi);
 }

@@ -3,7 +3,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 import { launchCapability } from "./session-capability";
-import { enqueueTask, resolveCapabilityConfig, type StaticCapabilityConfig } from "../utils";
+import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../utils";
 
 // ---------------------------------------------------------------------------
 // Capability config — single source of truth for this capability's session shape
@@ -27,10 +27,10 @@ const createProjectContextTool = defineTool({
   parameters: Type.Object({}),
 
   async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-    enqueueTask(ctx.cwd, { capability: "project-context" });
-
+    // Project-context is not goal-scoped and doesn't need queueing.
+    // Use the /pio-project-context command for direct session launch.
     return {
-      content: [{ type: "text", text: "Task queued — run /pio-next-task to start the project-context session." }],
+      content: [{ type: "text", text: "Project context tool called. Use /pio-project-context to launch the session directly." }],
       details: {},
     };
   },

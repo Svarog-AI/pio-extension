@@ -123,7 +123,7 @@ const evolvePlanTool = defineTool({
       return { content: [{ type: "text", text: result.error }], details: {} };
     }
 
-    enqueueTask(ctx.cwd, {
+    enqueueTask(ctx.cwd, params.name, {
       capability: "evolve-plan",
       params: { goalName: params.name, stepNumber: result.stepNumber },
     });

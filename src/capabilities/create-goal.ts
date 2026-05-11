@@ -58,7 +58,7 @@ const createGoalTool = defineTool({
       return { content: [{ type: "text", text: `Goal workspace already exists at ${goalDir}` }], details: {} };
     }
 
-    enqueueTask(ctx.cwd, {
+    enqueueTask(ctx.cwd, params.name, {
       capability: "create-goal",
       params: { goalName: params.name, initialMessage: typeof params.initialMessage === "string" ? params.initialMessage : undefined },
     });

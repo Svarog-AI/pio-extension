@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ValidationRule, CapabilityConfig, StaticCapabilityConfig } from "./types";
+import type { CapabilityConfig, StaticCapabilityConfig } from "./types";
 
 // ---------------------------------------------------------------------------
 // Conditional transition types
@@ -100,12 +100,52 @@ export function readIssue(cwd: string, identifier: string): string | undefined {
 }
 
 /**
- * Write the pending task to a single fixed file `.pio/session-queue/task.json`.
- * Overwrites any existing task — only the most recently enqueued task survives.
+ * Write the pending task to a per-goal file `.pio/session-queue/task-{goalName}.json`.
+ * Each goal gets its own slot — one pending task at a time.
+ * Overwrites any existing task for that specific goal.
  */
-export function enqueueTask(cwd: string, task: SessionQueueTask): void {
+export function enqueueTask(cwd: string, goalName: string, task: SessionQueueTask): void {
   const dir = queueDir(cwd);
-  const filePath = path.join(dir, "task.json");
+  const filePath = path.join(dir, `task-${goalName}.json`);
+  fs.writeFileSync(filePath, JSON.stringify(task, null, 2), "utf-8");
+}
+
+/**
+ * Read a specific goal's pending task from `.pio/session-queue/task-{goalName}.json`.
+ * Returns the parsed task or `undefined` if the file does not exist.
+ */
+export function readPendingTask(cwd: string, goalName: string): SessionQueueTask | undefined {
+  const dir = queueDir(cwd);
+  const filePath = path.join(dir, `task-${goalName}.json`);
+  if (!fs.existsSync(filePath)) return undefined;
+  const raw = fs.readFileSync(filePath, "utf-8");
+  return JSON.parse(raw) as SessionQueueTask;
+}
+
+/**
+ * List all goal names that have a pending task file.
+ * Scans `.pio/session-queue/` for files matching `task-*.json` pattern.
+ */
+export function listPendingGoals(cwd: string): string[] {
+  const dir = queueDir(cwd);
+  if (!fs.existsSync(dir)) return [];
+  const goals: string[] = [];
+  for (const entry of fs.readdirSync(dir)) {
+    if (entry.startsWith("task-") && entry.endsWith(".json")) {
+      // Extract goal name from task-{goalName}.json
+      const goalName = entry.slice(5, entry.length - 5);
+      goals.push(goalName);
+    }
+  }
+  return goals;
+}
+
+/**
+ * Write the completed task record to `<goalDir>/LAST_TASK.json`.
+ * Records what capability just finished and its params (including accumulated session history).
+ */
+export function writeLastTask(goalDir: string, task: SessionQueueTask): void {
+  const filePath = path.join(goalDir, "LAST_TASK.json");
   fs.writeFileSync(filePath, JSON.stringify(task, null, 2), "utf-8");
 }
 

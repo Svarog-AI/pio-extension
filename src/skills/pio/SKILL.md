@@ -1,6 +1,6 @@
 ---
 name: pio
-description: Goal-driven project management workflow for the pi coding agent. Use when pio is explicitely mentioned, or when breaking complex work into structured sub-sessions with validation gates, prompt templates, and explicit output requirements. Covers the full lifecycle: goal definition → planning → specification → implementation → review.
+description: Goal-driven project management workflow for the pi coding agent. Use when pio is explicitely mentioned, or when breaking complex work into structured sub-sessions with validation gates, prompt templates, and explicit output requirements. Covers the full lifecycle - goal definition → planning → specification → implementation → review.
 ---
 
 ## Overview

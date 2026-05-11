@@ -110,7 +110,7 @@ const evolvePlanTool = defineTool({
   name: "pio_evolve_plan",
   label: "Pio Evolve Plan",
   description:
-    "Generate a step-by-step specification (TASK.md + TEST.md) for the next step in an existing PLAN.md. Queues the task — run /pio-next-task to start it.",
+    "Generate a step-by-step specification (TASK.md + TEST.md) for the next step in an existing PLAN.md. Use this tool directly — no bash commands or manual file creation needed. Queues the task — run /pio-next-task to start it.",
   promptSnippet: "Generate TASK.md + TEST.md for the next plan step.",
   parameters: Type.Object({
     name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),

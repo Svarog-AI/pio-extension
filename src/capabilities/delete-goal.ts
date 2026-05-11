@@ -27,7 +27,7 @@ async function deleteGoal(name: string, cwd: string): Promise<string> {
 const deleteGoalTool = defineTool({
   name: "pio_delete_goal",
   label: "Pio Delete Goal",
-  description: "Delete a goal workspace under .pio/<name>",
+  description: "Delete a goal workspace under .pio/<name>. Use this tool directly — all filesystem operations are handled internally.",
   parameters: Type.Object({
     name: Type.String({ description: "Name of the goal workspace to delete" }),
   }),

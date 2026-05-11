@@ -33,7 +33,7 @@ async function init(): Promise<string> {
 const initTool = defineTool({
   name: "pio_init",
   label: "Pio Init",
-  description: "Initialize a new pio project in the current working directory",
+  description: "Initialize a new pio project in the current working directory. Use this tool directly — all filesystem operations are handled internally.",
   parameters: Type.Object({}),
 
   async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {

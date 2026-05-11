@@ -23,7 +23,7 @@ const createProjectContextTool = defineTool({
   name: "pio_create_project_context",
   label: "Pio Create Project Context",
   description:
-    "Analyze project documentation, configuration, and infrastructure files to produce a PROJECT.md knowledge file in .pio/. This file is automatically injected into every agent session.",
+    "Analyze project documentation, configuration, and infrastructure files to produce a PROJECT.md knowledge file in .pio/. Use this tool directly — all filesystem operations are handled internally.",
   parameters: Type.Object({}),
 
   async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {

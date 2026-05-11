@@ -79,7 +79,7 @@ export function validateOutputs(rules: ValidationRule, baseDir: string): Validat
 const markCompleteTool = defineTool({
   name: "pio_mark_complete",
   label: "Pio Mark Complete",
-  description: "Signal that your work is done. Validates that all expected output files have been produced.",
+  description: "Signal that your work is done. Validates that all expected output files have been produced and auto-enqueues the next workflow task.",
   promptSnippet: "Signal that your work is done. Validates expected output files.",
   parameters: Type.Object({}),
 

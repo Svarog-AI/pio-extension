@@ -237,7 +237,7 @@ const reviewCodeTool = defineTool({
   name: "pio_review_code",
   label: "Pio Review Code",
   description:
-    "Review the implementation of a plan step. Reads TASK.md, TEST.md, SUMMARY.md and implementation files. Writes REVIEW.md with categorized issues and approves or rejects. Queues the task — run /pio-next-task to start it.",
+    "Review the implementation of a plan step. Reads TASK.md, TEST.md, SUMMARY.md and implementation files. Writes REVIEW.md with categorized issues and approves or rejects. Use this tool directly — no bash commands or manual file creation needed. Queues the task — run /pio-next-task to start it.",
   promptSnippet: "Review code implementation for a plan step (approve/reject).",
   parameters: Type.Object({
     name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),

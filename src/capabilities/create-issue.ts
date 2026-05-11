@@ -56,7 +56,7 @@ async function createIssue(
 const createIssueTool = defineTool({
   name: "pio_create_issue",
   label: "Pio Create Issue",
-  description: "Create a new issue as a markdown file under .pio/issues/",
+  description: "Create a new issue as a markdown file under .pio/issues/. Use this tool directly — no bash commands or manual file creation needed.",
   parameters: Type.Object({
     slug: Type.String({ description: "Unique slug used as the filename (e.g. fix-type-error). If it already exists, pick a different one." }),
     title: Type.String({ description: "Issue title" }),

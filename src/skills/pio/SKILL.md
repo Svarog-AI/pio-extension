@@ -34,6 +34,9 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-code` →
 | `/pio-review-code <name> [step]` | `pio_review_code` | Review completed step, approve or reject | `name`, optional `stepNumber` | `.pio/goals/<name>/S{NN}/REVIEW.md`, optionally `APPROVED` |
 | `/pio-execute-plan <name>` | — (command only) | Execute all plan steps in one session | `name` | All code changes from PLAN.md |
 | `/pio-project-context` | `pio_create_project_context` | Analyze project, produce PROJECT.md knowledge file | none | `.pio/PROJECT.md` |
+| `/pio-create-issue <slug> <title>` | `pio_create_issue` | Create a new issue as a markdown file under `.pio/issues/` | `slug`, `title`, optional `description`, `category`, `context` | `.pio/issues/<slug>.md` |
+| `/pio-goal-from-issue <issue> <name>` | `pio_goal_from_issue` | Convert an existing issue into a structured goal workspace | `name`, `issuePath` | Queues create-goal session |
+| `/pio-list-goals` | — (command only) | List all goal workspaces with inferred phase and last task | none | Table of goals, phases, last tasks |
 | `/pio-next-task` | — (command only) | Dequeue and start the oldest queued sub-session task | none | Launches appropriate sub-session |
 | `/pio-parent` | — (command only) | Switch back to parent session | none | — |
 | `pio_mark_complete` | — (shared tool) | Validate expected outputs exist, signal session done | none | Pass/fail + auto-enqueue next task |
@@ -52,5 +55,13 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-code` →
 - **`launchCapability()`** (in `session-capability.ts`) creates sub-sessions with a custom `pio-config` entry containing: capability name, working directory, validation rules, file protections, session parameters, and an optional initial message.
 - **Context injection order:** On `before_agent_start`, `.pio/PROJECT.md` is loaded first (cached module-level), then the capability-specific prompt from `src/prompts/`. Both are concatenated as a custom conversation message — this preserves pi's default system prompt while layering role-specific instructions on top.
 - **One-shot validation with cap:** The exit-gate blocks only the *first* attempted switch when validation fails (tracked by `warnedOnce`). A hard cap of 3 warnings per session (`MAX_WARNINGS`) prevents infinite blocking loops. The gate resets on each `turn_start`.
-- **Queue files use timestamps:** Task filenames in `.pio/session-queue/` are `{timestamp}-{capability}.json`. Lexicographic sort = chronological order for FIFO processing.
+- **Per-goal task slots:** Each goal gets its own queue file at `.pio/session-queue/task-{goalName}.json`. One pending task per goal — enqueueing overwrites any existing task for that goal. No timestamps or FIFO ordering needed.
 - **`launchCapability` consumes context:** After calling it, the command context is stale. All pre-launch work (validation, filesystem setup) must happen before the call.
+
+## Agent Usage Guidelines
+
+**Always use `pio_*` tools for pio workflow operations.** These tools handle all filesystem operations internally — you never need to manually create files, generate timestamps, or run bash commands for pio workflow tasks.
+
+- **Call tools directly:** Use `pio_create_goal`, `pio_create_plan`, `pio_evolve_plan`, etc. instead of trying to set up workspace files yourself with bash or the write tool.
+- **No manual file creation in `.pio/`:** Never use `bash` (`date`, `ls`, `mkdir`) or the `write` tool to create files under `.pio/` when a pio tool exists for that purpose. The tools manage the directory structure automatically.
+- **No bash workarounds:** Commands like `date +%Y%m%d_%H%M%S` or `ls .pio/issues/` are unnecessary. Use the appropriate pio tool directly.

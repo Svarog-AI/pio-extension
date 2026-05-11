@@ -1,7 +1,0 @@
-{
-  "capability": "create-goal",
-  "params": {
-    "goalName": "goal-from-issue-wrong-directory-name",
-    "initialMessage": "Recreate GOAL.md for the issue about pio_goal_from_issue creating goal workspace with wrong directory name. The issue is at .pio/issues/goal-from-issue-wrong-directory-name.md. I'm recreating because the previous GOAL.md was deleted. Use the context below:\n\nBUG SUMMARY: When pio_goal_from_issue is called with an explicit 'name' parameter, the created goal workspace directory uses a derived name instead of the provided name. Confirmed live in a previous session - calling with name='goal-from-issue-wrong-directory-name' resulted in write permission for 'fix-goal-from-issue-directory-name'.\n\nFILES INVOLVED: src/capabilities/goal-from-issue.ts (tool+command), src/utils.ts (resolveCapabilityConfig, enqueueTask), src/capabilities/next-task.ts (launchAndCleanup), src/capabilities/create-goal.ts (prepareGoal pattern)."
-  }
-}

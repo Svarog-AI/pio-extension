@@ -35,7 +35,7 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-code` →
 | `/pio-execute-plan <name>` | — (command only) | Execute all plan steps in one session | `name` | All code changes from PLAN.md |
 | `/pio-project-context` | `pio_create_project_context` | Analyze project, produce PROJECT.md knowledge file | none | `.pio/PROJECT.md` |
 | `/pio-create-issue <slug> <title>` | `pio_create_issue` | Create a new issue as a markdown file under `.pio/issues/` | `slug`, `title`, optional `description`, `category`, `context` | `.pio/issues/<slug>.md` |
-| `/pio-goal-from-issue <issue> <name>` | `pio_goal_from_issue` | Convert an existing issue into a structured goal workspace | `name`, `issuePath` | Queues create-goal session |
+| `/pio-goal-from-issue <issue>` | `pio_goal_from_issue` | Convert an existing issue into a structured goal workspace (goal name derived from issue slug) | `issuePath` | Queues create-goal session |
 | `/pio-list-goals` | — (command only) | List all goal workspaces with inferred phase and last task | none | Table of goals, phases, last tasks |
 | `/pio-next-task` | — (command only) | Dequeue and start the oldest queued sub-session task | none | Launches appropriate sub-session |
 | `/pio-parent` | — (command only) | Switch back to parent session | none | — |

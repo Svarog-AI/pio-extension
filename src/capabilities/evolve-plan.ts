@@ -35,7 +35,7 @@ function resolveEvolveWriteAllowlist(_workingDir: string, params?: Record<string
     throw new Error("stepNumber is required for evolve-plan. Ensure the task was enqueued with a valid step number.");
   }
   const folder = stepFolderName(stepNumber);
-  return [`${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`];
+  return ["COMPLETED", `${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`];
 }
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
@@ -45,7 +45,7 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   defaultInitialMessage: (workingDir, params) => {
     const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
     if (stepNumber == null) {
-      return "Error: stepNumber is required for evolve-plan. The task was not enqueued with a valid step number.";
+      throw new Error("stepNumber is required for evolve-plan. Ensure the task was enqueued with a valid step number.");
     }
     const folderName = stepFolderName(stepNumber);
     return `Goal workspace is at ${workingDir}. PLAN.md exists. You are responsible for **Step ${stepNumber}**. Generate TASK.md and TEST.md inside the \`${folderName}/\` directory.`;
@@ -67,7 +67,7 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
  * Returns { goalDir, ready, stepNumber } on success, or { goalDir, error } when not ready.
  * Does NOT use ctx so it can be called safely before newSession().
  */
-async function validateAndFindNextStep(
+export async function validateAndFindNextStep(
   name: string,
   cwd: string,
 ): Promise<
@@ -90,6 +90,16 @@ async function validateAndFindNextStep(
       goalDir,
       ready: false,
       error: `PLAN.md not found at "${planPath}". Create a plan first with /pio-create-plan ${name}.`,
+    };
+  }
+
+  // Pre-launch guard: if COMPLETED already exists, all steps are specified — do not relaunch.
+  const completedPath = path.join(goalDir, "COMPLETED");
+  if (fs.existsSync(completedPath)) {
+    return {
+      goalDir,
+      ready: false,
+      error: `All plan steps for "${name}" have already been specified. COMPLETED marker exists at the goal workspace root.`,
     };
   }
 

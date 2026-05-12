@@ -43,7 +43,7 @@ Also note any prerequisites listed at the top of the plan.
 
 **Important — check if this step exists in the plan:** Search PLAN.md for your assigned step number (e.g., look for "Step 3" or "### Step 3"). If you **cannot find** your assigned step in PLAN.md, it means all steps have already been specified. In that case:
 
-1. Write an empty file called `PLANNED` in the goal workspace root (next to `PLAN.md`, not inside any `S{NN}/` folder).
+1. Write an empty file called `COMPLETED` in the goal workspace root (next to `PLAN.md`, not inside any `S{NN}/` folder).
 2. Call `pio_mark_complete` and stop — you are done.
 
 If the step **does** exist, continue with the normal process below.

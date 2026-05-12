@@ -1,0 +1,36 @@
+{
+  "capability": "review-code",
+  "params": {
+    "goalName": "fix-evolve-plan-planned-allowlist",
+    "stepNumber": 1,
+    "_sessionContext": {
+      "goalName": "fix-evolve-plan-planned-allowlist",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "fix-evolve-plan-planned-allowlist",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "fix-evolve-plan-planned-allowlist",
+          "stepNumber": 1,
+          "_sessionContext": {
+            "goalName": "fix-evolve-plan-planned-allowlist",
+            "stepNumber": 1,
+            "_sessionContext": {
+              "goalName": "fix-evolve-plan-planned-allowlist",
+              "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/fix-evolve-plan-planned-allowlist.md",
+              "fileCleanup": [
+                "/home/aleksj/git/pio-extension/.pio/issues/fix-evolve-plan-planned-allowlist.md"
+              ],
+              "capability": "create-goal",
+              "stepNumber": 1
+            },
+            "capability": "create-plan"
+          },
+          "capability": "evolve-plan"
+        },
+        "capability": "execute-task"
+      },
+      "capability": "review-code"
+    }
+  }
+}

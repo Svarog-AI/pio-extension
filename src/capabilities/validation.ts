@@ -61,6 +61,12 @@ export function extractGoalName(workingDir: string): string {
  * Paths are resolved relative to `baseDir` via `path.join(baseDir, file)`.
  */
 export function validateOutputs(rules: ValidationRule, baseDir: string): ValidationResult {
+  // If COMPLETED marker exists at baseDir, pass validation regardless of other expected files.
+  // This allows evolve-plan to write just COMPLETED (when all steps are done) and have pio_mark_complete succeed.
+  if (fs.existsSync(path.join(baseDir, "COMPLETED"))) {
+    return { passed: true, missing: [] };
+  }
+
   const missing: string[] = [];
 
   for (const file of rules.files || []) {

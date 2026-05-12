@@ -11,7 +11,7 @@ import { resolveNextCapability, enqueueTask, writeLastTask, resolveGoalDir } fro
 export type { ValidationRule };
 
 /** Result of a validation run. */
-interface ValidationResult {
+export interface ValidationResult {
   passed: boolean;
   missing: string[];
 }
@@ -45,7 +45,7 @@ const MAX_WARNINGS = 3;
 // ---------------------------------------------------------------------------
 
 /** Derive the goal name from a workingDir path like `.pio/goals/my-feature/`. */
-function extractGoalName(workingDir: string): string {
+export function extractGoalName(workingDir: string): string {
   const goalsIndex = workingDir.indexOf("/goals/");
   if (goalsIndex === -1) return "";
   const afterGoals = workingDir.slice(goalsIndex + 7);

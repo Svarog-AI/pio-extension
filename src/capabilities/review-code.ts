@@ -77,7 +77,7 @@ const REVIEW_FILE = "REVIEW.md";
  * Check whether a step has been completed and is ready for review:
  * COMPLETED marker exists, SUMMARY.md exists, and no BLOCKED marker.
  */
-function isStepReviewable(goalDir: string, stepNumber: number): boolean {
+export function isStepReviewable(goalDir: string, stepNumber: number): boolean {
   const folder = stepFolderName(stepNumber);
   const stepDir = path.join(goalDir, folder);
   if (!fs.existsSync(stepDir)) return false;
@@ -93,7 +93,7 @@ function isStepReviewable(goalDir: string, stepNumber: number): boolean {
  * Find the most recently completed step by scanning S01/, S02/, ... in descending order.
  * Returns the step number or undefined if no completed step found.
  */
-function findMostRecentCompletedStep(goalDir: string): number | undefined {
+export function findMostRecentCompletedStep(goalDir: string): number | undefined {
   // First, find the highest step folder that exists
   let maxStep = 0;
   for (let i = 1; ; i++) {

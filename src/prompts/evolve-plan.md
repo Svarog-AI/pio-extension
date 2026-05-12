@@ -121,7 +121,11 @@ criteria discovered during research that strengthen programmatic verification.>
 
 ### Step 6: Write TEST.md
 
-Write `TEST.md` into the `S{NN}/` folder. This file is a TDD-style test plan specifying the exact tests that must pass for the task to be considered complete. Structure:
+Write `TEST.md` into the `S{NN}/` folder. This file is a TDD-style test plan specifying the exact tests that must pass for the task to be considered complete.
+
+**TDD skill guidance:** When writing TEST.md, follow the principles from the `test-driven-development` skill. Structure individual test cases using the Arrange-Act-Assert pattern. Keep tests DAMP (Descriptive And Meaningful Phrases) over DRY — each test should be independently readable. Use one assertion per concept to keep test cases focused and verifiable. Consider test pyramid sizing: prefer small, fast unit tests for pure logic; reserve integration tests for boundary crossings and E2E tests for critical user flows only.
+
+Structure:
 
 ```markdown
 # Tests: <Step Title from PLAN.md>

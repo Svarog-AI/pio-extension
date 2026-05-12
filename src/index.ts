@@ -34,6 +34,7 @@ export default function (pi: ExtensionAPI) {
   // the <available_skills> section of pi's default system prompt.
   const skillPaths = [
     path.join(SKILLS_DIR, "pio"),
+    path.join(SKILLS_DIR, "test-driven-development"),
   ];
 
   pi.on("resources_discover", async () => {

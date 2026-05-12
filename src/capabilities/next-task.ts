@@ -2,14 +2,14 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { launchCapability } from "./session-capability";
+import { launchCapability, getSessionGoalName } from "./session-capability";
 import { resolveCapabilityConfig, queueDir, readPendingTask, listPendingGoals, type SessionQueueTask } from "../utils";
 
 // ---------------------------------------------------------------------------
 // Command
 // ---------------------------------------------------------------------------
 
-async function handleNextTask(args: string | undefined, ctx: ExtensionCommandContext) {
+export async function handleNextTask(args: string | undefined, ctx: ExtensionCommandContext) {
   const dir = queueDir(ctx.cwd);
 
   // Case 1: goal name provided — read specific per-goal file
@@ -26,7 +26,21 @@ async function handleNextTask(args: string | undefined, ctx: ExtensionCommandCon
     return;
   }
 
-  // Case 2: no arg — list pending goals and auto-launch if exactly one
+  // Case 2: no arg, but session has goalName from pio-config — use it directly
+  const sessionGoalName = getSessionGoalName();
+  if (sessionGoalName) {
+    const task = readPendingTask(ctx.cwd, sessionGoalName);
+
+    if (!task) {
+      ctx.ui.notify(`No pending task for goal "${sessionGoalName}".`, "info");
+      return;
+    }
+
+    await launchAndCleanup(ctx, dir, sessionGoalName, task);
+    return;
+  }
+
+  // Case 3: no arg, no session goalName — scan all pending goals and auto-launch if exactly one
   const pendingGoals = listPendingGoals(ctx.cwd);
 
   if (pendingGoals.length === 0) {

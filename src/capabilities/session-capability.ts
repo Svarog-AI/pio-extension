@@ -174,3 +174,12 @@ export function getStepNumber(): number | undefined {
   const n = enrichedSessionParams.stepNumber;
   return typeof n === "number" ? n : undefined;
 }
+
+/**
+ * Return the goalName string from enriched session params.
+ * Returns a string when inside a capability sub-session with a known goal, or undefined otherwise.
+ */
+export function getSessionGoalName(): string | undefined {
+  const params = getSessionParams();
+  return typeof params?.goalName === "string" ? params.goalName : undefined;
+}

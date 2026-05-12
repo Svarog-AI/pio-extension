@@ -123,6 +123,16 @@ criteria discovered during research that strengthen programmatic verification.>
 
 Write `TEST.md` into the `S{NN}/` folder. This file is a TDD-style test plan specifying the exact tests that must pass for the task to be considered complete.
 
+#### Test File Placement Convention
+
+Before specifying any test file path in the "**File:**" field below, determine the correct directory using this three-step convention:
+
+1. **Check `.pio/PROJECT.md` first** — if the project context documents a test directory convention (e.g., "tests mirror `src/` under `tests/`", "colocated `.test.ts` alongside source"), follow it.
+2. **Inspect existing tests** — if `.pio/PROJECT.md` doesn't specify, scan the target project for existing test files to discover patterns: look for `tests/`, `__tests__/`, `*.test.*`, `*_test.*` naming conventions and observe how directory structure relates to source files.
+3. **Ask the user** — if neither source reveals a convention, ask the user explicitly before writing TEST.md.
+
+Apply this convention when writing file paths in both the "Unit Tests" and "Integration Tests" sections below.
+
 **TDD skill guidance:** When writing TEST.md, follow the principles from the `test-driven-development` skill. Structure individual test cases using the Arrange-Act-Assert pattern. Keep tests DAMP (Descriptive And Meaningful Phrases) over DRY — each test should be independently readable. Use one assertion per concept to keep test cases focused and verifiable. Consider test pyramid sizing: prefer small, fast unit tests for pure logic; reserve integration tests for boundary crossings and E2E tests for critical user flows only.
 
 Structure:
@@ -172,6 +182,7 @@ When both `TASK.md` and `TEST.md` are written and confirmed, call the `pio_mark_
 
 - **No source code.** Both TASK.md and TEST.md are specification documents only. Describe every behavior, interface, and change in natural language or high-level pseudocode. You may write a short interface signature (type stub) if it clarifies a contract — never full function bodies, class implementations, or multi-line logic blocks.
 - **Reference real files.** Every file path should correspond to a file you actually read or confirmed exists during research. Don't guess paths.
+- **Test file placement matters.** When specifying test file paths in TEST.md, follow the Test File Placement Convention in Step 6. The paths you specify must reflect correct directory placement relative to source files so the Execute Task Agent receives correct instructions.
 - **Stay within step scope.** Do not add tasks, tests, or analysis for other steps in the plan. Focus exclusively on your assigned step.
 - **Acceptance criteria must be verifiable.** Prefer programmatic checks (type checking, linting, build commands, file existence) over manual verification. If automation is truly impossible for something, say so explicitly and provide clear manual instructions.
 - **Do not implement.** Your job ends when TASK.md and TEST.md are written and validated. Do not create source files, modify code, or run build commands as part of this process (reading files for research is fine).

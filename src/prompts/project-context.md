@@ -23,6 +23,7 @@ Work outward from the center:
 - Read AI instruction files if they exist (`AGENTS.md`, `CLAUDE.md`, `CURSOR.md`, `.github/copilot-instructions.md`, `.wolf/`, `.roo/`).
 - Read editor configs (`.editorconfig`, `.prettierrc`, `tsconfig.json`, etc.) — they encode project conventions.
 - Dive into subdirectories recursively. Understand the source layout, test structure, and any nested services or packages in a monorepo.
+- **Discover test placement conventions:** When tests exist, observe where they live relative to source files. Common patterns include: `tests/` mirroring `src/` (e.g., `src/foo/bar.ts` → `tests/foo/test_bar.ts`), colocated `.test.ts` alongside source files, dedicated `__tests__/` directories per module, or language-specific conventions like `*_test.go`, `*_test.rb`. Note the test runner and any configuration (`jest.config.*`, `vitest.config.*`, `pytest.ini`, etc.) that affects discovery.
 
 For each file you read, extract only what's useful. Do not copy entire files.
 
@@ -37,8 +38,9 @@ After your analysis, answer the following questions in your own notes. Keep answ
 3. **How is the project built?** What build system or commands are used? Is there a release cycle? CI/CD pipeline?
 4. **What is the development workflow?** How do users contribute (branching, PRs, code review)?
 5. **What are conventions for local development?** How are tests, linting, formatting, and similar checks executed?
-6. **How is the project run locally?** What environment variables, configs, or secrets are needed? Does it require a database, message broker, or other services?
-7. **Are there any agent instructions?** Files like `AGENTS.md`, `CLAUDE.md`, `.wolf/`, `.roo/` that encode conventions for automated agents.
+6. **Where do test files live?** What is the test directory convention (e.g., `tests/` mirroring `src/`, colocated `.test.ts`, `__tests__/`)? If no tests exist, note this explicitly.
+7. **How is the project run locally?** What environment variables, configs, or secrets are needed? Does it require a database, message broker, or other services?
+8. **Are there any agent instructions?** Files like `AGENTS.md`, `CLAUDE.md`, `.wolf/`, `.roo/` that encode conventions for automated agents.
 
 ---
 
@@ -72,7 +74,9 @@ Once all gaps are resolved, write `.pio/PROJECT.md` with exactly these sections:
 
 ## Build, Test, and Deploy
 
-<How to build, test, and deploy. Commands, frameworks, CI/CD stages, prerequisites.>
+<How to build, test, and deploy. Commands, frameworks, CI/CD stages, prerequisites.
+
+**Test directory convention:** Explicitly state where test files should be placed relative to source files (e.g., "tests mirror `src/` under `tests/`", "colocated `.test.ts` alongside source files", "no test suite exists"). This is used by downstream agents to determine correct file paths when creating tests.>
 
 ## Development Workflow
 

@@ -52,6 +52,16 @@ Be thorough — this research ensures your implementation matches the project's 
 
 Before writing any feature code, create the tests or verification commands from TEST.md:
 
+#### Test File Placement Convention
+
+When creating test files, determine the correct directory using this three-step convention:
+
+1. **Check `.pio/PROJECT.md` first** — if the project context documents a test directory convention (e.g., "tests mirror `src/` under `tests/`", "colocated `.test.ts` alongside source"), follow it.
+2. **Inspect existing tests** — if `.pio/PROJECT.md` doesn't specify, scan the target project for existing test files to discover patterns: look for `tests/`, `__tests__/`, `*.test.*`, `*_test.*` naming conventions and observe how directory structure relates to source files.
+3. **Ask the user** — if neither source reveals a convention, ask the user explicitly before creating tests.
+
+**Respect TEST.md paths:** If TEST.md (produced by evolve-plan) already contains explicit file paths, use those paths unless they clearly violate the discovered convention from the steps above.
+
 1. **Determine test strategy:** Which test cases from TEST.md can be implemented as actual unit/integration tests (e.g., `.test.ts` files)? Which require command-based verification (shell checks, type checking, file existence)?
 2. **Create test files** for cases that support formal testing. Use the test runner appropriate for the project's ecosystem (such as Jest or Vitest for JavaScript/TypeScript, pytest for Python, cargo test for Rust, go test for Go). .pio/PROJECT.md may contain information about this. If not but a test runner can be reasonably added, add one.
 3. **Define verification commands** for checks that don't need formal test infrastructure (e.g., `npm run check`, `grep`, file existence).

@@ -1,16 +1,51 @@
 {
-  "capability": "create-goal",
+  "capability": "review-code",
   "params": {
     "goalName": "add-comprehensive-tests",
-    "stepNumber": 1,
+    "stepNumber": 2,
     "_sessionContext": {
       "goalName": "add-comprehensive-tests",
-      "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/add-comprehensive-tests.md",
-      "fileCleanup": [
-        "/home/aleksj/git/pio-extension/.pio/issues/add-comprehensive-tests.md"
-      ],
-      "capability": "create-goal",
-      "stepNumber": 1
+      "stepNumber": 2,
+      "_sessionContext": {
+        "goalName": "add-comprehensive-tests",
+        "stepNumber": 2,
+        "_sessionContext": {
+          "goalName": "add-comprehensive-tests",
+          "stepNumber": 2,
+          "_sessionContext": {
+            "goalName": "add-comprehensive-tests",
+            "stepNumber": 1,
+            "_sessionContext": {
+              "goalName": "add-comprehensive-tests",
+              "stepNumber": 1,
+              "_sessionContext": {
+                "goalName": "add-comprehensive-tests",
+                "stepNumber": 1,
+                "_sessionContext": {
+                  "goalName": "add-comprehensive-tests",
+                  "stepNumber": 1,
+                  "_sessionContext": {
+                    "goalName": "add-comprehensive-tests",
+                    "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/add-comprehensive-tests.md",
+                    "fileCleanup": [
+                      "/home/aleksj/git/pio-extension/.pio/issues/add-comprehensive-tests.md"
+                    ],
+                    "capability": "create-goal",
+                    "stepNumber": 1
+                  },
+                  "capability": "create-plan"
+                },
+                "capability": "evolve-plan"
+              },
+              "capability": "execute-task"
+            },
+            "capability": "review-code"
+          },
+          "capability": "evolve-plan"
+        },
+        "capability": "execute-task"
+      },
+      "capability": "review-code"
     }
   }
 }

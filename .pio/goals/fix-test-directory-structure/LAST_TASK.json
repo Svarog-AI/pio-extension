@@ -1,0 +1,18 @@
+{
+  "capability": "create-plan",
+  "params": {
+    "goalName": "fix-test-directory-structure",
+    "stepNumber": 1,
+    "_sessionContext": {
+      "goalName": "fix-test-directory-structure",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "fix-test-directory-structure",
+        "initialMessage": "During the TDD process of `execute_task`, tests are not placed in directories that mirror the source file structure. For example, if source files are in `genai/models.py`, the generated test ends up in `api/models.py` instead of matching the expected test directory structure (e.g., `tests/genai/test_models.py` or similar).\n\nThe fix should ensure that when TASK.md and TEST.md specify test creation, the test file paths follow a proper convention that mirrors the source directory structure. This likely involves updating the execute-plan prompt (`src/prompts/execute-plan.md`) and/or the evolve-plan prompt (`src/prompts/evolve-plan.md`) to enforce correct test path placement relative to source files.",
+        "capability": "create-goal",
+        "stepNumber": 1
+      },
+      "capability": "create-plan"
+    }
+  }
+}

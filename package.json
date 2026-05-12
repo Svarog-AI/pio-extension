@@ -7,7 +7,8 @@
   "scripts": {
     "clean": "echo 'nothing to clean'",
     "build": "echo 'nothing to build'",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test": "vitest run"
   },
   "pi": {
     "extensions": [
@@ -16,8 +17,10 @@
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.74.0",
+    "@types/node": "^25.7.0",
     "pi-ask-user": "^0.10.0",
     "typebox": "^1.1.24",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.6"
   }
 }

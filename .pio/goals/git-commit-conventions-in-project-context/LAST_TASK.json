@@ -1,0 +1,18 @@
+{
+  "capability": "create-plan",
+  "params": {
+    "goalName": "git-commit-conventions-in-project-context",
+    "stepNumber": 1,
+    "_sessionContext": {
+      "goalName": "git-commit-conventions-in-project-context",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "git-commit-conventions-in-project-context",
+        "initialMessage": "Create a goal to make the project-context capability extract and document git commit conventions. The prompt should instruct the analyzer to inspect git history (commit messages, tags, branch patterns) and surface conventions like Conventional Commits, squash-merge titles, signing practices, etc. in PROJECT.md so downstream agents know how to format commits for the target project. This follows the same pattern as the recent test-directory-convention addition (goal: fix-test-directory-structure).",
+        "capability": "create-goal",
+        "stepNumber": 1
+      },
+      "capability": "create-plan"
+    }
+  }
+}

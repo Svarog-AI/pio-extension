@@ -24,6 +24,12 @@ Work outward from the center:
 - Read editor configs (`.editorconfig`, `.prettierrc`, `tsconfig.json`, etc.) — they encode project conventions.
 - Dive into subdirectories recursively. Understand the source layout, test structure, and any nested services or packages in a monorepo.
 - **Discover test placement conventions:** When tests exist, observe where they live relative to source files. Common patterns include: `tests/` mirroring `src/` (e.g., `src/foo/bar.ts` → `tests/foo/test_bar.ts`), colocated `.test.ts` alongside source files, dedicated `__tests__/` directories per module, or language-specific conventions like `*_test.go`, `*_test.rb`. Note the test runner and any configuration (`jest.config.*`, `vitest.config.*`, `pytest.ini`, etc.) that affects discovery.
+- **Analyze git history (commit conventions):** If the project has a git repository (`git rev-parse --git-dir` succeeds), run the following commands to discover commit and release conventions:
+  - `git log --oneline -50` — examine recent commit messages for patterns: Conventional Commits compliance (`type(scope): description`), custom prefixes or type vocabulary, message formatting conventions (imperative mood, line length limits), squash-merge vs. individual commit titles, sign-off lines (`Signed-off-by:`), and evidence of GPG-signed commits.
+  - `git tag -l` — identify versioning schemes: semantic versioning (`v1.2.3`), calendar versioning (`2026.05`), release candidates, pre-release patterns, or any naming conventions in tag descriptions.
+  - `git branch -a` — identify branching strategy: feature/fix prefix conventions (`feature/`, `feat/`, `fix/`), trunk-based development (single main/master), release branches, hotfix branches, and ticket/issue number embedding in branch names.
+  - Check for commit signing evidence: look for GPG signature indicators and DCO-style sign-off lines in the commit history.
+  - If the project is **not** a git repository, skip this step gracefully and note "no git repository found" in your findings.
 
 For each file you read, extract only what's useful. Do not copy entire files.
 
@@ -41,6 +47,7 @@ After your analysis, answer the following questions in your own notes. Keep answ
 6. **Where do test files live?** What is the test directory convention (e.g., `tests/` mirroring `src/`, colocated `.test.ts`, `__tests__/`)? If no tests exist, note this explicitly.
 7. **How is the project run locally?** What environment variables, configs, or secrets are needed? Does it require a database, message broker, or other services?
 8. **Are there any agent instructions?** Files like `AGENTS.md`, `CLAUDE.md`, `.wolf/`, `.roo/` that encode conventions for automated agents.
+9. **What commit and release conventions were discovered from git history?** Document the commit message format (Conventional Commits, custom prefixes, formatting rules), tag/versioning scheme (semver, calver, or none detected), branching strategy and branch naming patterns, and signing practices (GPG, DCO sign-off). For each finding, note a confidence level: "appears to follow" (observed in recent history) vs. "strictly enforced" (backed by CI linting, hooks, or documentation).
 
 ---
 
@@ -82,7 +89,16 @@ Once all gaps are resolved, write `.pio/PROJECT.md` with exactly these sections:
 
 <Coding conventions, PR process, branching strategy, local development setup.
 Environment variables, configs, secrets needed for local runs.
-Tests, linting, formatting — how they are executed.>
+Tests, linting, formatting — how they are executed.
+
+### Commit Conventions
+
+<Discovered from git history (if applicable):
+- **Commit message format:** Conventional Commits (`type(scope): description`), custom prefixes, formatting rules. Note confidence level — "appears to follow" vs "strictly enforced" by CI or hooks.
+- **Tag/versioning scheme:** Semantic versioning (`v1.2.3`), calendar versioning, or none detected.
+- **Branch naming patterns:** Feature/fix prefixes, trunk-based development, release/hotfix conventions, ticket number embedding.
+- **Signing practices:** GPG-signed commits, DCO sign-off lines, or none observed.
+If no git repository was found, note this explicitly.>
 
 ## AI Agent Instructions
 

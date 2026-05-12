@@ -1,0 +1,21 @@
+{
+  "capability": "create-plan",
+  "params": {
+    "goalName": "review-rejection-fails-to-route-back-to-execute-task",
+    "stepNumber": 1,
+    "_sessionContext": {
+      "goalName": "review-rejection-fails-to-route-back-to-execute-task",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "review-rejection-fails-to-route-back-to-execute-task",
+        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/review-rejection-fails-to-route-back-to-execute-task.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/review-rejection-fails-to-route-back-to-execute-task.md"
+        ],
+        "capability": "create-goal",
+        "stepNumber": 1
+      },
+      "capability": "create-plan"
+    }
+  }
+}

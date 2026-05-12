@@ -1,0 +1,21 @@
+{
+  "capability": "create-plan",
+  "params": {
+    "goalName": "agent-overanalyzes-pio-create-issue",
+    "stepNumber": 1,
+    "_sessionContext": {
+      "goalName": "agent-overanalyzes-pio-create-issue",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "agent-overanalyzes-pio-create-issue",
+        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/agent-overanalyzes-pio-create-issue.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/agent-overanalyzes-pio-create-issue.md"
+        ],
+        "capability": "create-goal",
+        "stepNumber": 1
+      },
+      "capability": "create-plan"
+    }
+  }
+}

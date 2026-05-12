@@ -56,7 +56,15 @@ async function createIssue(
 const createIssueTool = defineTool({
   name: "pio_create_issue",
   label: "Pio Create Issue",
-  description: "Create a new issue as a markdown file under .pio/issues/. Use this tool directly — no bash commands or manual file creation needed.",
+  description: `Create a new issue as a markdown file under .pio/issues/.
+
+Issue creation is a quick capture, not an investigation. Before calling this tool:
+- Skip deep code tracing, root-cause analysis, and fix proposals. Those belong in the later goal/planning workflow.
+- Provide minimum viable content: a clear title, a short description of the problem, and relevant file references only if immediately obvious from the error or current context.
+- If understanding the issue requires more than 1–2 file reads, create the issue with what you already know and let the goal workflow (goal-from-issue → Goal Definition Assistant) handle the detailed research.
+
+Use this tool directly — no bash commands or manual file creation needed.`,
+
   parameters: Type.Object({
     slug: Type.String({ description: "Unique slug used as the filename (e.g. fix-type-error). If it already exists, pick a different one." }),
     title: Type.String({ description: "Issue title" }),

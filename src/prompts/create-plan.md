@@ -25,7 +25,7 @@ Internalize:
 
 You are encouraged to do thorough research. Use your tools (`read`, `bash`) extensively:
 
-1. Read `AGENTS.md` if it exists — this is the project's entry point and explains structure.
+1. Read `.pio/PROJECT.md` if it exists — this is the project's entry point and explains structure.
 2. Read every file referenced in `GOAL.md`. Trace dependencies, imports, and related code that will be affected by the change.
 3. Understand the existing patterns, conventions, testing setup, build configuration, and CI pipeline.
 4. Identify hidden complexity: shared utilities, circular dependencies, migration requirements, backwards-compatibility concerns.
@@ -124,7 +124,16 @@ When PLAN.md has been written and confirmed, call the `pio_mark_complete` tool t
 
 - **Do not modify GOAL.md.** Your output is PLAN.md only. If you find issues with GOAL.md that prevent planning, report them to the user. This file is read-only during planning.
 - **Acceptance criteria are mandatory.** Every step must have at least one acceptance criterion. Prefer programmatic checks (tests, type checking, linting, build commands) over manual verification. A criterion is too vague if an executor could disagree about whether it's met.
-- **Specify how each step is verified — don't write tests yourself.** Your job is to say what should be tested and how it can be checked programmatically (existing test suites, type checking, linting, build commands, curl checks). Reference existing tests that cover the area, or describe what a passing check looks like. Read the test setup if needed so your criteria are grounded in reality. If programmatic verification truly isn't possible for something (e.g., visual change), say so explicitly and provide the best manual alternative.
+- **Acceptance criteria verify completion — they do not plan tests.** Your job is to specify how each step can be checked programmatically once implemented: existing test suites, type checking (`npx tsc --noEmit`), linting, build commands, or HTTP checks. Reference existing tests that cover the area, or describe what a passing check looks like. Read the test setup if needed so your criteria are grounded in reality. If programmatic verification truly isn't possible for something (e.g., visual change), say so explicitly and provide the best manual alternative.
+
+- **You must not create dedicated plan steps for writing unit tests.** Per-step unit testing is handled by `evolve-plan` (which generates `TEST.md` with specific test cases) and `execute-task` (which writes and runs those tests). Acceptance criteria describe how to verify a step is complete, not what tests to write. An exception: you may include an integration verification step near the end of a plan when the goal requires cross-module or end-to-end verification spanning multiple steps. This is distinct from per-step unit testing.
+
+  **Examples:**
+  - Good: "`npx tsc --noEmit` reports no errors" (programmatic verification)
+  - Good: "the new function is exported from `src/auth/index.ts`" (verifiable fact)
+  - Good: "running existing test suite passes with no regressions" (existing tests)
+  - Bad: "unit tests for X cover all edge cases" (that's evolve-plan/execute-task territory)
+  - Bad: "write a new test file `src/__tests__/x.test.ts`" (belonging in TEST.md, not PLAN.md)
 - **Reference real files only.** Every path in PLAN.md should correspond to a file you actually read or confirmed exists. Don't guess paths.
 - **Steps reflect real implementation order.** If step 3 needs an export from step 1, that must be clear. An executor should never have to reorder steps.
 - **Stay within GOAL.md scope.** Do not add steps for refactoring unrelated code, fixing style issues, or "while you're at it" improvements. Those belong in separate goals.

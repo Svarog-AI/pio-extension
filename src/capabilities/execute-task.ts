@@ -40,7 +40,19 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
       return "Error: stepNumber is required for execute-task. The task was not enqueued with a valid step number.";
     }
     const folderName = stepFolderName(stepNumber);
-    return `Goal workspace is at ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md and TEST.md inside the \`${folderName}/\` directory, write tests first, then implement the feature to make them pass.`;
+
+    // Check if this is a re-execution after review rejection
+    let prefix = "";
+    try {
+      const rejectedPath = path.join(workingDir, folderName, "REJECTED");
+      if (fs.existsSync(rejectedPath)) {
+        prefix = `This step was previously rejected. Read \`${folderName}/REVIEW.md\` for detailed review feedback before implementing. Address all critical and high-priority issues identified in the review.\n\n`;
+      }
+    } catch {
+      // If filesystem read fails, fall through to the normal message
+    }
+
+    return `${prefix}Goal workspace is at ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md and TEST.md inside the \`${folderName}/\` directory, write tests first, then implement the feature to make them pass.`;
   },
 };
 

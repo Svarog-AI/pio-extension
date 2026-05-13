@@ -20,12 +20,13 @@ function cleanup(tempDir: string): void {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
 
-// Create a goal directory tree with an optional APPROVED file in the step folder.
+// Create a goal directory tree with optional marker files in the step folder.
 function createGoalTree(
   tempDir: string,
   goalName: string,
   stepNumber?: number,
   approved: boolean = false,
+  rejected: boolean = false,
 ): string {
   const goalDir = path.join(tempDir, ".pio", "goals", goalName);
   fs.mkdirSync(goalDir, { recursive: true });
@@ -37,6 +38,9 @@ function createGoalTree(
 
     if (approved) {
       fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
+    }
+    if (rejected) {
+      fs.writeFileSync(path.join(stepDir, "REJECTED"), "", "utf-8");
     }
   }
 
@@ -337,6 +341,78 @@ describe("resolveNextCapability — review-code (rejection path)", () => {
     expect(result).toEqual({
       capability: "execute-task",
       params: { goalName: "feat" },
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveNextCapability — review-code (REJECTED marker routing)
+// ---------------------------------------------------------------------------
+
+describe("resolveNextCapability — review-code (REJECTED marker routing)", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns execute-task when REJECTED exists", () => {
+    // Arrange: S03/REJECTED exists on disk
+    const goalDir = createGoalTree(tempDir, "feat", 3, false, true);
+
+    const ctx: TransitionContext = {
+      capability: "review-code",
+      workingDir: goalDir,
+      params: { goalName: "feat", stepNumber: 3 },
+    };
+
+    // Act
+    const result = resolveNextCapability("review-code", ctx);
+
+    // Assert
+    expect(result).toEqual({
+      capability: "execute-task",
+      params: { goalName: "feat", stepNumber: 3 },
+    });
+  });
+
+  it("preserves goalName when REJECTED routes to execute-task", () => {
+    // Arrange: S02/REJECTED with a descriptive goal name
+    const goalDir = createGoalTree(tempDir, "my-feature", 2, false, true);
+
+    const ctx: TransitionContext = {
+      capability: "review-code",
+      workingDir: goalDir,
+      params: { goalName: "my-feature", stepNumber: 2 },
+    };
+
+    // Act
+    const result = resolveNextCapability("review-code", ctx);
+
+    // Assert
+    expect(result?.params?.goalName).toBe("my-feature");
+    expect(result?.params?.stepNumber).toBe(2);
+  });
+
+  it("REJECTED takes precedence when both APPROVED and REJECTED exist", () => {
+    // Arrange: S05/ contains both APPROVED and REJECTED
+    const goalDir = createGoalTree(tempDir, "feat", 5, true, true);
+
+    const ctx: TransitionContext = {
+      capability: "review-code",
+      workingDir: goalDir,
+      params: { goalName: "feat", stepNumber: 5 },
+    };
+
+    // Act
+    const result = resolveNextCapability("review-code", ctx);
+
+    // Assert: rejection wins — routes back to execute-task, not evolve-plan
+    expect(result).toEqual({
+      capability: "execute-task",
+      params: { goalName: "feat", stepNumber: 5 },
     });
   });
 });

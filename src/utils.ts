@@ -318,13 +318,18 @@ export const CAPABILITY_TRANSITIONS: Record<string, string | CapabilityTransitio
     const stepNumber = typeof ctx.params?.stepNumber === "number" ? ctx.params.stepNumber : undefined;
     if (stepNumber != null) {
       const folder = stepFolderName(stepNumber);
+      // REJECTED takes precedence — re-execute the same step
+      const rejectedPath = path.join(ctx.workingDir, folder, "REJECTED");
+      if (fs.existsSync(rejectedPath)) {
+        return { capability: "execute-task", params: { goalName: ctx.params?.goalName, stepNumber } };
+      }
+      // APPROVED — evolve-plan targets the NEXT step
       const approvedPath = path.join(ctx.workingDir, folder, "APPROVED");
       if (fs.existsSync(approvedPath)) {
-        // Approval: evolve-plan targets the NEXT step
         return { capability: "evolve-plan", params: { goalName: ctx.params?.goalName, stepNumber: stepNumber + 1 } };
       }
     }
-    // Rejection or no stepNumber: re-execute the same step
+    // Neither marker exists or no stepNumber: re-execute the same step
     if (stepNumber != null) {
       return { capability: "execute-task", params: { goalName: ctx.params?.goalName, stepNumber } };
     }

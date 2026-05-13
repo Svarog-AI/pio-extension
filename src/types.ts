@@ -43,10 +43,15 @@ export interface CapabilityConfig {
   sessionParams?: Record<string, unknown>;
   /** Human-readable name applied to the sub-session via `setSessionName()`. Derived automatically from goal name + capability. */
   sessionName?: string;
+  /** Lifecycle hook that runs before the agent starts (e.g., stale-state cleanup). Resolved from StaticCapabilityConfig.prepareSession. */
+  prepareSession?: PrepareSessionCallback;
 }
 
 /** Callback signature for step-dependent config fields. */
 export type ConfigCallback<T> = (workingDir: string, params?: Record<string, unknown>) => T;
+
+/** Lifecycle hook that runs before the agent starts (e.g., stale-state cleanup). */
+export type PrepareSessionCallback = (workingDir: string, params?: Record<string, unknown>) => void | Promise<void>;
 
 /** Static shape each capability exports as `CAPABILITY_CONFIG`. */
 export interface StaticCapabilityConfig {
@@ -56,4 +61,6 @@ export interface StaticCapabilityConfig {
   writeAllowlist?: string[] | ConfigCallback<string[]>;
   /** Derive initialMessage from workingDir (optional override via params.initialMessage) */
   defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => string;
+  /** Lifecycle hook that runs before the agent starts (e.g., stale-state cleanup). Optional — capabilities without a prepare hook simply omit it. */
+  prepareSession?: PrepareSessionCallback;
 }

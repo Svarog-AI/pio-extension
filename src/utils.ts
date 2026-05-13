@@ -269,6 +269,9 @@ export async function resolveCapabilityConfig(
     ? config.writeAllowlist(workingDir, params)
     : config.writeAllowlist;
 
+  // prepareSession is always a callback (or undefined) — pass through directly
+  const prepareSession = config.prepareSession;
+
   return {
     capability: cap,
     prompt: config.prompt,
@@ -283,6 +286,7 @@ export async function resolveCapabilityConfig(
     fileCleanup: Array.isArray(params?.fileCleanup) ? params.fileCleanup : undefined,
     sessionParams: params,
     sessionName: deriveSessionName(goalName, cap, stepNumber),
+    prepareSession,
   };
 }
 

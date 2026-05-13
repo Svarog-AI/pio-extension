@@ -35,13 +35,13 @@ describe("backward compatibility — capabilities without prepareSession", () =>
     expect(result!.prepareSession).toBeUndefined();
   });
 
-  it("resolving review-code (no prepareSession yet) produces valid config with undefined prepareSession", async () => {
+  it("resolving review-code produces valid config with prepareSession defined", async () => {
     const params = { capability: "review-code" as string, goalName: "my-feature", stepNumber: 2 };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
     expect(result).toBeDefined();
     expect(result!.capability).toBe("review-code");
-    expect(result!.prepareSession).toBeUndefined();
+    expect(typeof result!.prepareSession).toBe("function");
   });
 });

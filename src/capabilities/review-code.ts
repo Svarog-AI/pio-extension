@@ -42,7 +42,20 @@ function resolveReviewWriteAllowlist(_dir: string, params?: Record<string, unkno
     throw new Error("stepNumber is required for review-code. Ensure the task was enqueued with a valid step number.");
   }
   const folder = stepFolderName(stepNumber);
-  return [`${folder}/${REVIEW_FILE}`, `${folder}/APPROVED`];
+  return [`${folder}/${REVIEW_FILE}`];
+}
+
+function prepareReviewSession(_dir: string, params?: Record<string, unknown>): void {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+  if (stepNumber == null) {
+    throw new Error("stepNumber is required for review-code. Ensure the task was enqueued with a valid step number.");
+  }
+  const folder = stepFolderName(stepNumber);
+  const stepDir = path.join(_dir, folder);
+
+  // Delete stale markers from previous review attempts; force:true skips missing files.
+  fs.rmSync(path.join(stepDir, "APPROVED"), { force: true });
+  fs.rmSync(path.join(stepDir, "REJECTED"), { force: true });
 }
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
@@ -50,6 +63,7 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   validation: resolveReviewValidation,
   readOnlyFiles: resolveReviewReadOnlyFiles,
   writeAllowlist: resolveReviewWriteAllowlist,
+  prepareSession: prepareReviewSession,
   defaultInitialMessage: (workingDir, params) => {
     const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
     if (stepNumber == null) {

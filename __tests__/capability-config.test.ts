@@ -165,13 +165,14 @@ describe("resolveCapabilityConfig — step-dependent callback resolution", () =>
     expect(result!.readOnlyFiles).toContain("S01/TEST.md");
   });
 
-  it("invokes review-code writeAllowlist callback (REVIEW.md + APPROVED)", async () => {
+  it("invokes review-code writeAllowlist callback (REVIEW.md only)", async () => {
     const params = { capability: "review-code" as string, goalName: "my-feature", stepNumber: 4 };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
     expect(result!.writeAllowlist).toContain("S04/REVIEW.md");
-    expect(result!.writeAllowlist).toContain("S04/APPROVED");
+    expect(result!.writeAllowlist).not.toContain("S04/APPROVED");
+    expect(result!.writeAllowlist).toHaveLength(1);
   });
 });
 

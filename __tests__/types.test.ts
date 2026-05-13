@@ -128,8 +128,8 @@ describe("resolveCapabilityConfig — prepareSession", () => {
     expect(result!.prepareSession).toBeUndefined();
   });
 
-  it("prepareSession is undefined for all existing capabilities (none define it yet)", async () => {
-    // Arrange: list of all current capabilities (some require stepNumber in their config callbacks)
+  it("prepareSession is defined for review-code but undefined for other capabilities", async () => {
+    // Arrange: list of all current capabilities
     const capabilities = [
       { name: "create-goal", goalName: "test-goal" },
       { name: "create-plan", goalName: "test-goal" },
@@ -141,12 +141,15 @@ describe("resolveCapabilityConfig — prepareSession", () => {
     ];
 
     for (const cap of capabilities) {
-      // Act
       const params = { capability: cap.name as string, goalName: cap.goalName as string, stepNumber: cap.stepNumber };
       const result = await resolveCapabilityConfig("/tmp/proj", params);
+      if (result === undefined) continue;
 
-      // Assert: at this stage, no capability defines prepareSession
-      if (result !== undefined) {
+      if (cap.name === "review-code") {
+        // review-code defines prepareSession
+        expect(typeof result.prepareSession).toBe("function");
+      } else {
+        // No other capability defines prepareSession yet
         expect(result.prepareSession).toBeUndefined();
       }
     }

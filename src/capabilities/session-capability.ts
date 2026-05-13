@@ -84,6 +84,17 @@ export function setupCapability(pi: ExtensionAPI) {
       }
     }
 
+    // Run prepareSession hook (lifecycle: prepare → work → markComplete → validateState).
+    // Hook runs after enrichedSessionParams is populated, so it has access to stepNumber.
+    // Errors are caught and logged — they do not crash the session startup.
+    if (config.prepareSession && config.workingDir) {
+      try {
+        await config.prepareSession(config.workingDir!, enrichedSessionParams);
+      } catch (err) {
+        console.warn(`pio: prepareSession failed for capability "${config.capability}": ${err}`);
+      }
+    }
+
     if (!config.prompt) {
       console.warn(`pio: no prompt configured for capability "${config.capability}"`);
       return;

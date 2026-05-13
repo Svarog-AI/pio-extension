@@ -3,7 +3,9 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as jsyaml from "js-yaml";
 import type { ValidationRule } from "../types";
+import { stepFolderName } from "../utils";
 import { getSessionParams, getStepNumber } from "./session-capability";
 import { resolveNextCapability, enqueueTask, writeLastTask, resolveGoalDir } from "../utils";
 
@@ -14,6 +16,24 @@ export type { ValidationRule };
 export interface ValidationResult {
   passed: boolean;
   missing: string[];
+}
+
+/** Parsed YAML frontmatter from a REVIEW.md file (before validation). */
+interface RawReviewFrontmatter {
+  decision: string;
+  criticalIssues: number;
+  highIssues: number;
+  mediumIssues: number;
+  lowIssues: number;
+}
+
+/** Parsed YAML frontmatter from a REVIEW.md file. */
+export interface ReviewFrontmatter {
+  decision: "APPROVED" | "REJECTED";
+  criticalIssues: number;
+  highIssues: number;
+  mediumIssues: number;
+  lowIssues: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -44,7 +64,172 @@ const MAX_WARNINGS = 3;
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Derive the goal name from a workingDir path like `.pio/goals/my-feature/`. */
+/**
+ * Extract YAML frontmatter from a REVIEW.md file.
+ * The file must start with `---\n`, contain valid YAML between two `---` delimiters,
+ * and include all required fields.
+ * Returns null if the file doesn't exist, doesn't start with `---`, or contains malformed YAML.
+ */
+export function parseReviewFrontmatter(reviewPath: string): RawReviewFrontmatter | null {
+  let content: string;
+  try {
+    content = fs.readFileSync(reviewPath, "utf-8");
+  } catch {
+    return null;
+  }
+
+  // Content must start with ---\n (frontmatter at the very beginning)
+  if (!content.startsWith("---\n")) {
+    return null;
+  }
+
+  // Find the closing --- delimiter
+  const firstDelimiter = 3; // length of "---\n"
+  const rest = content.slice(firstDelimiter);
+  const secondDelimiterIndex = rest.indexOf("\n---\n");
+
+  if (secondDelimiterIndex === -1) {
+    // Closing delimiter not found
+    return null;
+  }
+
+  const yamlContent = rest.slice(0, secondDelimiterIndex);
+
+  try {
+    const parsed = jsyaml.load(yamlContent) as Record<string, unknown> | null;
+    if (parsed == null || typeof parsed !== "object") {
+      return null;
+    }
+
+    // Validate that all required fields are present and have correct types
+    const {
+      decision,
+      criticalIssues,
+      highIssues,
+      mediumIssues,
+      lowIssues,
+    } = parsed as Record<string, unknown>;
+
+    if (typeof decision !== "string") return null;
+    if (!Number.isInteger(criticalIssues)) return null;
+    if (!Number.isInteger(highIssues)) return null;
+    if (!Number.isInteger(mediumIssues)) return null;
+    if (!Number.isInteger(lowIssues)) return null;
+
+    return {
+      decision,
+      criticalIssues,
+      highIssues,
+      mediumIssues,
+      lowIssues,
+    } as RawReviewFrontmatter;
+  } catch {
+    // YAML parsing failed
+    return null;
+  }
+}
+
+/**
+ * Validate that all required fields exist and have correct types.
+ * Narrows the decision type from string to "APPROVED" | "REJECTED" on success.
+ * Returns null on success, or an error message string describing what's wrong.
+ */
+export function validateReviewFrontmatter(frontmatter: RawReviewFrontmatter): string | null {
+  const { decision, criticalIssues, highIssues, mediumIssues, lowIssues } = frontmatter;
+
+  // Validate decision value
+  if (decision !== "APPROVED" && decision !== "REJECTED") {
+    return `The 'decision' field must be either 'APPROVED' or 'REJECTED'. Found: '${decision}'.`;
+  }
+
+  // Validate count fields are non-negative integers
+  const countFields = [
+    { name: "criticalIssues", value: criticalIssues },
+    { name: "highIssues", value: highIssues },
+    { name: "mediumIssues", value: mediumIssues },
+    { name: "lowIssues", value: lowIssues },
+  ];
+
+  for (const field of countFields) {
+    if (typeof field.value !== "number" || !Number.isInteger(field.value)) {
+      return `The '${field.name}' field must be a non-negative integer. Found: ${field.value}.`;
+    }
+    if (field.value < 0) {
+      return `The '${field.name}' field must be a non-negative integer. Found: ${field.value}.`;
+    }
+  }
+
+  // On success, narrow to ReviewFrontmatter type via the decision check above
+  return null;
+}
+
+/**
+ * Coerce a validated RawReviewFrontmatter into the strict ReviewFrontmatter type.
+ * Safe to call after validateReviewFrontmatter returns null.
+ */
+function toReviewFrontmatter(raw: RawReviewFrontmatter): ReviewFrontmatter {
+  return {
+    decision: raw.decision as "APPROVED" | "REJECTED",
+    criticalIssues: raw.criticalIssues,
+    highIssues: raw.highIssues,
+    mediumIssues: raw.mediumIssues,
+    lowIssues: raw.lowIssues,
+  };
+}
+
+/**
+ * Create marker files based on the parsed review decision.
+ * APPROVED: creates empty S{NN}/APPROVED, leaves COMPLETED intact.
+ * REJECTED: creates empty S{NN}/REJECTED, deletes S{NN}/COMPLETED.
+ */
+export function applyReviewDecision(
+  workingDir: string,
+  stepNumber: number,
+  frontmatter: RawReviewFrontmatter,
+): void {
+  const folder = stepFolderName(stepNumber);
+  const stepDir = path.join(workingDir, folder);
+
+  // Ensure the step directory exists (should already exist with REVIEW.md, but be safe)
+  fs.mkdirSync(stepDir, { recursive: true });
+
+  if (frontmatter.decision === "APPROVED") {
+    fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
+  } else {
+    // REJECTED
+    fs.writeFileSync(path.join(stepDir, "REJECTED"), "", "utf-8");
+    // Delete COMPLETED so isStepReady in execute-task.ts permits re-execution
+    fs.rmSync(path.join(stepDir, "COMPLETED"), { force: true });
+  }
+}
+
+/**
+ * Post-creation consistency check.
+ * Verifies exactly one of APPROVED/REJECTED exists in S{NN}/ and it matches expectedDecision.
+ * Returns true if consistent, false otherwise.
+ */
+export function validateReviewState(
+  workingDir: string,
+  stepNumber: number,
+  expectedDecision: "APPROVED" | "REJECTED",
+): boolean {
+  const folder = stepFolderName(stepNumber);
+  const stepDir = path.join(workingDir, folder);
+
+  const approvedExists = fs.existsSync(path.join(stepDir, "APPROVED"));
+  const rejectedExists = fs.existsSync(path.join(stepDir, "REJECTED"));
+
+  // Exactly one marker must exist
+  if (approvedExists && rejectedExists) return false;
+  if (!approvedExists && !rejectedExists) return false;
+
+  // The existing marker must match the expected decision
+  if (expectedDecision === "APPROVED" && !approvedExists) return false;
+  if (expectedDecision === "REJECTED" && !rejectedExists) return false;
+
+  return true;
+}
+
 export function extractGoalName(workingDir: string): string {
   const goalsIndex = workingDir.indexOf("/goals/");
   if (goalsIndex === -1) return "";
@@ -115,6 +300,65 @@ const markCompleteTool = defineTool({
     if (result.passed) {
       let notification = "";
 
+      // -----------------------------------------------------------------------
+      // Review-code automation: parse frontmatter, create markers, validate state
+      // -----------------------------------------------------------------------
+      const capabilityForAutomation = config.capability;
+
+      if (capabilityForAutomation === "review-code") {
+        const autoStepNumber = getStepNumber();
+        if (autoStepNumber != null) {
+          const folder = stepFolderName(autoStepNumber);
+          const reviewPath = path.join(dir, folder, "REVIEW.md");
+
+          // Parse frontmatter
+          const frontmatter = parseReviewFrontmatter(reviewPath);
+          if (frontmatter === null) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `REVIEW.md is missing valid YAML frontmatter at the top of the file. Review your document and add a --- block containing 'decision', 'criticalIssues', 'highIssues', 'mediumIssues', and 'lowIssues'. Ensure the decision field matches your actual review outcome.`,
+                },
+              ],
+              details: {},
+            };
+          }
+
+          // Validate frontmatter fields
+          const validationError = validateReviewFrontmatter(frontmatter);
+          if (validationError !== null) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `REVIEW.md frontmatter validation failed: ${validationError} Please fix the frontmatter and call pio_mark_complete again.`,
+                },
+              ],
+              details: {},
+            };
+          }
+
+          // Apply decision: create marker files (coerce to strict type after validation passed)
+          const validatedFrontmatter = toReviewFrontmatter(frontmatter);
+          applyReviewDecision(dir, autoStepNumber, validatedFrontmatter);
+
+          // validateState: verify consistency after automation
+          const stateConsistent = validateReviewState(dir, autoStepNumber, validatedFrontmatter.decision);
+          if (!stateConsistent) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Review state is inconsistent after automation. The marker files do not match the decision in REVIEW.md frontmatter.`,
+                },
+              ],
+              details: {},
+            };
+          }
+        }
+      }
+
       // Auto-enqueue next task (single-slot, overwrites any existing pending task)
       const capability = config.capability;
       const cwd = process.cwd();
@@ -127,13 +371,13 @@ const markCompleteTool = defineTool({
       // Get canonical stepNumber from enriched params (auto-discovered if needed)
       const stepNumber = getStepNumber();
 
-      const result = capability
+      const nextTask = capability
         ? resolveNextCapability(capability, { capability, workingDir: dir, params: { goalName, stepNumber, _sessionContext: sessionParams } })
         : undefined;
-      if (result && goalName && capability) {
+      if (nextTask && goalName && capability) {
         try {
           // Use adjusted params from the transition (may contain incremented stepNumber)
-          const adjustedParams = result.params || {};
+          const adjustedParams = nextTask.params || {};
 
           // After spreading adjusted params and _sessionContext, explicitly set stepNumber last
           // to guarantee it appears at top level (cannot be shadowed by nested _sessionContext).
@@ -142,7 +386,7 @@ const markCompleteTool = defineTool({
             : stepNumber;
 
           enqueueTask(cwd, goalName, {
-            capability: result.capability,
+            capability: nextTask.capability,
             params: {
               goalName,
               ...adjustedParams,
@@ -158,11 +402,11 @@ const markCompleteTool = defineTool({
             params: { goalName, ...(stepNumber != null ? { stepNumber } : {}), _sessionContext: sessionParams },
           });
 
-          notification = `\n\nNext task enqueued: ${result.capability}. Use \`/pio-next-task\` to start the sub-session.`;
+          notification = `\n\nNext task enqueued: ${nextTask.capability}. Use \`/pio-next-task\` to start the sub-session.`;
         } catch (err) {
           console.warn(`pio: failed to enqueue next task: ${err}`);
         }
-      } else if (result && goalName && capability) {
+      } else if (nextTask && goalName && capability) {
         // No next capability — record the final completed task
         try {
           const goalDir = resolveGoalDir(cwd, goalName);

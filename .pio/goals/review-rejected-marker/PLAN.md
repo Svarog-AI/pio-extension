@@ -103,22 +103,6 @@ Introduce YAML frontmatter in `REVIEW.md`, explicit `REJECTED` marker files, aut
 - `package.json` — add `js-yaml` dependency
 - `src/capabilities/validation.ts` — add frontmatter parsing, marker creation logic, and validateState in the `pio_mark_complete` execute handler
 
-### Step 8: Integration verification — end-to-end review-code lifecycle tests
-
-**Description:** Write vitest integration tests that verify the complete review-code lifecycle works correctly across all the new components. Test scenarios: (1) Frontmatter parsing with valid APPROVED frontmatter produces correct parsed output. (2) Frontmatter parsing with valid REJECTED frontmatter produces correct parsed output. (3) Malformed/missing frontmatter returns validation failure. (4) Marker creation + validateState for APPROVED produces `APPROVED` file, leaves `COMPLETED`, passes consistency check. (5) Marker creation + validateState for REJECTED produces `REJECTED` file, deletes `COMPLETED`, passes consistency check. (6) Transition routing: `REJECTED` marker routes to `execute-task` with `rejectedAfterReview: true`; `APPROVED` routes to `evolve-plan`. (7) Re-execution feedback: `defaultInitialMessage` includes REVIEW.md reference when `rejectedAfterReview` is present.
-
-**Acceptance criteria:**
-- [ ] All integration tests pass: `npx vitest run --reporter=verbose` exits with 0 failures
-- [ ] Frontmatter parsing tests cover valid APPROVED, valid REJECTED, missing frontmatter, and malformed YAML scenarios
-- [ ] Marker creation + validateState tests verify file system state matches expectations for both outcomes
-- [ ] Transition routing test verifies REJECTED presence routes correctly (use the `CAPABILITY_TRANSITIONS` resolver directly with a mock filesystem or temporary files)
-- [ ] Feedback channel test verifies initial message content includes REVIEW.md reference on rejection
-- [ ] `npm run check` reports no type errors
-
-**Files affected:**
-- `src/capabilities/validation.test.ts` — new file: integration tests for frontmatter parsing, marker creation, validateState
-- `src/utils.transitions.test.ts` — new file (or add to existing): test transition routing with REJECTED marker
-
 ## Notes
 
 - **File-protection interaction:** Step 5 removes `APPROVED` from the write allowlist. The review agent might still try to create it (old habit from the prompt). This is resolved because Step 6 updates the prompt to tell the agent not to write markers — but there's a brief period during development where the old prompt is live and the new allowlist is active. Since `validation.ts` also permits writes inside the session's own goal workspace directory, writing `APPROVED` will still succeed even without explicit allowlist entry (the default-deny rule permits writes within workingDir). Verify this behavior during implementation.

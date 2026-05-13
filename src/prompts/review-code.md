@@ -99,11 +99,34 @@ Based on your analysis:
 
 **When in doubt, use `ask_user`** to ask the user for guidance before deciding.
 
-### Step 7: Write REVIEW.md and marker files
+### Step 7: Write REVIEW.md with YAML frontmatter
 
-Write `S{NN}/REVIEW.md` with the following structure:
+Write `S{NN}/REVIEW.md` starting with a YAML frontmatter block at the very top of the file, before any markdown headings. The frontmatter provides structured outcome data for automation:
+
+```yaml
+---
+decision: APPROVED | REJECTED
+criticalIssues: <number>
+highIssues: <number>
+mediumIssues: <number>
+lowIssues: <number>
+---
+```
+
+The frontmatter fields are:
+- `decision` — either `APPROVED` or `REJECTED`. This is the authoritative outcome used by automation to create marker files.
+- `criticalIssues`, `highIssues`, `mediumIssues`, `lowIssues` — integer counts of issues found at each severity level during your analysis in Step 5.
+
+After the frontmatter closing `---`, write the human-readable markdown body. The `## Decision` section must remain in the body for readability, and its value must match the `decision` field in the frontmatter (frontmatter for machines, body for humans). Full structure:
 
 ```markdown
+---
+decision: APPROVED | REJECTED
+criticalIssues: 0
+highIssues: 0
+mediumIssues: 0
+lowIssues: 0
+---
 # Code Review: <Step Title> (Step N)
 
 ## Decision
@@ -138,20 +161,19 @@ APPROVED or REJECTED
 <Suggestions for improvement on re-execution, if rejected. Omit or write "N/A" if approved.>
 ```
 
-### Step 8: Set marker files and signal completion
+### Step 8: Signal completion — automation handles markers
 
-**If APPROVED:**
-1. Write an empty file at `S{NN}/APPROVED`. This signals approval to the transition system.
-2. Leave `COMPLETED` intact (do not delete it).
-3. Call `pio_mark_complete`.
+You only need to do two things:
 
-**If REJECTED:**
-1. Do NOT write an `APPROVED` file.
-2. Delete the `S{NN}/COMPLETED` marker using bash: `rm S{NN}/COMPLETED`. This allows `execute-task` to re-execute the step (its `isStepReady` checks for absence of COMPLETED).
-3. The `REVIEW.md` you just wrote serves as feedback — the next `execute-task` session will discover it alongside `TASK.md` and `TEST.md`.
-4. Call `pio_mark_complete`.
+1. **Write `REVIEW.md`** (completed in Step 7). Ensure the YAML frontmatter is at the very top of the file and the `decision` field matches your actual review outcome.
+2. **Call `pio_mark_complete`.** This is your final step.
 
-The routing is handled by infrastructure: the transition callback checks for `S{NN}/APPROVED`. If present → `evolve-plan` (next step). If absent → `execute-task` (re-execute same step).
+That's it. Do not create or delete marker files manually — the infrastructure handles this automatically based on the frontmatter in `REVIEW.md`:
+
+- If `decision: APPROVED`: the infrastructure creates an empty `S{NN}/APPROVED` file and leaves `COMPLETED` intact.
+- If `decision: REJECTED`: the infrastructure creates an empty `S{NN}/REJECTED` file and deletes `S{NN}/COMPLETED` automatically, allowing `execute-task` to re-execute the step.
+
+The routing is handled by infrastructure: after `pio_mark_complete`, the transition callback checks for `S{NN}/APPROVED` or `S{NN}/REJECTED`. Approval → `evolve-plan` (next step). Rejection → `execute-task` (re-execute same step, with feedback from your `REVIEW.md`).
 
 ## Guidelines
 

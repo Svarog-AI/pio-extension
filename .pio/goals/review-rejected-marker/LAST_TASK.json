@@ -1,66 +1,111 @@
 {
-  "capability": "review-code",
+  "capability": "evolve-plan",
   "params": {
     "goalName": "review-rejected-marker",
-    "stepNumber": 5,
+    "stepNumber": 8,
     "_sessionContext": {
       "goalName": "review-rejected-marker",
-      "stepNumber": 5,
+      "stepNumber": 8,
       "_sessionContext": {
         "goalName": "review-rejected-marker",
-        "stepNumber": 5,
+        "stepNumber": 7,
         "_sessionContext": {
           "goalName": "review-rejected-marker",
-          "stepNumber": 5,
+          "stepNumber": 7,
           "_sessionContext": {
             "goalName": "review-rejected-marker",
-            "stepNumber": 4,
+            "stepNumber": 7,
             "_sessionContext": {
               "goalName": "review-rejected-marker",
-              "stepNumber": 4,
+              "stepNumber": 7,
               "_sessionContext": {
                 "goalName": "review-rejected-marker",
-                "stepNumber": 4,
+                "stepNumber": 7,
                 "_sessionContext": {
                   "goalName": "review-rejected-marker",
-                  "stepNumber": 3,
+                  "stepNumber": 6,
                   "_sessionContext": {
                     "goalName": "review-rejected-marker",
-                    "stepNumber": 3,
+                    "stepNumber": 6,
                     "_sessionContext": {
                       "goalName": "review-rejected-marker",
-                      "stepNumber": 3,
+                      "stepNumber": 6,
                       "_sessionContext": {
                         "goalName": "review-rejected-marker",
-                        "stepNumber": 2,
+                        "stepNumber": 5,
                         "_sessionContext": {
                           "goalName": "review-rejected-marker",
-                          "stepNumber": 2,
+                          "stepNumber": 5,
                           "_sessionContext": {
                             "goalName": "review-rejected-marker",
-                            "stepNumber": 2,
+                            "stepNumber": 5,
                             "_sessionContext": {
                               "goalName": "review-rejected-marker",
-                              "stepNumber": 1,
+                              "stepNumber": 4,
                               "_sessionContext": {
                                 "goalName": "review-rejected-marker",
-                                "stepNumber": 1,
+                                "stepNumber": 4,
                                 "_sessionContext": {
                                   "goalName": "review-rejected-marker",
-                                  "stepNumber": 1,
+                                  "stepNumber": 4,
                                   "_sessionContext": {
                                     "goalName": "review-rejected-marker",
-                                    "stepNumber": 1,
+                                    "stepNumber": 3,
                                     "_sessionContext": {
                                       "goalName": "review-rejected-marker",
-                                      "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/review-rejected-marker.md",
-                                      "fileCleanup": [
-                                        "/home/aleksj/git/pio-extension/.pio/issues/review-rejected-marker.md"
-                                      ],
-                                      "capability": "create-goal",
-                                      "stepNumber": 1
+                                      "stepNumber": 3,
+                                      "_sessionContext": {
+                                        "goalName": "review-rejected-marker",
+                                        "stepNumber": 3,
+                                        "_sessionContext": {
+                                          "goalName": "review-rejected-marker",
+                                          "stepNumber": 2,
+                                          "_sessionContext": {
+                                            "goalName": "review-rejected-marker",
+                                            "stepNumber": 2,
+                                            "_sessionContext": {
+                                              "goalName": "review-rejected-marker",
+                                              "stepNumber": 2,
+                                              "_sessionContext": {
+                                                "goalName": "review-rejected-marker",
+                                                "stepNumber": 1,
+                                                "_sessionContext": {
+                                                  "goalName": "review-rejected-marker",
+                                                  "stepNumber": 1,
+                                                  "_sessionContext": {
+                                                    "goalName": "review-rejected-marker",
+                                                    "stepNumber": 1,
+                                                    "_sessionContext": {
+                                                      "goalName": "review-rejected-marker",
+                                                      "stepNumber": 1,
+                                                      "_sessionContext": {
+                                                        "goalName": "review-rejected-marker",
+                                                        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/review-rejected-marker.md",
+                                                        "fileCleanup": [
+                                                          "/home/aleksj/git/pio-extension/.pio/issues/review-rejected-marker.md"
+                                                        ],
+                                                        "capability": "create-goal",
+                                                        "stepNumber": 1
+                                                      },
+                                                      "capability": "create-plan"
+                                                    },
+                                                    "capability": "evolve-plan"
+                                                  },
+                                                  "capability": "execute-task"
+                                                },
+                                                "capability": "review-code"
+                                              },
+                                              "capability": "evolve-plan"
+                                            },
+                                            "capability": "execute-task"
+                                          },
+                                          "capability": "review-code"
+                                        },
+                                        "capability": "evolve-plan"
+                                      },
+                                      "capability": "execute-task"
                                     },
-                                    "capability": "create-plan"
+                                    "capability": "review-code"
                                   },
                                   "capability": "evolve-plan"
                                 },
@@ -86,11 +131,11 @@
             },
             "capability": "review-code"
           },
-          "capability": "evolve-plan"
+          "capability": "execute-task"
         },
-        "capability": "execute-task"
+        "capability": "review-code"
       },
-      "capability": "review-code"
+      "capability": "evolve-plan"
     }
   }
 }

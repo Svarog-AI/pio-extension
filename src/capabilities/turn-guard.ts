@@ -125,7 +125,7 @@ export function setupTurnGuard(pi: ExtensionAPI) {
 
     // Detect thinking-only turns and send recovery prompt
     if (isThinkingOnlyTurn(content, event.toolResults)) {
-      pi.sendUserMessage(RECOVERY_PROMPT);
+      pi.sendUserMessage(RECOVERY_PROMPT, { deliverAs: "steer"});
     }
   });
 }

@@ -2,7 +2,8 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { resolveGoalDir, type SessionQueueTask } from "../utils";
+import { resolveGoalDir } from "../fs-utils";
+import type { SessionQueueTask } from "../queues";
 
 // ---------------------------------------------------------------------------
 // Helpers

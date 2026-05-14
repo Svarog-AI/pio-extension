@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CapabilityConfig } from "../types";
-import { discoverNextStep } from "../utils";
+import { discoverNextStep } from "../fs-utils";
 
 // Re-export for backward compatibility
 export type { CapabilityConfig };

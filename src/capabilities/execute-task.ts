@@ -5,7 +5,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { launchCapability } from "./session-capability";
-import { enqueueTask, resolveGoalDir, resolveCapabilityConfig, stepFolderName, type StaticCapabilityConfig } from "../utils";
+import { resolveGoalDir, stepFolderName } from "../fs-utils";
+import { enqueueTask } from "../queues";
+import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
 
 // ---------------------------------------------------------------------------
 // Capability config — single source of truth for this capability's session shape

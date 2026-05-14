@@ -1,0 +1,7 @@
+{
+  "capability": "create-goal",
+  "params": {
+    "goalName": "back-transitions",
+    "initialMessage": "Add explicit back-transitions beyond the existing review-code→execute-task (reject) path: skip a step, undo (revert an approved step to rework it), and mark-blocked transitions. These would be new commands or tool actions that let users intervene in the workflow — e.g., /pio-skip-step, /pio-undo-step, /pio-mark-blocked.\n\nThis builds on the elevate-transition-state-machine work (src/state-machine.ts). The state machine should handle non-linear flows: stepping backward, blocking intermediate steps, and resuming after unblocking."
+  }
+}

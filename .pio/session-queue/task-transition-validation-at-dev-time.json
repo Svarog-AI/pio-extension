@@ -1,0 +1,7 @@
+{
+  "capability": "create-goal",
+  "params": {
+    "goalName": "transition-validation-at-dev-time",
+    "initialMessage": "Create a dev-time transition validation system for the pio state machine (after elevate-transition-state-machine is implemented). The goal: statically verify all transitions are reachable, detect dead states, and warn when capability-state combinations cannot produce valid transitions. This runs at module load or build time — no runtime overhead. It should analyze the state machine rules defined in src/state-machine.ts and GoalState fields from src/goal-state.ts to prove every declared transition path is reachable and no transitions lead to dead-end states where no further progress is possible."
+  }
+}

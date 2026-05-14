@@ -5,8 +5,8 @@ import {
   CAPABILITY_TRANSITIONS,
   resolveNextCapability,
   type TransitionContext,
-  stepFolderName,
-} from "../src/utils";
+} from "../src/transitions";
+import { stepFolderName } from "../src/utils";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers (mirrors step-discovery.test.ts pattern)

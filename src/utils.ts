@@ -2,30 +2,22 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { CapabilityConfig, StaticCapabilityConfig } from "./types";
 
-// ---------------------------------------------------------------------------
-// Conditional transition types
-// ---------------------------------------------------------------------------
+// Re-export transition system from dedicated module (Step 1)
+export {
+  resolveNextCapability,
+  CAPABILITY_TRANSITIONS,
+} from "./transitions";
+export type { TransitionContext, TransitionResult, CapabilityTransitionResolver } from "./transitions";
 
-/** Context passed to transition resolver callbacks. */
-export interface TransitionContext {
-  /** Current capability name (e.g. "review-code") */
-  capability: string;
-  /** Working directory (goal workspace directory) */
-  workingDir: string;
-  /** Session params from the completing session (goalName, stepNumber, …) */
-  params?: Record<string, unknown>;
-}
-
-/** Result of resolving a transition: capability name plus optionally adjusted params. */
-export interface TransitionResult {
-  /** Next capability name (e.g. "evolve-plan") */
-  capability: string;
-  /** Adjusted params to propagate (e.g. incremented stepNumber). If omitted, use ctx.params as-is. */
-  params?: Record<string, unknown>;
-}
-
-/** A function that inspects runtime state and returns the next capability name. */
-export type CapabilityTransitionResolver = (ctx: TransitionContext) => string | TransitionResult | undefined;
+// Re-export session queue utilities from dedicated module (Step 2)
+export {
+  queueDir,
+  enqueueTask,
+  readPendingTask,
+  listPendingGoals,
+  writeLastTask,
+} from "./queues";
+export type { SessionQueueTask } from "./queues";
 
 /** Resolve a goal workspace path under .pio/goals/<name>. */
 export function resolveGoalDir(cwd: string, name: string): string {
@@ -35,25 +27,6 @@ export function resolveGoalDir(cwd: string, name: string): string {
 /** Check if a goal workspace exists. */
 export function goalExists(goalDir: string): boolean {
   return fs.existsSync(goalDir);
-}
-
-// ---------------------------------------------------------------------------
-// Session task slot utilities
-// ---------------------------------------------------------------------------
-
-/** Minimal task descriptor written to `.pio/session-queue/task.json` as JSON. */
-export interface SessionQueueTask {
-  capability: string;
-  params?: Record<string, unknown>;
-}
-
-/** Returns the path to `.pio/session-queue/`, creating it if needed. */
-export function queueDir(cwd: string): string {
-  const dir = path.join(cwd, ".pio", "session-queue");
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  return dir;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,56 +78,6 @@ export function readIssue(cwd: string, identifier: string): string | undefined {
     return undefined;
   }
   return fs.readFileSync(filePath, "utf-8");
-}
-
-/**
- * Write the pending task to a per-goal file `.pio/session-queue/task-{goalName}.json`.
- * Each goal gets its own slot — one pending task at a time.
- * Overwrites any existing task for that specific goal.
- */
-export function enqueueTask(cwd: string, goalName: string, task: SessionQueueTask): void {
-  const dir = queueDir(cwd);
-  const filePath = path.join(dir, `task-${goalName}.json`);
-  fs.writeFileSync(filePath, JSON.stringify(task, null, 2), "utf-8");
-}
-
-/**
- * Read a specific goal's pending task from `.pio/session-queue/task-{goalName}.json`.
- * Returns the parsed task or `undefined` if the file does not exist.
- */
-export function readPendingTask(cwd: string, goalName: string): SessionQueueTask | undefined {
-  const dir = queueDir(cwd);
-  const filePath = path.join(dir, `task-${goalName}.json`);
-  if (!fs.existsSync(filePath)) return undefined;
-  const raw = fs.readFileSync(filePath, "utf-8");
-  return JSON.parse(raw) as SessionQueueTask;
-}
-
-/**
- * List all goal names that have a pending task file.
- * Scans `.pio/session-queue/` for files matching `task-*.json` pattern.
- */
-export function listPendingGoals(cwd: string): string[] {
-  const dir = queueDir(cwd);
-  if (!fs.existsSync(dir)) return [];
-  const goals: string[] = [];
-  for (const entry of fs.readdirSync(dir)) {
-    if (entry.startsWith("task-") && entry.endsWith(".json")) {
-      // Extract goal name from task-{goalName}.json
-      const goalName = entry.slice(5, entry.length - 5);
-      goals.push(goalName);
-    }
-  }
-  return goals;
-}
-
-/**
- * Write the completed task record to `<goalDir>/LAST_TASK.json`.
- * Records what capability just finished and its params (including accumulated session history).
- */
-export function writeLastTask(goalDir: string, task: SessionQueueTask): void {
-  const filePath = path.join(goalDir, "LAST_TASK.json");
-  fs.writeFileSync(filePath, JSON.stringify(task, null, 2), "utf-8");
 }
 
 // ---------------------------------------------------------------------------
@@ -290,75 +213,4 @@ export async function resolveCapabilityConfig(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Capability transition helpers — deterministic task flow
-// ---------------------------------------------------------------------------
 
-/** Maps a capability name to the next capability name in the happy path.
- * Values can be plain strings (deterministic) or resolver callbacks (conditional).
- * Callbacks may return a plain string or a TransitionResult with adjusted params. */
-export const CAPABILITY_TRANSITIONS: Record<string, string | CapabilityTransitionResolver> = {
-  "create-goal": "create-plan",
-  "create-plan": "evolve-plan",
-  "evolve-plan": (ctx): string | TransitionResult => {
-    const stepNumber = typeof ctx.params?.stepNumber === "number" ? ctx.params.stepNumber : undefined;
-    if (stepNumber != null) {
-      return { capability: "execute-task", params: { goalName: ctx.params?.goalName, stepNumber } };
-    }
-    return "execute-task";
-  },
-  "execute-task": (ctx): string | TransitionResult => {
-    const stepNumber = typeof ctx.params?.stepNumber === "number" ? ctx.params.stepNumber : undefined;
-    if (stepNumber != null) {
-      return { capability: "review-code", params: { goalName: ctx.params?.goalName, stepNumber } };
-    }
-    return "review-code";
-  },
-  "review-code": (ctx): string | TransitionResult => {
-    const stepNumber = typeof ctx.params?.stepNumber === "number" ? ctx.params.stepNumber : undefined;
-    if (stepNumber != null) {
-      const folder = stepFolderName(stepNumber);
-      // REJECTED takes precedence — re-execute the same step
-      const rejectedPath = path.join(ctx.workingDir, folder, "REJECTED");
-      if (fs.existsSync(rejectedPath)) {
-        return { capability: "execute-task", params: { goalName: ctx.params?.goalName, stepNumber } };
-      }
-      // APPROVED — evolve-plan targets the NEXT step
-      const approvedPath = path.join(ctx.workingDir, folder, "APPROVED");
-      if (fs.existsSync(approvedPath)) {
-        return { capability: "evolve-plan", params: { goalName: ctx.params?.goalName, stepNumber: stepNumber + 1 } };
-      }
-    }
-    // Neither marker exists or no stepNumber: re-execute the same step
-    if (stepNumber != null) {
-      return { capability: "execute-task", params: { goalName: ctx.params?.goalName, stepNumber } };
-    }
-    return "execute-task";
-  },
-};
-
-/**
- * Resolve the next capability for a given capability.
- * Returns { capability, params? } so callers get both the target and any adjusted params
- * (e.g. incremented stepNumber from review-code → evolve-plan).
- */
-export function resolveNextCapability(capability: string, ctx: TransitionContext): TransitionResult | undefined {
-  const value = CAPABILITY_TRANSITIONS[capability];
-  if (value === undefined) return undefined;
-
-  if (typeof value === "string") {
-    // Plain string transition — wrap in consistent shape, preserving params as-is
-    return { capability: value, params: ctx.params };
-  }
-
-  const result = value(ctx);
-  if (!result) return undefined;
-
-  // Callback returned a TransitionResult object
-  if (typeof result === "object" && "capability" in result) {
-    return result;
-  }
-
-  // Callback returned a plain string — wrap in consistent shape
-  return { capability: result, params: ctx.params };
-}

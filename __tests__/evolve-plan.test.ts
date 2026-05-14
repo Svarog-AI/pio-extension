@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { validateOutputs } from "../src/capabilities/validation";
-import { resolveCapabilityConfig } from "../src/utils";
+import { validateOutputs } from "../src/guards/validation";
+import { resolveCapabilityConfig } from "../src/capability-config";
 import { validateAndFindNextStep } from "../src/capabilities/evolve-plan";
 
 // ---------------------------------------------------------------------------

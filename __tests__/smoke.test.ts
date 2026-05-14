@@ -1,4 +1,4 @@
-import { stepFolderName } from "../src/utils";
+import { stepFolderName } from "../src/fs-utils";
 
 describe("smoke", () => {
   it("adds numbers correctly", () => {

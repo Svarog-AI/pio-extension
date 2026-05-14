@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { CAPABILITY_CONFIG } from "../src/capabilities/execute-task";
-import { stepFolderName } from "../src/utils";
+import { stepFolderName } from "../src/fs-utils";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers (mirrors step-discovery.test.ts pattern)

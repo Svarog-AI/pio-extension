@@ -6,7 +6,7 @@ import {
   resolveNextCapability,
   type TransitionContext,
 } from "../src/transitions";
-import { stepFolderName } from "../src/utils";
+import { stepFolderName } from "../src/fs-utils";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers (mirrors step-discovery.test.ts pattern)

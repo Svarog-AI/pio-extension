@@ -4,12 +4,13 @@ import * as path from "node:path";
 import {
   resolveGoalDir,
   goalExists,
+  issuesDir,
   findIssuePath,
   readIssue,
   deriveSessionName,
   stepFolderName,
   discoverNextStep,
-} from "../src/utils";
+} from "../src/fs-utils";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -103,12 +104,44 @@ describe("goalExists(goalDir)", () => {
     expect(goalExists(goalDir)).toBe(false);
   });
 
-  it("returns false for a file (not directory)", () => {
+  it("returns true for a file (not directory) — documents fs.existsSync behavior", () => {
     const filePath = path.join(tempDir, "not-a-dir");
     fs.writeFileSync(filePath, "hello", "utf-8");
     // fs.existsSync returns true for files too — goalExists uses fs.existsSync directly
-    // so it will return true for files. Test the actual behavior.
     expect(goalExists(filePath)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// issuesDir
+// ---------------------------------------------------------------------------
+
+describe("issuesDir(cwd)", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns correct path", () => {
+    const result = issuesDir(tempDir);
+    expect(result).toBe(path.join(tempDir, ".pio", "issues"));
+  });
+
+  it("creates directory if missing", () => {
+    const issuesPath = path.join(tempDir, ".pio", "issues");
+    expect(fs.existsSync(issuesPath)).toBe(false);
+    const result = issuesDir(tempDir);
+    expect(result).toBe(issuesPath);
+    expect(fs.existsSync(issuesPath)).toBe(true);
+  });
+
+  it("is idempotent — no error on repeated calls", () => {
+    const firstCall = issuesDir(tempDir);
+    const secondCall = issuesDir(tempDir);
+    expect(firstCall).toBe(secondCall);
   });
 });
 

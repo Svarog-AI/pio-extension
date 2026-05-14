@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { resolveCapabilityConfig } from "../src/utils";
+import { resolveCapabilityConfig } from "../src/capability-config";
 
 // ---------------------------------------------------------------------------
 // Shared helpers

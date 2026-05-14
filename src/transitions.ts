@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { stepFolderName } from "./utils";
+import { stepFolderName } from "./fs-utils";
 
 // ---------------------------------------------------------------------------
 // Conditional transition types

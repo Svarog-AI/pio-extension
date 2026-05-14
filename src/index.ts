@@ -22,8 +22,8 @@ import { setupCreateIssue } from "./capabilities/create-issue";
 import { setupGoalFromIssue } from "./capabilities/goal-from-issue";
 import { setupListGoals } from "./capabilities/list-goals";
 import { setupCapability } from "./capabilities/session-capability";
-import { setupValidation } from "./capabilities/validation";
-import { setupTurnGuard } from "./capabilities/turn-guard";
+import { setupValidation } from "./guards/validation";
+import { setupTurnGuard } from "./guards/turn-guard";
 
 // ESM-compatible __dirname for resolving skill directories bundled with this extension
 const __filename = fileURLToPath(import.meta.url);

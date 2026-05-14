@@ -3,7 +3,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 
-import { resolveGoalDir, goalExists } from "../utils";
+import { resolveGoalDir, goalExists } from "../fs-utils";
 
 // ---------------------------------------------------------------------------
 // Function

@@ -2,7 +2,8 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import * as fs from "node:fs";
 
 import { launchCapability } from "./session-capability";
-import { resolveGoalDir, resolveCapabilityConfig, type StaticCapabilityConfig } from "../utils";
+import { resolveGoalDir } from "../fs-utils";
+import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
 
 // ---------------------------------------------------------------------------
 // Capability config — single source of truth for this capability's session shape

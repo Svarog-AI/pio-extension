@@ -1,7 +1,173 @@
 {
-  "capability": "create-goal",
+  "capability": "execute-task",
   "params": {
     "goalName": "refactor-module-boundaries",
-    "initialMessage": "Refactor the src/ directory to enforce clean module boundaries. Two main areas:\n\n## 1. Remove non-capabilities from `src/capabilities/`\n\nThe `capabilities/` directory should contain only actual capabilities — modules that define tools and/or commands the agent can invoke. The following files do not belong there:\n\n- **`validation.ts`** — This is the validation engine and file protection layer. It defines `pio_mark_complete`, but it's primarily infrastructure: `ValidationRule`, `validateOutputs()`, read-only/write-allowlist enforcement, and the exit-gate logic. The mark-complete tool is just one consumer of this system. Consider moving to something like `src/core/validation.ts` or similar.\n\n- **`turn-guard.ts`** — This is a turn-state guard that tracks `isActivePioSession`. Pure infrastructure/session management. Not a capability. Should live alongside other core infrastructure.\n\nDetermine appropriate destinations for these modules, update all imports across the codebase, and ensure nothing breaks (verify with `npm run check`).\n\n## 2. Decompose `src/utils.ts`\n\nThe file is ~370 lines containing unrelated concerns mashed together:\n\n- **Transition system** — `TransitionContext`, `TransitionResult`, `CapabilityTransitionResolver`, `CAPABILITY_TRANSITIONS`, `resolveNextCapability()` — This is a coherent subsystem governing workflow state machines. Should be its own module (e.g., `src/core/transitions.ts` or `src/transitions.ts`).\n\n- **Session queue utilities** — `queueDir()`, `enqueueTask()`, `readPendingTask()`, `listPendingGoals()`, `writeLastTask()`, `SessionQueueTask` — A coherent set of file operations for the session queue.\n\n- **Issue utilities** — `issuesDir()`, `findIssuePath()`, `readIssue()` — Coherent set but maybe belongs with capability files that use them?\n\n- **Goal directory helpers** — `resolveGoalDir()`, `goalExists()` — Simple path utilities.\n\n- **Step folder helpers** — `stepFolderName()`, `discoverNextStep()` — Step numbering logic.\n\n- **Session name derivation** — `deriveSessionName()` — Naming convention utility.\n\n- **Capability config resolution** — `resolveCapabilityConfig()` — Dynamic module loading + config assembly. This is framework-level infrastructure, not a \"util\".\n\nAnalyze these groupings and propose a clean decomposition where each module has a single responsibility. Keep in mind that the transition system will need to stay accessible from multiple places (validation, session-capability, etc.) after decomposing utils.ts.\n\n## Constraints\n- Preserve backward compatibility for any public APIs\n- All imports must be updated across the full codebase\n- `npm run check` must pass with zero errors\n- No behavioral changes — this is purely structural refactoring"
+    "stepNumber": 11,
+    "_sessionContext": {
+      "goalName": "refactor-module-boundaries",
+      "stepNumber": 11,
+      "_sessionContext": {
+        "goalName": "refactor-module-boundaries",
+        "stepNumber": 10,
+        "_sessionContext": {
+          "goalName": "refactor-module-boundaries",
+          "stepNumber": 10,
+          "_sessionContext": {
+            "goalName": "refactor-module-boundaries",
+            "stepNumber": 10,
+            "_sessionContext": {
+              "goalName": "refactor-module-boundaries",
+              "stepNumber": 9,
+              "_sessionContext": {
+                "goalName": "refactor-module-boundaries",
+                "stepNumber": 9,
+                "_sessionContext": {
+                  "goalName": "refactor-module-boundaries",
+                  "stepNumber": 9,
+                  "_sessionContext": {
+                    "goalName": "refactor-module-boundaries",
+                    "stepNumber": 8,
+                    "_sessionContext": {
+                      "goalName": "refactor-module-boundaries",
+                      "stepNumber": 8,
+                      "_sessionContext": {
+                        "goalName": "refactor-module-boundaries",
+                        "stepNumber": 8,
+                        "_sessionContext": {
+                          "goalName": "refactor-module-boundaries",
+                          "stepNumber": 7,
+                          "_sessionContext": {
+                            "goalName": "refactor-module-boundaries",
+                            "stepNumber": 7,
+                            "_sessionContext": {
+                              "goalName": "refactor-module-boundaries",
+                              "stepNumber": 7,
+                              "_sessionContext": {
+                                "goalName": "refactor-module-boundaries",
+                                "stepNumber": 6,
+                                "_sessionContext": {
+                                  "goalName": "refactor-module-boundaries",
+                                  "stepNumber": 6,
+                                  "_sessionContext": {
+                                    "goalName": "refactor-module-boundaries",
+                                    "stepNumber": 6,
+                                    "_sessionContext": {
+                                      "goalName": "refactor-module-boundaries",
+                                      "stepNumber": 5,
+                                      "_sessionContext": {
+                                        "goalName": "refactor-module-boundaries",
+                                        "stepNumber": 5,
+                                        "_sessionContext": {
+                                          "goalName": "refactor-module-boundaries",
+                                          "stepNumber": 5,
+                                          "_sessionContext": {
+                                            "goalName": "refactor-module-boundaries",
+                                            "stepNumber": 4,
+                                            "_sessionContext": {
+                                              "goalName": "refactor-module-boundaries",
+                                              "stepNumber": 4,
+                                              "_sessionContext": {
+                                                "goalName": "refactor-module-boundaries",
+                                                "stepNumber": 4,
+                                                "_sessionContext": {
+                                                  "goalName": "refactor-module-boundaries",
+                                                  "stepNumber": 3,
+                                                  "_sessionContext": {
+                                                    "goalName": "refactor-module-boundaries",
+                                                    "stepNumber": 3,
+                                                    "_sessionContext": {
+                                                      "goalName": "refactor-module-boundaries",
+                                                      "stepNumber": 3,
+                                                      "_sessionContext": {
+                                                        "goalName": "refactor-module-boundaries",
+                                                        "stepNumber": 2,
+                                                        "_sessionContext": {
+                                                          "goalName": "refactor-module-boundaries",
+                                                          "stepNumber": 2,
+                                                          "_sessionContext": {
+                                                            "goalName": "refactor-module-boundaries",
+                                                            "stepNumber": 2,
+                                                            "_sessionContext": {
+                                                              "goalName": "refactor-module-boundaries",
+                                                              "stepNumber": 1,
+                                                              "_sessionContext": {
+                                                                "goalName": "refactor-module-boundaries",
+                                                                "stepNumber": 1,
+                                                                "_sessionContext": {
+                                                                  "goalName": "refactor-module-boundaries",
+                                                                  "stepNumber": 1,
+                                                                  "_sessionContext": {
+                                                                    "goalName": "refactor-module-boundaries",
+                                                                    "stepNumber": 1,
+                                                                    "_sessionContext": {
+                                                                      "goalName": "refactor-module-boundaries",
+                                                                      "initialMessage": "Refactor the src/ directory to enforce clean module boundaries. Two main areas:\n\n## 1. Remove non-capabilities from `src/capabilities/`\n\nThe `capabilities/` directory should contain only actual capabilities — modules that define tools and/or commands the agent can invoke. The following files do not belong there:\n\n- **`validation.ts`** — This is the validation engine and file protection layer. It defines `pio_mark_complete`, but it's primarily infrastructure: `ValidationRule`, `validateOutputs()`, read-only/write-allowlist enforcement, and the exit-gate logic. The mark-complete tool is just one consumer of this system. Consider moving to something like `src/core/validation.ts` or similar.\n\n- **`turn-guard.ts`** — This is a turn-state guard that tracks `isActivePioSession`. Pure infrastructure/session management. Not a capability. Should live alongside other core infrastructure.\n\nDetermine appropriate destinations for these modules, update all imports across the codebase, and ensure nothing breaks (verify with `npm run check`).\n\n## 2. Decompose `src/utils.ts`\n\nThe file is ~370 lines containing unrelated concerns mashed together:\n\n- **Transition system** — `TransitionContext`, `TransitionResult`, `CapabilityTransitionResolver`, `CAPABILITY_TRANSITIONS`, `resolveNextCapability()` — This is a coherent subsystem governing workflow state machines. Should be its own module (e.g., `src/core/transitions.ts` or `src/transitions.ts`).\n\n- **Session queue utilities** — `queueDir()`, `enqueueTask()`, `readPendingTask()`, `listPendingGoals()`, `writeLastTask()`, `SessionQueueTask` — A coherent set of file operations for the session queue.\n\n- **Issue utilities** — `issuesDir()`, `findIssuePath()`, `readIssue()` — Coherent set but maybe belongs with capability files that use them?\n\n- **Goal directory helpers** — `resolveGoalDir()`, `goalExists()` — Simple path utilities.\n\n- **Step folder helpers** — `stepFolderName()`, `discoverNextStep()` — Step numbering logic.\n\n- **Session name derivation** — `deriveSessionName()` — Naming convention utility.\n\n- **Capability config resolution** — `resolveCapabilityConfig()` — Dynamic module loading + config assembly. This is framework-level infrastructure, not a \"util\".\n\nAnalyze these groupings and propose a clean decomposition where each module has a single responsibility. Keep in mind that the transition system will need to stay accessible from multiple places (validation, session-capability, etc.) after decomposing utils.ts.\n\n## Constraints\n- Preserve backward compatibility for any public APIs\n- All imports must be updated across the full codebase\n- `npm run check` must pass with zero errors\n- No behavioral changes — this is purely structural refactoring",
+                                                                      "capability": "create-goal",
+                                                                      "stepNumber": 1
+                                                                    },
+                                                                    "capability": "create-plan"
+                                                                  },
+                                                                  "capability": "evolve-plan"
+                                                                },
+                                                                "capability": "execute-task"
+                                                              },
+                                                              "capability": "review-code"
+                                                            },
+                                                            "capability": "evolve-plan"
+                                                          },
+                                                          "capability": "execute-task"
+                                                        },
+                                                        "capability": "review-code"
+                                                      },
+                                                      "capability": "evolve-plan"
+                                                    },
+                                                    "capability": "execute-task"
+                                                  },
+                                                  "capability": "review-code"
+                                                },
+                                                "capability": "evolve-plan"
+                                              },
+                                              "capability": "execute-task"
+                                            },
+                                            "capability": "review-code"
+                                          },
+                                          "capability": "evolve-plan"
+                                        },
+                                        "capability": "execute-task"
+                                      },
+                                      "capability": "review-code"
+                                    },
+                                    "capability": "evolve-plan"
+                                  },
+                                  "capability": "execute-task"
+                                },
+                                "capability": "review-code"
+                              },
+                              "capability": "evolve-plan"
+                            },
+                            "capability": "execute-task"
+                          },
+                          "capability": "review-code"
+                        },
+                        "capability": "evolve-plan"
+                      },
+                      "capability": "execute-task"
+                    },
+                    "capability": "review-code"
+                  },
+                  "capability": "evolve-plan"
+                },
+                "capability": "execute-task"
+              },
+              "capability": "review-code"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-code"
+      },
+      "capability": "evolve-plan"
+    }
   }
 }

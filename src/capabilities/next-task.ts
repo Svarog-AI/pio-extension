@@ -3,7 +3,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { launchCapability, getSessionGoalName } from "./session-capability";
-import { resolveCapabilityConfig, queueDir, readPendingTask, listPendingGoals, type SessionQueueTask } from "../utils";
+import { queueDir, readPendingTask, listPendingGoals, type SessionQueueTask } from "../queues";
+import { resolveCapabilityConfig } from "../capability-config";
 
 // ---------------------------------------------------------------------------
 // Command

@@ -3,7 +3,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 import { launchCapability } from "./session-capability";
-import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../utils";
+import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
 
 // ---------------------------------------------------------------------------
 // Capability config — single source of truth for this capability's session shape

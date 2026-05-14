@@ -1,5 +1,5 @@
 import type { PrepareSessionCallback, StaticCapabilityConfig, CapabilityConfig } from "../src/types";
-import { resolveCapabilityConfig } from "../src/utils";
+import { resolveCapabilityConfig } from "../src/capability-config";
 
 // ---------------------------------------------------------------------------
 // PrepareSessionCallback — compile-time type verification

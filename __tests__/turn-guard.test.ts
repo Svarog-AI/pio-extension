@@ -1,5 +1,5 @@
 import type { ExtensionAPI, TurnEndEvent } from "@earendil-works/pi-coding-agent";
-import { isThinkingOnlyTurn, setupTurnGuard, __testSetActiveSession } from "../src/capabilities/turn-guard";
+import { isThinkingOnlyTurn, setupTurnGuard, __testSetActiveSession } from "../src/guards/turn-guard";
 
 // ---------------------------------------------------------------------------
 // Helpers — mock ExtensionAPI

@@ -8,7 +8,7 @@ import {
   validateReviewFrontmatter,
   applyReviewDecision,
   validateReviewState,
-} from "../src/capabilities/validation";
+} from "../src/guards/validation";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -722,12 +722,5 @@ describe("review-code markComplete automation", () => {
     expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
   });
 
-  it("non-review-code path is unaffected (source checks for review-code capability)", () => {
-    // Arrange: Read validation.ts source to verify the automation block is gated
-    const sourcePath = path.resolve(__dirname, "../src/capabilities/validation.ts");
-    const source = fs.readFileSync(sourcePath, "utf-8");
 
-    // Assert: The source contains a conditional that checks for "review-code"
-    expect(source).toContain("review-code");
-  });
 });

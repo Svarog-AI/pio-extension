@@ -3,7 +3,9 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import * as path from "node:path";
 import { Type } from "typebox";
 import { launchCapability } from "./session-capability";
-import { enqueueTask, findIssuePath, goalExists, resolveGoalDir, resolveCapabilityConfig } from "../utils";
+import { findIssuePath, goalExists, resolveGoalDir } from "../fs-utils";
+import { enqueueTask } from "../queues";
+import { resolveCapabilityConfig } from "../capability-config";
 
 // ---------------------------------------------------------------------------
 // Function

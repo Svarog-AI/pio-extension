@@ -1,4 +1,4 @@
-import { resolveCapabilityConfig } from "../src/utils";
+import { resolveCapabilityConfig } from "../src/capability-config";
 
 // ---------------------------------------------------------------------------
 // Backward compatibility — capabilities without prepareSession still work

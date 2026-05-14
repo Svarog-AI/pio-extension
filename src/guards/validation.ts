@@ -5,9 +5,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as jsyaml from "js-yaml";
 import type { ValidationRule } from "../types";
-import { stepFolderName } from "../utils";
-import { getSessionParams, getStepNumber } from "./session-capability";
-import { resolveNextCapability, enqueueTask, writeLastTask, resolveGoalDir } from "../utils";
+import { resolveNextCapability } from "../transitions";
+import { getSessionParams, getStepNumber } from "../capabilities/session-capability";
+import { enqueueTask, writeLastTask } from "../queues";
+import { resolveGoalDir, stepFolderName } from "../fs-utils";
 
 // Re-export for backward compatibility
 export type { ValidationRule };

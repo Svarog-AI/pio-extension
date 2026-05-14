@@ -10,7 +10,7 @@ import {
   deriveSessionName,
   stepFolderName,
   discoverNextStep,
-} from "../src/fs-utils";
+} from "./fs-utils";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -44,11 +44,11 @@ function createGoalTree(tempDir: string, goalName: string, steps?: { number: num
 
 // Create an issues directory and write issue files
 function createIssueFiles(tempDir: string, issues: { slug: string; content: string }[]): void {
-  const issuesDir = path.join(tempDir, ".pio", "issues");
-  fs.mkdirSync(issuesDir, { recursive: true });
+  const issuesDirPath = path.join(tempDir, ".pio", "issues");
+  fs.mkdirSync(issuesDirPath, { recursive: true });
 
   for (const issue of issues) {
-    fs.writeFileSync(path.join(issuesDir, `${issue.slug}.md`), issue.content, "utf-8");
+    fs.writeFileSync(path.join(issuesDirPath, `${issue.slug}.md`), issue.content, "utf-8");
   }
 }
 
@@ -330,5 +330,22 @@ describe("discoverNextStep(goalDir)", () => {
     ]);
     // discoverNextStep checks for TASK.md + TEST.md, not COMPLETED marker
     expect(discoverNextStep(goalDir)).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// smoke — ESM import resolution verification
+// ---------------------------------------------------------------------------
+
+describe("smoke", () => {
+  it("adds numbers correctly", () => {
+    expect(1 + 1).toBe(2);
+  });
+
+  it("resolves ESM imports", () => {
+    // Import a function from src/ to prove Vitest resolves TypeScript + ESM correctly
+    expect(stepFolderName(1)).toBe("S01");
+    expect(stepFolderName(9)).toBe("S09");
+    expect(stepFolderName(10)).toBe("S10");
   });
 });

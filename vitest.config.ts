@@ -6,7 +6,7 @@ export default defineConfig({
     environment: "node",
     // Enable global describe/it/expect without explicit imports
     globals: true,
-    // Discover tests under __tests__/ directory
-    include: ["__tests__/**/*.test.ts", "__tests__/*.test.ts"],
+    // Discover collocated tests under src/
+    include: ["src/**/*.test.ts"],
   },
 });

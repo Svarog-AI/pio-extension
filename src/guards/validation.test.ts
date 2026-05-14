@@ -8,7 +8,7 @@ import {
   validateReviewFrontmatter,
   applyReviewDecision,
   validateReviewState,
-} from "../src/guards/validation";
+} from "./validation";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers

@@ -8,7 +8,7 @@ import {
   listPendingGoals,
   writeLastTask,
   type SessionQueueTask,
-} from "../src/queues";
+} from "./queues";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers

@@ -36,7 +36,7 @@ const sessionCapabilityMock = vi.hoisted(() => ({
 }));
 
 vi.mock(
-  "../src/capabilities/session-capability",
+  "./session-capability",
   async (importOriginal) => {
     const actual = (await importOriginal()) as Record<string, unknown>;
     return {
@@ -53,7 +53,7 @@ vi.mock(
 );
 
 // Must import after vi.mock so the mocked module is used
-import { getSessionGoalName } from "../src/capabilities/session-capability";
+import { getSessionGoalName } from "./session-capability";
 
 // ---------------------------------------------------------------------------
 // getSessionGoalName tests
@@ -116,7 +116,7 @@ describe("handleNextTask — goal resolution order", () => {
   let handleNextTask: (args: string | undefined, ctx: any) => Promise<void>;
 
   beforeEach(async () => {
-    const mod = await import("../src/capabilities/next-task");
+    const mod = await import("./next-task");
     handleNextTask = mod.handleNextTask;
   });
 

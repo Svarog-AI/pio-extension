@@ -1,0 +1,7 @@
+{
+  "capability": "create-goal",
+  "params": {
+    "goalName": "capability-state-contracts",
+    "initialMessage": "Each pio capability should declare which GoalState fields it reads and which marker files it produces. This enables compatibility analysis: verifying capabilities only read state that previous capabilities in the chain have produced, and detecting contracts that would break if a new capability is inserted mid-pipeline.\n\nThis builds on the elevate-transition-state-machine work (src/goal-state.ts, src/state-machine.ts). Each capability's CAPABILITY_CONFIG should gain optional contract declarations (reads: GoalState field list, writes: marker file list) with static or runtime validation to prove chain integrity."
+  }
+}

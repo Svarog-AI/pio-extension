@@ -1,8 +1,8 @@
 {
-  "capability": "evolve-plan",
+  "capability": "review-code",
   "params": {
     "goalName": "elevate-transition-state-machine",
-    "stepNumber": 5,
+    "stepNumber": 4,
     "_sessionContext": {
       "goalName": "elevate-transition-state-machine",
       "stepNumber": 4,

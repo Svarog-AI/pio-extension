@@ -7,7 +7,6 @@ import * as jsyaml from "js-yaml";
 import type { ValidationRule } from "../types";
 import { resolveTransition, recordTransition } from "../state-machine";
 import { createGoalState } from "../goal-state";
-import { getSessionParams, getStepNumber } from "../capabilities/session-capability";
 import { enqueueTask, writeLastTask } from "../queues";
 import { resolveGoalDir, stepFolderName } from "../fs-utils";
 
@@ -308,7 +307,10 @@ const markCompleteTool = defineTool({
       const capabilityForAutomation = config.capability;
 
       if (capabilityForAutomation === "review-code") {
-        const autoStepNumber = getStepNumber();
+        const stateForAuto = createGoalState(dir);
+        const autoStepNumber = typeof config.sessionParams?.stepNumber === "number"
+          ? config.sessionParams.stepNumber
+          : stateForAuto.currentStepNumber();
         if (autoStepNumber != null) {
           const folder = stepFolderName(autoStepNumber);
           const reviewPath = path.join(dir, folder, "REVIEW.md");
@@ -366,14 +368,15 @@ const markCompleteTool = defineTool({
       const cwd = process.cwd();
       const goalName = extractGoalName(dir);
 
-      // Read enriched session params from session-capability (centralized source of truth).
-      // Falls back to config.sessionParams if not yet populated.
-      const sessionParams = getSessionParams() || config.sessionParams || {};
+      // Use the completing session's params directly — they are authoritative.
+      const sessionParams = config.sessionParams || {};
 
-      // Get canonical stepNumber from enriched params (auto-discovered if needed)
-      const stepNumber = getStepNumber();
-
+      // Derive stepNumber from session params, falling back to filesystem discovery.
       const state = createGoalState(dir);
+      const stepNumber = typeof sessionParams.stepNumber === "number"
+        ? sessionParams.stepNumber
+        : state.currentStepNumber();
+
       const nextTask = capability
         ? resolveTransition(capability, state, { goalName, stepNumber, _sessionContext: sessionParams })
         : undefined;

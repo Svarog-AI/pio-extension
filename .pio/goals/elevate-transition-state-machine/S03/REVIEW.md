@@ -1,55 +1,44 @@
 ---
-decision: REJECTED
+decision: APPROVED
 criticalIssues: 0
-highIssues: 1
-mediumIssues: 0
+highIssues: 0
+mediumIssues: 1
 lowIssues: 1
 ---
 
 # Code Review: Migrate capability pre-launch validation to use `GoalState` (Step 3)
 
 ## Decision
-REJECTED
+APPROVED
 
 ## Summary
-The migration is structurally correct — all three capabilities import and use `createGoalState()`, exported signatures are preserved, error messages match, and all 264 tests pass. However, there's a systematic pattern of redundant GoalState construction: validation functions create a `GoalState` for document checks (`hasGoal()`, `hasPlan()`), then call helper functions that create their own fresh states instead of reusing the existing one. This undermines the performance intent of centralized state queries and produces N+1 filesystem scans where 1 suffices.
+The migration successfully replaces ad-hoc filesystem scanning in all three capability modules with `GoalState` queries. The thin-wrapper pattern (public functions accept `goalDir`, internal helpers accept pre-built `GoalState`) eliminates redundant I/O: `validateAndFindNextStep` in execute-task reuses one state across N step checks, and `validateAndFindReviewStep` in review-code avoids double-scanning. All 264 existing tests pass unchanged — proving behavioral equivalence. Type checking is clean, imports are correct, and the migration is complete per TASK.md acceptance criteria.
 
 ## Critical Issues
 (none)
 
 ## High Issues
-- [HIGH] **Redundant `GoalState` construction across helper calls.** Multiple validation functions create a `GoalState`, use it for top-level checks, then discard it by calling helpers that build fresh states internally:
-
-  1. `execute-task.ts` `validateAndFindNextStep()` (line ~113): Creates `state = createGoalState(goalDir)`, stores `allSteps = state.steps()`. Then the loop at line ~136 calls `isStepReady(goalDir, i)` which internally runs `createGoalState(goalDir)` + `state.steps().find(...)` per iteration. For a goal with 5 steps, this is 6 total GoalState constructions instead of 1.
-
-  2. `review-code.ts` `validateAndFindReviewStep()` (line ~230): Creates `state = createGoalState(goalDir)`, uses it for `hasGoal()`/`hasPlan()`. Then calls `findMostRecentCompletedStep(goalDir)` (line ~248) which creates yet another fresh state.
-
-  The exported helpers (`isStepReady`, `isStepReviewable`, `findMostRecentCompletedStep`) are public APIs that must accept `goalDir` — they correctly construct their own state for external callers. However, internal callers within the same file should reuse an existing state to avoid redundant filesystem I/O.
-
-## Medium Issues
 (none)
 
+## Medium Issues
+- [MEDIUM] `validateExplicitStep()` constructs a fresh `GoalState` on every call but then invokes multiple methods against it (`state.steps().find()`, `step.hasTask()`, `step.hasTest()`, `step.status()`). While this isn't the N+1 problem addressed elsewhere (the function isn't called in loops), each method re-reads the filesystem independently. Consider adding an internal `_validateExplicitStep(state, ...)` variant for consistency with the pattern established for `_isStepReady` and `_findMostRecentCompletedStep`, even if no caller currently benefits. — `src/capabilities/execute-task.ts` (line 168)
+
 ## Low Issues
-- [LOW] In `findMostRecentCompletedStep` (`review-code.ts`, line ~116), the explicit `&& allSteps[i].hasSummary()` check duplicates logic that could be factored into a shared helper used by both this function and `isStepReviewable`. Minor DRY opportunity. — `src/capabilities/review-code.ts` (line 116)
+- [LOW] In `validateExplicitStep()`, the error message `"Step ${stepNumber} is already marked as COMPLETED."` is shown for three different statuses (`"implemented"`, `"approved"`, `"rejected"`). A step with `"approved"` status might have an APPROVED marker without a COMPLETED marker (theoretical edge case), making the message technically inaccurate. Consider status-specific messages or a generic `"Step ${stepNumber} has already been processed."` — `src/capabilities/execute-task.ts` (line 209)
 
 ## Test Coverage Analysis
-All acceptance criteria are covered:
+All acceptance criteria from TASK.md are covered by the existing test suite:
 
-1. **Type checking**: `npm run check` passes with zero errors.
-2. **Regression tests**: All 264 tests pass across 11 test files, including the full truth tables for `isStepReady()` (6 tests), `isStepReviewable()` (5 tests), and `findMostRecentCompletedStep()` reverse scan (6 tests).
-3. **Import verification**: All three files import `createGoalState` from `../goal-state`. No direct `fs.existsSync` calls for TASK.md, TEST.md, COMPLETED, BLOCKED, APPROVED, REJECTED, or SUMMARY.md remain in validation functions.
-4. **`discoverNextStep` removal**: Confirmed removed from `evolve-plan.ts`.
+- **evolve-plan.test.ts** (10 tests): Verifies `validateAndFindNextStep()` with COMPLETED guard, PLAN.md checks, and step discovery. The root-level COMPLETED pre-launch guard test confirms the direct `fs.existsSync(completedPath)` is preserved.
+- **execute-task.test.ts** (15 tests): Complete truth table for `isStepReady()` — TASK.md+TEST.md present/missing, COMPLETED/BLOCKED markers, and missing step folder. All pass via GoalState internally.
+- **review-code.test.ts** (29 tests): Complete truth table for `isStepReviewable()` — COMPLETED+SUMMARY.md, missing files, BLOCKED override, missing folder. Six `findMostRecentCompletedStep()` tests cover reverse-scan discovery: empty goal, single step, multiple sequential, gaps in middle, blocked steps, and spec-only steps.
+
+The test strategy of "existing tests continue to pass unchanged" is sound — it proves behavioral equivalence without requiring new test infrastructure. All 264 tests (11 files) pass with zero failures.
 
 ## Gaps Identified
-The migration correctly replaced raw `fs` calls with `GoalState` queries at the function level. However, the goal of "centralized filesystem queries" is not fully realized when multiple `GoalState` objects are created within a single validation flow — each independently reads the same files from disk. The fix should keep public API signatures unchanged while introducing internal helpers that accept a pre-built state.
+- **GOAL ↔ PLAN alignment:** Step 3 targets `evolve-plan.ts`, `execute-task.ts`, and `review-code.ts` per PLAN.md. The SUMMARY correctly notes `evolve-plan.ts` "required no changes" to internal helpers (it already used GoalState from Step 1), but the file was still migrated — `discoverNextStep` import removed and `state.currentStepNumber()` is now the sole step-discovery mechanism. This is consistent with the plan.
+- **TASK ↔ Implementation:** The thin-wrapper pattern with internal helpers (`_isStepReady`, `_isReviewable`, `_findMostRecentCompletedStep`) was not explicitly described in TASK.md but represents an improvement over naive migration — it eliminates N+1 filesystem scans that would have existed if every public call re-created state. This is a positive deviation, documented well in SUMMARY.md.
+- **`discoverNextStep` removal:** Confirmed via grep — no references remain in `evolve-plan.ts`. The import from `../fs-utils` was correctly removed.
 
 ## Recommendations
-Fix the redundant construction by adding internal variants that accept a `GoalState`:
-
-1. In `execute-task.ts`: Add `function _isStepReady(state: GoalState, stepNumber: number): boolean` that accepts a pre-built state. Keep `isStepReady(goalDir, stepNumber)` as a thin wrapper: `return _isStepReady(createGoalState(goalDir), stepNumber)`. In `validateAndFindNextStep`, use `_isStepReady(state, i)` directly.
-
-2. In `review-code.ts`: Add `function _findMostRecentCompletedStep(state: GoalState): number | undefined` that accepts a pre-built state. Keep the public wrapper. In `validateAndFindReviewStep`, call `_findMostRecentCompletedStep(state)` instead of `findMostRecentCompletedStep(goalDir)`.
-
-3. The same pattern applies to `isStepReviewable` if any future code path benefits from it (not strictly needed for this step since `validateStepForReview` already inlines the check correctly).
-
-This preserves all public API signatures while eliminating redundant filesystem I/O within a single validation call.
+N/A — approved as-is. The medium issue (internal helper for `validateExplicitStep`) and low issue (generic error message) are deferrable improvements that don't affect correctness or test coverage.

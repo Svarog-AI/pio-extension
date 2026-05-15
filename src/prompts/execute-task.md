@@ -30,12 +30,14 @@ Then read `PLAN.md` from the same directory. Find your assigned step and underst
 
 This gives you the big picture before narrowing to your task.
 
-### Step 2: Read TASK.md and TEST.md
+### Step 2: Read TASK.md, TEST.md and (if needed) DECISIONS.md
 
-Read both files from `S{NN}/` (your step folder):
+Read files from `S{NN}/` (your step folder):
 
 - **TASK.md** — the focused specification of what to build, including code components, approach decisions, files affected, and acceptance criteria.
 - **TEST.md** — the TDD-style test plan specifying exactly what must pass for completion, with programmatic verification commands and expected results.
+
+**DECISIONS.md (Step 2+):** `S{NN}/DECISIONS.md` may also exist alongside these files. It contains accumulated architectural decisions from all preceding steps (e.g., file placement changes, departures from the original plan). Treat it as supplementary context — read it if present but never treat it as a prerequisite. The primary source of truth for what to implement remains `TASK.md`. For Step 1 (`S01/`), this file will not exist; proceed using only `TASK.md` and `TEST.md`.
 
 ### Step 3: Research supporting context
 

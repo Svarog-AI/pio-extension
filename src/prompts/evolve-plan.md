@@ -52,11 +52,27 @@ If the step **does** exist, continue with the normal process below.
 
 If you are working on Step N and N > 1, read outputs from the previous step for background context:
 
-1. Check if `S{NN-1}/SUMMARY.md` exists (e.g., `S02/SUMMARY.md` when writing Step 3). If it does, read it — it describes what was built in that step.
+1. Check if `S{NN-1}/SUMMARY.md` exists (e.g., `S02/SUMMARY.md` when writing Step 3). If it does, read it — it describes what was built in that step. Pay special attention to the "Decisions Made" section.
 2. Check if `S{NN-1}/REVIEW.md` exists. If it does, read it — it contains the review feedback on that step's implementation.
-3. Also look for any other files in the previous step folder (e.g., implementation files referenced in SUMMARY.md) that might help you understand the code changes made.
+3. Check if `S{NN-1}/DECISIONS.md` exists. If it does, read it — it contains accumulated architectural decisions from all steps before N-1. **Important:** for Step 2 (N=2), `S01/DECISIONS.md` does not exist — Step 1 produces no DECISIONS.md. Handle this gracefully: proceed using only `SUMMARY.md` and `REVIEW.md`. This is expected, not an error.
+4. Also look for any other files in the previous step folder (e.g., implementation files referenced in SUMMARY.md) that might help you understand the code changes made.
 
 This is **optional enrichment only**. Proceed gracefully if these files don't exist or are empty — never treat them as prerequisites. If there is no previous step (you are Step 1), skip this section entirely.
+
+### Write DECISIONS.md (Step 2+, after reading previous context)
+
+For Step 1, skip this step entirely — there are no prior decisions to carry forward.
+
+For Step 2+, produce `S{NN}/DECISIONS.md` by merging accumulated decisions with new ones. This file serves as the accumulating decision log for all downstream steps. Follow these rules:
+
+- **Read inputs:** Extract "Decisions Made" from the previous step's `SUMMARY.md`. Read accumulated decisions from the previous step's `DECISIONS.md` (if it exists — for Step 2, only SUMMARY.md is available).
+- **Selective accumulation — forward-looking only:** Include only decisions that may impact future steps. Exclude implementation-only details, local design choices with no downstream consequences, and one-off decisions already fully applied in the completed step.
+- **Deduplication:** If the same decision appears across multiple prior steps, keep exactly one entry — do not repeat the same decision under different headings. Merge related decisions where they express the same underlying choice.
+- **Plan deviations are high-priority must-carry decisions:** If a step adjusted or changed the original `PLAN.md` (e.g., moved a function to a different file than planned, chose a different architecture), this is critical context for downstream agents. Mark these clearly — group them under a "Plan Deviations" section or flag them explicitly.
+- **Rephrase for context:** Don't just append verbatim — rephrase decisions to fit the current step's context and make them actionable for downstream consumers. Group related decisions logically rather than listing them chronologically.
+- **Be brief and concise:** Each decision entry should be 1–2 sentences: state the decision, the affected files/areas, and downstream impact. Do not overexplain.
+
+Write `S{NN}/DECISIONS.md` as a structured markdown document with a heading per decision category (e.g., "Plan Deviations", "Architecture Decisions", "File Placement").
 
 ### Step 4: Research supporting context
 
@@ -98,6 +114,7 @@ You may include short interface signatures (type stubs) to clarify contracts, bu
 ### Approach and Decisions
 
 <Key technical decisions the executor should follow. E.g., "follow the pattern established in create-plan.ts", "use resolveGoalDir() from utils.ts for path resolution".>
+If relevant prior decisions exist in `DECISIONS.md` (Step 2+), reference those that directly affect this step's implementation here — particularly any plan deviations (where the actual implementation differs from PLAN.md). This ensures the executor sees correct context without needing to read separate files. Do not duplicate DECISIONS.md verbatim; cross-reference and explain relevance to this step only.
 
 ## Dependencies
 
@@ -176,7 +193,7 @@ Execute in this priority: unit → integration → programmatic → manual.>
 
 ### Step 7: Signal completion
 
-When both `TASK.md` and `TEST.md` are written and confirmed, call the `pio_mark_complete` tool to validate that all expected outputs have been produced. If validation reports missing files, produce them before calling again. Do not end your work without calling this tool.
+When both `TASK.md` and `TEST.md` are written and confirmed (and `DECISIONS.md` for Step 2+), call the `pio_mark_complete` tool to validate that all expected outputs have been produced. If validation reports missing files, produce them before calling again. Do not end your work without calling this tool.
 
 ## Guidelines
 

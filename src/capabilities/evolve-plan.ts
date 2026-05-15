@@ -17,6 +17,7 @@ import { createGoalState } from "../goal-state";
 const PLAN_FILE = "PLAN.md";
 const TASK_FILE = "TASK.md";
 const TEST_FILE = "TEST.md";
+const DECISIONS_FILE = "DECISIONS.md";
 
 // ---------------------------------------------------------------------------
 // Capability config — single source of truth for this capability's session shape
@@ -29,7 +30,11 @@ function resolveEvolveValidation(_workingDir: string, params?: Record<string, un
     throw new Error("stepNumber is required for evolve-plan. Ensure the task was enqueued with a valid step number.");
   }
   const folder = stepFolderName(stepNumber);
-  return { files: [`${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`] };
+  const files: string[] = [`${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`];
+  if (stepNumber > 1) {
+    files.push(`${folder}/${DECISIONS_FILE}`);
+  }
+  return { files };
 }
 
 function resolveEvolveWriteAllowlist(_workingDir: string, params?: Record<string, unknown>): string[] {
@@ -38,7 +43,11 @@ function resolveEvolveWriteAllowlist(_workingDir: string, params?: Record<string
     throw new Error("stepNumber is required for evolve-plan. Ensure the task was enqueued with a valid step number.");
   }
   const folder = stepFolderName(stepNumber);
-  return ["COMPLETED", `${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`];
+  const allowlist: string[] = ["COMPLETED", `${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`];
+  if (stepNumber > 1) {
+    allowlist.push(`${folder}/${DECISIONS_FILE}`);
+  }
+  return allowlist;
 }
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {

@@ -129,6 +129,78 @@ describe("resolveEvolveWriteAllowlist", () => {
 });
 
 // ---------------------------------------------------------------------------
+// resolveEvolveValidation — DECISIONS.md for step > 1
+// ---------------------------------------------------------------------------
+
+describe("resolveEvolveValidation with DECISIONS_FILE", () => {
+  it("excludes DECISIONS.md for stepNumber=1", async () => {
+    // Arrange: step 1 should produce only TASK.md and TEST.md
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1 };
+
+    // Act
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    // Assert: exactly 2 files, no DECISIONS.md
+    expect(result?.validation?.files).toEqual(["S01/TASK.md", "S01/TEST.md"]);
+  });
+
+  it("includes DECISIONS.md for stepNumber=2", async () => {
+    // Arrange: step 2 should include DECISIONS.md alongside TASK.md and TEST.md
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2 };
+
+    // Act
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    // Assert: exactly 3 files, DECISIONS.md is last
+    expect(result?.validation?.files).toEqual(["S02/TASK.md", "S02/TEST.md", "S02/DECISIONS.md"]);
+  });
+
+  it("includes DECISIONS.md for stepNumber=3", async () => {
+    // Arrange: step 3+ should also include DECISIONS.md
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 3 };
+
+    // Act
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    // Assert: contains S03/DECISIONS.md, total length is 3
+    expect(result?.validation?.files).toContain("S03/DECISIONS.md");
+    expect(result?.validation?.files?.length).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveEvolveWriteAllowlist — DECISIONS.md for step > 1
+// ---------------------------------------------------------------------------
+
+describe("resolveEvolveWriteAllowlist with DECISIONS_FILE", () => {
+  it("excludes DECISIONS.md from write allowlist for stepNumber=1", async () => {
+    // Arrange: step 1 should not include DECISIONS.md in the write allowlist
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1 };
+
+    // Act
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    // Assert: no DECISIONS.md in the allowlist
+    expect(result?.writeAllowlist?.some((p) => p.includes("DECISIONS.md"))).toBe(false);
+  });
+
+  it("includes DECISIONS.md in write allowlist for stepNumber=2", async () => {
+    // Arrange: step 2 should include DECISIONS.md alongside existing entries
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2 };
+
+    // Act
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    // Assert: contains all expected files including DECISIONS.md (total length is 4)
+    expect(result?.writeAllowlist).toContain("COMPLETED");
+    expect(result?.writeAllowlist).toContain("S02/TASK.md");
+    expect(result?.writeAllowlist).toContain("S02/TEST.md");
+    expect(result?.writeAllowlist).toContain("S02/DECISIONS.md");
+    expect(result?.writeAllowlist?.length).toBe(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // validateAndFindNextStep — COMPLETED pre-launch guard
 // ---------------------------------------------------------------------------
 

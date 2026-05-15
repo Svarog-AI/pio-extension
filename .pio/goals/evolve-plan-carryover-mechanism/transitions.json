@@ -1,0 +1,85 @@
+[
+  {
+    "timestamp": "2026-05-15T14:14:34.380Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "evolve-plan-carryover-mechanism",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "evolve-plan-carryover-mechanism",
+        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/evolve-plan-carryover-mechanism.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/evolve-plan-carryover-mechanism.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-15T14:16:21.859Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "evolve-plan-carryover-mechanism",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "evolve-plan-carryover-mechanism",
+        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/evolve-plan-carryover-mechanism.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/evolve-plan-carryover-mechanism.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-15T14:30:51.583Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "evolve-plan-carryover-mechanism",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "evolve-plan-carryover-mechanism",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "evolve-plan-carryover-mechanism",
+          "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/evolve-plan-carryover-mechanism.md",
+          "fileCleanup": [
+            "/home/aleksj/git/pio-extension/.pio/issues/evolve-plan-carryover-mechanism.md"
+          ],
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-15T15:14:40.511Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "evolve-plan-carryover-mechanism",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-15T18:24:10.815Z",
+    "from": "execute-task",
+    "to": "review-code",
+    "params": {
+      "goalName": "evolve-plan-carryover-mechanism",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-15T18:46:23.314Z",
+    "from": "review-code",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "evolve-plan-carryover-mechanism",
+      "stepNumber": 2
+    }
+  }
+]

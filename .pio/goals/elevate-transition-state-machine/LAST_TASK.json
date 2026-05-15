@@ -1,43 +1,98 @@
 {
-  "capability": "review-code",
+  "capability": "execute-task",
   "params": {
     "goalName": "elevate-transition-state-machine",
-    "stepNumber": 1,
+    "stepNumber": 3,
     "_sessionContext": {
       "goalName": "elevate-transition-state-machine",
-      "stepNumber": 1,
+      "stepNumber": 3,
       "_sessionContext": {
         "goalName": "elevate-transition-state-machine",
-        "stepNumber": 1,
+        "stepNumber": 3,
         "_sessionContext": {
           "goalName": "elevate-transition-state-machine",
-          "stepNumber": 1,
+          "stepNumber": 3,
           "_sessionContext": {
             "goalName": "elevate-transition-state-machine",
-            "stepNumber": 1,
+            "stepNumber": 3,
             "_sessionContext": {
               "goalName": "elevate-transition-state-machine",
-              "stepNumber": 1,
+              "stepNumber": 3,
               "_sessionContext": {
                 "goalName": "elevate-transition-state-machine",
-                "stepNumber": 1,
+                "stepNumber": 3,
                 "_sessionContext": {
                   "goalName": "elevate-transition-state-machine",
-                  "initialMessage": "The transition system (currently `CAPABILITY_TRANSITIONS` in utils.ts) is the core orchestrator of pio but is underdeveloped — a simple Record mapping capability names to next-capability strings or resolver callbacks. This goal elevates it into a proper state machine architecture.\n\n## Current Problems\n\n**Scattered state:** Goal state is spread across many filesystem markers that each capability reads independently:\n- `APPROVED` / `REJECTED` / `COMPLETED` / `BLOCKED` marker files in step folders\n- `.pio/session-queue/task-{goalName}.json` for pending tasks\n- `<goalDir>/LAST_TASK.json` for last completed task\n- `discoverNextStep()` scans filesystem each time\n\n**Ad-hoc transitions:** `CAPABILITY_TRANSITIONS` is a plain Record. The `review-code` resolver reads the filesystem directly (`fs.existsSync`) to decide between APPROVED → evolve-plan vs REJECTED → execute-task. This mixes I/O with routing logic.\n\n**No shared state model:** Every capability that needs to know \"what's the current step status\" or \"is there a pending task\" calls its own util functions. No single source of truth.\n\n## Desired Architecture\n\n### 1. GoalState DTO\nA serializable object representing the complete state of a goal workspace, materialized from filesystem:\n\n```typescript\ninterface StepStatus {\n  stepNumber: number;\n  folderName: string;        // \"S01\"\n  hasTask: boolean;          // TASK.md exists\n  hasTest: boolean;          // TEST.md exists  \n  hasSummary: boolean;       // SUMMARY.md exists\n  status: \"defined\" | \"implemented\" | \"approved\" | \"rejected\" | \"blocked\" | \"pending\";\n}\n\ninterface GoalState {\n  goalName: string;\n  hasGoal: boolean;          // GOAL.md exists\n  hasPlan: boolean;          // PLAN.md exists\n  totalPlanSteps?: number;   // parsed from PLAN.md if possible\n  steps: StepStatus[];\n  currentStepNumber?: number; // next step to work on\n  pendingTask?: { capability: string; params: Record<string, unknown> };\n  lastCompleted?: { capability: string; params: Record<string, unknown>; timestamp: string };\n}\n```\n\n### 2. State Machine Module\nReplace `CAPABILITY_TRANSITIONS` Record with a proper state machine:\n\n- `StateMachine` class or module that owns transition rules\n- Transitions are functions of `(currentCapability, GoalState)` → `TransitionResult`\n- No filesystem I/O inside transition logic — it receives a fully-hydrated state object\n- Capabilities no longer call scattered util functions; they receive state context\n\n### 3. State Materialization Layer\nA `materializeGoalState(goalDir): GoalState` function that:\n- Reads the goal directory once and produces the complete DTO\n- Is called at session startup, made available in session config/params\n- Cached per-session to avoid redundant reads\n\n### 4. State Injection Into Sessions\nThe materialized state should be injected into capability sessions so agents know exactly where they stand without guessing from file existence patterns.\n\n## Additional Opportunities to Explore\n\n1. **Transition validation at dev time:** Can we statically verify all transitions are reachable? Detect dead states or unreachable transitions?\n2. **State persistence cache:** Write `GoalState` as JSON to disk (e.g., `<goalDir>/.state.json`) so it doesn't need full rescan on every session start. Regenerate only when files change.\n3. **Capability-state contracts:** Each capability declares which state fields it reads and produces, enabling dead-code and compatibility analysis.\n4. **Transition audit log:** Record transitions to `<goalDir>/transitions.json` — valuable for debugging complex workflows and agent behavior.\n5. **Back-transitions:** Currently only `review-code → execute-task` (reject) goes backward. Should there be explicit skip, undo, or \"mark blocked\" transitions?\n6. **Multi-goal state:** Could a global project state aggregate all goal states for cross-goal visibility?\n7. **State in prompts:** Inject current GoalState as structured context into session prompts so agents have complete awareness without reading files themselves.\n\n## Dependencies\n\nThis work depends on the `refactor-module-boundaries` goal being completed first (transition logic must be extracted from utils.ts before it can be restructured).",
-                  "capability": "create-goal",
-                  "stepNumber": 1
+                  "stepNumber": 2,
+                  "_sessionContext": {
+                    "goalName": "elevate-transition-state-machine",
+                    "stepNumber": 2,
+                    "_sessionContext": {
+                      "goalName": "elevate-transition-state-machine",
+                      "stepNumber": 2,
+                      "_sessionContext": {
+                        "goalName": "elevate-transition-state-machine",
+                        "stepNumber": 2,
+                        "_sessionContext": {
+                          "goalName": "elevate-transition-state-machine",
+                          "stepNumber": 2,
+                          "_sessionContext": {
+                            "goalName": "elevate-transition-state-machine",
+                            "stepNumber": 1,
+                            "_sessionContext": {
+                              "goalName": "elevate-transition-state-machine",
+                              "stepNumber": 1,
+                              "_sessionContext": {
+                                "goalName": "elevate-transition-state-machine",
+                                "stepNumber": 1,
+                                "_sessionContext": {
+                                  "goalName": "elevate-transition-state-machine",
+                                  "stepNumber": 1,
+                                  "_sessionContext": {
+                                    "goalName": "elevate-transition-state-machine",
+                                    "stepNumber": 1,
+                                    "_sessionContext": {
+                                      "goalName": "elevate-transition-state-machine",
+                                      "stepNumber": 1,
+                                      "_sessionContext": {
+                                        "goalName": "elevate-transition-state-machine",
+                                        "initialMessage": "The transition system (currently `CAPABILITY_TRANSITIONS` in utils.ts) is the core orchestrator of pio but is underdeveloped — a simple Record mapping capability names to next-capability strings or resolver callbacks. This goal elevates it into a proper state machine architecture.\n\n## Current Problems\n\n**Scattered state:** Goal state is spread across many filesystem markers that each capability reads independently:\n- `APPROVED` / `REJECTED` / `COMPLETED` / `BLOCKED` marker files in step folders\n- `.pio/session-queue/task-{goalName}.json` for pending tasks\n- `<goalDir>/LAST_TASK.json` for last completed task\n- `discoverNextStep()` scans filesystem each time\n\n**Ad-hoc transitions:** `CAPABILITY_TRANSITIONS` is a plain Record. The `review-code` resolver reads the filesystem directly (`fs.existsSync`) to decide between APPROVED → evolve-plan vs REJECTED → execute-task. This mixes I/O with routing logic.\n\n**No shared state model:** Every capability that needs to know \"what's the current step status\" or \"is there a pending task\" calls its own util functions. No single source of truth.\n\n## Desired Architecture\n\n### 1. GoalState DTO\nA serializable object representing the complete state of a goal workspace, materialized from filesystem:\n\n```typescript\ninterface StepStatus {\n  stepNumber: number;\n  folderName: string;        // \"S01\"\n  hasTask: boolean;          // TASK.md exists\n  hasTest: boolean;          // TEST.md exists  \n  hasSummary: boolean;       // SUMMARY.md exists\n  status: \"defined\" | \"implemented\" | \"approved\" | \"rejected\" | \"blocked\" | \"pending\";\n}\n\ninterface GoalState {\n  goalName: string;\n  hasGoal: boolean;          // GOAL.md exists\n  hasPlan: boolean;          // PLAN.md exists\n  totalPlanSteps?: number;   // parsed from PLAN.md if possible\n  steps: StepStatus[];\n  currentStepNumber?: number; // next step to work on\n  pendingTask?: { capability: string; params: Record<string, unknown> };\n  lastCompleted?: { capability: string; params: Record<string, unknown>; timestamp: string };\n}\n```\n\n### 2. State Machine Module\nReplace `CAPABILITY_TRANSITIONS` Record with a proper state machine:\n\n- `StateMachine` class or module that owns transition rules\n- Transitions are functions of `(currentCapability, GoalState)` → `TransitionResult`\n- No filesystem I/O inside transition logic — it receives a fully-hydrated state object\n- Capabilities no longer call scattered util functions; they receive state context\n\n### 3. State Materialization Layer\nA `materializeGoalState(goalDir): GoalState` function that:\n- Reads the goal directory once and produces the complete DTO\n- Is called at session startup, made available in session config/params\n- Cached per-session to avoid redundant reads\n\n### 4. State Injection Into Sessions\nThe materialized state should be injected into capability sessions so agents know exactly where they stand without guessing from file existence patterns.\n\n## Additional Opportunities to Explore\n\n1. **Transition validation at dev time:** Can we statically verify all transitions are reachable? Detect dead states or unreachable transitions?\n2. **State persistence cache:** Write `GoalState` as JSON to disk (e.g., `<goalDir>/.state.json`) so it doesn't need full rescan on every session start. Regenerate only when files change.\n3. **Capability-state contracts:** Each capability declares which state fields it reads and produces, enabling dead-code and compatibility analysis.\n4. **Transition audit log:** Record transitions to `<goalDir>/transitions.json` — valuable for debugging complex workflows and agent behavior.\n5. **Back-transitions:** Currently only `review-code → execute-task` (reject) goes backward. Should there be explicit skip, undo, or \"mark blocked\" transitions?\n6. **Multi-goal state:** Could a global project state aggregate all goal states for cross-goal visibility?\n7. **State in prompts:** Inject current GoalState as structured context into session prompts so agents have complete awareness without reading files themselves.\n\n## Dependencies\n\nThis work depends on the `refactor-module-boundaries` goal being completed first (transition logic must be extracted from utils.ts before it can be restructured).",
+                                        "capability": "create-goal",
+                                        "stepNumber": 1
+                                      },
+                                      "capability": "create-plan"
+                                    },
+                                    "capability": "evolve-plan"
+                                  },
+                                  "capability": "execute-task"
+                                },
+                                "capability": "review-code"
+                              },
+                              "capability": "execute-task"
+                            },
+                            "capability": "review-code"
+                          },
+                          "capability": "evolve-plan"
+                        },
+                        "capability": "execute-task"
+                      },
+                      "capability": "review-code"
+                    },
+                    "capability": "execute-task"
+                  },
+                  "capability": "review-code"
                 },
-                "capability": "create-plan"
+                "capability": "evolve-plan"
               },
-              "capability": "evolve-plan"
+              "capability": "execute-task"
             },
-            "capability": "execute-task"
+            "capability": "review-code"
           },
-          "capability": "review-code"
+          "capability": "execute-task"
         },
-        "capability": "execute-task"
+        "capability": "review-code"
       },
-      "capability": "review-code"
+      "capability": "execute-task"
     }
   }
 }

@@ -8,6 +8,7 @@ import { launchCapability } from "./session-capability";
 import { resolveGoalDir, stepFolderName } from "../fs-utils";
 import { enqueueTask } from "../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
+import { createGoalState, type GoalState } from "../goal-state";
 
 // ---------------------------------------------------------------------------
 // Capability config — single source of truth for this capability's session shape
@@ -66,25 +67,30 @@ const PLAN_FILE = "PLAN.md";
 const GOAL_FILE = "GOAL.md";
 const TASK_FILE = "TASK.md";
 const TEST_FILE = "TEST.md";
-const COMPLETED_MARKER = "COMPLETED";
-const BLOCKED_MARKER = "BLOCKED";
+
 const SUMMARY_FILE = "SUMMARY.md";
+
+/**
+ * Internal helper: check whether a step is ready for execution given a pre-built GoalState.
+ * Both TASK.md and TEST.md must exist, and no COMPLETED/BLOCKED marker should be present.
+ *
+ * @param state - Pre-built GoalState to avoid redundant filesystem scans
+ * @param stepNumber - The step number to check
+ */
+function _isStepReady(state: GoalState, stepNumber: number): boolean {
+  const step = state.steps().find(s => s.stepNumber === stepNumber);
+  if (!step) return false;
+
+  // "defined" status means TASK.md + TEST.md exist with no COMPLETED/BLOCKED/APPROVED/REJECTED markers.
+  return step.status() === "defined";
+}
 
 /**
  * Check whether a step is ready for execution: both TASK.md and TEST.md exist,
  * but neither COMPLETED nor BLOCKED marker has been written yet.
  */
 export function isStepReady(goalDir: string, stepNumber: number): boolean {
-  const folder = stepFolderName(stepNumber);
-  const stepDir = path.join(goalDir, folder);
-  if (!fs.existsSync(stepDir)) return false;
-
-  const hasTask = fs.existsSync(path.join(stepDir, TASK_FILE));
-  const hasTest = fs.existsSync(path.join(stepDir, TEST_FILE));
-  const hasCompleted = fs.existsSync(path.join(stepDir, COMPLETED_MARKER));
-  const hasBlocked = fs.existsSync(path.join(stepDir, BLOCKED_MARKER));
-
-  return hasTask && hasTest && !hasCompleted && !hasBlocked;
+  return _isStepReady(createGoalState(goalDir), stepNumber);
 }
 
 // ---------------------------------------------------------------------------
@@ -116,39 +122,35 @@ async function validateAndFindNextStep(
     };
   }
 
-  const goalPath = path.join(goalDir, GOAL_FILE);
-  if (!fs.existsSync(goalPath)) {
+  const state = createGoalState(goalDir);
+
+  if (!state.hasGoal()) {
     return {
       goalDir,
       ready: false,
-      error: `GOAL.md not found at "${goalPath}". Create a goal first with /pio-create-goal ${name}.`,
+      error: `GOAL.md not found at "${path.join(goalDir, GOAL_FILE)}". Create a goal first with /pio-create-goal ${name}.`,
     };
   }
 
-  const planPath = path.join(goalDir, PLAN_FILE);
-  if (!fs.existsSync(planPath)) {
+  if (!state.hasPlan()) {
     return {
       goalDir,
       ready: false,
-      error: `PLAN.md not found at "${planPath}". Create a plan first with /pio-create-plan ${name}.`,
+      error: `PLAN.md not found at "${path.join(goalDir, PLAN_FILE)}". Create a plan first with /pio-create-plan ${name}.`,
     };
   }
 
   // Find the first step number (starting at 1) that is ready for execution.
+  // Reuse the existing state to avoid redundant filesystem scans.
+  const allSteps = state.steps();
   for (let i = 1; ; i++) {
-    if (isStepReady(goalDir, i)) {
+    if (_isStepReady(state, i)) {
       return { goalDir, ready: true, stepNumber: i };
     }
 
-    // If we reach a step where the folder doesn't exist or specs are missing,
+    // If we reach a step where the folder doesn't exist at all in state.steps(),
     // there's no ready step beyond this point.
-    const folder = stepFolderName(i);
-    const stepDir = path.join(goalDir, folder);
-    if (!fs.existsSync(stepDir)) break;
-
-    const hasTask = fs.existsSync(path.join(stepDir, TASK_FILE));
-    const hasTest = fs.existsSync(path.join(stepDir, TEST_FILE));
-    if (!hasTask || !hasTest) break;
+    if (!allSteps.some(s => s.stepNumber === i)) break;
   }
 
   return {
@@ -179,10 +181,11 @@ async function validateExplicitStep(
     };
   }
 
+  const state = createGoalState(goalDir);
   const folder = stepFolderName(stepNumber);
-  const stepDir = path.join(goalDir, folder);
+  const step = state.steps().find(s => s.stepNumber === stepNumber);
 
-  if (!fs.existsSync(stepDir)) {
+  if (!step) {
     return {
       goalDir,
       ready: false,
@@ -190,13 +193,10 @@ async function validateExplicitStep(
     };
   }
 
-  const hasTask = fs.existsSync(path.join(stepDir, TASK_FILE));
-  const hasTest = fs.existsSync(path.join(stepDir, TEST_FILE));
-
-  if (!hasTask || !hasTest) {
+  if (!step.hasTask() || !step.hasTest()) {
     const missing: string[] = [];
-    if (!hasTask) missing.push(TASK_FILE);
-    if (!hasTest) missing.push(TEST_FILE);
+    if (!step.hasTask()) missing.push(TASK_FILE);
+    if (!step.hasTest()) missing.push(TEST_FILE);
     return {
       goalDir,
       ready: false,
@@ -204,11 +204,9 @@ async function validateExplicitStep(
     };
   }
 
-  // Check if already completed or blocked
-  const hasCompleted = fs.existsSync(path.join(stepDir, COMPLETED_MARKER));
-  const hasBlocked = fs.existsSync(path.join(stepDir, BLOCKED_MARKER));
+  const currentStatus = step.status();
 
-  if (hasCompleted) {
+  if (currentStatus === "implemented" || currentStatus === "approved" || currentStatus === "rejected") {
     return {
       goalDir,
       ready: false,
@@ -216,7 +214,7 @@ async function validateExplicitStep(
     };
   }
 
-  if (hasBlocked) {
+  if (currentStatus === "blocked") {
     return {
       goalDir,
       ready: false,

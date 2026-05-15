@@ -8,6 +8,7 @@ import { launchCapability } from "./session-capability";
 import { resolveGoalDir, stepFolderName } from "../fs-utils";
 import { enqueueTask } from "../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
+import { createGoalState, type GoalState, type StepStatus } from "../goal-state";
 
 // ---------------------------------------------------------------------------
 // Capability config — single source of truth for this capability's session shape
@@ -84,25 +85,51 @@ const PLAN_FILE = "PLAN.md";
 const GOAL_FILE = "GOAL.md";
 const TASK_FILE = "TASK.md";
 const TEST_FILE = "TEST.md";
-const COMPLETED_MARKER = "COMPLETED";
-const BLOCKED_MARKER = "BLOCKED";
+
 const SUMMARY_FILE = "SUMMARY.md";
 const REVIEW_FILE = "REVIEW.md";
+
+/**
+ * Shared check: is a step reviewable (COMPLETED + SUMMARY.md, not BLOCKED)?
+ * Used by both `isStepReviewable` and `findMostRecentCompletedStep` to avoid duplication.
+ *
+ * @param step - A StepStatus from GoalState
+ */
+function _isReviewable(step: StepStatus): boolean {
+  // status() === "implemented" means COMPLETED exists and BLOCKED doesn't (BLOCKED has higher priority).
+  // We also need SUMMARY.md — check that explicitly since it's not part of the status computation.
+  return step.status() === "implemented" && step.hasSummary();
+}
 
 /**
  * Check whether a step has been completed and is ready for review:
  * COMPLETED marker exists, SUMMARY.md exists, and no BLOCKED marker.
  */
 export function isStepReviewable(goalDir: string, stepNumber: number): boolean {
-  const folder = stepFolderName(stepNumber);
-  const stepDir = path.join(goalDir, folder);
-  if (!fs.existsSync(stepDir)) return false;
+  const state = createGoalState(goalDir);
+  const step = state.steps().find(s => s.stepNumber === stepNumber);
+  if (!step) return false;
 
-  const hasCompleted = fs.existsSync(path.join(stepDir, COMPLETED_MARKER));
-  const hasSummary = fs.existsSync(path.join(stepDir, SUMMARY_FILE));
-  const hasBlocked = fs.existsSync(path.join(stepDir, BLOCKED_MARKER));
+  return _isReviewable(step);
+}
 
-  return hasCompleted && hasSummary && !hasBlocked;
+/**
+ * Internal helper: find the most recently completed step given a pre-built GoalState.
+ * Scans S01/, S02/, ... in descending order.
+ *
+ * @param state - Pre-built GoalState to avoid redundant filesystem scans
+ */
+function _findMostRecentCompletedStep(state: GoalState): number | undefined {
+  const allSteps = state.steps(); // sorted ascending by stepNumber
+
+  // Scan from highest to lowest for a reviewable step
+  for (let i = allSteps.length - 1; i >= 0; i--) {
+    if (_isReviewable(allSteps[i])) {
+      return allSteps[i].stepNumber;
+    }
+  }
+
+  return undefined;
 }
 
 /**
@@ -110,23 +137,7 @@ export function isStepReviewable(goalDir: string, stepNumber: number): boolean {
  * Returns the step number or undefined if no completed step found.
  */
 export function findMostRecentCompletedStep(goalDir: string): number | undefined {
-  // First, find the highest step folder that exists
-  let maxStep = 0;
-  for (let i = 1; ; i++) {
-    const folder = stepFolderName(i);
-    const stepDir = path.join(goalDir, folder);
-    if (!fs.existsSync(stepDir)) break;
-    maxStep = i;
-  }
-
-  // Scan from highest to lowest for a reviewable step
-  for (let i = maxStep; i >= 1; i--) {
-    if (isStepReviewable(goalDir, i)) {
-      return i;
-    }
-  }
-
-  return undefined;
+  return _findMostRecentCompletedStep(createGoalState(goalDir));
 }
 
 // ---------------------------------------------------------------------------
@@ -155,68 +166,60 @@ async function validateStepForReview(
     };
   }
 
-  const goalPath = path.join(goalDir, GOAL_FILE);
-  if (!fs.existsSync(goalPath)) {
+  const state = createGoalState(goalDir);
+
+  if (!state.hasGoal()) {
     return {
       goalDir,
       ready: false,
-      error: `GOAL.md not found at "${goalPath}". Create a goal first with /pio-create-goal ${name}.`,
+      error: `GOAL.md not found at "${path.join(goalDir, GOAL_FILE)}". Create a goal first with /pio-create-goal ${name}.`,
     };
   }
 
-  const planPath = path.join(goalDir, PLAN_FILE);
-  if (!fs.existsSync(planPath)) {
+  if (!state.hasPlan()) {
     return {
       goalDir,
       ready: false,
-      error: `PLAN.md not found at "${planPath}". Create a plan first with /pio-create-plan ${name}.`,
+      error: `PLAN.md not found at "${path.join(goalDir, PLAN_FILE)}". Create a plan first with /pio-create-plan ${name}.`,
     };
   }
 
-  if (!isStepReviewable(goalDir, stepNumber)) {
-    const folder = stepFolderName(stepNumber);
-    const stepDir = path.join(goalDir, folder);
+  const folder = stepFolderName(stepNumber);
+  const step = state.steps().find(s => s.stepNumber === stepNumber);
 
-    if (!fs.existsSync(stepDir)) {
-      return {
-        goalDir,
-        ready: false,
-        error: `Step ${stepNumber} folder "${folder}/" does not exist. Run /pio-evolve-plan ${name} to generate specs first.`,
-      };
-    }
-
-    const hasCompleted = fs.existsSync(path.join(stepDir, COMPLETED_MARKER));
-    if (!hasCompleted) {
-      return {
-        goalDir,
-        ready: false,
-        error: `Step ${stepNumber} is not yet completed. Run /pio-execute-task ${name} ${stepNumber} first.`,
-      };
-    }
-
-    const hasSummary = fs.existsSync(path.join(stepDir, SUMMARY_FILE));
-    if (!hasSummary) {
-      return {
-        goalDir,
-        ready: false,
-        error: `Step ${stepNumber} is missing SUMMARY.md. Re-run /pio-execute-task ${name} ${stepNumber}.`,
-      };
-    }
-
-    const hasBlocked = fs.existsSync(path.join(stepDir, BLOCKED_MARKER));
-    if (hasBlocked) {
-      return {
-        goalDir,
-        ready: false,
-        error: `Step ${stepNumber} is marked as BLOCKED. Resolve the blocking issue first.`,
-      };
-    }
-
-    // COMPLETED + SUMMARY but we got here — shouldn't happen, but guard anyway
+  if (!step) {
     return {
       goalDir,
       ready: false,
-      error: `Step ${stepNumber} is not in a reviewable state.`,
+      error: `Step ${stepNumber} folder "${folder}/" does not exist. Run /pio-evolve-plan ${name} to generate specs first.`,
+    };
+  }
+
+  const status = step.status();
+
+  if (status === "blocked") {
+    return {
+      goalDir,
+      ready: false,
+      error: `Step ${stepNumber} is marked as BLOCKED. Resolve the blocking issue first.`,
+    };
+  }
+
+  // Not implemented yet (pending or defined, or never had COMPLETED)
+  if (status !== "implemented") {
+    return {
+      goalDir,
+      ready: false,
+      error: `Step ${stepNumber} is not yet completed. Run /pio-execute-task ${name} ${stepNumber} first.`,
+    };
+  }
+
+  // Has COMPLETED, no BLOCKED — check for SUMMARY.md
+  if (!step.hasSummary()) {
+    return {
+      goalDir,
+      ready: false,
+      error: `Step ${stepNumber} is missing SUMMARY.md. Re-run /pio-execute-task ${name} ${stepNumber}.`,
     };
   }
 
@@ -243,25 +246,26 @@ async function validateAndFindReviewStep(
     };
   }
 
-  const goalPath = path.join(goalDir, GOAL_FILE);
-  if (!fs.existsSync(goalPath)) {
+  const state = createGoalState(goalDir);
+
+  if (!state.hasGoal()) {
     return {
       goalDir,
       ready: false,
-      error: `GOAL.md not found at "${goalPath}". Create a goal first with /pio-create-goal ${name}.`,
+      error: `GOAL.md not found at "${path.join(goalDir, GOAL_FILE)}". Create a goal first with /pio-create-goal ${name}.`,
     };
   }
 
-  const planPath = path.join(goalDir, PLAN_FILE);
-  if (!fs.existsSync(planPath)) {
+  if (!state.hasPlan()) {
     return {
       goalDir,
       ready: false,
-      error: `PLAN.md not found at "${planPath}". Create a plan first with /pio-create-plan ${name}.`,
+      error: `PLAN.md not found at "${path.join(goalDir, PLAN_FILE)}". Create a plan first with /pio-create-plan ${name}.`,
     };
   }
 
-  const stepNumber = findMostRecentCompletedStep(goalDir);
+  // Reuse the existing state to avoid redundant filesystem scans.
+  const stepNumber = _findMostRecentCompletedStep(state);
   if (stepNumber === undefined) {
     return {
       goalDir,

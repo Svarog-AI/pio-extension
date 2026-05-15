@@ -5,9 +5,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { launchCapability } from "./session-capability";
-import { resolveGoalDir, stepFolderName, discoverNextStep } from "../fs-utils";
+import { resolveGoalDir, stepFolderName } from "../fs-utils";
 import { enqueueTask } from "../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
+import { createGoalState } from "../goal-state";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -86,16 +87,18 @@ export async function validateAndFindNextStep(
     };
   }
 
-  const planPath = path.join(goalDir, PLAN_FILE);
-  if (!fs.existsSync(planPath)) {
+  const state = createGoalState(goalDir);
+
+  if (!state.hasPlan()) {
     return {
       goalDir,
       ready: false,
-      error: `PLAN.md not found at "${planPath}". Create a plan first with /pio-create-plan ${name}.`,
+      error: `PLAN.md not found at "${path.join(goalDir, PLAN_FILE)}". Create a plan first with /pio-create-plan ${name}.`,
     };
   }
 
   // Pre-launch guard: if COMPLETED already exists, all steps are specified — do not relaunch.
+  // This is a root-level marker not represented in GoalState; keep as direct fs check.
   const completedPath = path.join(goalDir, "COMPLETED");
   if (fs.existsSync(completedPath)) {
     return {
@@ -105,9 +108,8 @@ export async function validateAndFindNextStep(
     };
   }
 
-  // Find the highest-numbered step folder that has both TASK.md and TEST.md.
-  // Return N + 1 (or 1 if no defined steps found).
-  const nextStep = discoverNextStep(goalDir);
+  // Find next step via GoalState.
+  const nextStep = state.currentStepNumber();
 
   return { goalDir, ready: true, stepNumber: nextStep };
 }

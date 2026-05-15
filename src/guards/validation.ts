@@ -5,7 +5,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as jsyaml from "js-yaml";
 import type { ValidationRule } from "../types";
-import { resolveNextCapability } from "../transitions";
+import { resolveTransition, recordTransition } from "../state-machine";
+import { createGoalState } from "../goal-state";
 import { getSessionParams, getStepNumber } from "../capabilities/session-capability";
 import { enqueueTask, writeLastTask } from "../queues";
 import { resolveGoalDir, stepFolderName } from "../fs-utils";
@@ -372,8 +373,9 @@ const markCompleteTool = defineTool({
       // Get canonical stepNumber from enriched params (auto-discovered if needed)
       const stepNumber = getStepNumber();
 
+      const state = createGoalState(dir);
       const nextTask = capability
-        ? resolveNextCapability(capability, { capability, workingDir: dir, params: { goalName, stepNumber, _sessionContext: sessionParams } })
+        ? resolveTransition(capability, state, { goalName, stepNumber, _sessionContext: sessionParams })
         : undefined;
       if (nextTask && goalName && capability) {
         try {
@@ -396,6 +398,9 @@ const markCompleteTool = defineTool({
             },
           });
 
+          // Record transition audit entry
+          recordTransition(dir, capability, nextTask);
+
           // Record the completed task in the goal directory
           const goalDir = resolveGoalDir(cwd, goalName);
           writeLastTask(goalDir, {
@@ -407,18 +412,10 @@ const markCompleteTool = defineTool({
         } catch (err) {
           console.warn(`pio: failed to enqueue next task: ${err}`);
         }
-      } else if (nextTask && goalName && capability) {
-        // No next capability — record the final completed task
-        try {
-          const goalDir = resolveGoalDir(cwd, goalName);
-          writeLastTask(goalDir, {
-            capability,
-            params: { goalName, ...(stepNumber != null ? { stepNumber } : {}), _sessionContext: sessionParams },
-          });
-        } catch (err) {
-          console.warn(`pio: failed to write last task: ${err}`);
-        }
       }
+
+      // When no next task resolves (nextTask is undefined), nothing additional needed here.
+      // writeLastTask is already called inside the block above when a transition succeeds.
 
       // Cleanup files declared in config.fileCleanup
       if (Array.isArray(config.fileCleanup)) {

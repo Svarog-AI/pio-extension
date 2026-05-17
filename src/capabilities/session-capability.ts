@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CapabilityConfig } from "../types";
 import { discoverNextStep } from "../fs-utils";
+import { resolveModelForCapability } from "../model-config";
 
 // Re-export for backward compatibility
 export type { CapabilityConfig };
@@ -18,6 +19,9 @@ const PROMPTS_DIR = path.join(__dirname, "..", "prompts");
 let systemPrompt: string | undefined;
 let projectContext: string | undefined;
 let skillLoadingInstructions: string | undefined;
+
+// Capability name captured during resources_discover for model resolution in before_agent_start
+let capabilityName: string | undefined;
 
 // Enriched session params — populated during resources_discover, used downstream
 let enrichedSessionParams: Record<string, unknown> | undefined;
@@ -63,6 +67,9 @@ export function setupCapability(pi: ExtensionAPI) {
     if (!entry || entry.type !== "custom") return;
 
     const config = entry.data as CapabilityConfig;
+
+    // Capture capability name for model resolution in before_agent_start
+    capabilityName = config.capability;
 
     // Set human-readable session name (if derived)
     if (config.sessionName) {
@@ -120,7 +127,7 @@ export function setupCapability(pi: ExtensionAPI) {
   //    This PRESERVES pi's default system prompt (identity, tools, guidelines,
   //    skills, metadata) while layering our role-specific instructions on top
   //    as a steering message in the conversation.
-  pi.on("before_agent_start", async () => {
+  pi.on("before_agent_start", async (_event, ctx) => {
     // Discover project context if not yet loaded
     if (projectContext === undefined) {
       const projectContextPath = path.join(process.cwd(), ".pio", "PROJECT.md");
@@ -152,7 +159,7 @@ export function setupCapability(pi: ExtensionAPI) {
     // Return as a custom message instead of replacing the system prompt.
     // This preserves pi's full default system prompt while delivering our
     // capability instructions as conversation context.
-    return {
+    const result = {
       message: {
         customType: "pio-capability-instructions",
         content: [{ type: "text" as const, text: prompts.join("\n\n") }],
@@ -160,6 +167,34 @@ export function setupCapability(pi: ExtensionAPI) {
         details: {},
       },
     };
+
+    // Model resolution: switch to the configured model for this capability.
+    // Runs after prompt injection but before the LLM call.
+    if (capabilityName && ctx.modelRegistry) {
+      const resolved = resolveModelForCapability(capabilityName);
+      if (resolved) {
+        // Skip if current model already matches
+        const currentProvider = ctx.model?.provider;
+        const currentId = ctx.model?.id;
+        if (currentProvider === resolved.provider && currentId === resolved.modelId) {
+          return result;
+        }
+
+        // Look up the full Model object from pi's registry
+        const model = ctx.modelRegistry.find(resolved.provider, resolved.modelId);
+        if (!model) {
+          console.warn(
+            `pio: model "${resolved.provider}/${resolved.modelId}" not found in registry ` +
+              `for capability "${capabilityName}" — skipping model switch`,
+          );
+          return result;
+        }
+
+        await pi.setModel(model);
+      }
+    }
+
+    return result;
   });
 }
 

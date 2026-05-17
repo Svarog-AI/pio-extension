@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { vi, beforeEach, afterEach, describe, it, expect } from "vitest";
+import { getSessionGoalName, resolveProjectContextPath } from "./session-capability";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -66,9 +67,6 @@ const mockResolveModel = vi.hoisted(() => vi.fn());
 vi.mock("../model-config", () => ({
   resolveModelForCapability: mockResolveModel,
 }));
-
-// Must import after vi.mock so the mocked module is used
-import { getSessionGoalName } from "./session-capability";
 
 // ---------------------------------------------------------------------------
 // getSessionGoalName tests
@@ -422,6 +420,24 @@ describe("model resolution — setupCapability and before_agent_start", () => {
 
     // Assert: resolveModelForCapability was called with "execute-task"
     expect(mockResolveModel).toHaveBeenCalledWith("execute-task");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Project context file path tests
+// Verify resolveProjectContextPath returns .pio/PROJECT/OVERVIEW.md
+// ---------------------------------------------------------------------------
+
+describe("resolveProjectContextPath", () => {
+  it("resolves to .pio/PROJECT/OVERVIEW.md", () => {
+    expect(resolveProjectContextPath("/some/dir")).toBe("/some/dir/.pio/PROJECT/OVERVIEW.md");
+  });
+
+  it("uses path.join for cross-platform separators", () => {
+    const result = resolveProjectContextPath("/root");
+    expect(result).toContain(".pio");
+    expect(result).toContain("PROJECT");
+    expect(result).toContain("OVERVIEW.md");
   });
 });
 

@@ -33,7 +33,7 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-code` →
 | `/pio-execute-task <name> [step]` | `pio_execute_task` | Implement one plan step (TDD) | `name`, optional `stepNumber` | `.pio/goals/<name>/S{NN}/COMPLETED` or `BLOCKED`, `SUMMARY.md` |
 | `/pio-review-code <name> [step]` | `pio_review_code` | Review completed step, approve or reject | `name`, optional `stepNumber` | `.pio/goals/<name>/S{NN}/REVIEW.md`, optionally `APPROVED` |
 | `/pio-execute-plan <name>` | — (command only) | Execute all plan steps in one session | `name` | All code changes from PLAN.md |
-| `/pio-project-context` | `pio_create_project_context` | Analyze project, produce PROJECT.md knowledge file | none | `.pio/PROJECT.md` |
+| `/pio-project-context` | `pio_create_project_context` | Analyze project, produce 7-file project context | none | `.pio/PROJECT/` (7 files) |
 | `/pio-create-issue <slug> <title>` | `pio_create_issue` | Create a new issue as a markdown file under `.pio/issues/` | `slug`, `title`, optional `description`, `category`, `context` | `.pio/issues/<slug>.md` |
 | `/pio-goal-from-issue <issue>` | `pio_goal_from_issue` | Convert an existing issue into a structured goal workspace (goal name derived from issue slug) | `issuePath` | Queues create-goal session |
 | `/pio-list-goals` | — (command only) | List all goal workspaces with inferred phase and last task | none | Table of goals, phases, last tasks |
@@ -53,7 +53,7 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-code` →
 ## Sub-session mechanics
 
 - **`launchCapability()`** (in `session-capability.ts`) creates sub-sessions with a custom `pio-config` entry containing: capability name, working directory, validation rules, file protections, session parameters, and an optional initial message.
-- **Context injection order:** On `before_agent_start`, `.pio/PROJECT.md` is loaded first (cached module-level), then the capability-specific prompt from `src/prompts/`. Both are concatenated as a custom conversation message — this preserves pi's default system prompt while layering role-specific instructions on top.
+- **Context injection order:** On `before_agent_start`, `.pio/PROJECT/OVERVIEW.md` is loaded first (cached module-level), then the capability-specific prompt from `src/prompts/`. Both are concatenated as a custom conversation message — this preserves pi's default system prompt while layering role-specific instructions on top.
 - **One-shot validation with cap:** The exit-gate blocks only the *first* attempted switch when validation fails (tracked by `warnedOnce`). A hard cap of 3 warnings per session (`MAX_WARNINGS`) prevents infinite blocking loops. The gate resets on each `turn_start`.
 - **Per-goal task slots:** Each goal gets its own queue file at `.pio/session-queue/task-{goalName}.json`. One pending task per goal — enqueueing overwrites any existing task for that goal. No timestamps or FIFO ordering needed.
 - **`launchCapability` consumes context:** After calling it, the command context is stale. All pre-launch work (validation, filesystem setup) must happen before the call.

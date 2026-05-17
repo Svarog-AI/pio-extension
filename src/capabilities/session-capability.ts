@@ -20,6 +20,14 @@ let systemPrompt: string | undefined;
 let projectContext: string | undefined;
 let skillLoadingInstructions: string | undefined;
 
+/** Resolve the path to the project context overview file.
+ * Returns `.pio/PROJECT/OVERVIEW.md` relative to the given working directory.
+ * Exported for testing; used internally by the `before_agent_start` handler.
+ */
+export function resolveProjectContextPath(cwd: string): string {
+  return path.join(cwd, ".pio", "PROJECT", "OVERVIEW.md");
+}
+
 // Capability name captured during resources_discover for model resolution in before_agent_start
 let capabilityName: string | undefined;
 
@@ -130,7 +138,7 @@ export function setupCapability(pi: ExtensionAPI) {
   pi.on("before_agent_start", async (_event, ctx) => {
     // Discover project context if not yet loaded
     if (projectContext === undefined) {
-      const projectContextPath = path.join(process.cwd(), ".pio", "PROJECT.md");
+      const projectContextPath = resolveProjectContextPath(process.cwd());
       if (fs.existsSync(projectContextPath)) {
         projectContext = fs.readFileSync(projectContextPath, "utf-8");
       }

@@ -1,6 +1,4 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { defineTool } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
 
 import { launchCapability } from "./session-capability";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
@@ -11,30 +9,18 @@ import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capabil
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "project-context.md",
-  writeAllowlist: [".pio/PROJECT.md"],
-  defaultInitialMessage: () => `Please explore this project and produce .pio/PROJECT.md.`,
+  writeAllowlist: [
+    ".pio/PROJECT/OVERVIEW.md",
+    ".pio/PROJECT/DEVELOPMENT.md",
+    ".pio/PROJECT/CONVENTIONS.md",
+    ".pio/PROJECT/GIT.md",
+    ".pio/PROJECT/ARCHITECTURE.md",
+    ".pio/PROJECT/DEPENDENCIES.md",
+    ".pio/PROJECT/GLOSSARY.md",
+  ],
+  defaultInitialMessage: (workingDir) =>
+    `Please explore this project and produce the multi-file project context under ${workingDir}/.pio/PROJECT/ (OVERVIEW.md, DEVELOPMENT.md, CONVENTIONS.md, GIT.md, ARCHITECTURE.md, DEPENDENCIES.md, GLOSSARY.md).`,
 };
-
-// ---------------------------------------------------------------------------
-// Tool: pio_create_project_context
-// ---------------------------------------------------------------------------
-
-const createProjectContextTool = defineTool({
-  name: "pio_create_project_context",
-  label: "Pio Create Project Context",
-  description:
-    "Analyze project documentation, configuration, and infrastructure files to produce a PROJECT.md knowledge file in .pio/. Use this tool directly — all filesystem operations are handled internally.",
-  parameters: Type.Object({}),
-
-  async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-    // Project-context is not goal-scoped and doesn't need queueing.
-    // Use the /pio-project-context command for direct session launch.
-    return {
-      content: [{ type: "text", text: "Project context tool called. Use /pio-project-context to launch the session directly." }],
-      details: {},
-    };
-  },
-});
 
 // ---------------------------------------------------------------------------
 // Command: /pio-project-context
@@ -50,13 +36,12 @@ async function handleProjectContext(_args: string | undefined, ctx: ExtensionCom
 }
 
 // ---------------------------------------------------------------------------
-// Setup (registers tool, command)
+// Setup (registers command)
 // ---------------------------------------------------------------------------
 
 export function setupProjectContext(pi: ExtensionAPI) {
-  pi.registerTool(createProjectContextTool);
   pi.registerCommand("pio-project-context", {
-    description: "Analyze project files and generate .pio/PROJECT.md for session context injection",
+    description: "Analyze project files and generate .pio/PROJECT/ context files for session context injection",
     handler: handleProjectContext,
   });
 }

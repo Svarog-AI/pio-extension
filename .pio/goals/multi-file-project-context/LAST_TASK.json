@@ -1,0 +1,107 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "multi-file-project-context",
+    "stepNumber": 6,
+    "_sessionContext": {
+      "goalName": "multi-file-project-context",
+      "stepNumber": 6,
+      "_sessionContext": {
+        "goalName": "multi-file-project-context",
+        "stepNumber": 5,
+        "_sessionContext": {
+          "goalName": "multi-file-project-context",
+          "stepNumber": 5,
+          "_sessionContext": {
+            "goalName": "multi-file-project-context",
+            "stepNumber": 5,
+            "_sessionContext": {
+              "goalName": "multi-file-project-context",
+              "stepNumber": 4,
+              "_sessionContext": {
+                "goalName": "multi-file-project-context",
+                "stepNumber": 4,
+                "_sessionContext": {
+                  "goalName": "multi-file-project-context",
+                  "stepNumber": 4,
+                  "_sessionContext": {
+                    "goalName": "multi-file-project-context",
+                    "stepNumber": 3,
+                    "_sessionContext": {
+                      "goalName": "multi-file-project-context",
+                      "stepNumber": 3,
+                      "_sessionContext": {
+                        "goalName": "multi-file-project-context",
+                        "stepNumber": 3,
+                        "_sessionContext": {
+                          "goalName": "multi-file-project-context",
+                          "stepNumber": 2,
+                          "_sessionContext": {
+                            "goalName": "multi-file-project-context",
+                            "stepNumber": 2,
+                            "_sessionContext": {
+                              "goalName": "multi-file-project-context",
+                              "stepNumber": 2,
+                              "_sessionContext": {
+                                "goalName": "multi-file-project-context",
+                                "stepNumber": 2,
+                                "_sessionContext": {
+                                  "goalName": "multi-file-project-context",
+                                  "stepNumber": 2,
+                                  "_sessionContext": {
+                                    "goalName": "multi-file-project-context",
+                                    "stepNumber": 1,
+                                    "_sessionContext": {
+                                      "goalName": "multi-file-project-context",
+                                      "stepNumber": 1,
+                                      "_sessionContext": {
+                                        "goalName": "multi-file-project-context",
+                                        "stepNumber": 1,
+                                        "_sessionContext": {
+                                          "goalName": "multi-file-project-context",
+                                          "stepNumber": 1,
+                                          "_sessionContext": {
+                                            "goalName": "multi-file-project-context",
+                                            "initialMessage": "# Goal: Replace single PROJECT.md with a multi-file project context structure\n\n## Current State\n\nThe `pio_create_project_context` capability produces a single `.pio/PROJECT.md` file that is injected into every agent session via `session-capability.ts` (`before_agent_start`). The prompt (`src/prompts/project-context.md`) instructs the Project Context Analyzer to produce this monolithic file.\n\n## Proposed Change\n\nReplace the single file with a folder structure under `.pio/PROJECT/`:\n\n1. **OVERVIEW.md** — Tech stack, repository structure, what the project is about. Loaded in every prompt on session start (replaces current PROJECT.md injection).\n2. **DEVELOPMENT.md** — Build, test, deploy + development workflow. Everything a dev needs to actually develop in the project. Used by targeted skills (e.g., implementation, testing).\n3. **CONVENTIONS.md** — Code conventions from editor configs, AI instruction files, linting/formatting rules. Used by targeted skills.\n4. **GIT.md** — If it's a git repository: branch naming, commit message format, PR conventions, tag/versioning scheme. Discovered from `git log`, `git branch`, `git tag`. Used by targeted skills (e.g., before commits).\n5. **ARCHITECTURE.md** — Architecture patterns and decisions, service integrations, deployment topology, ecosystem context. Helps agents understand the broader system the project lives in.\n\n## Key Design Decisions to Discuss\n\n- **What gets loaded when?** OVERVIEW.md loads always (like PROJECT.md now). The rest should be loaded lazily/conditionally by skills that need them. How do we implement \"targeted skills\" loading these — does this require new skill infrastructure, or can existing skills reference these files directly?\n- **Should the prompt discuss changes or additions?** For instance:\n  - Should there be a `DEPENDENCIES.md` for service-to-service dependencies, external APIs, third-party integrations?\n  - Should `ARCHITECTURE.md` include decision records (ADRs) if they exist in the project?\n  - Should we have a `DOMAIN.md` or `GLOSSARY.md` for domain-specific terminology?\n- **Backward compatibility:** Should old `.pio/PROJECT.md` be migrated, or is this clean-slate? The `before_agent_start` loader in `session-capability.ts` needs to change from reading `.pio/PROJECT.md` to reading `.pio/PROJECT/OVERVIEW.md`.\n- **Prompt structure:** The analysis prompt should produce all 5 files in one session (single pass), or split across phases?\n- **File size limits:** Each file should have a reasonable limit so context injection doesn't blow up.\n\nPlease review this proposal, suggest changes or additional files, and define the goal scope before planning begins.",
+                                            "capability": "create-goal"
+                                          },
+                                          "capability": "create-plan"
+                                        },
+                                        "capability": "evolve-plan"
+                                      },
+                                      "capability": "execute-task"
+                                    },
+                                    "capability": "review-code"
+                                  },
+                                  "capability": "evolve-plan"
+                                },
+                                "capability": "execute-task"
+                              },
+                              "capability": "review-code"
+                            },
+                            "capability": "execute-task"
+                          },
+                          "capability": "review-code"
+                        },
+                        "capability": "evolve-plan"
+                      },
+                      "capability": "execute-task"
+                    },
+                    "capability": "review-code"
+                  },
+                  "capability": "evolve-plan"
+                },
+                "capability": "execute-task"
+              },
+              "capability": "review-code"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-code"
+      },
+      "capability": "evolve-plan"
+    }
+  }
+}

@@ -24,7 +24,7 @@ export interface PioConfig {
 // ---------------------------------------------------------------------------
 
 /** Resolves the absolute path to `~/.pi/pio-config.yaml`. */
-export function getConfigPath(): string {
+function getConfigPath(): string {
   return path.join(getHomeDir(), ".pi", "pio-config.yaml");
 }
 

@@ -1,47 +1,82 @@
 {
-  "capability": "execute-task",
+  "capability": "evolve-plan",
   "params": {
     "goalName": "custom-models-per-capability",
-    "stepNumber": 2,
+    "stepNumber": 4,
     "_sessionContext": {
       "goalName": "custom-models-per-capability",
-      "stepNumber": 2,
+      "stepNumber": 4,
       "_sessionContext": {
         "goalName": "custom-models-per-capability",
-        "stepNumber": 2,
+        "stepNumber": 3,
         "_sessionContext": {
           "goalName": "custom-models-per-capability",
-          "stepNumber": 1,
+          "stepNumber": 3,
           "_sessionContext": {
             "goalName": "custom-models-per-capability",
-            "stepNumber": 1,
+            "stepNumber": 3,
             "_sessionContext": {
               "goalName": "custom-models-per-capability",
-              "stepNumber": 1,
+              "stepNumber": 3,
               "_sessionContext": {
                 "goalName": "custom-models-per-capability",
-                "stepNumber": 1,
+                "stepNumber": 3,
                 "_sessionContext": {
                   "goalName": "custom-models-per-capability",
-                  "stepNumber": 1,
+                  "stepNumber": 2,
                   "_sessionContext": {
                     "goalName": "custom-models-per-capability",
-                    "stepNumber": 1,
+                    "stepNumber": 2,
                     "_sessionContext": {
                       "goalName": "custom-models-per-capability",
-                      "stepNumber": 1,
+                      "stepNumber": 2,
                       "_sessionContext": {
                         "goalName": "custom-models-per-capability",
                         "stepNumber": 1,
                         "_sessionContext": {
                           "goalName": "custom-models-per-capability",
-                          "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/custom-models-per-capability.md",
-                          "fileCleanup": [
-                            "/home/aleksj/git/pio-extension/.pio/issues/custom-models-per-capability.md"
-                          ],
-                          "capability": "create-goal"
+                          "stepNumber": 1,
+                          "_sessionContext": {
+                            "goalName": "custom-models-per-capability",
+                            "stepNumber": 1,
+                            "_sessionContext": {
+                              "goalName": "custom-models-per-capability",
+                              "stepNumber": 1,
+                              "_sessionContext": {
+                                "goalName": "custom-models-per-capability",
+                                "stepNumber": 1,
+                                "_sessionContext": {
+                                  "goalName": "custom-models-per-capability",
+                                  "stepNumber": 1,
+                                  "_sessionContext": {
+                                    "goalName": "custom-models-per-capability",
+                                    "stepNumber": 1,
+                                    "_sessionContext": {
+                                      "goalName": "custom-models-per-capability",
+                                      "stepNumber": 1,
+                                      "_sessionContext": {
+                                        "goalName": "custom-models-per-capability",
+                                        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/custom-models-per-capability.md",
+                                        "fileCleanup": [
+                                          "/home/aleksj/git/pio-extension/.pio/issues/custom-models-per-capability.md"
+                                        ],
+                                        "capability": "create-goal"
+                                      },
+                                      "capability": "create-plan"
+                                    },
+                                    "capability": "evolve-plan"
+                                  },
+                                  "capability": "execute-task"
+                                },
+                                "capability": "review-code"
+                              },
+                              "capability": "execute-task"
+                            },
+                            "capability": "review-code"
+                          },
+                          "capability": "execute-task"
                         },
-                        "capability": "create-plan"
+                        "capability": "review-code"
                       },
                       "capability": "evolve-plan"
                     },
@@ -49,17 +84,17 @@
                   },
                   "capability": "review-code"
                 },
-                "capability": "execute-task"
+                "capability": "evolve-plan"
               },
-              "capability": "review-code"
+              "capability": "execute-task"
             },
-            "capability": "execute-task"
+            "capability": "review-code"
           },
-          "capability": "review-code"
+          "capability": "execute-task"
         },
-        "capability": "evolve-plan"
+        "capability": "review-code"
       },
-      "capability": "execute-task"
+      "capability": "evolve-plan"
     }
   }
 }

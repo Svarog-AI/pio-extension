@@ -23,21 +23,6 @@ function writeConfig(dir: string, content: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// getConfigPath
-// ---------------------------------------------------------------------------
-
-describe("getConfigPath", () => {
-  it("returns path containing os.homedir(), .pi, and pio-config.yaml", async () => {
-    const mod = await import("./model-config");
-    const result = mod.getConfigPath();
-
-    expect(result).toContain(os.homedir());
-    expect(result).toContain(".pi");
-    expect(result.endsWith("pio-config.yaml")).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // readConfig — no config file exists
 // ---------------------------------------------------------------------------
 

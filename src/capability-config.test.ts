@@ -440,3 +440,33 @@ describe("backward compatibility — capabilities without prepareSession", () =>
     expect(typeof result!.prepareSession).toBe("function");
   });
 });
+
+// ---------------------------------------------------------------------------
+// resolveCapabilityConfig — project-context writeAllowlist
+// ---------------------------------------------------------------------------
+
+describe("resolveCapabilityConfig — project-context writeAllowlist", () => {
+  it("resolves project-context with 7-file writeAllowlist", async () => {
+    const params = { capability: "project-context" as string };
+
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    expect(result).toBeDefined();
+    expect(result!.writeAllowlist).toHaveLength(7);
+    expect(result!.writeAllowlist).toContain(".pio/PROJECT/OVERVIEW.md");
+    expect(result!.writeAllowlist).toContain(".pio/PROJECT/DEVELOPMENT.md");
+    expect(result!.writeAllowlist).toContain(".pio/PROJECT/CONVENTIONS.md");
+    expect(result!.writeAllowlist).toContain(".pio/PROJECT/GIT.md");
+    expect(result!.writeAllowlist).toContain(".pio/PROJECT/ARCHITECTURE.md");
+    expect(result!.writeAllowlist).toContain(".pio/PROJECT/DEPENDENCIES.md");
+    expect(result!.writeAllowlist).toContain(".pio/PROJECT/GLOSSARY.md");
+  });
+
+  it("project-context workingDir falls back to cwd", async () => {
+    const params = { capability: "project-context" as string };
+
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    expect(result!.workingDir).toBe("/tmp/proj");
+  });
+});

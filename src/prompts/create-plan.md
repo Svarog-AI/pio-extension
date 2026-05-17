@@ -25,7 +25,7 @@ Internalize:
 
 You are encouraged to do thorough research. Use your tools (`read`, `bash`) extensively:
 
-1. Read `.pio/PROJECT.md` if it exists — this is the project's entry point and explains structure.
+1. Read `.pio/PROJECT/OVERVIEW.md` if it exists — this is the project's entry point and explains structure.
 2. Read every file referenced in `GOAL.md`. Trace dependencies, imports, and related code that will be affected by the change.
 3. Understand the existing patterns, conventions, testing setup, build configuration, and CI pipeline.
 4. Identify hidden complexity: shared utilities, circular dependencies, migration requirements, backwards-compatibility concerns.

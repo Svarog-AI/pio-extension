@@ -144,8 +144,8 @@ Write `TEST.md` into the `S{NN}/` folder. This file is a TDD-style test plan spe
 
 Before specifying any test file path in the "**File:**" field below, determine the correct directory using this three-step convention:
 
-1. **Check `.pio/PROJECT.md` first** — if the project context documents a test directory convention (e.g., "tests mirror `src/` under `tests/`", "colocated `.test.ts` alongside source"), follow it.
-2. **Inspect existing tests** — if `.pio/PROJECT.md` doesn't specify, scan the target project for existing test files to discover patterns: look for `tests/`, `__tests__/`, `*.test.*`, `*_test.*` naming conventions and observe how directory structure relates to source files.
+1. **Check `.pio/PROJECT/DEVELOPMENT.md` first** — if the project context documents a test directory convention (e.g., "tests mirror `src/` under `tests/`", "colocated `.test.ts` alongside source"), follow it.
+2. **Inspect existing tests** — if `.pio/PROJECT/DEVELOPMENT.md` doesn't specify, scan the target project for existing test files to discover patterns: look for `tests/`, `__tests__/`, `*.test.*`, `*_test.*` naming conventions and observe how directory structure relates to source files.
 3. **Ask the user** — if neither source reveals a convention, ask the user explicitly before writing TEST.md.
 
 Apply this convention when writing file paths in both the "Unit Tests" and "Integration Tests" sections below.

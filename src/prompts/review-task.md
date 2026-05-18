@@ -116,24 +116,51 @@ For each issue found, assign a severity level using the classification rules bel
 - **Low issues are at your discretion.** You may approve despite them if they don't affect correctness.
 - **Be specific.** Every issue should reference the exact file path and line(s) where the problem occurs.
 
+#### Before classifying: match every issue to the severity table
+
+Before assigning severity labels, you **must** match every discovered issue to a specific entry in the severity classification reference table above. For each issue, write out the matching in this format:
+
+```
+[issue description] → matches [exact severity category name] because [quote the matching bullet from the rules].
+```
+
+This is a mandatory step — do not skip it. Complete this matching exercise for every issue you identify before proceeding to Step 6. Quoting the exact text from the classification rules forces you to look at the table instead of relying on intuition.
+
+#### Prohibited downgrading language
+
+When justifying severity, you are **prohibited** from using qualifying language that downgrades an issue's classification. The following words and phrases are banned in severity justifications:
+
+- "minor"
+- "harmless"
+- "cosmetic"
+- "small"
+- "test-only"
+
+If an issue matches a HIGH or CRITICAL bullet in the classification rules, it is that severity — period. The location of the code (production vs test files) and your perception of its impact size do not change the severity. Using these qualifying words to downgrade an issue's severity is a violation of the classification rules.
+
+#### Common mistakes to avoid
+
+1. **Dead code in test files is still HIGH, not LOW.** The dead code rules apply regardless of whether the file is a test file or production code. An unused function in a test file is still dead code — classify it as HIGH.
+2. **Unused functions are never "style improvements."** An unused function matches the HIGH "dead code" category — it does not match LOW "style improvements." Do not reclassify dead code as a style suggestion.
+3. **Severity does not change based on production vs test context.** The classification rules do not distinguish between production and test code. A bug is a bug regardless of file type. A correctness issue in a test file is the same severity as in a production file.
+
 ### Step 6: Make the approval decision
 
-Based on your analysis and the severity rules from Step 5:
+Based on your analysis and the severity rules from Step 5, start by assuming this review is **REJECTED**. To change this to **APPROVED**, you must explicitly verify each condition below:
 
-**APPROVE if:**
-- No critical, high, or medium issues exist
-- All acceptance criteria from TASK.md are met
-- Test coverage is adequate and tests match TEST.md specifications
-- The implementation follows project conventions
+1. **No critical issues found.** Verify that zero CRITICAL issues were identified in Step 5.
+2. **No high issues found.** Verify that zero HIGH issues were identified in Step 5.
+3. **No medium issues found.** Verify that zero MEDIUM issues were identified in Step 5.
 
-**REJECT if:**
-- Any critical or high issues exist. This is mandatory — no discretion allowed.
-- Acceptance criteria are not met
+Only after confirming all three conditions above, write: **Therefore: APPROVED**.
+
+**Mandatory REJECT:** If any **CRITICAL** or **HIGH** issues exist, the decision is **REJECTED**. This is mandatory — no discretion allowed. The following conditions also mandate REJECT:
+- Acceptance criteria from TASK.md are not met
 - Test coverage has significant gaps or tests deviate from TEST.md
 - The implementation deviates substantially from the task spec
 
 **Medium issues require `ask_user`:**
-- When medium-severity issues exist (and no critical or high issues exist), you **must** call `ask_user` before proceeding.
+- When **MEDIUM** issues are the highest severity found (no critical or high), you **must** call `ask_user` before proceeding.
 - Present your findings clearly: list the medium issues, explain their impact, and ask the user to explicitly REJECT or ACCEPT.
 - Do not unilaterally approve or reject when medium issues are the highest severity. The user decides.
 - After receiving the user's decision, proceed with the corresponding outcome.

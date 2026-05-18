@@ -1,0 +1,47 @@
+{
+  "capability": "review-task",
+  "params": {
+    "goalName": "strengthen-review-task",
+    "stepNumber": 2,
+    "_sessionContext": {
+      "goalName": "strengthen-review-task",
+      "stepNumber": 2,
+      "_sessionContext": {
+        "goalName": "strengthen-review-task",
+        "stepNumber": 2,
+        "_sessionContext": {
+          "goalName": "strengthen-review-task",
+          "stepNumber": 2,
+          "_sessionContext": {
+            "goalName": "strengthen-review-task",
+            "stepNumber": 1,
+            "_sessionContext": {
+              "goalName": "strengthen-review-task",
+              "stepNumber": 1,
+              "_sessionContext": {
+                "goalName": "strengthen-review-task",
+                "stepNumber": 1,
+                "_sessionContext": {
+                  "goalName": "strengthen-review-task",
+                  "stepNumber": 1,
+                  "_sessionContext": {
+                    "goalName": "strengthen-review-task",
+                    "initialMessage": "Strengthen the review code session capability. The current one is good, but many things go through the gate-keeping mechanism that it's supposed to represent. It needs to be more strict, especially in terms of code-quality and good practices.\n\nHere are some things I have noticed:\n\n1. **Rename the capability to `review-task`** — all references, files, tool names, command names, prompt templates, capability config keys, etc. should be renamed consistently from `review-code` to `review-task`.\n\n2. **Medium issues require user confirmation** — when there are medium issues, the review agent must ask the user to confirm whether to REJECT or ACCEPT. High and critical issues remain REJECT by default (no change). Only medium issues add this explicit user handoff.\n\n3. **Test quality is paramount** — test deviations from the design spec, meaningless tests, tests that don't make sense are all CRITICAL issues. Good tests that actually test important behavior are mandatory. Tests that simulate a unit test but only check cosmetic properties, presence of some lines of code, or that don't actually test the behavior properly should be rejected immediately.\n\n4. **Code smells and unnecessary complexity** — these are HIGH issues. Over-engineering, unnecessary abstractions, dead code, overly complex implementations when simpler ones exist.\n\n5. **Security risks are HIGH issues** — any security concern (injection, improper validation, exposed credentials, unsafe deserialization, etc.) should be flagged as high.\n\n6. **Accidental or unnecessary changes to previous functionality** — HIGH issue. If the implementation modifies files or behavior unrelated to the task scope, it's a problem.\n\n7. **Design flaws and code duplication are MEDIUM issues** — architectural concerns, DRY violations that don't immediately break things but indicate poor design choices.",
+                    "capability": "create-goal"
+                  },
+                  "capability": "create-plan"
+                },
+                "capability": "evolve-plan"
+              },
+              "capability": "execute-task"
+            },
+            "capability": "review-task"
+          },
+          "capability": "evolve-plan"
+        },
+        "capability": "execute-task"
+      },
+      "capability": "review-task"
+    }
+  }
+}

@@ -1,8 +1,12 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { CAPABILITY_CONFIG, prepareGoal } from "./create-goal";
 import { goalExists, resolveGoalDir } from "../fs-utils";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ---------------------------------------------------------------------------
 // CAPABILITY_CONFIG.defaultInitialMessage
@@ -173,5 +177,77 @@ describe("resolveGoalDir", () => {
 
     // Assert
     expect(result).toBe(path.join("/project", ".pio", "goals", "feature", "sub-task"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// prompts/create-goal.md — prompt content verification
+// ---------------------------------------------------------------------------
+
+describe("prompts/create-goal.md", () => {
+  const promptPath = path.join(__dirname, "..", "prompts", "create-goal.md");
+  const promptContent = fs.readFileSync(promptPath, "utf-8");
+
+  // Helper: extract the Setup section (between ## Setup and the next ## heading)
+  function extractSetupSection(): string {
+    const startIdx = promptContent.indexOf("## Setup");
+    if (startIdx === -1) return "";
+    const rest = promptContent.slice(startIdx);
+    const endMatch = rest.slice(1).match(/^## /m);
+    if (endMatch && endMatch.index !== undefined) return rest.slice(0, endMatch.index);
+    return rest;
+  }
+
+  // Helper: extract Step 1 section (between ### Step 1: and the next ### Step)
+  function extractStep1Section(): string {
+    const startIdx = promptContent.indexOf("### Step 1:");
+    if (startIdx === -1) return "";
+    const rest = promptContent.slice(startIdx);
+    const endMatch = rest.slice(1).match(/^### Step \d/m);
+    if (endMatch && endMatch.index !== undefined) return rest.slice(0, endMatch.index);
+    return rest;
+  }
+
+  it("does not instruct to always confirm the goal name", () => {
+    // Assert: the forbidden phrase should not appear
+    expect(promptContent).not.toMatch(/always\s*confirm/i);
+  });
+
+  it("does not instruct to ask about workspace name", () => {
+    // Assert: specific affirmative instructions to ask/confirm workspace name should not appear
+    // These target the original problematic phrasing, not negative instructions ("do not ask")
+    const lines = promptContent.split("\n").map(l => l.trim());
+    const affirmativeLines = lines.filter(
+      line => (line.includes("ask") || line.includes("confirm")) && !line.match(/\bdo\s+not\b|\bdon't\b/i),
+    );
+    const affirmativeText = affirmativeLines.join(" ");
+    expect(affirmativeText).not.toMatch(/ask.*workspace.*name/i);
+    expect(affirmativeText).not.toMatch(/confirm.*workspace/i);
+    expect(affirmativeText).not.toMatch(/confirm.*goal.*name/i);
+    expect(affirmativeText).not.toMatch(/confirm\s+with\s+the\s+user/i);
+  });
+
+  it("Setup section states goal name is provided", () => {
+    // Arrange
+    const setupSection = extractSetupSection();
+
+    // Assert: Setup should mention the goal name is provided by the session
+    expect(setupSection).toMatch(/goal.?name.*provided/i);
+  });
+
+  it("Setup section instructs not to ask for goal name", () => {
+    // Arrange
+    const setupSection = extractSetupSection();
+
+    // Assert: Setup should contain a negative instruction about asking for the goal/workspace name
+    expect(setupSection).toMatch(/do\s+not.*ask.*goal|do\s+not.*ask.*workspace/i);
+  });
+
+  it("Step 1 still asks about purpose, scope, requirements", () => {
+    // Arrange
+    const step1Section = extractStep1Section();
+
+    // Assert: Step 1 should still reference understanding the goal's purpose or problem domain
+    expect(step1Section).toMatch(/problem|opportunity|purpose|requirement/i);
   });
 });

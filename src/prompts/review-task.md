@@ -69,33 +69,74 @@ Evaluate the implementation across these dimensions:
 
 ### Step 5: Categorize issues
 
-For each issue found, assign a criticality level:
+For each issue found, assign a severity level using the classification rules below. Be concrete — every issue must reference the exact file path and line(s) where the problem occurs.
 
-- **CRITICAL** — The implementation is fundamentally wrong, broken, or produces incorrect results. Must be rejected.
-- **HIGH** — Significant gaps in functionality, correctness, or test coverage. Feature won't work as intended without fixes. Must be rejected.
-- **MEDIUM** — Quality concerns, missing edge cases, minor correctness issues, insufficient tests. At reviewer's discretion.
-- **LOW** — Style improvements, naming suggestions, minor refactoring opportunities. Can be deferred to later.
+#### CRITICAL — Mandatory REJECT
 
-**Rules:**
-- **High and critical issues must never be ignored.** If any exist, the review is REJECTED.
-- **Low and medium issues are at your discretion.** You may approve despite them if they don't affect correctness. When in doubt, use `ask_user` to decide.
+- **Fundamentally wrong implementation.** The code is broken, produces incorrect results, or fails to implement what TASK.md specified.
+- **Test quality deviations.** Tests that deviate from what TEST.md specifies (the design spec). The test plan is the contract — tests must match it.
+- **Meaningless tests.** Tests that don't actually verify behavior: checking cosmetic properties, presence of text lines, trivial assertions that prove nothing.
+- **Tests that don't make sense for the domain.** Tests that verify irrelevant properties or use incorrect assertions for the domain being tested.
+- **Absence of tests covering important behavior.** When the task requires tests, their absence is critical. Good tests covering important behavior are mandatory.
+
+#### HIGH — Mandatory REJECT
+
+- **Code smells and unnecessary complexity.** Over-engineering, unnecessary abstractions, dead code (unused functions, unreachable branches), and overly complex implementations when simpler solutions satisfy the requirements.
+- **Security risks.** Injection vulnerabilities, improper input validation, exposed credentials or secrets, unsafe deserialization, path traversal, and any other security risk you identify. Flag any security concern — the list above is illustrative, not exhaustive.
+- **Accidental changes to unrelated files.** Modifications to files or behavior unrelated to the task scope as defined in TASK.md. Compare SUMMARY.md's "Files Modified" list against what TASK.md says should change. Flag any unauthorized modifications.
+
+#### MEDIUM — Requires user confirmation
+
+- **Design flaws and code duplication.** DRY violations, inappropriate abstractions (wrong abstraction choices, not over-engineering), coupling issues between modules, interface design problems.
+- **Deviation from project conventions.** The implementation violates documented conventions in `.pio/PROJECT/CONVENTIONS.md` (naming, structure, patterns, coding standards). Compare the implementation against the conventions file and flag any departures.
+- **Other quality concerns.** Missing edge cases, minor correctness issues, insufficient test coverage for non-critical paths.
+
+#### LOW — At your discretion
+
+- **Style improvements.** Naming suggestions, formatting, minor refactoring opportunities. Can be deferred to later.
+
+#### Severity Classification Reference
+
+| Pattern | Severity | Action |
+|---------|----------|--------|
+| Fundamentally wrong implementation | CRITICAL | REJECT |
+| Test deviations from TEST.md | CRITICAL | REJECT |
+| Meaningless or absent tests | CRITICAL | REJECT |
+| Code smells / over-engineering | HIGH | REJECT |
+| Security risks | HIGH | REJECT |
+| Accidental scope changes | HIGH | REJECT |
+| Design flaws / duplication | MEDIUM | ask_user |
+| Deviation from project conventions | MEDIUM | ask_user |
+| Style / naming improvements | LOW | At discretion |
+
+#### Rules
+
+- **Critical and high issues must never be ignored.** If any exist, the review is REJECTED. No exceptions.
+- **Medium issues require mandatory user confirmation.** When medium-severity issues exist (and no critical or high issues exist), you **must** call `ask_user` to present your findings and get explicit REJECT or ACCEPT direction before writing `REVIEW.md`. You cannot unilaterally approve or reject on medium issues alone.
+- **Low issues are at your discretion.** You may approve despite them if they don't affect correctness.
 - **Be specific.** Every issue should reference the exact file path and line(s) where the problem occurs.
 
 ### Step 6: Make the approval decision
 
-Based on your analysis:
+Based on your analysis and the severity rules from Step 5:
 
 **APPROVE if:**
-- No critical or high issues exist
+- No critical, high, or medium issues exist
 - All acceptance criteria from TASK.md are met
-- Test coverage is adequate
+- Test coverage is adequate and tests match TEST.md specifications
 - The implementation follows project conventions
 
 **REJECT if:**
-- Any critical or high issues exist
+- Any critical or high issues exist. This is mandatory — no discretion allowed.
 - Acceptance criteria are not met
-- Test coverage has significant gaps
+- Test coverage has significant gaps or tests deviate from TEST.md
 - The implementation deviates substantially from the task spec
+
+**Medium issues require `ask_user`:**
+- When medium-severity issues exist (and no critical or high issues exist), you **must** call `ask_user` before proceeding.
+- Present your findings clearly: list the medium issues, explain their impact, and ask the user to explicitly REJECT or ACCEPT.
+- Do not unilaterally approve or reject when medium issues are the highest severity. The user decides.
+- After receiving the user's decision, proceed with the corresponding outcome.
 
 **When in doubt, use `ask_user`** to ask the user for guidance before deciding.
 

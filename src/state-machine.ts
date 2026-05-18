@@ -8,7 +8,7 @@ import type { GoalState } from "./goal-state";
 
 /** Context passed to transition resolver callbacks. */
 export interface TransitionContext {
-  /** Current capability name (e.g. "review-code") */
+  /** Current capability name (e.g. "review-task") */
   capability: string;
   /** Working directory (goal workspace directory) */
   workingDir: string;
@@ -64,24 +64,24 @@ function transitionEvolvePlan(state: GoalState, params?: Record<string, unknown>
   return { capability: "execute-task", params: { goalName, stepNumber } };
 }
 
-/** execute-task → review-code: propagate goalName and stepNumber from params or state. */
+/** execute-task → review-task: propagate goalName and stepNumber from params or state. */
 function transitionExecuteTask(state: GoalState, params?: Record<string, unknown>): TransitionResult {
   const explicitStepNumber = extractStepNumber(params);
   const goalName = extractGoalName(params);
 
   if (explicitStepNumber != null) {
-    return { capability: "review-code", params: { goalName, stepNumber: explicitStepNumber } };
+    return { capability: "review-task", params: { goalName, stepNumber: explicitStepNumber } };
   }
   // Fallback: derive stepNumber from the current filesystem state
   const stepNumber = state.currentStepNumber();
-  return { capability: "review-code", params: { goalName, stepNumber } };
+  return { capability: "review-task", params: { goalName, stepNumber } };
 }
 
 /**
- * review-code → evolve-plan (approved) | execute-task (rejected / unknown).
+ * review-task → evolve-plan (approved) | execute-task (rejected / unknown).
  * Uses GoalState to check step status — no direct filesystem I/O.
  */
-function transitionReviewCode(state: GoalState, params?: Record<string, unknown>): TransitionResult {
+function transitionReviewTask(state: GoalState, params?: Record<string, unknown>): TransitionResult {
   const stepNumber = extractStepNumber(params);
   const goalName = extractGoalName(params);
 
@@ -123,7 +123,7 @@ function transitionReviewCode(state: GoalState, params?: Record<string, unknown>
  * Pure function — no filesystem I/O. All state queries go through `state.*()` methods.
  * Returns undefined for unknown capabilities (matching existing behavior).
  *
- * @param capability - Current capability name (e.g. "review-code")
+ * @param capability - Current capability name (e.g. "review-task")
  * @param state - Lazy-evaluated GoalState view over the goal workspace
  * @param params - Optional session params to propagate (goalName, stepNumber, …)
  */
@@ -141,8 +141,8 @@ export function resolveTransition(
       return transitionEvolvePlan(state, params);
     case "execute-task":
       return transitionExecuteTask(state, params);
-    case "review-code":
-      return transitionReviewCode(state, params);
+    case "review-task":
+      return transitionReviewTask(state, params);
     default:
       return undefined;
   }

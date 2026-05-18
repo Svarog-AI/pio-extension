@@ -211,9 +211,9 @@ describe("resolveModelForCapability — default only", () => {
     });
   });
 
-  it("returns default for review-code", async () => {
+  it("returns default for review-task", async () => {
     const mod = await import("./model-config");
-    expect(mod.resolveModelForCapability("review-code")).toEqual({
+    expect(mod.resolveModelForCapability("review-task")).toEqual({
       provider: "j6000",
       modelId: "general",
     });

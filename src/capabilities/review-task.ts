@@ -18,7 +18,7 @@ import { createGoalState, type GoalState, type StepStatus } from "../goal-state"
 function resolveReviewValidation(_dir: string, params?: Record<string, unknown>): { files: string[] } {
   const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
   if (stepNumber == null) {
-    throw new Error("stepNumber is required for review-code. Ensure the task was enqueued with a valid step number.");
+    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
   }
   const folder = stepFolderName(stepNumber);
   return { files: [`${folder}/${REVIEW_FILE}`] };
@@ -27,7 +27,7 @@ function resolveReviewValidation(_dir: string, params?: Record<string, unknown>)
 function resolveReviewReadOnlyFiles(_dir: string, params?: Record<string, unknown>): string[] {
   const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
   if (stepNumber == null) {
-    throw new Error("stepNumber is required for review-code. Ensure the task was enqueued with a valid step number.");
+    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
   }
   const folder = stepFolderName(stepNumber);
   return [
@@ -42,7 +42,7 @@ function resolveReviewReadOnlyFiles(_dir: string, params?: Record<string, unknow
 function resolveReviewWriteAllowlist(_dir: string, params?: Record<string, unknown>): string[] {
   const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
   if (stepNumber == null) {
-    throw new Error("stepNumber is required for review-code. Ensure the task was enqueued with a valid step number.");
+    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
   }
   const folder = stepFolderName(stepNumber);
   return [`${folder}/${REVIEW_FILE}`];
@@ -51,7 +51,7 @@ function resolveReviewWriteAllowlist(_dir: string, params?: Record<string, unkno
 function prepareReviewSession(_dir: string, params?: Record<string, unknown>): void {
   const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
   if (stepNumber == null) {
-    throw new Error("stepNumber is required for review-code. Ensure the task was enqueued with a valid step number.");
+    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
   }
   const folder = stepFolderName(stepNumber);
   const stepDir = path.join(_dir, folder);
@@ -62,7 +62,7 @@ function prepareReviewSession(_dir: string, params?: Record<string, unknown>): v
 }
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
-  prompt: "review-code.md",
+  prompt: "review-task.md",
   validation: resolveReviewValidation,
   readOnlyFiles: resolveReviewReadOnlyFiles,
   writeAllowlist: resolveReviewWriteAllowlist,
@@ -70,7 +70,7 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   defaultInitialMessage: (workingDir, params) => {
     const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
     if (stepNumber == null) {
-      return "Error: stepNumber is required for review-code. The task was not enqueued with a valid step number.";
+      return "Error: stepNumber is required for review-task. The task was not enqueued with a valid step number.";
     }
     const folderName = stepFolderName(stepNumber);
     return `Goal workspace is at ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md, TEST.md, and SUMMARY.md inside the \`${folderName}/\` directory. Review the implementation, write REVIEW.md, and decide whether to approve or reject.`;
@@ -281,9 +281,9 @@ async function validateAndFindReviewStep(
 // Tool
 // ---------------------------------------------------------------------------
 
-const reviewCodeTool = defineTool({
-  name: "pio_review_code",
-  label: "Pio Review Code",
+const reviewTaskTool = defineTool({
+  name: "pio_review_task",
+  label: "Pio Review Task",
   description:
     "Review the implementation of a plan step. Reads TASK.md, TEST.md, SUMMARY.md and implementation files. Writes REVIEW.md with categorized issues and approves or rejects. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Review code implementation for a plan step (approve/reject).",
@@ -302,7 +302,7 @@ const reviewCodeTool = defineTool({
     }
 
     enqueueTask(ctx.cwd, params.name, {
-      capability: "review-code",
+      capability: "review-task",
       params: { goalName: params.name, stepNumber: result.stepNumber },
     });
 
@@ -322,9 +322,9 @@ const reviewCodeTool = defineTool({
 // Command
 // ---------------------------------------------------------------------------
 
-async function handleReviewCode(args: string | undefined, ctx: ExtensionCommandContext) {
+async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandContext) {
   if (!args || !args.trim()) {
-    ctx.ui.notify("Usage: /pio-review-code <goal-name> [step-number]", "warning");
+    ctx.ui.notify("Usage: /pio-review-task <goal-name> [step-number]", "warning");
     return;
   }
 
@@ -351,9 +351,9 @@ async function handleReviewCode(args: string | undefined, ctx: ExtensionCommandC
   // All ctx-dependent work must happen before this line.
   const folderName = stepFolderName(result.stepNumber);
 
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "review-code", goalName: name, stepNumber: result.stepNumber });
+  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "review-task", goalName: name, stepNumber: result.stepNumber });
   if (!config) {
-    ctx.ui.notify("Failed to resolve review-code config.", "error");
+    ctx.ui.notify("Failed to resolve review-task config.", "error");
     return;
   }
 
@@ -364,11 +364,11 @@ async function handleReviewCode(args: string | undefined, ctx: ExtensionCommandC
 // Setup (registers tool and command)
 // ---------------------------------------------------------------------------
 
-export function setupReviewCode(pi: ExtensionAPI) {
-  pi.registerTool(reviewCodeTool);
-  pi.registerCommand("pio-review-code", {
+export function setupReviewTask(pi: ExtensionAPI) {
+  pi.registerTool(reviewTaskTool);
+  pi.registerCommand("pio-review-task", {
     description:
       "Review the implementation of a plan step (approve or reject based on code quality)",
-    handler: handleReviewCode,
+    handler: handleReviewTask,
   });
 }

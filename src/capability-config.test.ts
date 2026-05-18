@@ -166,8 +166,8 @@ describe("resolveCapabilityConfig — step-dependent callback resolution", () =>
     expect(result!.readOnlyFiles).toContain("S01/TEST.md");
   });
 
-  it("invokes review-code writeAllowlist callback (REVIEW.md only)", async () => {
-    const params = { capability: "review-code" as string, goalName: "my-feature", stepNumber: 4 };
+  it("invokes review-task writeAllowlist callback (REVIEW.md only)", async () => {
+    const params = { capability: "review-task" as string, goalName: "my-feature", stepNumber: 4 };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
@@ -279,7 +279,7 @@ describe("StaticCapabilityConfig.prepareSession", () => {
   it("prepareSession is optional — config without it is valid", () => {
     // Arrange + Act: A StaticCapabilityConfig without prepareSession should be valid
     const config: StaticCapabilityConfig = {
-      prompt: "review-code.md",
+      prompt: "review-task.md",
       defaultInitialMessage: () => "Review this code",
     };
 
@@ -295,7 +295,7 @@ describe("StaticCapabilityConfig.prepareSession", () => {
 
     // Act: config with prepareSession should be valid
     const config: StaticCapabilityConfig = {
-      prompt: "review-code.md",
+      prompt: "review-task.md",
       defaultInitialMessage: () => "Review this code",
       prepareSession: prepareCb,
     };
@@ -341,7 +341,7 @@ describe("CapabilityConfig.prepareSession", () => {
 
     // Act
     const config: CapabilityConfig = {
-      capability: "review-code",
+      capability: "review-task",
       prepareSession: cb,
     };
 
@@ -367,14 +367,14 @@ describe("resolveCapabilityConfig — prepareSession", () => {
     expect(result!.prepareSession).toBeUndefined();
   });
 
-  it("prepareSession is defined for review-code but undefined for other capabilities", async () => {
+  it("prepareSession is defined for review-task but undefined for other capabilities", async () => {
     // Arrange: list of all current capabilities
     const capabilities = [
       { name: "create-goal", goalName: "test-goal" },
       { name: "create-plan", goalName: "test-goal" },
       { name: "evolve-plan", goalName: "test-goal", stepNumber: 1 },
       { name: "execute-task", goalName: "test-goal", stepNumber: 1 },
-      { name: "review-code", goalName: "test-goal", stepNumber: 1 },
+      { name: "review-task", goalName: "test-goal", stepNumber: 1 },
       { name: "delete-goal", goalName: "test-goal" },
       { name: "project-context" },
     ];
@@ -384,8 +384,8 @@ describe("resolveCapabilityConfig — prepareSession", () => {
       const result = await resolveCapabilityConfig("/tmp/proj", params);
       if (result === undefined) continue;
 
-      if (cap.name === "review-code") {
-        // review-code defines prepareSession
+      if (cap.name === "review-task") {
+        // review-task defines prepareSession
         expect(typeof result.prepareSession).toBe("function");
       } else {
         // No other capability defines prepareSession yet
@@ -430,13 +430,13 @@ describe("backward compatibility — capabilities without prepareSession", () =>
     expect(result!.prepareSession).toBeUndefined();
   });
 
-  it("resolving review-code produces valid config with prepareSession defined", async () => {
-    const params = { capability: "review-code" as string, goalName: "my-feature", stepNumber: 2 };
+  it("resolving review-task produces valid config with prepareSession defined", async () => {
+    const params = { capability: "review-task" as string, goalName: "my-feature", stepNumber: 2 };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
     expect(result).toBeDefined();
-    expect(result!.capability).toBe("review-code");
+    expect(result!.capability).toBe("review-task");
     expect(typeof result!.prepareSession).toBe("function");
   });
 });

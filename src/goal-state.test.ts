@@ -596,7 +596,7 @@ describe("lastCompleted()", () => {
 
   it("returns parsed task object when LAST_TASK.json exists", () => {
     const goalDir = createGoalTree(tempDir, "with-last-task");
-    const lastTaskData = { capability: "review-code", params: { stepNumber: 2 } };
+    const lastTaskData = { capability: "review-task", params: { stepNumber: 2 } };
     fs.writeFileSync(
       path.join(goalDir, "LAST_TASK.json"),
       JSON.stringify(lastTaskData, null, 2),

@@ -148,16 +148,16 @@ describe("resolveTransition — evolve-plan → execute-task", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — execute-task → review-code
+// resolveTransition — execute-task → review-task
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — execute-task → review-code", () => {
-  it("returns review-code with goalName and stepNumber propagated when present", () => {
+describe("resolveTransition — execute-task → review-task", () => {
+  it("returns review-task with goalName and stepNumber propagated when present", () => {
     const state = mockState({});
     const result = resolveTransition("execute-task", state, { goalName: "feat", stepNumber: 5 });
 
     expect(result).toEqual({
-      capability: "review-code",
+      capability: "review-task",
       params: { goalName: "feat", stepNumber: 5 },
     });
   });
@@ -169,7 +169,7 @@ describe("resolveTransition — execute-task → review-code", () => {
     const result = resolveTransition("execute-task", state, { goalName: "feat" });
 
     expect(result).toEqual({
-      capability: "review-code",
+      capability: "review-task",
       params: { goalName: "feat", stepNumber: 4 },
     });
   });
@@ -182,23 +182,23 @@ describe("resolveTransition — execute-task → review-code", () => {
 
     // Explicit param takes precedence
     expect(result).toEqual({
-      capability: "review-code",
+      capability: "review-task",
       params: { goalName: "feat", stepNumber: 5 },
     });
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — review-code (approval path)
+// resolveTransition — review-task (approval path)
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — review-code approval", () => {
+describe("resolveTransition — review-task approval", () => {
   it("routes to evolve-plan with incremented stepNumber when status is approved", () => {
     const state = mockState({
       steps: () => [mockStep(3, "approved")],
     });
 
-    const result = resolveTransition("review-code", state, { goalName: "feat", stepNumber: 3 });
+    const result = resolveTransition("review-task", state, { goalName: "feat", stepNumber: 3 });
 
     expect(result).toEqual({
       capability: "evolve-plan",
@@ -212,7 +212,7 @@ describe("resolveTransition — review-code approval", () => {
       steps: () => [mockStep(3, "approved")],
     });
 
-    const result = resolveTransition("review-code", state, { goalName: "my-big-feature", stepNumber: 3 });
+    const result = resolveTransition("review-task", state, { goalName: "my-big-feature", stepNumber: 3 });
 
     expect(result?.params?.goalName).toBe("my-big-feature");
     expect(result?.params?.stepNumber).toBe(4);
@@ -223,7 +223,7 @@ describe("resolveTransition — review-code approval", () => {
       steps: () => [mockStep(3, "approved")],
     });
 
-    const result = resolveTransition("review-code", state, { goalName: "feat" });
+    const result = resolveTransition("review-task", state, { goalName: "feat" });
 
     expect(result).toEqual({
       capability: "execute-task",
@@ -233,16 +233,16 @@ describe("resolveTransition — review-code approval", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — review-code (rejection path)
+// resolveTransition — review-task (rejection path)
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — review-code rejection", () => {
+describe("resolveTransition — review-task rejection", () => {
   it("routes to execute-task with same stepNumber when status is rejected", () => {
     const state = mockState({
       steps: () => [mockStep(3, "rejected")],
     });
 
-    const result = resolveTransition("review-code", state, { goalName: "feat", stepNumber: 3 });
+    const result = resolveTransition("review-task", state, { goalName: "feat", stepNumber: 3 });
 
     expect(result).toEqual({
       capability: "execute-task",
@@ -255,7 +255,7 @@ describe("resolveTransition — review-code rejection", () => {
       steps: () => [mockStep(2, "rejected")],
     });
 
-    const result = resolveTransition("review-code", state, { goalName: "my-feature", stepNumber: 2 });
+    const result = resolveTransition("review-task", state, { goalName: "my-feature", stepNumber: 2 });
 
     expect(result?.params?.goalName).toBe("my-feature");
     expect(result?.params?.stepNumber).toBe(2);
@@ -263,16 +263,16 @@ describe("resolveTransition — review-code rejection", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — review-code (unknown/missing step fallback)
+// resolveTransition — review-task (unknown/missing step fallback)
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — review-code fallback", () => {
+describe("resolveTransition — review-task fallback", () => {
   it("routes to execute-task when steps() returns empty array", () => {
     const state = mockState({
       steps: () => [],
     });
 
-    const result = resolveTransition("review-code", state, { goalName: "feat", stepNumber: 3 });
+    const result = resolveTransition("review-task", state, { goalName: "feat", stepNumber: 3 });
 
     expect(result).toEqual({
       capability: "execute-task",
@@ -285,7 +285,7 @@ describe("resolveTransition — review-code fallback", () => {
       steps: () => [mockStep(3, "implemented")],
     });
 
-    const result = resolveTransition("review-code", state, { goalName: "feat", stepNumber: 3 });
+    const result = resolveTransition("review-task", state, { goalName: "feat", stepNumber: 3 });
 
     expect(result).toEqual({
       capability: "execute-task",
@@ -298,7 +298,7 @@ describe("resolveTransition — review-code fallback", () => {
       steps: () => [mockStep(3, "blocked")],
     });
 
-    const result = resolveTransition("review-code", state, { goalName: "feat", stepNumber: 3 });
+    const result = resolveTransition("review-task", state, { goalName: "feat", stepNumber: 3 });
 
     expect(result).toEqual({
       capability: "execute-task",

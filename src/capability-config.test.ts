@@ -99,7 +99,8 @@ describe("resolveCapabilityConfig — initial message derivation", () => {
 
     expect(typeof result!.initialMessage).toBe("string");
     expect(result!.initialMessage!.length).toBeGreaterThan(0);
-    expect(result!.initialMessage!).toContain(".pio");
+    // New format includes the goal name as a given fact, not just the directory path
+    expect(result!.initialMessage!).toContain("my-feature");
   });
 
   it("uses explicit params.initialMessage over defaultInitialMessage", async () => {

@@ -16,7 +16,13 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "create-goal.md",
   validation: { files: ["GOAL.md"] },
   writeAllowlist: ["GOAL.md"],
-  defaultInitialMessage: (goalDir) => `Created goal workspace at ${goalDir}`,
+  defaultInitialMessage: (workingDir, params) => {
+    const goalName = typeof params?.goalName === "string" ? params.goalName : undefined;
+    if (goalName) {
+      return `Goal workspace created: ${goalName}\n\nWrite GOAL.md in this workspace.`;
+    }
+    return `Created goal workspace at ${workingDir}`;
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -28,7 +34,7 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
  * Returns { goalDir, ready } — call launchCapability separately.
  * Does NOT use ctx so it can be called safely before newSession().
  */
-async function prepareGoal(name: string, cwd: string): Promise<{ goalDir: string; ready: boolean }> {
+export async function prepareGoal(name: string, cwd: string): Promise<{ goalDir: string; ready: boolean }> {
   const goalDir = resolveGoalDir(cwd, name);
 
   if (goalExists(goalDir)) {

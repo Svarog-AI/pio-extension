@@ -601,10 +601,10 @@ describe("validateReviewState", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Integration tests — Full review-code automation flow
+// Integration tests — Full review-task automation flow
 // ---------------------------------------------------------------------------
 
-describe("review-code markComplete automation", () => {
+describe("review-task markComplete automation", () => {
   let tempDir: string;
 
   beforeEach(() => {

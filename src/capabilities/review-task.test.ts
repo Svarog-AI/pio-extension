@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { CAPABILITY_CONFIG } from "./review-code";
-import { isStepReviewable, findMostRecentCompletedStep } from "./review-code";
+import { CAPABILITY_CONFIG } from "./review-task";
+import { isStepReviewable, findMostRecentCompletedStep } from "./review-task";
 import { stepFolderName } from "../fs-utils";
 
 // ---------------------------------------------------------------------------
@@ -19,7 +19,7 @@ function cleanup(tempDir: string): void {
 
 // Unified helper supporting both patterns:
 // - Multi-step with files array (from step-discovery tests)
-// - Single step (from review-code-config tests)
+// - Single step (from review-task-config tests)
 function createGoalTree(
   tempDir: string,
   goalName: string,
@@ -42,7 +42,7 @@ function createGoalTree(
     }
   }
 
-  // Single-step mode (from review-code-config tests)
+  // Single-step mode (from review-task-config tests)
   if (options?.stepNumber != null) {
     const folderName = stepFolderName(options.stepNumber);
     stepDir = path.join(goalDir, folderName);

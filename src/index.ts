@@ -14,7 +14,7 @@ import { setupDeleteGoal } from "./capabilities/delete-goal";
 import { setupCreatePlan } from "./capabilities/create-plan";
 import { setupEvolvePlan } from "./capabilities/evolve-plan";
 import { setupExecuteTask } from "./capabilities/execute-task";
-import { setupReviewCode } from "./capabilities/review-code";
+import { setupReviewTask } from "./capabilities/review-task";
 import { setupExecutePlan } from "./capabilities/execute-plan";
 import { setupNextTask } from "./capabilities/next-task";
 import { setupProjectContext } from "./capabilities/project-context";
@@ -54,7 +54,7 @@ export default function (pi: ExtensionAPI) {
   setupCreatePlan(pi);
   setupEvolvePlan(pi);
   setupExecuteTask(pi);
-  setupReviewCode(pi);
+  setupReviewTask(pi);
   setupExecutePlan(pi);
   setupNextTask(pi);
   setupProjectContext(pi);

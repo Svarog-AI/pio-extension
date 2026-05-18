@@ -302,11 +302,11 @@ const markCompleteTool = defineTool({
       let notification = "";
 
       // -----------------------------------------------------------------------
-      // Review-code automation: parse frontmatter, create markers, validate state
+      // Review-task automation: parse frontmatter, create markers, validate state
       // -----------------------------------------------------------------------
       const capabilityForAutomation = config.capability;
 
-      if (capabilityForAutomation === "review-code") {
+      if (capabilityForAutomation === "review-task") {
         const stateForAuto = createGoalState(dir);
         const autoStepNumber = typeof config.sessionParams?.stepNumber === "number"
           ? config.sessionParams.stepNumber

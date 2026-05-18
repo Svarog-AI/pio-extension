@@ -15,9 +15,9 @@ Steps chain together in a dependency pipeline:
 2. **create-plan** — Reads `GOAL.md`, produces `PLAN.md` (numbered steps with acceptance criteria)
 3. **evolve-plan** — Finds next incomplete step in `PLAN.md`, produces `TASK.md` + `TEST.md` in `S{NN}/`
 4. **execute-task** — Reads specs from `S{NN}/`, implements step (test-first/TDD), writes `COMPLETED`/`BLOCKED` marker + `SUMMARY.md`
-5. **review-code** — Reviews completed step, writes `REVIEW.md`. Approve → advances to next step. Reject → deletes `COMPLETED`, re-executes same step.
+5. **review-task** — Reviews completed step, writes `REVIEW.md`. Approve → advances to next step. Reject → deletes `COMPLETED`, re-executes same step.
 
-Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-code` → repeat until all plan steps are done.
+Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` → repeat until all plan steps are done.
 
 **Alternative:** `execute-plan` runs all plan steps in a single session (no evolve/execute/review loop). Requires both `GOAL.md` and `PLAN.md`.
 
@@ -31,7 +31,7 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-code` →
 | `/pio-create-plan <name>` | `pio_create_plan` | Launch Planning Agent to produce PLAN.md from GOAL.md | `name` | `.pio/goals/<name>/PLAN.md` |
 | `/pio-evolve-plan <name>` | `pio_evolve_plan` | Find next incomplete step, launch Specification Writer | `name` | `.pio/goals/<name>/S{NN}/TASK.md`, `TEST.md` |
 | `/pio-execute-task <name> [step]` | `pio_execute_task` | Implement one plan step (TDD) | `name`, optional `stepNumber` | `.pio/goals/<name>/S{NN}/COMPLETED` or `BLOCKED`, `SUMMARY.md` |
-| `/pio-review-code <name> [step]` | `pio_review_code` | Review completed step, approve or reject | `name`, optional `stepNumber` | `.pio/goals/<name>/S{NN}/REVIEW.md`, optionally `APPROVED` |
+| `/pio-review-task <name> [step]` | `pio_review_task` | Review completed step, approve or reject | `name`, optional `stepNumber` | `.pio/goals/<name>/S{NN}/REVIEW.md`, optionally `APPROVED` |
 | `/pio-execute-plan <name>` | — (command only) | Execute all plan steps in one session | `name` | All code changes from PLAN.md |
 | `/pio-project-context` | `pio_create_project_context` | Analyze project, produce 7-file project context | none | `.pio/PROJECT/` (7 files) |
 | `/pio-create-issue <slug> <title>` | `pio_create_issue` | Create a new issue as a markdown file under `.pio/issues/` | `slug`, `title`, optional `description`, `category`, `context` | `.pio/issues/<slug>.md` |

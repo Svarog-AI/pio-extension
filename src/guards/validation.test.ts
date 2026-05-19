@@ -4,6 +4,7 @@ import * as path from "node:path";
 import {
   validateOutputs,
   extractGoalName,
+  setupValidation,
 } from "./validation";
 
 // ---------------------------------------------------------------------------
@@ -144,5 +145,31 @@ describe("extractGoalName", () => {
 
   it("goal name with hyphens and underscores is preserved", () => {
     expect(extractGoalName("/repo/.pio/goals/my_feature-v2/")).toBe("my_feature-v2");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setupValidation — verifies no tool registration (only event handlers)
+// ---------------------------------------------------------------------------
+
+describe("setupValidation", () => {
+  it("no longer calls registerTool (only registers event handlers)", () => {
+    let registerToolCalled = false;
+    const registeredEvents: string[] = [];
+
+    const mockPi = {
+      registerTool: () => { registerToolCalled = true; },
+      on: (event: string) => { registeredEvents.push(event); },
+    };
+
+    setupValidation(mockPi as any);
+
+    // Assert: registerTool was NOT called
+    expect(registerToolCalled).toBe(false);
+
+    // Assert: only event handlers are registered
+    expect(registeredEvents).toContain("resources_discover");
+    expect(registeredEvents).toContain("turn_start");
+    expect(registeredEvents).toContain("tool_call");
   });
 });

@@ -1,13 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { defineTool } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ValidationRule } from "../types";
-import { resolveTransition, recordTransition } from "../state-machine";
-import { createGoalState } from "../goal-state";
-import { enqueueTask, writeLastTask } from "../queues";
-import { resolveGoalDir } from "../fs-utils";
 
 // Re-export for backward compatibility
 export type { ValidationRule };
@@ -81,131 +75,11 @@ export function validateOutputs(rules: ValidationRule, baseDir: string): Validat
 }
 
 // ---------------------------------------------------------------------------
-// pio_mark_complete tool
-// ---------------------------------------------------------------------------
-
-const markCompleteTool = defineTool({
-  name: "pio_mark_complete",
-  label: "Pio Mark Complete",
-  description: "Signal that your work is done. Validates that all expected output files have been produced and auto-enqueues the next workflow task.",
-  promptSnippet: "Signal that your work is done. Validates expected output files.",
-  parameters: Type.Object({}),
-
-  async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-    const entries = ctx.sessionManager.getEntries();
-    const entry = entries.find(
-      (e) => e.type === "custom" && e.customType === "pio-config",
-    );
-
-    // No config — not a capability session, always pass
-    if (!entry || entry.type !== "custom") {
-      return { content: [{ type: "text", text: "No validation rules configured for this session." }], details: {}, terminate: true };
-    }
-
-    const config = entry.data as { capability?: string; workingDir?: string; validation?: ValidationRule; fileCleanup?: string[]; sessionParams?: Record<string, unknown> };
-    const rules = config.validation;
-    const dir = config.workingDir;
-
-    // No validation rules defined — always pass
-    if (!rules || !dir) {
-      return { content: [{ type: "text", text: "No validation rules configured for this session." }], details: {}, terminate: true };
-    }
-
-    const result = validateOutputs(rules, dir);
-
-    if (result.passed) {
-      let notification = "";
-
-      // NOTE: Review-task post-validation (frontmatter parsing, marker creation)
-      // has been moved to the postValidate hook in review-task.ts CAPABILITY_CONFIG.
-      // This will be wired through session-capability.ts in Step 6.
-      // For now, review-task mark_complete skips frontmatter automation.
-
-      // Auto-enqueue next task (single-slot, overwrites any existing pending task)
-      const capability = config.capability;
-      const cwd = process.cwd();
-      const goalName = extractGoalName(dir);
-
-      // Use the completing session's params directly — they are authoritative.
-      const sessionParams = config.sessionParams || {};
-
-      // Derive stepNumber from session params, falling back to filesystem discovery.
-      const state = createGoalState(dir);
-      const stepNumber = typeof sessionParams.stepNumber === "number"
-        ? sessionParams.stepNumber
-        : state.currentStepNumber();
-
-      const nextTask = capability
-        ? resolveTransition(capability, state, { goalName, stepNumber, _sessionContext: sessionParams })
-        : undefined;
-      if (nextTask && goalName && capability) {
-        try {
-          // Use adjusted params from the transition (may contain incremented stepNumber)
-          const adjustedParams = nextTask.params || {};
-
-          // After spreading adjusted params and _sessionContext, explicitly set stepNumber last
-          // to guarantee it appears at top level (cannot be shadowed by nested _sessionContext).
-          const finalStepNumber = typeof adjustedParams.stepNumber === "number"
-            ? adjustedParams.stepNumber
-            : stepNumber;
-
-          enqueueTask(cwd, goalName, {
-            capability: nextTask.capability,
-            params: {
-              goalName,
-              ...adjustedParams,
-              _sessionContext: sessionParams,
-              ...(finalStepNumber != null ? { stepNumber: finalStepNumber } : {}),
-            },
-          });
-
-          // Record transition audit entry
-          recordTransition(dir, capability, nextTask);
-
-          // Record the completed task in the goal directory
-          const goalDir = resolveGoalDir(cwd, goalName);
-          writeLastTask(goalDir, {
-            capability,
-            params: { goalName, ...(stepNumber != null ? { stepNumber } : {}), _sessionContext: sessionParams },
-          });
-
-          notification = `\n\nNext task enqueued: ${nextTask.capability}. Use \`/pio-next-task\` to start the sub-session.`;
-        } catch (err) {
-          console.warn(`pio: failed to enqueue next task: ${err}`);
-        }
-      }
-
-      // When no next task resolves (nextTask is undefined), nothing additional needed here.
-      // writeLastTask is already called inside the block above when a transition succeeds.
-
-      // Cleanup files declared in config.fileCleanup
-      if (Array.isArray(config.fileCleanup)) {
-        for (const filePath of config.fileCleanup) {
-          try {
-            fs.rmSync(filePath, { force: true });
-            console.log(`pio: cleaned up file after validation: ${filePath}`);
-          } catch (err) {
-            console.warn(`pio: failed to clean up file ${filePath}: ${err}`);
-          }
-        }
-      }
-
-      return { content: [{ type: "text", text: `Validation passed. All expected outputs have been produced.${notification}` }], details: {}, terminate: true };
-    } else {
-      return { content: [{ type: "text", text: `Validation failed. Missing files:\n- ${result.missing.join("\n- ")}\n\nProduce these files and call pio_mark_complete again.` }], details: {} };
-    }
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Setup — registers tool, resources_discover handler, exit-gate
+// Setup — registers event handlers for file protection
 // ---------------------------------------------------------------------------
 
 export function setupValidation(pi: ExtensionAPI) {
-  // 1. Register the pio_mark_complete tool globally
-  pi.registerTool(markCompleteTool);
-
-  // 2. Read validation config on session discovery; reset counters
+  // 1. Read validation config on session discovery; reset counters
   pi.on("resources_discover", async (_event, ctx) => {
     const entries = ctx.sessionManager.getEntries();
     const entry = entries.find(

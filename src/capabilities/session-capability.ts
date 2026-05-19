@@ -1,10 +1,16 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { defineTool } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CapabilityConfig } from "../types";
 import { discoverNextStep } from "../fs-utils";
 import { resolveModelForCapability } from "../model-config";
+import { validateOutputs } from "../guards/validation";
+import { resolveTransition, recordTransition } from "../state-machine";
+import { createGoalState } from "../goal-state";
+import { enqueueTask, writeLastTask } from "../queues";
 
 // Re-export for backward compatibility
 export type { CapabilityConfig };
@@ -57,6 +63,146 @@ export async function launchCapability(ctx: ExtensionCommandContext, config: Cap
 }
 
 // ---------------------------------------------------------------------------
+// pio_mark_complete tool — orchestrates the full capability exit lifecycle
+// ---------------------------------------------------------------------------
+
+const markCompleteTool = defineTool({
+  name: "pio_mark_complete",
+  label: "Pio Mark Complete",
+  description: "Signal that your work is done. Validates that all expected output files have been produced and auto-enqueues the next workflow task.",
+  promptSnippet: "Signal that your work is done. Validates expected output files.",
+  parameters: Type.Object({}),
+
+  async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+    const entries = ctx.sessionManager.getEntries();
+    const entry = entries.find(
+      (e) => e.type === "custom" && e.customType === "pio-config",
+    );
+
+    // No config — not a capability session, always pass
+    if (!entry || entry.type !== "custom") {
+      return { content: [{ type: "text", text: "No validation rules configured for this session." }], details: {}, terminate: true };
+    }
+
+    const config = entry.data as CapabilityConfig;
+    const dir = config.workingDir;
+
+    // No workingDir — can't do anything meaningful, pass and terminate
+    if (!dir) {
+      return { content: [{ type: "text", text: "No directory is defined for this session. Something went wrong." }], details: {}, terminate: true };
+    }
+
+    // 1. File-existence validation (generic, optional)
+    if (config.validation) {
+      const result = validateOutputs(config.validation, dir);
+
+      if (!result.passed) {
+        return { content: [{ type: "text", text: `Validation failed. Missing files:\n- ${result.missing.join("\n- ")}\n\nProduce these files and call pio_mark_complete again.` }], details: {} };
+      }
+    }
+
+    // 2. PostValidate hook — can fail to keep agent in session
+    if (config.postValidate) {
+      try {
+        const postValidateResult = config.postValidate(dir, config.sessionParams);
+        if (!postValidateResult.success) {
+          return { content: [{ type: "text", text: postValidateResult.message || "Post-validation failed." }], details: {} };
+        }
+      } catch (err) {
+        return { content: [{ type: "text", text: `Post-validation error: ${err}` }], details: {} };
+      }
+    }
+
+    let notification = "";
+
+    // 3. Transition routing + task enqueuing
+    const capability = config.capability;
+
+    // Use the completing session's params directly — they are authoritative.
+    const sessionParams = config.sessionParams || {};
+
+    // GoalState is the single source of truth for goalName and stepNumber
+    const state = createGoalState(dir);
+    const goalName = state.goalName;
+
+    // Use explicit stepNumber from session params first (authoritative for the completing step).
+    // Fall back to state.currentStepNumber() only if not explicitly provided.
+    // This is critical: postValidate may create APPROVED/REJECTED markers that change
+    // currentStepNumber() before we read it (e.g., APPROVED for step 1 makes it return 2).
+    const explicitStepNumber = typeof sessionParams.stepNumber === "number"
+      ? sessionParams.stepNumber
+      : undefined;
+    const stepNumber = explicitStepNumber ?? state.currentStepNumber();
+
+    const nextTask = capability
+      ? resolveTransition(capability, state, { goalName, stepNumber, _sessionContext: sessionParams })
+      : undefined;
+    if (nextTask && capability) {
+      try {
+        // Use adjusted params from the transition (may contain incremented stepNumber)
+        const adjustedParams = nextTask.params || {};
+
+        // After spreading adjusted params and _sessionContext, explicitly set stepNumber last
+        // to guarantee it appears at top level (cannot be shadowed by nested _sessionContext).
+        const finalStepNumber = typeof adjustedParams.stepNumber === "number"
+          ? adjustedParams.stepNumber
+          : stepNumber;
+
+        enqueueTask(process.cwd(), goalName, {
+          capability: nextTask.capability,
+          params: {
+            goalName,
+            ...adjustedParams,
+            _sessionContext: sessionParams,
+            ...(finalStepNumber != null ? { stepNumber: finalStepNumber } : {}),
+          },
+        });
+
+        // Record transition audit entry
+        recordTransition(dir, capability, nextTask);
+
+        // Record the completed task in the goal directory
+        // dir IS the goal directory (config.workingDir) — no need to resolve it again
+        writeLastTask(dir, {
+          capability,
+          params: { goalName, ...(stepNumber != null ? { stepNumber } : {}), _sessionContext: sessionParams },
+        });
+
+        notification = `\n\nNext task enqueued: ${nextTask.capability}. Use \`/pio-next-task\` to start the sub-session.`;
+      } catch (err) {
+        console.warn(`pio: failed to enqueue next task: ${err}`);
+      }
+    }
+
+    // 4. PostExecute hook — runs after transitions, errors are non-fatal
+    if (config.postExecute) {
+      try {
+        const postExecuteResult = config.postExecute(dir, config.sessionParams);
+        if (postExecuteResult instanceof Promise) {
+          await postExecuteResult;
+        }
+      } catch (err) {
+        console.warn(`pio: postExecute failed for capability "${config.capability}": ${err}`);
+      }
+    }
+
+    // 5. Cleanup files declared in config.fileCleanup
+    if (Array.isArray(config.fileCleanup)) {
+      for (const filePath of config.fileCleanup) {
+        try {
+          fs.rmSync(filePath, { force: true });
+          console.log(`pio: cleaned up file after validation: ${filePath}`);
+        } catch (err) {
+          console.warn(`pio: failed to clean up file ${filePath}: ${err}`);
+        }
+      }
+    }
+
+    return { content: [{ type: "text", text: `Validation passed. All expected outputs have been produced.${notification}` }], details: {}, terminate: true };
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Setup — registers capability-specific event handlers
 // ---------------------------------------------------------------------------
 
@@ -66,6 +212,9 @@ export async function launchCapability(ctx: ExtensionCommandContext, config: Cap
  *   before_agent_start → apply systemPrompt (persistent for all turns)
  */
 export function setupCapability(pi: ExtensionAPI) {
+  // Register the pio_mark_complete tool
+  pi.registerTool(markCompleteTool);
+
   // 1. Read config at startup — consume immediately
   pi.on("resources_discover", async (_event, ctx) => {
     const entries = ctx.sessionManager.getEntries();

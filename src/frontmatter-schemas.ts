@@ -22,3 +22,21 @@ export const REVIEW_OUTPUT_SCHEMA = Type.Object({
 
 /** Derived type from the schema — no manual interface definition. */
 export type ReviewOutputs = Static<typeof REVIEW_OUTPUT_SCHEMA>;
+
+// ---------------------------------------------------------------------------
+// Plan frontmatter schema and types
+// ---------------------------------------------------------------------------
+
+/**
+ * TypeBox schema defining the expected frontmatter fields for PLAN.md.
+ * Single source of truth — change the schema, the type follows automatically.
+ *
+ * Leaf module — imports only from external packages (typebox).
+ * Never imports from the rest of the codebase to avoid circular dependencies.
+ */
+export const PLAN_FRONTMATTER_SCHEMA = Type.Object({
+  totalSteps: Type.Integer({ minimum: 1 }),
+});
+
+/** Derived type from the schema — no manual interface definition. */
+export type PlanFrontmatter = Static<typeof PLAN_FRONTMATTER_SCHEMA>;

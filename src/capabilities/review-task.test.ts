@@ -3,8 +3,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as Value from "typebox/value";
 import { CAPABILITY_CONFIG } from "./review-task";
-import { isStepReviewable, findMostRecentCompletedStep, REVIEW_OUTPUT_SCHEMA, applyReviewDecision } from "./review-task";
-import type { ReviewOutputs } from "./review-task";
+import { isStepReviewable, findMostRecentCompletedStep, applyReviewDecision } from "./review-task";
+import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "../frontmatter-schemas";
 import { stepFolderName } from "../fs-utils";
 
 // ---------------------------------------------------------------------------
@@ -388,6 +388,33 @@ describe("findMostRecentCompletedStep(goalDir)", () => {
 
     // Assert
     expect(result).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Schema exports from frontmatter-schemas.ts
+// ---------------------------------------------------------------------------
+
+describe("frontmatter-schemas exports", () => {
+  it("REVIEW_OUTPUT_SCHEMA is exported from frontmatter-schemas module", () => {
+    // This import is from frontmatter-schemas.ts (not review-task.ts)
+    // Verifies the extraction is correct and no circular dependency exists
+    expect(REVIEW_OUTPUT_SCHEMA).toBeDefined();
+    expect(REVIEW_OUTPUT_SCHEMA.type).toBe("object");
+  });
+
+  it("ReviewOutputs type is accessible from frontmatter-schemas module", () => {
+    // Arrange — a valid object that should satisfy ReviewOutputs at compile time
+    const validOutputs: ReviewOutputs = {
+      decision: "APPROVED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+
+    // Assert — if this compiles, the type is correct
+    expect(validOutputs.decision).toBe("APPROVED");
   });
 });
 

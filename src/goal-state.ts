@@ -1,6 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { stepFolderName } from "./fs-utils";
+import { extractFrontmatter, validateAndCoerce } from "./frontmatter";
+import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./frontmatter-schemas";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -108,6 +110,12 @@ export interface GoalState {
    * Returns the parsed object or undefined if the file doesn't exist.
    */
   lastCompleted: () => { capability: string; params: Record<string, unknown>; timestamp?: string } | undefined;
+  /**
+   * Reads REVIEW.md frontmatter for a given step and returns typed review outputs.
+   * Returns `null` when the file is missing, has no frontmatter, or validation fails.
+   * Lazy-evaluated — reads fresh from disk on every call.
+   */
+  getReviewOutputs: (stepNumber: number) => ReviewOutputs | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -247,6 +255,28 @@ export function createGoalState(goalDir: string): GoalState {
       } catch {
         return undefined;
       }
+    },
+
+    getReviewOutputs: (stepNumber: number) => {
+      const folder = stepFolderName(stepNumber);
+      const reviewPath = path.join(goalDir, folder, "REVIEW.md");
+
+      // extractFrontmatter returns null for missing file, no frontmatter, or malformed YAML
+      const raw = extractFrontmatter(reviewPath);
+      if (raw === null) {
+        console.warn(
+          `[GoalState] getReviewOutputs(${stepNumber}): could not extract frontmatter from ${reviewPath}`,
+        );
+        return null;
+      }
+
+      // validateAndCoerce returns { data } on success, { error } on validation failure
+      const result = validateAndCoerce<ReviewOutputs>(raw, REVIEW_OUTPUT_SCHEMA);
+      if ("error" in result) {
+        return null;
+      }
+
+      return result.data;
     },
   };
 }

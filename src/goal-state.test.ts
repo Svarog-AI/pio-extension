@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { createGoalState } from "./goal-state";
 import { stepFolderName } from "./fs-utils";
+import type { ReviewOutputs } from "./frontmatter-schemas";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers (mirrors fs-utils.test.ts pattern)
@@ -99,6 +100,7 @@ describe("createGoalState — construction", () => {
     expect(() => state.currentStepNumber()).not.toThrow();
     expect(() => state.pendingTask()).not.toThrow();
     expect(() => state.lastCompleted()).not.toThrow();
+    expect(() => state.getReviewOutputs(1)).not.toThrow();
 
     // Assert safe defaults
     expect(state.hasGoal()).toBe(false);
@@ -108,6 +110,7 @@ describe("createGoalState — construction", () => {
     expect(state.currentStepNumber()).toBe(1); // always at least 1
     expect(state.pendingTask()).toBeUndefined();
     expect(state.lastCompleted()).toBeUndefined();
+    expect(state.getReviewOutputs(1)).toBeNull(); // no step folder
   });
 });
 
@@ -625,5 +628,246 @@ describe("lastCompleted()", () => {
 
     expect(() => state.lastCompleted()).not.toThrow();
     expect(state.lastCompleted()).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helper: write a REVIEW.md with YAML frontmatter
+// ---------------------------------------------------------------------------
+
+function writeReviewMd(
+  stepDir: string,
+  frontmatter: Record<string, unknown>,
+  body?: string,
+): void {
+  const yamlLines = Object.entries(frontmatter)
+    .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
+    .join("\n");
+  const content = `---\n${yamlLines}\n---\n${body ?? "# Review"}`;
+  fs.writeFileSync(path.join(stepDir, "REVIEW.md"), content, "utf-8");
+}
+
+// ---------------------------------------------------------------------------
+// getReviewOutputs()
+// ---------------------------------------------------------------------------
+
+describe("getReviewOutputs()", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("given a valid REVIEW.md with APPROVED frontmatter, returns typed ReviewOutputs", () => {
+    // Arrange: S01/REVIEW.md with valid APPROVED frontmatter
+    const goalDir = createGoalTree(tempDir, "approved-goal", [
+      { number: 1, files: [] },
+    ]);
+    const stepDir = path.join(goalDir, "S01");
+    writeReviewMd(stepDir, {
+      decision: "APPROVED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 1,
+      lowIssues: 2,
+    });
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(1);
+
+    // Assert
+    expect(result).not.toBeNull();
+    expect(result!.decision).toBe("APPROVED");
+    expect(result!.criticalIssues).toBe(0);
+    expect(result!.highIssues).toBe(0);
+    expect(result!.mediumIssues).toBe(1);
+    expect(result!.lowIssues).toBe(2);
+  });
+
+  it("given a REJECTED decision, returns correct type", () => {
+    // Arrange: S02/REVIEW.md with REJECTED decision and non-zero counts
+    const goalDir = createGoalTree(tempDir, "rejected-goal", [
+      { number: 2, files: [] },
+    ]);
+    const stepDir = path.join(goalDir, "S02");
+    writeReviewMd(stepDir, {
+      decision: "REJECTED",
+      criticalIssues: 2,
+      highIssues: 3,
+      mediumIssues: 5,
+      lowIssues: 10,
+    });
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(2);
+
+    // Assert
+    expect(result).not.toBeNull();
+    expect(result!.decision).toBe("REJECTED");
+    expect(result!.criticalIssues).toBe(2);
+    expect(result!.highIssues).toBe(3);
+    expect(result!.mediumIssues).toBe(5);
+    expect(result!.lowIssues).toBe(10);
+  });
+
+  it("returns null when step folder missing", () => {
+    // Arrange: goal directory exists but no S03/ folder
+    const goalDir = createGoalTree(tempDir, "missing-step");
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(3);
+
+    // Assert
+    expect(result).toBeNull();
+  });
+
+  it("returns null when REVIEW.md missing", () => {
+    // Arrange: S01/ with TASK.md and TEST.md but no REVIEW.md
+    const goalDir = createGoalTree(tempDir, "no-review", [
+      { number: 1, files: ["TASK.md", "TEST.md"] },
+    ]);
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(1);
+
+    // Assert
+    expect(result).toBeNull();
+  });
+
+  it("returns null when REVIEW.md has no frontmatter", () => {
+    // Arrange: S01/REVIEW.md with markdown content only (no --- delimiters)
+    const goalDir = createGoalTree(tempDir, "no-frontmatter", [
+      { number: 1, files: [] },
+    ]);
+    const stepDir = path.join(goalDir, "S01");
+    fs.writeFileSync(path.join(stepDir, "REVIEW.md"), "# Review\n\nSome review content.", "utf-8");
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(1);
+
+    // Assert
+    expect(result).toBeNull();
+  });
+
+  it("returns null for malformed YAML", () => {
+    // Arrange: S01/REVIEW.md with invalid YAML between delimiters
+    const goalDir = createGoalTree(tempDir, "malformed-yaml", [
+      { number: 1, files: [] },
+    ]);
+    const stepDir = path.join(goalDir, "S01");
+    fs.writeFileSync(
+      path.join(stepDir, "REVIEW.md"),
+      "---\ninvalid: yaml: [:\n---\n# body",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(1);
+
+    // Assert
+    expect(result).toBeNull();
+  });
+
+  it("returns null for invalid decision value", () => {
+    // Arrange: frontmatter with decision: MAYBE (not APPROVED or REJECTED)
+    const goalDir = createGoalTree(tempDir, "invalid-decision", [
+      { number: 1, files: [] },
+    ]);
+    const stepDir = path.join(goalDir, "S01");
+    writeReviewMd(stepDir, {
+      decision: "MAYBE",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    });
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(1);
+
+    // Assert — validation failure returns null
+    expect(result).toBeNull();
+  });
+
+  it("returns null for negative issue counts", () => {
+    // Arrange: frontmatter with criticalIssues: -5
+    const goalDir = createGoalTree(tempDir, "negative-counts", [
+      { number: 1, files: [] },
+    ]);
+    const stepDir = path.join(goalDir, "S01");
+    writeReviewMd(stepDir, {
+      decision: "APPROVED",
+      criticalIssues: -5,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    });
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(1);
+
+    // Assert — validation failure returns null
+    expect(result).toBeNull();
+  });
+
+  it("returns null for missing required fields", () => {
+    // Arrange: frontmatter with only decision (missing count fields)
+    const goalDir = createGoalTree(tempDir, "missing-fields", [
+      { number: 1, files: [] },
+    ]);
+    const stepDir = path.join(goalDir, "S01");
+    writeReviewMd(stepDir, {
+      decision: "APPROVED",
+    });
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(1);
+
+    // Assert — validation failure returns null
+    expect(result).toBeNull();
+  });
+
+  it("step number zero-padded correctly (step 5 → S05)", () => {
+    // Arrange: S05/REVIEW.md with valid frontmatter
+    const goalDir = createGoalTree(tempDir, "zero-padded", [
+      { number: 5, files: [] },
+    ]);
+    const stepDir = path.join(goalDir, "S05");
+    writeReviewMd(stepDir, {
+      decision: "APPROVED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    });
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(5);
+
+    // Assert — proves path resolution uses zero-padding
+    expect(result).not.toBeNull();
+    expect(result!.decision).toBe("APPROVED");
   });
 });

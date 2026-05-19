@@ -1,7 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import type { Static } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -9,26 +8,11 @@ import { launchCapability } from "./session-capability";
 import { resolveGoalDir, stepFolderName } from "../fs-utils";
 import { enqueueTask } from "../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
-import { createGoalState, type GoalState, type StepStatus } from "../goal-state";
+import { createGoalState, type StepStatus } from "../goal-state";
+import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "../frontmatter-schemas";
 
-// ---------------------------------------------------------------------------
-// Review output schema and types
-// ---------------------------------------------------------------------------
-
-/**
- * Typebox schema defining the expected frontmatter fields for REVIEW.md.
- * Single source of truth — change the schema, the type follows automatically.
- */
-export const REVIEW_OUTPUT_SCHEMA = Type.Object({
-  decision: Type.Union([Type.Literal("APPROVED"), Type.Literal("REJECTED")]),
-  criticalIssues: Type.Integer({ minimum: 0 }),
-  highIssues: Type.Integer({ minimum: 0 }),
-  mediumIssues: Type.Integer({ minimum: 0 }),
-  lowIssues: Type.Integer({ minimum: 0 }),
-});
-
-/** Derived type from the schema — no manual interface definition. */
-export type ReviewOutputs = Static<typeof REVIEW_OUTPUT_SCHEMA>;
+// Re-export schema and type for consumers that import from this module
+export { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs };
 
 /**
  * Create marker files based on the review decision.

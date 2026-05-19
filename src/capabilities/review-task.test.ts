@@ -1,8 +1,10 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as Value from "typebox/value";
 import { CAPABILITY_CONFIG } from "./review-task";
-import { isStepReviewable, findMostRecentCompletedStep } from "./review-task";
+import { isStepReviewable, findMostRecentCompletedStep, REVIEW_OUTPUT_SCHEMA, applyReviewDecision } from "./review-task";
+import type { ReviewOutputs } from "./review-task";
 import { stepFolderName } from "../fs-utils";
 
 // ---------------------------------------------------------------------------
@@ -386,5 +388,254 @@ describe("findMostRecentCompletedStep(goalDir)", () => {
 
     // Assert
     expect(result).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REVIEW_OUTPUT_SCHEMA (typebox-based)
+// ---------------------------------------------------------------------------
+
+describe("REVIEW_OUTPUT_SCHEMA", () => {
+  it("is a typebox schema object with correct structure", () => {
+    // Act & Assert
+    expect(REVIEW_OUTPUT_SCHEMA.type).toBe("object");
+    expect(REVIEW_OUTPUT_SCHEMA.required).toEqual([
+      "decision",
+      "criticalIssues",
+      "highIssues",
+      "mediumIssues",
+      "lowIssues",
+    ]);
+  });
+
+  it("decision field is anyOf (union) of APPROVED and REJECTED", () => {
+    // Act
+    const decisionProp = REVIEW_OUTPUT_SCHEMA.properties.decision;
+
+    // Assert
+    expect(decisionProp.anyOf).toBeDefined();
+    const options = decisionProp.anyOf;
+    expect(options).toHaveLength(2);
+
+    const values = options.map((o) => o.const as string).sort();
+    expect(values).toEqual(["APPROVED", "REJECTED"]);
+  });
+
+  it("count fields are integer type with minimum 0", () => {
+    // Arrange
+    const props = REVIEW_OUTPUT_SCHEMA.properties;
+
+    // Act & Assert — check each count field individually
+    // Cast to access runtime JSON Schema properties (minimum is in schema but not in TInteger type)
+    const asSchema = (p: unknown) => p as { type: string; minimum?: number };
+
+    expect(asSchema(props.criticalIssues).type).toBe("integer");
+    expect(asSchema(props.criticalIssues).minimum).toBe(0);
+    expect(asSchema(props.highIssues).type).toBe("integer");
+    expect(asSchema(props.highIssues).minimum).toBe(0);
+    expect(asSchema(props.mediumIssues).type).toBe("integer");
+    expect(asSchema(props.mediumIssues).minimum).toBe(0);
+    expect(asSchema(props.lowIssues).type).toBe("integer");
+    expect(asSchema(props.lowIssues).minimum).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ReviewOutputs type derived from schema
+// ---------------------------------------------------------------------------
+
+describe("ReviewOutputs", () => {
+  it("is exported and matches the schema structure", () => {
+    // Arrange — a valid object that should satisfy ReviewOutputs at compile time
+    const validOutputs: ReviewOutputs = {
+      decision: "APPROVED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+
+    // Assert — if this compiles, the type is correct
+    expect(validOutputs.decision).toBe("APPROVED");
+    expect(validOutputs.criticalIssues).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyReviewDecision (moved from validation.ts)
+// ---------------------------------------------------------------------------
+
+describe("applyReviewDecision", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("creates APPROVED marker on APPROVED decision", () => {
+    // Arrange: S01 with COMPLETED and REVIEW.md
+    const { goalDir, stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
+    fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
+    fs.writeFileSync(path.join(stepDir, "REVIEW.md"), "# Review", "utf-8");
+
+    const outputs: ReviewOutputs = {
+      decision: "APPROVED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+
+    // Act
+    applyReviewDecision(goalDir, 1, outputs);
+
+    // Assert
+    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(true);
+  });
+
+  it("creates REJECTED marker and deletes COMPLETED on REJECTED decision", () => {
+    // Arrange: S01 with COMPLETED and REVIEW.md
+    const { goalDir, stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
+    fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
+    fs.writeFileSync(path.join(stepDir, "REVIEW.md"), "# Review", "utf-8");
+
+    const outputs: ReviewOutputs = {
+      decision: "REJECTED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+
+    // Act
+    applyReviewDecision(goalDir, 1, outputs);
+
+    // Assert
+    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(false);
+  });
+
+  it("handles zero-padded step folder names (step 5 → S05)", () => {
+    // Arrange: S05 with COMPLETED
+    const { goalDir, stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 5 });
+    fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
+
+    const outputs: ReviewOutputs = {
+      decision: "APPROVED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+
+    // Act
+    applyReviewDecision(goalDir, 5, outputs);
+
+    // Assert: S05/APPROVED exists (not S5/APPROVED)
+    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
+    // Verify it's S05, not S5
+    const s05Path = path.join(goalDir, "S05", "APPROVED");
+    expect(fs.existsSync(s05Path)).toBe(true);
+    const s5Path = path.join(goalDir, "S5", "APPROVED");
+    expect(fs.existsSync(s5Path)).toBe(false);
+  });
+
+  it("creates step directory if missing", () => {
+    // Arrange: goal dir exists but no S03/ folder
+    const { goalDir } = createGoalTree(tempDir, "test-goal");
+
+    const outputs: ReviewOutputs = {
+      decision: "APPROVED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+
+    // Act — should not throw even though S03/ doesn't exist
+    expect(() => {
+      applyReviewDecision(goalDir, 3, outputs);
+    }).not.toThrow();
+
+    // Assert
+    expect(fs.existsSync(path.join(goalDir, "S03", "APPROVED"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REVIEW_OUTPUT_SCHEMA runtime validation (typebox/value integration)
+// ---------------------------------------------------------------------------
+
+describe("REVIEW_OUTPUT_SCHEMA runtime validation", () => {
+  it("Value.Check returns true for valid frontmatter", () => {
+    // Arrange
+    const validData = {
+      decision: "APPROVED" as const,
+      criticalIssues: 0,
+      highIssues: 1,
+      mediumIssues: 2,
+      lowIssues: 3,
+    };
+
+    // Act
+    const result = Value.Check(REVIEW_OUTPUT_SCHEMA, validData);
+
+    // Assert
+    expect(result).toBe(true);
+  });
+
+  it("Value.Check returns false for invalid decision", () => {
+    // Arrange
+    const invalidData = {
+      decision: "PENDING",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+
+    // Act
+    const result = Value.Check(REVIEW_OUTPUT_SCHEMA, invalidData);
+
+    // Assert
+    expect(result).toBe(false);
+  });
+
+  it("Value.Check returns false for negative count", () => {
+    // Arrange
+    const invalidData = {
+      decision: "APPROVED" as const,
+      criticalIssues: -1,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+
+    // Act
+    const result = Value.Check(REVIEW_OUTPUT_SCHEMA, invalidData);
+
+    // Assert — verifies { minimum: 0 } constraint works at runtime
+    expect(result).toBe(false);
+  });
+
+  it("Value.Errors provides error details on failure", () => {
+    // Arrange
+    const invalidData = {
+      decision: "INVALID",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+
+    // Act
+    const errors = [...Value.Errors(REVIEW_OUTPUT_SCHEMA, invalidData)];
+
+    // Assert
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors[0].message).toBeDefined();
   });
 });

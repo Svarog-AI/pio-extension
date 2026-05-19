@@ -1,33 +1,17 @@
 import * as fs from "node:fs";
 import * as jsyaml from "js-yaml";
+import * as Value from "typebox/value";
+import type { TSchema } from "typebox";
 
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
 /**
- * Describes a single field in an output frontmatter schema.
- * Used to validate and coerce raw YAML data into typed capability outputs.
- */
-export interface OutputField {
-  name: string;
-  type: "string" | "integer" | "enum";
-  values?: string[];  // for enum type — allowed literal values
-  min?: number;        // for integer type — minimum value (inclusive)
-}
-
-/**
- * Schema defining the expected frontmatter fields for a capability output.
- */
-export interface OutputSchema {
-  fields: OutputField[];
-}
-
-/**
  * Result of validating and coercing raw frontmatter data.
  * On success: `{ data: T }`. On failure: `{ error: string }`.
  */
-export type CoerceResult<T extends Record<string, unknown>> =
+export type CoerceResult<T> =
   | { data: T; error?: never }
   | { data?: never; error: string };
 
@@ -88,70 +72,54 @@ export function extractFrontmatter(filePath: string): Record<string, unknown> | 
 }
 
 // ---------------------------------------------------------------------------
-// Schema-based validation and coercion
+// Schema-based validation and coercion (typebox)
 // ---------------------------------------------------------------------------
 
 /**
- * Validate a raw parsed object against an `OutputSchema` and coerce to a typed result.
+ * Validate a raw parsed object against a typebox `TSchema` and coerce to a typed result.
  *
  * On success returns `{ data: T }` containing only the schema-declared fields.
- * On failure returns `{ error: string }` with a human-readable error description.
+ * On failure returns `{ error: string }` with a human-readable error description
+ * derived from typebox `Value.Errors`.
  *
- * Validation rules per field:
- * 1. **Presence:** All schema fields are required.
- * 2. **Type:** Value type must match `string`, `integer`, or `enum`.
- * 3. **Constraints:** `min` applied to `integer` fields.
+ * Uses `Value.Check(schema, raw)` for validation — typebox enforces:
+ * - Required fields (presence)
+ * - Type constraints (string, integer, enum via Union/Literal)
+ * - Value constraints (minimum, maximum, pattern, etc.)
  *
- * Extra fields in `raw` that are not in the schema are ignored.
- * Stops at the first validation failure.
+ * Extra fields in `raw` that are not in the schema are stripped during coercion.
  */
 export function validateAndCoerce<T extends Record<string, unknown>>(
   raw: Record<string, unknown>,
-  schema: OutputSchema,
+  schema: TSchema,
 ): CoerceResult<T> {
-  const data = {} as T;
-
-  for (const field of schema.fields) {
-    // 1. Presence check
-    if (!(field.name in raw) || raw[field.name] === undefined) {
-      return { error: `Missing required field: '${field.name}'` };
-    }
-
-    const value = raw[field.name];
-
-    // 2. Type check
-    switch (field.type) {
-      case "string": {
-        if (typeof value !== "string") {
-          return { error: `Field '${field.name}' must be a string. Found: ${JSON.stringify(value)}` };
-        }
-        break;
-      }
-
-      case "integer": {
-        if (typeof value !== "number" || !Number.isInteger(value)) {
-          return { error: `Field '${field.name}' must be an integer. Found: ${JSON.stringify(value)}` };
-        }
-
-        // 3. Constraint check — min
-        if (field.min !== undefined && value < field.min) {
-          return { error: `Field '${field.name}' must be >= ${field.min}. Found: ${value}` };
-        }
-        break;
-      }
-
-      case "enum": {
-        if (typeof value !== "string" || !field.values?.includes(value)) {
-          const allowed = field.values?.join(", ") ?? "(none)";
-          return { error: `Field '${field.name}' must be one of: ${allowed}. Found: '${value}'` };
-        }
-        break;
-      }
-    }
-
-    // Coerce: add validated field to output
-    (data as Record<string, unknown>)[field.name] = value;
+  // Validate with typebox
+  if (!Value.Check(schema, raw)) {
+    // Collect all errors into a single message including field paths
+    const errors = [...Value.Errors(schema, raw)];
+    const messages = errors.map((e) => {
+      const field = e.instancePath ? e.instancePath.replace(/^\//, "") : "root";
+      return `Field '${field}': ${e.message}`;
+    }).join("; ");
+    return { error: messages };
   }
 
-  return { data };
+  // Coerce: extract only schema-declared fields (both required and optional).
+  // Iterates over `properties` keys — not `required` — so optional fields
+  // present in `raw` are preserved. Extra fields not in the schema are stripped.
+  const schemaType = (schema as Record<string, unknown>).type;
+
+  if (schemaType === "object") {
+    const properties = (schema as Record<string, unknown>).properties as Record<string, unknown>;
+    const data: Record<string, unknown> = {};
+    for (const key of Object.keys(properties)) {
+      if (key in raw) {
+        data[key] = raw[key];
+      }
+    }
+    return { data: data as T };
+  }
+
+  // Non-object schema — return raw as-is
+  return { data: raw as T };
 }

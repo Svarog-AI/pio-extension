@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { Type } from "typebox";
 import { extractFrontmatter, validateAndCoerce } from "./frontmatter";
-import type { OutputSchema } from "./frontmatter";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -168,19 +168,17 @@ describe("extractFrontmatter", () => {
 });
 
 // ---------------------------------------------------------------------------
-// validateAndCoerce
+// validateAndCoerce (typebox-based)
 // ---------------------------------------------------------------------------
 
 describe("validateAndCoerce", () => {
-  const reviewSchema: OutputSchema = {
-    fields: [
-      { name: "decision", type: "enum", values: ["APPROVED", "REJECTED"] },
-      { name: "criticalIssues", type: "integer", min: 0 },
-      { name: "highIssues", type: "integer", min: 0 },
-      { name: "mediumIssues", type: "integer", min: 0 },
-      { name: "lowIssues", type: "integer", min: 0 },
-    ],
-  };
+  const reviewSchema = Type.Object({
+    decision: Type.Union([Type.Literal("APPROVED"), Type.Literal("REJECTED")]),
+    criticalIssues: Type.Integer({ minimum: 0 }),
+    highIssues: Type.Integer({ minimum: 0 }),
+    mediumIssues: Type.Integer({ minimum: 0 }),
+    lowIssues: Type.Integer({ minimum: 0 }),
+  });
 
   it("returns typed data for valid schema with all field types", () => {
     const raw = {
@@ -215,9 +213,7 @@ describe("validateAndCoerce", () => {
   });
 
   it("returns error when string expected but number given", () => {
-    const schema: OutputSchema = {
-      fields: [{ name: "name", type: "string" }],
-    };
+    const schema = Type.Object({ name: Type.String() });
     const raw = { name: 42 };
 
     const result = validateAndCoerce(raw, schema);
@@ -228,9 +224,7 @@ describe("validateAndCoerce", () => {
   });
 
   it("returns error when integer expected but string given", () => {
-    const schema: OutputSchema = {
-      fields: [{ name: "count", type: "integer" }],
-    };
+    const schema = Type.Object({ count: Type.Integer() });
     const raw = { count: "5" };
 
     const result = validateAndCoerce(raw, schema);
@@ -241,9 +235,7 @@ describe("validateAndCoerce", () => {
   });
 
   it("returns error for float where integer expected", () => {
-    const schema: OutputSchema = {
-      fields: [{ name: "count", type: "integer" }],
-    };
+    const schema = Type.Object({ count: Type.Integer() });
     const raw = { count: 1.5 };
 
     const result = validateAndCoerce(raw, schema);
@@ -266,15 +258,13 @@ describe("validateAndCoerce", () => {
 
     expect(result.data).toBeUndefined();
     expect(result.error).toBeDefined();
-    expect(result.error).toContain("APPROVED");
-    expect(result.error).toContain("REJECTED");
-    expect(result.error).toContain("PENDING");
+    // typebox reports the field path and that the constant/union didn't match
+    expect(result.error).toContain("decision");
+    expect(result.error).toMatch(/constant|anyOf/);
   });
 
   it("passes when enum value matches one of allowed values", () => {
-    const schema: OutputSchema = {
-      fields: [{ name: "status", type: "enum", values: ["A", "B"] }],
-    };
+    const schema = Type.Object({ status: Type.Union([Type.Literal("A"), Type.Literal("B")]) });
     const raw = { status: "B" };
 
     const result = validateAndCoerce(raw, schema);
@@ -285,9 +275,7 @@ describe("validateAndCoerce", () => {
   });
 
   it("returns error for integer below min threshold", () => {
-    const schema: OutputSchema = {
-      fields: [{ name: "count", type: "integer", min: 0 }],
-    };
+    const schema = Type.Object({ count: Type.Integer({ minimum: 0 }) });
     const raw = { count: -1 };
 
     const result = validateAndCoerce(raw, schema);
@@ -298,9 +286,7 @@ describe("validateAndCoerce", () => {
   });
 
   it("passes when integer equals min (boundary)", () => {
-    const schema: OutputSchema = {
-      fields: [{ name: "count", type: "integer", min: 0 }],
-    };
+    const schema = Type.Object({ count: Type.Integer({ minimum: 0 }) });
     const raw = { count: 0 };
 
     const result = validateAndCoerce(raw, schema);
@@ -311,9 +297,7 @@ describe("validateAndCoerce", () => {
   });
 
   it("ignores extra fields not declared in schema", () => {
-    const schema: OutputSchema = {
-      fields: [{ name: "name", type: "string" }],
-    };
+    const schema = Type.Object({ name: Type.String() });
     const raw = { name: "test", extra: "ignored", another: 42 };
 
     const result = validateAndCoerce(raw, schema);
@@ -324,8 +308,39 @@ describe("validateAndCoerce", () => {
     expect((result.data! as Record<string, unknown>).extra).toBeUndefined();
   });
 
+  it("preserves optional fields present in raw data", () => {
+    const schema = Type.Object({
+      name: Type.String(),
+      alias: Type.Optional(Type.String()),
+    });
+    const raw = { name: "test", alias: "t" };
+
+    const result = validateAndCoerce(raw, schema);
+
+    expect(result.error).toBeUndefined();
+    expect(result.data).toBeDefined();
+    expect(result.data!.name).toBe("test");
+    // Optional field present in raw should be preserved (not dropped)
+    expect(result.data!.alias).toBe("t");
+  });
+
+  it("omits optional fields not present in raw data", () => {
+    const schema = Type.Object({
+      name: Type.String(),
+      alias: Type.Optional(Type.String()),
+    });
+    const raw = { name: "test" };
+
+    const result = validateAndCoerce(raw, schema);
+
+    expect(result.error).toBeUndefined();
+    expect(result.data).toBeDefined();
+    expect(result.data!.name).toBe("test");
+    expect((result.data! as Record<string, unknown>).alias).toBeUndefined();
+  });
+
   it("succeeds with empty schema (no fields)", () => {
-    const schema: OutputSchema = { fields: [] };
+    const schema = Type.Object({});
     const raw = { anything: "goes" };
 
     const result = validateAndCoerce(raw, schema);
@@ -336,9 +351,7 @@ describe("validateAndCoerce", () => {
   });
 
   it("returns error for boolean value where string is expected", () => {
-    const schema: OutputSchema = {
-      fields: [{ name: "flag", type: "string" }],
-    };
+    const schema = Type.Object({ flag: Type.String() });
     const raw = { flag: true };
 
     const result = validateAndCoerce(raw, schema);

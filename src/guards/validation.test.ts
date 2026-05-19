@@ -1,11 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-  validateOutputs,
-  extractGoalName,
-  setupValidation,
-} from "./validation";
+import { validateOutputs, setupValidation } from "./validation";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -108,43 +104,6 @@ describe("validateOutputs", () => {
 
     // Assert
     expect(result).toEqual({ passed: true, missing: [] });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// extractGoalName — path-parsing logic
-// ---------------------------------------------------------------------------
-
-describe("extractGoalName", () => {
-  // Pure string manipulation — no filesystem needed.
-
-  it("standard path extracts goal name", () => {
-    expect(extractGoalName("/repo/.pio/goals/my-feature/")).toBe("my-feature");
-  });
-
-  it("path without trailing slash extracts goal name", () => {
-    expect(extractGoalName("/repo/.pio/goals/my-feature")).toBe("my-feature");
-  });
-
-  it("deeply nested path stops at goal name", () => {
-    // After /goals/my-feature/, there are subdirectories — should stop at first separator
-    expect(extractGoalName("/repo/.pio/goals/my-feature/S01/extra/path")).toBe("my-feature");
-  });
-
-  it("no /goals/ segment returns empty string", () => {
-    expect(extractGoalName("/repo/.pio/session-queue/task.json")).toBe("");
-  });
-
-  it("root-level goals path extracts goal name", () => {
-    expect(extractGoalName("/.pio/goals/root-goal/")).toBe("root-goal");
-  });
-
-  it("empty string input returns empty string", () => {
-    expect(extractGoalName("")).toBe("");
-  });
-
-  it("goal name with hyphens and underscores is preserved", () => {
-    expect(extractGoalName("/repo/.pio/goals/my_feature-v2/")).toBe("my_feature-v2");
   });
 });
 

@@ -26,7 +26,7 @@ function mockState(overrides: Partial<GoalState>): GoalState {
     currentStepNumber: () => 1,
     pendingTask: () => undefined,
     lastCompleted: () => undefined,
-    getReviewOutputs: (): ReviewOutputs | null => null,
+    getReviewOutputs: (_n: number, _opts?: { errors?: boolean }): ReviewOutputs | null | { data?: ReviewOutputs; error?: string } => null,
     ...overrides,
   };
 }

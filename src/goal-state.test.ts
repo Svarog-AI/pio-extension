@@ -677,7 +677,7 @@ describe("getReviewOutputs()", () => {
     const state = createGoalState(goalDir);
 
     // Act
-    const result = state.getReviewOutputs(1);
+    const result = state.getReviewOutputs(1) as ReviewOutputs | null;
 
     // Assert
     expect(result).not.toBeNull();
@@ -705,7 +705,7 @@ describe("getReviewOutputs()", () => {
     const state = createGoalState(goalDir);
 
     // Act
-    const result = state.getReviewOutputs(2);
+    const result = state.getReviewOutputs(2) as ReviewOutputs | null;
 
     // Assert
     expect(result).not.toBeNull();
@@ -864,10 +864,220 @@ describe("getReviewOutputs()", () => {
     const state = createGoalState(goalDir);
 
     // Act
-    const result = state.getReviewOutputs(5);
+    const result = state.getReviewOutputs(5) as ReviewOutputs | null;
 
     // Assert — proves path resolution uses zero-padding
     expect(result).not.toBeNull();
     expect(result!.decision).toBe("APPROVED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getReviewOutputs with { errors: true }
+// ---------------------------------------------------------------------------
+
+describe("getReviewOutputs with { errors: true }", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns { data } for valid APPROVED frontmatter", () => {
+    // Arrange: S01/REVIEW.md with valid APPROVED frontmatter
+    const goalDir = createGoalTree(tempDir, "errors-approved", [
+      { number: 1, files: [] },
+    ]);
+    const stepDir = path.join(goalDir, "S01");
+    writeReviewMd(stepDir, {
+      decision: "APPROVED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    });
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(1, { errors: true }) as { data?: ReviewOutputs; error?: string };
+
+    // Assert: has data, no error
+    expect(result.data).toBeDefined();
+    expect(result.data!.decision).toBe("APPROVED");
+    expect(result.error).toBeUndefined();
+  });
+
+  it("returns { error } for missing file", () => {
+    // Arrange: empty S02/ folder (no REVIEW.md)
+    const goalDir = createGoalTree(tempDir, "errors-missing", [
+      { number: 2, files: [] },
+    ]);
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(2, { errors: true }) as { data?: ReviewOutputs; error?: string };
+
+    // Assert: has error, no data
+    expect(result.error).toBeDefined();
+    expect(typeof result.error).toBe("string");
+    expect(result.data).toBeUndefined();
+  });
+
+  it("returns { error } for no frontmatter delimiters", () => {
+    // Arrange: S03/REVIEW.md as plain text with no YAML frontmatter
+    const goalDir = createGoalTree(tempDir, "errors-no-delimiters", [
+      { number: 3, files: [] },
+    ]);
+    const stepDir = path.join(goalDir, "S03");
+    fs.writeFileSync(path.join(stepDir, "REVIEW.md"), "# Review\n\nSome review content.", "utf-8");
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(3, { errors: true }) as { data?: ReviewOutputs; error?: string };
+
+    // Assert: has error, no data
+    expect(result.error).toBeDefined();
+    expect(typeof result.error).toBe("string");
+    expect(result.data).toBeUndefined();
+  });
+
+  it("returns { error } with typebox details for invalid decision", () => {
+    // Arrange: REVIEW.md with decision: UNKNOWN and valid counts
+    const goalDir = createGoalTree(tempDir, "errors-invalid-decision", [
+      { number: 4, files: [] },
+    ]);
+    const stepDir = path.join(goalDir, "S04");
+    writeReviewMd(stepDir, {
+      decision: "UNKNOWN",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    });
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(4, { errors: true }) as { data?: ReviewOutputs; error?: string };
+
+    // Assert: error mentions "decision"
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain("decision");
+    expect(result.data).toBeUndefined();
+  });
+
+  it("returns { error } for negative count", () => {
+    // Arrange: REVIEW.md with criticalIssues: -1
+    const goalDir = createGoalTree(tempDir, "errors-negative-count", [
+      { number: 5, files: [] },
+    ]);
+    const stepDir = path.join(goalDir, "S05");
+    writeReviewMd(stepDir, {
+      decision: "APPROVED",
+      criticalIssues: -1,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    });
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(5, { errors: true }) as { data?: ReviewOutputs; error?: string };
+
+    // Assert: error mentions "criticalIssues"
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain("criticalIssues");
+    expect(result.data).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getReviewOutputs backward compatibility (no options)
+// ---------------------------------------------------------------------------
+
+describe("getReviewOutputs backward compatibility (no options)", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("still returns null for missing file", () => {
+    // Arrange: temp dir with no REVIEW.md
+    const goalDir = createGoalTree(tempDir, "bc-missing", [
+      { number: 1, files: [] },
+    ]);
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(1);
+
+    // Assert: null (not an error object)
+    expect(result).toBeNull();
+  });
+
+  it("still returns data for valid frontmatter", () => {
+    // Arrange: valid APPROVED REVIEW.md
+    const goalDir = createGoalTree(tempDir, "bc-valid", [
+      { number: 1, files: [] },
+    ]);
+    const stepDir = path.join(goalDir, "S01");
+    writeReviewMd(stepDir, {
+      decision: "APPROVED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    });
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const result = state.getReviewOutputs(1) as ReviewOutputs | null;
+
+    // Assert: typed object directly (not wrapped in { data })
+    expect(result).not.toBeNull();
+    expect(result!.decision).toBe("APPROVED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// suppress console.warn in errors mode
+// ---------------------------------------------------------------------------
+
+describe("suppress console.warn in errors mode", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("no console.warn when errors=true and file is missing", () => {
+    // Arrange: spy on console.warn; temp dir with no REVIEW.md
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const goalDir = createGoalTree(tempDir, "no-warn", [
+      { number: 1, files: [] },
+    ]);
+
+    const state = createGoalState(goalDir);
+
+    // Act: use errors mode
+    state.getReviewOutputs(1, { errors: true });
+
+    // Assert: console.warn was not called
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
   });
 });

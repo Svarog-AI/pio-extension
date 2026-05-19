@@ -112,10 +112,16 @@ export interface GoalState {
   lastCompleted: () => { capability: string; params: Record<string, unknown>; timestamp?: string } | undefined;
   /**
    * Reads REVIEW.md frontmatter for a given step and returns typed review outputs.
-   * Returns `null` when the file is missing, has no frontmatter, or validation fails.
+   *
+   * Without options: returns `ReviewOutputs | null` (backward compatible).
+   * With `{ errors: true }`: returns `{ data?: ReviewOutputs; error?: string }`
+   * with detailed error information instead of `null`. Suppresses `console.warn`.
    * Lazy-evaluated — reads fresh from disk on every call.
    */
-  getReviewOutputs: (stepNumber: number) => ReviewOutputs | null;
+  getReviewOutputs: (stepNumber: number, options?: { errors?: boolean }) =>
+    | ReviewOutputs
+    | null
+    | { data?: ReviewOutputs; error?: string };
 }
 
 // ---------------------------------------------------------------------------
@@ -257,13 +263,16 @@ export function createGoalState(goalDir: string): GoalState {
       }
     },
 
-    getReviewOutputs: (stepNumber: number) => {
+    getReviewOutputs: (stepNumber: number, options?: { errors?: boolean }) => {
       const folder = stepFolderName(stepNumber);
       const reviewPath = path.join(goalDir, folder, "REVIEW.md");
 
       // extractFrontmatter returns null for missing file, no frontmatter, or malformed YAML
       const raw = extractFrontmatter(reviewPath);
       if (raw === null) {
+        if (options?.errors) {
+          return { error: `could not extract frontmatter from REVIEW.md` };
+        }
         console.warn(
           `[GoalState] getReviewOutputs(${stepNumber}): could not extract frontmatter from ${reviewPath}`,
         );
@@ -273,7 +282,14 @@ export function createGoalState(goalDir: string): GoalState {
       // validateAndCoerce returns { data } on success, { error } on validation failure
       const result = validateAndCoerce<ReviewOutputs>(raw, REVIEW_OUTPUT_SCHEMA);
       if ("error" in result) {
+        if (options?.errors) {
+          return { error: result.error };
+        }
         return null;
+      }
+
+      if (options?.errors) {
+        return { data: result.data };
       }
 
       return result.data;

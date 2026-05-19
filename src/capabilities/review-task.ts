@@ -95,12 +95,33 @@ function prepareReviewSession(_dir: string, params?: Record<string, unknown>): v
   fs.rmSync(path.join(stepDir, "REJECTED"), { force: true });
 }
 
+function postValidateReview(goalDir: string, params?: Record<string, unknown>): { success: boolean; message?: string } {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+  if (stepNumber == null) {
+    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
+  }
+
+  // Single parsing path through GoalState — uses shared frontmatter module + schema internally
+  const state = createGoalState(goalDir);
+  const result = state.getReviewOutputs(stepNumber, { errors: true }) as { data?: ReviewOutputs; error?: string };
+
+  // On failure: propagate the detailed error from GoalState
+  if (result.error) {
+    return { success: false, message: result.error };
+  }
+
+  // On success: create markers (APPROVED/REJECTED) and return success
+  applyReviewDecision(goalDir, stepNumber, result.data!);
+  return { success: true };
+}
+
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "review-task.md",
   validation: resolveReviewValidation,
   readOnlyFiles: resolveReviewReadOnlyFiles,
   writeAllowlist: resolveReviewWriteAllowlist,
   prepareSession: prepareReviewSession,
+  postValidate: postValidateReview,
   defaultInitialMessage: (workingDir, params) => {
     const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
     if (stepNumber == null) {

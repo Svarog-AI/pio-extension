@@ -666,3 +666,176 @@ describe("REVIEW_OUTPUT_SCHEMA runtime validation", () => {
     expect(errors[0].message).toBeDefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Helper: write a REVIEW.md with YAML frontmatter
+// ---------------------------------------------------------------------------
+
+function writeReviewMd(
+  stepDir: string,
+  frontmatter: Record<string, unknown>,
+  body?: string,
+): void {
+  const yamlLines = Object.entries(frontmatter)
+    .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
+    .join("\n");
+  const content = `---\n${yamlLines}\n---\n${body ?? "# Review"}`;
+  fs.writeFileSync(path.join(stepDir, "REVIEW.md"), content, "utf-8");
+}
+
+// ---------------------------------------------------------------------------
+// review-task postValidate — valid frontmatter
+// ---------------------------------------------------------------------------
+
+describe("review-task postValidate — valid frontmatter", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("valid APPROVED creates marker and returns success", () => {
+    // Arrange: temp goal dir with S01/REVIEW.md containing valid APPROVED frontmatter
+    const { goalDir, stepDir } = createGoalTree(tempDir, "pv-approved", { stepNumber: 1 });
+    writeReviewMd(stepDir, {
+      decision: "APPROVED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    });
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir, { stepNumber: 1 });
+
+    // Assert: returns success, S01/APPROVED exists, no S01/REJECTED
+    expect(result.success).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
+  });
+
+  it("valid REJECTED creates marker and deletes COMPLETED", () => {
+    // Arrange: temp goal dir with S02/REVIEW.md (REJECTED) and S02/COMPLETED
+    const { goalDir, stepDir } = createGoalTree(tempDir, "pv-rejected", { stepNumber: 2 });
+    writeReviewMd(stepDir, {
+      decision: "REJECTED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    });
+    fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir, { stepNumber: 2 });
+
+    // Assert: returns success, S02/REJECTED exists, S02/COMPLETED removed
+    expect(result.success).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// review-task postValidate — missing or invalid frontmatter
+// ---------------------------------------------------------------------------
+
+describe("review-task postValidate — missing or invalid frontmatter", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("missing REVIEW.md returns failure with error message", () => {
+    // Arrange: temp dir with no REVIEW.md in step folder
+    const { goalDir } = createGoalTree(tempDir, "pv-missing", { stepNumber: 3 });
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir, { stepNumber: 3 });
+
+    // Assert: success is false, message is non-empty
+    expect(result.success).toBe(false);
+    expect(result.message).toBeDefined();
+    expect(result.message!.length).toBeGreaterThan(0);
+  });
+
+  it("REVIEW.md with no frontmatter delimiters returns failure", () => {
+    // Arrange: REVIEW.md as plain text without YAML frontmatter
+    const { goalDir, stepDir } = createGoalTree(tempDir, "pv-no-delimiters", { stepNumber: 4 });
+    fs.writeFileSync(path.join(stepDir, "REVIEW.md"), "# Review\n\nSome review content.", "utf-8");
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir, { stepNumber: 4 });
+
+    // Assert: success is false, message is defined
+    expect(result.success).toBe(false);
+    expect(result.message).toBeDefined();
+  });
+
+  it("invalid decision value returns failure with detailed error", () => {
+    // Arrange: REVIEW.md with decision: UNKNOWN and valid counts
+    const { goalDir, stepDir } = createGoalTree(tempDir, "pv-invalid-decision", { stepNumber: 5 });
+    writeReviewMd(stepDir, {
+      decision: "UNKNOWN",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    });
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir, { stepNumber: 5 });
+
+    // Assert: success is false, message contains "decision"
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("decision");
+  });
+
+  it("negative issue count returns failure with detailed error", () => {
+    // Arrange: REVIEW.md with criticalIssues: -1
+    const { goalDir, stepDir } = createGoalTree(tempDir, "pv-negative-count", { stepNumber: 6 });
+    writeReviewMd(stepDir, {
+      decision: "APPROVED",
+      criticalIssues: -1,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    });
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir, { stepNumber: 6 });
+
+    // Assert: success is false, message contains "criticalIssues"
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("criticalIssues");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// review-task postValidate — missing stepNumber
+// ---------------------------------------------------------------------------
+
+describe("review-task postValidate — missing stepNumber", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("throws when stepNumber is missing", () => {
+    // Arrange: call with empty params {}
+    const { goalDir } = createGoalTree(tempDir, "pv-no-step");
+
+    // Act & Assert: throws an error mentioning "stepNumber"
+    expect(() => {
+      CAPABILITY_CONFIG.postValidate!(goalDir, {});
+    }).toThrow(/stepNumber/i);
+  });
+});

@@ -669,3 +669,43 @@ describe("CapabilityConfig.postValidate and postExecute", () => {
     expect(config.postExecute).toBe(cb);
   });
 });
+
+// ---------------------------------------------------------------------------
+// resolveCapabilityConfig — postValidate/postExecute passthrough
+// ---------------------------------------------------------------------------
+
+describe("resolveCapabilityConfig — postValidate/postExecute passthrough", () => {
+  it("passes through postValidate when the capability defines it (review-task)", async () => {
+    // Arrange: review-task defines postValidate
+    const params = { capability: "review-task" as string, goalName: "my-feature", stepNumber: 1 };
+
+    // Act
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    // Assert: resolved config has postValidate as a function
+    expect(result).toBeDefined();
+    expect(typeof result!.postValidate).toBe("function");
+  });
+
+  it("postValidate is undefined when the capability does not define it (create-goal)", async () => {
+    // Arrange: create-goal does not define postValidate
+    const params = { capability: "create-goal" as string, goalName: "my-feature" };
+
+    // Act
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    // Assert
+    expect(result!.postValidate).toBeUndefined();
+  });
+
+  it("postExecute is undefined when the capability does not define it", async () => {
+    // Arrange: no capability defines postExecute yet
+    const params = { capability: "review-task" as string, goalName: "my-feature", stepNumber: 1 };
+
+    // Act
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    // Assert
+    expect(result!.postExecute).toBeUndefined();
+  });
+});

@@ -54,6 +54,9 @@ export async function resolveCapabilityConfig(
 
   // prepareSession is always a callback (or undefined) — pass through directly
   const prepareSession = config.prepareSession;
+  // postValidate and postExecute are callbacks (or undefined) — pass through directly
+  const postValidate = config.postValidate;
+  const postExecute = config.postExecute;
 
   return {
     capability: cap,
@@ -70,5 +73,7 @@ export async function resolveCapabilityConfig(
     sessionParams: params,
     sessionName: deriveSessionName(goalName, cap, stepNumber),
     prepareSession,
+    postValidate,
+    postExecute,
   };
 }

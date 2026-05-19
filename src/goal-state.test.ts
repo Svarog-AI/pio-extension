@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { createGoalState } from "./goal-state";
 import { stepFolderName } from "./fs-utils";
-import type { ReviewOutputs } from "./frontmatter-schemas";
+import type { PlanFrontmatter, ReviewOutputs } from "./frontmatter-schemas";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers (mirrors fs-utils.test.ts pattern)
@@ -42,10 +42,10 @@ function createGoalTree(
   return goalDir;
 }
 
-/** Write a PLAN.md with Step N headings at the given goal directory. */
-function writePlan(goalDir: string, stepNumbers: number[]): void {
-  const lines = stepNumbers.map((n) => `## Step ${n}: Title for step ${n}`);
-  fs.writeFileSync(path.join(goalDir, "PLAN.md"), lines.join("\n"), "utf-8");
+/** Write a PLAN.md with YAML frontmatter containing totalSteps. */
+function writePlanWithFrontmatter(goalDir: string, totalSteps: number): void {
+  const content = `---\ntotalSteps: ${totalSteps}\n---\n# Plan: test-goal\n\nSome plan content.`;
+  fs.writeFileSync(path.join(goalDir, "PLAN.md"), content, "utf-8");
 }
 
 /** Create a queue file for a given goal name. */
@@ -101,6 +101,7 @@ describe("createGoalState — construction", () => {
     expect(() => state.pendingTask()).not.toThrow();
     expect(() => state.lastCompleted()).not.toThrow();
     expect(() => state.getReviewOutputs(1)).not.toThrow();
+    expect(() => state.planMetadata()).not.toThrow();
 
     // Assert safe defaults
     expect(state.hasGoal()).toBe(false);
@@ -111,6 +112,7 @@ describe("createGoalState — construction", () => {
     expect(state.pendingTask()).toBeUndefined();
     expect(state.lastCompleted()).toBeUndefined();
     expect(state.getReviewOutputs(1)).toBeNull(); // no step folder
+    expect(state.planMetadata()).toBeNull(); // no PLAN.md
   });
 });
 
@@ -209,9 +211,9 @@ describe("totalPlanSteps()", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("parses step count from PLAN.md with ## Step N: headings", () => {
+  it("returns totalSteps from PLAN.md frontmatter", () => {
     const goalDir = createGoalTree(tempDir, "with-steps");
-    writePlan(goalDir, [1, 2, 3]);
+    writePlanWithFrontmatter(goalDir, 3);
 
     const state = createGoalState(goalDir);
 
@@ -226,11 +228,11 @@ describe("totalPlanSteps()", () => {
     expect(state.totalPlanSteps()).toBeUndefined();
   });
 
-  it("returns undefined for PLAN.md with no step headings", () => {
+  it("returns undefined for PLAN.md with no frontmatter", () => {
     const goalDir = createGoalTree(tempDir, "plan-no-steps");
     fs.writeFileSync(
       path.join(goalDir, "PLAN.md"),
-      "# Plan\n\nSome content without step headings.",
+      "# Plan\n\nSome content without frontmatter.",
       "utf-8",
     );
 
@@ -239,13 +241,17 @@ describe("totalPlanSteps()", () => {
     expect(state.totalPlanSteps()).toBeUndefined();
   });
 
-  it("handles non-sequential step numbers and returns highest N", () => {
-    const goalDir = createGoalTree(tempDir, "non-seq");
-    writePlan(goalDir, [1, 5]);
+  it("returns undefined for invalid frontmatter totalSteps", () => {
+    const goalDir = createGoalTree(tempDir, "invalid-frontmatter");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "---\ntotalSteps: 0\n---\n# Plan\n\nContent.",
+      "utf-8",
+    );
 
     const state = createGoalState(goalDir);
 
-    expect(state.totalPlanSteps()).toBe(5);
+    expect(state.totalPlanSteps()).toBeUndefined();
   });
 });
 
@@ -1077,6 +1083,300 @@ describe("suppress console.warn in errors mode", () => {
 
     // Assert: console.warn was not called
     expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// planMetadata()
+// ---------------------------------------------------------------------------
+
+describe("planMetadata()", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns typed PlanFrontmatter when PLAN.md has valid frontmatter", () => {
+    const goalDir = createGoalTree(tempDir, "valid-frontmatter");
+    writePlanWithFrontmatter(goalDir, 5);
+
+    const state = createGoalState(goalDir);
+    const result = state.planMetadata() as PlanFrontmatter | null;
+
+    expect(result).not.toBeNull();
+    expect(result!.totalSteps).toBe(5);
+  });
+
+  it("returns null when PLAN.md does not exist", () => {
+    const goalDir = createGoalTree(tempDir, "no-plan-md");
+
+    const state = createGoalState(goalDir);
+    const result = state.planMetadata();
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null for PLAN.md with no frontmatter delimiters", () => {
+    const goalDir = createGoalTree(tempDir, "no-delimiters");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "# Plan\n\nSome content without frontmatter.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+    const result = state.planMetadata();
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null for malformed YAML in frontmatter", () => {
+    const goalDir = createGoalTree(tempDir, "malformed-yaml");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "---\ninvalid: yaml: [:\n---\n# body",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+    const result = state.planMetadata();
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null when totalSteps is missing from frontmatter", () => {
+    const goalDir = createGoalTree(tempDir, "missing-totalSteps");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "---\notherField: value\n---\n# Plan\n\nContent.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+    const result = state.planMetadata();
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null when totalSteps is zero", () => {
+    const goalDir = createGoalTree(tempDir, "zero-totalSteps");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "---\ntotalSteps: 0\n---\n# Plan\n\nContent.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+    const result = state.planMetadata();
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null when totalSteps is negative", () => {
+    const goalDir = createGoalTree(tempDir, "negative-totalSteps");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "---\ntotalSteps: -3\n---\n# Plan\n\nContent.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+    const result = state.planMetadata();
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null when totalSteps is a float", () => {
+    const goalDir = createGoalTree(tempDir, "float-totalSteps");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "---\ntotalSteps: 2.5\n---\n# Plan\n\nContent.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+    const result = state.planMetadata();
+
+    expect(result).toBeNull();
+  });
+
+  it("strips extra fields from frontmatter, returns only totalSteps", () => {
+    const goalDir = createGoalTree(tempDir, "extra-fields");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "---\ntotalSteps: 3\nextraField: value\n---\n# Plan\n\nContent.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+    const result = state.planMetadata() as PlanFrontmatter | null;
+
+    expect(result).not.toBeNull();
+    expect(result!.totalSteps).toBe(3);
+    expect((result as Record<string, unknown>).extraField).toBeUndefined();
+  });
+
+  it("reads fresh from disk on every call (no caching)", () => {
+    const goalDir = createGoalTree(tempDir, "no-caching");
+    writePlanWithFrontmatter(goalDir, 2);
+
+    const state = createGoalState(goalDir);
+
+    let result = state.planMetadata() as PlanFrontmatter | null;
+    expect(result!.totalSteps).toBe(2);
+
+    // Overwrite with different value
+    writePlanWithFrontmatter(goalDir, 7);
+
+    result = state.planMetadata() as PlanFrontmatter | null;
+    expect(result!.totalSteps).toBe(7);
+  });
+
+  it("returns valid PlanFrontmatter for boundary value totalSteps: 1", () => {
+    const goalDir = createGoalTree(tempDir, "boundary-one");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "---\ntotalSteps: 1\n---\n# Plan\n\nContent.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+    const result = state.planMetadata() as PlanFrontmatter | null;
+
+    expect(result).not.toBeNull();
+    expect(result!.totalSteps).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// planMetadata({ errors: true })
+// ---------------------------------------------------------------------------
+
+describe("planMetadata({ errors: true })", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns { data } for valid frontmatter", () => {
+    const goalDir = createGoalTree(tempDir, "errors-valid");
+    writePlanWithFrontmatter(goalDir, 5);
+
+    const state = createGoalState(goalDir);
+    const result = state.planMetadata({ errors: true }) as { data?: PlanFrontmatter; error?: string };
+
+    expect(result.data).toBeDefined();
+    expect(result.data!.totalSteps).toBe(5);
+    expect(result.error).toBeUndefined();
+  });
+
+  it("returns { error } for missing PLAN.md", () => {
+    const goalDir = createGoalTree(tempDir, "errors-missing");
+
+    const state = createGoalState(goalDir);
+    const result = state.planMetadata({ errors: true }) as { data?: PlanFrontmatter; error?: string };
+
+    expect(result.error).toBeDefined();
+    expect(typeof result.error).toBe("string");
+    expect(result.data).toBeUndefined();
+  });
+
+  it("returns { error } for no frontmatter delimiters", () => {
+    const goalDir = createGoalTree(tempDir, "errors-no-delimiters");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "# Plan\n\nSome content without frontmatter.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+    const result = state.planMetadata({ errors: true }) as { data?: PlanFrontmatter; error?: string };
+
+    expect(result.error).toBeDefined();
+    expect(typeof result.error).toBe("string");
+    expect(result.data).toBeUndefined();
+  });
+
+  it("returns { error } with typebox details for invalid totalSteps", () => {
+    const goalDir = createGoalTree(tempDir, "errors-invalid");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "---\ntotalSteps: 0\n---\n# Plan\n\nContent.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+    const result = state.planMetadata({ errors: true }) as { data?: PlanFrontmatter; error?: string };
+
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain("totalSteps");
+    expect(result.data).toBeUndefined();
+  });
+
+  it("returns { data } strips extra fields", () => {
+    const goalDir = createGoalTree(tempDir, "errors-extra");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "---\ntotalSteps: 3\nextraField: value\n---\n# Plan\n\nContent.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+    const result = state.planMetadata({ errors: true }) as { data?: PlanFrontmatter; error?: string };
+
+    expect(result.data).toBeDefined();
+    expect(result.data!.totalSteps).toBe(3);
+    expect((result.data as Record<string, unknown>).extraField).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// suppress console.warn in planMetadata errors mode
+// ---------------------------------------------------------------------------
+
+describe("suppress console.warn in planMetadata errors mode", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("no console.warn when errors=true and file is missing", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const goalDir = createGoalTree(tempDir, "plan-no-warn");
+
+    const state = createGoalState(goalDir);
+
+    // Act: use errors mode with no PLAN.md
+    state.planMetadata({ errors: true });
+
+    // Assert: console.warn was not called
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
+
+  it("console.warn IS called without errors option and file is missing", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const goalDir = createGoalTree(tempDir, "plan-warn");
+
+    const state = createGoalState(goalDir);
+
+    // Act: no errors option, no PLAN.md
+    state.planMetadata();
+
+    // Assert: console.warn was called
+    expect(warnSpy).toHaveBeenCalledTimes(1);
 
     warnSpy.mockRestore();
   });

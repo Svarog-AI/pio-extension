@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { GoalState } from "./goal-state";
-import type { ReviewOutputs } from "./frontmatter-schemas";
+import type { PlanFrontmatter, ReviewOutputs } from "./frontmatter-schemas";
 import {
   resolveTransition,
   recordTransition,
@@ -27,6 +27,7 @@ function mockState(overrides: Partial<GoalState>): GoalState {
     pendingTask: () => undefined,
     lastCompleted: () => undefined,
     getReviewOutputs: (_n: number, _opts?: { errors?: boolean }): ReviewOutputs | null | { data?: ReviewOutputs; error?: string } => null,
+    planMetadata: (_opts?: { errors?: boolean }): PlanFrontmatter | null | { data?: PlanFrontmatter; error?: string } => null,
     ...overrides,
   };
 }

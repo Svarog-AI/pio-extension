@@ -16,16 +16,11 @@ export interface ValidationResult {
 // Module-level cache (per-session, populated by resources_discover)
 // ---------------------------------------------------------------------------
 
-let validationRules: ValidationRule | undefined;
-let baseDir: string | undefined;
 let readOnlyFilePaths: string[] = [];
 let writeAllowlistPaths: string[] = [];
 
 /** Session working directory — the goal workspace dir (e.g. `/repo/.pio/goals/my-feature`). */
 let workingDir: string | undefined;
-
-/** Session capability name (e.g. "execute-task"). Captured for context; used for future policies. */
-let capabilityName: string | undefined;
 
 /** True after we've already warned once and let the switch through. */
 let warnedOnce = false;
@@ -35,17 +30,6 @@ let warningsThisSession = 0;
 
 /** Hard limit on total exit-gate warnings per session. */
 const MAX_WARNINGS = 3;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-export function extractGoalName(workingDir: string): string {
-  const goalsIndex = workingDir.indexOf("/goals/");
-  if (goalsIndex === -1) return "";
-  const afterGoals = workingDir.slice(goalsIndex + 7);
-  return afterGoals.split(path.sep)[0] || "";
-}
 
 // ---------------------------------------------------------------------------
 // Core validation engine
@@ -89,10 +73,7 @@ export function setupValidation(pi: ExtensionAPI) {
     if (!entry || entry.type !== "custom") return;
 
     const config = entry.data as { capability?: string; workingDir?: string; validation?: ValidationRule; readOnlyFiles?: string[]; writeAllowlist?: string[] };
-    validationRules = config.validation;
-    baseDir = config.workingDir;
     workingDir = config.workingDir;
-    capabilityName = config.capability;
 
     // Resolve read-only file paths to absolute paths
     if (config.readOnlyFiles && config.workingDir) {

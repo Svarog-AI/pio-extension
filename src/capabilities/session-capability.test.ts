@@ -232,6 +232,7 @@ describe("model resolution — setupCapability and before_agent_start", () => {
     const setModelMock = vi.fn().mockResolvedValue(true);
 
     const mockPi = {
+      registerTool: vi.fn(),
       on: (event: string, handler: Function) => {
         registeredHandlers[event] = handler;
       },
@@ -468,6 +469,7 @@ describe("model resolution — backwards compatibility", () => {
     const setModelMock = vi.fn();
 
     const mockPi = {
+      registerTool: vi.fn(),
       on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
       setModel: setModelMock,
       setSessionName: vi.fn(),
@@ -507,6 +509,7 @@ describe("model resolution — backwards compatibility", () => {
     const setModelMock = vi.fn();
 
     const mockPi = {
+      registerTool: vi.fn(),
       on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
       setModel: setModelMock,
       setSessionName: vi.fn(),

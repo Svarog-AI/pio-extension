@@ -8,7 +8,7 @@ import { launchCapability } from "./session-capability";
 import { resolveGoalDir, stepFolderName } from "../fs-utils";
 import { enqueueTask } from "../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
-import { createGoalState, type GoalState } from "../goal-state";
+import { createGoalState } from "../goal-state";
 
 // ---------------------------------------------------------------------------
 // Capability config — single source of truth for this capability's session shape
@@ -71,26 +71,16 @@ const TEST_FILE = "TEST.md";
 const SUMMARY_FILE = "SUMMARY.md";
 
 /**
- * Internal helper: check whether a step is ready for execution given a pre-built GoalState.
- * Both TASK.md and TEST.md must exist, and no COMPLETED/BLOCKED marker should be present.
- *
- * @param state - Pre-built GoalState to avoid redundant filesystem scans
- * @param stepNumber - The step number to check
+ * Check whether a step is ready for execution: both TASK.md and TEST.md exist,
+ * but neither COMPLETED nor BLOCKED marker has been written yet.
  */
-function _isStepReady(state: GoalState, stepNumber: number): boolean {
+export function isStepReady(goalDir: string, stepNumber: number): boolean {
+  const state = createGoalState(goalDir);
   const step = state.steps().find(s => s.stepNumber === stepNumber);
   if (!step) return false;
 
   // "defined" status means TASK.md + TEST.md exist with no COMPLETED/BLOCKED/APPROVED/REJECTED markers.
   return step.status() === "defined";
-}
-
-/**
- * Check whether a step is ready for execution: both TASK.md and TEST.md exist,
- * but neither COMPLETED nor BLOCKED marker has been written yet.
- */
-export function isStepReady(goalDir: string, stepNumber: number): boolean {
-  return _isStepReady(createGoalState(goalDir), stepNumber);
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +134,8 @@ async function validateAndFindNextStep(
   // Reuse the existing state to avoid redundant filesystem scans.
   const allSteps = state.steps();
   for (let i = 1; ; i++) {
-    if (_isStepReady(state, i)) {
+    const step = state.steps().find(s => s.stepNumber === i);
+    if (step && step.status() === "defined") {
       return { goalDir, ready: true, stepNumber: i };
     }
 

@@ -8,7 +8,41 @@ import { launchCapability } from "./session-capability";
 import { resolveGoalDir, stepFolderName } from "../fs-utils";
 import { enqueueTask } from "../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
-import { createGoalState, type GoalState, type StepStatus } from "../goal-state";
+import { createGoalState, type StepStatus } from "../goal-state";
+import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "../frontmatter-schemas";
+
+// Re-export schema and type for consumers that import from this module
+export { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs };
+
+/**
+ * Create marker files based on the review decision.
+ * APPROVED: creates empty S{NN}/APPROVED, leaves COMPLETED intact.
+ * REJECTED: creates empty S{NN}/REJECTED, deletes S{NN}/COMPLETED.
+ *
+ * @param goalDir - Absolute path to the goal workspace
+ * @param stepNumber - Step number (zero-padded automatically)
+ * @param outputs - Validated review outputs (TypeScript guarantees correct types)
+ */
+export function applyReviewDecision(
+  goalDir: string,
+  stepNumber: number,
+  outputs: ReviewOutputs,
+): void {
+  const folder = stepFolderName(stepNumber);
+  const stepDir = path.join(goalDir, folder);
+
+  // Ensure the step directory exists (should already exist with REVIEW.md, but be safe)
+  fs.mkdirSync(stepDir, { recursive: true });
+
+  if (outputs.decision === "APPROVED") {
+    fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
+  } else {
+    // REJECTED
+    fs.writeFileSync(path.join(stepDir, "REJECTED"), "", "utf-8");
+    // Delete COMPLETED so isStepReady in execute-task.ts permits re-execution
+    fs.rmSync(path.join(stepDir, "COMPLETED"), { force: true });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Capability config — single source of truth for this capability's session shape
@@ -61,12 +95,33 @@ function prepareReviewSession(_dir: string, params?: Record<string, unknown>): v
   fs.rmSync(path.join(stepDir, "REJECTED"), { force: true });
 }
 
+function postValidateReview(goalDir: string, params?: Record<string, unknown>): { success: boolean; message?: string } {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+  if (stepNumber == null) {
+    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
+  }
+
+  // Single parsing path through GoalState — uses shared frontmatter module + schema internally
+  const state = createGoalState(goalDir);
+  const result = state.getReviewOutputs(stepNumber, { errors: true }) as { data?: ReviewOutputs; error?: string };
+
+  // On failure: propagate the detailed error from GoalState
+  if (result.error) {
+    return { success: false, message: result.error };
+  }
+
+  // On success: create markers (APPROVED/REJECTED) and return success
+  applyReviewDecision(goalDir, stepNumber, result.data!);
+  return { success: true };
+}
+
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "review-task.md",
   validation: resolveReviewValidation,
   readOnlyFiles: resolveReviewReadOnlyFiles,
   writeAllowlist: resolveReviewWriteAllowlist,
   prepareSession: prepareReviewSession,
+  postValidate: postValidateReview,
   defaultInitialMessage: (workingDir, params) => {
     const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
     if (stepNumber == null) {
@@ -95,7 +150,7 @@ const REVIEW_FILE = "REVIEW.md";
  *
  * @param step - A StepStatus from GoalState
  */
-function _isReviewable(step: StepStatus): boolean {
+function isReviewable(step: StepStatus): boolean {
   // status() === "implemented" means COMPLETED exists and BLOCKED doesn't (BLOCKED has higher priority).
   // We also need SUMMARY.md — check that explicitly since it's not part of the status computation.
   return step.status() === "implemented" && step.hasSummary();
@@ -110,26 +165,7 @@ export function isStepReviewable(goalDir: string, stepNumber: number): boolean {
   const step = state.steps().find(s => s.stepNumber === stepNumber);
   if (!step) return false;
 
-  return _isReviewable(step);
-}
-
-/**
- * Internal helper: find the most recently completed step given a pre-built GoalState.
- * Scans S01/, S02/, ... in descending order.
- *
- * @param state - Pre-built GoalState to avoid redundant filesystem scans
- */
-function _findMostRecentCompletedStep(state: GoalState): number | undefined {
-  const allSteps = state.steps(); // sorted ascending by stepNumber
-
-  // Scan from highest to lowest for a reviewable step
-  for (let i = allSteps.length - 1; i >= 0; i--) {
-    if (_isReviewable(allSteps[i])) {
-      return allSteps[i].stepNumber;
-    }
-  }
-
-  return undefined;
+  return isReviewable(step);
 }
 
 /**
@@ -137,7 +173,17 @@ function _findMostRecentCompletedStep(state: GoalState): number | undefined {
  * Returns the step number or undefined if no completed step found.
  */
 export function findMostRecentCompletedStep(goalDir: string): number | undefined {
-  return _findMostRecentCompletedStep(createGoalState(goalDir));
+  const state = createGoalState(goalDir);
+  const allSteps = state.steps(); // sorted ascending by stepNumber
+
+  // Scan from highest to lowest for a reviewable step
+  for (let i = allSteps.length - 1; i >= 0; i--) {
+    if (isReviewable(allSteps[i])) {
+      return allSteps[i].stepNumber;
+    }
+  }
+
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -264,8 +310,9 @@ async function validateAndFindReviewStep(
     };
   }
 
-  // Reuse the existing state to avoid redundant filesystem scans.
-  const stepNumber = _findMostRecentCompletedStep(state);
+  // Use the public function — it creates its own state.
+  // The state above was already used for hasGoal/hasPlan checks.
+  const stepNumber = findMostRecentCompletedStep(goalDir);
   if (stepNumber === undefined) {
     return {
       goalDir,

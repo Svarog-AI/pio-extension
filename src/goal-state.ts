@@ -1,6 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { stepFolderName } from "./fs-utils";
+import { extractFrontmatter, validateAndCoerce } from "./frontmatter";
+import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./frontmatter-schemas";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -108,6 +110,18 @@ export interface GoalState {
    * Returns the parsed object or undefined if the file doesn't exist.
    */
   lastCompleted: () => { capability: string; params: Record<string, unknown>; timestamp?: string } | undefined;
+  /**
+   * Reads REVIEW.md frontmatter for a given step and returns typed review outputs.
+   *
+   * Without options: returns `ReviewOutputs | null` (backward compatible).
+   * With `{ errors: true }`: returns `{ data?: ReviewOutputs; error?: string }`
+   * with detailed error information instead of `null`. Suppresses `console.warn`.
+   * Lazy-evaluated — reads fresh from disk on every call.
+   */
+  getReviewOutputs: (stepNumber: number, options?: { errors?: boolean }) =>
+    | ReviewOutputs
+    | null
+    | { data?: ReviewOutputs; error?: string };
 }
 
 // ---------------------------------------------------------------------------
@@ -247,6 +261,38 @@ export function createGoalState(goalDir: string): GoalState {
       } catch {
         return undefined;
       }
+    },
+
+    getReviewOutputs: (stepNumber: number, options?: { errors?: boolean }) => {
+      const folder = stepFolderName(stepNumber);
+      const reviewPath = path.join(goalDir, folder, "REVIEW.md");
+
+      // extractFrontmatter returns null for missing file, no frontmatter, or malformed YAML
+      const raw = extractFrontmatter(reviewPath);
+      if (raw === null) {
+        if (options?.errors) {
+          return { error: `could not extract frontmatter from REVIEW.md` };
+        }
+        console.warn(
+          `[GoalState] getReviewOutputs(${stepNumber}): could not extract frontmatter from ${reviewPath}`,
+        );
+        return null;
+      }
+
+      // validateAndCoerce returns { data } on success, { error } on validation failure
+      const result = validateAndCoerce<ReviewOutputs>(raw, REVIEW_OUTPUT_SCHEMA);
+      if ("error" in result) {
+        if (options?.errors) {
+          return { error: result.error };
+        }
+        return null;
+      }
+
+      if (options?.errors) {
+        return { data: result.data };
+      }
+
+      return result.data;
     },
   };
 }

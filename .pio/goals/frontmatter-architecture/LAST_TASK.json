@@ -1,0 +1,177 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "frontmatter-architecture",
+    "stepNumber": 10,
+    "_sessionContext": {
+      "goalName": "frontmatter-architecture",
+      "stepNumber": 10,
+      "_sessionContext": {
+        "goalName": "frontmatter-architecture",
+        "stepNumber": 9,
+        "_sessionContext": {
+          "goalName": "frontmatter-architecture",
+          "stepNumber": 9,
+          "_sessionContext": {
+            "goalName": "frontmatter-architecture",
+            "stepNumber": 9,
+            "_sessionContext": {
+              "goalName": "frontmatter-architecture",
+              "stepNumber": 8,
+              "_sessionContext": {
+                "goalName": "frontmatter-architecture",
+                "stepNumber": 8,
+                "_sessionContext": {
+                  "goalName": "frontmatter-architecture",
+                  "stepNumber": 8,
+                  "_sessionContext": {
+                    "goalName": "frontmatter-architecture",
+                    "stepNumber": 7,
+                    "_sessionContext": {
+                      "goalName": "frontmatter-architecture",
+                      "stepNumber": 7,
+                      "_sessionContext": {
+                        "goalName": "frontmatter-architecture",
+                        "stepNumber": 7,
+                        "_sessionContext": {
+                          "goalName": "frontmatter-architecture",
+                          "stepNumber": 6,
+                          "_sessionContext": {
+                            "goalName": "frontmatter-architecture",
+                            "stepNumber": 6,
+                            "_sessionContext": {
+                              "goalName": "frontmatter-architecture",
+                              "stepNumber": 6,
+                              "_sessionContext": {
+                                "goalName": "frontmatter-architecture",
+                                "stepNumber": 6,
+                                "_sessionContext": {
+                                  "goalName": "frontmatter-architecture",
+                                  "stepNumber": 6,
+                                  "_sessionContext": {
+                                    "goalName": "frontmatter-architecture",
+                                    "stepNumber": 6,
+                                    "_sessionContext": {
+                                      "goalName": "frontmatter-architecture",
+                                      "stepNumber": 6,
+                                      "_sessionContext": {
+                                        "goalName": "frontmatter-architecture",
+                                        "stepNumber": 5,
+                                        "_sessionContext": {
+                                          "goalName": "frontmatter-architecture",
+                                          "stepNumber": 5,
+                                          "_sessionContext": {
+                                            "goalName": "frontmatter-architecture",
+                                            "stepNumber": 5,
+                                            "_sessionContext": {
+                                              "goalName": "frontmatter-architecture",
+                                              "stepNumber": 4,
+                                              "_sessionContext": {
+                                                "goalName": "frontmatter-architecture",
+                                                "stepNumber": 4,
+                                                "_sessionContext": {
+                                                  "goalName": "frontmatter-architecture",
+                                                  "stepNumber": 4,
+                                                  "_sessionContext": {
+                                                    "goalName": "frontmatter-architecture",
+                                                    "stepNumber": 3,
+                                                    "_sessionContext": {
+                                                      "goalName": "frontmatter-architecture",
+                                                      "stepNumber": 3,
+                                                      "_sessionContext": {
+                                                        "goalName": "frontmatter-architecture",
+                                                        "stepNumber": 3,
+                                                        "_sessionContext": {
+                                                          "goalName": "frontmatter-architecture",
+                                                          "stepNumber": 2,
+                                                          "_sessionContext": {
+                                                            "goalName": "frontmatter-architecture",
+                                                            "stepNumber": 2,
+                                                            "_sessionContext": {
+                                                              "goalName": "frontmatter-architecture",
+                                                              "stepNumber": 2,
+                                                              "_sessionContext": {
+                                                                "goalName": "frontmatter-architecture",
+                                                                "stepNumber": 1,
+                                                                "_sessionContext": {
+                                                                  "goalName": "frontmatter-architecture",
+                                                                  "stepNumber": 1,
+                                                                  "_sessionContext": {
+                                                                    "goalName": "frontmatter-architecture",
+                                                                    "stepNumber": 1,
+                                                                    "_sessionContext": {
+                                                                      "goalName": "frontmatter-architecture",
+                                                                      "stepNumber": 1,
+                                                                      "_sessionContext": {
+                                                                        "goalName": "frontmatter-architecture",
+                                                                        "initialMessage": "## Problem\n\nFrontmatter parsing is currently ad hoc and lives in the wrong place. Two issues to address:\n\n### 1. Frontmatter parsing is in `src/guards/validation.ts` (a guard module)\n\nThe functions `parseReviewFrontmatter`, `validateReviewFrontmatter`, `toReviewFrontmatter`, `applyReviewDecision`, and `validateReviewState` all live in `validation.ts` — a module responsible for file protection and the `pio_mark_complete` tool. This is wrong because:\n\n- **Wrong ownership**: The review-task capability defines what frontmatter it needs (decision, issue counts), but the parsing logic lives in a cross-cutting guard module.\n- **Tight coupling**: `validation.ts` must know about review-specific types (`ReviewFrontmatter`, `RawReviewFrontmatter`) and review-specific file paths (`REVIEW.md`).\n- **Not extensible**: If `execute-task` or `create-plan` want frontmatter in their output files (e.g., SUMMARY.md metadata), the pattern doesn't exist outside review. The guard module would need to grow more capability-specific branches.\n- **Goal state is blind**: `GoalState` has no awareness of frontmatter content. Consumers need to manually parse files to read frontmatter values.\n\n### 2. Ugly public/private function pattern in capability modules\n\nIn `src/capabilities/review-task.ts` (and `execute-task.ts`), there's a repetitive pattern:\n\n```typescript\n// Private function that takes GoalState\nfunction _findMostRecentCompletedStep(state: GoalState): number | undefined { ... }\n\n// Public wrapper that creates state just to call the private function\nexport function findMostRecentCompletedStep(goalDir: string): number | undefined {\n  return _findMostRecentCompletedStep(createGoalState(goalDir));\n}\n```\n\nThe same pattern appears for `_isReviewable`/`isStepReviewable` and `_isStepReady`/`isStepReady`. This is unnecessary indirection — the state should be created in a single function, not split across two.\n\n## Desired Outcome\n\n### Frontmatter Architecture\n\n1. **Each capability owns its frontmatter**: Parsing, validation, and types live in the capability module (e.g., `review-task.ts`), not in `validation.ts`.\n\n2. **Frontmatter values are available in GoalState**: The goal state should be able to read and expose frontmatter from output files (e.g., `state.getStepFrontmatter(stepNumber)` or similar). This enables other capabilities, the state machine, and UI commands to read structured data without manual parsing.\n\n3. **Elegant and extensible**: Adding frontmatter to a new capability (e.g., SUMMARY.md in execute-task) should require minimal boilerplate. The pattern should be:\n   - Define a frontmatter schema/type in the capability\n   - Register it so GoalState can discover and parse it\n   - The capability prompt instructs the agent to write frontmatter\n   - `validation.ts` (or a successor) reads from GoalState, not raw files\n\n4. **Clear separation**: `validation.ts` should handle generic validation (file existence, `pio_mark_complete` orchestration) but not capability-specific parsing logic.\n\n### Function Pattern Refactor\n\nEliminate the `_private(state)` + `public(goalDir)` pattern. Functions should either:\n- Accept `GoalState` directly (if the caller already has one), OR\n- Accept `goalDir` and create state internally (if that's the public API)\n\nNot both. Pick one public surface and stick with it.\n\n## Files Involved\n\n- `src/guards/validation.ts` — Currently contains review frontmatter parsing (`parseReviewFrontmatter`, `validateReviewFrontmatter`, `ReviewFrontmatter`, `RawReviewFrontmatter`, `applyReviewDecision`, `validateReviewState`)\n- `src/capabilities/review-task.ts` — Contains the `_private`/`public` function pattern (`_isReviewable`/`isStepReviewable`, `_findMostRecentCompletedStep`/`findMostRecentCompletedStep`)\n- `src/capabilities/execute-task.ts` — Same `_private`/`public` pattern (`_isStepReady`/`isStepReady`)\n- `src/goal-state.ts` — Should gain frontmatter awareness (methods to read frontmatter from output files)\n- `src/prompts/review-task.md` — Instructs agent to write YAML frontmatter in REVIEW.md (Step 7)\n\n## Architectural Questions to Discuss\n\n1. **Frontmatter registration**: Should capabilities export a frontmatter config (schema + file path) that GoalState uses to auto-parse? Or should GoalState have explicit methods per file type?\n\n2. **Lazy vs eager parsing**: Frontmatter should be parsed lazily (on first access) to match GoalState's existing lazy-evaluation model.\n\n3. **Error handling**: What happens when frontmatter is malformed or missing? Return null/undefined, or throw?\n\n4. **validation.ts role after refactor**: What remains in validation.ts once frontmatter parsing moves to capabilities? How does `pio_mark_complete` know what to do with review frontmatter?\n\n5. **GoalState frontmatter API**: Should it be `state.getStepFrontmatter(stepNumber)` returning a generic parsed object, or typed methods like `state.getReviewFrontmatter(stepNumber)`? The former is more extensible but less type-safe.",
+                                                                        "capability": "create-goal"
+                                                                      },
+                                                                      "capability": "create-plan"
+                                                                    },
+                                                                    "capability": "evolve-plan"
+                                                                  },
+                                                                  "capability": "execute-task"
+                                                                },
+                                                                "capability": "review-task"
+                                                              },
+                                                              "capability": "evolve-plan"
+                                                            },
+                                                            "capability": "execute-task"
+                                                          },
+                                                          "capability": "review-task"
+                                                        },
+                                                        "capability": "evolve-plan"
+                                                      },
+                                                      "capability": "execute-task"
+                                                    },
+                                                    "capability": "review-task"
+                                                  },
+                                                  "capability": "evolve-plan"
+                                                },
+                                                "capability": "execute-task"
+                                              },
+                                              "capability": "review-task"
+                                            },
+                                            "capability": "evolve-plan"
+                                          },
+                                          "capability": "execute-task"
+                                        },
+                                        "capability": "review-task"
+                                      },
+                                      "capability": "evolve-plan"
+                                    },
+                                    "capability": "execute-task"
+                                  },
+                                  "capability": "review-task"
+                                },
+                                "capability": "execute-task"
+                              },
+                              "capability": "review-task"
+                            },
+                            "capability": "execute-task"
+                          },
+                          "capability": "review-task"
+                        },
+                        "capability": "evolve-plan"
+                      },
+                      "capability": "execute-task"
+                    },
+                    "capability": "review-task"
+                  },
+                  "capability": "evolve-plan"
+                },
+                "capability": "execute-task"
+              },
+              "capability": "review-task"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    }
+  }
+}

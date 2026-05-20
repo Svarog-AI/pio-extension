@@ -201,6 +201,201 @@ describe("resolveEvolveWriteAllowlist with DECISIONS_FILE", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Shared helper for frontmatter-based tests
+// ---------------------------------------------------------------------------
+
+function createGoalTreeWithFrontmatter(
+  tempDir: string,
+  goalName: string,
+  totalSteps: number,
+  options?: {
+    stepFolders?: Array<{ stepNumber: number; approved: boolean }>;
+    withCompleted?: boolean;
+  },
+): string {
+  const goalDir = path.join(tempDir, ".pio", "goals", goalName);
+  fs.mkdirSync(goalDir, { recursive: true });
+
+  // Create PLAN.md with YAML frontmatter
+  const planContent = `---\ntotalSteps: ${totalSteps}\n---\n# Plan\n\n### Step 1: Test step\n`;
+  fs.writeFileSync(path.join(goalDir, "PLAN.md"), planContent, "utf-8");
+
+  // Create step folders with optional APPROVED markers
+  for (const step of options?.stepFolders ?? []) {
+    const folder = `S${String(step.stepNumber).padStart(2, "0")}`;
+    const stepDir = path.join(goalDir, folder);
+    fs.mkdirSync(stepDir, { recursive: true });
+
+    // Create TASK.md and TEST.md so the folder is considered "defined"
+    fs.writeFileSync(path.join(stepDir, "TASK.md"), "# Task\n", "utf-8");
+    fs.writeFileSync(path.join(stepDir, "TEST.md"), "# Tests\n", "utf-8");
+
+    if (step.approved) {
+      fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
+    }
+  }
+
+  // Optionally create COMPLETED marker
+  if (options?.withCompleted) {
+    fs.writeFileSync(path.join(goalDir, "COMPLETED"), "", "utf-8");
+  }
+
+  return goalDir;
+}
+
+// ---------------------------------------------------------------------------
+// validateAndFindNextStep — frontmatter-based completion detection
+// ---------------------------------------------------------------------------
+
+describe("validateAndFindNextStep with frontmatter-based completion", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  describe("frontmatter-based completion detection", () => {
+    it("writes COMPLETED and returns not-ready when currentStepNumber() > totalSteps", async () => {
+      // Arrange: totalSteps=3, all 3 steps APPROVED (currentStepNumber returns 4)
+      createGoalTreeWithFrontmatter(tempDir, "done-goal", 3, {
+        stepFolders: [
+          { stepNumber: 1, approved: true },
+          { stepNumber: 2, approved: true },
+          { stepNumber: 3, approved: true },
+        ],
+      });
+
+      // Act
+      const result = await validateAndFindNextStep("done-goal", tempDir);
+
+      // Assert: ready is false, COMPLETED file exists, error mentions completion
+      expect(result.ready).toBe(false);
+      if (!result.ready) {
+        expect(result.error).toMatch(/all.*steps|specified|complete/i);
+      }
+      expect(fs.existsSync(path.join(tempDir, ".pio", "goals", "done-goal", "COMPLETED"))).toBe(true);
+    });
+
+    it("returns not-ready when all steps are defined but current step exceeds totalSteps", async () => {
+      // Arrange: totalSteps=2, S01 and S02 exist without APPROVED (currentStepNumber=1, which is <= 2)
+      // This should NOT trigger completion — normal flow continues
+      createGoalTreeWithFrontmatter(tempDir, "active-goal", 2, {
+        stepFolders: [
+          { stepNumber: 1, approved: false },
+          { stepNumber: 2, approved: false },
+        ],
+      });
+
+      // Act
+      const result = await validateAndFindNextStep("active-goal", tempDir);
+
+      // Assert: ready is true, stepNumber is 1, COMPLETED does NOT exist
+      expect(result.ready).toBe(true);
+      if (result.ready) {
+        expect(result.stepNumber).toBe(1);
+      }
+      expect(fs.existsSync(path.join(tempDir, ".pio", "goals", "active-goal", "COMPLETED"))).toBe(false);
+    });
+
+    it("writes COMPLETED for totalSteps=1 when S01 is APPROVED", async () => {
+      // Arrange: totalSteps=1, S01 APPROVED (currentStepNumber returns 2)
+      createGoalTreeWithFrontmatter(tempDir, "single-goal", 1, {
+        stepFolders: [{ stepNumber: 1, approved: true }],
+      });
+
+      // Act
+      const result = await validateAndFindNextStep("single-goal", tempDir);
+
+      // Assert: ready is false, COMPLETED exists, error mentions step count
+      expect(result.ready).toBe(false);
+      if (!result.ready) {
+        expect(result.error).toMatch(/step|complete|all/i);
+      }
+      expect(fs.existsSync(path.join(tempDir, ".pio", "goals", "single-goal", "COMPLETED"))).toBe(true);
+    });
+
+    it("proceeds normally when currentStepNumber() <= totalSteps", async () => {
+      // Arrange: totalSteps=5, S01 exists without APPROVED (currentStepNumber=1, which is <= 5)
+      createGoalTreeWithFrontmatter(tempDir, "ongoing-goal", 5, {
+        stepFolders: [{ stepNumber: 1, approved: false }],
+      });
+
+      // Act
+      const result = await validateAndFindNextStep("ongoing-goal", tempDir);
+
+      // Assert: ready is true, stepNumber is 1, COMPLETED does NOT exist
+      expect(result.ready).toBe(true);
+      if (result.ready) {
+        expect(result.stepNumber).toBe(1);
+      }
+      expect(fs.existsSync(path.join(tempDir, ".pio", "goals", "ongoing-goal", "COMPLETED"))).toBe(false);
+    });
+
+    it("proceeds normally when frontmatter is unavailable (null)", async () => {
+      // Arrange: PLAN.md without YAML frontmatter
+      const goalDir = createGoalTree(tempDir, "no-frontmatter-goal", {
+        planContent: "# Plan\n\n### Step 1: Test step\n",
+      });
+
+      // Act
+      const result = await validateAndFindNextStep("no-frontmatter-goal", tempDir);
+
+      // Assert: ready is true, stepNumber is 1, COMPLETED does NOT exist
+      expect(result.ready).toBe(true);
+      if (result.ready) {
+        expect(result.stepNumber).toBe(1);
+      }
+      expect(fs.existsSync(path.join(goalDir, "COMPLETED"))).toBe(false);
+    });
+  });
+
+  describe("COMPLETED guard interaction", () => {
+    it("existing COMPLETED guard still blocks relaunch", async () => {
+      // Arrange: totalSteps=3, all APPROVED, AND pre-existing COMPLETED file
+      createGoalTreeWithFrontmatter(tempDir, "already-done", 3, {
+        stepFolders: [
+          { stepNumber: 1, approved: true },
+          { stepNumber: 2, approved: true },
+          { stepNumber: 3, approved: true },
+        ],
+        withCompleted: true,
+      });
+
+      // Act
+      const result = await validateAndFindNextStep("already-done", tempDir);
+
+      // Assert: ready is false, error mentions COMPLETED or "already specified"
+      expect(result.ready).toBe(false);
+      if (!result.ready) {
+        expect(result.error).toMatch(/COMPLETED|already specified/i);
+      }
+    });
+
+    it("new frontmatter check runs before existing COMPLETED guard (both detect completion)", async () => {
+      // Arrange: totalSteps=2, S01/S02 all APPROVED, no pre-existing COMPLETED
+      createGoalTreeWithFrontmatter(tempDir, "frontmatter-done", 2, {
+        stepFolders: [
+          { stepNumber: 1, approved: true },
+          { stepNumber: 2, approved: true },
+        ],
+      });
+
+      // Act
+      const result = await validateAndFindNextStep("frontmatter-done", tempDir);
+
+      // Assert: ready is false, COMPLETED now exists, error indicates completion
+      expect(result.ready).toBe(false);
+      expect(fs.existsSync(path.join(tempDir, ".pio", "goals", "frontmatter-done", "COMPLETED"))).toBe(true);
+      if (!result.ready) {
+        expect(result.error).toMatch(/all.*steps|specified|complete/i);
+      }
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // validateAndFindNextStep — COMPLETED pre-launch guard
 // ---------------------------------------------------------------------------
 

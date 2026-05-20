@@ -9,6 +9,7 @@ import { resolveGoalDir, stepFolderName } from "../fs-utils";
 import { enqueueTask } from "../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
 import { createGoalState } from "../goal-state";
+import type { PlanFrontmatter } from "../frontmatter-schemas";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -108,6 +109,7 @@ export async function validateAndFindNextStep(
 
   // Pre-launch guard: if COMPLETED already exists, all steps are specified — do not relaunch.
   // This is a root-level marker not represented in GoalState; keep as direct fs check.
+  // Must run before frontmatter check so pre-existing COMPLETED is caught with its own message.
   const completedPath = path.join(goalDir, "COMPLETED");
   if (fs.existsSync(completedPath)) {
     return {
@@ -115,6 +117,21 @@ export async function validateAndFindNextStep(
       ready: false,
       error: `All plan steps for "${name}" have already been specified. COMPLETED marker exists at the goal workspace root.`,
     };
+  }
+
+  // Frontmatter-based completion detection: if currentStepNumber() exceeds totalSteps,
+  // all plan steps are already specified — write COMPLETED marker and return not-ready.
+  const metadata = state.planMetadata() as PlanFrontmatter | null;
+  if (metadata !== null) {
+    const currentStep = state.currentStepNumber();
+    if (currentStep > metadata.totalSteps) {
+      fs.writeFileSync(completedPath, "", "utf-8");
+      return {
+        goalDir,
+        ready: false,
+        error: `All ${metadata.totalSteps} plan steps for "${name}" have been specified. No further specification work required.`,
+      };
+    }
   }
 
   // Find next step via GoalState.

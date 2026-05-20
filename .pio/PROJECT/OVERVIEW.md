@@ -1,6 +1,6 @@
 # Project Overview
 
-**pio-extension** is an extension for the [pi](https://github.com/earendil-works/pi-coding-agent) coding agent framework that provides a goal-driven project management workflow. It enables developers and AI agents to break complex work into structured sub-sessions with validation gates, prompt templates, and explicit output requirements. Each workflow step (goal definition → planning → specification → implementation → review) runs in its own isolated sub-session, ensuring focused execution and verifiable outputs.
+**pio-extension** is an extension for the [pi](https://github.com/earendil-works/pi-coding-agent) coding agent framework that provides a goal-driven project management workflow. It enables developers and AI agents to break complex work into structured sub-sessions with validation gates, prompt templates, and explicit output requirements. Each workflow step (goal definition → planning → specification → implementation → review → finalization) runs in its own isolated sub-session, ensuring focused execution and verifiable outputs.
 
 Developed by Svarog AI. Licensed under MIT. Repository: `github.com:Svarog-AI/pio-extension`.
 
@@ -35,6 +35,7 @@ pio-extension/
 │   │   ├── create-issue.ts      — pio_create_issue: creates .pio/issues/<slug>.md
 │   │   ├── goal-from-issue.ts   — pio_goal_from_issue: converts issue → goal workspace
 │   │   ├── list-goals.ts        — /pio-list-goals: lists goals with phase and last task
+│   │   ├── finalize-goal.ts     — pio_finalize_goal: reads accumulated decisions, updates .pio/PROJECT/
 │   │   ├── session-capability.ts — shared launcher + prompt injection + model switching
 │   │   └── *.test.ts            — colocated tests for each capability module
 │   ├── guards/                # Event-handling guards (file protection, dead-turn detection)
@@ -48,10 +49,12 @@ pio-extension/
 │   │   ├── review-code.md         — Code Review Agent
 │   │   ├── execute-plan.md        — Implementation Agent (all steps)
 │   │   ├── project-context.md     — Project Context Analyzer
+│   │   ├── finalize-goal.md       — Finalize Goal Agent (updates PROJECT docs from accumulated decisions)
 │   │   └── _skill-loading.md      — Shared skill-loading instructions
 │   ├── skills/                # Discoverable skills for pi's <available_skills>
 │   │   ├── pio/SKILL.md           — pio workflow reference
-│   │   └── test-driven-development/SKILL.md — TDD methodology guide
+│   │   ├── test-driven-development/SKILL.md — TDD methodology guide
+│   │   └── pio-project-knowledge/SKILL.md  — Canonical knowledge source for .pio/PROJECT/ files
 │   ├── index.ts               # Extension entry point — wires all capabilities into pi API
 │   ├── types.ts               # Shared type definitions (ValidationRule, CapabilityConfig, etc.)
 │   ├── fs-utils.ts            # Filesystem helpers (resolveGoalDir, stepFolderName, discoverNextStep)

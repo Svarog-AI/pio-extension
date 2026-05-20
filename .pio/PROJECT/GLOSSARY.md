@@ -15,6 +15,9 @@
 - **Session queue** — Per-goal task slots at `.pio/session-queue/task-{goalName}.json`. One pending task per goal. Files are consumed (deleted) when launched by `/pio-next-task`.
 - **Model config** — Optional `~/.pi/pio-config.yaml` that overrides which LLM model a capability uses. Resolution: per-capability → default → inherit parent.
 
+- **Finalize Goal Agent** — The agent that runs after a goal is fully completed. Reads accumulated decisions from DECISIONS.md, per-step SUMMARY.md files, and PLAN.md, then evaluates each finding against update rules to determine which `.pio/PROJECT/*.md` files need updates.
+- **DECISIONS.md** — Accumulated across steps starting at Step 2, documents architectural decisions, plan deviations, and file placement choices made during specification and implementation. Read by the Finalize Goal Agent to update project documentation.
+
 ## Acronyms
 
 | Acronym | Expansion |
@@ -36,3 +39,5 @@
 - **Review gate** — After implementation, `review-code` evaluates quality, test coverage, and alignment with requirements. Approval advances the workflow; rejection sends the step back for re-execution with feedback from REVIEW.md.
 - **DECISIONS.md carryover** — Starting at Step 2, `evolve-plan` writes DECISIONS.md to document architectural decisions made during specification. Subsequent steps read this to maintain consistency across the implementation.
 - **Transition audit trail** — Each capability completion records a transition entry in `<goalDir>/transitions.json`: an append-only JSON array tracking from→to transitions with timestamps and params. Provides observability into the workflow's progress.
+- **Finalization gate** — After a goal completes, the finalize-goal capability reads accumulated decisions and updates `.pio/PROJECT/*.md` documentation. The pio-project-knowledge skill provides canonical update rules that map decision categories to target files. This ensures future goals benefit from accumulated knowledge.
+

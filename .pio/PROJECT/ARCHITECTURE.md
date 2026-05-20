@@ -17,6 +17,8 @@ Each workflow capability follows a consistent module structure:
 3. **Command handler** — user-callable via `/pio-*` prefix in the TUI
 4. **`setup*()` function** — registers both tool and command with the pi API
 
+**Project-scoped capabilities:** When a capability writes to `.pio/PROJECT/*.md` (repo-root paths, not goal workspace), pass `goalDir` in enqueue params instead of `goalName`. This keeps `workingDir` as `cwd` so the writeAllowlist resolves relative to repo root. Capabilities like `project-context` and `finalize-goal` follow this pattern.
+
 ### Sub-Session Lifecycle
 
 The `session-capability.ts` module orchestrates sub-sessions:

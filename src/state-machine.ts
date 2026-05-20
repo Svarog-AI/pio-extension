@@ -51,11 +51,12 @@ function transitionCreatePlan(_state: GoalState, params?: Record<string, unknown
   return { capability: "evolve-plan", params };
 }
 
-/** evolve-plan → execute-task: propagate goalName and stepNumber from params or state. Returns undefined when goal is complete. */
+/** evolve-plan → execute-task: propagate goalName and stepNumber from params or state. Routes to finalize-goal when goal is complete. */
 function transitionEvolvePlan(state: GoalState, params?: Record<string, unknown>): TransitionResult | undefined {
-  // Guard: if all plan steps are evolved, no transition — session terminates gracefully
+  // Guard: if all plan steps are evolved, route to finalize-goal
   if (state.goalCompleted()) {
-    return undefined;
+    const goalName = extractGoalName(params);
+    return { capability: "finalize-goal", params: { goalName } };
   }
 
   const explicitStepNumber = extractStepNumber(params);
@@ -148,6 +149,8 @@ export function resolveTransition(
       return transitionExecuteTask(state, params);
     case "review-task":
       return transitionReviewTask(state, params);
+    case "finalize-goal":
+      return undefined;
     default:
       return undefined;
   }

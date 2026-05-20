@@ -156,7 +156,7 @@ describe("resolveTransition — evolve-plan → execute-task", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveTransition — evolve-plan completion detection", () => {
-  it("returns undefined when goal is completed", () => {
+  it("routes to finalize-goal when goal is completed", () => {
     // Arrange: mock state with goalCompleted returning true
     const state = mockState({
       goalCompleted: () => true,
@@ -165,8 +165,25 @@ describe("resolveTransition — evolve-plan completion detection", () => {
     // Act
     const result = resolveTransition("evolve-plan", state, { goalName: "feat" });
 
-    // Assert: no transition — session terminates gracefully
-    expect(result).toBeUndefined();
+    // Assert: routes to finalize-goal with goalName propagated
+    expect(result).toEqual({
+      capability: "finalize-goal",
+      params: { goalName: "feat" },
+    });
+  });
+
+  it("propagates goalName in finalize-goal params", () => {
+    // Arrange: mock state with goalCompleted returning true
+    const state = mockState({
+      goalCompleted: () => true,
+    });
+
+    // Act
+    const result = resolveTransition("evolve-plan", state, { goalName: "my-feature", stepNumber: 5 });
+
+    // Assert: goalName is propagated in params
+    expect(result?.capability).toBe("finalize-goal");
+    expect(result?.params?.goalName).toBe("my-feature");
   });
 
   it("routes to execute-task when goal not completed", () => {
@@ -377,6 +394,11 @@ describe("resolveTransition — unknown capability", () => {
   it("returns undefined for empty string", () => {
     const state = mockState({});
     expect(resolveTransition("", state, {})).toBeUndefined();
+  });
+
+  it("returns undefined for finalize-goal (no outgoing transition)", () => {
+    const state = mockState({});
+    expect(resolveTransition("finalize-goal", state, { goalName: "feat" })).toBeUndefined();
   });
 });
 

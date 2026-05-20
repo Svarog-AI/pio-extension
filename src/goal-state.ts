@@ -134,6 +134,14 @@ export interface GoalState {
     | PlanFrontmatter
     | null
     | { data?: PlanFrontmatter; error?: string };
+  /**
+   * Returns true when the COMPLETED marker file exists at `<goalDir>/COMPLETED`.
+   * This is the canonical completion signal — checked by `validateOutputs` to pass exit-gate validation.
+   * The COMPLETED marker is written by the evolve-plan agent (prompt Step 2) when all plan steps
+   * are already specified and the assigned step cannot be found in PLAN.md.
+   * Lazy-evaluated — reads fresh on every call.
+   */
+  goalCompleted: () => boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -328,6 +336,12 @@ export function createGoalState(goalDir: string): GoalState {
       }
 
       return result.data;
+    },
+
+    goalCompleted: () => {
+      // Canonical completion signal: COMPLETED marker file at goal root.
+      // Written by the evolve-plan agent (prompt Step 2) when all steps are already specified.
+      return fs.existsSync(path.join(goalDir, "COMPLETED"));
     },
   };
 }

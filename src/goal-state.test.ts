@@ -102,6 +102,7 @@ describe("createGoalState — construction", () => {
     expect(() => state.lastCompleted()).not.toThrow();
     expect(() => state.getReviewOutputs(1)).not.toThrow();
     expect(() => state.planMetadata()).not.toThrow();
+    expect(() => state.goalCompleted()).not.toThrow();
 
     // Assert safe defaults
     expect(state.hasGoal()).toBe(false);
@@ -113,6 +114,7 @@ describe("createGoalState — construction", () => {
     expect(state.lastCompleted()).toBeUndefined();
     expect(state.getReviewOutputs(1)).toBeNull(); // no step folder
     expect(state.planMetadata()).toBeNull(); // no PLAN.md
+    expect(state.goalCompleted()).toBe(false); // no signals
   });
 });
 
@@ -1335,6 +1337,135 @@ describe("planMetadata({ errors: true })", () => {
     expect(result.data).toBeDefined();
     expect(result.data!.totalSteps).toBe(3);
     expect((result.data as Record<string, unknown>).extraField).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// goalCompleted()
+// ---------------------------------------------------------------------------
+
+describe("goalCompleted()", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns true when COMPLETED marker exists", () => {
+    // Arrange: goalDir with PLAN.md (any content) and COMPLETED marker
+    const goalDir = createGoalTree(tempDir, "completed-marker");
+    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan", "utf-8");
+    fs.writeFileSync(path.join(goalDir, "COMPLETED"), "", "utf-8");
+
+    // Act
+    const state = createGoalState(goalDir);
+
+    // Assert
+    expect(state.goalCompleted()).toBe(true);
+  });
+
+  it("returns false when currentStepNumber() > totalPlanSteps but no COMPLETED marker", () => {
+    // Arrange: totalSteps=3, all 3 steps APPROVED (currentStepNumber returns 4), but no COMPLETED marker
+    // Frontmatter exhaustion alone is NOT completion — the COMPLETED marker is the canonical signal.
+    // The marker is written by validateAndFindNextStep() or the evolve-plan agent.
+    const goalDir = createGoalTree(tempDir, "frontmatter-done-no-marker", [
+      { number: 1, files: ["APPROVED"] },
+      { number: 2, files: ["APPROVED"] },
+      { number: 3, files: ["APPROVED"] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 3);
+
+    // Act
+    const state = createGoalState(goalDir);
+
+    // Assert: false — frontmatter exhaustion is not completion without the marker
+    expect(state.goalCompleted()).toBe(false);
+  });
+
+  it("returns true for single-step plan with COMPLETED marker (totalSteps=1, S01 APPROVED)", () => {
+    // Arrange: totalSteps=1, S01 APPROVED, COMPLETED marker written
+    const goalDir = createGoalTree(tempDir, "single-step-completed", [
+      { number: 1, files: ["APPROVED"] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 1);
+    fs.writeFileSync(path.join(goalDir, "COMPLETED"), "", "utf-8");
+
+    // Act
+    const state = createGoalState(goalDir);
+
+    // Assert
+    expect(state.goalCompleted()).toBe(true);
+  });
+
+  it("returns false when steps remain (currentStepNumber <= totalSteps)", () => {
+    // Arrange: totalSteps=5, S01 APPROVED (currentStepNumber returns 2)
+    const goalDir = createGoalTree(tempDir, "steps-remain", [
+      { number: 1, files: ["APPROVED"] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 5);
+
+    // Act
+    const state = createGoalState(goalDir);
+
+    // Assert
+    expect(state.goalCompleted()).toBe(false);
+  });
+
+  it("returns false when no COMPLETED marker and no frontmatter", () => {
+    // Arrange: PLAN.md without frontmatter, no COMPLETED
+    const goalDir = createGoalTree(tempDir, "no-signals");
+    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n\nNo frontmatter.", "utf-8");
+
+    // Act
+    const state = createGoalState(goalDir);
+
+    // Assert
+    expect(state.goalCompleted()).toBe(false);
+  });
+
+  it("returns false for single-step plan without COMPLETED marker (totalSteps=1, S01 APPROVED)", () => {
+    // Arrange: totalSteps=1, S01 APPROVED (currentStepNumber returns 2, which is > 1), but no COMPLETED marker
+    const goalDir = createGoalTree(tempDir, "single-step-no-marker", [
+      { number: 1, files: ["APPROVED"] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 1);
+
+    // Act
+    const state = createGoalState(goalDir);
+
+    // Assert: false — frontmatter exhaustion alone is not completion
+    expect(state.goalCompleted()).toBe(false);
+  });
+
+  it("COMPLETED marker is the only completion signal (works without frontmatter)", () => {
+    // Arrange: PLAN.md without frontmatter, but COMPLETED file exists
+    const goalDir = createGoalTree(tempDir, "marker-only");
+    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n\nNo frontmatter.", "utf-8");
+    fs.writeFileSync(path.join(goalDir, "COMPLETED"), "", "utf-8");
+
+    // Act
+    const state = createGoalState(goalDir);
+
+    // Assert
+    expect(state.goalCompleted()).toBe(true);
+  });
+
+  it("returns false when totalPlanSteps() is undefined and no COMPLETED marker", () => {
+    // Arrange: PLAN.md with invalid frontmatter (missing totalSteps), no COMPLETED
+    const goalDir = createGoalTree(tempDir, "invalid-frontmatter");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "---\notherField: value\n---\n# Plan\n\nContent.",
+      "utf-8",
+    );
+
+    // Act
+    const state = createGoalState(goalDir);
+
+    // Assert
+    expect(state.goalCompleted()).toBe(false);
   });
 });
 

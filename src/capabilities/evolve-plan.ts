@@ -107,11 +107,8 @@ export async function validateAndFindNextStep(
     };
   }
 
-  // Pre-launch guard: if COMPLETED already exists, all steps are specified — do not relaunch.
-  // This is a root-level marker not represented in GoalState; keep as direct fs check.
-  // Must run before frontmatter check so pre-existing COMPLETED is caught with its own message.
-  const completedPath = path.join(goalDir, "COMPLETED");
-  if (fs.existsSync(completedPath)) {
+  // Pre-launch guard: if COMPLETED marker already exists, all steps are specified — do not relaunch.
+  if (state.goalCompleted()) {
     return {
       goalDir,
       ready: false,
@@ -121,17 +118,26 @@ export async function validateAndFindNextStep(
 
   // Frontmatter-based completion detection: if currentStepNumber() exceeds totalSteps,
   // all plan steps are already specified — write COMPLETED marker and return not-ready.
+  // This is the single place where frontmatter is consumed to decide whether to write the marker.
+  // Frontmatter is mandatory (enforced by create-plan postValidate). Null means invalid state.
   const metadata = state.planMetadata() as PlanFrontmatter | null;
-  if (metadata !== null) {
-    const currentStep = state.currentStepNumber();
-    if (currentStep > metadata.totalSteps) {
-      fs.writeFileSync(completedPath, "", "utf-8");
-      return {
-        goalDir,
-        ready: false,
-        error: `All ${metadata.totalSteps} plan steps for "${name}" have been specified. No further specification work required.`,
-      };
-    }
+  if (metadata === null) {
+    throw new Error(
+      `PLAN.md for "${name}" has invalid or missing frontmatter. ` +
+      `Expected YAML frontmatter with "totalSteps" field. This should have been caught by create-plan validation. ` +
+      `To fix it manually, add "---\ntotalSteps: N\n---" at the top of PLAN.md, where N is the number of steps.`,
+    );
+  }
+
+  const currentStep = state.currentStepNumber();
+  if (currentStep > metadata.totalSteps) {
+    const completedPath = path.join(goalDir, "COMPLETED");
+    fs.writeFileSync(completedPath, "", "utf-8");
+    return {
+      goalDir,
+      ready: false,
+      error: `All ${metadata.totalSteps} plan steps for "${name}" have been specified. No further specification work required.`,
+    };
   }
 
   // Find next step via GoalState.

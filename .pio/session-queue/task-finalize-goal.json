@@ -1,0 +1,32 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "finalize-goal",
+    "stepNumber": 2,
+    "_sessionContext": {
+      "goalName": "finalize-goal",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "finalize-goal",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "finalize-goal",
+          "stepNumber": 1,
+          "_sessionContext": {
+            "goalName": "finalize-goal",
+            "stepNumber": 1,
+            "_sessionContext": {
+              "goalName": "finalize-goal",
+              "initialMessage": "Add a **finalize-goal** capability that runs after a goal is fully completed (COMPLETED marker at `<goalDir>/COMPLETED`).\n\n## Purpose\n\nWhen a goal completes, the final DECISIONS.md (in the highest-numbered step folder) contains cumulative decisions — architecture changes, plan deviations, new conventions, test patterns, and file placement choices. These decisions may require updating the project-level documentation in `.pio/PROJECT/` so future goals benefit from accumulated knowledge.\n\nThe finalize-goal session reads the last DECISIONS.md, evaluates each decision against specific update rules for each PROJECT file, and writes updates where applicable.\n\n## CONTEXT: PROJECT Files (7 files in `.pio/PROJECT/`)\n\nEach file has a defined scope — use these to derive update rules:\n\n| File | Scope |\n|------|-------|\n| **OVERVIEW.md** | Project description, tech stack, repository structure (src/ tree with file descriptions) |\n| **ARCHITECTURE.md** | Patterns and design decisions, capability pattern, sub-session lifecycle, state management, key design decisions, service integrations, data flow diagrams |\n| **CONVENTIONS.md** | Coding style (tsconfig settings), linting/formatting, AI agent instructions, conventions encoded in prompts |\n| **DEPENDENCIES.md** | External APIs, third-party libraries table, internal module graph, data flow between services |\n| **DEVELOPMENT.md** | Build/test commands, test directory convention, CI/CD, local environment setup |\n| **GIT.md** | Commit message format, observed types, scope usage, branch naming, tagging practices |\n| **GLOSSARY.md** | Terms and definitions, acronyms, business concepts |\n\n## CONTEXT: DECISIONS.md Structure\n\nDECISIONS.md is written by the evolve-plan agent (Step 2) and accumulated across steps. It contains categories like:\n\n- **Plan Deviations** — when implementation diverged from the original plan (marked with ⚠️)\n- **Architecture Decisions** — new patterns, module organization, interface contracts\n- **File Placement** — new file paths, directory structure changes\n- **Test Infrastructure** — test patterns, conventions for testing\n- Other categories as they arise during the goal\n\n## Update Rules (per PROJECT file)\n\nThe finalize-goal agent should evaluate decisions and update PROJECT files according to these rules:\n\n### OVERVIEW.md\n- Update \"Repository Structure\" section when new files or directories are introduced (new modules, capabilities, skills)\n- Update \"Tech Stack\" if a new dependency category is added or core tech changes\n\n### ARCHITECTURE.md\n- Update \"Key Design Decisions\" when architecture decisions introduce new patterns affecting the overall system (e.g., new module organization, state management changes)\n- Update \"Capability Pattern\" section if the capability contract itself changes\n- Update \"Data Flow Between Services\" when new data flows or pipeline stages are introduced\n- Update \"Sub-Session Lifecycle\" if lifecycle hooks or session behavior changes fundamentally\n\n### CONVENTIONS.md\n- Update \"Coding Style\" if new TypeScript config, naming conventions, or structural patterns are codified\n- Update \"AI Agent Instructions\" if new prompt conventions or agent behaviors are established project-wide\n\n### DEPENDENCIES.md\n- Update \"Third-Party Libraries\" table when a new library is added as a dependency\n- Update \"Internal Module Graph\" when new modules are created or the module graph changes significantly (new shared modules, capability additions)\n\n### DEVELOPMENT.md\n- Update \"Build and Test\" section if new scripts or test patterns are introduced\n- Update \"Test Directory Convention\" if test organization rules change\n\n### GIT.md\n- Update if commit conventions, branch naming patterns, or tagging practices change\n\n### GLOSSARY.md\n- Add new terms when decisions introduce vocabulary that is important for understanding the project\n- Add new acronyms as they appear in the codebase\n- Add business concepts when new workflow patterns or architectural paradigms are established\n\n## Constraints\n\n- The finalize-goal session should be read-only by default except for `.pio/PROJECT/*.md` files\n- It should NOT modify source code — only project documentation\n- It should produce a summary of what was updated (and why) in a final output file\n- If no updates are needed, it should explicitly state that decisions were reviewed and no PROJECT updates warranted\n\n## Goal\n\nImplement the finalize-goal capability following the established capability pattern (CAPABILITY_CONFIG, tool, command, prompt).",
+              "capability": "create-goal"
+            },
+            "capability": "create-plan"
+          },
+          "capability": "evolve-plan"
+        },
+        "capability": "execute-task"
+      },
+      "capability": "review-task"
+    }
+  }
+}

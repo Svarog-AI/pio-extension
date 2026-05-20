@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { GoalState } from "./goal-state";
+import { resolveGoalDir } from "./fs-utils";
 
 // ---------------------------------------------------------------------------
 // Re-exported types for backward compatibility
@@ -25,7 +26,7 @@ export interface TransitionResult {
 }
 
 /** Re-export stepFolderName for backward compatibility. */
-export { stepFolderName } from "./fs-utils";
+export { stepFolderName, resolveGoalDir } from "./fs-utils";
 
 // ---------------------------------------------------------------------------
 // Pure transition functions — no filesystem I/O
@@ -56,7 +57,10 @@ function transitionEvolvePlan(state: GoalState, params?: Record<string, unknown>
   // Guard: if all plan steps are evolved, route to finalize-goal
   if (state.goalCompleted()) {
     const goalName = extractGoalName(params);
-    return { capability: "finalize-goal", params: { goalName } };
+    // goalName is guaranteed to exist: goalCompleted() is true only when a goal workspace exists
+    const cwd = process.cwd();
+    const goalDir = resolveGoalDir(cwd, goalName!);
+    return { capability: "finalize-goal", params: { goalName, goalDir, workingDir: cwd } };
   }
 
   const explicitStepNumber = extractStepNumber(params);

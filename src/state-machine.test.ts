@@ -152,6 +152,47 @@ describe("resolveTransition — evolve-plan → execute-task", () => {
 });
 
 // ---------------------------------------------------------------------------
+// resolveTransition — full transition chain: review → evolve → finalize
+// ---------------------------------------------------------------------------
+
+describe("resolveTransition — review→evolve→finalize chain", () => {
+  it("review-task approval leads to evolve-plan which routes to finalize-goal when complete", () => {
+    // Arrange: step 3 is approved AND goal is complete
+    const approvedState = mockState({
+      steps: () => [mockStep(3, "approved")],
+    });
+    const completeState = mockState({
+      goalCompleted: () => true,
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/chain/test");
+
+    // Act step 1: review-task approval → evolve-plan with incremented stepNumber
+    const reviewResult = resolveTransition("review-task", approvedState, { goalName: "feat", stepNumber: 3 });
+
+    // Assert step 1: routes to evolve-plan with stepNumber 4
+    expect(reviewResult).toEqual({
+      capability: "evolve-plan",
+      params: { goalName: "feat", stepNumber: 4 },
+    });
+
+    // Act step 2: evolve-plan with goalCompleted → finalize-goal
+    const evolveResult = resolveTransition("evolve-plan", completeState, { goalName: "feat", stepNumber: 4 });
+
+    // Assert step 2: routes to finalize-goal with all three params
+    expect(evolveResult).toEqual({
+      capability: "finalize-goal",
+      params: {
+        goalName: "feat",
+        goalDir: "/chain/test/.pio/goals/feat",
+        workingDir: "/chain/test",
+      },
+    });
+
+    cwdSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // resolveTransition — evolve-plan completion detection
 // ---------------------------------------------------------------------------
 
@@ -161,15 +202,22 @@ describe("resolveTransition — evolve-plan completion detection", () => {
     const state = mockState({
       goalCompleted: () => true,
     });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/fake/cwd");
 
     // Act
     const result = resolveTransition("evolve-plan", state, { goalName: "feat" });
 
-    // Assert: routes to finalize-goal with goalName propagated
+    // Assert: routes to finalize-goal with goalName, goalDir, and workingDir
     expect(result).toEqual({
       capability: "finalize-goal",
-      params: { goalName: "feat" },
+      params: {
+        goalName: "feat",
+        goalDir: "/fake/cwd/.pio/goals/feat",
+        workingDir: "/fake/cwd",
+      },
     });
+
+    cwdSpy.mockRestore();
   });
 
   it("propagates goalName in finalize-goal params", () => {
@@ -177,13 +225,50 @@ describe("resolveTransition — evolve-plan completion detection", () => {
     const state = mockState({
       goalCompleted: () => true,
     });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/test/project");
 
     // Act
     const result = resolveTransition("evolve-plan", state, { goalName: "my-feature", stepNumber: 5 });
 
-    // Assert: goalName is propagated in params
+    // Assert: goalName, goalDir, and workingDir are all propagated in params
     expect(result?.capability).toBe("finalize-goal");
     expect(result?.params?.goalName).toBe("my-feature");
+    expect(result?.params?.goalDir).toBe("/test/project/.pio/goals/my-feature");
+    expect(result?.params?.workingDir).toBe("/test/project");
+
+    cwdSpy.mockRestore();
+  });
+
+  it("includes goalDir computed from resolveGoalDir", () => {
+    // Arrange: mock state with goalCompleted returning true
+    const state = mockState({
+      goalCompleted: () => true,
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/test/project");
+
+    // Act
+    const result = resolveTransition("evolve-plan", state, { goalName: "my-goal" });
+
+    // Assert: goalDir is computed via resolveGoalDir(cwd, goalName)
+    expect(result?.params?.goalDir).toBe("/test/project/.pio/goals/my-goal");
+
+    cwdSpy.mockRestore();
+  });
+
+  it("includes workingDir set to process.cwd()", () => {
+    // Arrange: mock state with goalCompleted returning true
+    const state = mockState({
+      goalCompleted: () => true,
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/my/root");
+
+    // Act
+    const result = resolveTransition("evolve-plan", state, { goalName: "feat" });
+
+    // Assert: workingDir is set to process.cwd() (project root)
+    expect(result?.params?.workingDir).toBe("/my/root");
+
+    cwdSpy.mockRestore();
   });
 
   it("routes to execute-task when goal not completed", () => {

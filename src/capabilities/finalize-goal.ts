@@ -26,7 +26,9 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   ],
   defaultInitialMessage: (workingDir, params) => {
     const goalDir = typeof params?.goalDir === "string" ? params.goalDir : "";
-    return `Finalize the completed goal workspace at ${goalDir}. Read accumulated decisions (DECISIONS.md from the highest-numbered step folder), PLAN.md, and per-step SUMMARY.md files. Evaluate each decision against the update rules from the pio-project-knowledge skill. Update the 7 PROJECT files under ${workingDir}/.pio/PROJECT/ where warranted. Produce a summary of all changes made.`;
+    const goalName = typeof params?.goalName === "string" ? params.goalName : "";
+    const goalRef = goalName ? `"${goalName}"` : "goal workspace";
+    return `Finalize the completed ${goalRef} at ${goalDir}. Read accumulated decisions (DECISIONS.md from the highest-numbered step folder), PLAN.md, and per-step SUMMARY.md files. Evaluate each decision against the update rules from the pio-project-knowledge skill. Update the 7 PROJECT files under ${workingDir}/.pio/PROJECT/ where warranted. Produce a summary of all changes made.`;
   },
 };
 

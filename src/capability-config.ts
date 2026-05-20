@@ -33,9 +33,16 @@ export async function resolveCapabilityConfig(
     return undefined;
   }
 
-  // Derive workingDir from params.goalName, or fall back to cwd for project-scoped capabilities
+  // Derive workingDir: explicit params.workingDir > goalName-based derivation > cwd fallback
   const goalName = typeof params?.goalName === "string" ? params.goalName : "";
-  const workingDir = goalName ? resolveGoalDir(cwd, goalName) : cwd;
+  const explicitWorkingDir = typeof params?.workingDir === "string" && params.workingDir
+    ? params.workingDir
+    : "";
+  const workingDir = explicitWorkingDir
+    ? explicitWorkingDir
+    : goalName
+      ? resolveGoalDir(cwd, goalName)
+      : cwd;
 
   // Resolve step number from params (used for session name and step-dependent config)
   const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;

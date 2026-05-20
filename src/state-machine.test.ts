@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { GoalState } from "./goal-state";
-import type { ReviewOutputs } from "./frontmatter-schemas";
+import type { PlanFrontmatter, ReviewOutputs } from "./frontmatter-schemas";
 import {
   resolveTransition,
   recordTransition,
@@ -27,6 +27,8 @@ function mockState(overrides: Partial<GoalState>): GoalState {
     pendingTask: () => undefined,
     lastCompleted: () => undefined,
     getReviewOutputs: (_n: number, _opts?: { errors?: boolean }): ReviewOutputs | null | { data?: ReviewOutputs; error?: string } => null,
+    planMetadata: (_opts?: { errors?: boolean }): PlanFrontmatter | null | { data?: PlanFrontmatter; error?: string } => null,
+    goalCompleted: () => false,
     ...overrides,
   };
 }
@@ -142,6 +144,59 @@ describe("resolveTransition — evolve-plan → execute-task", () => {
     const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 2 });
 
     // Explicit param takes precedence
+    expect(result).toEqual({
+      capability: "execute-task",
+      params: { goalName: "feat", stepNumber: 2 },
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveTransition — evolve-plan completion detection
+// ---------------------------------------------------------------------------
+
+describe("resolveTransition — evolve-plan completion detection", () => {
+  it("returns undefined when goal is completed", () => {
+    // Arrange: mock state with goalCompleted returning true
+    const state = mockState({
+      goalCompleted: () => true,
+    });
+
+    // Act
+    const result = resolveTransition("evolve-plan", state, { goalName: "feat" });
+
+    // Assert: no transition — session terminates gracefully
+    expect(result).toBeUndefined();
+  });
+
+  it("routes to execute-task when goal not completed", () => {
+    // Arrange: mock state with goalCompleted returning false
+    const state = mockState({
+      goalCompleted: () => false,
+      currentStepNumber: () => 3,
+    });
+
+    // Act
+    const result = resolveTransition("evolve-plan", state, { goalName: "feat" });
+
+    // Assert: normal routing to execute-task
+    expect(result).toEqual({
+      capability: "execute-task",
+      params: { goalName: "feat", stepNumber: 3 },
+    });
+  });
+
+  it("routes to execute-task with explicit stepNumber when not completed", () => {
+    // Arrange: mock state with goalCompleted returning false, explicit stepNumber in params
+    const state = mockState({
+      goalCompleted: () => false,
+      currentStepNumber: () => 5,
+    });
+
+    // Act
+    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 2 });
+
+    // Assert: explicit param takes precedence
     expect(result).toEqual({
       capability: "execute-task",
       params: { goalName: "feat", stepNumber: 2 },

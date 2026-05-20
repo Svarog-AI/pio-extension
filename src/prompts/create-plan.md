@@ -80,7 +80,18 @@ Decompose the gap between current state and to-be state into numbered steps. Use
 
 Write `PLAN.md` into the goal workspace directory. The file must follow this exact structure:
 
+**Important:** PLAN.md must start with a YAML frontmatter block containing `totalSteps`. The `totalSteps` value must equal the count of steps you are creating in this plan. The frontmatter block must appear before the document title, delimited by `---` on their own lines:
+
+```yaml
+---
+totalSteps: <number of steps>
+---
+```
+
 ```markdown
+---
+totalSteps: 5
+---
 # Plan: <Goal Name>
 
 <One-line summary of what this plan achieves, referencing GOAL.md for context.>
@@ -115,6 +126,8 @@ If there are none, write "None." Do not omit this section.>
 
 <Any additional context: known risks, edge cases that need special attention, migration strategy decisions, backwards-compatibility notes, or things an executor should watch out for. If none, write "None." Do not omit this section.>
 ```
+
+**Remember:** The `totalSteps` value in the YAML frontmatter must equal the actual number of `## Step N:` headings in your plan.
 
 ### Step 6: Signal completion
 

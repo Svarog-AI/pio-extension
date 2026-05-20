@@ -1,0 +1,127 @@
+{
+  "capability": "review-task",
+  "params": {
+    "goalName": "plan-frontmatter",
+    "stepNumber": 6,
+    "_sessionContext": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 6,
+      "_sessionContext": {
+        "goalName": "plan-frontmatter",
+        "stepNumber": 6,
+        "_sessionContext": {
+          "goalName": "plan-frontmatter",
+          "stepNumber": 6,
+          "_sessionContext": {
+            "goalName": "plan-frontmatter",
+            "stepNumber": 5,
+            "_sessionContext": {
+              "goalName": "plan-frontmatter",
+              "stepNumber": 5,
+              "_sessionContext": {
+                "goalName": "plan-frontmatter",
+                "stepNumber": 5,
+                "_sessionContext": {
+                  "goalName": "plan-frontmatter",
+                  "stepNumber": 4,
+                  "_sessionContext": {
+                    "goalName": "plan-frontmatter",
+                    "stepNumber": 4,
+                    "_sessionContext": {
+                      "goalName": "plan-frontmatter",
+                      "stepNumber": 4,
+                      "_sessionContext": {
+                        "goalName": "plan-frontmatter",
+                        "stepNumber": 3,
+                        "_sessionContext": {
+                          "goalName": "plan-frontmatter",
+                          "stepNumber": 3,
+                          "_sessionContext": {
+                            "goalName": "plan-frontmatter",
+                            "stepNumber": 3,
+                            "_sessionContext": {
+                              "goalName": "plan-frontmatter",
+                              "stepNumber": 2,
+                              "_sessionContext": {
+                                "goalName": "plan-frontmatter",
+                                "stepNumber": 2,
+                                "_sessionContext": {
+                                  "goalName": "plan-frontmatter",
+                                  "stepNumber": 2,
+                                  "_sessionContext": {
+                                    "goalName": "plan-frontmatter",
+                                    "stepNumber": 2,
+                                    "_sessionContext": {
+                                      "goalName": "plan-frontmatter",
+                                      "stepNumber": 2,
+                                      "_sessionContext": {
+                                        "goalName": "plan-frontmatter",
+                                        "stepNumber": 2,
+                                        "_sessionContext": {
+                                          "goalName": "plan-frontmatter",
+                                          "stepNumber": 2,
+                                          "_sessionContext": {
+                                            "goalName": "plan-frontmatter",
+                                            "stepNumber": 1,
+                                            "_sessionContext": {
+                                              "goalName": "plan-frontmatter",
+                                              "stepNumber": 1,
+                                              "_sessionContext": {
+                                                "goalName": "plan-frontmatter",
+                                                "stepNumber": 1,
+                                                "_sessionContext": {
+                                                  "goalName": "plan-frontmatter",
+                                                  "stepNumber": 1,
+                                                  "_sessionContext": {
+                                                    "goalName": "plan-frontmatter",
+                                                    "initialMessage": "Introduce planning frontmatter to PLAN.md so that evolve-plan can programmatically determine if steps remain.\n\nKey requirements:\n- PLAN.md should have YAML frontmatter at the top (using existing `extractFrontmatter` from `src/frontmatter.ts`)\n- Frontmatter must include `totalSteps` (integer, the total number of plan steps)\n- Add a TypeBox schema in `src/frontmatter-schemas.ts` for the plan frontmatter (similar to `REVIEW_OUTPUT_SCHEMA`)\n- Update `GoalState` (`src/goal-state.ts`) to read and parse this frontmatter, exposing the step count via a method (e.g., `planMetadata()`)\n- The current `totalPlanSteps()` method parses `## Step N:` headings — this should be replaced or augmented to read from frontmatter instead (frontmatter is the source of truth; heading parsing can remain as fallback)\n- Update the create-plan prompt (`src/prompts/create-plan.md`) to instruct the Planning Agent to include frontmatter with `totalSteps` when writing PLAN.md\n- evolve-plan (`src/capabilities/evolve-plan.ts`) should use the frontmatter `totalSteps` to know if all steps have been specified (compare current step number against total) instead of relying on folder scanning or the COMPLETED marker alone\n\nThis is a non-breaking change — existing PLAN.md files without frontmatter should still work via the heading-parsing fallback.",
+                                                    "capability": "create-goal"
+                                                  },
+                                                  "capability": "create-plan"
+                                                },
+                                                "capability": "evolve-plan"
+                                              },
+                                              "capability": "execute-task"
+                                            },
+                                            "capability": "review-task"
+                                          },
+                                          "capability": "evolve-plan"
+                                        },
+                                        "capability": "execute-task"
+                                      },
+                                      "capability": "review-task"
+                                    },
+                                    "capability": "execute-task"
+                                  },
+                                  "capability": "review-task"
+                                },
+                                "capability": "execute-task"
+                              },
+                              "capability": "review-task"
+                            },
+                            "capability": "evolve-plan"
+                          },
+                          "capability": "execute-task"
+                        },
+                        "capability": "review-task"
+                      },
+                      "capability": "evolve-plan"
+                    },
+                    "capability": "execute-task"
+                  },
+                  "capability": "review-task"
+                },
+                "capability": "evolve-plan"
+              },
+              "capability": "execute-task"
+            },
+            "capability": "review-task"
+          },
+          "capability": "evolve-plan"
+        },
+        "capability": "execute-task"
+      },
+      "capability": "review-task"
+    }
+  }
+}

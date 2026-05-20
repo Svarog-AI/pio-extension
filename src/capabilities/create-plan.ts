@@ -7,6 +7,59 @@ import { launchCapability } from "./session-capability";
 import { resolveGoalDir } from "../fs-utils";
 import { enqueueTask } from "../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
+import { createGoalState } from "../goal-state";
+
+// ---------------------------------------------------------------------------
+// postValidate — validates PLAN.md frontmatter correctness
+// ---------------------------------------------------------------------------
+
+/**
+ * Regex to match step headings like "## Step 1:", "## Step 12: Add schema".
+ * The `m` flag enables `^` to match start of each line.
+ */
+const STEP_HEADING_RE = /^## Step \d+:/gm;
+
+/**
+ * postValidate callback for the create-plan capability.
+ * Runs after file-existence validation passes but before transition routing.
+ *
+ * Validates:
+ * 1. PLAN.md has valid YAML frontmatter with a correct `totalSteps` field
+ * 2. `totalSteps` matches the actual count of `## Step N:` headings in the document
+ *
+ * Delegates frontmatter validation to GoalState.planMetadata() — does not
+ * import low-level frontmatter utilities directly.
+ */
+function postValidateCreatePlan(goalDir: string): { success: boolean; message?: string } {
+  // Step 1: Validate frontmatter via GoalState
+  const state = createGoalState(goalDir);
+  const result = state.planMetadata({ errors: true });
+
+  // Type assertion: when { errors: true }, result is always { data?: ...; error?: string }
+  const typedResult = result as { data?: { totalSteps: number }; error?: string };
+
+  if (typedResult.error) {
+    return { success: false, message: typedResult.error };
+  }
+
+  // Step 2: Count actual ## Step N: headings in PLAN.md
+  const planPath = `${goalDir}/PLAN.md`;
+  const planContent = fs.readFileSync(planPath, "utf-8");
+  const headingMatches = planContent.match(STEP_HEADING_RE);
+  const headingCount = headingMatches ? headingMatches.length : 0;
+
+  // Step 3: Compare heading count to totalSteps
+  const totalSteps = typedResult.data!.totalSteps;
+
+  if (headingCount !== totalSteps) {
+    return {
+      success: false,
+      message: `totalSteps is ${totalSteps} but found ${headingCount} step heading(s) in PLAN.md. Update totalSteps or add/remove step headings to match.`,
+    };
+  }
+
+  return { success: true };
+}
 
 // ---------------------------------------------------------------------------
 // Capability config — single source of truth for this capability's session shape
@@ -18,6 +71,7 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   readOnlyFiles: ["GOAL.md"],
   writeAllowlist: ["PLAN.md"],
   defaultInitialMessage: (goalDir) => `Goal workspace is at ${goalDir}. GOAL.md exists. Create PLAN.md in this directory.`,
+  postValidate: postValidateCreatePlan,
 };
 
 // ---------------------------------------------------------------------------

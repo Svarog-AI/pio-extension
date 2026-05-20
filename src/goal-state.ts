@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { stepFolderName } from "./fs-utils";
 import { extractFrontmatter, validateAndCoerce } from "./frontmatter";
-import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./frontmatter-schemas";
+import { PLAN_FRONTMATTER_SCHEMA, REVIEW_OUTPUT_SCHEMA, type PlanFrontmatter, type ReviewOutputs } from "./frontmatter-schemas";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -83,9 +83,9 @@ export interface GoalState {
   /** Returns true when PLAN.md exists in the goal directory. */
   hasPlan: () => boolean;
   /**
-   * Returns the number of plan steps parsed from PLAN.md headings.
-   * Matches `## Step N:` patterns and returns the highest N found.
-   * Returns undefined if PLAN.md doesn't exist or has no step headings.
+   * Returns the total number of plan steps from PLAN.md frontmatter.
+   * Reads `totalSteps` from the YAML frontmatter block.
+   * Returns undefined if PLAN.md doesn't exist or has invalid frontmatter.
    */
   totalPlanSteps: () => number | undefined;
   /**
@@ -122,6 +122,26 @@ export interface GoalState {
     | ReviewOutputs
     | null
     | { data?: ReviewOutputs; error?: string };
+  /**
+   * Reads PLAN.md frontmatter and returns typed plan metadata.
+   *
+   * Without options: returns `PlanFrontmatter | null`.
+   * With `{ errors: true }`: returns `{ data?: PlanFrontmatter; error?: string }`
+   * with detailed error information instead of `null`. Suppresses `console.warn`.
+   * Lazy-evaluated — reads fresh from disk on every call.
+   */
+  planMetadata: (options?: { errors?: boolean }) =>
+    | PlanFrontmatter
+    | null
+    | { data?: PlanFrontmatter; error?: string };
+  /**
+   * Returns true when the COMPLETED marker file exists at `<goalDir>/COMPLETED`.
+   * This is the canonical completion signal — checked by `validateOutputs` to pass exit-gate validation.
+   * The COMPLETED marker is written by the evolve-plan agent (prompt Step 2) when all plan steps
+   * are already specified and the assigned step cannot be found in PLAN.md.
+   * Lazy-evaluated — reads fresh on every call.
+   */
+  goalCompleted: () => boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +180,42 @@ export function createGoalState(goalDir: string): GoalState {
     }
   }
 
+  // Extract planMetadata into a local variable so totalPlanSteps() can delegate.
+  // Can't use `this` in a plain object literal — use a shared closure instead.
+  const _planMetadata = (options?: { errors?: boolean }) => {
+    const planPath = path.join(goalDir, "PLAN.md");
+
+    // extractFrontmatter returns null for missing file, no frontmatter, or malformed YAML
+    const raw = extractFrontmatter(planPath);
+    if (raw === null) {
+      if (options?.errors) {
+        return { error: `could not extract frontmatter from PLAN.md` };
+      }
+      console.warn(
+        `[GoalState] planMetadata(): could not extract frontmatter from ${planPath}`,
+      );
+      return null;
+    }
+
+    // validateAndCoerce returns { data } on success, { error } on validation failure
+    const result = validateAndCoerce<PlanFrontmatter>(raw, PLAN_FRONTMATTER_SCHEMA);
+    if ("error" in result) {
+      if (options?.errors) {
+        return { error: result.error };
+      }
+      console.warn(
+        `[GoalState] planMetadata(): frontmatter validation failed: ${result.error}`,
+      );
+      return null;
+    }
+
+    if (options?.errors) {
+      return { data: result.data };
+    }
+
+    return result.data;
+  };
+
   return {
     goalName,
 
@@ -167,24 +223,11 @@ export function createGoalState(goalDir: string): GoalState {
 
     hasPlan: () => fs.existsSync(path.join(goalDir, "PLAN.md")),
 
-    totalPlanSteps: () => {
-      const planPath = path.join(goalDir, "PLAN.md");
-      if (!fs.existsSync(planPath)) return undefined;
+    planMetadata: _planMetadata,
 
-      try {
-        const content = fs.readFileSync(planPath, "utf-8");
-        let highestN = 0;
-        for (const line of content.split("\n")) {
-          const match = line.match(/^## Step (\d+):/);
-          if (match) {
-            const n = parseInt(match[1], 10);
-            if (n > highestN) highestN = n;
-          }
-        }
-        return highestN > 0 ? highestN : undefined;
-      } catch {
-        return undefined;
-      }
+    totalPlanSteps: () => {
+      const metadata = _planMetadata() as PlanFrontmatter | null;
+      return metadata ? metadata.totalSteps : undefined;
     },
 
     steps: () => {
@@ -293,6 +336,12 @@ export function createGoalState(goalDir: string): GoalState {
       }
 
       return result.data;
+    },
+
+    goalCompleted: () => {
+      // Canonical completion signal: COMPLETED marker file at goal root.
+      // Written by the evolve-plan agent (prompt Step 2) when all steps are already specified.
+      return fs.existsSync(path.join(goalDir, "COMPLETED"));
     },
   };
 }

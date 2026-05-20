@@ -1,0 +1,438 @@
+[
+  {
+    "timestamp": "2026-05-19T18:22:29.605Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "plan-frontmatter",
+        "initialMessage": "Introduce planning frontmatter to PLAN.md so that evolve-plan can programmatically determine if steps remain.\n\nKey requirements:\n- PLAN.md should have YAML frontmatter at the top (using existing `extractFrontmatter` from `src/frontmatter.ts`)\n- Frontmatter must include `totalSteps` (integer, the total number of plan steps)\n- Add a TypeBox schema in `src/frontmatter-schemas.ts` for the plan frontmatter (similar to `REVIEW_OUTPUT_SCHEMA`)\n- Update `GoalState` (`src/goal-state.ts`) to read and parse this frontmatter, exposing the step count via a method (e.g., `planMetadata()`)\n- The current `totalPlanSteps()` method parses `## Step N:` headings — this should be replaced or augmented to read from frontmatter instead (frontmatter is the source of truth; heading parsing can remain as fallback)\n- Update the create-plan prompt (`src/prompts/create-plan.md`) to instruct the Planning Agent to include frontmatter with `totalSteps` when writing PLAN.md\n- evolve-plan (`src/capabilities/evolve-plan.ts`) should use the frontmatter `totalSteps` to know if all steps have been specified (compare current step number against total) instead of relying on folder scanning or the COMPLETED marker alone\n\nThis is a non-breaking change — existing PLAN.md files without frontmatter should still work via the heading-parsing fallback.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-19T18:25:58.675Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "plan-frontmatter",
+        "initialMessage": "Introduce planning frontmatter to PLAN.md so that evolve-plan can programmatically determine if steps remain.\n\nKey requirements:\n- PLAN.md should have YAML frontmatter at the top (using existing `extractFrontmatter` from `src/frontmatter.ts`)\n- Frontmatter must include `totalSteps` (integer, the total number of plan steps)\n- Add a TypeBox schema in `src/frontmatter-schemas.ts` for the plan frontmatter (similar to `REVIEW_OUTPUT_SCHEMA`)\n- Update `GoalState` (`src/goal-state.ts`) to read and parse this frontmatter, exposing the step count via a method (e.g., `planMetadata()`)\n- The current `totalPlanSteps()` method parses `## Step N:` headings — this should be replaced or augmented to read from frontmatter instead (frontmatter is the source of truth; heading parsing can remain as fallback)\n- Update the create-plan prompt (`src/prompts/create-plan.md`) to instruct the Planning Agent to include frontmatter with `totalSteps` when writing PLAN.md\n- evolve-plan (`src/capabilities/evolve-plan.ts`) should use the frontmatter `totalSteps` to know if all steps have been specified (compare current step number against total) instead of relying on folder scanning or the COMPLETED marker alone\n\nThis is a non-breaking change — existing PLAN.md files without frontmatter should still work via the heading-parsing fallback.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-19T18:37:12.528Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "plan-frontmatter",
+        "initialMessage": "Introduce planning frontmatter to PLAN.md so that evolve-plan can programmatically determine if steps remain.\n\nKey requirements:\n- PLAN.md should have YAML frontmatter at the top (using existing `extractFrontmatter` from `src/frontmatter.ts`)\n- Frontmatter must include `totalSteps` (integer, the total number of plan steps)\n- Add a TypeBox schema in `src/frontmatter-schemas.ts` for the plan frontmatter (similar to `REVIEW_OUTPUT_SCHEMA`)\n- Update `GoalState` (`src/goal-state.ts`) to read and parse this frontmatter, exposing the step count via a method (e.g., `planMetadata()`)\n- The current `totalPlanSteps()` method parses `## Step N:` headings — this should be replaced or augmented to read from frontmatter instead (frontmatter is the source of truth; heading parsing can remain as fallback)\n- Update the create-plan prompt (`src/prompts/create-plan.md`) to instruct the Planning Agent to include frontmatter with `totalSteps` when writing PLAN.md\n- evolve-plan (`src/capabilities/evolve-plan.ts`) should use the frontmatter `totalSteps` to know if all steps have been specified (compare current step number against total) instead of relying on folder scanning or the COMPLETED marker alone\n\nThis is a non-breaking change — existing PLAN.md files without frontmatter should still work via the heading-parsing fallback.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-19T18:39:16.650Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "plan-frontmatter",
+        "initialMessage": "Introduce planning frontmatter to PLAN.md so that evolve-plan can programmatically determine if steps remain.\n\nKey requirements:\n- PLAN.md should have YAML frontmatter at the top (using existing `extractFrontmatter` from `src/frontmatter.ts`)\n- Frontmatter must include `totalSteps` (integer, the total number of plan steps)\n- Add a TypeBox schema in `src/frontmatter-schemas.ts` for the plan frontmatter (similar to `REVIEW_OUTPUT_SCHEMA`)\n- Update `GoalState` (`src/goal-state.ts`) to read and parse this frontmatter, exposing the step count via a method (e.g., `planMetadata()`)\n- The current `totalPlanSteps()` method parses `## Step N:` headings — this should be replaced or augmented to read from frontmatter instead (frontmatter is the source of truth; heading parsing can remain as fallback)\n- Update the create-plan prompt (`src/prompts/create-plan.md`) to instruct the Planning Agent to include frontmatter with `totalSteps` when writing PLAN.md\n- evolve-plan (`src/capabilities/evolve-plan.ts`) should use the frontmatter `totalSteps` to know if all steps have been specified (compare current step number against total) instead of relying on folder scanning or the COMPLETED marker alone\n\nThis is a non-breaking change — existing PLAN.md files without frontmatter should still work via the heading-parsing fallback.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-19T18:41:13.248Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "plan-frontmatter",
+        "initialMessage": "Introduce planning frontmatter to PLAN.md so that evolve-plan can programmatically determine if steps remain.\n\nKey requirements:\n- PLAN.md should have YAML frontmatter at the top (using existing `extractFrontmatter` from `src/frontmatter.ts`)\n- Frontmatter must include `totalSteps` (integer, the total number of plan steps)\n- Add a TypeBox schema in `src/frontmatter-schemas.ts` for the plan frontmatter (similar to `REVIEW_OUTPUT_SCHEMA`)\n- Update `GoalState` (`src/goal-state.ts`) to read and parse this frontmatter, exposing the step count via a method (e.g., `planMetadata()`)\n- The current `totalPlanSteps()` method parses `## Step N:` headings — this should be replaced or augmented to read from frontmatter instead (frontmatter is the source of truth; heading parsing can remain as fallback)\n- Update the create-plan prompt (`src/prompts/create-plan.md`) to instruct the Planning Agent to include frontmatter with `totalSteps` when writing PLAN.md\n- evolve-plan (`src/capabilities/evolve-plan.ts`) should use the frontmatter `totalSteps` to know if all steps have been specified (compare current step number against total) instead of relying on folder scanning or the COMPLETED marker alone\n\nThis is a non-breaking change — existing PLAN.md files without frontmatter should still work via the heading-parsing fallback.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-19T18:42:22.014Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "plan-frontmatter",
+        "initialMessage": "Introduce planning frontmatter to PLAN.md so that evolve-plan can programmatically determine if steps remain.\n\nKey requirements:\n- PLAN.md should have YAML frontmatter at the top (using existing `extractFrontmatter` from `src/frontmatter.ts`)\n- Frontmatter must include `totalSteps` (integer, the total number of plan steps)\n- Add a TypeBox schema in `src/frontmatter-schemas.ts` for the plan frontmatter (similar to `REVIEW_OUTPUT_SCHEMA`)\n- Update `GoalState` (`src/goal-state.ts`) to read and parse this frontmatter, exposing the step count via a method (e.g., `planMetadata()`)\n- The current `totalPlanSteps()` method parses `## Step N:` headings — this should be replaced or augmented to read from frontmatter instead (frontmatter is the source of truth; heading parsing can remain as fallback)\n- Update the create-plan prompt (`src/prompts/create-plan.md`) to instruct the Planning Agent to include frontmatter with `totalSteps` when writing PLAN.md\n- evolve-plan (`src/capabilities/evolve-plan.ts`) should use the frontmatter `totalSteps` to know if all steps have been specified (compare current step number against total) instead of relying on folder scanning or the COMPLETED marker alone\n\nThis is a non-breaking change — existing PLAN.md files without frontmatter should still work via the heading-parsing fallback.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-19T18:45:37.612Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "plan-frontmatter",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "plan-frontmatter",
+          "initialMessage": "Introduce planning frontmatter to PLAN.md so that evolve-plan can programmatically determine if steps remain.\n\nKey requirements:\n- PLAN.md should have YAML frontmatter at the top (using existing `extractFrontmatter` from `src/frontmatter.ts`)\n- Frontmatter must include `totalSteps` (integer, the total number of plan steps)\n- Add a TypeBox schema in `src/frontmatter-schemas.ts` for the plan frontmatter (similar to `REVIEW_OUTPUT_SCHEMA`)\n- Update `GoalState` (`src/goal-state.ts`) to read and parse this frontmatter, exposing the step count via a method (e.g., `planMetadata()`)\n- The current `totalPlanSteps()` method parses `## Step N:` headings — this should be replaced or augmented to read from frontmatter instead (frontmatter is the source of truth; heading parsing can remain as fallback)\n- Update the create-plan prompt (`src/prompts/create-plan.md`) to instruct the Planning Agent to include frontmatter with `totalSteps` when writing PLAN.md\n- evolve-plan (`src/capabilities/evolve-plan.ts`) should use the frontmatter `totalSteps` to know if all steps have been specified (compare current step number against total) instead of relying on folder scanning or the COMPLETED marker alone\n\nThis is a non-breaking change — existing PLAN.md files without frontmatter should still work via the heading-parsing fallback.",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-19T18:46:48.295Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-19T18:48:49.813Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-19T18:59:28.254Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-19T19:00:04.908Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-19T19:01:37.166Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-19T19:08:55.412Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-19T19:12:26.587Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-19T19:17:57.101Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-19T19:39:57.919Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-19T19:42:41.408Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-19T19:43:54.002Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-19T19:48:48.724Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-19T19:51:44.665Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-19T19:53:43.398Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-19T20:00:18.876Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-19T20:02:03.856Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-19T20:03:57.529Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-19T20:07:08.611Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-19T20:17:23.796Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-19T20:35:20.663Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-20T04:25:30.630Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-20T04:31:24.428Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-20T04:35:21.249Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-20T05:02:19.703Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-20T05:05:52.078Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-20T05:06:53.825Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-20T05:08:42.886Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-20T05:16:50.485Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-20T05:24:15.719Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-20T05:31:36.957Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-20T07:12:23.763Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-20T07:20:50.377Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-20T07:28:08.104Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-20T07:28:47.571Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-20T07:39:57.049Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-20T07:53:08.025Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-20T07:57:03.786Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "plan-frontmatter",
+      "stepNumber": 7
+    }
+  }
+]

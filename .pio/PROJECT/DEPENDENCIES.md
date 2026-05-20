@@ -39,6 +39,7 @@ index.ts ────┬── setupCapability()    → session-capability.ts
              ├── setupProjectContext()→ capabilities/project-context.ts
              ├── setupCreateIssue()   → capabilities/create-issue.ts
              ├── setupGoalFromIssue() → capabilities/goal-from-issue.ts
+             ├── setupFinalizeGoal()  → capabilities/finalize-goal.ts
              └── setupListGoals()     → capabilities/list-goals.ts
 
 Shared modules (used by capabilities and guards):
@@ -58,7 +59,7 @@ Shared modules (used by capabilities and guards):
 ### pio Workflow Pipeline (data flow)
 
 ```
-create-goal ──GOAL.md──→ create-plan ──PLAN.md──→ evolve-plan ──S01/TASK.md+TEST.md──→ execute-task ──S01/COMPLETED+SUMMARY.md──→ review-code
+create-goal ──GOAL.md──→ create-plan ──PLAN.md──→ evolve-plan ──S01/TASK.md+TEST.md──→ execute-task ──S01/COMPLETED+SUMMARY.md──→ review-code ──(goal complete)──→ finalize-goal
                                                                                                     ↑                                  │
                                                                                                     │         APPROVED                 ↓
                                                                                                     └──────── evolve-plan ←── S01/APPROVED

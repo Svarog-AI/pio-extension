@@ -8,6 +8,14 @@ You are a Project Context Analyzer performing a deep research task. Your job is 
 
 ---
 
+## Skill Loading Instructions
+
+Before proceeding with analysis, load the `pio-project-knowledge` skill. It contains the canonical paths, section structure, and expected content for all 7 PROJECT files. Find it using the path in `<available_skills>` or at `src/skills/pio-project-knowledge/SKILL.md`.
+
+Consult this skill throughout your work for PROJECT file structure details, rather than relying on inline templates below.
+
+---
+
 ## Phase 1: Analysis
 
 Explore the project recursively from the root. Your goal is to understand what every subdirectory represents and identify the most important files in each one. Do not skim — actually read files that matter.
@@ -39,47 +47,12 @@ For each file you read, extract only what's useful. Do not copy entire files.
 
 ## Phase 2: Summarization
 
-After your analysis, organize your findings into the categories below. Each category maps directly to one output file. Keep answers concise — short descriptions and references, not essays.
+Organize your findings into the 7 PROJECT files. Use the `pio-project-knowledge` skill as the sole reference for:
+- Canonical file paths
+- Section headings and subsection structure
+- Expected content for each section
 
-### → `.pio/PROJECT/OVERVIEW.md`
-
-1. **What is the project about?** What problem does it solve? Who uses it?
-2. **How is it structured?** What are the most relevant components and where are they located? Give very short descriptions.
-3. **What is the tech stack?** Programming languages, frameworks, databases, infrastructure tools. Include versions if available.
-
-### → `.pio/PROJECT/DEVELOPMENT.md`
-
-4. **How is the project built?** What build system or commands are used? Is there a release cycle? CI/CD pipeline?
-5. **What are conventions for local development?** How are tests, linting, formatting, and similar checks executed?
-6. **Where do test files live?** What is the test directory convention (e.g., `tests/` mirroring `src/`, colocated `.test.ts`, `__tests__/`)? If no tests exist, note this explicitly.
-7. **How is the project run locally?** What environment variables, configs, or secrets are needed? Does it require a database, message broker, or other services?
-
-### → `.pio/PROJECT/CONVENTIONS.md`
-
-8. **Coding style and tooling:** Conventions from editor configs (`.editorconfig`, `.prettierrc`, `tsconfig.json`, etc.). Linting and formatting rules and how to run them.
-9. **AI agent instructions:** Files like `AGENTS.md`, `CLAUDE.md`, `.wolf/`, `.roo/` that encode conventions for automated agents.
-
-### → `.pio/PROJECT/GIT.md`
-
-10. **What commit and release conventions were discovered from git history?** Document the commit message format (Conventional Commits, custom prefixes, formatting rules), tag/versioning scheme (semver, calver, or none detected), branching strategy and branch naming patterns, and signing practices (GPG, DCO sign-off). For each finding, note a confidence level: "appears to follow" (observed in recent history) vs. "strictly enforced" (backed by CI linting, hooks, or documentation). Skip gracefully if not a git repo.
-
-### → `.pio/PROJECT/ARCHITECTURE.md`
-
-11. **Architecture patterns and key design decisions:** What patterns does the project use (MVC, layered, event-driven, microservices)? Any documented ADRs (Architecture Decision Records)?
-12. **Service integrations and deployment topology:** How does the project fit into larger systems? What services does it depend on or expose?
-
-### → `.pio/PROJECT/DEPENDENCIES.md`
-
-13. **External API dependencies:** Third-party APIs, services, or endpoints the project integrates with. Include versions or contract references when available.
-14. **Third-party library integrations:** Key libraries and why they're used.
-15. **Monorepo internal package graph:** If applicable, how internal packages depend on each other.
-16. **Data flow between services:** How data moves across service boundaries.
-
-### → `.pio/PROJECT/GLOSSARY.md`
-
-17. **Domain-specific terminology and definitions:** Terms unique to this project or its domain.
-18. **Acronyms and their expansions:** Abbreviations used throughout the codebase.
-19. **Business concepts relevant to the codebase:** Key ideas that inform the code structure.
+The skill is the single source of truth for PROJECT file structure. Do not invent sections or headings not defined in the skill.
 
 ---
 
@@ -91,145 +64,7 @@ Review your answers from Phase 2. Are there any gaps, ambiguities, or areas wher
 
 ## Phase 4: Write Output Files
 
-Once all gaps are resolved, write the 7 files under `.pio/PROJECT/`. Each file should target approximately **2000 tokens (~1500 words) maximum** — be concise and prioritize actionable information over exhaustive documentation.
-
-### `.pio/PROJECT/OVERVIEW.md`
-
-```markdown
-# Project Overview
-
-<Purpose of the project in 2-4 sentences. What problem does it solve? Who uses it?>
-
-## Tech Stack
-
-<Programming languages, frameworks, databases, infrastructure tools. Include versions if available.>
-
-## Repository Structure
-
-<Key directories and their purpose. Concise list or tree format — top-level only.>
-
-    /src          — Application source code
-    /tests        — Test suites
-    /docs         — Documentation
-    ...
-```
-
-### `.pio/PROJECT/DEVELOPMENT.md`
-
-```markdown
-# Development Guide
-
-## Build and Test
-
-<How to build, test, and lint. Commands, frameworks, prerequisites.>
-
-## Test Directory Convention
-
-<Explicitly state where test files should be placed relative to source files (e.g., "tests mirror `src/` under `tests/`", "colocated `.test.ts` alongside source files", "no test suite exists"). This is used by downstream agents to determine correct file paths when creating tests.>
-
-## CI/CD and Release
-
-<CI/CD pipeline stages, release cycle, deployment process.>
-
-## Local Environment Setup
-
-<Environment variables, configs, secrets needed for local runs.
-Databases, message brokers, or other services required.
-Commands to start the project locally.>
-```
-
-### `.pio/PROJECT/CONVENTIONS.md`
-
-```markdown
-# Code Conventions
-
-## Coding Style
-
-<Conventions from editor configs: `.editorconfig`, `.prettierrc`, `tsconfig.json`, etc.
-Indentation, line length, quotes, semicolons, naming conventions.>
-
-## Linting and Formatting
-
-<Linting tools, formatting tools, and how to run them.
-Configuration files and key rules.>
-
-## AI Agent Instructions
-
-<Conventions from AGENTS.md / CLAUDE.md or similar files:
-coding style, tooling, branch naming, PR expectations, project-specific agent guidance.
-If no agent instructions exist, note that and suggest the user consider adding one.>
-```
-
-### `.pio/PROJECT/GIT.md`
-
-```markdown
-# Git Conventions
-
-## Commit Message Format
-
-<Discovered from git history (if applicable):
-- **Format:** Conventional Commits (`type(scope): description`), custom prefixes, formatting rules. Note confidence level — "appears to follow" vs "strictly enforced" by CI or hooks.
-- **Tag/versioning scheme:** Semantic versioning (`v1.2.3`), calendar versioning, or none detected.
-- **Branch naming patterns:** Feature/fix prefixes, trunk-based development, release/hotfix conventions, ticket number embedding.
-- **Signing practices:** GPG-signed commits, DCO sign-off lines, or none observed.
-If no git repository was found, note this explicitly.>
-```
-
-### `.pio/PROJECT/ARCHITECTURE.md`
-
-```markdown
-# Architecture
-
-## Patterns and Design Decisions
-
-<Architecture patterns used (MVC, layered, event-driven, microservices, etc.).
-Key design decisions and trade-offs.
-ADRs (Architecture Decision Records) if they exist.>
-
-## Service Integrations
-
-<How the project integrates with other services.
-Deployment topology — where and how it runs.
-Ecosystem context — how the project fits into larger systems.>
-```
-
-### `.pio/PROJECT/DEPENDENCIES.md`
-
-```markdown
-# Dependencies
-
-## External APIs
-
-<Third-party APIs and services the project integrates with.
-Endpoints, versions, authentication methods.>
-
-## Third-Party Libraries
-
-<Key libraries and frameworks, why they are used.>
-
-## Internal Package Graph
-
-<If a monorepo: how internal packages depend on each other.
-Data flow between services or modules.>
-```
-
-### `.pio/PROJECT/GLOSSARY.md`
-
-```markdown
-# Glossary
-
-## Terms
-
-<Domain-specific terminology with definitions.>
-
-## Acronyms
-
-<Acronyms and their full expansions.>
-
-## Business Concepts
-
-<Key business concepts relevant to understanding the codebase.>
-```
+Once all gaps are resolved, write the 7 files under `.pio/PROJECT/`. Follow the section structure defined in the `pio-project-knowledge` skill — use its section headings, subsections, and content expectations as the exact template for each file.
 
 ### Guidance
 

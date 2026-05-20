@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { GoalState } from "./goal-state";
+import { resolveGoalDir } from "./fs-utils";
 
 // ---------------------------------------------------------------------------
 // Re-exported types for backward compatibility
@@ -25,7 +26,7 @@ export interface TransitionResult {
 }
 
 /** Re-export stepFolderName for backward compatibility. */
-export { stepFolderName } from "./fs-utils";
+export { stepFolderName, resolveGoalDir } from "./fs-utils";
 
 // ---------------------------------------------------------------------------
 // Pure transition functions — no filesystem I/O
@@ -51,11 +52,15 @@ function transitionCreatePlan(_state: GoalState, params?: Record<string, unknown
   return { capability: "evolve-plan", params };
 }
 
-/** evolve-plan → execute-task: propagate goalName and stepNumber from params or state. Returns undefined when goal is complete. */
+/** evolve-plan → execute-task: propagate goalName and stepNumber from params or state. Routes to finalize-goal when goal is complete. */
 function transitionEvolvePlan(state: GoalState, params?: Record<string, unknown>): TransitionResult | undefined {
-  // Guard: if all plan steps are evolved, no transition — session terminates gracefully
+  // Guard: if all plan steps are evolved, route to finalize-goal
   if (state.goalCompleted()) {
-    return undefined;
+    const goalName = extractGoalName(params);
+    // goalName is guaranteed to exist: goalCompleted() is true only when a goal workspace exists
+    const cwd = process.cwd();
+    const goalDir = resolveGoalDir(cwd, goalName!);
+    return { capability: "finalize-goal", params: { goalName, goalDir, workingDir: cwd } };
   }
 
   const explicitStepNumber = extractStepNumber(params);
@@ -148,6 +153,8 @@ export function resolveTransition(
       return transitionExecuteTask(state, params);
     case "review-task":
       return transitionReviewTask(state, params);
+    case "finalize-goal":
+      return undefined;
     default:
       return undefined;
   }

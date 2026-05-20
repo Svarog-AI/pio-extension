@@ -21,6 +21,7 @@ import { setupProjectContext } from "./capabilities/project-context";
 import { setupCreateIssue } from "./capabilities/create-issue";
 import { setupGoalFromIssue } from "./capabilities/goal-from-issue";
 import { setupListGoals } from "./capabilities/list-goals";
+import { setupFinalizeGoal } from "./capabilities/finalize-goal";
 import { setupCapability } from "./capabilities/session-capability";
 import { setupValidation } from "./guards/validation";
 import { setupTurnGuard } from "./guards/turn-guard";
@@ -36,6 +37,7 @@ export default function (pi: ExtensionAPI) {
   const skillPaths = [
     path.join(SKILLS_DIR, "pio"),
     path.join(SKILLS_DIR, "test-driven-development"),
+    path.join(SKILLS_DIR, "pio-project-knowledge"),
   ];
 
   pi.on("resources_discover", async () => {
@@ -61,4 +63,5 @@ export default function (pi: ExtensionAPI) {
   setupCreateIssue(pi);
   setupGoalFromIssue(pi);
   setupListGoals(pi);
+  setupFinalizeGoal(pi);
 }

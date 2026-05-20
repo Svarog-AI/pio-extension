@@ -57,6 +57,56 @@ describe("resolveCapabilityConfig — happy path with static config", () => {
 });
 
 // ---------------------------------------------------------------------------
+// resolveCapabilityConfig — explicit workingDir override
+// ---------------------------------------------------------------------------
+
+describe("resolveCapabilityConfig — explicit workingDir override", () => {
+  it("explicit workingDir overrides goalName-based derivation", async () => {
+    const cwd = "/tmp/proj";
+    const params = {
+      capability: "finalize-goal" as string,
+      goalName: "my-feature",
+      workingDir: "/explicit/path",
+    };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.workingDir).toBe("/explicit/path");
+  });
+
+  it("goalName-based derivation still works when workingDir is absent", async () => {
+    const cwd = "/tmp/proj";
+    const params = { capability: "create-plan" as string, goalName: "my-feature" };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.workingDir).toBe(path.join("/tmp/proj", ".pio", "goals", "my-feature"));
+  });
+
+  it("fallback to cwd when neither workingDir nor goalName is present", async () => {
+    const cwd = "/tmp/proj";
+    const params = { capability: "project-context" as string };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.workingDir).toBe("/tmp/proj");
+  });
+
+  it("empty string workingDir does not override goalName derivation", async () => {
+    const cwd = "/tmp/proj";
+    const params = {
+      capability: "finalize-goal" as string,
+      goalName: "my-feature",
+      workingDir: "",
+    };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.workingDir).toBe(path.join("/tmp/proj", ".pio", "goals", "my-feature"));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // resolveCapabilityConfig — session name derivation
 // ---------------------------------------------------------------------------
 
@@ -707,5 +757,57 @@ describe("resolveCapabilityConfig — postValidate/postExecute passthrough", () 
 
     // Assert
     expect(result!.postExecute).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration — state machine transition output → capability config resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * These tests verify the end-to-end interaction between state machine transition
+ * output (Step 2) and capability config resolution (Step 3).
+ * They simulate the params shape that transitionEvolvePlan() returns for a
+ * completed goal and verify resolveCapabilityConfig() handles it correctly.
+ */
+describe("resolveCapabilityConfig — finalize-goal auto-transition integration", () => {
+  it("finalize-goal auto-transition params resolve workingDir to project root", async () => {
+    // Arrange: simulate the params shape that transitionEvolvePlan() returns
+    // for a completed goal: { goalName, goalDir, workingDir: <project root> }
+    const cwd = "/tmp/auto-transition-proj";
+    const params = {
+      capability: "finalize-goal" as string,
+      goalName: "my-feature",
+      goalDir: path.join(cwd, ".pio", "goals", "my-feature"),
+      workingDir: cwd, // project root, not goal workspace
+    };
+
+    // Act
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    // Assert: workingDir is the project root (explicit override wins)
+    expect(result).toBeDefined();
+    expect(result!.workingDir).toBe(cwd);
+    expect(result!.capability).toBe("finalize-goal");
+    // Static write allowlist is preserved
+    expect(result!.writeAllowlist).toContain(".pio/PROJECT/OVERVIEW.md");
+  });
+
+  it("finalize-goal initial message includes goal name via auto-transition params", async () => {
+    // Arrange: same params shape as transitionEvolvePlan() for a completed goal
+    const cwd = "/tmp/auto-transition-proj";
+    const params = {
+      capability: "finalize-goal" as string,
+      goalName: "my-feature",
+      goalDir: path.join(cwd, ".pio", "goals", "my-feature"),
+      workingDir: cwd,
+    };
+
+    // Act
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    // Assert: initialMessage includes the goal name (Step 1 fix works through full chain)
+    expect(result).toBeDefined();
+    expect(result!.initialMessage).toContain("my-feature");
   });
 });

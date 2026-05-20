@@ -36,6 +36,7 @@ export default function (pi: ExtensionAPI) {
   const skillPaths = [
     path.join(SKILLS_DIR, "pio"),
     path.join(SKILLS_DIR, "test-driven-development"),
+    path.join(SKILLS_DIR, "pio-project-knowledge"),
   ];
 
   pi.on("resources_discover", async () => {

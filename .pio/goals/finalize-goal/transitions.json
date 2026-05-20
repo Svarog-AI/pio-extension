@@ -119,5 +119,32 @@
       "goalName": "finalize-goal",
       "stepNumber": 2
     }
+  },
+  {
+    "timestamp": "2026-05-20T11:15:53.630Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "finalize-goal",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-20T11:20:53.455Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "finalize-goal",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-20T11:31:56.200Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "finalize-goal",
+      "stepNumber": 3
+    }
   }
 ]

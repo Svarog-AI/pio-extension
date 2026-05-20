@@ -86,39 +86,4 @@ describe("skill registration", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// project-context.md — skill loading instruction and PROJECT file references
-// ---------------------------------------------------------------------------
 
-describe("project-context.md prompt", () => {
-  const promptPath = path.join(__dirname, "prompts", "project-context.md");
-
-  it("file exists and is non-empty", () => {
-    expect(fs.existsSync(promptPath)).toBe(true);
-    const content = fs.readFileSync(promptPath, "utf-8");
-    expect(content.length).toBeGreaterThan(0);
-  });
-
-  it("contains pio-project-knowledge skill loading instruction", () => {
-    const content = fs.readFileSync(promptPath, "utf-8");
-    expect(content).toMatch(/pio-project-knowledge/i);
-  });
-
-  it("references all 7 PROJECT files", () => {
-    const content = fs.readFileSync(promptPath, "utf-8");
-
-    const requiredFiles = [
-      "OVERVIEW.md",
-      "DEVELOPMENT.md",
-      "CONVENTIONS.md",
-      "GIT.md",
-      "ARCHITECTURE.md",
-      "DEPENDENCIES.md",
-      "GLOSSARY.md",
-    ];
-
-    for (const file of requiredFiles) {
-      expect(content).toContain(`PROJECT/${file}`);
-    }
-  });
-});

@@ -1,0 +1,159 @@
+[
+  {
+    "timestamp": "2026-05-20T14:03:00.031Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "finalize-goal-not-working",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "finalize-goal-not-working",
+        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/finalize-goal-not-working.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/finalize-goal-not-working.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-20T14:08:48.396Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "finalize-goal-not-working",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "finalize-goal-not-working",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "finalize-goal-not-working",
+          "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/finalize-goal-not-working.md",
+          "fileCleanup": [
+            "/home/aleksj/git/pio-extension/.pio/issues/finalize-goal-not-working.md"
+          ],
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-20T14:11:57.877Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "finalize-goal-not-working",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-20T14:14:11.349Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "finalize-goal-not-working",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-20T14:16:32.206Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "finalize-goal-not-working",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-20T14:20:00.311Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "finalize-goal-not-working",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-20T14:26:18.872Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "finalize-goal-not-working",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-20T14:28:05.084Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "finalize-goal-not-working",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-20T14:30:27.585Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "finalize-goal-not-working",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-20T14:32:50.883Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "finalize-goal-not-working",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-20T14:34:49.306Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "finalize-goal-not-working",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-20T14:37:46.352Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "finalize-goal-not-working",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-20T14:41:28.737Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "finalize-goal-not-working",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-20T14:42:36.797Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "finalize-goal-not-working",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-20T14:45:35.835Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "finalize-goal-not-working",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/finalize-goal-not-working",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  }
+]

@@ -1,0 +1,85 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "finalize-goal-not-working",
+    "stepNumber": 5,
+    "_sessionContext": {
+      "goalName": "finalize-goal-not-working",
+      "stepNumber": 5,
+      "_sessionContext": {
+        "goalName": "finalize-goal-not-working",
+        "stepNumber": 4,
+        "_sessionContext": {
+          "goalName": "finalize-goal-not-working",
+          "stepNumber": 4,
+          "_sessionContext": {
+            "goalName": "finalize-goal-not-working",
+            "stepNumber": 4,
+            "_sessionContext": {
+              "goalName": "finalize-goal-not-working",
+              "stepNumber": 3,
+              "_sessionContext": {
+                "goalName": "finalize-goal-not-working",
+                "stepNumber": 3,
+                "_sessionContext": {
+                  "goalName": "finalize-goal-not-working",
+                  "stepNumber": 3,
+                  "_sessionContext": {
+                    "goalName": "finalize-goal-not-working",
+                    "stepNumber": 2,
+                    "_sessionContext": {
+                      "goalName": "finalize-goal-not-working",
+                      "stepNumber": 2,
+                      "_sessionContext": {
+                        "goalName": "finalize-goal-not-working",
+                        "stepNumber": 2,
+                        "_sessionContext": {
+                          "goalName": "finalize-goal-not-working",
+                          "stepNumber": 1,
+                          "_sessionContext": {
+                            "goalName": "finalize-goal-not-working",
+                            "stepNumber": 1,
+                            "_sessionContext": {
+                              "goalName": "finalize-goal-not-working",
+                              "stepNumber": 1,
+                              "_sessionContext": {
+                                "goalName": "finalize-goal-not-working",
+                                "stepNumber": 1,
+                                "_sessionContext": {
+                                  "goalName": "finalize-goal-not-working",
+                                  "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/finalize-goal-not-working.md",
+                                  "fileCleanup": [
+                                    "/home/aleksj/git/pio-extension/.pio/issues/finalize-goal-not-working.md"
+                                  ],
+                                  "capability": "create-goal"
+                                },
+                                "capability": "create-plan"
+                              },
+                              "capability": "evolve-plan"
+                            },
+                            "capability": "execute-task"
+                          },
+                          "capability": "review-task"
+                        },
+                        "capability": "evolve-plan"
+                      },
+                      "capability": "execute-task"
+                    },
+                    "capability": "review-task"
+                  },
+                  "capability": "evolve-plan"
+                },
+                "capability": "execute-task"
+              },
+              "capability": "review-task"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    }
+  }
+}

@@ -60,6 +60,28 @@ describe("skill registration", () => {
     expect(pioProjectKnowledgePath).toBeDefined();
   });
 
+  it("includes pio-planning in skillPaths", async () => {
+    // Arrange
+    const mod = await import("./index");
+    const extensionFactory = mod.default;
+
+    const { mockPi, registeredHandlers } = makeMockPi();
+
+    // Act: register the extension
+    extensionFactory(mockPi as any);
+
+    const discoverHandler = registeredHandlers["resources_discover"]?.[0];
+    expect(discoverHandler).toBeDefined();
+
+    const result = await discoverHandler();
+
+    // Assert: pio-planning path is present
+    const pioPlanningPath = result.skillPaths.find((p: string) =>
+      p.includes("pio-planning")
+    );
+    expect(pioPlanningPath).toBeDefined();
+  });
+
   it("skillPaths contain absolute paths under the skills directory", async () => {
     const mod = await import("./index");
     const extensionFactory = mod.default;
@@ -78,11 +100,54 @@ describe("skill registration", () => {
       expect(skillPath).toContain("skills");
     }
 
-    // Should include at least pio, test-driven-development, and pio-project-knowledge
+    // Should include pio, test-driven-development, pio-project-knowledge, and pio-planning
     const skillNames = result.skillPaths.map((p: string) => path.basename(p));
     expect(skillNames).toContain("pio");
     expect(skillNames).toContain("test-driven-development");
     expect(skillNames).toContain("pio-project-knowledge");
+    expect(skillNames).toContain("pio-planning");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Capability registration — all capabilities register tools and commands
+// ---------------------------------------------------------------------------
+
+describe("capability registration", () => {
+  it("setupRevisePlan registers pio_revise_plan tool", async () => {
+    // Arrange
+    const mod = await import("./index");
+    const extensionFactory = mod.default;
+
+    const { mockPi } = makeMockPi();
+
+    // Act: register the extension (calls all setup* functions)
+    extensionFactory(mockPi as any);
+
+    // Assert: pio_revise_plan tool was registered (registerTool receives tool definition object)
+    const toolCalls = mockPi.registerTool.mock.calls;
+    const revisePlanToolCall = toolCalls.find(
+      (call: any[]) => call[0]?.name === "pio_revise_plan"
+    );
+    expect(revisePlanToolCall).toBeDefined();
+  });
+
+  it("setupRevisePlan registers pio-revise-plan command", async () => {
+    // Arrange
+    const mod = await import("./index");
+    const extensionFactory = mod.default;
+
+    const { mockPi } = makeMockPi();
+
+    // Act: register the extension
+    extensionFactory(mockPi as any);
+
+    // Assert: pio-revise-plan command was registered (command names don't include leading /)
+    const commandCalls = mockPi.registerCommand.mock.calls;
+    const revisePlanCommandCall = commandCalls.find(
+      (call: any[]) => call[0] === "pio-revise-plan"
+    );
+    expect(revisePlanCommandCall).toBeDefined();
   });
 });
 

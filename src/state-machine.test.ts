@@ -515,6 +515,134 @@ describe("TransitionResult shape consistency", () => {
 });
 
 // ---------------------------------------------------------------------------
+// resolveTransition — evolve-plan → revise-plan
+// ---------------------------------------------------------------------------
+
+describe("resolveTransition — evolve-plan → revise-plan", () => {
+  it("routes to revise-plan when current step has revisionNeeded() returning true", () => {
+    const step = mockStep(4, "defined");
+    step.revisionNeeded = () => true;
+    const state = mockState({
+      steps: () => [step],
+    });
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 4 });
+
+    expect(result?.capability).toBe("revise-plan");
+  });
+
+  it("includes revisionTriggerStep set to current step number", () => {
+    const step = mockStep(4, "defined");
+    step.revisionNeeded = () => true;
+    const state = mockState({
+      steps: () => [step],
+    });
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 4 });
+
+    expect(result?.params?.revisionTriggerStep).toBe(4);
+  });
+
+  it("preserves goalName in revise-plan params", () => {
+    const step = mockStep(4, "defined");
+    step.revisionNeeded = () => true;
+    const state = mockState({
+      steps: () => [step],
+    });
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "my-feature", stepNumber: 4 });
+
+    expect(result?.params?.goalName).toBe("my-feature");
+  });
+
+  it("falls through to execute-task when revisionNeeded returns false", () => {
+    const state = mockState({
+      steps: () => [mockStep(4, "defined")],
+    });
+    // revisionNeeded defaults to false in mockStep
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 4 });
+
+    expect(result?.capability).toBe("execute-task");
+  });
+
+  it("falls through to finalize-goal when all steps complete and no revision needed", () => {
+    const state = mockState({
+      goalCompleted: () => true,
+      steps: () => [mockStep(4, "approved")],
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/fake/cwd");
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 4 });
+
+    expect(result?.capability).toBe("finalize-goal");
+
+    cwdSpy.mockRestore();
+  });
+
+  it("falls through to execute-task when step is not found in state.steps()", () => {
+    const state = mockState({
+      steps: () => [],
+    });
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 5 });
+
+    expect(result?.capability).toBe("execute-task");
+  });
+
+  it("falls through to existing behavior when stepNumber is missing from params", () => {
+    const state = mockState({
+      currentStepNumber: () => 3,
+    });
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "feat" });
+
+    expect(result).toEqual({
+      capability: "execute-task",
+      params: { goalName: "feat", stepNumber: 3 },
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveTransition — revise-plan → evolve-plan
+// ---------------------------------------------------------------------------
+
+describe("resolveTransition — revise-plan → evolve-plan", () => {
+  it("routes to evolve-plan after revise-plan completes", () => {
+    const state = mockState({});
+
+    const result = resolveTransition("revise-plan", state, { goalName: "feat" });
+
+    expect(result?.capability).toBe("evolve-plan");
+  });
+
+  it("preserves goalName in evolve-plan params", () => {
+    const state = mockState({});
+
+    const result = resolveTransition("revise-plan", state, { goalName: "my-feature" });
+
+    expect(result?.params?.goalName).toBe("my-feature");
+  });
+
+  it("does not pass explicit stepNumber (let evolve-plan discover next step)", () => {
+    const state = mockState({});
+
+    const result = resolveTransition("revise-plan", state, { goalName: "feat" });
+
+    expect(result?.params?.stepNumber).toBeUndefined();
+  });
+
+  it("preserves revisionTriggerStep if present in params", () => {
+    const state = mockState({});
+
+    const result = resolveTransition("revise-plan", state, { goalName: "feat", revisionTriggerStep: 4 });
+
+    expect(result?.params?.revisionTriggerStep).toBe(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // recordTransition — file creation
 // ---------------------------------------------------------------------------
 

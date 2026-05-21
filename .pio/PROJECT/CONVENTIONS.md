@@ -38,5 +38,6 @@ Consider adding a formatter (e.g., Prettier or Biome) to standardize code style 
 - **Stay within scope:** Each capability prompt forbids out-of-scope changes (refactoring unrelated code, "while you're at it" improvements)
 - **Reference real files:** Every file path in generated documents must correspond to a file the agent actually read
 - **Test-first discipline:** `execute-task` follows TDD (RED → GREEN → REFACTOR) per the `test-driven-development` skill
+- **Skill reference convention:** Capability prompts reference shared skills by name (e.g., `pio-planning`) throughout process steps, with full path (`src/skills/pio-planning/SKILL.md`) in a dedicated "Skill References" section at the end of each prompt. Shared methodology lives in skills; prompts retain only capability-specific instructions
 
 The `_skill-loading.md` prompt instructs all sub-sessions to load relevant skill documentation before acting, including the mandatory `pio/SKILL.md`.

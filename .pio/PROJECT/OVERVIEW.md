@@ -1,6 +1,6 @@
 # Project Overview
 
-**pio-extension** is an extension for the [pi](https://github.com/earendil-works/pi-coding-agent) coding agent framework that provides a goal-driven project management workflow. It enables developers and AI agents to break complex work into structured sub-sessions with validation gates, prompt templates, and explicit output requirements. Each workflow step (goal definition → planning → specification → implementation → review → finalization) runs in its own isolated sub-session, ensuring focused execution and verifiable outputs.
+**pio-extension** is an extension for the [pi](https://github.com/earendil-works/pi-coding-agent) coding agent framework that provides a goal-driven project management workflow. It enables developers and AI agents to break complex work into structured sub-sessions with validation gates, prompt templates, and explicit output requirements. Each workflow step (goal definition → planning → specification → implementation → review → finalization) runs in its own isolated sub-session, ensuring focused execution and verifiable outputs. A plan revision cycle (`evolve-plan → revise-plan → evolve-plan`) branches off when the specification writer detects significant divergence from the plan.
 
 Developed by Svarog AI. Licensed under MIT. Repository: `github.com:Svarog-AI/pio-extension`.
 
@@ -36,6 +36,7 @@ pio-extension/
 │   │   ├── goal-from-issue.ts   — pio_goal_from_issue: converts issue → goal workspace
 │   │   ├── list-goals.ts        — /pio-list-goals: lists goals with phase and last task
 │   │   ├── finalize-goal.ts     — pio_finalize_goal: reads accumulated decisions, updates .pio/PROJECT/
+│   │   ├── revise-plan.ts       — pio_revise_plan: archives PLAN.md, deletes incomplete steps, rewrites plan
 │   │   ├── session-capability.ts — shared launcher + prompt injection + model switching
 │   │   └── *.test.ts            — colocated tests for each capability module
 │   ├── guards/                # Event-handling guards (file protection, dead-turn detection)
@@ -50,11 +51,13 @@ pio-extension/
 │   │   ├── execute-plan.md        — Implementation Agent (all steps)
 │   │   ├── project-context.md     — Project Context Analyzer
 │   │   ├── finalize-goal.md       — Finalize Goal Agent (updates PROJECT docs from accumulated decisions)
+│   │   ├── revise-plan.md         — Plan Revision Agent (rewrites PLAN.md after completed steps)
 │   │   └── _skill-loading.md      — Shared skill-loading instructions
 │   ├── skills/                # Discoverable skills for pi's <available_skills>
 │   │   ├── pio/SKILL.md           — pio workflow reference
 │   │   ├── test-driven-development/SKILL.md — TDD methodology guide
-│   │   └── pio-project-knowledge/SKILL.md  — Canonical knowledge source for .pio/PROJECT/ files
+│   │   ├── pio-project-knowledge/SKILL.md  — Canonical knowledge source for .pio/PROJECT/ files
+│   │   └── pio-planning/SKILL.md  — Shared planning methodology (step structure, acceptance criteria, research)
 │   ├── index.ts               # Extension entry point — wires all capabilities into pi API
 │   ├── types.ts               # Shared type definitions (ValidationRule, CapabilityConfig, etc.)
 │   ├── fs-utils.ts            # Filesystem helpers (resolveGoalDir, stepFolderName, discoverNextStep)
@@ -64,7 +67,7 @@ pio-extension/
 │   ├── queues.ts              # Session task queue (enqueueTask, readPendingTask, per-goal slots)
 │   └── model-config.ts        # Per-capability model config from ~/.pi/pio-config.yaml
 ├── .pio/                      # Runtime workspace (goals, issues, session queue)
-│   ├── goals/<name>/          # Per-goal workspaces: GOAL.md, PLAN.md, S01/, transitions.json
+│   ├── goals/<name>/          # Per-goal workspaces: GOAL.md, PLAN.md, PLAN_ARCHIVE/, S01/, transitions.json
 │   ├── issues/                # Issue backlog as markdown files
 │   ├── PROJECT/               # 7-file project context (loaded by sub-sessions)
 │   └── session-queue/         # Per-goal task slots (task-{goalName}.json)

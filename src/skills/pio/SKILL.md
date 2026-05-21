@@ -19,6 +19,8 @@ Steps chain together in a dependency pipeline:
 
 Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` → repeat until all plan steps are done.
 
+**Plan revision:** During specification, `evolve-plan` can divert to `revise-plan` when the `REVISE_PLAN_NEEDED` marker is present (decisions make future steps impossible, require changes to completed implementations, or need additional steps). `revise-plan` archives the current `PLAN.md`, deletes incomplete step folders, and writes a fresh plan. After revision, control returns to `evolve-plan`.
+
 **Alternative:** `execute-plan` runs all plan steps in a single session (no evolve/execute/review loop). Requires both `GOAL.md` and `PLAN.md`.
 
 ## Command reference
@@ -32,6 +34,7 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 | `/pio-evolve-plan <name>` | `pio_evolve_plan` | Find next incomplete step, launch Specification Writer | `name` | `.pio/goals/<name>/S{NN}/TASK.md`, `TEST.md` |
 | `/pio-execute-task <name> [step]` | `pio_execute_task` | Implement one plan step (TDD) | `name`, optional `stepNumber` | `.pio/goals/<name>/S{NN}/COMPLETED` or `BLOCKED`, `SUMMARY.md` |
 | `/pio-review-task <name> [step]` | `pio_review_task` | Review completed step, approve or reject | `name`, optional `stepNumber` | `.pio/goals/<name>/S{NN}/REVIEW.md`, optionally `APPROVED` |
+| `/pio-revise-plan <name>` | `pio_revise_plan` | Archive current PLAN.md, delete incomplete steps, launch fresh planning session | `name` | `.pio/goals/<name>/PLAN.md` (rewritten) |
 | `/pio-execute-plan <name>` | — (command only) | Execute all plan steps in one session | `name` | All code changes from PLAN.md |
 | `/pio-project-context` | `pio_create_project_context` | Analyze project, produce 7-file project context | none | `.pio/PROJECT/` (7 files) |
 | `/pio-create-issue <slug> <title>` | `pio_create_issue` | Create a new issue as a markdown file under `.pio/issues/` | `slug`, `title`, optional `description`, `category`, `context` | `.pio/issues/<slug>.md` |
@@ -49,6 +52,8 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 - **Exit-gate validation:** When expected outputs are declared, the agent must call `pio_mark_complete` to validate before switching sessions. This auto-enqueues the next workflow task (single-slot FIFO queue).
 - **No source code in planning docs:** `GOAL.md`, `PLAN.md`, `TASK.md` contain descriptions and interface signatures only — never full implementations.
 - **Programmatic verification preferred:** Acceptance criteria should be verifiable via `npm run check`, file existence checks, or similar automated means.
+- **Plan revision:** `REVISE_PLAN_NEEDED` marker inside an `S{NN}/` folder signals that the plan requires restructuring. `evolve-plan` auto-detects this marker and routes to `revise-plan` via the state machine.
+- **Plan archive:** Archived plans live in `PLAN_ARCHIVE/` inside the goal workspace, with timestamped filenames (e.g., `PLAN-{YYYYMMDDTHHMMSSZ}.md`). The `revise-plan` agent reads these for context when writing a fresh plan.
 
 ## Sub-session mechanics
 

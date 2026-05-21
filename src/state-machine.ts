@@ -52,19 +52,31 @@ function transitionCreatePlan(_state: GoalState, params?: Record<string, unknown
   return { capability: "evolve-plan", params };
 }
 
-/** evolve-plan → execute-task: propagate goalName and stepNumber from params or state. Routes to finalize-goal when goal is complete. */
+/** evolve-plan → execute-task: propagate goalName and stepNumber from params or state. Routes to finalize-goal when goal is complete. Routes to revise-plan when current step signals revision is needed. */
 function transitionEvolvePlan(state: GoalState, params?: Record<string, unknown>): TransitionResult | undefined {
+  const explicitStepNumber = extractStepNumber(params);
+  const goalName = extractGoalName(params);
+
+  // Check if the current evolving step signals that plan revision is needed.
+  // Only check when we have an explicit stepNumber — without it, we can't target a specific step.
+  if (explicitStepNumber != null) {
+    const steps = state.steps();
+    const currentStep = steps.find((s) => s.stepNumber === explicitStepNumber);
+    if (currentStep && currentStep.revisionNeeded()) {
+      return {
+        capability: "revise-plan",
+        params: { goalName, revisionTriggerStep: explicitStepNumber },
+      };
+    }
+  }
+
   // Guard: if all plan steps are evolved, route to finalize-goal
   if (state.goalCompleted()) {
-    const goalName = extractGoalName(params);
     // goalName is guaranteed to exist: goalCompleted() is true only when a goal workspace exists
     const cwd = process.cwd();
     const goalDir = resolveGoalDir(cwd, goalName!);
     return { capability: "finalize-goal", params: { goalName, goalDir, workingDir: cwd } };
   }
-
-  const explicitStepNumber = extractStepNumber(params);
-  const goalName = extractGoalName(params);
 
   if (explicitStepNumber != null) {
     return { capability: "execute-task", params: { goalName, stepNumber: explicitStepNumber } };
@@ -123,6 +135,21 @@ function transitionReviewTask(state: GoalState, params?: Record<string, unknown>
   return { capability: "execute-task", params: { goalName, stepNumber } };
 }
 
+/** revise-plan → evolve-plan: after plan revision, route back to evolve-plan so the next incomplete step gets specified. */
+function transitionRevisePlan(_state: GoalState, params?: Record<string, unknown>): TransitionResult {
+  const goalName = extractGoalName(params);
+
+  // Build result — do NOT pass explicit stepNumber; let evolve-plan discover the next step.
+  // Preserve revisionTriggerStep if present (for downstream provenance).
+  const revisionTriggerStep =
+    typeof params?.revisionTriggerStep === "number" ? params.revisionTriggerStep : undefined;
+
+  return {
+    capability: "evolve-plan",
+    params: { goalName, ...(revisionTriggerStep != null && { revisionTriggerStep }) },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -153,6 +180,8 @@ export function resolveTransition(
       return transitionExecuteTask(state, params);
     case "review-task":
       return transitionReviewTask(state, params);
+    case "revise-plan":
+      return transitionRevisePlan(state, params);
     case "finalize-goal":
       return undefined;
     default:

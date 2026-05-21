@@ -15,6 +15,7 @@ import { setupCreatePlan } from "./capabilities/create-plan";
 import { setupEvolvePlan } from "./capabilities/evolve-plan";
 import { setupExecuteTask } from "./capabilities/execute-task";
 import { setupReviewTask } from "./capabilities/review-task";
+import { setupRevisePlan } from "./capabilities/revise-plan";
 import { setupExecutePlan } from "./capabilities/execute-plan";
 import { setupNextTask } from "./capabilities/next-task";
 import { setupProjectContext } from "./capabilities/project-context";
@@ -38,6 +39,7 @@ export default function (pi: ExtensionAPI) {
     path.join(SKILLS_DIR, "pio"),
     path.join(SKILLS_DIR, "test-driven-development"),
     path.join(SKILLS_DIR, "pio-project-knowledge"),
+    path.join(SKILLS_DIR, "pio-planning"),
   ];
 
   pi.on("resources_discover", async () => {
@@ -57,6 +59,7 @@ export default function (pi: ExtensionAPI) {
   setupEvolvePlan(pi);
   setupExecuteTask(pi);
   setupReviewTask(pi);
+  setupRevisePlan(pi);
   setupExecutePlan(pi);
   setupNextTask(pi);
   setupProjectContext(pi);

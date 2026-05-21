@@ -1,0 +1,447 @@
+[
+  {
+    "timestamp": "2026-05-21T06:08:09.859Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "revise-plan",
+        "initialMessage": "Create a new capability called \"revise-plan\" for the pio workflow.\n\n## Requirements\n\n1. **New capability: `revise-plan`** — A session that can edit `PLAN.md` at any point during a goal's lifecycle (after create-plan has produced an initial plan).\n\n2. **Shared planning skill:** Both `create-plan` and `revise-plan` should share a single skill file encapsulating everything about how to make plans (structure, conventions, best practices). Currently the prompt lives in `src/prompts/create-plan.md`. The shared knowledge about \"how to plan\" needs to be extracted into a new skill under `src/skills/` so both capabilities can load it. The capability-specific prompts should then reference this shared skill for planning methodology, while keeping capability-specific instructions (e.g., \"you are creating a fresh plan\" vs \"you are revising an existing plan with completed steps\").\n\n3. **Revise-plan behavior:**\n   - Read the current `PLAN.md` and identify which steps are already completed (have `COMPLETED` + `APPROVED` markers in their `S{NN}/` folders).\n   - Clear only the steps that have NOT been completed — remove their step folders and step entries from PLAN.md.\n   - Re-plan only the remaining work based on new context, decisions made during evolution, or user direction.\n   - Completed steps are immutable — they are \"set in stone.\" If a major pivot requires changes to already-completed code, those changes must become NEW future steps (e.g., \"revert X using git and replace with Y\"). Never modify or undo completed step entries directly.\n\n4. **When is revise-plan triggered?** The `evolve-plan` capability should be able to decide that decisions made during specification evolution significantly impact future steps. We will define the exact criteria in the goal definition. This could happen when:\n   - Technical decisions during a step reveal new constraints\n   - A step's spec reveals the remaining plan is no longer valid or optimal\n   - User direction changes mid-goal\n\n5. **State machine:** Add `revise-plan` as a valid transition. It should be reachable from `evolve-plan` (and potentially other phases). After revision, the workflow returns to `evolve-plan` to continue specifying steps.\n\n6. **Tool + command:** Follow the existing pattern — `pio_revise_plan` tool capability and a `/pio-revise-plan` command. The tool takes a goal name parameter.\n\n7. **Integration with evolve-plan:** Consider how `evolve-plan` signals that a revision is needed. Options: a marker file, an explicit user invocation after reading evolve-plan output, or evolve-plan enqueuing revise-plan directly. This needs to be decided in the goal definition.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-21T06:11:35.234Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "revise-plan",
+        "initialMessage": "Create a new capability called \"revise-plan\" for the pio workflow.\n\n## Requirements\n\n1. **New capability: `revise-plan`** — A session that can edit `PLAN.md` at any point during a goal's lifecycle (after create-plan has produced an initial plan).\n\n2. **Shared planning skill:** Both `create-plan` and `revise-plan` should share a single skill file encapsulating everything about how to make plans (structure, conventions, best practices). Currently the prompt lives in `src/prompts/create-plan.md`. The shared knowledge about \"how to plan\" needs to be extracted into a new skill under `src/skills/` so both capabilities can load it. The capability-specific prompts should then reference this shared skill for planning methodology, while keeping capability-specific instructions (e.g., \"you are creating a fresh plan\" vs \"you are revising an existing plan with completed steps\").\n\n3. **Revise-plan behavior:**\n   - Read the current `PLAN.md` and identify which steps are already completed (have `COMPLETED` + `APPROVED` markers in their `S{NN}/` folders).\n   - Clear only the steps that have NOT been completed — remove their step folders and step entries from PLAN.md.\n   - Re-plan only the remaining work based on new context, decisions made during evolution, or user direction.\n   - Completed steps are immutable — they are \"set in stone.\" If a major pivot requires changes to already-completed code, those changes must become NEW future steps (e.g., \"revert X using git and replace with Y\"). Never modify or undo completed step entries directly.\n\n4. **When is revise-plan triggered?** The `evolve-plan` capability should be able to decide that decisions made during specification evolution significantly impact future steps. We will define the exact criteria in the goal definition. This could happen when:\n   - Technical decisions during a step reveal new constraints\n   - A step's spec reveals the remaining plan is no longer valid or optimal\n   - User direction changes mid-goal\n\n5. **State machine:** Add `revise-plan` as a valid transition. It should be reachable from `evolve-plan` (and potentially other phases). After revision, the workflow returns to `evolve-plan` to continue specifying steps.\n\n6. **Tool + command:** Follow the existing pattern — `pio_revise_plan` tool capability and a `/pio-revise-plan` command. The tool takes a goal name parameter.\n\n7. **Integration with evolve-plan:** Consider how `evolve-plan` signals that a revision is needed. Options: a marker file, an explicit user invocation after reading evolve-plan output, or evolve-plan enqueuing revise-plan directly. This needs to be decided in the goal definition.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-21T06:16:04.971Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "revise-plan",
+        "initialMessage": "Create a new capability called \"revise-plan\" for the pio workflow.\n\n## Requirements\n\n1. **New capability: `revise-plan`** — A session that can edit `PLAN.md` at any point during a goal's lifecycle (after create-plan has produced an initial plan).\n\n2. **Shared planning skill:** Both `create-plan` and `revise-plan` should share a single skill file encapsulating everything about how to make plans (structure, conventions, best practices). Currently the prompt lives in `src/prompts/create-plan.md`. The shared knowledge about \"how to plan\" needs to be extracted into a new skill under `src/skills/` so both capabilities can load it. The capability-specific prompts should then reference this shared skill for planning methodology, while keeping capability-specific instructions (e.g., \"you are creating a fresh plan\" vs \"you are revising an existing plan with completed steps\").\n\n3. **Revise-plan behavior:**\n   - Read the current `PLAN.md` and identify which steps are already completed (have `COMPLETED` + `APPROVED` markers in their `S{NN}/` folders).\n   - Clear only the steps that have NOT been completed — remove their step folders and step entries from PLAN.md.\n   - Re-plan only the remaining work based on new context, decisions made during evolution, or user direction.\n   - Completed steps are immutable — they are \"set in stone.\" If a major pivot requires changes to already-completed code, those changes must become NEW future steps (e.g., \"revert X using git and replace with Y\"). Never modify or undo completed step entries directly.\n\n4. **When is revise-plan triggered?** The `evolve-plan` capability should be able to decide that decisions made during specification evolution significantly impact future steps. We will define the exact criteria in the goal definition. This could happen when:\n   - Technical decisions during a step reveal new constraints\n   - A step's spec reveals the remaining plan is no longer valid or optimal\n   - User direction changes mid-goal\n\n5. **State machine:** Add `revise-plan` as a valid transition. It should be reachable from `evolve-plan` (and potentially other phases). After revision, the workflow returns to `evolve-plan` to continue specifying steps.\n\n6. **Tool + command:** Follow the existing pattern — `pio_revise_plan` tool capability and a `/pio-revise-plan` command. The tool takes a goal name parameter.\n\n7. **Integration with evolve-plan:** Consider how `evolve-plan` signals that a revision is needed. Options: a marker file, an explicit user invocation after reading evolve-plan output, or evolve-plan enqueuing revise-plan directly. This needs to be decided in the goal definition.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-21T06:20:08.694Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "revise-plan",
+        "initialMessage": "Create a new capability called \"revise-plan\" for the pio workflow.\n\n## Requirements\n\n1. **New capability: `revise-plan`** — A session that can edit `PLAN.md` at any point during a goal's lifecycle (after create-plan has produced an initial plan).\n\n2. **Shared planning skill:** Both `create-plan` and `revise-plan` should share a single skill file encapsulating everything about how to make plans (structure, conventions, best practices). Currently the prompt lives in `src/prompts/create-plan.md`. The shared knowledge about \"how to plan\" needs to be extracted into a new skill under `src/skills/` so both capabilities can load it. The capability-specific prompts should then reference this shared skill for planning methodology, while keeping capability-specific instructions (e.g., \"you are creating a fresh plan\" vs \"you are revising an existing plan with completed steps\").\n\n3. **Revise-plan behavior:**\n   - Read the current `PLAN.md` and identify which steps are already completed (have `COMPLETED` + `APPROVED` markers in their `S{NN}/` folders).\n   - Clear only the steps that have NOT been completed — remove their step folders and step entries from PLAN.md.\n   - Re-plan only the remaining work based on new context, decisions made during evolution, or user direction.\n   - Completed steps are immutable — they are \"set in stone.\" If a major pivot requires changes to already-completed code, those changes must become NEW future steps (e.g., \"revert X using git and replace with Y\"). Never modify or undo completed step entries directly.\n\n4. **When is revise-plan triggered?** The `evolve-plan` capability should be able to decide that decisions made during specification evolution significantly impact future steps. We will define the exact criteria in the goal definition. This could happen when:\n   - Technical decisions during a step reveal new constraints\n   - A step's spec reveals the remaining plan is no longer valid or optimal\n   - User direction changes mid-goal\n\n5. **State machine:** Add `revise-plan` as a valid transition. It should be reachable from `evolve-plan` (and potentially other phases). After revision, the workflow returns to `evolve-plan` to continue specifying steps.\n\n6. **Tool + command:** Follow the existing pattern — `pio_revise_plan` tool capability and a `/pio-revise-plan` command. The tool takes a goal name parameter.\n\n7. **Integration with evolve-plan:** Consider how `evolve-plan` signals that a revision is needed. Options: a marker file, an explicit user invocation after reading evolve-plan output, or evolve-plan enqueuing revise-plan directly. This needs to be decided in the goal definition.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-21T06:31:41.915Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "revise-plan",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "revise-plan",
+          "initialMessage": "Create a new capability called \"revise-plan\" for the pio workflow.\n\n## Requirements\n\n1. **New capability: `revise-plan`** — A session that can edit `PLAN.md` at any point during a goal's lifecycle (after create-plan has produced an initial plan).\n\n2. **Shared planning skill:** Both `create-plan` and `revise-plan` should share a single skill file encapsulating everything about how to make plans (structure, conventions, best practices). Currently the prompt lives in `src/prompts/create-plan.md`. The shared knowledge about \"how to plan\" needs to be extracted into a new skill under `src/skills/` so both capabilities can load it. The capability-specific prompts should then reference this shared skill for planning methodology, while keeping capability-specific instructions (e.g., \"you are creating a fresh plan\" vs \"you are revising an existing plan with completed steps\").\n\n3. **Revise-plan behavior:**\n   - Read the current `PLAN.md` and identify which steps are already completed (have `COMPLETED` + `APPROVED` markers in their `S{NN}/` folders).\n   - Clear only the steps that have NOT been completed — remove their step folders and step entries from PLAN.md.\n   - Re-plan only the remaining work based on new context, decisions made during evolution, or user direction.\n   - Completed steps are immutable — they are \"set in stone.\" If a major pivot requires changes to already-completed code, those changes must become NEW future steps (e.g., \"revert X using git and replace with Y\"). Never modify or undo completed step entries directly.\n\n4. **When is revise-plan triggered?** The `evolve-plan` capability should be able to decide that decisions made during specification evolution significantly impact future steps. We will define the exact criteria in the goal definition. This could happen when:\n   - Technical decisions during a step reveal new constraints\n   - A step's spec reveals the remaining plan is no longer valid or optimal\n   - User direction changes mid-goal\n\n5. **State machine:** Add `revise-plan` as a valid transition. It should be reachable from `evolve-plan` (and potentially other phases). After revision, the workflow returns to `evolve-plan` to continue specifying steps.\n\n6. **Tool + command:** Follow the existing pattern — `pio_revise_plan` tool capability and a `/pio-revise-plan` command. The tool takes a goal name parameter.\n\n7. **Integration with evolve-plan:** Consider how `evolve-plan` signals that a revision is needed. Options: a marker file, an explicit user invocation after reading evolve-plan output, or evolve-plan enqueuing revise-plan directly. This needs to be decided in the goal definition.",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-21T06:38:03.118Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-21T09:24:02.697Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-21T09:35:20.925Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-21T09:38:22.780Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-21T10:19:44.333Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-21T10:28:56.198Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-21T10:30:37.805Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-21T10:35:54.568Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-21T10:41:52.085Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-21T10:57:04.345Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-21T11:16:30.869Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-21T11:19:52.461Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-21T11:22:00.813Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-21T11:26:46.378Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-21T11:51:09.535Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-21T12:01:24.322Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-21T12:21:21.092Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-21T12:23:04.903Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-21T12:28:09.048Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-21T12:28:55.535Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-21T12:30:16.145Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-21T12:33:50.063Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-21T13:04:16.466Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-21T14:53:34.984Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-21T14:56:55.332Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-21T15:00:17.832Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-21T15:24:13.235Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-21T15:28:07.674Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-21T15:49:11.711Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-21T15:54:25.676Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-21T15:56:55.321Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-21T16:03:52.192Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-21T16:07:28.375Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-21T18:29:16.755Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-21T18:36:35.217Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-21T18:39:19.939Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-21T18:41:13.127Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 9
+    }
+  },
+  {
+    "timestamp": "2026-05-21T18:43:00.221Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 9
+    }
+  },
+  {
+    "timestamp": "2026-05-21T18:45:31.986Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 9
+    }
+  },
+  {
+    "timestamp": "2026-05-21T19:06:10.677Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "revise-plan",
+      "stepNumber": 10
+    }
+  },
+  {
+    "timestamp": "2026-05-21T19:07:02.080Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "revise-plan",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/revise-plan",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  }
+]

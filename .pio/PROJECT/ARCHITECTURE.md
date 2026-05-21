@@ -26,7 +26,8 @@ The `session-capability.ts` module orchestrates sub-sessions:
 2. **Resources discover:** Config is read, prompts loaded, `prepareSession` hooks run, session name set
 3. **Before agent start:** `.pio/PROJECT/OVERVIEW.md` + `_skill-loading.md` + capability prompt are injected as a custom conversation message (preserves pi's default system prompt). Model switching occurs here if `~/.pi/pio-config.yaml` specifies per-capability models
 4. **File protection:** The `tool_call` event handler enforces read-only files and write allowlists, with a default-deny policy for `.pio/` writes outside the session's own goal workspace
-5. **Completion:** Agent calls `pio_mark_complete`, which validates outputs, automates review-code markers (APPROVED/REJECTED), resolves transitions, and auto-enqueues the next task
+5. **Plan revision trigger:** During evolve-plan, if the specification writer detects significant divergence from the plan, it writes a `REVISE_PLAN_NEEDED` marker in the step folder. The transition resolver checks for this marker and routes to `revise-plan` instead of continuing normally
+6. **Completion:** Agent calls `pio_mark_complete`, which validates outputs, automates review-code markers (APPROVED/REJECTED), resolves transitions, and auto-enqueues the next task
 
 ### State Management — GoalState + State Machine
 
@@ -56,7 +57,7 @@ pio depends entirely on the pi coding agent framework (`@earendil-works/pi-codin
 ### Filesystem as State Store
 
 All workflow state is stored in the `.pio/` directory tree:
-- **`.pio/goals/<name>/`** — goal workspaces with GOAL.md, PLAN.md, step folders (S01/, S02/)
+- **`.pio/goals/<name>/`** — goal workspaces with GOAL.md, PLAN.md, `PLAN_ARCHIVE/` (timestamped archived plans), step folders (S01/, S02/)
 - **`.pio/issues/`** — issue backlog as markdown files
 - **`.pio/session-queue/task-{goalName}.json`** — per-goal task queue slots
 - **`.pio/PROJECT/`** — 7-file project context (OVERVIEW.md, DEVELOPMENT.md, etc.)

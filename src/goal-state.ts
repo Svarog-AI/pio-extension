@@ -37,6 +37,8 @@ export interface StepStatus {
    * Priority: approved > rejected > blocked > implemented > defined > pending
    */
   status: () => "defined" | "implemented" | "approved" | "rejected" | "blocked" | "pending";
+  /** Returns true when REVISE_PLAN_NEEDED marker exists in the step folder. */
+  revisionNeeded: () => boolean;
 }
 
 function createStepStatus(stepDir: string, stepNumber: number, folderName: string): StepStatus {
@@ -46,6 +48,7 @@ function createStepStatus(stepDir: string, stepNumber: number, folderName: strin
     hasTask: () => fs.existsSync(path.join(stepDir, TASK_FILE)),
     hasTest: () => fs.existsSync(path.join(stepDir, TEST_FILE)),
     hasSummary: () => fs.existsSync(path.join(stepDir, SUMMARY_FILE)),
+    revisionNeeded: () => fs.existsSync(path.join(stepDir, "REVISE_PLAN_NEEDED")),
     status: () => {
       // Check markers in priority order: APPROVED > REJECTED > BLOCKED > COMPLETED
       if (fs.existsSync(path.join(stepDir, "APPROVED"))) return "approved";

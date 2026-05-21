@@ -17,6 +17,9 @@
 
 - **Finalize Goal Agent** — The agent that runs after a goal is fully completed. Reads accumulated decisions from DECISIONS.md, per-step SUMMARY.md files, and PLAN.md, then evaluates each finding against update rules to determine which `.pio/PROJECT/*.md` files need updates.
 - **DECISIONS.md** — Accumulated across steps starting at Step 2, documents architectural decisions, plan deviations, and file placement choices made during specification and implementation. Read by the Finalize Goal Agent to update project documentation.
+- **Plan Revision** — A workflow capability (`revise-plan`) triggered when evolve-plan's specification writer detects significant divergence from the plan. Archives current PLAN.md to `PLAN_ARCHIVE/`, deletes incomplete step folders, and rewrites a fresh plan with completed steps as anchors.
+- **REVISE_PLAN_NEEDED** — A marker file written by the specification writer (evolve-plan agent) inside a step folder (`S{NN}/REVISE_PLAN_NEEDED`) to signal that the plan must be revised. The transition resolver detects this via `StepStatus.revisionNeeded()` and routes to `revise-plan` instead of continuing normally.
+- **PLAN_ARCHIVE** — Directory inside a goal workspace (`<goalDir>/PLAN_ARCHIVE/`) storing timestamped copies of PLAN.md before each revision. Enables the revise-plan agent to reference previous plan attempts.
 
 ## Acronyms
 

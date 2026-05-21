@@ -1470,6 +1470,102 @@ describe("goalCompleted()", () => {
 });
 
 // ---------------------------------------------------------------------------
+// revisionNeeded()
+// ---------------------------------------------------------------------------
+
+describe("revisionNeeded()", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns true when REVISE_PLAN_NEEDED exists in the step folder", () => {
+    // Arrange: create goal tree with S01 containing REVISE_PLAN_NEEDED
+    const goalDir = createGoalTree(tempDir, "revision-needed", [
+      { number: 1, files: ["REVISE_PLAN_NEEDED"] },
+    ]);
+
+    // Act
+    const state = createGoalState(goalDir);
+
+    // Assert
+    expect(state.steps()[0].revisionNeeded()).toBe(true);
+  });
+
+  it("returns false when REVISE_PLAN_NEEDED does not exist", () => {
+    // Arrange: create goal tree with empty S01
+    const goalDir = createGoalTree(tempDir, "no-revision", [
+      { number: 1, files: [] },
+    ]);
+
+    // Act
+    const state = createGoalState(goalDir);
+
+    // Assert
+    expect(state.steps()[0].revisionNeeded()).toBe(false);
+  });
+
+  it("reflects filesystem changes with no caching (lazy evaluation)", () => {
+    // Arrange: create goal tree with empty S01
+    const goalDir = createGoalTree(tempDir, "lazy-revision", [
+      { number: 1, files: [] },
+    ]);
+    const state = createGoalState(goalDir);
+    const stepDir = path.join(goalDir, "S01");
+
+    // Initially false
+    expect(state.steps()[0].revisionNeeded()).toBe(false);
+
+    // Write REVISE_PLAN_NEEDED
+    fs.writeFileSync(path.join(stepDir, "REVISE_PLAN_NEEDED"), "", "utf-8");
+
+    // Now true — proves no caching
+    expect(state.steps()[0].revisionNeeded()).toBe(true);
+
+    // Remove file
+    fs.rmSync(path.join(stepDir, "REVISE_PLAN_NEEDED"));
+
+    // Back to false
+    expect(state.steps()[0].revisionNeeded()).toBe(false);
+  });
+
+  it("returns false for a non-step folder containing REVISE_PLAN_NEEDED", () => {
+    // Arrange: create a non-step directory with REVISE_PLAN_NEEDED inside
+    const goalDir = createGoalTree(tempDir, "non-step-folder");
+    const docsDir = path.join(goalDir, "docs");
+    fs.mkdirSync(docsDir, { recursive: true });
+    fs.writeFileSync(path.join(docsDir, "REVISE_PLAN_NEEDED"), "", "utf-8");
+
+    // Act
+    const state = createGoalState(goalDir);
+
+    // Assert: state.steps() does not include the non-step folder
+    expect(state.steps()).toHaveLength(0);
+  });
+
+  it("works correctly for higher step numbers (S05, S10)", () => {
+    // Arrange: create goal tree with S05 containing the marker
+    const goalDir = createGoalTree(tempDir, "higher-steps", [
+      { number: 5, files: ["REVISE_PLAN_NEEDED"] },
+      { number: 10, files: [] },
+    ]);
+
+    // Act
+    const state = createGoalState(goalDir);
+
+    // Assert: S05 has revision needed, S10 does not; step numbers resolve correctly
+    const steps = state.steps();
+    expect(steps[0].stepNumber).toBe(5);
+    expect(steps[0].revisionNeeded()).toBe(true);
+    expect(steps[1].stepNumber).toBe(10);
+    expect(steps[1].revisionNeeded()).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // suppress console.warn in planMetadata errors mode
 // ---------------------------------------------------------------------------
 

@@ -40,6 +40,7 @@ index.ts ────┬── setupCapability()    → session-capability.ts
              ├── setupCreateIssue()   → capabilities/create-issue.ts
              ├── setupGoalFromIssue() → capabilities/goal-from-issue.ts
              ├── setupFinalizeGoal()  → capabilities/finalize-goal.ts
+             ├── setupRevisePlan()    → capabilities/revise-plan.ts
              └── setupListGoals()     → capabilities/list-goals.ts
 
 Shared modules (used by capabilities and guards):
@@ -60,10 +61,11 @@ Shared modules (used by capabilities and guards):
 
 ```
 create-goal ──GOAL.md──→ create-plan ──PLAN.md──→ evolve-plan ──S01/TASK.md+TEST.md──→ execute-task ──S01/COMPLETED+SUMMARY.md──→ review-code ──(goal complete)──→ finalize-goal
-                                                                                                    ↑                                  │
-                                                                                                    │         APPROVED                 ↓
-                                                                                                    └──────── evolve-plan ←── S01/APPROVED
-                                                                                                                         REJECTED → re-execute
+                                    ↑                                                      │                                  │         ↑
+                                    │           (significant divergence,                   │         APPROVED                 │         │
+                                    │            REVISE_PLAN_NEEDED written)               │                              ↓         │
+                                    └──── revise-plan ←──────── evolve-plan ←──────────────┘                       S01/APPROVED  │
+                                                                                                            REJECTED → re-exec │
 ```
 
 ### Session Queue Flow (control flow)

@@ -41,6 +41,7 @@ function mockStep(stepNumber: number, statusValue: string): NonNullable<ReturnTy
     hasTask: () => true,
     hasTest: () => true,
     hasSummary: () => false,
+    revisionNeeded: () => false,
     status: () => statusValue as ReturnType<NonNullable<ReturnType<GoalState["steps"]>>[number]["status"]>,
   };
 }

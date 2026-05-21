@@ -19,6 +19,7 @@ const PLAN_FILE = "PLAN.md";
 const TASK_FILE = "TASK.md";
 const TEST_FILE = "TEST.md";
 const DECISIONS_FILE = "DECISIONS.md";
+export const REVISE_PLAN_MARKER = "REVISE_PLAN_NEEDED";
 
 // ---------------------------------------------------------------------------
 // Capability config — single source of truth for this capability's session shape
@@ -44,7 +45,7 @@ function resolveEvolveWriteAllowlist(_workingDir: string, params?: Record<string
     throw new Error("stepNumber is required for evolve-plan. Ensure the task was enqueued with a valid step number.");
   }
   const folder = stepFolderName(stepNumber);
-  const allowlist: string[] = ["COMPLETED", `${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`];
+  const allowlist: string[] = ["COMPLETED", `${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`, `${folder}/${REVISE_PLAN_MARKER}`];
   if (stepNumber > 1) {
     allowlist.push(`${folder}/${DECISIONS_FILE}`);
   }

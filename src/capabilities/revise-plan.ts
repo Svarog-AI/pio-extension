@@ -17,7 +17,7 @@ import { createGoalState } from "../goal-state";
 const GOAL_FILE = "GOAL.md";
 const PLAN_FILE = "PLAN.md";
 const PLAN_ARCHIVE_DIR = "PLAN_ARCHIVE";
-const REVISE_PLAN_MARKER = "REVISE_PLAN_NEEDED";
+export const REVISE_PLAN_MARKER = "REVISE_PLAN_NEEDED";
 
 // ---------------------------------------------------------------------------
 // Validation — inline, before queuing/launching

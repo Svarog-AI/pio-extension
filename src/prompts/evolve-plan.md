@@ -191,9 +191,52 @@ Structure:
 Execute in this priority: unit → integration → programmatic → manual.>
 ```
 
-### Step 7: Signal completion
+### Step 7: Assess if plan revision is needed
 
-When both `TASK.md` and `TEST.md` are written and confirmed (and `DECISIONS.md` for Step 2+), call the `pio_mark_complete` tool to validate that all expected outputs have been produced. If validation reports missing files, produce them before calling again. Do not end your work without calling this tool.
+After writing `TASK.md` and `TEST.md`, evaluate whether your specification decisions require a plan revision. This assessment is **optional and additional** — `TASK.md` and `TEST.md` are always required regardless of whether a marker is written.
+
+#### When to write `REVISE_PLAN_NEEDED`
+
+Write a `REVISE_PLAN_NEEDED` marker file inside the current `S{NN}/` folder (same folder as `TASK.md` and `TEST.md`) if **any** of the following conditions are met:
+
+1. **Impossible future steps:** Decisions made during specification make at least one future step impossible as-planned.
+2. **Requires completed changes:** Decisions require changes to implementations in already-completed previous steps.
+3. **Additional steps needed:** Decisions require additional steps beyond what the plan accounts for.
+4. **Significant divergence:** The next step's spec diverges significantly from the original plan, making it confusing to read both side by side.
+
+#### When NOT to write the marker
+
+Do **not** write the marker when:
+
+- Only minor descriptive changes are needed in a single future step.
+- All steps stay roughly the same with minor additions or removals (file descriptions, test counts, constraints).
+
+#### Marker file format
+
+Write `REVISE_PLAN_NEEDED` as a markdown file with YAML frontmatter:
+
+```yaml
+---
+reason: "impossible_future_steps" | "requires_completed_changes" | "additional_steps_needed" | "significant_divergence"
+decisions:
+  - "decision description 1"
+  - "decision description 2"
+---
+```
+
+Followed by a markdown body explaining the context, decisions made, and constraints discovered.
+
+**Note:** The `reason` and `decisions` fields are purely informational for human review (e.g., audit trails). No code downstream parses these fields — the revise-plan `prepareSession` hook simply detects file existence and deletes the marker during cleanup.
+
+#### What happens after writing the marker
+
+1. Write the marker file if conditions above are met.
+2. Call `pio_mark_complete` as normal — **do not call `pio_revise_plan` or any other tool**.
+3. The state machine automatically checks `revisionNeeded()` on the current step upon session completion and routes to `revise-plan` if the marker exists. Writing the marker file alone is sufficient.
+
+### Step 8: Signal completion
+
+When both `TASK.md` and `TEST.md` are written and confirmed (and `DECISIONS.md` for Step 2+, and `REVISE_PLAN_NEEDED` if applicable), call the `pio_mark_complete` tool to validate that all expected outputs have been produced. If validation reports missing files, produce them before calling again. Do not end your work without calling this tool.
 
 ## Guidelines
 

@@ -129,6 +129,71 @@ describe("resolveEvolveWriteAllowlist", () => {
 });
 
 // ---------------------------------------------------------------------------
+// resolveEvolveWriteAllowlist — REVISE_PLAN_NEEDED inclusion
+// ---------------------------------------------------------------------------
+
+describe("resolveEvolveWriteAllowlist with REVISE_PLAN_NEEDED", () => {
+  it("includes S01/REVISE_PLAN_NEEDED in write allowlist for stepNumber=1", async () => {
+    // Arrange: resolve evolve-plan config with stepNumber 1
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1 };
+
+    // Act
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    // Assert: writeAllowlist contains S01/REVISE_PLAN_NEEDED
+    expect(result?.writeAllowlist).toContain("S01/REVISE_PLAN_NEEDED");
+  });
+
+  it("includes S03/REVISE_PLAN_NEEDED in write allowlist for stepNumber=3", async () => {
+    // Arrange: resolve evolve-plan config with stepNumber 3
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 3 };
+
+    // Act
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    // Assert: writeAllowlist contains S03/REVISE_PLAN_NEEDED
+    expect(result?.writeAllowlist).toContain("S03/REVISE_PLAN_NEEDED");
+  });
+
+  it("marker path uses correct step folder naming (zero-padded)", async () => {
+    // Arrange: resolve evolve-plan config with stepNumber 12
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 12 };
+
+    // Act
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    // Assert: allowlist contains S12/REVISE_PLAN_NEEDED (not S120/... or S1/...)
+    expect(result?.writeAllowlist).toContain("S12/REVISE_PLAN_NEEDED");
+    // Verify no under-padded path exists (S1/ would match S10/, S11/, S12/ with .includes)
+    expect(result?.writeAllowlist).not.toContain("S1/REVISE_PLAN_NEEDED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REVISE_PLAN_NEEDED marker filename consistency
+// ---------------------------------------------------------------------------
+
+describe("REVISE_PLAN_NEEDED marker filename consistency", () => {
+  it("marker filename in evolve-plan writeAllowlist matches revise-plan constant", async () => {
+    // Arrange: resolve evolve-plan config for step 2
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2 };
+
+    // Act
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    // Assert: extract the marker path from writeAllowlist, check basename equals "REVISE_PLAN_NEEDED"
+    const markerPath = result?.writeAllowlist?.find((p) => p.includes("REVISE_PLAN_NEEDED"));
+    expect(markerPath).toBeDefined();
+    const basename = markerPath!.split("/").pop();
+    expect(basename).toBe("REVISE_PLAN_NEEDED");
+
+    // Cross-check: the revise-plan module uses the same constant value
+    const { REVISE_PLAN_MARKER } = await import("./revise-plan");
+    expect(basename).toBe(REVISE_PLAN_MARKER);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // resolveEvolveValidation — DECISIONS.md for step > 1
 // ---------------------------------------------------------------------------
 
@@ -191,12 +256,13 @@ describe("resolveEvolveWriteAllowlist with DECISIONS_FILE", () => {
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: contains all expected files including DECISIONS.md (total length is 4)
+    // Assert: contains all expected files including DECISIONS.md and REVISE_PLAN_NEEDED (total length is 5)
     expect(result?.writeAllowlist).toContain("COMPLETED");
     expect(result?.writeAllowlist).toContain("S02/TASK.md");
     expect(result?.writeAllowlist).toContain("S02/TEST.md");
     expect(result?.writeAllowlist).toContain("S02/DECISIONS.md");
-    expect(result?.writeAllowlist?.length).toBe(4);
+    expect(result?.writeAllowlist).toContain("S02/REVISE_PLAN_NEEDED");
+    expect(result?.writeAllowlist?.length).toBe(5);
   });
 });
 

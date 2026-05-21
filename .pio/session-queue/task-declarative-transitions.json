@@ -1,0 +1,7 @@
+{
+  "capability": "create-goal",
+  "params": {
+    "goalName": "declarative-transitions",
+    "initialMessage": "The `resolveTransition()` switch in `src/state-machine.ts` is the main extensibility bottleneck identified in the capability-class-architecture analysis (ANALYSIS.md, Decision section). Adding a new capability requires a manual `case` branch in the switch statement. The goal is to replace this with a declarative transition registry — a `Record<string, TransitionFunction>` map — so transitions are registered as data, not control flow. This is a self-contained improvement to `state-machine.ts` alone, orthogonal to the class-vs-config debate. Key files: `src/state-machine.ts` (218 lines, contains `resolveTransition()` switch + `recordTransition()`), `src/goal-state.ts` (347 lines, `GoalState` + `StepStatus`), and `src/guards/validation.ts` (uses `resolveTransition()` from `session-capability.ts`)."
+  }
+}

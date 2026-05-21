@@ -1,0 +1,67 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "capability-class-architecture",
+    "stepNumber": 4,
+    "_sessionContext": {
+      "goalName": "capability-class-architecture",
+      "stepNumber": 4,
+      "_sessionContext": {
+        "goalName": "capability-class-architecture",
+        "stepNumber": 3,
+        "_sessionContext": {
+          "goalName": "capability-class-architecture",
+          "stepNumber": 3,
+          "_sessionContext": {
+            "goalName": "capability-class-architecture",
+            "stepNumber": 3,
+            "_sessionContext": {
+              "goalName": "capability-class-architecture",
+              "stepNumber": 2,
+              "_sessionContext": {
+                "goalName": "capability-class-architecture",
+                "stepNumber": 2,
+                "_sessionContext": {
+                  "goalName": "capability-class-architecture",
+                  "stepNumber": 2,
+                  "_sessionContext": {
+                    "goalName": "capability-class-architecture",
+                    "stepNumber": 1,
+                    "_sessionContext": {
+                      "goalName": "capability-class-architecture",
+                      "stepNumber": 1,
+                      "_sessionContext": {
+                        "goalName": "capability-class-architecture",
+                        "stepNumber": 1,
+                        "_sessionContext": {
+                          "goalName": "capability-class-architecture",
+                          "stepNumber": 1,
+                          "_sessionContext": {
+                            "goalName": "capability-class-architecture",
+                            "initialMessage": "Explore and validate refactoring the capability system from the current module-per-capability pattern into a class-based architecture.\n\n## Current Architecture\n\nEach capability is a module (`src/capabilities/*.ts`) exporting:\n- `CAPABILITY_CONFIG: StaticCapabilityConfig` — declarative config (prompt, validation, lifecycle hooks)\n- `setupXxx(pi: ExtensionAPI)` — registers tool + command, wires event handlers via `session-capability.ts`\n\nShared logic lives in `session-capability.ts` (launcher, `pio_mark_complete` tool, prompt injection, model switching) and is wired imperatively per-capability.\n\nKey files:\n- `src/capabilities/session-capability.ts` — shared launcher + event handlers\n- `src/capability-config.ts` — resolves capability name → config via dynamic import\n- `src/types.ts` — `CapabilityConfig`, `StaticCapabilityConfig`, lifecycle callback types\n- `src/capabilities/create-goal.ts` — example of the current pattern\n\n## Two Variants to Discuss\n\n### Variant A: SessionCapability as a class, capabilities as instances\n\nA single `SessionCapability` class encapsulates the common lifecycle (launch, prompt injection, validation, transitions). Each capability creates an instance, configuring it with its own config/hooks.\n\n```typescript\nclass CreateGoalCapability extends SessionCapability {\n  constructor() {\n    super({ prompt: \"create-goal.md\", ... });\n  }\n}\n// or purely compositional:\nconst createGoal = new SessionCapability({ prompt: \"create-goal.md\", ... });\n```\n\n### Variant B: SessionCapability as a base class, capabilities as subclasses\n\nEach capability extends `SessionCapability` and overrides specific methods (prepare, validate, execute) while inheriting common behavior. More OOP inheritance style.\n\n## Research Questions\n\n1. Which variant better captures the current capability patterns?\n2. Does either variant actually reduce boilerplate vs the current config-object pattern?\n3. How does class-based design affect testing (mocking, isolation)?\n4. Does it improve type safety or just add indirection?\n5. Can we express lifecycle hooks (`prepareSession`, `postValidate`, `postExecute`) more naturally?\n6. What about capabilities that don't launch sessions (like `pio_mark_complete`, `/pio-list-goals`)?\n\n## Goal\n\nProduce a GOAL.md that clearly frames the problem, compares both variants with pros/cons, and recommends a direction (or rejects the refactor entirely with justification). Consider whether config objects + functions already solve the problem well enough without classes.",
+                            "capability": "create-goal"
+                          },
+                          "capability": "create-plan"
+                        },
+                        "capability": "evolve-plan"
+                      },
+                      "capability": "execute-task"
+                    },
+                    "capability": "review-task"
+                  },
+                  "capability": "evolve-plan"
+                },
+                "capability": "execute-task"
+              },
+              "capability": "review-task"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    }
+  }
+}

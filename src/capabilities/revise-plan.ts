@@ -134,7 +134,7 @@ function resolveReviseReadOnlyFiles(workingDir: string, _params?: Record<string,
 }
 
 function resolveReviseWriteAllowlist(_workingDir: string, _params?: Record<string, unknown>): string[] {
-  return ["PLAN.md", `${PLAN_ARCHIVE_DIR}/*`];
+  return ["PLAN.md"];
 }
 
 // ---------------------------------------------------------------------------

@@ -282,20 +282,24 @@ describe("steps()", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("returns empty array when no S{NN} folders exist", () => {
+  it("returns empty array when no PLAN.md exists", () => {
     const goalDir = createGoalTree(tempDir, "empty");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const state = createGoalState(goalDir);
 
     expect(state.steps()).toEqual([]);
+
+    warnSpy.mockRestore();
   });
 
-  it("discovers step folders S01, S02, etc. and returns correct count", () => {
+  it("returns StepStatus for each entry in frontmatter steps array", () => {
     const goalDir = createGoalTree(tempDir, "three-steps", [
       { number: 1, files: [] },
       { number: 2, files: [] },
       { number: 3, files: [] },
     ]);
+    writePlanWithFrontmatter(goalDir, 3);
 
     const state = createGoalState(goalDir);
 
@@ -303,27 +307,31 @@ describe("steps()", () => {
   });
 
   it("returns correct stepNumber and folderName for each step", () => {
-    const goalDir = createGoalTree(tempDir, "sparse-steps", [
+    const goalDir = createGoalTree(tempDir, "three-steps", [
       { number: 1, files: [] },
+      { number: 2, files: [] },
       { number: 3, files: [] },
     ]);
+    writePlanWithFrontmatter(goalDir, 3);
 
     const state = createGoalState(goalDir);
     const steps = state.steps();
 
     expect(steps[0].stepNumber).toBe(1);
     expect(steps[0].folderName).toBe("S01");
-    expect(steps[1].stepNumber).toBe(3);
-    expect(steps[1].folderName).toBe("S03");
+    expect(steps[1].stepNumber).toBe(2);
+    expect(steps[1].folderName).toBe("S02");
+    expect(steps[2].stepNumber).toBe(3);
+    expect(steps[2].folderName).toBe("S03");
   });
 
-  it("sorts results by stepNumber ascending", () => {
-    // Create S03 first, then S01, then S02 — order of creation doesn't matter
+  it("returns steps in frontmatter order (always sequential)", () => {
     const goalDir = createGoalTree(tempDir, "sorted-steps", [
       { number: 3, files: [] },
       { number: 1, files: [] },
       { number: 2, files: [] },
     ]);
+    writePlanWithFrontmatter(goalDir, 3);
 
     const state = createGoalState(goalDir);
     const steps = state.steps();
@@ -331,10 +339,30 @@ describe("steps()", () => {
     expect(steps.map((s) => s.stepNumber)).toEqual([1, 2, 3]);
   });
 
+  it("returns StepStatus for steps whose folders do not yet exist on disk", () => {
+    // Only S01 exists on disk, but frontmatter defines 3 steps
+    const goalDir = createGoalTree(tempDir, "partial-steps", [
+      { number: 1, files: [] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 3);
+
+    const state = createGoalState(goalDir);
+    const steps = state.steps();
+
+    expect(steps).toHaveLength(3);
+    expect(steps[0].stepNumber).toBe(1);
+    expect(steps[1].stepNumber).toBe(2);
+    expect(steps[2].stepNumber).toBe(3);
+    // S02 and S03 folders don't exist — status should be "pending"
+    expect(steps[1].status()).toBe("pending");
+    expect(steps[2].status()).toBe("pending");
+  });
+
   it("StepStatus.status() returns 'pending' for an empty step folder", () => {
     const goalDir = createGoalTree(tempDir, "pending-step", [
       { number: 1, files: [] },
     ]);
+    writePlanWithFrontmatter(goalDir, 1);
 
     const state = createGoalState(goalDir);
 
@@ -345,6 +373,7 @@ describe("steps()", () => {
     const goalDir = createGoalTree(tempDir, "defined-step", [
       { number: 1, files: ["TASK.md", "TEST.md"] },
     ]);
+    writePlanWithFrontmatter(goalDir, 1);
 
     const state = createGoalState(goalDir);
 
@@ -355,6 +384,7 @@ describe("steps()", () => {
     const goalDir = createGoalTree(tempDir, "implemented-step", [
       { number: 1, files: ["TASK.md", "TEST.md", "COMPLETED"] },
     ]);
+    writePlanWithFrontmatter(goalDir, 1);
 
     const state = createGoalState(goalDir);
 
@@ -365,6 +395,7 @@ describe("steps()", () => {
     const goalDir = createGoalTree(tempDir, "approved-step", [
       { number: 1, files: ["TASK.md", "TEST.md", "APPROVED"] },
     ]);
+    writePlanWithFrontmatter(goalDir, 1);
 
     const state = createGoalState(goalDir);
 
@@ -375,6 +406,7 @@ describe("steps()", () => {
     const goalDir = createGoalTree(tempDir, "rejected-step", [
       { number: 1, files: ["TASK.md", "TEST.md", "REJECTED"] },
     ]);
+    writePlanWithFrontmatter(goalDir, 1);
 
     const state = createGoalState(goalDir);
 
@@ -385,6 +417,7 @@ describe("steps()", () => {
     const goalDir = createGoalTree(tempDir, "blocked-step", [
       { number: 1, files: ["TASK.md", "TEST.md", "BLOCKED"] },
     ]);
+    writePlanWithFrontmatter(goalDir, 1);
 
     const state = createGoalState(goalDir);
 
@@ -395,6 +428,7 @@ describe("steps()", () => {
     const goalDir = createGoalTree(tempDir, "multi-markers", [
       { number: 1, files: ["TASK.md", "TEST.md", "COMPLETED", "APPROVED"] },
     ]);
+    writePlanWithFrontmatter(goalDir, 1);
 
     const state = createGoalState(goalDir);
 
@@ -405,6 +439,7 @@ describe("steps()", () => {
     const goalDir = createGoalTree(tempDir, "has-task-test", [
       { number: 1, files: [] }, // no TASK.md
     ]);
+    writePlanWithFrontmatter(goalDir, 1);
 
     const state = createGoalState(goalDir);
 
@@ -420,6 +455,7 @@ describe("steps()", () => {
     const goalDir = createGoalTree(tempDir, "has-test-test", [
       { number: 1, files: [] }, // no TEST.md
     ]);
+    writePlanWithFrontmatter(goalDir, 1);
 
     const state = createGoalState(goalDir);
 
@@ -435,6 +471,7 @@ describe("steps()", () => {
     const goalDir = createGoalTree(tempDir, "has-summary-test", [
       { number: 1, files: [] }, // no SUMMARY.md
     ]);
+    writePlanWithFrontmatter(goalDir, 1);
 
     const state = createGoalState(goalDir);
 
@@ -450,6 +487,7 @@ describe("steps()", () => {
     const goalDir = createGoalTree(tempDir, "mixed-folders", [
       { number: 1, files: [] },
     ]);
+    writePlanWithFrontmatter(goalDir, 1);
 
     // Create a non-step folder
     fs.mkdirSync(path.join(goalDir, "docs"), { recursive: true });
@@ -1502,6 +1540,7 @@ describe("revisionNeeded()", () => {
     const goalDir = createGoalTree(tempDir, "revision-needed", [
       { number: 1, files: ["REVISE_PLAN_NEEDED"] },
     ]);
+    writePlanWithFrontmatter(goalDir, 1);
 
     // Act
     const state = createGoalState(goalDir);
@@ -1515,6 +1554,7 @@ describe("revisionNeeded()", () => {
     const goalDir = createGoalTree(tempDir, "no-revision", [
       { number: 1, files: [] },
     ]);
+    writePlanWithFrontmatter(goalDir, 1);
 
     // Act
     const state = createGoalState(goalDir);
@@ -1528,6 +1568,7 @@ describe("revisionNeeded()", () => {
     const goalDir = createGoalTree(tempDir, "lazy-revision", [
       { number: 1, files: [] },
     ]);
+    writePlanWithFrontmatter(goalDir, 1);
     const state = createGoalState(goalDir);
     const stepDir = path.join(goalDir, "S01");
 
@@ -1567,16 +1608,17 @@ describe("revisionNeeded()", () => {
       { number: 5, files: ["REVISE_PLAN_NEEDED"] },
       { number: 10, files: [] },
     ]);
+    writePlanWithFrontmatter(goalDir, 10);
 
     // Act
     const state = createGoalState(goalDir);
 
     // Assert: S05 has revision needed, S10 does not; step numbers resolve correctly
     const steps = state.steps();
-    expect(steps[0].stepNumber).toBe(5);
-    expect(steps[0].revisionNeeded()).toBe(true);
-    expect(steps[1].stepNumber).toBe(10);
-    expect(steps[1].revisionNeeded()).toBe(false);
+    expect(steps[4].stepNumber).toBe(5);
+    expect(steps[4].revisionNeeded()).toBe(true);
+    expect(steps[9].stepNumber).toBe(10);
+    expect(steps[9].revisionNeeded()).toBe(false);
   });
 });
 
@@ -1770,8 +1812,8 @@ describe("StepStatus.getMetadata() — with valid frontmatter steps array", () =
     expect(metadata).toEqual({ name: "third", complexity: "task" });
   });
 
-  it("returns null when step folder exists but is out of bounds of steps array", () => {
-    // Arrange: PLAN.md with totalSteps: 2, steps has 2 entries, but S03/ exists
+  it("does not include step folders that are beyond the frontmatter steps array", () => {
+    // Arrange: PLAN.md with 2 steps, but S03/ also exists on disk
     const goalDir = createGoalTree(tempDir, "metadata-oob", [
       { number: 1, files: [] },
       { number: 2, files: [] },
@@ -1784,11 +1826,10 @@ describe("StepStatus.getMetadata() — with valid frontmatter steps array", () =
 
     const state = createGoalState(goalDir);
 
-    // Act: S03 exists on disk but is beyond the steps array
-    const metadata = state.steps()[2].getMetadata();
-
-    // Assert
-    expect(metadata).toBeNull();
+    // Act: only 2 steps from frontmatter, S03 on disk is not included
+    expect(state.steps()).toHaveLength(2);
+    expect(state.steps()[0].stepNumber).toBe(1);
+    expect(state.steps()[1].stepNumber).toBe(2);
   });
 });
 
@@ -1805,7 +1846,7 @@ describe("StepStatus.getMetadata() — graceful degradation for old plans", () =
 
   afterEach(() => cleanup(tempDir));
 
-  it("returns null when PLAN.md has no steps field (old-format plan)", () => {
+  it("returns empty array when PLAN.md has no steps field (old-format plan)", () => {
     // Arrange: PLAN.md with only totalSteps (no steps array)
     const goalDir = createGoalTree(tempDir, "old-format", [
       { number: 1, files: [] },
@@ -1818,14 +1859,11 @@ describe("StepStatus.getMetadata() — graceful degradation for old plans", () =
 
     const state = createGoalState(goalDir);
 
-    // Act
-    const metadata = state.steps()[0].getMetadata();
-
-    // Assert: old plans don't crash, they just have no metadata
-    expect(metadata).toBeNull();
+    // Act: steps() returns empty when no steps array in frontmatter
+    expect(state.steps()).toEqual([]);
   });
 
-  it("returns null when PLAN.md has no frontmatter at all", () => {
+  it("returns empty array when PLAN.md has no frontmatter at all", () => {
     // Arrange: PLAN.md as plain markdown without --- delimiters
     const goalDir = createGoalTree(tempDir, "no-frontmatter-meta", [
       { number: 1, files: [] },
@@ -1836,28 +1874,28 @@ describe("StepStatus.getMetadata() — graceful degradation for old plans", () =
       "utf-8",
     );
 
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const state = createGoalState(goalDir);
 
-    // Act
-    const metadata = state.steps()[0].getMetadata();
+    // Act: steps() returns empty when frontmatter is missing
+    expect(state.steps()).toEqual([]);
 
-    // Assert
-    expect(metadata).toBeNull();
+    warnSpy.mockRestore();
   });
 
-  it("returns null when PLAN.md does not exist", () => {
+  it("returns empty array when PLAN.md does not exist", () => {
     // Arrange: Goal directory with S01/ but no PLAN.md
     const goalDir = createGoalTree(tempDir, "no-plan-meta", [
       { number: 1, files: [] },
     ]);
 
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const state = createGoalState(goalDir);
 
-    // Act
-    const metadata = state.steps()[0].getMetadata();
+    // Act: steps() returns empty when PLAN.md is missing
+    expect(state.steps()).toEqual([]);
 
-    // Assert
-    expect(metadata).toBeNull();
+    warnSpy.mockRestore();
   });
 });
 

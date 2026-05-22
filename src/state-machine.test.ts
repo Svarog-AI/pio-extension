@@ -2,7 +2,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { GoalState } from "./goal-state";
-import type { PlanFrontmatter, ReviewOutputs } from "./frontmatter-schemas";
+import { createGoalState } from "./goal-state";
+import type { PlanFrontmatter, ReviewOutputs, StepMetadata } from "./frontmatter-schemas";
 import {
   resolveTransition,
   recordTransition,
@@ -33,16 +34,23 @@ function mockState(overrides: Partial<GoalState>): GoalState {
   };
 }
 
-/** Build a mock step with configurable status. */
-function mockStep(stepNumber: number, statusValue: string): NonNullable<ReturnType<GoalState["steps"]>>[number] {
+/** Build a mock step with configurable status and optional metadata. */
+function mockStep(
+  stepNumber: number,
+  statusValue: string,
+  overrides?: {
+    metadata?: StepMetadata | null;
+    revisionNeeded?: boolean;
+  },
+): NonNullable<ReturnType<GoalState["steps"]>>[number] {
   return {
     stepNumber,
     folderName: `S${String(stepNumber).padStart(2, "0")}`,
     hasTask: () => true,
     hasTest: () => true,
     hasSummary: () => false,
-    revisionNeeded: () => false,
-    getMetadata: () => null,
+    revisionNeeded: () => overrides?.revisionNeeded ?? false,
+    getMetadata: () => overrides?.metadata ?? null,
     status: () => statusValue as ReturnType<NonNullable<ReturnType<GoalState["steps"]>>[number]["status"]>,
   };
 }
@@ -767,5 +775,316 @@ describe("recordTransition isolation", () => {
       capability: "create-plan",
       params: { goalName: "test" },
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveTransition — evolve-plan → create-goal (subgoal spawning)
+// ---------------------------------------------------------------------------
+
+describe("resolveTransition — evolve-plan → create-goal (subgoal)", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pio-sm-subgoal-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("routes to create-goal when step has complexity: 'subgoal' in metadata", () => {
+    const state = mockState({
+      goalCompleted: () => false,
+      steps: () => [
+        mockStep(2, "pending", { metadata: { name: "nested-feature", complexity: "subgoal" } }),
+      ],
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+
+    expect(result?.capability).toBe("create-goal");
+
+    cwdSpy.mockRestore();
+  });
+
+  it("includes parentGoalName, parentStepNumber, and subgoalType: true in returned params", () => {
+    const state = mockState({
+      goalCompleted: () => false,
+      steps: () => [
+        mockStep(2, "pending", { metadata: { name: "child-goal", complexity: "subgoal" } }),
+      ],
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+
+    expect(result?.params?.parentGoalName).toBe("parent");
+    expect(result?.params?.parentStepNumber).toBe(2);
+    expect(result?.params?.subgoalType).toBe(true);
+
+    cwdSpy.mockRestore();
+  });
+
+  it("includes explicit workingDir matching <cwd>/.pio/goals/<parent>/S{NN}/subgoals/<name>", () => {
+    const state = mockState({
+      goalCompleted: () => false,
+      steps: () => [
+        mockStep(2, "pending", { metadata: { name: "nested-child", complexity: "subgoal" } }),
+      ],
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+
+    expect(result?.params?.workingDir).toBe(
+      path.join(tempDir, ".pio", "goals", "parent", "S02", "subgoals", "nested-child"),
+    );
+
+    cwdSpy.mockRestore();
+  });
+
+  it("uses the step name from metadata as the subgoal goalName in params", () => {
+    const state = mockState({
+      goalCompleted: () => false,
+      steps: () => [
+        mockStep(2, "pending", { metadata: { name: "my-subgoal-name", complexity: "subgoal" } }),
+      ],
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+
+    expect(result?.params?.goalName).toBe("my-subgoal-name");
+
+    cwdSpy.mockRestore();
+  });
+
+  it("routes to execute-task when step has complexity: 'task' (backward compatible)", () => {
+    const state = mockState({
+      goalCompleted: () => false,
+      steps: () => [
+        mockStep(2, "pending", { metadata: { name: "regular-step", complexity: "task" } }),
+      ],
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+
+    expect(result?.capability).toBe("execute-task");
+    expect(result?.params?.stepNumber).toBe(2);
+
+    cwdSpy.mockRestore();
+  });
+
+  it("routes to execute-task when getMetadata returns null (no frontmatter, backward compatible)", () => {
+    // getMetadata returns null — no subgoal metadata
+    const state = mockState({
+      goalCompleted: () => false,
+      steps: () => [mockStep(2, "pending", { metadata: null })],
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+
+    expect(result?.capability).toBe("execute-task");
+    expect(result?.params?.stepNumber).toBe(2);
+
+    cwdSpy.mockRestore();
+  });
+
+  it("routes to revise-plan when revisionNeeded() is true even for subgoal steps (revision check takes priority)", () => {
+    const state = mockState({
+      goalCompleted: () => false,
+      steps: () => [
+        mockStep(2, "pending", {
+          metadata: { name: "nested-child", complexity: "subgoal" },
+          revisionNeeded: true,
+        }),
+      ],
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+
+    expect(result?.capability).toBe("revise-plan");
+    expect(result?.params?.revisionTriggerStep).toBe(2);
+
+    cwdSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveTransition — finalize-goal completion propagation
+// ---------------------------------------------------------------------------
+
+describe("resolveTransition — finalize-goal completion propagation", () => {
+  it("routes to evolve-plan for parent with stepNumber: parentStepNumber + 1", () => {
+    const state = mockState({});
+
+    const result = resolveTransition("finalize-goal", state, {
+      goalName: "nested",
+      parentGoalName: "parent",
+      parentStepNumber: 3,
+    });
+
+    expect(result?.capability).toBe("evolve-plan");
+    expect(result?.params?.goalName).toBe("parent");
+    expect(result?.params?.stepNumber).toBe(4);
+  });
+
+  it("uses parentGoalName as the goalName in returned params", () => {
+    const state = mockState({});
+
+    const result = resolveTransition("finalize-goal", state, {
+      goalName: "child-goal",
+      parentGoalName: "my-parent",
+      parentStepNumber: 5,
+    });
+
+    expect(result?.params?.goalName).toBe("my-parent");
+  });
+
+  it("does NOT include parentGoalName or parentStepNumber in returned params (param pollution prevention)", () => {
+    const state = mockState({});
+
+    const result = resolveTransition("finalize-goal", state, {
+      goalName: "child",
+      parentGoalName: "parent",
+      parentStepNumber: 3,
+    });
+
+    expect(result?.params?.parentGoalName).toBeUndefined();
+    expect(result?.params?.parentStepNumber).toBeUndefined();
+  });
+
+  it("does NOT include subgoalType in returned params", () => {
+    const state = mockState({});
+
+    const result = resolveTransition("finalize-goal", state, {
+      goalName: "child",
+      parentGoalName: "parent",
+      parentStepNumber: 3,
+      subgoalType: true,
+    });
+
+    expect(result?.params?.subgoalType).toBeUndefined();
+  });
+
+  it("returns undefined when no parentGoalName (top-level goal, backward compatible)", () => {
+    const state = mockState({});
+
+    const result = resolveTransition("finalize-goal", state, { goalName: "my-feature" });
+
+    expect(result).toBeUndefined();
+  });
+
+  it("returns undefined when parentGoalName is not a string (type guard)", () => {
+    const state = mockState({});
+
+    const result = resolveTransition("finalize-goal", state, {
+      goalName: "child",
+      parentGoalName: 123,
+      parentStepNumber: 3,
+    });
+
+    expect(result).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveTransition — subgoal lifecycle (integration)
+// ---------------------------------------------------------------------------
+
+describe("resolveTransition — subgoal lifecycle", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pio-sm-lifecycle-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("evolve-plan on subgoal step → create-goal", () => {
+    const state = mockState({
+      goalCompleted: () => false,
+      steps: () => [
+        mockStep(2, "pending", { metadata: { name: "nested-feature", complexity: "subgoal" } }),
+      ],
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+
+    expect(result?.capability).toBe("create-goal");
+    expect(result?.params?.goalName).toBe("nested-feature");
+    expect(result?.params?.parentGoalName).toBe("parent");
+    expect(result?.params?.parentStepNumber).toBe(2);
+    expect(result?.params?.subgoalType).toBe(true);
+
+    cwdSpy.mockRestore();
+  });
+
+  it("create-goal → create-plan (existing behavior, no change)", () => {
+    const state = mockState({});
+
+    const result = resolveTransition("create-goal", state, {
+      goalName: "nested-feature",
+      parentGoalName: "parent",
+      parentStepNumber: 2,
+      subgoalType: true,
+    });
+
+    expect(result?.capability).toBe("create-plan");
+    // Params preserved as-is through create-goal
+    expect(result?.params?.parentGoalName).toBe("parent");
+  });
+
+  it("finalize-goal with parent context → evolve-plan for parent with incremented step number", () => {
+    const state = mockState({});
+
+    const result = resolveTransition("finalize-goal", state, {
+      goalName: "nested-feature",
+      parentGoalName: "parent",
+      parentStepNumber: 2,
+      subgoalType: true,
+    });
+
+    expect(result?.capability).toBe("evolve-plan");
+    expect(result?.params?.goalName).toBe("parent");
+    expect(result?.params?.stepNumber).toBe(3);
+    // No param pollution
+    expect(result?.params?.parentGoalName).toBeUndefined();
+    expect(result?.params?.subgoalType).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveTransition — backward compatibility (finalize-goal)
+// ---------------------------------------------------------------------------
+
+describe("resolveTransition — backward compatibility", () => {
+  it("finalize-goal without parentGoalName still returns undefined", () => {
+    const state = mockState({});
+
+    const result = resolveTransition("finalize-goal", state, { goalName: "my-feature" });
+
+    expect(result).toBeUndefined();
+  });
+
+  it("evolve-plan with explicit stepNumber still routes to execute-task when no subgoal metadata present", () => {
+    const state = mockState({
+      goalCompleted: () => false,
+      steps: () => [mockStep(3, "pending", { metadata: null })],
+    });
+
+    // getMetadata returns null — no subgoal metadata, falls through to execute-task
+    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 3 });
+
+    expect(result?.capability).toBe("execute-task");
+    expect(result?.params?.stepNumber).toBe(3);
   });
 });

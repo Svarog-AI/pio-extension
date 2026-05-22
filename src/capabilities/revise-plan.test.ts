@@ -41,7 +41,7 @@ function createGoalTree(
   if (options?.withPlan) {
     fs.writeFileSync(
       path.join(goalDir, "PLAN.md"),
-      options.planContent || "---\ntotalSteps: 3\n---\n# Plan\n",
+      options.planContent || "---\ntotalSteps: 3\nsteps:\n  - name: step-1\n    complexity: task\n  - name: step-2\n    complexity: task\n  - name: step-3\n    complexity: task\n---\n# Plan\n",
       "utf-8",
     );
   }
@@ -67,6 +67,19 @@ function createGoalTree(
     // Add some content files to make folders realistic
     fs.writeFileSync(path.join(stepDir, "TASK.md"), "# Task\n", "utf-8");
     fs.writeFileSync(path.join(stepDir, "TEST.md"), "# Tests\n", "utf-8");
+  }
+
+  // Write PLAN.md with steps array if stepFolders are provided (for GoalState.steps() frontmatter derivation)
+  if (options?.stepFolders && options.stepFolders.length > 0 && !options.withPlan) {
+    const totalSteps = Math.max(...options.stepFolders.map((s) => s.stepNumber));
+    const stepsYaml = Array.from({ length: totalSteps }, (_, i) =>
+      `  - name: step-${i + 1}\n    complexity: task`,
+    ).join("\n");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      `---\ntotalSteps: ${totalSteps}\nsteps:\n${stepsYaml}\n---\n# Plan\n`,
+      "utf-8",
+    );
   }
 
   // Optionally create PLAN_ARCHIVE with an existing file
@@ -446,7 +459,7 @@ describe("end-to-end prepareSession workflow", () => {
   afterEach(() => cleanup(tempDir));
 
   it("full lifecycle: archive, cleanup, marker removal in one run", async () => {
-    const planContent = "---\ntotalSteps: 5\n---\n# Original Plan\n\n## Step 1: Done\n## Step 2: In progress\n## Step 3: Pending\n";
+    const planContent = "---\ntotalSteps: 5\nsteps:\n  - name: step-1\n    complexity: task\n  - name: step-2\n    complexity: task\n  - name: step-3\n    complexity: task\n  - name: step-4\n    complexity: task\n  - name: step-5\n    complexity: task\n---\n# Original Plan\n\n## Step 1: Done\n## Step 2: In progress\n## Step 3: Pending\n";
 
     goalDir = createGoalTree(tempDir, "full-lifecycle", {
       withGoal: true,

@@ -51,6 +51,19 @@ function createGoalTree(
     fs.mkdirSync(stepDir, { recursive: true });
   }
 
+  // Write PLAN.md with steps array so GoalState.steps() can derive from frontmatter
+  const totalSteps = options?.steps
+    ? Math.max(...options.steps.map((s) => s.number))
+    : options?.stepNumber ?? 1;
+  const stepsYaml = Array.from({ length: totalSteps }, (_, i) =>
+    `  - name: step-${i + 1}\n    complexity: task`,
+  ).join("\n");
+  fs.writeFileSync(
+    path.join(goalDir, "PLAN.md"),
+    `---\ntotalSteps: ${totalSteps}\nsteps:\n${stepsYaml}\n---\n# Plan`,
+    "utf-8",
+  );
+
   return { goalDir, stepDir };
 }
 

@@ -77,6 +77,10 @@ export async function prepareSession(
   workingDir: string,
   params?: Record<string, unknown>,
 ): Promise<void> {
+  // Read step list BEFORE archiving PLAN.md — steps() derives from frontmatter.
+  const state = createGoalState(workingDir);
+  const steps = state.steps();
+
   // Step 1: Archive current PLAN.md
   const planPath = path.join(workingDir, PLAN_FILE);
   if (fs.existsSync(planPath)) {
@@ -93,8 +97,7 @@ export async function prepareSession(
   }
 
   // Step 2: Delete non-APPROVED step folders
-  const state = createGoalState(workingDir);
-  for (const step of state.steps()) {
+  for (const step of steps) {
     if (step.status() !== "approved") {
       const stepDir = path.join(workingDir, step.folderName);
       fs.rmSync(stepDir, { recursive: true, force: true });

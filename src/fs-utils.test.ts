@@ -334,6 +334,65 @@ describe("discoverNextStep(goalDir)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// resolveGoalDir with parentStepDir (nested subgoals)
+// ---------------------------------------------------------------------------
+
+describe("resolveGoalDir with parentStepDir", () => {
+  it("flat goal is backward compatible when parentStepDir is omitted", () => {
+    const result = resolveGoalDir("/tmp/proj", "my-feature");
+    expect(result).toBe(path.join("/tmp/proj", ".pio", "goals", "my-feature"));
+  });
+
+  it("nested subgoal resolves relative to parentStepDir", () => {
+    const parentStepDir = path.join("/tmp/proj", ".pio", "goals", "parent", "S03");
+    const result = resolveGoalDir("/tmp/proj", "nested-task", parentStepDir);
+    expect(result).toBe(
+      path.join("/tmp/proj", ".pio", "goals", "parent", "S03", "subgoals", "nested-task")
+    );
+  });
+
+  it("nested subgoal path contains subgoals segment", () => {
+    const parentStepDir = path.join("/tmp/proj", ".pio", "goals", "parent", "S03");
+    const result = resolveGoalDir("/tmp/proj", "nested-task", parentStepDir);
+    expect(result.split(path.sep)).toContain("subgoals");
+  });
+
+  it("empty parentStepDir delegates to path.join behavior", () => {
+    const result = resolveGoalDir("/tmp/proj", "nested", "");
+    // When parentStepDir is "", path.join("", "subgoals", "nested") normalizes to "subgoals/nested"
+    expect(result).toBe(path.join("", "subgoals", "nested"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deriveSessionName with hierarchical goal names
+// ---------------------------------------------------------------------------
+
+describe("deriveSessionName with hierarchical goal names", () => {
+  it("flat goal name is unchanged", () => {
+    expect(deriveSessionName("my-feature", "create-plan")).toBe("my-feature create-plan");
+  });
+
+  it("hierarchical goal name replaces __ with / for display", () => {
+    expect(deriveSessionName("parent__S03__nested", "execute-task", 1)).toBe(
+      "parent/S03/nested execute-task s1"
+    );
+  });
+
+  it("single delimiter is replaced", () => {
+    expect(deriveSessionName("a__b", "review-task")).toBe("a/b review-task");
+  });
+
+  it("no delimiters preserves existing behavior", () => {
+    expect(deriveSessionName("my-goal", "create-goal")).toBe("my-goal create-goal");
+  });
+
+  it("empty goal name short-circuits before replacement", () => {
+    expect(deriveSessionName("", "some-cap")).toBe("some-cap");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // smoke — ESM import resolution verification
 // ---------------------------------------------------------------------------
 

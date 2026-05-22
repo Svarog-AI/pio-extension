@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { createGoalState } from "./goal-state";
 import { stepFolderName } from "./fs-utils";
-import type { PlanFrontmatter, ReviewOutputs } from "./frontmatter-schemas";
+import type { PlanFrontmatter, ReviewOutputs, StepMetadata } from "./frontmatter-schemas";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers (mirrors fs-utils.test.ts pattern)
@@ -42,9 +42,21 @@ function createGoalTree(
   return goalDir;
 }
 
-/** Write a PLAN.md with YAML frontmatter containing totalSteps. */
+/** Write a PLAN.md with YAML frontmatter containing totalSteps and a valid steps array. */
 function writePlanWithFrontmatter(goalDir: string, totalSteps: number): void {
-  const content = `---\ntotalSteps: ${totalSteps}\n---\n# Plan: test-goal\n\nSome plan content.`;
+  const stepsYaml = Array.from({ length: totalSteps }, (_, i) => `  - name: step-${i + 1}\n    complexity: task`).join("\n");
+  const content = `---\ntotalSteps: ${totalSteps}\nsteps:\n${stepsYaml}\n---\n# Plan: test-goal\n\nSome plan content.`;
+  fs.writeFileSync(path.join(goalDir, "PLAN.md"), content, "utf-8");
+}
+
+/** Write a PLAN.md with YAML frontmatter containing totalSteps and a custom steps array. */
+function writePlanWithStepsFrontmatter(
+  goalDir: string,
+  totalSteps: number,
+  stepsArray: Array<{ name: string; complexity: "task" | "subgoal" }>,
+): void {
+  const stepsYaml = stepsArray.map((s) => `  - name: ${s.name}\n    complexity: ${s.complexity}`).join("\n");
+  const content = `---\ntotalSteps: ${totalSteps}\nsteps:\n${stepsYaml}\n---\n# Plan: test-goal\n\nSome plan content.`;
   fs.writeFileSync(path.join(goalDir, "PLAN.md"), content, "utf-8");
 }
 
@@ -1207,11 +1219,11 @@ describe("planMetadata()", () => {
     expect(result).toBeNull();
   });
 
-  it("strips extra fields from frontmatter, returns only totalSteps", () => {
+  it("strips extra fields from frontmatter, returns only schema fields", () => {
     const goalDir = createGoalTree(tempDir, "extra-fields");
     fs.writeFileSync(
       path.join(goalDir, "PLAN.md"),
-      "---\ntotalSteps: 3\nextraField: value\n---\n# Plan\n\nContent.",
+      "---\ntotalSteps: 3\nsteps:\n  - name: a\n    complexity: task\n  - name: b\n    complexity: task\n  - name: c\n    complexity: task\nextraField: value\n---\n# Plan\n\nContent.",
       "utf-8",
     );
 
@@ -1220,6 +1232,7 @@ describe("planMetadata()", () => {
 
     expect(result).not.toBeNull();
     expect(result!.totalSteps).toBe(3);
+    expect(result!.steps).toHaveLength(3);
     expect((result as Record<string, unknown>).extraField).toBeUndefined();
   });
 
@@ -1243,7 +1256,7 @@ describe("planMetadata()", () => {
     const goalDir = createGoalTree(tempDir, "boundary-one");
     fs.writeFileSync(
       path.join(goalDir, "PLAN.md"),
-      "---\ntotalSteps: 1\n---\n# Plan\n\nContent.",
+      "---\ntotalSteps: 1\nsteps:\n  - name: only-step\n    complexity: task\n---\n# Plan\n\nContent.",
       "utf-8",
     );
 
@@ -1252,6 +1265,7 @@ describe("planMetadata()", () => {
 
     expect(result).not.toBeNull();
     expect(result!.totalSteps).toBe(1);
+    expect(result!.steps).toHaveLength(1);
   });
 });
 
@@ -1327,7 +1341,7 @@ describe("planMetadata({ errors: true })", () => {
     const goalDir = createGoalTree(tempDir, "errors-extra");
     fs.writeFileSync(
       path.join(goalDir, "PLAN.md"),
-      "---\ntotalSteps: 3\nextraField: value\n---\n# Plan\n\nContent.",
+      "---\ntotalSteps: 3\nsteps:\n  - name: a\n    complexity: task\n  - name: b\n    complexity: task\n  - name: c\n    complexity: task\nextraField: value\n---\n# Plan\n\nContent.",
       "utf-8",
     );
 
@@ -1336,6 +1350,7 @@ describe("planMetadata({ errors: true })", () => {
 
     expect(result.data).toBeDefined();
     expect(result.data!.totalSteps).toBe(3);
+    expect(result.data!.steps).toHaveLength(3);
     expect((result.data as Record<string, unknown>).extraField).toBeUndefined();
   });
 });
@@ -1676,5 +1691,236 @@ describe("suppress console.warn in planMetadata errors mode", () => {
     expect(warnSpy).toHaveBeenCalledTimes(1);
 
     warnSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// StepStatus.getMetadata() — with valid frontmatter steps array
+// ---------------------------------------------------------------------------
+
+describe("StepStatus.getMetadata() — with valid frontmatter steps array", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns metadata for step 1 when frontmatter has steps array", () => {
+    // Arrange: Create goal tree with S01/, write PLAN.md with steps array
+    const goalDir = createGoalTree(tempDir, "metadata-step1", [
+      { number: 1, files: [] },
+    ]);
+    writePlanWithStepsFrontmatter(goalDir, 3, [
+      { name: "first-step", complexity: "task" },
+      { name: "second", complexity: "subgoal" },
+      { name: "third", complexity: "task" },
+    ]);
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const metadata = state.steps()[0].getMetadata();
+
+    // Assert
+    expect(metadata).toEqual({ name: "first-step", complexity: "task" });
+  });
+
+  it("returns metadata for step 2 with complexity subgoal", () => {
+    // Arrange
+    const goalDir = createGoalTree(tempDir, "metadata-subgoal", [
+      { number: 1, files: [] },
+      { number: 2, files: [] },
+    ]);
+    writePlanWithStepsFrontmatter(goalDir, 3, [
+      { name: "first-step", complexity: "task" },
+      { name: "second", complexity: "subgoal" },
+      { name: "third", complexity: "task" },
+    ]);
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const metadata = state.steps()[1].getMetadata();
+
+    // Assert
+    expect(metadata).toEqual({ name: "second", complexity: "subgoal" });
+  });
+
+  it("maps step N to index N-1 (step 3 → index 2)", () => {
+    // Arrange
+    const goalDir = createGoalTree(tempDir, "metadata-step3", [
+      { number: 1, files: [] },
+      { number: 2, files: [] },
+      { number: 3, files: [] },
+    ]);
+    writePlanWithStepsFrontmatter(goalDir, 3, [
+      { name: "first-step", complexity: "task" },
+      { name: "second", complexity: "subgoal" },
+      { name: "third", complexity: "task" },
+    ]);
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const metadata = state.steps()[2].getMetadata();
+
+    // Assert
+    expect(metadata).toEqual({ name: "third", complexity: "task" });
+  });
+
+  it("returns null when step folder exists but is out of bounds of steps array", () => {
+    // Arrange: PLAN.md with totalSteps: 2, steps has 2 entries, but S03/ exists
+    const goalDir = createGoalTree(tempDir, "metadata-oob", [
+      { number: 1, files: [] },
+      { number: 2, files: [] },
+      { number: 3, files: [] },
+    ]);
+    writePlanWithStepsFrontmatter(goalDir, 2, [
+      { name: "first", complexity: "task" },
+      { name: "second", complexity: "task" },
+    ]);
+
+    const state = createGoalState(goalDir);
+
+    // Act: S03 exists on disk but is beyond the steps array
+    const metadata = state.steps()[2].getMetadata();
+
+    // Assert
+    expect(metadata).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// StepStatus.getMetadata() — graceful degradation for old plans
+// ---------------------------------------------------------------------------
+
+describe("StepStatus.getMetadata() — graceful degradation for old plans", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns null when PLAN.md has no steps field (old-format plan)", () => {
+    // Arrange: PLAN.md with only totalSteps (no steps array)
+    const goalDir = createGoalTree(tempDir, "old-format", [
+      { number: 1, files: [] },
+    ]);
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "---\ntotalSteps: 3\n---\n# Plan\n\nContent.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const metadata = state.steps()[0].getMetadata();
+
+    // Assert: old plans don't crash, they just have no metadata
+    expect(metadata).toBeNull();
+  });
+
+  it("returns null when PLAN.md has no frontmatter at all", () => {
+    // Arrange: PLAN.md as plain markdown without --- delimiters
+    const goalDir = createGoalTree(tempDir, "no-frontmatter-meta", [
+      { number: 1, files: [] },
+    ]);
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "# Plan\n\nSome content without frontmatter.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const metadata = state.steps()[0].getMetadata();
+
+    // Assert
+    expect(metadata).toBeNull();
+  });
+
+  it("returns null when PLAN.md does not exist", () => {
+    // Arrange: Goal directory with S01/ but no PLAN.md
+    const goalDir = createGoalTree(tempDir, "no-plan-meta", [
+      { number: 1, files: [] },
+    ]);
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const metadata = state.steps()[0].getMetadata();
+
+    // Assert
+    expect(metadata).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// StepStatus.getMetadata() — edge cases
+// ---------------------------------------------------------------------------
+
+describe("StepStatus.getMetadata() — edge cases", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("defaults complexity to 'task' when omitted in steps entry", () => {
+    // Arrange: Valid PLAN.md with steps entry omitting complexity
+    const goalDir = createGoalTree(tempDir, "default-complexity", [
+      { number: 1, files: [] },
+    ]);
+    // Write PLAN.md with steps entry that omits the complexity field
+    const planContent = [
+      "---",
+      "totalSteps: 1",
+      "steps:",
+      "  - name: only-name",
+      "---",
+      "# Plan: test-goal",
+      "",
+      "Some plan content.",
+    ].join("\n");
+    fs.writeFileSync(path.join(goalDir, "PLAN.md"), planContent, "utf-8");
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const metadata = state.steps()[0].getMetadata();
+
+    // Assert: complexity defaults to "task" when omitted
+    expect(metadata).toEqual({ name: "only-name", complexity: "task" });
+  });
+
+  it("reflects filesystem changes (no caching) — update PLAN.md and re-read", () => {
+    // Arrange: Write valid PLAN.md with steps array
+    const goalDir = createGoalTree(tempDir, "no-caching-meta", [
+      { number: 1, files: [] },
+    ]);
+    writePlanWithStepsFrontmatter(goalDir, 1, [{ name: "original", complexity: "task" }]);
+
+    const state = createGoalState(goalDir);
+
+    // Act: read metadata
+    let metadata = state.steps()[0].getMetadata();
+    expect(metadata).toEqual({ name: "original", complexity: "task" });
+
+    // Overwrite with different steps array
+    writePlanWithStepsFrontmatter(goalDir, 1, [{ name: "updated", complexity: "subgoal" }]);
+
+    // Read again
+    metadata = state.steps()[0].getMetadata();
+
+    // Assert: returns different values reflecting the updated frontmatter
+    expect(metadata).toEqual({ name: "updated", complexity: "subgoal" });
   });
 });

@@ -283,7 +283,8 @@ function createGoalTreeWithFrontmatter(
   fs.mkdirSync(goalDir, { recursive: true });
 
   // Create PLAN.md with YAML frontmatter
-  const planContent = `---\ntotalSteps: ${totalSteps}\n---\n# Plan\n\n### Step 1: Test step\n`;
+  const stepsYaml = Array.from({ length: totalSteps }, (_, i) => `  - name: step-${i + 1}\n    complexity: task`).join("\n");
+  const planContent = `---\ntotalSteps: ${totalSteps}\nsteps:\n${stepsYaml}\n---\n# Plan\n\n### Step 1: Test step\n`;
   fs.writeFileSync(path.join(goalDir, "PLAN.md"), planContent, "utf-8");
 
   // Create step folders with optional APPROVED markers

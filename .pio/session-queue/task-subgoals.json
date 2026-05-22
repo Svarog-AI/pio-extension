@@ -1,0 +1,7 @@
+{
+  "capability": "create-goal",
+  "params": {
+    "goalName": "subgoals",
+    "initialMessage": "Implement **nested subgoal support** for pio-extension.\n\nThe feasibility study is complete — see `docs/plans/subgoals/SYNTHESIS.md` (summary) and `docs/plans/subgoals/FEASIBILITY.md` (full analysis). Use these as the authoritative specification.\n\n**TL;DR from synthesis:**\n- Subgoals live at `S{NN}/subgoals/<name>/` inside parent step directories\n- Queue keys use `__` delimiters: `task-parent__S03__nested.json`\n- State machine: additive transitions — `evolve-plan` spawns subgoals, `finalize-goal` propagates completion to parent\n- Trigger: `create-plan` marks composite steps with `[subgoal]` annotations\n- 14 files modified, 0 breaking changes, all additive"
+  }
+}

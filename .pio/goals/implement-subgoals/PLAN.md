@@ -1,5 +1,5 @@
 ---
-totalSteps: 7
+totalSteps: 6
 steps:
   - name: path-resolution-infrastructure
     complexity: task
@@ -9,11 +9,9 @@ steps:
     complexity: task
   - name: state-machine-transitions
     complexity: task
-  - name: evolve-plan-integration
+  - name: move-test-generation-to-execute-task
     complexity: task
-  - name: session-capability-integration
-    complexity: task
-  - name: list-goals-prompts-skills
+  - name: subgoal-integration-and-wiring
     complexity: task
 ---
 
@@ -49,98 +47,103 @@ None.
 
 **Description:** Added subgoal spawning in `transitionEvolvePlan`: detects `complexity === "subgoal"` via `state.steps()[n].getMetadata()` and routes to `create-goal` with parent context (`parentGoalName`, `parentStepNumber`, `subgoalType`, explicit `workingDir`). Extracted `transitionFinalizeGoal` for completion propagation: subgoals route back to parent's `evolve-plan`, top-level goals return `undefined`. Updated `resolveTransition` switch.
 
-**Status:** COMPLETED — implementation approved in S04. Do not modify. Note: Step 5 extends this by adding `initialMessage` to subgoal routing params.
+**Status:** COMPLETED — implementation approved in S04. Do not modify. Note: Step 6 extends this by adding `initialMessage` to subgoal routing params.
 
-### Step 5: Evolve-plan integration with TASK.md as subgoal context
+### Step 5: Move test generation from evolve-plan to execute-task
 
-**Description:** Detect subgoal steps before launching the evolve-plan session. For subgoal steps, the evolve-plan LLM session still runs — but instead of producing `TASK.md` + `TEST.md`, it produces **only `TASK.md`** containing a context-aware decomposition message. This is the key architectural change from the original plan: rather than bypassing evolve-plan with a code-level string template (which can't capture nuanced context), the LLM session runs and crafts TASK.md by reading parent GOAL.md, PLAN.md, and step context.
+**Description:** Evolve-plan produces only TASK.md (never TEST.md). Execute-task reads TASK.md and generates tests itself using TDD methodology. This is the key architectural simplification — TASK.md becomes the universal input artifact for both regular execution (execute-task) and subgoal definition (create-goal), eliminating the need for any conditional logic in evolve-plan based on step type.
 
-When `transitionEvolvePlan` routes to `create-goal`, it passes an `initialMessage` that instructs the Goal Definition Assistant to read TASK.md from disk as a starting point. The state machine does NOT read TASK.md itself — it simply tells the session where to find it (relative path from the subgoal workspace). No file I/O in the state machine.
+**Evolve-plan code changes (`src/capabilities/evolve-plan.ts`):**
+- Validation config: expect only `TASK.md` (not `[TASK.md, TEST.md]`). Update `resolveEvolveValidation`.
+- Write allowlist: allow `TASK.md` and markers only (no `TEST.md`). Update `resolveEvolveWriteAllowlist`.
+- Default initial message: instruct to produce TASK.md only — no mention of TEST.md.
+- `validateAndFindNextStep`: consider a step "specified" when TASK.md exists (remove TEST.md check).
 
-**Evolve-plan capability changes (`src/capabilities/evolve-plan.ts`):**
-- `validateAndFindNextStep`: After finding the next step number, check if it's a subgoal step using `state.steps()[n].getMetadata()`. If so, return the result with a flag (e.g., `isSubgoal: true`) and the subgoal name from metadata. The caller (`handleEvolvePlan`) uses this to configure the session differently for subgoals.
-- Validation config: For subgoal steps, expect **only `TASK.md`** (not `[TASK.md, TEST.md]`). Update `resolveEvolveValidation` callback to accept a flag or check subgoal metadata and adjust expected files accordingly.
-- Write allowlist: For subgoal steps, allow only `${folder}/TASK.md` and related markers (no `TEST.md`).
-- Default initial message: For subgoal steps, instruct the LLM to produce TASK.md containing a context-aware decomposition scope — reading parent GOAL.md + PLAN.md step context, describing what area of work is being decomposed.
+**Execute-task code changes (`src/capabilities/execute-task.ts`):**
+- `isStepReady` and `validateExplicitStep`: step is ready when TASK.md exists alone (remove TEST.md requirement).
+- Read-only files: remove TEST.md from `resolveExecuteReadOnlyFiles`.
+- Default initial message: instruct to read TASK.md, derive tests from acceptance criteria using the test-driven-development skill.
 
-**Tool execute (`pio_evolve_plan`):** When a subgoal is detected during validation, enqueue `evolve-plan` with the step number as usual. The tool always enqueues `"evolve-plan"` regardless of step type — differentiation happens at session launch time and at transition time.
+**GoalState status logic (`src/goal-state.ts`):**
+- `status()`: a step with only TASK.md returns `"defined"` — remove the TEST.md check. Pending = no folder, Defined = has TASK.md, other statuses come from markers.
 
-**Acceptance criteria:**
-- [ ] `npx tsc --noEmit` reports no errors
-- [ ] Running existing test suite passes with no regressions (600+ tests)
-- [ ] `validateAndFindNextStep` returns `isSubgoal: true` when next step has `complexity: "subgoal"` in frontmatter
-- [ ] Non-subgoal steps proceed identically — evolve-plan session produces TASK.md + TEST.md as before
-- [ ] Subgoal steps launch evolve-plan session configured to produce only TASK.md (no TEST.md)
-- [ ] `transitionEvolvePlan` passes `initialMessage` instructing the session to read TASK.md from disk (e.g., "read ../../S{NN}/TASK.md as a starting point")
-- [ ] Validation passes with only TASK.md present for subgoal step folders
-
-**Files affected:**
-- `src/capabilities/evolve-plan.ts` — subgoal detection in `validateAndFindNextStep`; conditional validation/writeAllowlist for subgoals; conditional initial message
-- `src/capabilities/evolve-plan.test.ts` — tests for subgoal detection, conditional validation
-- `src/state-machine.ts` — extend subgoal routing to pass `initialMessage` pointing at TASK.md path (small additive change)
-- `src/state-machine.test.ts` — test for initialMessage in subgoal spawning params
-
-### Step 6: Session capability integration and create-plan validation
-
-**Description:** Two independent changes to close the loop on subgoal lifecycle.
-
-**Session capability (`src/capabilities/session-capability.ts`):** In `pio_mark_complete`, when enqueuing the next task, use the transition's adjusted `params.goalName` as the queue key for `enqueueTask`. Currently it uses `state.goalName` (leaf basename). For subgoals, `transitionFinalizeGoal` returns `goalName: parentGoalName` — using this enables parent queue slot restoration when a subgoal completes. The `/pio-next-task` command then resumes the parent workflow.
-
-**Create-plan validation (`src/capabilities/create-plan.ts`):** Extend `postValidateCreatePlan` to validate that step entries with `complexity: "subgoal"` have unique `name` values (no two subgoals share the same name, preventing path collisions). The `STEP_HEADING_RE` regex should NOT be changed — it already matches all `## Step N:` headings correctly regardless of body content.
+**Prompt changes:**
+- `evolve-plan.md`: Remove the "Write TEST.md" step entirely. The agent writes TASK.md with acceptance criteria detailed enough for an executor to derive tests. Add guidance: "TASK.md is the only output — ensure acceptance criteria are specific enough that an executor can write meaningful tests from them."
+- `execute-task.md`: Remove all references to reading TEST.md as an input file. Instruct the executor to derive test cases from TASK.md acceptance criteria using TDD methodology (RED→GREEN→REFACTOR, Arrange-Act-Assert per the test-driven-development skill). Write tests first, then implement.
 
 **Acceptance criteria:**
 - [ ] `npx tsc --noEmit` reports no errors
 - [ ] Running existing test suite passes with no regressions
-- [ ] `pio_mark_complete` uses transition's adjusted `params.goalName` for enqueuing (parent goal name for subgoals)
-- [ ] `postValidateCreatePlan` accepts plans with valid `steps` array including entries with `complexity: "subgoal"`
-- [ ] `postValidateCreatePlan` rejects plans with duplicate `name` values among subgoal steps
+- [ ] Evolve-plan validation expects only TASK.md (not TEST.md)
+- [ ] Execute-task considers a step ready when TASK.md exists alone
+- [ ] Execute-task prompt instructs deriving tests from TASK.md acceptance criteria using TDD skill
+- [ ] `StepStatus.status()` returns `"defined"` when TASK.md exists (no TEST.md required)
+- [ ] Evolve-plan prompt no longer instructs writing TEST.md
 
 **Files affected:**
-- `src/capabilities/session-capability.ts` — use `nextTask.params?.goalName` for `enqueueTask` goal key instead of `state.goalName`
-- `src/capabilities/session-capability.test.ts` — test for goalName propagation in enqueuing
-- `src/capabilities/create-plan.ts` — extend `postValidateCreatePlan` to validate unique `name` values among subgoal entries
-- `src/capabilities/create-plan.test.ts` — test for duplicate name validation
+- `src/capabilities/evolve-plan.ts` — remove TEST.md from validation, write allowlist, initial message; update completion checks
+- `src/capabilities/evolve-plan.test.ts` — update tests for TASK.md-only workflow
+- `src/capabilities/execute-task.ts` — remove TEST.md requirement from isStepReady, validateExplicitStep, readOnlyFiles, initialMessage
+- `src/capabilities/execute-task.test.ts` — update tests for TASK.md-only readiness
+- `src/goal-state.ts` — status() returns "defined" when TASK.md exists (no TEST.md check)
+- `src/goal-state.test.ts` — update status tests
+- `src/prompts/evolve-plan.md` — remove TEST.md step; instruct writing testable acceptance criteria
+- `src/prompts/execute-task.md` — remove TEST.md references; instruct deriving tests from TASK.md
 
-### Step 7: List-goals, prompts, and skills
+### Step 6: Subgoal integration and wiring
 
-**Description:** Enable `/pio-list-goals` to discover nested subgoals and update documentation so agents understand the subgoal feature.
+**Description:** Wire the subgoal lifecycle end-to-end. With TASK.md as the only evolve-plan output (Step 5), there is no conditional logic for subgoals in evolve-plan code or prompts. The state machine routing (Step 4) handles all subgoal detection via frontmatter — this step adds final connections.
 
-**List-goals recursive scan (`src/capabilities/list-goals.ts`):** The command currently scans only `.pio/goals/` at one level. Extend it to recursively find subgoals under `S{NN}/subgoals/<name>/` inside each goal's step directories. For each discovered subgoal, show it prefixed with the parent path (e.g., `parent/S03/nested`) so the table displays the full hierarchy.
+**TransitionEvolvePlan initialMessage (`src/state-machine.ts`):** Extend the subgoal routing block to pass an `initialMessage` telling the create-goal session where to find the parent TASK.md (relative path from subgoal workspace). Example: `"This is a subgoal step. Read ../../S{NN}/TASK.md from the parent goal for decomposition scope context."` No file I/O — just constructs a relative path string. Additive extension of Step 4's completed implementation.
 
-**Prompt updates (additive content):**
-- `create-plan.md`: Add instructions for writing `steps` array in PLAN.md frontmatter. Planning agent evaluates each step against leaf-node criteria and sets `complexity: "subgoal"` for composite steps. The step `name` is always provided — it serves as the subgoal workspace name when complexity is `"subgoal"`. Step count guard (`totalSteps > 8`) prevents flat trees.
-- `evolve-plan.md`: Add instructions for subgoal steps. When working on a subgoal step (indicated by session config), produce only `TASK.md` — no `TEST.md`. TASK.md should contain a context-aware decomposition scope: read parent GOAL.md, read the relevant PLAN.md step, and describe the area of work being decomposed. This file is later read from disk by the create-goal subgoal session.
-- `finalize-goal.md`: Add subgoal-aware summary reading. When a step has subgoals (indicated by a `subgoals/` directory under the step folder), read the subgoal's completion state and summaries instead of expecting TASK.md/TEST.md at the step level.
+**Session capability (`src/capabilities/session-capability.ts`):** In `pio_mark_complete`, use `nextTask.params?.goalName` as the queue key for `enqueueTask` instead of `state.goalName`. For subgoals, `transitionFinalizeGoal` returns `goalName: parentGoalName` — using this enables parent queue slot restoration when a subgoal completes.
+
+**Create-plan validation (`src/capabilities/create-plan.ts`):** Extend `postValidateCreatePlan` to validate that step entries with `complexity: "subgoal"` have unique `name` values (no two subgoals share the same name, preventing path collisions).
+
+**List-goals recursive scan (`src/capabilities/list-goals.ts`):** Scan `.pio/goals/` recursively for subgoals under `S{NN}/subgoals/<name>/`. Display with hierarchical prefix (e.g., `parent/S03/nested`). Backward compatible — flat goals display identically.
+
+**Prompt updates (additive content only, no evolve-plan changes needed):**
+- `create-plan.md`: Add instructions for writing `steps` array in PLAN.md frontmatter. Leaf-node criteria, `complexity: "subgoal"` for composite steps. Step count guard (`totalSteps > 8`).
+- `finalize-goal.md`: Add subgoal-aware summary reading — when a step has a `subgoals/` directory, read subgoal summaries instead of step-level TASK.md.
 
 **Skill updates:**
-- `pio-planning/SKILL.md`: Document leaf-node criteria, frontmatter-based subgoal declaration (`steps` array with `name` + `complexity`), decomposition guards (step count guard at 8).
+- `pio-planning/SKILL.md`: Document leaf-node criteria, frontmatter-based subgoal declaration (`steps` array with `name` + `complexity`), decomposition guards.
 - `pio/SKILL.md`: Update workflow lifecycle diagram to show subgoal spawning from `evolve-plan` and completion propagation through `finalize-goal`.
 
 **Acceptance criteria:**
 - [ ] `npx tsc --noEmit` reports no errors
 - [ ] Running existing test suite passes with no regressions
+- [ ] `transitionEvolvePlan` passes `initialMessage` with relative TASK.md path when routing to create-goal for subgoal steps
+- [ ] `pio_mark_complete` uses transition's adjusted `params.goalName` for enqueuing (parent goal name for subgoals)
+- [ ] `postValidateCreatePlan` rejects plans with duplicate `name` values among subgoal steps
 - [ ] Flat goals without subgoals display identically in list-goals (backward compatible)
 - [ ] Nested subgoals appear in the list-goals table with hierarchical name prefix
-- [ ] All prompt files remain valid markdown (no syntax errors)
-- [ ] `create-plan.md` contains instructions for writing `steps` array with `name` and `complexity` fields
-- [ ] `evolve-plan.md` contains instructions for producing TASK.md (no TEST.md) for subgoal steps
+- [ ] All prompt files remain valid markdown
+- [ ] `create-plan.md` contains frontmatter-based subgoal instructions
 - [ ] `finalize-goal.md` contains subgoal-aware summary reading instructions
-- [ ] `pio-planning/SKILL.md` documents leaf-node criteria, frontmatter-based subgoal declaration, and decomposition guards
+- [ ] `pio-planning/SKILL.md` documents leaf-node criteria, frontmatter declaration, decomposition guards
 
 **Files affected:**
-- `src/capabilities/list-goals.ts` — recursive scan for `S{NN}/subgoals/*/` directories; hierarchical display names
-- `src/prompts/create-plan.md` — add frontmatter-based subgoal instructions (`steps` array with `name`/`complexity`)
-- `src/prompts/evolve-plan.md` — add subgoal step instructions (produce only TASK.md, no TEST.md)
-- `src/prompts/finalize-goal.md` — add subgoal-aware summary reading
-- `src/skills/pio-planning/SKILL.md` — document leaf-node criteria, frontmatter-based subgoal declaration, decomposition guards
-- `src/skills/pio/SKILL.md` — update workflow lifecycle diagram for subgoals
+- `src/state-machine.ts` — pass initialMessage with relative TASK.md path in subgoal routing (additive)
+- `src/state-machine.test.ts` — test for initialMessage in subgoal spawning params
+- `src/capabilities/session-capability.ts` — use transition's goalName for enqueueTask key
+- `src/capabilities/session-capability.test.ts` — test for goalName propagation
+- `src/capabilities/create-plan.ts` — validate unique subgoal names
+- `src/capabilities/create-plan.test.ts` — test for duplicate name validation
+- `src/capabilities/list-goals.ts` — recursive subgoal discovery; hierarchical display names
+- `src/prompts/create-plan.md` — frontmatter-based subgoal instructions
+- `src/prompts/finalize-goal.md` — subgoal-aware summary reading
+- `src/skills/pio-planning/SKILL.md` — leaf-node criteria, frontmatter declaration, decomposition guards
+- `src/skills/pio/SKILL.md` — workflow lifecycle diagram update
 
 ## Notes
 
 - **Backward compatibility is critical.** Every change must be additive. Flat goals without subgoal metadata function identically. The `steps` field in frontmatter is required at the schema level but old plans degrade gracefully — `GoalState.planMetadata()` returns null, `getMetadata()` returns null, and existing workflows continue.
-- **Frontmatter-based subgoal detection only.** Subgoal metadata lives exclusively in PLAN.md frontmatter (`steps` array with `name` + `complexity`). No regex heading parsing, no `[subgoal]` annotations in markdown body. The planning agent writes the structured frontmatter; downstream code reads it programmatically via index lookup.
-- **TASK.md as subgoal context.** For subgoal steps, evolve-plan produces TASK.md containing a context-aware decomposition scope crafted by the LLM. `transitionEvolvePlan` passes an `initialMessage` telling the create-goal session to read TASK.md from disk (relative path) — it does NOT read file content itself. The create-goal prompt (`create-goal.md`) requires no changes; the initial message carries the instruction.
-- **Param scoping:** `parentGoalName` and `parentStepNumber` are top-level params on subgoal sessions only. They are checked explicitly, never recursed into `_sessionContext`, and not forwarded to parent's evolve-plan. This prevents param pollution across nesting levels.
+- **Evolve-plan has no subgoal special cases.** With TASK.md as the only output artifact (Step 5), evolve-plan code and prompts are identical for regular and subgoal steps. Subgoal detection happens entirely in the state machine transition (Step 4) — routing to create-goal vs execute-task based on frontmatter `complexity`.
+- **TASK.md as universal input.** Both execute-task and create-goal read TASK.md from disk. For execute-task: it's the implementation spec + acceptance criteria to derive tests from. For create-goal (subgoal): the initialMessage tells it where to find the parent step's TASK.md for decomposition scope context. No file reading in the state machine; no prompt changes to create-goal.md needed — the initial message carries all necessary instructions.
+- **Step 5 is a broad change.** Moving TEST.md generation from evolve-plan to execute-task touches evolve-plan code, execute-task code, GoalState status logic, and two prompts (`evolve-plan.md`, `execute-task.md`). The executor must update all existing tests that reference TEST.md existence or content. Be thorough in regression testing — this changes the core artifact contract between workflow steps.
+- **Frontmatter-based subgoal detection only.** Subgoal metadata lives exclusively in PLAN.md frontmatter (`steps` array with `name` + `complexity`). No regex heading parsing, no `[subgoal]` annotations in markdown body.
+- **Param scoping:** `parentGoalName` and `parentStepNumber` are top-level params on subgoal sessions only. Checked explicitly, never recursed into `_sessionContext`, not forwarded to parent's evolve-plan.
 - **File protection:** No changes to `validation.ts` — the default-deny check (`tp.startsWith(workingDir + path.sep)`) works for nested paths automatically. The spawning transition passes explicit `params.workingDir` (full nested path) to bypass flat `resolveGoalDir` derivation in `capability-config.ts`.
 - **CWD derivation in goal-state.ts** already works correctly at all nesting depths (uses `indexOf("/goals/")`). No changes needed there beyond queue keying (already done in Step 2).
 - **Step count guard:** When `totalSteps > 8`, the planning agent should consider subgoal decomposition. Enforced by prompt instructions, not schema constraints.

@@ -1,5 +1,5 @@
 {
-  "capability": "evolve-plan",
+  "capability": "review-task",
   "params": {
     "goalName": "implement-subgoals",
     "stepNumber": 4,
@@ -8,10 +8,10 @@
       "stepNumber": 4,
       "_sessionContext": {
         "goalName": "implement-subgoals",
-        "stepNumber": 3,
+        "stepNumber": 4,
         "_sessionContext": {
           "goalName": "implement-subgoals",
-          "stepNumber": 3,
+          "stepNumber": 4,
           "_sessionContext": {
             "goalName": "implement-subgoals",
             "stepNumber": 3,
@@ -26,9 +26,10 @@
                   "stepNumber": 3,
                   "_sessionContext": {
                     "goalName": "implement-subgoals",
+                    "stepNumber": 3,
                     "_sessionContext": {
                       "goalName": "implement-subgoals",
-                      "revisionTriggerStep": 3,
+                      "stepNumber": 3,
                       "_sessionContext": {
                         "goalName": "implement-subgoals",
                         "_sessionContext": {
@@ -36,6 +37,17 @@
                           "revisionTriggerStep": 3,
                           "_sessionContext": {
                             "goalName": "implement-subgoals",
+                            "_sessionContext": {
+                              "goalName": "implement-subgoals",
+                              "revisionTriggerStep": 3,
+                              "_sessionContext": {
+                                "goalName": "implement-subgoals",
+                                "stepNumber": 3,
+                                "capability": "evolve-plan"
+                              },
+                              "stepNumber": 3,
+                              "capability": "revise-plan"
+                            },
                             "stepNumber": 3,
                             "capability": "evolve-plan"
                           },
@@ -45,11 +57,9 @@
                         "stepNumber": 3,
                         "capability": "evolve-plan"
                       },
-                      "stepNumber": 3,
-                      "capability": "revise-plan"
+                      "capability": "execute-task"
                     },
-                    "stepNumber": 3,
-                    "capability": "evolve-plan"
+                    "capability": "review-task"
                   },
                   "capability": "execute-task"
                 },
@@ -59,11 +69,11 @@
             },
             "capability": "review-task"
           },
-          "capability": "execute-task"
+          "capability": "evolve-plan"
         },
-        "capability": "review-task"
+        "capability": "execute-task"
       },
-      "capability": "evolve-plan"
+      "capability": "review-task"
     }
   }
 }

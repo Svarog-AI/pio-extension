@@ -5,6 +5,45 @@ import * as path from "node:path";
 // Session task slot utilities
 // ---------------------------------------------------------------------------
 
+/**
+ * Derive a unique queue key from a goal directory path.
+ *
+ * Strips the `<cwd>/.pio/goals/` prefix, filters out `subgoals` directory
+ * markers, and joins remaining segments with `__`.
+ *
+ * @example Flat goal: `/repo/.pio/goals/my-feature` → `"my-feature"`
+ * @example Nested: `/repo/.pio/goals/parent/S03/subgoals/nested` → `"parent__S03__nested"`
+ *
+ * @param goalDir - Absolute path to a goal workspace
+ * @param cwd - Repository root directory
+ * @returns Unique queue key string
+ */
+export function deriveQueueKey(goalDir: string, cwd: string): string {
+  const prefix = cwd + "/.pio/goals/";
+  const idx = goalDir.indexOf(prefix);
+
+  if (idx === -1) {
+    throw new Error(
+      `deriveQueueKey: goalDir "${goalDir}" does not contain the expected prefix "${prefix}"`,
+    );
+  }
+
+  const relativePath = goalDir.slice(idx + prefix.length);
+
+  const segments = relativePath.split("/");
+
+  // Filter out "subgoals" markers and join with "__"
+  const filtered = segments.filter((seg) => seg !== "subgoals" && seg.length > 0);
+
+  if (filtered.length === 0) {
+    throw new Error(
+      `deriveQueueKey: no path segments remain after filtering from "${goalDir}"`,
+    );
+  }
+
+  return filtered.join("__");
+}
+
 /** Minimal task descriptor written to `.pio/session-queue/task-{goalName}.json` as JSON. */
 export interface SessionQueueTask {
   capability: string;
@@ -25,9 +64,15 @@ export function queueDir(cwd: string): string {
  * Each goal gets its own slot — one pending task at a time.
  * Overwrites any existing task for that specific goal.
  */
-export function enqueueTask(cwd: string, goalName: string, task: SessionQueueTask): void {
+export function enqueueTask(
+  cwd: string,
+  goalName: string,
+  task: SessionQueueTask,
+  qualifiedName?: string,
+): void {
   const dir = queueDir(cwd);
-  const filePath = path.join(dir, `task-${goalName}.json`);
+  const key = qualifiedName !== undefined ? qualifiedName : goalName;
+  const filePath = path.join(dir, `task-${key}.json`);
   fs.writeFileSync(filePath, JSON.stringify(task, null, 2), "utf-8");
 }
 
@@ -35,9 +80,14 @@ export function enqueueTask(cwd: string, goalName: string, task: SessionQueueTas
  * Read a specific goal's pending task from `.pio/session-queue/task-{goalName}.json`.
  * Returns the parsed task or `undefined` if the file does not exist.
  */
-export function readPendingTask(cwd: string, goalName: string): SessionQueueTask | undefined {
+export function readPendingTask(
+  cwd: string,
+  goalName: string,
+  qualifiedName?: string,
+): SessionQueueTask | undefined {
   const dir = queueDir(cwd);
-  const filePath = path.join(dir, `task-${goalName}.json`);
+  const key = qualifiedName !== undefined ? qualifiedName : goalName;
+  const filePath = path.join(dir, `task-${key}.json`);
   if (!fs.existsSync(filePath)) return undefined;
   const raw = fs.readFileSync(filePath, "utf-8");
   return JSON.parse(raw) as SessionQueueTask;
@@ -46,6 +96,7 @@ export function readPendingTask(cwd: string, goalName: string): SessionQueueTask
 /**
  * List all goal names that have a pending task file.
  * Scans `.pio/session-queue/` for files matching `task-*.json` pattern.
+ * Returns qualified names for hierarchical goals (may contain `__` delimiters).
  */
 export function listPendingGoals(cwd: string): string[] {
   const dir = queueDir(cwd);

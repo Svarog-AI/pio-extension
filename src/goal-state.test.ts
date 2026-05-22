@@ -1566,6 +1566,76 @@ describe("revisionNeeded()", () => {
 });
 
 // ---------------------------------------------------------------------------
+// pendingTask() with nested subgoal paths
+// ---------------------------------------------------------------------------
+
+describe("pendingTask() with nested subgoal paths", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("given a nested subgoal goalDir, it reads from the correct qualified queue file", () => {
+    // Arrange: Create nested directory structure
+    const nestedGoalDir = path.join(tempDir, ".pio", "goals", "parent", "S03", "subgoals", "nested");
+    fs.mkdirSync(nestedGoalDir, { recursive: true });
+
+    // Write queue file with qualified name: task-parent__S03__nested.json
+    const queueDir = path.join(tempDir, ".pio", "session-queue");
+    fs.mkdirSync(queueDir, { recursive: true });
+    const taskData = { capability: "evolve-plan", params: { stepNumber: 1 } };
+    fs.writeFileSync(
+      path.join(queueDir, "task-parent__S03__nested.json"),
+      JSON.stringify(taskData, null, 2),
+      "utf-8",
+    );
+
+    // Act
+    const state = createGoalState(nestedGoalDir);
+    const result = state.pendingTask();
+
+    // Assert
+    expect(result).toBeDefined();
+    expect(result?.capability).toBe("evolve-plan");
+    expect(result?.params).toEqual({ stepNumber: 1 });
+  });
+
+  it("given a flat goalDir, it reads from task-{basename}.json (backward compatible)", () => {
+    // Arrange
+    const goalDir = createGoalTree(tempDir, "my-feature");
+    writeQueueFile(tempDir, "my-feature", {
+      capability: "create-plan",
+      params: { goalName: "my-feature" },
+    });
+
+    // Act
+    const state = createGoalState(goalDir);
+    const result = state.pendingTask();
+
+    // Assert
+    expect(result).toBeDefined();
+    expect(result?.capability).toBe("create-plan");
+    expect(result?.params).toEqual({ goalName: "my-feature" });
+  });
+
+  it("given a nested subgoal goalDir with no matching queue file, it returns undefined", () => {
+    // Arrange: Create nested structure but don't write any queue files
+    const nestedGoalDir = path.join(tempDir, ".pio", "goals", "parent", "S01", "subgoals", "orphan");
+    fs.mkdirSync(nestedGoalDir, { recursive: true });
+
+    // Act
+    const state = createGoalState(nestedGoalDir);
+    const result = state.pendingTask();
+
+    // Assert
+    expect(result).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // suppress console.warn in planMetadata errors mode
 // ---------------------------------------------------------------------------
 

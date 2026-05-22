@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { stepFolderName } from "./fs-utils";
 import { extractFrontmatter, validateAndCoerce } from "./frontmatter";
 import { PLAN_FRONTMATTER_SCHEMA, REVIEW_OUTPUT_SCHEMA, type PlanFrontmatter, type ReviewOutputs } from "./frontmatter-schemas";
+import { deriveQueueKey } from "./queues";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -281,7 +282,8 @@ export function createGoalState(goalDir: string): GoalState {
     },
 
     pendingTask: () => {
-      const queuePath = path.join(cwd, ".pio", "session-queue", `task-${goalName}.json`);
+      const queueKey = deriveQueueKey(goalDir, cwd);
+      const queuePath = path.join(cwd, ".pio", "session-queue", `task-${queueKey}.json`);
       if (!fs.existsSync(queuePath)) return undefined;
 
       try {

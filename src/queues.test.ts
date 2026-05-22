@@ -7,6 +7,7 @@ import {
   readPendingTask,
   listPendingGoals,
   writeLastTask,
+  deriveQueueKey,
   type SessionQueueTask,
 } from "./queues";
 
@@ -179,6 +180,121 @@ describe("listPendingGoals(cwd)", () => {
 
     const goals = listPendingGoals(tempDir);
     expect(goals).toEqual(["my-goal"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deriveQueueKey
+// ---------------------------------------------------------------------------
+
+describe("deriveQueueKey(goalDir, cwd)", () => {
+  it("given a flat goal path, it returns the goal basename unchanged", () => {
+    const result = deriveQueueKey("/repo/.pio/goals/my-feature", "/repo");
+    expect(result).toBe("my-feature");
+  });
+
+  it("given a nested subgoal path, it filters out `subgoals` and joins with `__`", () => {
+    const result = deriveQueueKey("/repo/.pio/goals/parent/S03/subgoals/nested", "/repo");
+    expect(result).toBe("parent__S03__nested");
+  });
+
+  it("given a deeply nested path (multiple levels), it filters all `subgoals` markers", () => {
+    const result = deriveQueueKey("/repo/.pio/goals/a/S01/subgoals/b/S02/subgoals/c", "/repo");
+    expect(result).toBe("a__S01__b__S02__c");
+  });
+
+  it("given a goal path with a single-segment name after goals/, it handles gracefully", () => {
+    const result = deriveQueueKey("/repo/.pio/goals/x", "/repo");
+    expect(result).toBe("x");
+  });
+
+  it("given a goalDir that doesn't contain `.pio/goals/`, it throws", () => {
+    expect(() => deriveQueueKey("/some/random/path", "/repo")).toThrow(
+      /does not contain the expected prefix/,
+    );
+  });
+
+  it("given a goalDir where all segments filter to empty, it throws", () => {
+    // Edge case: path is exactly the prefix (no segments after goals/)
+    expect(() => deriveQueueKey("/repo/.pio/goals/", "/repo")).toThrow(
+      /no path segments remain after filtering/,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// enqueueTask with qualifiedName
+// ---------------------------------------------------------------------------
+
+describe("enqueueTask with qualifiedName", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("when qualifiedName is omitted, it writes to task-{goalName}.json (backward compatible)", () => {
+    enqueueTask(tempDir, "my-goal", { capability: "create-plan" });
+    const filePath = path.join(tempDir, ".pio", "session-queue", "task-my-goal.json");
+    expect(fs.existsSync(filePath)).toBe(true);
+  });
+
+  it("when qualifiedName is provided, it writes to task-{qualifiedName}.json", () => {
+    enqueueTask(tempDir, "nested", { capability: "create-plan" }, "parent__S03__nested");
+    const filePath = path.join(tempDir, ".pio", "session-queue", "task-parent__S03__nested.json");
+    expect(fs.existsSync(filePath)).toBe(true);
+  });
+
+  it("qualifiedName and goalName can differ — both produce separate files", () => {
+    enqueueTask(tempDir, "a", { capability: "create-plan" });
+    enqueueTask(tempDir, "b", { capability: "evolve-plan" }, "parent__S03__b");
+
+    const fileA = path.join(tempDir, ".pio", "session-queue", "task-a.json");
+    const fileB = path.join(tempDir, ".pio", "session-queue", "task-parent__S03__b.json");
+
+    expect(fs.existsSync(fileA)).toBe(true);
+    expect(fs.existsSync(fileB)).toBe(true);
+  });
+
+  it("empty-string qualifiedName is treated as a valid name (!== undefined check)", () => {
+    enqueueTask(tempDir, "x", { capability: "create-plan" }, "");
+    const filePath = path.join(tempDir, ".pio", "session-queue", "task-.json");
+    expect(fs.existsSync(filePath)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readPendingTask with qualifiedName
+// ---------------------------------------------------------------------------
+
+describe("readPendingTask with qualifiedName", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("when qualifiedName is omitted, it reads task-{goalName}.json (backward compatible)", () => {
+    const task: SessionQueueTask = { capability: "create-plan", params: { goalName: "my-goal" } };
+    enqueueTask(tempDir, "my-goal", task);
+    const result = readPendingTask(tempDir, "my-goal");
+    expect(result).toEqual(task);
+  });
+
+  it("when qualifiedName is provided, it reads task-{qualifiedName}.json", () => {
+    const task: SessionQueueTask = { capability: "create-plan", params: { goalName: "nested" } };
+    enqueueTask(tempDir, "nested", task, "parent__S03__nested");
+    const result = readPendingTask(tempDir, "nested", "parent__S03__nested");
+    expect(result).toEqual(task);
+  });
+
+  it("returns undefined when no file matches the qualifiedName", () => {
+    const result = readPendingTask(tempDir, "x", "nonexistent__key");
+    expect(result).toBeUndefined();
   });
 });
 

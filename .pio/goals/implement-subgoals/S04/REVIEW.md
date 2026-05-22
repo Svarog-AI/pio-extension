@@ -48,3 +48,27 @@ Additional coverage: 3 integration tests verifying the full subgoal lifecycle ch
 
 ## Recommendations
 N/A — approved as-is.
+
+---
+
+## Action Required: Add `steps` array to PLAN.md frontmatter
+
+This plan's `PLAN.md` is missing the `steps` array in frontmatter. Without it, `state.steps()` returns empty everywhere — transition routing, revision detection, step validation all break. Copy this block into `.pio/goals/implement-subgoals/PLAN.md` between `totalSteps: 7` and the closing `---`:
+
+```yaml
+steps:
+  - name: path-resolution
+    complexity: task
+  - name: queue-keying
+    complexity: task
+  - name: plan-frontmatter-metadata
+    complexity: task
+  - name: state-machine-transitions
+    complexity: task
+  - name: evolve-plan-integration
+    complexity: task
+  - name: session-capability-integration
+    complexity: task
+  - name: list-goals-prompts-skills
+    complexity: task
+```

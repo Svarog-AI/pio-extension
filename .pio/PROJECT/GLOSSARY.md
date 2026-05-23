@@ -13,6 +13,7 @@
   - *Read-only files:* Certain files (e.g., TASK.md, TEST.md during execution) cannot be modified
   - *Write allowlist:* Only explicitly allowed paths may be written to; blocks all writes to `.pio/` outside the session's goal workspace
 - **Session queue** — Per-goal task slots at `.pio/session-queue/task-{goalName}.json`. One pending task per goal. Files are consumed (deleted) when launched by `/pio-next-task`.
+- **Agent refinement loop detection** — A session-guard feature that tracks turn count during pio sessions. When `turnCount` reaches the configured `turnThreshold` (default: 12), it sends a one-time nudge via `pi.sendUserMessage({ deliverAs: "followUp" })` encouraging self-diagnosis. The counter resets after each nudge, enabling periodic reminders. Configurable via `guards.turnThreshold` in `~/.pi/pio-config.yaml`.
 - **Model config** — Optional `~/.pi/pio-config.yaml` that overrides which LLM model a capability uses. Resolution: per-capability → default → inherit parent.
 
 - **Finalize Goal Agent** — The agent that runs after a goal is fully completed. Reads accumulated decisions from DECISIONS.md, per-step SUMMARY.md files, and PLAN.md, then evaluates each finding against update rules to determine which `.pio/PROJECT/*.md` files need updates.

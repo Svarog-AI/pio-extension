@@ -1,0 +1,55 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "detect-agent-refinement-loops",
+    "stepNumber": 3,
+    "_sessionContext": {
+      "goalName": "detect-agent-refinement-loops",
+      "stepNumber": 3,
+      "_sessionContext": {
+        "goalName": "detect-agent-refinement-loops",
+        "stepNumber": 2,
+        "_sessionContext": {
+          "goalName": "detect-agent-refinement-loops",
+          "stepNumber": 2,
+          "_sessionContext": {
+            "goalName": "detect-agent-refinement-loops",
+            "stepNumber": 2,
+            "_sessionContext": {
+              "goalName": "detect-agent-refinement-loops",
+              "stepNumber": 1,
+              "_sessionContext": {
+                "goalName": "detect-agent-refinement-loops",
+                "stepNumber": 1,
+                "_sessionContext": {
+                  "goalName": "detect-agent-refinement-loops",
+                  "stepNumber": 1,
+                  "_sessionContext": {
+                    "goalName": "detect-agent-refinement-loops",
+                    "stepNumber": 1,
+                    "_sessionContext": {
+                      "goalName": "detect-agent-refinement-loops",
+                      "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/detect-agent-refinement-loops.md",
+                      "fileCleanup": [
+                        "/home/aleksj/git/pio-extension/.pio/issues/detect-agent-refinement-loops.md"
+                      ],
+                      "capability": "create-goal"
+                    },
+                    "capability": "create-plan"
+                  },
+                  "capability": "evolve-plan"
+                },
+                "capability": "execute-task"
+              },
+              "capability": "review-task"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    }
+  }
+}

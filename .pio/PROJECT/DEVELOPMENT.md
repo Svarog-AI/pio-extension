@@ -51,4 +51,8 @@ No release cycle, versioning tags, or packaging pipeline exists. The extension i
     execute-task:
       provider: openai
       modelId: gpt-5
+  guards:
+    turnThreshold: 20
   ```
+  - **Guard config (optional):** The `guards` block in `~/.pi/pio-config.yaml` supports guard-level settings:
+    - `turnThreshold` (`number`, default: 12) — number of turns before the session guard sends a refinement-loop nudge. Must be a positive integer; invalid values fall back to the default.

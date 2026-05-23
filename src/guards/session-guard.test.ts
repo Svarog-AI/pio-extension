@@ -1,5 +1,5 @@
 import type { ExtensionAPI, TurnEndEvent } from "@earendil-works/pi-coding-agent";
-import { isThinkingOnlyTurn, setupSessionGuard, __testSetActiveSession, __testSetMarkCompleteCalled } from "./session-guard";
+import { isThinkingOnlyTurn, setupSessionGuard, __testSetActiveSession, __testSetMarkCompleteCalled, __testSetTurnCount } from "./session-guard";
 
 // ---------------------------------------------------------------------------
 // Helpers — mock ExtensionAPI
@@ -599,6 +599,245 @@ describe("setupSessionGuard — handler registration for new events", () => {
     const agentEndHandlers = handlers.get("agent_end");
     expect(agentEndHandlers).toBeDefined();
     expect(agentEndHandlers!.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// agent_end handler — warning when pio_mark_complete was not called
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// turn_count — refinement loop nudge
+// ---------------------------------------------------------------------------
+
+describe("turn_count — refinement loop nudge", () => {
+  // Reset state before each test to ensure isolation
+  beforeEach(() => {
+    __testSetActiveSession(false);
+    __testSetMarkCompleteCalled(false);
+    __testSetTurnCount(0);
+  });
+
+  // Helper: simulate N turn_end events with assistant text content
+  function simulateTurns(handlers: Map<string, Array<(...args: unknown[]) => unknown>>, count: number) {
+    const turnEndHandlers = handlers.get("turn_end");
+    if (!turnEndHandlers) throw new Error("No turn_end handlers registered");
+    const mockCtx = {} as any;
+    for (let i = 0; i < count; i++) {
+      const event: TurnEndEvent = {
+        type: "turn_end",
+        turnIndex: i,
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: `response ${i}` }],
+          api: "anthropic-messages" as any,
+          provider: { name: "test" } as any,
+          model: "test-model",
+          usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+          stopReason: "stop",
+          timestamp: Date.now(),
+        },
+        toolResults: [],
+      };
+      for (const handler of turnEndHandlers) {
+        handler(event, mockCtx);
+      }
+    }
+  }
+
+  it("turnCount increments by 1 on each turn_end when isActivePioSession is true", () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetTurnCount(0);
+    setupSessionGuard(pi);
+
+    // Act: simulate 3 turns
+    simulateTurns(handlers, 3);
+
+    // Assert
+    expect(__testSetTurnCount()).toBe(3);
+  });
+
+  it("turnCount does NOT increment when isActivePioSession is false", () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    __testSetActiveSession(false);
+    __testSetTurnCount(0);
+    setupSessionGuard(pi);
+
+    // Act: simulate 3 turns
+    simulateTurns(handlers, 3);
+
+    // Assert
+    expect(__testSetTurnCount()).toBe(0);
+  });
+
+  it("sends nudge message when turnCount reaches the threshold", () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetTurnCount(0);
+    setupSessionGuard(pi);
+
+    // Act: simulate 12 turns (DEFAULT_TURN_THRESHOLD)
+    simulateTurns(handlers, 12);
+
+    // Assert: nudge was sent exactly once
+    const nudgeCalls = sendUserMessageCalls.filter((c) => c.content.includes("turn"));
+    expect(nudgeCalls).toHaveLength(1);
+    expect(nudgeCalls[0].content).toContain("12");
+  });
+
+  it("turnCount resets to 0 after the nudge fires", () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetTurnCount(0);
+    setupSessionGuard(pi);
+
+    // Act: simulate 12 turns (threshold)
+    simulateTurns(handlers, 12);
+
+    // Assert: counter reset to 0
+    expect(__testSetTurnCount()).toBe(0);
+  });
+
+  it("nudge message uses { deliverAs: \"followUp\" }", () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetTurnCount(0);
+    setupSessionGuard(pi);
+
+    // Act: simulate 12 turns
+    simulateTurns(handlers, 12);
+
+    // Assert
+    const nudgeCalls = sendUserMessageCalls.filter((c) => c.content.includes("turn"));
+    expect(nudgeCalls[0].options).toEqual({ deliverAs: "followUp" });
+  });
+
+  it("nudge fires again after reset (periodic nudges)", () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetTurnCount(0);
+    setupSessionGuard(pi);
+
+    // Act: simulate 24 turns (2 x threshold)
+    simulateTurns(handlers, 24);
+
+    // Assert: nudge was sent exactly twice
+    const nudgeCalls = sendUserMessageCalls.filter((c) => c.content.includes("turn"));
+    expect(nudgeCalls).toHaveLength(2);
+  });
+
+  it("does NOT send nudge when turnCount is below threshold", () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetTurnCount(0);
+    setupSessionGuard(pi);
+
+    // Act: simulate 11 turns (below threshold of 12)
+    simulateTurns(handlers, 11);
+
+    // Assert: no nudge sent
+    const nudgeCalls = sendUserMessageCalls.filter((c) => c.content.includes("turn"));
+    expect(nudgeCalls).toHaveLength(0);
+  });
+
+  it("before_agent_start resets turnCount when isActivePioSession is true", async () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetTurnCount(5);
+    setupSessionGuard(pi);
+
+    // Act: invoke before_agent_start
+    const beforeAgentStartHandlers = handlers.get("before_agent_start");
+    expect(beforeAgentStartHandlers).toBeDefined();
+    const mockCtx = {} as any;
+    for (const handler of beforeAgentStartHandlers!) {
+      await handler({ type: "before_agent_start" }, mockCtx);
+    }
+
+    // Assert
+    expect(__testSetTurnCount()).toBe(0);
+  });
+
+  it("before_agent_start does NOT reset turnCount when isActivePioSession is false", async () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    __testSetActiveSession(false);
+    __testSetTurnCount(5);
+    setupSessionGuard(pi);
+
+    // Act: invoke before_agent_start
+    const beforeAgentStartHandlers = handlers.get("before_agent_start");
+    expect(beforeAgentStartHandlers).toBeDefined();
+    const mockCtx = {} as any;
+    for (const handler of beforeAgentStartHandlers!) {
+      await handler({ type: "before_agent_start" }, mockCtx);
+    }
+
+    // Assert: turnCount should remain 5
+    expect(__testSetTurnCount()).toBe(5);
+  });
+
+  it("turnCount increments on text-only (non-thinking) turns", () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetTurnCount(0);
+    setupSessionGuard(pi);
+
+    // Act: simulate 3 turns with text-only content (no thinking blocks)
+    simulateTurns(handlers, 3);
+
+    // Assert: turnCount incremented despite no thinking blocks
+    expect(__testSetTurnCount()).toBe(3);
+  });
+
+  it("__testSetTurnCount(value) sets and returns the value", () => {
+    // Arrange
+    __testSetTurnCount(0);
+
+    // Act
+    const setResult = __testSetTurnCount(7);
+
+    // Assert
+    expect(setResult).toBe(7);
+    expect(__testSetTurnCount()).toBe(7);
+  });
+
+  it("__testSetTurnCount() returns current value without argument", () => {
+    // Arrange
+    __testSetTurnCount(42);
+
+    // Act
+    const result = __testSetTurnCount();
+
+    // Assert
+    expect(result).toBe(42);
+  });
+
+  it("nudge fires at the exact threshold boundary (turn 12, not 13)", () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetTurnCount(0);
+    setupSessionGuard(pi);
+
+    // Act: simulate exactly 12 turns
+    simulateTurns(handlers, 12);
+
+    // Assert: nudge fired (turnCount was 12, which is >= threshold 12)
+    const nudgeCalls = sendUserMessageCalls.filter((c) => c.content.includes("turn"));
+    expect(nudgeCalls).toHaveLength(1);
+    // And counter reset, so turn 13 would start fresh
+    expect(__testSetTurnCount()).toBe(0);
   });
 });
 

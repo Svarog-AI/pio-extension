@@ -13,11 +13,24 @@ export interface PioModelEntry {
   modelId: string;
 }
 
+/** Guard-related settings from ~/.pi/pio-config.yaml. */
+export interface PioGuardsConfig {
+  turnThreshold?: number;
+}
+
 /** Full config shape parsed from ~/.pi/pio-config.yaml. */
 export interface PioConfig {
   default?: PioModelEntry;
   capabilities?: Record<string, PioModelEntry>;
+  guards?: PioGuardsConfig;
 }
+
+// ---------------------------------------------------------------------------
+// Defaults
+// ---------------------------------------------------------------------------
+
+/** Default turn threshold before the refinement-loop nudge fires. */
+export const DEFAULT_TURN_THRESHOLD = 12;
 
 // ---------------------------------------------------------------------------
 // Config path resolution
@@ -111,8 +124,17 @@ export function readConfig(): PioConfig | undefined {
       }
     }
 
+    // Parse guards block
+    if (obj.guards != null && typeof obj.guards === "object" && !Array.isArray(obj.guards)) {
+      const guardsObj = obj.guards as Record<string, unknown>;
+      const turnThreshold = guardsObj.turnThreshold;
+      if (typeof turnThreshold === "number" && Number.isInteger(turnThreshold) && turnThreshold > 0) {
+        config.guards = { turnThreshold };
+      }
+    }
+
     // If no recognized entries were found, treat as no config
-    if (!config.default && !config.capabilities) {
+    if (!config.default && !config.capabilities && !config.guards) {
       _cachedConfig = undefined;
       return undefined;
     }
@@ -151,4 +173,25 @@ export function resolveModelForCapability(capabilityName: string): PioModelEntry
 
   // 3. No match — inherit parent model
   return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Turn threshold
+// ---------------------------------------------------------------------------
+
+/**
+ * Reads the turn threshold from config, falling back to {@link DEFAULT_TURN_THRESHOLD}.
+ *
+ * Returns the configured value only if it is a positive integer.
+ * Missing, zero, negative, non-integer, null, or non-numeric values all fall back to the default.
+ */
+export function readTurnThreshold(): number {
+  const config = readConfig();
+  const value = config?.guards?.turnThreshold;
+
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+
+  return DEFAULT_TURN_THRESHOLD;
 }

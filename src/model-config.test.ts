@@ -278,3 +278,162 @@ describe("resolveModelForCapability — per-capability override", () => {
     expect(mod.resolveModelForCapability("unknown-capability")).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// DEFAULT_TURN_THRESHOLD
+// ---------------------------------------------------------------------------
+
+describe("DEFAULT_TURN_THRESHOLD", () => {
+  it("equals 12", async () => {
+    vi.resetModules();
+    const mod = await import("./model-config");
+    expect(mod.DEFAULT_TURN_THRESHOLD).toBe(12);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readTurnThreshold — valid values
+// ---------------------------------------------------------------------------
+
+describe("readTurnThreshold — valid values", () => {
+  let tempDir: string;
+  const origEnv = process.env.PIO_CONFIG_TEST_HOME;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    process.env.PIO_CONFIG_TEST_HOME = tempDir;
+  });
+
+  afterEach(() => {
+    process.env.PIO_CONFIG_TEST_HOME = origEnv;
+    cleanup(tempDir);
+  });
+
+  it("returns configured value when guards.turnThreshold is a positive integer", async () => {
+    writeConfig(tempDir, [
+      "guards:",
+      "  turnThreshold: 20",
+    ].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readTurnThreshold()).toBe(20);
+  });
+
+  it("returns 1 when guards.turnThreshold is 1", async () => {
+    writeConfig(tempDir, [
+      "guards:",
+      "  turnThreshold: 1",
+    ].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readTurnThreshold()).toBe(1);
+  });
+
+  it("returns configured value alongside other config keys", async () => {
+    writeConfig(tempDir, [
+      "default:",
+      "  provider: j6000",
+      "  modelId: general",
+      "guards:",
+      "  turnThreshold: 15",
+    ].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readTurnThreshold()).toBe(15);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readTurnThreshold — fallback to default
+// ---------------------------------------------------------------------------
+
+describe("readTurnThreshold — fallback to default", () => {
+  let tempDir: string;
+  const origEnv = process.env.PIO_CONFIG_TEST_HOME;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    process.env.PIO_CONFIG_TEST_HOME = tempDir;
+  });
+
+  afterEach(() => {
+    process.env.PIO_CONFIG_TEST_HOME = origEnv;
+    cleanup(tempDir);
+  });
+
+  it("returns DEFAULT_TURN_THRESHOLD when no config file exists", async () => {
+    const mod = await import("./model-config");
+    expect(mod.readTurnThreshold()).toBe(mod.DEFAULT_TURN_THRESHOLD);
+  });
+
+  it("returns DEFAULT_TURN_THRESHOLD when config file is empty", async () => {
+    writeConfig(tempDir, "");
+
+    const mod = await import("./model-config");
+    expect(mod.readTurnThreshold()).toBe(mod.DEFAULT_TURN_THRESHOLD);
+  });
+
+  it("returns DEFAULT_TURN_THRESHOLD when guards block has no turnThreshold", async () => {
+    writeConfig(tempDir, [
+      "default:",
+      "  provider: j6000",
+      "  modelId: general",
+      "guards:",
+    ].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readTurnThreshold()).toBe(mod.DEFAULT_TURN_THRESHOLD);
+  });
+
+  it("returns DEFAULT_TURN_THRESHOLD when turnThreshold is 0", async () => {
+    writeConfig(tempDir, [
+      "guards:",
+      "  turnThreshold: 0",
+    ].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readTurnThreshold()).toBe(mod.DEFAULT_TURN_THRESHOLD);
+  });
+
+  it("returns DEFAULT_TURN_THRESHOLD when turnThreshold is negative", async () => {
+    writeConfig(tempDir, [
+      "guards:",
+      "  turnThreshold: -5",
+    ].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readTurnThreshold()).toBe(mod.DEFAULT_TURN_THRESHOLD);
+  });
+
+  it("returns DEFAULT_TURN_THRESHOLD when turnThreshold is a float", async () => {
+    writeConfig(tempDir, [
+      "guards:",
+      "  turnThreshold: 3.5",
+    ].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readTurnThreshold()).toBe(mod.DEFAULT_TURN_THRESHOLD);
+  });
+
+  it("returns DEFAULT_TURN_THRESHOLD when turnThreshold is null", async () => {
+    writeConfig(tempDir, [
+      "guards:",
+      "  turnThreshold: null",
+    ].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readTurnThreshold()).toBe(mod.DEFAULT_TURN_THRESHOLD);
+  });
+
+  it("returns DEFAULT_TURN_THRESHOLD when turnThreshold is a string", async () => {
+    writeConfig(tempDir, [
+      "guards:",
+      '  turnThreshold: "twelve"',
+    ].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readTurnThreshold()).toBe(mod.DEFAULT_TURN_THRESHOLD);
+  });
+});

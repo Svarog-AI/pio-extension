@@ -50,7 +50,7 @@ Shared modules (used by capabilities and guards):
   goal-state.ts        — createGoalState(), StepStatus, GoalState interface
   state-machine.ts     — resolveTransition(), recordTransition()
   queues.ts            — enqueueTask, readPendingTask, writeLastTask
-  model-config.ts      — resolveModelForCapability(), reads ~/.pi/pio-config.yaml
+  model-config.ts      — resolveModelForCapability(), readTurnThreshold(). Reads ~/.pi/pio-config.yaml for both per-capability models and guard settings
 ```
 
 **Circular dependency note:** `types.ts` was created specifically to break circular dependencies between `utils.ts` ↔ `validation.ts` ↔ `session-capability.ts`. The refactor decomposed the monolithic `utils.ts` into focused modules.

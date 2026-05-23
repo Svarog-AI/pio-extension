@@ -83,6 +83,10 @@ function transitionEvolvePlan(state: GoalState, params?: Record<string, unknown>
         const parentStepDir = path.join(goalDir, stepFolderName(explicitStepNumber));
         const subgoalWorkingDir = resolveGoalDir(cwd, stepMetadata.name, parentStepDir);
 
+        // Construct initialMessage with relative path to parent step's TASK.md
+        const relativeTaskPath = path.relative(subgoalWorkingDir, path.join(parentStepDir, "TASK.md"));
+        const initialMessage = `This is a subgoal step. Read ${relativeTaskPath} from the parent goal for decomposition scope context.`;
+
         return {
           capability: "create-goal",
           params: {
@@ -91,6 +95,7 @@ function transitionEvolvePlan(state: GoalState, params?: Record<string, unknown>
             parentStepNumber: explicitStepNumber,
             subgoalType: true,
             workingDir: subgoalWorkingDir,
+            initialMessage,
           },
         };
       }

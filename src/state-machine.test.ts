@@ -2,7 +2,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { GoalState } from "./goal-state";
-import { createGoalState } from "./goal-state";
 import type { PlanFrontmatter, ReviewOutputs, StepMetadata } from "./frontmatter-schemas";
 import {
   resolveTransition,
@@ -910,6 +909,93 @@ describe("resolveTransition — evolve-plan → create-goal (subgoal)", () => {
 
     expect(result?.capability).toBe("revise-plan");
     expect(result?.params?.revisionTriggerStep).toBe(2);
+
+    cwdSpy.mockRestore();
+  });
+
+  it("includes initialMessage with relative TASK.md path when routing to create-goal for subgoal steps", () => {
+    const state = mockState({
+      goalCompleted: () => false,
+      steps: () => [
+        mockStep(3, "pending", { metadata: { name: "nested-feature", complexity: "subgoal" } }),
+      ],
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 3 });
+
+    expect(result?.params?.initialMessage).toBeDefined();
+    expect(typeof result?.params?.initialMessage).toBe("string");
+    expect(result?.params?.initialMessage).toContain("TASK.md");
+    expect(result?.params?.initialMessage).toContain("subgoal");
+
+    cwdSpy.mockRestore();
+  });
+
+  it("initialMessage relative path resolves from subgoal workspace to parent step TASK.md", () => {
+    const state = mockState({
+      goalCompleted: () => false,
+      steps: () => [
+        mockStep(3, "pending", { metadata: { name: "child-goal", complexity: "subgoal" } }),
+      ],
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 3 });
+
+    const initialMessage = result?.params?.initialMessage as string;
+    // Extract the relative path from the message
+    const pathMatch = initialMessage.match(/Read\s+(.+?)\s+from/);
+    expect(pathMatch).not.toBeNull();
+    const relativePath = pathMatch![1];
+
+    // Verify the relative path resolves correctly
+    const subgoalWorkingDir = result?.params?.workingDir as string;
+    const resolvedPath = path.resolve(subgoalWorkingDir, relativePath);
+    const expectedPath = path.join(tempDir, ".pio", "goals", "parent", "S03", "TASK.md");
+    expect(resolvedPath).toBe(expectedPath);
+
+    cwdSpy.mockRestore();
+  });
+
+  it("does not include initialMessage for regular task steps", () => {
+    const state = mockState({
+      goalCompleted: () => false,
+      steps: () => [
+        mockStep(2, "pending", { metadata: { name: "regular-step", complexity: "task" } }),
+      ],
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+
+    expect(result?.capability).toBe("execute-task");
+    expect(result?.params?.initialMessage).toBeUndefined();
+
+    cwdSpy.mockRestore();
+  });
+
+  it("initialMessage uses path.relative for platform-portable path construction", () => {
+    const state = mockState({
+      goalCompleted: () => false,
+      steps: () => [
+        mockStep(1, "pending", { metadata: { name: "deeply-nested", complexity: "subgoal" } }),
+      ],
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+
+    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 1 });
+
+    const initialMessage = result?.params?.initialMessage as string;
+    // The relative path should use path.sep (platform-specific)
+    // On POSIX it should be ../../TASK.md
+    const pathMatch = initialMessage.match(/Read\s+(.+?)\s+from/);
+    expect(pathMatch).not.toBeNull();
+    const relativePath = pathMatch![1];
+    // path.relative produces platform-specific separators — verify it resolves correctly
+    const subgoalWorkingDir = result?.params?.workingDir as string;
+    const resolvedPath = path.resolve(subgoalWorkingDir, relativePath);
+    expect(resolvedPath).toContain("TASK.md");
 
     cwdSpy.mockRestore();
   });

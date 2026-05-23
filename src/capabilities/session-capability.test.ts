@@ -69,6 +69,42 @@ vi.mock("../model-config", () => ({
 }));
 
 // ---------------------------------------------------------------------------
+// Top-level mock for queues (used by pio_mark_complete tests)
+// ---------------------------------------------------------------------------
+
+const mockEnqueueTask = vi.hoisted(() => vi.fn());
+const mockWriteLastTask = vi.hoisted(() => vi.fn());
+const mockRecordTransition = vi.hoisted(() => vi.fn());
+const mockResolveTransition = vi.hoisted(() => vi.fn());
+const mockCreateGoalState = vi.hoisted(() => vi.fn());
+
+vi.mock("../queues", async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    enqueueTask: mockEnqueueTask,
+    writeLastTask: mockWriteLastTask,
+  };
+});
+
+vi.mock("../state-machine", async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    resolveTransition: mockResolveTransition,
+    recordTransition: mockRecordTransition,
+  };
+});
+
+vi.mock("../goal-state", async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    createGoalState: mockCreateGoalState,
+  };
+});
+
+// ---------------------------------------------------------------------------
 // getSessionGoalName tests
 // These test the real implementation logic by mocking getSessionParams()
 // ---------------------------------------------------------------------------
@@ -550,5 +586,157 @@ describe("model resolution — backwards compatibility", () => {
     expect(result.message?.customType).toBe("pio-capability-instructions");
     // Model resolution also ran but didn't call setModel since config is undefined
     expect(setModelMock).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pio_mark_complete — queue key propagation
+// Verify pio_mark_complete uses transition's adjusted goalName as the queue key
+// ---------------------------------------------------------------------------
+
+describe("pio_mark_complete — queue key propagation", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    mockEnqueueTask.mockClear();
+    mockWriteLastTask.mockClear();
+    mockRecordTransition.mockClear();
+    mockResolveTransition.mockClear();
+    mockCreateGoalState.mockClear();
+  });
+
+  afterEach(() => {
+    cleanup(tempDir);
+  });
+
+  // Capture the registered tool from setupCapability
+  async function getMarkCompleteTool() {
+    const registeredTools: any[] = [];
+    const registeredHandlers: Record<string, Function> = {};
+
+    const mockPi = {
+      registerTool: (tool: any) => { registeredTools.push(tool); },
+      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      setModel: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+
+    const mod = await import("./session-capability");
+    mod.setupCapability(mockPi as any);
+
+    // Find the pio_mark_complete tool
+    const markCompleteTool = registeredTools.find((t) => t.name === "pio_mark_complete");
+    expect(markCompleteTool).toBeDefined();
+
+    return {
+      tool: markCompleteTool!,
+      registeredHandlers,
+    };
+  }
+
+  // Build a mock context for tool execution
+  function makeToolContext(config: any) {
+    return {
+      sessionManager: {
+        getSessionFile: () => "parent-session.json",
+        getEntries: () => [
+          { type: "custom", customType: "pio-config", data: config },
+        ],
+      },
+    };
+  }
+
+  it("uses transition's adjusted goalName as the queue key for subgoal completion", async () => {
+    const { tool } = await getMarkCompleteTool();
+
+    // Arrange: subgoal completion — transition returns parent goal name
+    mockCreateGoalState.mockReturnValue({
+      goalName: "child",
+      currentStepNumber: () => 1,
+      steps: () => [],
+      goalCompleted: () => false,
+    });
+    mockResolveTransition.mockReturnValue({
+      capability: "evolve-plan",
+      params: { goalName: "parent", stepNumber: 4 },
+    });
+
+    const ctx = makeToolContext({
+      capability: "finalize-goal",
+      workingDir: path.join(tempDir, ".pio", "goals", "child"),
+      sessionParams: { goalName: "child" },
+    });
+
+    // Act
+    await tool.execute("tool-call-1", {}, undefined, undefined, ctx);
+
+    // Assert: enqueueTask called with "parent" as the queue key (second arg)
+    expect(mockEnqueueTask).toHaveBeenCalled();
+    const enqueueCall = mockEnqueueTask.mock.calls[0];
+    expect(enqueueCall[1]).toBe("parent");
+  });
+
+  it("uses state goalName as the queue key for flat goals (backward compatible)", async () => {
+    const { tool } = await getMarkCompleteTool();
+
+    // Arrange: flat goal — transition returns same goal name
+    mockCreateGoalState.mockReturnValue({
+      goalName: "my-feature",
+      currentStepNumber: () => 1,
+      steps: () => [],
+      goalCompleted: () => false,
+    });
+    mockResolveTransition.mockReturnValue({
+      capability: "review-task",
+      params: { goalName: "my-feature", stepNumber: 1 },
+    });
+
+    const ctx = makeToolContext({
+      capability: "execute-task",
+      workingDir: path.join(tempDir, ".pio", "goals", "my-feature"),
+      sessionParams: { goalName: "my-feature" },
+    });
+
+    // Act
+    await tool.execute("tool-call-1", {}, undefined, undefined, ctx);
+
+    // Assert: enqueueTask called with "my-feature" as the queue key
+    expect(mockEnqueueTask).toHaveBeenCalled();
+    const enqueueCall = mockEnqueueTask.mock.calls[0];
+    expect(enqueueCall[1]).toBe("my-feature");
+  });
+
+  it("queue key matches the goalName in enqueued params for subgoal completion", async () => {
+    const { tool } = await getMarkCompleteTool();
+
+    // Arrange: transition returns parent goal name
+    mockCreateGoalState.mockReturnValue({
+      goalName: "nested",
+      currentStepNumber: () => 1,
+      steps: () => [],
+      goalCompleted: () => false,
+    });
+    mockResolveTransition.mockReturnValue({
+      capability: "evolve-plan",
+      params: { goalName: "parent", stepNumber: 4 },
+    });
+
+    const ctx = makeToolContext({
+      capability: "finalize-goal",
+      workingDir: path.join(tempDir, ".pio", "goals", "nested"),
+      sessionParams: { goalName: "nested", parentGoalName: "parent", parentStepNumber: 3 },
+    });
+
+    // Act
+    await tool.execute("tool-call-1", {}, undefined, undefined, ctx);
+
+    // Assert: queue key (2nd arg) matches goalName in enqueued params
+    const enqueueCall = mockEnqueueTask.mock.calls[0];
+    const queueKey = enqueueCall[1];
+    const enqueuedParams = enqueueCall[2].params;
+    expect(queueKey).toBe("parent");
+    expect(enqueuedParams.goalName).toBe("parent");
   });
 });

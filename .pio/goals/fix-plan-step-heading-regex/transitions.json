@@ -1,0 +1,19 @@
+[
+  {
+    "timestamp": "2026-05-23T19:32:11.879Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "fix-plan-step-heading-regex",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "fix-plan-step-heading-regex",
+        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/fix-plan-step-heading-regex.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/fix-plan-step-heading-regex.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  }
+]

@@ -44,7 +44,7 @@ function makePlanContent(totalSteps: number, headingCount: number): string {
   const stepsYaml = Array.from({ length: totalSteps }, (_, i) => `  - name: step-${i + 1}\n    complexity: task`).join("\n");
   const frontmatter = `---\ntotalSteps: ${totalSteps}\nsteps:\n${stepsYaml}\n---`;
   const title = "# Plan: Test Goal";
-  const headings = Array.from({ length: headingCount }, (_, i) => `## Step ${i + 1}: Step description`).join("\n");
+  const headings = Array.from({ length: headingCount }, (_, i) => `### Step ${i + 1}: Step description`).join("\n");
   return `${frontmatter}\n${title}\n\n${headings}`;
 }
 
@@ -60,7 +60,7 @@ function makePlanContentWithSteps(
 
   const frontmatter = `---\ntotalSteps: ${totalSteps}\nsteps:\n${stepsYaml}\n---`;
   const title = "# Plan: Test Goal";
-  const headings = Array.from({ length: headingCount }, (_, i) => `## Step ${i + 1}: Step description`).join("\n");
+  const headings = Array.from({ length: headingCount }, (_, i) => `### Step ${i + 1}: Step description`).join("\n");
   return `${frontmatter}\n${title}\n\n${headings}`;
 }
 
@@ -126,7 +126,7 @@ describe("postValidateCreatePlan — missing or malformed frontmatter", () => {
 
   it("returns failure when PLAN.md has no frontmatter", () => {
     // Arrange: PLAN.md starts directly with title (no --- delimiters)
-    const planContent = "# Plan: Test Goal\n\n## Step 1: Description";
+    const planContent = "# Plan: Test Goal\n\n### Step 1: Description";
     const goalDir = createGoalTree(tempDir, "no-frontmatter", planContent);
 
     // Act
@@ -279,7 +279,7 @@ describe("postValidateCreatePlan — totalSteps vs heading count mismatch", () =
   });
 
   it("returns failure when there are zero headings but totalSteps is positive", () => {
-    // Arrange: totalSteps: 3 and no ## Step N: headings at all
+    // Arrange: totalSteps: 3 and no ### Step N: headings at all
     const planContent = "---\ntotalSteps: 3\n---\n# Plan: Test Goal\n\nNo step headings here.";
     const goalDir = createGoalTree(tempDir, "zero-headings", planContent);
 
@@ -306,7 +306,7 @@ describe("postValidateCreatePlan — steps array is required", () => {
 
   it("rejects when steps field is missing from frontmatter", () => {
     // Arrange: PLAN.md with only totalSteps, no steps field, and 3 headings
-    const planContent = "---\ntotalSteps: 3\n---\n# Plan: Test Goal\n\n## Step 1: A\n## Step 2: B\n## Step 3: C";
+    const planContent = "---\ntotalSteps: 3\n---\n# Plan: Test Goal\n\n### Step 1: A\n### Step 2: B\n### Step 3: C";
     const goalDir = createGoalTree(tempDir, "missing-steps", planContent);
 
     // Act
@@ -445,8 +445,8 @@ describe("postValidateCreatePlan — steps array validation", () => {
       "---",
       "# Plan: Test Goal",
       "",
-      "## Step 1: Step description",
-      "## Step 2: Step description",
+      "### Step 1: Step description",
+      "### Step 2: Step description",
     ].join("\n");
     const goalDir = createGoalTree(tempDir, "omit-complexity", planContent);
 
@@ -470,7 +470,7 @@ describe("postValidateCreatePlan — steps array validation", () => {
       "---",
       "# Plan: Test Goal",
       "",
-      "## Step 1: Step description",
+      "### Step 1: Step description",
     ].join("\n");
     const goalDir = createGoalTree(tempDir, "invalid-complexity", planContent);
 

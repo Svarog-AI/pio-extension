@@ -1,0 +1,142 @@
+[
+  {
+    "timestamp": "2026-05-23T19:09:40.439Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "session-run-end-guard",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "session-run-end-guard",
+        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/session-run-end-guard.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/session-run-end-guard.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-23T19:36:09.455Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "session-run-end-guard",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "session-run-end-guard",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "session-run-end-guard",
+          "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/session-run-end-guard.md",
+          "fileCleanup": [
+            "/home/aleksj/git/pio-extension/.pio/issues/session-run-end-guard.md"
+          ],
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-23T19:43:12.850Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "session-run-end-guard",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-23T19:45:23.090Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "session-run-end-guard",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-23T19:46:28.898Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "session-run-end-guard",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-23T19:48:14.749Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "session-run-end-guard",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-23T19:52:29.110Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "session-run-end-guard",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-23T19:54:46.662Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "session-run-end-guard",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-23T19:55:52.607Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "session-run-end-guard",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-23T19:58:07.238Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "session-run-end-guard",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-23T19:59:58.353Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "session-run-end-guard",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-23T20:00:55.618Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "session-run-end-guard",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/session-run-end-guard",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  },
+  {
+    "timestamp": "2026-05-23T20:02:07.938Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "session-run-end-guard",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/session-run-end-guard",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  }
+]

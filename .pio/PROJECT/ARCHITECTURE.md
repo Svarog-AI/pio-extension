@@ -6,7 +6,7 @@
 
 pio is a **pi extension** — it registers with the pi coding agent framework via `src/index.ts`, which exports a default function `(pi: ExtensionAPI) => void`. This function:
 1. Registers discoverable skills (`resources_discover` event)
-2. Wires shared infrastructure (`setupCapability`, `setupValidation`, `setupTurnGuard`)
+2. Wires shared infrastructure (`setupCapability`, `setupValidation`, `setupSessionGuard`)
 3. Registers individual capabilities (`setupInit`, `setupCreateGoal`, etc.)
 
 ### Capability Pattern

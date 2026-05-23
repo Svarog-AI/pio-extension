@@ -39,9 +39,9 @@ pio-extension/
 │   │   ├── revise-plan.ts       — pio_revise_plan: archives PLAN.md, deletes incomplete steps, rewrites plan
 │   │   ├── session-capability.ts — shared launcher + prompt injection + model switching
 │   │   └── *.test.ts            — colocated tests for each capability module
-│   ├── guards/                # Event-handling guards (file protection, dead-turn detection)
+│   ├── guards/                # Event-handling guards (file protection, session lifecycle)
 │   │   ├── validation.ts        — pio_mark_complete tool + file protection (readOnly/writeAllowlist)
-│   │   └── turn-guard.ts        — detects thinking-only turns, sends recovery prompts
+│   │   └── session-guard.ts     — turn recovery + completion tracking (warns at agent_end if pio_mark_complete not called)
 │   ├── prompts/               # System prompt templates (markdown, injected per session type)
 │   │   ├── create-goal.md         — Goal Definition Assistant
 │   │   ├── create-plan.md         — Planning Agent

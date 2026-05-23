@@ -15,10 +15,10 @@ import { type PlanFrontmatter } from "../frontmatter-schemas";
 // ---------------------------------------------------------------------------
 
 /**
- * Regex to match step headings like "## Step 1:", "## Step 12: Add schema".
+ * Regex to match step headings like "### Step 1:", "### Step 12: Add schema".
  * The `m` flag enables `^` to match start of each line.
  */
-const STEP_HEADING_RE = /^## Step \d+:/gm;
+const STEP_HEADING_RE = /^### Step \d+:/gm;
 
 /**
  * postValidate callback for the create-plan capability.
@@ -26,7 +26,7 @@ const STEP_HEADING_RE = /^## Step \d+:/gm;
  *
  * Validates:
  * 1. PLAN.md has valid YAML frontmatter with a correct `totalSteps` field
- * 2. `totalSteps` matches the actual count of `## Step N:` headings in the document
+ * 2. `totalSteps` matches the actual count of `### Step N:` headings in the document
  *
  * Delegates frontmatter validation to GoalState.planMetadata() — does not
  * import low-level frontmatter utilities directly.

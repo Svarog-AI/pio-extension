@@ -33,7 +33,19 @@ The `session-capability.ts` module orchestrates sub-sessions:
 
 - **`GoalState`** (`goal-state.ts`) provides a lazy-evaluated filesystem view over goal workspaces. Methods like `hasGoal()`, `steps()`, `currentStepNumber()` read fresh from disk on every call — no internal caching
 - **Transition resolver** (`state-machine.ts`) is a pure function: given a capability name and GoalState, it returns the next capability. No filesystem I/O in the transition logic itself
-- **Per-goal task queues** (`queues.ts`) use single-slot files at `.pio/session-queue/task-{goalName}.json` — one pending task per goal
+- **Per-goal task queues** (`queues.ts`) use single-slot files at `.pio/session-queue/task-{key}.json` — one pending task per goal. For flat goals, `key` is the goal name basename. For nested subgoals, `deriveQueueKey(goalDir, cwd)` produces hierarchical keys (e.g., `parent__S03__nested`) using `__` as delimiter. On completion, `pio_mark_complete` uses the transition's adjusted `params.goalName` to determine which queue slot to enqueue into, enabling parent queue slot restoration when a subgoal completes.
+
+### Nested Subgoals
+
+Plan steps declared with `complexity: "subgoal"` in the PLAN.md frontmatter `steps` array spawn child goal workspaces under `S{NN}/subgoals/<name>/`. These subgoals run through the full pio lifecycle recursively:
+
+1. **Spawning:** `transitionEvolvePlan` detects `complexity === "subgoal"` via `state.steps()[n].getMetadata()` and routes to `create-goal` with parent context (`parentGoalName`, `parentStepNumber`, `workingDir`) and an `initialMessage` containing a relative path to the parent step's TASK.md
+2. **Directory structure:** Subgoal workspace lives at `.pio/goals/<parent>/S{NN}/subgoals/<name>/` — nested inside the parent step folder, not at the top-level goals directory
+3. **Path resolution:** `resolveGoalDir(cwd, name, parentStepDir?)` supports an optional `parentStepDir` for nested subgoal paths; backward compatible with flat goals
+4. **Completion propagation:** `transitionFinalizeGoal` routes subgoals back to the parent's `evolve-plan` (restoring the parent queue slot). Top-level goals return `undefined` (terminal)
+5. **Detection mechanism:** Frontmatter-only — no regex heading parsing or `[subgoal]` body annotations. The `steps` array in PLAN.md frontmatter is the single source of truth
+6. **Universal TASK.md:** Both `execute-task` and subgoal `create-goal` read TASK.md. Evolve-plan produces only TASK.md; tests are derived at execute-time by the executor using the `test-driven-development` skill
+7. **Backward compatible:** Flat goals without subgoal metadata function identically — `planMetadata()` returns null for old plans, `getMetadata()` defaults `complexity` to `"task"`
 
 ### Key Design Decisions
 
@@ -57,9 +69,9 @@ pio depends entirely on the pi coding agent framework (`@earendil-works/pi-codin
 ### Filesystem as State Store
 
 All workflow state is stored in the `.pio/` directory tree:
-- **`.pio/goals/<name>/`** — goal workspaces with GOAL.md, PLAN.md, `PLAN_ARCHIVE/` (timestamped archived plans), step folders (S01/, S02/)
+- **`.pio/goals/<name>/`** — goal workspaces with GOAL.md, PLAN.md, `PLAN_ARCHIVE/` (timestamped archived plans), step folders (S01/, S02/), and optional nested subgoal workspaces under `S{NN}/subgoals/<name>/`
 - **`.pio/issues/`** — issue backlog as markdown files
-- **`.pio/session-queue/task-{goalName}.json`** — per-goal task queue slots
+- **`.pio/session-queue/task-{key}.json`** — per-goal task queue slots (key is goal basename for flat goals, hierarchical `parent__S03__nested` for subgoals)
 - **`.pio/PROJECT/`** — 7-file project context (OVERVIEW.md, DEVELOPMENT.md, etc.)
 
 ### External Model Configuration

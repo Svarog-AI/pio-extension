@@ -1,4 +1,5 @@
 import type { AgentEndEvent, ExtensionAPI, TurnEndEvent } from "@earendil-works/pi-coding-agent";
+import { readTurnThreshold } from "../model-config";
 
 // ---------------------------------------------------------------------------
 // Minimal local interfaces for content blocks
@@ -25,6 +26,9 @@ let isActivePioSession = false;
 /** True when any tool call during the current agent run was `pio_mark_complete`. */
 let markCompleteCalled = false;
 
+/** Turn counter for refinement-loop detection. Resets at before_agent_start and after each nudge. */
+let turnCount = 0;
+
 /**
  * Test-only accessor for the internal `isActivePioSession` flag.
  *
@@ -49,6 +53,19 @@ export function __testSetMarkCompleteCalled(value?: boolean): boolean {
     markCompleteCalled = value;
   }
   return markCompleteCalled;
+}
+
+/**
+ * Test-only accessor for the internal `turnCount` variable.
+ *
+ * @internal — Do not use in production code. Exists solely to allow unit tests
+ * to read and manipulate turn-count state without mocking the full ExtensionAPI.
+ */
+export function __testSetTurnCount(value?: number): number {
+  if (value !== undefined) {
+    turnCount = value;
+  }
+  return turnCount;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +137,9 @@ const AGENT_END_WARNING = "This session ended without calling pio_mark_complete.
  * 5. `agent_end` — warns if the session ended without calling `pio_mark_complete`.
  */
 export function setupSessionGuard(pi: ExtensionAPI) {
+  // Read threshold once at setup time — config changes require extension reload
+  const turnThreshold = readTurnThreshold();
+
   // 1. Detect pio sub-sessions at startup
   pi.on("resources_discover", async (_event, ctx) => {
     const entries = ctx.sessionManager.getEntries();
@@ -138,6 +158,17 @@ export function setupSessionGuard(pi: ExtensionAPI) {
   pi.on("turn_end", async (event: TurnEndEvent) => {
     // Guard: only run inside pio sub-sessions
     if (!isActivePioSession) return;
+
+    // Turn-count tracking for refinement-loop detection
+    // Increment on EVERY turn (not just thinking-only) — counts total session activity
+    turnCount++;
+    if (turnCount >= turnThreshold) {
+      pi.sendUserMessage(
+        `You've been running for ${turnCount} turns. Take a step back: recap what you're trying to accomplish, evaluate if you're stuck in a refinement loop, and ship your work if it's ready.`,
+        { deliverAs: "followUp" },
+      );
+      turnCount = 0;
+    }
 
     // Extract typed content from assistant messages (returns undefined for non-assistant)
     const content = getAssistantContent(event);
@@ -162,6 +193,7 @@ export function setupSessionGuard(pi: ExtensionAPI) {
   pi.on("before_agent_start", async (_event, _ctx) => {
     if (!isActivePioSession) return;
     markCompleteCalled = false;
+    turnCount = 0;
   });
 
   // 5. Warn at session end if pio_mark_complete was never called

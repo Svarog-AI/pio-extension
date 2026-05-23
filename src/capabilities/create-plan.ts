@@ -78,6 +78,23 @@ function postValidateCreatePlan(goalDir: string): { success: boolean; message?: 
     };
   }
 
+  // Step 6: Validate unique subgoal names (only subgoal entries need unique names)
+  const subgoalEntries = steps.filter((s) => s.complexity === "subgoal");
+  if (subgoalEntries.length > 0) {
+    const subgoalNames = subgoalEntries.map((s) => s.name);
+    const uniqueNames = new Set(subgoalNames);
+    if (uniqueNames.size !== subgoalNames.length) {
+      const duplicates = [...subgoalNames].filter(
+        (name, i) => subgoalNames.indexOf(name) !== i,
+      );
+      const uniqueDups = [...new Set(duplicates)].join(", ");
+      return {
+        success: false,
+        message: `Duplicate subgoal name(s) found: ${uniqueDups}. Each subgoal must have a unique name to prevent path collisions.`,
+      };
+    }
+  }
+
   return { success: true };
 }
 

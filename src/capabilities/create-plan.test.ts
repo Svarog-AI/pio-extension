@@ -484,6 +484,136 @@ describe("postValidateCreatePlan — steps array validation", () => {
 });
 
 // ---------------------------------------------------------------------------
+// postValidateCreatePlan — unique subgoal names
+// ---------------------------------------------------------------------------
+
+describe("postValidateCreatePlan — unique subgoal names", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns success when all subgoal names are unique", () => {
+    // Arrange: 3 subgoals with different names
+    const goalDir = createGoalTree(
+      tempDir,
+      "unique-subgoals",
+      makePlanContentWithSteps(
+        3,
+        [
+          { name: "auth-service", complexity: "subgoal" },
+          { name: "api-gateway", complexity: "subgoal" },
+          { name: "data-layer", complexity: "subgoal" },
+        ],
+        3,
+      ),
+    );
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert
+    expect(result).toEqual({ success: true });
+  });
+
+  it("returns failure when two subgoals share the same name", () => {
+    // Arrange: two subgoals both named "auth-service"
+    const goalDir = createGoalTree(
+      tempDir,
+      "duplicate-subgoals",
+      makePlanContentWithSteps(
+        3,
+        [
+          { name: "auth-service", complexity: "subgoal" },
+          { name: "api-gateway", complexity: "task" },
+          { name: "auth-service", complexity: "subgoal" },
+        ],
+        3,
+      ),
+    );
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("auth-service");
+  });
+
+  it("returns success when duplicate names exist only on task steps", () => {
+    // Arrange: two task steps share the same name — should be allowed
+    const goalDir = createGoalTree(
+      tempDir,
+      "duplicate-task-names",
+      makePlanContentWithSteps(
+        3,
+        [
+          { name: "setup", complexity: "task" },
+          { name: "setup", complexity: "task" },
+          { name: "deploy", complexity: "task" },
+        ],
+        3,
+      ),
+    );
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert: passes — only subgoal names must be unique
+    expect(result).toEqual({ success: true });
+  });
+
+  it("returns success when a subgoal and a task share the same name", () => {
+    // Arrange: one subgoal and one task both named "setup"
+    const goalDir = createGoalTree(
+      tempDir,
+      "cross-type-same-name",
+      makePlanContentWithSteps(
+        2,
+        [
+          { name: "setup", complexity: "subgoal" },
+          { name: "setup", complexity: "task" },
+        ],
+        2,
+      ),
+    );
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert: passes — cross-type duplicates are allowed
+    expect(result).toEqual({ success: true });
+  });
+
+  it("returns failure identifying the duplicate name among three subgoals", () => {
+    // Arrange: three subgoals, first and third share "data-layer"
+    const goalDir = createGoalTree(
+      tempDir,
+      "three-subgoals-one-dup",
+      makePlanContentWithSteps(
+        3,
+        [
+          { name: "data-layer", complexity: "subgoal" },
+          { name: "auth-service", complexity: "subgoal" },
+          { name: "data-layer", complexity: "subgoal" },
+        ],
+        3,
+      ),
+    );
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("data-layer");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // postValidateCreatePlan — CAPABILITY_CONFIG wiring
 // ---------------------------------------------------------------------------
 

@@ -25,7 +25,7 @@ import { setupListGoals } from "./capabilities/list-goals";
 import { setupFinalizeGoal } from "./capabilities/finalize-goal";
 import { setupCapability } from "./capabilities/session-capability";
 import { setupValidation } from "./guards/validation";
-import { setupTurnGuard } from "./guards/turn-guard";
+import { setupSessionGuard } from "./guards/session-guard";
 
 // ESM-compatible __dirname for resolving skill directories bundled with this extension
 const __filename = fileURLToPath(import.meta.url);
@@ -49,7 +49,7 @@ export default function (pi: ExtensionAPI) {
   // Shared session capability handlers (wired once)
   setupCapability(pi);
   setupValidation(pi);
-  setupTurnGuard(pi);
+  setupSessionGuard(pi);
 
   setupInit(pi);
   setupParent(pi);

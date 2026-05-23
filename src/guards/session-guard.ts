@@ -1,4 +1,4 @@
-import type { ExtensionAPI, TurnEndEvent } from "@earendil-works/pi-coding-agent";
+import type { AgentEndEvent, ExtensionAPI, TurnEndEvent } from "@earendil-works/pi-coding-agent";
 
 // ---------------------------------------------------------------------------
 // Minimal local interfaces for content blocks
@@ -22,6 +22,9 @@ interface ContentBlock {
 
 let isActivePioSession = false;
 
+/** True when any tool call during the current agent run was `pio_mark_complete`. */
+let markCompleteCalled = false;
+
 /**
  * Test-only accessor for the internal `isActivePioSession` flag.
  *
@@ -33,6 +36,19 @@ export function __testSetActiveSession(value?: boolean): boolean {
     isActivePioSession = value;
   }
   return isActivePioSession;
+}
+
+/**
+ * Test-only accessor for the internal `markCompleteCalled` flag.
+ *
+ * @internal — Do not use in production code. Exists solely to allow unit tests
+ * to read and manipulate completion-tracking state without mocking the full ExtensionAPI.
+ */
+export function __testSetMarkCompleteCalled(value?: boolean): boolean {
+  if (value !== undefined) {
+    markCompleteCalled = value;
+  }
+  return markCompleteCalled;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,15 +105,21 @@ function getAssistantContent(event: TurnEndEvent): readonly ContentBlock[] | und
 /** Recovery prompt sent to nudge the agent when it produces only thinking. */
 const RECOVERY_PROMPT = "Your last response contained only thinking blocks. Please provide a visible response or take an action.";
 
+/** Warning sent when a pio sub-session ends without calling pio_mark_complete. */
+const AGENT_END_WARNING = "This session ended without calling pio_mark_complete. Output files were not validated against expected outputs, and next task in the workflow may not be scheduled.";
+
 /**
- * Register dead-turn detection and recovery handlers.
+ * Register session guard handlers.
  *
- * When called, registers two event handlers on the pi Extension API:
+ * When called, registers five event handlers on the pi Extension API:
  * 1. `resources_discover` — detects pio sub-sessions via `pio-config` custom entry.
  * 2. `turn_end` — inspects each turn; if thinking-only with no tool results,
  *    sends a recovery prompt to nudge the agent forward.
+ * 3. `tool_call` — tracks whether `pio_mark_complete` was called during the run.
+ * 4. `before_agent_start` — resets the completion flag at the start of each agent run.
+ * 5. `agent_end` — warns if the session ended without calling `pio_mark_complete`.
  */
-export function setupTurnGuard(pi: ExtensionAPI) {
+export function setupSessionGuard(pi: ExtensionAPI) {
   // 1. Detect pio sub-sessions at startup
   pi.on("resources_discover", async (_event, ctx) => {
     const entries = ctx.sessionManager.getEntries();
@@ -127,5 +149,26 @@ export function setupTurnGuard(pi: ExtensionAPI) {
     if (isThinkingOnlyTurn(content, event.toolResults)) {
       pi.sendUserMessage(RECOVERY_PROMPT, { deliverAs: "followUp"});
     }
+  });
+
+  // 3. Track pio_mark_complete calls (fires regardless of session type)
+  pi.on("tool_call", async (event) => {
+    if (event.toolName === "pio_mark_complete") {
+      markCompleteCalled = true;
+    }
+  });
+
+  // 4. Reset completion flag at the start of each agent run (pio sessions only)
+  pi.on("before_agent_start", async (_event, _ctx) => {
+    if (!isActivePioSession) return;
+    markCompleteCalled = false;
+  });
+
+  // 5. Warn at session end if pio_mark_complete was never called
+  pi.on("agent_end", async (_event: AgentEndEvent, _ctx) => {
+    if (!isActivePioSession) return;
+    if (markCompleteCalled) return;
+
+    pi.sendUserMessage(AGENT_END_WARNING, { deliverAs: "followUp" });
   });
 }

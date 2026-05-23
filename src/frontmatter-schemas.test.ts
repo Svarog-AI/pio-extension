@@ -13,7 +13,10 @@ const __dirname = dirname(__filename);
 
 describe("PLAN_FRONTMATTER_SCHEMA", () => {
   it("accepts valid totalSteps as positive integer", () => {
-    const result = validateAndCoerce({ totalSteps: 5 }, PLAN_FRONTMATTER_SCHEMA);
+    const result = validateAndCoerce(
+      { totalSteps: 5, steps: [{ name: "a", complexity: "task" }, { name: "b", complexity: "task" }, { name: "c", complexity: "task" }, { name: "d", complexity: "task" }, { name: "e", complexity: "task" }] },
+      PLAN_FRONTMATTER_SCHEMA,
+    );
 
     expect(result.error).toBeUndefined();
     expect(result.data).toBeDefined();
@@ -21,7 +24,10 @@ describe("PLAN_FRONTMATTER_SCHEMA", () => {
   });
 
   it("accepts totalSteps at minimum boundary (1)", () => {
-    const result = validateAndCoerce({ totalSteps: 1 }, PLAN_FRONTMATTER_SCHEMA);
+    const result = validateAndCoerce(
+      { totalSteps: 1, steps: [{ name: "only-step", complexity: "task" }] },
+      PLAN_FRONTMATTER_SCHEMA,
+    );
 
     expect(result.error).toBeUndefined();
     expect(result.data).toBeDefined();
@@ -29,7 +35,7 @@ describe("PLAN_FRONTMATTER_SCHEMA", () => {
   });
 
   it("rejects missing totalSteps", () => {
-    const result = validateAndCoerce({}, PLAN_FRONTMATTER_SCHEMA);
+    const result = validateAndCoerce({ steps: [{ name: "a", complexity: "task" }] }, PLAN_FRONTMATTER_SCHEMA);
 
     expect(result.data).toBeUndefined();
     expect(result.error).toBeDefined();
@@ -37,7 +43,7 @@ describe("PLAN_FRONTMATTER_SCHEMA", () => {
   });
 
   it("rejects zero totalSteps", () => {
-    const result = validateAndCoerce({ totalSteps: 0 }, PLAN_FRONTMATTER_SCHEMA);
+    const result = validateAndCoerce({ totalSteps: 0, steps: [] }, PLAN_FRONTMATTER_SCHEMA);
 
     expect(result.data).toBeUndefined();
     expect(result.error).toBeDefined();
@@ -45,28 +51,28 @@ describe("PLAN_FRONTMATTER_SCHEMA", () => {
   });
 
   it("rejects negative totalSteps", () => {
-    const result = validateAndCoerce({ totalSteps: -1 }, PLAN_FRONTMATTER_SCHEMA);
+    const result = validateAndCoerce({ totalSteps: -1, steps: [] }, PLAN_FRONTMATTER_SCHEMA);
 
     expect(result.data).toBeUndefined();
     expect(result.error).toBeDefined();
   });
 
   it("rejects float totalSteps", () => {
-    const result = validateAndCoerce({ totalSteps: 3.5 }, PLAN_FRONTMATTER_SCHEMA);
+    const result = validateAndCoerce({ totalSteps: 3.5, steps: [] }, PLAN_FRONTMATTER_SCHEMA);
 
     expect(result.data).toBeUndefined();
     expect(result.error).toBeDefined();
   });
 
   it("rejects string totalSteps", () => {
-    const result = validateAndCoerce({ totalSteps: "5" }, PLAN_FRONTMATTER_SCHEMA);
+    const result = validateAndCoerce({ totalSteps: "5", steps: [] } as Record<string, unknown>, PLAN_FRONTMATTER_SCHEMA);
 
     expect(result.data).toBeUndefined();
     expect(result.error).toBeDefined();
   });
 
   it("rejects boolean totalSteps", () => {
-    const result = validateAndCoerce({ totalSteps: true }, PLAN_FRONTMATTER_SCHEMA);
+    const result = validateAndCoerce({ totalSteps: true, steps: [] } as Record<string, unknown>, PLAN_FRONTMATTER_SCHEMA);
 
     expect(result.data).toBeUndefined();
     expect(result.error).toBeDefined();
@@ -74,13 +80,14 @@ describe("PLAN_FRONTMATTER_SCHEMA", () => {
 
   it("ignores extra fields not in schema", () => {
     const result = validateAndCoerce(
-      { totalSteps: 3, extraField: "value" },
+      { totalSteps: 3, steps: [{ name: "a", complexity: "task" }, { name: "b", complexity: "task" }, { name: "c", complexity: "task" }], extraField: "value" },
       PLAN_FRONTMATTER_SCHEMA,
     );
 
     expect(result.error).toBeUndefined();
     expect(result.data).toBeDefined();
     expect(result.data!.totalSteps).toBe(3);
+    expect(result.data!.steps).toHaveLength(3);
     expect((result.data! as Record<string, unknown>).extraField).toBeUndefined();
   });
 });
@@ -91,8 +98,9 @@ describe("PLAN_FRONTMATTER_SCHEMA", () => {
 
 describe("PlanFrontmatter type", () => {
   it("exports PlanFrontmatter type usable by TypeScript", () => {
-    const value: PlanFrontmatter = { totalSteps: 1 };
+    const value: PlanFrontmatter = { totalSteps: 1, steps: [{ name: "a", complexity: "task" }] };
     expect(value.totalSteps).toBe(1);
+    expect(value.steps).toHaveLength(1);
   });
 });
 

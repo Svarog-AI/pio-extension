@@ -1,0 +1,734 @@
+[
+  {
+    "timestamp": "2026-05-22T07:58:01.492Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "implement-subgoals",
+        "initialMessage": "Implement **nested subgoal support** for pio-extension.\n\nThe feasibility study is complete — see `docs/plans/subgoals/SYNTHESIS.md` (summary) and `docs/plans/subgoals/FEASIBILITY.md` (full analysis). These are the authoritative specification documents for this goal.\n\n**TL;DR from synthesis:**\n- Subgoals live at `S{NN}/subgoals/<name>/` inside parent step directories\n- Queue keys use `__` delimiters: `task-parent__S03__nested.json`\n- State machine: additive transitions — `evolve-plan` spawns subgoals, `finalize-goal` propagates completion to parent\n- Trigger: `create-plan` marks composite steps with `[subgoal]` annotations\n- 14 files modified, 0 breaking changes, all additive\n\nNote: the existing `subgoals` goal (`.pio/goals/subgoals/`) was the feasibility study goal. This is a new goal to actually implement the feature described in that study.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-22T08:20:35.352Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "implement-subgoals",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "implement-subgoals",
+          "initialMessage": "Implement **nested subgoal support** for pio-extension.\n\nThe feasibility study is complete — see `docs/plans/subgoals/SYNTHESIS.md` (summary) and `docs/plans/subgoals/FEASIBILITY.md` (full analysis). These are the authoritative specification documents for this goal.\n\n**TL;DR from synthesis:**\n- Subgoals live at `S{NN}/subgoals/<name>/` inside parent step directories\n- Queue keys use `__` delimiters: `task-parent__S03__nested.json`\n- State machine: additive transitions — `evolve-plan` spawns subgoals, `finalize-goal` propagates completion to parent\n- Trigger: `create-plan` marks composite steps with `[subgoal]` annotations\n- 14 files modified, 0 breaking changes, all additive\n\nNote: the existing `subgoals` goal (`.pio/goals/subgoals/`) was the feasibility study goal. This is a new goal to actually implement the feature described in that study.",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-22T08:23:18.471Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "implement-subgoals",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "implement-subgoals",
+          "initialMessage": "Implement **nested subgoal support** for pio-extension.\n\nThe feasibility study is complete — see `docs/plans/subgoals/SYNTHESIS.md` (summary) and `docs/plans/subgoals/FEASIBILITY.md` (full analysis). These are the authoritative specification documents for this goal.\n\n**TL;DR from synthesis:**\n- Subgoals live at `S{NN}/subgoals/<name>/` inside parent step directories\n- Queue keys use `__` delimiters: `task-parent__S03__nested.json`\n- State machine: additive transitions — `evolve-plan` spawns subgoals, `finalize-goal` propagates completion to parent\n- Trigger: `create-plan` marks composite steps with `[subgoal]` annotations\n- 14 files modified, 0 breaking changes, all additive\n\nNote: the existing `subgoals` goal (`.pio/goals/subgoals/`) was the feasibility study goal. This is a new goal to actually implement the feature described in that study.",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-22T08:26:58.258Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "implement-subgoals",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "implement-subgoals",
+          "initialMessage": "Implement **nested subgoal support** for pio-extension.\n\nThe feasibility study is complete — see `docs/plans/subgoals/SYNTHESIS.md` (summary) and `docs/plans/subgoals/FEASIBILITY.md` (full analysis). These are the authoritative specification documents for this goal.\n\n**TL;DR from synthesis:**\n- Subgoals live at `S{NN}/subgoals/<name>/` inside parent step directories\n- Queue keys use `__` delimiters: `task-parent__S03__nested.json`\n- State machine: additive transitions — `evolve-plan` spawns subgoals, `finalize-goal` propagates completion to parent\n- Trigger: `create-plan` marks composite steps with `[subgoal]` annotations\n- 14 files modified, 0 breaking changes, all additive\n\nNote: the existing `subgoals` goal (`.pio/goals/subgoals/`) was the feasibility study goal. This is a new goal to actually implement the feature described in that study.",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-22T08:28:51.817Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "implement-subgoals",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "implement-subgoals",
+          "initialMessage": "Implement **nested subgoal support** for pio-extension.\n\nThe feasibility study is complete — see `docs/plans/subgoals/SYNTHESIS.md` (summary) and `docs/plans/subgoals/FEASIBILITY.md` (full analysis). These are the authoritative specification documents for this goal.\n\n**TL;DR from synthesis:**\n- Subgoals live at `S{NN}/subgoals/<name>/` inside parent step directories\n- Queue keys use `__` delimiters: `task-parent__S03__nested.json`\n- State machine: additive transitions — `evolve-plan` spawns subgoals, `finalize-goal` propagates completion to parent\n- Trigger: `create-plan` marks composite steps with `[subgoal]` annotations\n- 14 files modified, 0 breaking changes, all additive\n\nNote: the existing `subgoals` goal (`.pio/goals/subgoals/`) was the feasibility study goal. This is a new goal to actually implement the feature described in that study.",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-22T08:29:50.490Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-22T08:32:57.641Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-22T10:18:34.811Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-22T11:52:59.096Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-22T12:04:07.801Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-22T12:14:36.953Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T12:24:17.234Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T12:26:10.583Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-22T12:30:54.160Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-22T12:34:04.438Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T12:36:42.821Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T12:44:22.666Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T13:26:13.091Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-22T13:31:31.994Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-22T13:33:33.229Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T14:21:59.465Z",
+    "from": "evolve-plan",
+    "to": "revise-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "revisionTriggerStep": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T14:25:56.281Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals"
+    }
+  },
+  {
+    "timestamp": "2026-05-22T14:37:45.010Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals"
+    }
+  },
+  {
+    "timestamp": "2026-05-22T14:40:09.888Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T14:46:07.446Z",
+    "from": "evolve-plan",
+    "to": "revise-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "revisionTriggerStep": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T14:52:04.971Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals"
+    }
+  },
+  {
+    "timestamp": "2026-05-22T14:54:55.148Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals"
+    }
+  },
+  {
+    "timestamp": "2026-05-22T14:57:51.741Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T15:03:07.422Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T15:14:29.380Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T15:48:36.343Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T15:52:18.076Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T15:55:59.540Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T15:59:22.300Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-22T16:02:12.300Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T16:05:18.004Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-22T16:09:13.990Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-22T16:10:10.221Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-22T16:13:44.973Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-22T18:58:25.970Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-22T19:21:07.935Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-22T19:27:08.355Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-22T19:32:19.387Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-22T19:39:09.928Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-22T19:41:07.948Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-22T19:56:31.545Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-22T20:01:49.893Z",
+    "from": "evolve-plan",
+    "to": "revise-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "revisionTriggerStep": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-22T20:10:49.286Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals"
+    }
+  },
+  {
+    "timestamp": "2026-05-22T20:13:25.809Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals"
+    }
+  },
+  {
+    "timestamp": "2026-05-22T20:18:47.300Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals"
+    }
+  },
+  {
+    "timestamp": "2026-05-23T06:31:22.094Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-23T06:37:46.870Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-23T06:51:55.891Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-23T06:57:18.536Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-23T07:05:52.271Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-23T07:09:30.939Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-23T07:10:24.068Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-23T07:12:06.685Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-23T07:15:35.645Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-23T07:23:28.506Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-23T07:27:28.847Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-23T07:28:58.946Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-23T07:31:20.257Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-23T07:34:56.075Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-23T08:00:46.701Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-23T08:05:03.275Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-23T08:06:48.189Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-23T08:08:43.237Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-23T08:10:35.032Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-23T08:14:13.749Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-23T08:18:41.402Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-23T08:21:08.230Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-23T08:22:11.075Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-23T08:26:04.523Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-23T08:29:07.447Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-23T08:32:44.562Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 9
+    }
+  },
+  {
+    "timestamp": "2026-05-23T08:34:00.595Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "implement-subgoals",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/implement-subgoals",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  }
+]

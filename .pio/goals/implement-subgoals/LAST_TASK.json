@@ -1,0 +1,165 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "implement-subgoals",
+    "stepNumber": 9,
+    "_sessionContext": {
+      "goalName": "implement-subgoals",
+      "stepNumber": 9,
+      "_sessionContext": {
+        "goalName": "implement-subgoals",
+        "stepNumber": 8,
+        "_sessionContext": {
+          "goalName": "implement-subgoals",
+          "stepNumber": 8,
+          "_sessionContext": {
+            "goalName": "implement-subgoals",
+            "stepNumber": 8,
+            "_sessionContext": {
+              "goalName": "implement-subgoals",
+              "stepNumber": 7,
+              "_sessionContext": {
+                "goalName": "implement-subgoals",
+                "stepNumber": 7,
+                "_sessionContext": {
+                  "goalName": "implement-subgoals",
+                  "stepNumber": 7,
+                  "_sessionContext": {
+                    "goalName": "implement-subgoals",
+                    "stepNumber": 7,
+                    "_sessionContext": {
+                      "goalName": "implement-subgoals",
+                      "stepNumber": 7,
+                      "_sessionContext": {
+                        "goalName": "implement-subgoals",
+                        "stepNumber": 6,
+                        "_sessionContext": {
+                          "goalName": "implement-subgoals",
+                          "stepNumber": 6,
+                          "_sessionContext": {
+                            "goalName": "implement-subgoals",
+                            "stepNumber": 6,
+                            "_sessionContext": {
+                              "goalName": "implement-subgoals",
+                              "stepNumber": 5,
+                              "_sessionContext": {
+                                "goalName": "implement-subgoals",
+                                "stepNumber": 5,
+                                "_sessionContext": {
+                                  "goalName": "implement-subgoals",
+                                  "_sessionContext": {
+                                    "goalName": "implement-subgoals",
+                                    "revisionTriggerStep": 5,
+                                    "_sessionContext": {
+                                      "goalName": "implement-subgoals",
+                                      "stepNumber": 5,
+                                      "_sessionContext": {
+                                        "goalName": "implement-subgoals",
+                                        "stepNumber": 4,
+                                        "_sessionContext": {
+                                          "goalName": "implement-subgoals",
+                                          "stepNumber": 4,
+                                          "_sessionContext": {
+                                            "goalName": "implement-subgoals",
+                                            "stepNumber": 4,
+                                            "_sessionContext": {
+                                              "goalName": "implement-subgoals",
+                                              "stepNumber": 3,
+                                              "_sessionContext": {
+                                                "goalName": "implement-subgoals",
+                                                "stepNumber": 3,
+                                                "_sessionContext": {
+                                                  "goalName": "implement-subgoals",
+                                                  "stepNumber": 3,
+                                                  "_sessionContext": {
+                                                    "goalName": "implement-subgoals",
+                                                    "stepNumber": 3,
+                                                    "_sessionContext": {
+                                                      "goalName": "implement-subgoals",
+                                                      "stepNumber": 3,
+                                                      "_sessionContext": {
+                                                        "goalName": "implement-subgoals",
+                                                        "stepNumber": 3,
+                                                        "_sessionContext": {
+                                                          "goalName": "implement-subgoals",
+                                                          "_sessionContext": {
+                                                            "goalName": "implement-subgoals",
+                                                            "revisionTriggerStep": 3,
+                                                            "_sessionContext": {
+                                                              "goalName": "implement-subgoals",
+                                                              "_sessionContext": {
+                                                                "goalName": "implement-subgoals",
+                                                                "revisionTriggerStep": 3,
+                                                                "_sessionContext": {
+                                                                  "goalName": "implement-subgoals",
+                                                                  "stepNumber": 3,
+                                                                  "capability": "evolve-plan"
+                                                                },
+                                                                "stepNumber": 3,
+                                                                "capability": "revise-plan"
+                                                              },
+                                                              "stepNumber": 3,
+                                                              "capability": "evolve-plan"
+                                                            },
+                                                            "stepNumber": 3,
+                                                            "capability": "revise-plan"
+                                                          },
+                                                          "stepNumber": 3,
+                                                          "capability": "evolve-plan"
+                                                        },
+                                                        "capability": "execute-task"
+                                                      },
+                                                      "capability": "review-task"
+                                                    },
+                                                    "capability": "execute-task"
+                                                  },
+                                                  "capability": "review-task"
+                                                },
+                                                "capability": "execute-task"
+                                              },
+                                              "capability": "review-task"
+                                            },
+                                            "capability": "evolve-plan"
+                                          },
+                                          "capability": "execute-task"
+                                        },
+                                        "capability": "review-task"
+                                      },
+                                      "capability": "evolve-plan"
+                                    },
+                                    "stepNumber": 5,
+                                    "capability": "revise-plan"
+                                  },
+                                  "stepNumber": 5,
+                                  "capability": "evolve-plan"
+                                },
+                                "capability": "execute-task"
+                              },
+                              "capability": "review-task"
+                            },
+                            "capability": "evolve-plan"
+                          },
+                          "capability": "execute-task"
+                        },
+                        "capability": "review-task"
+                      },
+                      "capability": "evolve-plan"
+                    },
+                    "capability": "execute-task"
+                  },
+                  "capability": "review-task"
+                },
+                "capability": "execute-task"
+              },
+              "capability": "review-task"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    }
+  }
+}

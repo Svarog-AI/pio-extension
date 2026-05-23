@@ -5,8 +5,17 @@ import * as path from "node:path";
 // Goal directory helpers
 // ---------------------------------------------------------------------------
 
-/** Resolve a goal workspace path under .pio/goals/<name>. */
-export function resolveGoalDir(cwd: string, name: string): string {
+/**
+ * Resolve a goal workspace path.
+ *
+ * When `parentStepDir` is omitted, returns the flat path `<cwd>/.pio/goals/<name>`.
+ * When `parentStepDir` is provided, returns `<parentStepDir>/subgoals/<name>`
+ * for nested subgoal workspaces.
+ */
+export function resolveGoalDir(cwd: string, name: string, parentStepDir?: string): string {
+  if (parentStepDir !== undefined) {
+    return path.join(parentStepDir, "subgoals", name);
+  }
   return path.join(cwd, ".pio", "goals", name);
 }
 
@@ -81,7 +90,10 @@ export function readIssue(cwd: string, identifier: string): string | undefined {
 export function deriveSessionName(goalName: string, capability: string, stepNumber?: number): string {
   if (!goalName) return capability;
 
-  let name = `${goalName} ${capability}`;
+  // Replace __ delimiters with / for display (hierarchical queue keys from subgoals)
+  const displayName = goalName.replace(/__/g, "/");
+
+  let name = `${displayName} ${capability}`;
   if (typeof stepNumber === "number") {
     name += ` s${stepNumber}`;
   }

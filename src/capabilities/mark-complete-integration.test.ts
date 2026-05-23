@@ -48,7 +48,7 @@ function setupGoalWorkspace(tempCwd: string, reviewContent: string): { goalDir: 
   fs.mkdirSync(stepDir, { recursive: true });
 
   fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Test Goal\n\n## Description\n\nTest goal.", "utf-8");
-  fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n\n## Step 1: Test Step\n\nDescription.", "utf-8");
+  fs.writeFileSync(path.join(goalDir, "PLAN.md"), "---\ntotalSteps: 1\nsteps:\n  - name: test-step\n    complexity: task\n---\n# Plan\n\n## Step 1: Test Step\n\nDescription.", "utf-8");
   fs.writeFileSync(path.join(stepDir, "REVIEW.md"), reviewContent, "utf-8");
   fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
   fs.writeFileSync(path.join(stepDir, "SUMMARY.md"), "# Summary\n\n## Status\n\nCOMPLETED", "utf-8");

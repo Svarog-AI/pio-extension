@@ -2,7 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { stepFolderName } from "./fs-utils";
 import { extractFrontmatter, validateAndCoerce } from "./frontmatter";
-import { PLAN_FRONTMATTER_SCHEMA, REVIEW_OUTPUT_SCHEMA, type PlanFrontmatter, type ReviewOutputs } from "./frontmatter-schemas";
+import { PLAN_FRONTMATTER_SCHEMA, REVIEW_OUTPUT_SCHEMA, type PlanFrontmatter, type ReviewOutputs, type StepMetadata } from "./frontmatter-schemas";
+import { deriveQueueKey } from "./queues";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,9 +40,20 @@ export interface StepStatus {
   status: () => "defined" | "implemented" | "approved" | "rejected" | "blocked" | "pending";
   /** Returns true when REVISE_PLAN_NEEDED marker exists in the step folder. */
   revisionNeeded: () => boolean;
+  /**
+   * Returns step metadata from PLAN.md frontmatter `steps` array.
+   * Maps step N to index N-1 in the array. Returns `{ name, complexity }` when available.
+   * Returns `null` when frontmatter is absent, schema validation fails, or the index is out of bounds.
+   */
+  getMetadata: () => StepMetadata | null;
 }
 
-function createStepStatus(stepDir: string, stepNumber: number, folderName: string): StepStatus {
+function createStepStatus(
+  stepDir: string,
+  stepNumber: number,
+  folderName: string,
+  metadata: StepMetadata | null,
+): StepStatus {
   return {
     stepNumber,
     folderName,
@@ -49,6 +61,7 @@ function createStepStatus(stepDir: string, stepNumber: number, folderName: strin
     hasTest: () => fs.existsSync(path.join(stepDir, TEST_FILE)),
     hasSummary: () => fs.existsSync(path.join(stepDir, SUMMARY_FILE)),
     revisionNeeded: () => fs.existsSync(path.join(stepDir, "REVISE_PLAN_NEEDED")),
+    getMetadata: () => metadata,
     status: () => {
       // Check markers in priority order: APPROVED > REJECTED > BLOCKED > COMPLETED
       if (fs.existsSync(path.join(stepDir, "APPROVED"))) return "approved";
@@ -56,11 +69,8 @@ function createStepStatus(stepDir: string, stepNumber: number, folderName: strin
       if (fs.existsSync(path.join(stepDir, "BLOCKED"))) return "blocked";
       if (fs.existsSync(path.join(stepDir, "COMPLETED"))) return "implemented";
 
-      // No markers — check if step is defined (has both spec files)
-      if (
-        fs.existsSync(path.join(stepDir, TASK_FILE)) &&
-        fs.existsSync(path.join(stepDir, TEST_FILE))
-      ) {
+      // No markers — check if step is defined (has TASK.md)
+      if (fs.existsSync(path.join(stepDir, TASK_FILE))) {
         return "defined";
       }
 
@@ -92,8 +102,10 @@ export interface GoalState {
    */
   totalPlanSteps: () => number | undefined;
   /**
-   * Scans for S{NN} folders and returns a StepStatus for each.
-   * Sorted by stepNumber ascending. Only includes folders that exist on disk.
+   * Returns a StepStatus for each step defined in PLAN.md frontmatter `steps` array.
+   * Derives step list from frontmatter, not from disk scanning.
+   * Each StepStatus still checks disk for file existence (hasTask, status, etc.).
+   * Returns empty array when frontmatter is absent or has no `steps` field.
    */
   steps: () => StepStatus[];
   /**
@@ -183,16 +195,14 @@ export function createGoalState(goalDir: string): GoalState {
     }
   }
 
-  // Extract planMetadata into a local variable so totalPlanSteps() can delegate.
-  // Can't use `this` in a plain object literal — use a shared closure instead.
-  const _planMetadata = (options?: { errors?: boolean }) => {
+  // planMetadata is defined as a local function so steps() and totalPlanSteps()
+  // can call it directly — single source of truth for frontmatter reading.
+  const planMetadata = (options?: { errors?: boolean }) => {
     const planPath = path.join(goalDir, "PLAN.md");
-
-    // extractFrontmatter returns null for missing file, no frontmatter, or malformed YAML
     const raw = extractFrontmatter(planPath);
     if (raw === null) {
       if (options?.errors) {
-        return { error: `could not extract frontmatter from PLAN.md` };
+        return { error: `could not extract frontmatter from PLAN.md` } as const;
       }
       console.warn(
         `[GoalState] planMetadata(): could not extract frontmatter from ${planPath}`,
@@ -200,11 +210,10 @@ export function createGoalState(goalDir: string): GoalState {
       return null;
     }
 
-    // validateAndCoerce returns { data } on success, { error } on validation failure
     const result = validateAndCoerce<PlanFrontmatter>(raw, PLAN_FRONTMATTER_SCHEMA);
     if ("error" in result) {
       if (options?.errors) {
-        return { error: result.error };
+        return { error: result.error } as const;
       }
       console.warn(
         `[GoalState] planMetadata(): frontmatter validation failed: ${result.error}`,
@@ -226,33 +235,34 @@ export function createGoalState(goalDir: string): GoalState {
 
     hasPlan: () => fs.existsSync(path.join(goalDir, "PLAN.md")),
 
-    planMetadata: _planMetadata,
+    planMetadata,
 
     totalPlanSteps: () => {
-      const metadata = _planMetadata() as PlanFrontmatter | null;
-      return metadata ? metadata.totalSteps : undefined;
+      const result = planMetadata() as PlanFrontmatter | null;
+      return result ? result.totalSteps : undefined;
     },
 
     steps: () => {
-      if (!fs.existsSync(goalDir)) return [];
+      // Derive step list from planMetadata() — single source of truth.
+      // Each entry in the `steps` array produces a StepStatus.
+      // Disk checks (hasTask, status, etc.) still read fresh on every call.
+      const data = planMetadata() as PlanFrontmatter | null;
+      if (!data || !data.steps || data.steps.length === 0) return [];
 
-      const entries = fs.readdirSync(goalDir, { withFileTypes: true });
       const stepStatuses: StepStatus[] = [];
 
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
+      for (let i = 0; i < data.steps.length; i++) {
+        const stepNumber = i + 1;
+        const folderName = stepFolderName(stepNumber);
+        const stepDir = path.join(goalDir, folderName);
+        const entry = data.steps[i];
+        const stepMetadata: StepMetadata = {
+          name: entry.name,
+          complexity: entry.complexity ?? "task",
+        };
 
-        const match = entry.name.match(STEP_FOLDER_RE);
-        if (!match) continue;
-
-        const stepNumber = parseInt(match[1], 10);
-        const stepDir = path.join(goalDir, entry.name);
-
-        stepStatuses.push(createStepStatus(stepDir, stepNumber, entry.name));
+        stepStatuses.push(createStepStatus(stepDir, stepNumber, folderName, stepMetadata));
       }
-
-      // Sort by step number ascending
-      stepStatuses.sort((a, b) => a.stepNumber - b.stepNumber);
 
       return stepStatuses;
     },
@@ -281,7 +291,8 @@ export function createGoalState(goalDir: string): GoalState {
     },
 
     pendingTask: () => {
-      const queuePath = path.join(cwd, ".pio", "session-queue", `task-${goalName}.json`);
+      const queueKey = deriveQueueKey(goalDir, cwd);
+      const queuePath = path.join(cwd, ".pio", "session-queue", `task-${queueKey}.json`);
       if (!fs.existsSync(queuePath)) return undefined;
 
       try {

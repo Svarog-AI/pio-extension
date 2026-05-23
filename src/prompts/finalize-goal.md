@@ -49,6 +49,14 @@ Scan the goal workspace for step folders (`S01/`, `S02/`, etc.). Read `SUMMARY.m
 
 If a step folder has no `SUMMARY.md`, skip it gracefully.
 
+**Subgoal-aware reading:** When scanning step folders, check for a `subgoals/` subdirectory inside each `S{NN}/` folder (e.g., `S03/subgoals/`). If present, this step spawned nested subgoals. For each subgoal workspace under `subgoals/<name>/`:
+
+- Read the subgoal's `GOAL.md` for context on what was built
+- Read the subgoal's final `DECISIONS.md` (from the highest-numbered sub-step folder) for accumulated decisions
+- Read per-sub-step `SUMMARY.md` files from the subgoal workspace
+
+Treat the subgoal as a single unit — don't confuse subgoal step folders (e.g., `S03/subgoals/nested-feature/S01/`) with parent step folders. The subgoal's `COMPLETED` marker signals that the parent step is complete.
+
 ### Step 3: Read the final DECISIONS.md
 
 Read `DECISIONS.md` from the path provided in the initial user message. This is the accumulated decisions file from the highest-numbered step folder. It contains explicit architectural decisions, file placement changes, and prompt reference mappings captured during the goal lifecycle.

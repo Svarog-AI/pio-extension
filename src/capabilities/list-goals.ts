@@ -15,7 +15,7 @@ import type { SessionQueueTask } from "../queues";
  *   - PLAN.md present → "planned"
  *   - Step folders with TASK.md → "in progress"
  */
-function inferPhase(goalDir: string): string {
+export function inferPhase(goalDir: string): string {
   const hasGoal = fs.existsSync(path.join(goalDir, "GOAL.md"));
   if (!hasGoal) return "empty";
 
@@ -38,7 +38,7 @@ function inferPhase(goalDir: string): string {
 /**
  * Read LAST_TASK.json and extract the last capability name.
  */
-function readLastTask(goalDir: string): string | undefined {
+export function readLastTask(goalDir: string): string | undefined {
   const filePath = path.join(goalDir, "LAST_TASK.json");
   if (!fs.existsSync(filePath)) return undefined;
   try {
@@ -48,6 +48,54 @@ function readLastTask(goalDir: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Recursively discover subgoals under a goal's step directories.
+ * Scans for S{NN}/subgoals/<name>/ directories containing GOAL.md.
+ * Returns an array of { dir, displayName } entries with hierarchical names.
+ */
+export function findSubgoals(
+  goalDir: string,
+  parentDisplayName: string,
+): Array<{ dir: string; displayName: string }> {
+  const results: Array<{ dir: string; displayName: string }> = [];
+
+  try {
+    const entries = fs.readdirSync(goalDir, { withFileTypes: true });
+    for (const entry of entries) {
+      // Match step folders: S01, S02, etc.
+      if (!entry.isDirectory() || !/^S\d{2}$/.test(entry.name)) continue;
+
+      const stepDir = path.join(goalDir, entry.name);
+      const subgoalsDir = path.join(stepDir, "subgoals");
+
+      if (!fs.existsSync(subgoalsDir)) continue;
+
+      try {
+        const subgoalEntries = fs.readdirSync(subgoalsDir, { withFileTypes: true });
+        for (const subEntry of subgoalEntries) {
+          if (!subEntry.isDirectory()) continue;
+
+          const subgoalDir = path.join(subgoalsDir, subEntry.name);
+          const hasGoal = fs.existsSync(path.join(subgoalDir, "GOAL.md"));
+          if (!hasGoal) continue;
+
+          const displayName = `${parentDisplayName}/${entry.name}/${subEntry.name}`;
+          results.push({ dir: subgoalDir, displayName });
+
+          // Recurse into this subgoal to find further nesting
+          results.push(...findSubgoals(subgoalDir, displayName));
+        }
+      } catch {
+        // Empty or unreadable subgoals directory — skip silently
+      }
+    }
+  } catch {
+    // Empty or unreadable goal directory — skip silently
+  }
+
+  return results;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,13 +119,28 @@ async function handleListGoals(_args: string | undefined, ctx: ExtensionCommandC
   }
 
   // Build a table of goals with name, phase, and last task
-  const rows = goalDirs.sort().map((name) => {
+  const rows: string[] = [];
+
+  // Top-level goals
+  for (const name of goalDirs.sort()) {
     const goalDir = resolveGoalDir(ctx.cwd, name);
     const phase = inferPhase(goalDir);
     const lastTask = readLastTask(goalDir);
 
-    return `| ${name} | ${phase} | ${lastTask || "—"} |`;
-  });
+    rows.push(`| ${name} | ${phase} | ${lastTask || "—"} |`);
+  }
+
+  // Nested subgoals (discovered recursively)
+  for (const name of goalDirs.sort()) {
+    const goalDir = resolveGoalDir(ctx.cwd, name);
+    const subgoals = findSubgoals(goalDir, name);
+    for (const subgoal of subgoals) {
+      const phase = inferPhase(subgoal.dir);
+      const lastTask = readLastTask(subgoal.dir);
+
+      rows.push(`| ${subgoal.displayName} | ${phase} | ${lastTask || "—"} |`);
+    }
+  }
 
   const header = "| Goal | Phase | Last Task |";
   const separator = "|------|-------|-----------|";

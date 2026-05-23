@@ -17,7 +17,6 @@ import type { PlanFrontmatter } from "../frontmatter-schemas";
 
 const PLAN_FILE = "PLAN.md";
 const TASK_FILE = "TASK.md";
-const TEST_FILE = "TEST.md";
 const DECISIONS_FILE = "DECISIONS.md";
 export const REVISE_PLAN_MARKER = "REVISE_PLAN_NEEDED";
 
@@ -32,7 +31,7 @@ function resolveEvolveValidation(_workingDir: string, params?: Record<string, un
     throw new Error("stepNumber is required for evolve-plan. Ensure the task was enqueued with a valid step number.");
   }
   const folder = stepFolderName(stepNumber);
-  const files: string[] = [`${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`];
+  const files: string[] = [`${folder}/${TASK_FILE}`];
   if (stepNumber > 1) {
     files.push(`${folder}/${DECISIONS_FILE}`);
   }
@@ -45,7 +44,7 @@ function resolveEvolveWriteAllowlist(_workingDir: string, params?: Record<string
     throw new Error("stepNumber is required for evolve-plan. Ensure the task was enqueued with a valid step number.");
   }
   const folder = stepFolderName(stepNumber);
-  const allowlist: string[] = ["COMPLETED", `${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`, `${folder}/${REVISE_PLAN_MARKER}`];
+  const allowlist: string[] = ["COMPLETED", `${folder}/${TASK_FILE}`, `${folder}/${REVISE_PLAN_MARKER}`];
   if (stepNumber > 1) {
     allowlist.push(`${folder}/${DECISIONS_FILE}`);
   }
@@ -62,7 +61,7 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
       throw new Error("stepNumber is required for evolve-plan. Ensure the task was enqueued with a valid step number.");
     }
     const folderName = stepFolderName(stepNumber);
-    return `Goal workspace is at ${workingDir}. PLAN.md exists. You are responsible for **Step ${stepNumber}**. Generate TASK.md and TEST.md inside the \`${folderName}/\` directory.`;
+    return `Goal workspace is at ${workingDir}. PLAN.md exists. You are responsible for **Step ${stepNumber}**. Generate TASK.md inside the \`${folderName}/\` directory.`;
   },
 };
 
@@ -74,7 +73,7 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
  * Validate that the goal workspace exists and has a PLAN.md.
  * Then find the next step to evolve by scanning for existing S{NN}/ folders:
  *   - Scan S01, S02, ... in order — track the highest step number where
- *     both TASK.md and TEST.md exist.
+ *     TASK.md exists.
  *   - Stop when a folder doesn't exist (no more steps defined).
  *   - Return highestDefined + 1 (or 1 if no defined steps found).
  *
@@ -155,8 +154,8 @@ const evolvePlanTool = defineTool({
   name: "pio_evolve_plan",
   label: "Pio Evolve Plan",
   description:
-    "Generate a step-by-step specification (TASK.md + TEST.md) for the next step in an existing PLAN.md. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
-  promptSnippet: "Generate TASK.md + TEST.md for the next plan step.",
+    "Generate a step-by-step specification (TASK.md) for the next step in an existing PLAN.md. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
+  promptSnippet: "Generate TASK.md for the next plan step.",
   parameters: Type.Object({
     name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
   }),

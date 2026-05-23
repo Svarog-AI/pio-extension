@@ -21,7 +21,7 @@ function resolveExecuteValidation(_dir: string, params?: Record<string, unknown>
     throw new Error("stepNumber is required for execute-task. Ensure the task was enqueued with a valid step number.");
   }
   const folder = stepFolderName(stepNumber);
-  return { files: [`${folder}/${SUMMARY_FILE}`] };
+  return { files: [`${folder}/${TEST_FILE}`, `${folder}/${SUMMARY_FILE}`] };
 }
 
 function resolveExecuteReadOnlyFiles(_dir: string, params?: Record<string, unknown>): string[] {
@@ -30,7 +30,7 @@ function resolveExecuteReadOnlyFiles(_dir: string, params?: Record<string, unkno
     throw new Error("stepNumber is required for execute-task. Ensure the task was enqueued with a valid step number.");
   }
   const folder = stepFolderName(stepNumber);
-  return [`${folder}/${TASK_FILE}`, `${folder}/${TEST_FILE}`];
+  return [`${folder}/${TASK_FILE}`];
 }
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
@@ -55,7 +55,7 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
       // If filesystem read fails, fall through to the normal message
     }
 
-    return `${prefix}Goal workspace is at ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md and TEST.md inside the \`${folderName}/\` directory, write tests first, then implement the feature to make them pass.`;
+    return `${prefix}Goal workspace is at ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md inside the \`${folderName}/\` directory, create TEST.md with concise test cases, write tests first, then implement the feature to make them pass.`;
   },
 };
 
@@ -71,7 +71,7 @@ const TEST_FILE = "TEST.md";
 const SUMMARY_FILE = "SUMMARY.md";
 
 /**
- * Check whether a step is ready for execution: both TASK.md and TEST.md exist,
+ * Check whether a step is ready for execution: TASK.md exists,
  * but neither COMPLETED nor BLOCKED marker has been written yet.
  */
 export function isStepReady(goalDir: string, stepNumber: number): boolean {
@@ -79,7 +79,7 @@ export function isStepReady(goalDir: string, stepNumber: number): boolean {
   const step = state.steps().find(s => s.stepNumber === stepNumber);
   if (!step) return false;
 
-  // "defined" status means TASK.md + TEST.md exist with no COMPLETED/BLOCKED/APPROVED/REJECTED markers.
+  // "defined" status means TASK.md exists with no COMPLETED/BLOCKED/APPROVED/REJECTED markers.
   return step.status() === "defined";
 }
 
@@ -89,7 +89,7 @@ export function isStepReady(goalDir: string, stepNumber: number): boolean {
 
 /**
  * Validate that the goal workspace exists with both GOAL.md and PLAN.md.
- * Then scan S01/, S02/, … for the first step where TASK.md + TEST.md exist
+ * Then scan S01/, S02/, … for the first step where TASK.md exists
  * but no COMPLETED/BLOCKED marker is present yet.
  *
  * Returns { goalDir, ready: true, stepNumber } on success,
@@ -147,12 +147,12 @@ async function validateAndFindNextStep(
   return {
     goalDir,
     ready: false,
-    error: `No ready steps found for goal "${name}". All steps are either completed or missing specs (TASK.md/TEST.md). Run /pio-evolve-plan ${name} to generate specs.`,
+    error: `No ready steps found for goal "${name}". All steps are either completed or missing specs (TASK.md). Run /pio-evolve-plan ${name} to generate specs.`,
   };
 }
 
 /**
- * Validate that an explicitly requested step has both TASK.md and TEST.md.
+ * Validate that an explicitly requested step has TASK.md.
  */
 async function validateExplicitStep(
   name: string,
@@ -184,14 +184,11 @@ async function validateExplicitStep(
     };
   }
 
-  if (!step.hasTask() || !step.hasTest()) {
-    const missing: string[] = [];
-    if (!step.hasTask()) missing.push(TASK_FILE);
-    if (!step.hasTest()) missing.push(TEST_FILE);
+  if (!step.hasTask()) {
     return {
       goalDir,
       ready: false,
-      error: `Step ${stepNumber} is missing ${missing.join(" and ")} in "${folder}/". Run /pio-evolve-plan ${name} to generate specs.`,
+      error: `Step ${stepNumber} is missing ${TASK_FILE} in "${folder}/". Run /pio-evolve-plan ${name} to generate specs.`,
     };
   }
 
@@ -224,7 +221,7 @@ const executeTaskTool = defineTool({
   name: "pio_execute_task",
   label: "Pio Execute Task",
   description:
-    "Execute a single plan step using a test-first workflow. Reads TASK.md and TEST.md, writes tests first, then implements the feature. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
+    "Execute a single plan step using a test-first workflow. Reads TASK.md, writes tests first based on acceptance criteria, then implements the feature. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Execute a single plan step (test-first implementation).",
   parameters: Type.Object({
     name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),

@@ -148,7 +148,14 @@ const markCompleteTool = defineTool({
           ? adjustedParams.stepNumber
           : stepNumber;
 
-        enqueueTask(process.cwd(), goalName, {
+        // For subgoals completing via finalize-goal, transitionFinalizeGoal sets
+        // goalName to parentGoalName in returned params. Use this as the queue key
+        // to restore the parent workflow slot. For flat goals, this equals state.goalName.
+        const queueGoalName = typeof adjustedParams.goalName === "string"
+          ? adjustedParams.goalName
+          : goalName;
+
+        enqueueTask(process.cwd(), queueGoalName, {
           capability: nextTask.capability,
           params: {
             goalName,

@@ -34,8 +34,19 @@ export type ReviewOutputs = Static<typeof REVIEW_OUTPUT_SCHEMA>;
  * Leaf module — imports only from external packages (typebox).
  * Never imports from the rest of the codebase to avoid circular dependencies.
  */
+
+/** Step metadata entry in the `steps` array of PLAN.md frontmatter. */
+export const STEP_ENTRY_SCHEMA = Type.Object({
+  name: Type.String({ minLength: 1 }),
+  complexity: Type.Optional(Type.Union([Type.Literal("task"), Type.Literal("subgoal")])),
+});
+
+/** Derived type — no manual interface definition. */
+export type StepMetadata = Static<typeof STEP_ENTRY_SCHEMA>;
+
 export const PLAN_FRONTMATTER_SCHEMA = Type.Object({
   totalSteps: Type.Integer({ minimum: 1 }),
+  steps: Type.Array(STEP_ENTRY_SCHEMA),
 });
 
 /** Derived type from the schema — no manual interface definition. */

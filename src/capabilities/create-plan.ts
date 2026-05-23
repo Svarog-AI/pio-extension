@@ -8,6 +8,7 @@ import { resolveGoalDir } from "../fs-utils";
 import { enqueueTask } from "../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
 import { createGoalState } from "../goal-state";
+import { type PlanFrontmatter } from "../frontmatter-schemas";
 
 // ---------------------------------------------------------------------------
 // postValidate — validates PLAN.md frontmatter correctness
@@ -36,26 +37,62 @@ function postValidateCreatePlan(goalDir: string): { success: boolean; message?: 
   const result = state.planMetadata({ errors: true });
 
   // Type assertion: when { errors: true }, result is always { data?: ...; error?: string }
-  const typedResult = result as { data?: { totalSteps: number }; error?: string };
+  const typedResult = result as { data?: PlanFrontmatter; error?: string };
 
   if (typedResult.error) {
     return { success: false, message: typedResult.error };
   }
 
-  // Step 2: Count actual ## Step N: headings in PLAN.md
+  const { totalSteps, steps } = typedResult.data!;
+
+  // Step 2: Validate steps array length matches totalSteps
+  if (steps.length !== totalSteps) {
+    return {
+      success: false,
+      message: `steps array has ${steps.length} entries but totalSteps is ${totalSteps}. Update the steps array to match totalSteps.`,
+    };
+  }
+
+  // Step 3: Validate each entry has a non-empty name (TypeBox minLength:1 catches empty strings,
+  // but we provide a user-friendly message for whitespace-only names)
+  for (let i = 0; i < steps.length; i++) {
+    if (!steps[i].name || steps[i].name.trim() === "") {
+      return {
+        success: false,
+        message: `step entry at index ${i} has an empty name`,
+      };
+    }
+  }
+
+  // Step 4: Count actual ## Step N: headings in PLAN.md
   const planPath = `${goalDir}/PLAN.md`;
   const planContent = fs.readFileSync(planPath, "utf-8");
   const headingMatches = planContent.match(STEP_HEADING_RE);
   const headingCount = headingMatches ? headingMatches.length : 0;
 
-  // Step 3: Compare heading count to totalSteps
-  const totalSteps = typedResult.data!.totalSteps;
-
+  // Step 5: Compare heading count to totalSteps
   if (headingCount !== totalSteps) {
     return {
       success: false,
       message: `totalSteps is ${totalSteps} but found ${headingCount} step heading(s) in PLAN.md. Update totalSteps or add/remove step headings to match.`,
     };
+  }
+
+  // Step 6: Validate unique subgoal names (only subgoal entries need unique names)
+  const subgoalEntries = steps.filter((s) => s.complexity === "subgoal");
+  if (subgoalEntries.length > 0) {
+    const subgoalNames = subgoalEntries.map((s) => s.name);
+    const uniqueNames = new Set(subgoalNames);
+    if (uniqueNames.size !== subgoalNames.length) {
+      const duplicates = [...subgoalNames].filter(
+        (name, i) => subgoalNames.indexOf(name) !== i,
+      );
+      const uniqueDups = [...new Set(duplicates)].join(", ");
+      return {
+        success: false,
+        message: `Duplicate subgoal name(s) found: ${uniqueDups}. Each subgoal must have a unique name to prevent path collisions.`,
+      };
+    }
   }
 
   return { success: true };

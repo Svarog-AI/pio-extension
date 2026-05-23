@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { validateOutputs } from "../guards/validation";
 import { resolveCapabilityConfig } from "../capability-config";
-import { validateAndFindNextStep } from "./evolve-plan";
+import { validateAndFindNextStep, CAPABILITY_CONFIG } from "./evolve-plan";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -121,10 +121,10 @@ describe("resolveEvolveWriteAllowlist", () => {
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: writeAllowlist contains COMPLETED, S02/TASK.md, S02/TEST.md
+    // Assert: writeAllowlist contains COMPLETED, S02/TASK.md (no TEST.md)
     expect(result!.writeAllowlist).toContain("COMPLETED");
     expect(result!.writeAllowlist).toContain("S02/TASK.md");
-    expect(result!.writeAllowlist).toContain("S02/TEST.md");
+    expect(result!.writeAllowlist).not.toContain("S02/TEST.md");
   });
 });
 
@@ -199,25 +199,25 @@ describe("REVISE_PLAN_NEEDED marker filename consistency", () => {
 
 describe("resolveEvolveValidation with DECISIONS_FILE", () => {
   it("excludes DECISIONS.md for stepNumber=1", async () => {
-    // Arrange: step 1 should produce only TASK.md and TEST.md
+    // Arrange: step 1 should produce only TASK.md
     const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1 };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: exactly 2 files, no DECISIONS.md
-    expect(result?.validation?.files).toEqual(["S01/TASK.md", "S01/TEST.md"]);
+    // Assert: exactly 1 file, no DECISIONS.md, no TEST.md
+    expect(result?.validation?.files).toEqual(["S01/TASK.md"]);
   });
 
   it("includes DECISIONS.md for stepNumber=2", async () => {
-    // Arrange: step 2 should include DECISIONS.md alongside TASK.md and TEST.md
+    // Arrange: step 2 should include DECISIONS.md alongside TASK.md
     const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2 };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: exactly 3 files, DECISIONS.md is last
-    expect(result?.validation?.files).toEqual(["S02/TASK.md", "S02/TEST.md", "S02/DECISIONS.md"]);
+    // Assert: exactly 2 files, DECISIONS.md is last, no TEST.md
+    expect(result?.validation?.files).toEqual(["S02/TASK.md", "S02/DECISIONS.md"]);
   });
 
   it("includes DECISIONS.md for stepNumber=3", async () => {
@@ -227,9 +227,9 @@ describe("resolveEvolveValidation with DECISIONS_FILE", () => {
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: contains S03/DECISIONS.md, total length is 3
+    // Assert: contains S03/DECISIONS.md, total length is 2, no TEST.md
     expect(result?.validation?.files).toContain("S03/DECISIONS.md");
-    expect(result?.validation?.files?.length).toBe(3);
+    expect(result?.validation?.files?.length).toBe(2);
   });
 });
 
@@ -256,13 +256,13 @@ describe("resolveEvolveWriteAllowlist with DECISIONS_FILE", () => {
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: contains all expected files including DECISIONS.md and REVISE_PLAN_NEEDED (total length is 5)
+    // Assert: contains all expected files including DECISIONS.md and REVISE_PLAN_NEEDED (total length is 4, no TEST.md)
     expect(result?.writeAllowlist).toContain("COMPLETED");
     expect(result?.writeAllowlist).toContain("S02/TASK.md");
-    expect(result?.writeAllowlist).toContain("S02/TEST.md");
+    expect(result?.writeAllowlist).not.toContain("S02/TEST.md");
     expect(result?.writeAllowlist).toContain("S02/DECISIONS.md");
     expect(result?.writeAllowlist).toContain("S02/REVISE_PLAN_NEEDED");
-    expect(result?.writeAllowlist?.length).toBe(5);
+    expect(result?.writeAllowlist?.length).toBe(4);
   });
 });
 
@@ -283,7 +283,8 @@ function createGoalTreeWithFrontmatter(
   fs.mkdirSync(goalDir, { recursive: true });
 
   // Create PLAN.md with YAML frontmatter
-  const planContent = `---\ntotalSteps: ${totalSteps}\n---\n# Plan\n\n### Step 1: Test step\n`;
+  const stepsYaml = Array.from({ length: totalSteps }, (_, i) => `  - name: step-${i + 1}\n    complexity: task`).join("\n");
+  const planContent = `---\ntotalSteps: ${totalSteps}\nsteps:\n${stepsYaml}\n---\n# Plan\n\n### Step 1: Test step\n`;
   fs.writeFileSync(path.join(goalDir, "PLAN.md"), planContent, "utf-8");
 
   // Create step folders with optional APPROVED markers
@@ -399,6 +400,127 @@ describe("validateAndFindNextStep with COMPLETED marker", () => {
 
     // Act & Assert: should throw because frontmatter is mandatory
     await expect(validateAndFindNextStep("no-frontmatter-goal", tempDir)).rejects.toThrow(/invalid or missing frontmatter/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveEvolveValidation — TEST.md excluded
+// ---------------------------------------------------------------------------
+
+describe("resolveEvolveValidation excludes TEST.md", () => {
+  it("excludes TEST.md for stepNumber=1", async () => {
+    // Arrange: step 1 validation
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1 };
+
+    // Act
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    // Assert: validation files equals ["S01/TASK.md"] exactly
+    expect(result?.validation?.files).toEqual(["S01/TASK.md"]);
+  });
+
+  it("excludes TEST.md for stepNumber=2", async () => {
+    // Arrange: step 2 validation
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2 };
+
+    // Act
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    // Assert: no TEST.md in validation files
+    expect(result?.validation?.files).not.toContain("S02/TEST.md");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// defaultInitialMessage — TASK.md only
+// ---------------------------------------------------------------------------
+
+describe("defaultInitialMessage", () => {
+  it("mentions TASK.md only, not TEST.md", () => {
+    // Act: call defaultInitialMessage directly from CAPABILITY_CONFIG
+    const message = CAPABILITY_CONFIG.defaultInitialMessage("/tmp/proj/.pio/goals/test-goal", { stepNumber: 1 });
+
+    // Assert: mentions TASK.md but not TEST.md
+    expect(message).toContain("TASK.md");
+    expect(message).not.toContain("TEST.md");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateAndFindNextStep — TASK.md-only folder finds next step
+// ---------------------------------------------------------------------------
+
+describe("validateAndFindNextStep with TASK.md-only folder", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("TASK.md-only folder is considered defined (status check)", async () => {
+    // Arrange: totalSteps=3, S01 has only TASK.md (status "defined"), no S02
+    const goalDir = path.join(tempDir, ".pio", "goals", "task-only-goal");
+    fs.mkdirSync(goalDir, { recursive: true });
+
+    const stepsYaml = [
+      "  - name: step-1\n    complexity: task",
+      "  - name: step-2\n    complexity: task",
+      "  - name: step-3\n    complexity: task",
+    ].join("\n");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      `---\ntotalSteps: 3\nsteps:\n${stepsYaml}\n---\n# Plan`,
+      "utf-8",
+    );
+
+    // S01 with only TASK.md (no TEST.md) — status should be "defined"
+    const s01Dir = path.join(goalDir, "S01");
+    fs.mkdirSync(s01Dir, { recursive: true });
+    fs.writeFileSync(path.join(s01Dir, "TASK.md"), "# Task\n", "utf-8");
+
+    // Act
+    const result = await validateAndFindNextStep("task-only-goal", tempDir);
+
+    // Assert: ready is true, stepNumber is 1 (S01 exists but has no APPROVED marker)
+    // currentStepNumber() checks for APPROVED markers, not file status.
+    // S01 with TASK.md only is "defined" but not yet approved — work here.
+    expect(result.ready).toBe(true);
+    if (result.ready) {
+      expect(result.stepNumber).toBe(1);
+    }
+  });
+
+  it("APPROVED S01 advances to S02 even with TASK.md-only (no TEST.md)", async () => {
+    // Arrange: totalSteps=3, S01 has TASK.md + APPROVED (no TEST.md needed)
+    const goalDir = path.join(tempDir, ".pio", "goals", "approved-task-only");
+    fs.mkdirSync(goalDir, { recursive: true });
+
+    const stepsYaml = [
+      "  - name: step-1\n    complexity: task",
+      "  - name: step-2\n    complexity: task",
+      "  - name: step-3\n    complexity: task",
+    ].join("\n");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      `---\ntotalSteps: 3\nsteps:\n${stepsYaml}\n---\n# Plan`,
+      "utf-8",
+    );
+
+    const s01Dir = path.join(goalDir, "S01");
+    fs.mkdirSync(s01Dir, { recursive: true });
+    fs.writeFileSync(path.join(s01Dir, "TASK.md"), "# Task\n", "utf-8");
+    fs.writeFileSync(path.join(s01Dir, "APPROVED"), "", "utf-8");
+
+    // Act
+    const result = await validateAndFindNextStep("approved-task-only", tempDir);
+
+    // Assert: S01 is approved, moves to S02
+    expect(result.ready).toBe(true);
+    if (result.ready) {
+      expect(result.stepNumber).toBe(2);
+    }
   });
 });
 

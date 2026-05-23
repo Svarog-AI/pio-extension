@@ -24,7 +24,7 @@ pio-extension/
 │   │   ├── init.ts              — pio_init: bootstraps .pio/ directory
 │   │   ├── create-goal.ts       — pio_create_goal: creates goal workspace, queues definition session
 │   │   ├── create-plan.ts       — pio_create_plan: generates PLAN.md from GOAL.md
-│   │   ├── evolve-plan.ts       — pio_evolve_plan: generates TASK.md + TEST.md per step
+│   │   ├── evolve-plan.ts       — pio_evolve_plan: generates TASK.md per step (tests derived at execute-time)
 │   │   ├── execute-task.ts      — pio_execute_task: implements a single plan step (TDD)
 │   │   ├── review-code.ts       — pio_review_code: reviews implementation, approve/reject
 │   │   ├── execute-plan.ts      — /pio-execute-plan command: all steps in one session
@@ -67,10 +67,10 @@ pio-extension/
 │   ├── queues.ts              # Session task queue (enqueueTask, readPendingTask, per-goal slots)
 │   └── model-config.ts        # Per-capability model config from ~/.pi/pio-config.yaml
 ├── .pio/                      # Runtime workspace (goals, issues, session queue)
-│   ├── goals/<name>/          # Per-goal workspaces: GOAL.md, PLAN.md, PLAN_ARCHIVE/, S01/, transitions.json
+│   ├── goals/<name>/          # Per-goal workspaces: GOAL.md, PLAN.md, PLAN_ARCHIVE/, S01/, nested subgoals under S{NN}/subgoals/<name>/, transitions.json
 │   ├── issues/                # Issue backlog as markdown files
 │   ├── PROJECT/               # 7-file project context (loaded by sub-sessions)
-│   └── session-queue/         # Per-goal task slots (task-{goalName}.json)
+│   └── session-queue/         # Per-goal task slots (task-{key}.json, hierarchical keys for nested subgoals)
 ├── .github/workflows/ci.yml   # CI: type check + Vitest tests on push/PR to main
 ├── docs/                      # Empty — no documentation files yet
 ├── package.json               # Dependency manifest + pi extension config (pi.extensions[0])

@@ -188,7 +188,7 @@ describe("resolveCapabilityConfig — step-dependent callback resolution", () =>
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
     expect(result!.validation?.files).toContain("S03/TASK.md");
-    expect(result!.validation?.files).toContain("S03/TEST.md");
+    expect(result!.validation?.files).not.toContain("S03/TEST.md");
   });
 
   it("invokes evolve-plan writeAllowlist callback with correct stepNumber", async () => {
@@ -197,14 +197,15 @@ describe("resolveCapabilityConfig — step-dependent callback resolution", () =>
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
     expect(result!.writeAllowlist).toContain("S05/TASK.md");
-    expect(result!.writeAllowlist).toContain("S05/TEST.md");
+    expect(result!.writeAllowlist).not.toContain("S05/TEST.md");
   });
 
-  it("invokes execute-task validation callback (checks for SUMMARY.md)", async () => {
+  it("invokes execute-task validation callback (checks for TEST.md and SUMMARY.md)", async () => {
     const params = { capability: "execute-task" as string, goalName: "my-feature", stepNumber: 2 };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
+    expect(result!.validation?.files).toContain("S02/TEST.md");
     expect(result!.validation?.files).toContain("S02/SUMMARY.md");
   });
 
@@ -214,7 +215,7 @@ describe("resolveCapabilityConfig — step-dependent callback resolution", () =>
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
     expect(result!.readOnlyFiles).toContain("S01/TASK.md");
-    expect(result!.readOnlyFiles).toContain("S01/TEST.md");
+    expect(result!.readOnlyFiles).not.toContain("S01/TEST.md");
   });
 
   it("invokes review-task writeAllowlist callback (REVIEW.md only)", async () => {

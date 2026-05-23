@@ -38,9 +38,27 @@ function createGoalTree(
 
 /**
  * Helper to generate PLAN.md content with frontmatter and step headings.
+ * Includes a valid `steps` array by default.
  */
 function makePlanContent(totalSteps: number, headingCount: number): string {
-  const frontmatter = `---\ntotalSteps: ${totalSteps}\n---`;
+  const stepsYaml = Array.from({ length: totalSteps }, (_, i) => `  - name: step-${i + 1}\n    complexity: task`).join("\n");
+  const frontmatter = `---\ntotalSteps: ${totalSteps}\nsteps:\n${stepsYaml}\n---`;
+  const title = "# Plan: Test Goal";
+  const headings = Array.from({ length: headingCount }, (_, i) => `## Step ${i + 1}: Step description`).join("\n");
+  return `${frontmatter}\n${title}\n\n${headings}`;
+}
+
+/**
+ * Helper to generate PLAN.md content with a custom `steps` frontmatter array.
+ */
+function makePlanContentWithSteps(
+  totalSteps: number,
+  stepsArray: Array<{ name: string; complexity: "task" | "subgoal" }>,
+  headingCount: number,
+): string {
+  const stepsYaml = stepsArray.map((s) => `  - name: ${s.name}\n    complexity: ${s.complexity}`).join("\n");
+
+  const frontmatter = `---\ntotalSteps: ${totalSteps}\nsteps:\n${stepsYaml}\n---`;
   const title = "# Plan: Test Goal";
   const headings = Array.from({ length: headingCount }, (_, i) => `## Step ${i + 1}: Step description`).join("\n");
   return `${frontmatter}\n${title}\n\n${headings}`;
@@ -270,6 +288,328 @@ describe("postValidateCreatePlan — totalSteps vs heading count mismatch", () =
 
     // Assert
     expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// postValidateCreatePlan — steps array is required
+// ---------------------------------------------------------------------------
+
+describe("postValidateCreatePlan — steps array is required", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("rejects when steps field is missing from frontmatter", () => {
+    // Arrange: PLAN.md with only totalSteps, no steps field, and 3 headings
+    const planContent = "---\ntotalSteps: 3\n---\n# Plan: Test Goal\n\n## Step 1: A\n## Step 2: B\n## Step 3: C";
+    const goalDir = createGoalTree(tempDir, "missing-steps", planContent);
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/steps/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// postValidateCreatePlan — steps array validation
+// ---------------------------------------------------------------------------
+
+describe("postValidateCreatePlan — steps array validation", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("passes when steps array length matches totalSteps", () => {
+    // Arrange: totalSteps: 3, steps has 3 entries, 3 headings
+    const goalDir = createGoalTree(tempDir, "valid-steps", makePlanContent(3, 3));
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert
+    expect(result).toEqual({ success: true });
+  });
+
+  it("passes when steps entries include complexity: 'task'", () => {
+    // Arrange
+    const goalDir = createGoalTree(
+      tempDir,
+      "complexity-task",
+      makePlanContentWithSteps(
+        2,
+        [{ name: "a", complexity: "task" }, { name: "b", complexity: "task" }],
+        2,
+      ),
+    );
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert
+    expect(result).toEqual({ success: true });
+  });
+
+  it("passes when steps entries include complexity: 'subgoal'", () => {
+    // Arrange
+    const goalDir = createGoalTree(
+      tempDir,
+      "complexity-subgoal",
+      makePlanContentWithSteps(
+        3,
+        [{ name: "a", complexity: "task" }, { name: "b", complexity: "subgoal" }, { name: "c", complexity: "task" }],
+        3,
+      ),
+    );
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert
+    expect(result).toEqual({ success: true });
+  });
+
+  it("rejects when steps array length is less than totalSteps", () => {
+    // Arrange: totalSteps: 5 but steps has only 3 entries, with 5 headings
+    const goalDir = createGoalTree(
+      tempDir,
+      "steps-too-few",
+      makePlanContentWithSteps(5, [{ name: "a", complexity: "task" }, { name: "b", complexity: "task" }, { name: "c", complexity: "task" }], 5),
+    );
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("3");
+    expect(result.message).toContain("5");
+  });
+
+  it("rejects when steps array length is greater than totalSteps", () => {
+    // Arrange: totalSteps: 2 but steps has 4 entries, with 2 headings
+    const goalDir = createGoalTree(
+      tempDir,
+      "steps-too-many",
+      makePlanContentWithSteps(
+        2,
+        [{ name: "a", complexity: "task" }, { name: "b", complexity: "task" }, { name: "c", complexity: "task" }, { name: "d", complexity: "task" }],
+        2,
+      ),
+    );
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("4");
+    expect(result.message).toContain("2");
+  });
+
+  it("rejects when a step entry has an empty name", () => {
+    // Arrange: steps with empty name at index 1
+    const goalDir = createGoalTree(
+      tempDir,
+      "empty-name",
+      makePlanContentWithSteps(2, [{ name: "valid", complexity: "task" }, { name: "", complexity: "task" }], 2),
+    );
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/name/i);
+  });
+
+  it("passes when steps entries omit complexity (defaults to task)", () => {
+    // Arrange: steps entry without complexity field (complexity is optional, defaults to "task")
+    const planContent = [
+      "---",
+      "totalSteps: 2",
+      "steps:",
+      '  - name: step-one',
+      '  - name: step-two',
+      "---",
+      "# Plan: Test Goal",
+      "",
+      "## Step 1: Step description",
+      "## Step 2: Step description",
+    ].join("\n");
+    const goalDir = createGoalTree(tempDir, "omit-complexity", planContent);
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert: passes — complexity is optional, defaults to "task"
+    expect(result).toEqual({ success: true });
+  });
+
+  it("rejects when a step entry has an invalid complexity value", () => {
+    // Arrange: complexity: "invalid"
+    // Note: We need to construct the YAML manually since makePlanContentWithSteps
+    // only accepts valid complexity values
+    const planContent = [
+      "---",
+      "totalSteps: 1",
+      "steps:",
+      '  - name: a',
+      '    complexity: invalid',
+      "---",
+      "# Plan: Test Goal",
+      "",
+      "## Step 1: Step description",
+    ].join("\n");
+    const goalDir = createGoalTree(tempDir, "invalid-complexity", planContent);
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/complexity/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// postValidateCreatePlan — unique subgoal names
+// ---------------------------------------------------------------------------
+
+describe("postValidateCreatePlan — unique subgoal names", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns success when all subgoal names are unique", () => {
+    // Arrange: 3 subgoals with different names
+    const goalDir = createGoalTree(
+      tempDir,
+      "unique-subgoals",
+      makePlanContentWithSteps(
+        3,
+        [
+          { name: "auth-service", complexity: "subgoal" },
+          { name: "api-gateway", complexity: "subgoal" },
+          { name: "data-layer", complexity: "subgoal" },
+        ],
+        3,
+      ),
+    );
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert
+    expect(result).toEqual({ success: true });
+  });
+
+  it("returns failure when two subgoals share the same name", () => {
+    // Arrange: two subgoals both named "auth-service"
+    const goalDir = createGoalTree(
+      tempDir,
+      "duplicate-subgoals",
+      makePlanContentWithSteps(
+        3,
+        [
+          { name: "auth-service", complexity: "subgoal" },
+          { name: "api-gateway", complexity: "task" },
+          { name: "auth-service", complexity: "subgoal" },
+        ],
+        3,
+      ),
+    );
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("auth-service");
+  });
+
+  it("returns success when duplicate names exist only on task steps", () => {
+    // Arrange: two task steps share the same name — should be allowed
+    const goalDir = createGoalTree(
+      tempDir,
+      "duplicate-task-names",
+      makePlanContentWithSteps(
+        3,
+        [
+          { name: "setup", complexity: "task" },
+          { name: "setup", complexity: "task" },
+          { name: "deploy", complexity: "task" },
+        ],
+        3,
+      ),
+    );
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert: passes — only subgoal names must be unique
+    expect(result).toEqual({ success: true });
+  });
+
+  it("returns success when a subgoal and a task share the same name", () => {
+    // Arrange: one subgoal and one task both named "setup"
+    const goalDir = createGoalTree(
+      tempDir,
+      "cross-type-same-name",
+      makePlanContentWithSteps(
+        2,
+        [
+          { name: "setup", complexity: "subgoal" },
+          { name: "setup", complexity: "task" },
+        ],
+        2,
+      ),
+    );
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert: passes — cross-type duplicates are allowed
+    expect(result).toEqual({ success: true });
+  });
+
+  it("returns failure identifying the duplicate name among three subgoals", () => {
+    // Arrange: three subgoals, first and third share "data-layer"
+    const goalDir = createGoalTree(
+      tempDir,
+      "three-subgoals-one-dup",
+      makePlanContentWithSteps(
+        3,
+        [
+          { name: "data-layer", complexity: "subgoal" },
+          { name: "auth-service", complexity: "subgoal" },
+          { name: "data-layer", complexity: "subgoal" },
+        ],
+        3,
+      ),
+    );
+
+    // Act
+    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+
+    // Assert
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("data-layer");
   });
 });
 

@@ -128,5 +128,15 @@
       "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/session-run-end-guard",
       "workingDir": "/home/aleksj/git/pio-extension"
     }
+  },
+  {
+    "timestamp": "2026-05-23T20:02:07.938Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "session-run-end-guard",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/session-run-end-guard",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
   }
 ]

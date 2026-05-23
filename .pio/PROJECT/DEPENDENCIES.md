@@ -26,7 +26,7 @@ All devDependencies run at development time or via pi's TypeScript runtime. The 
 ```
 index.ts ────┬── setupCapability()    → session-capability.ts
              ├── setupValidation()    → guards/validation.ts
-             ├── setupTurnGuard()     → guards/turn-guard.ts
+             ├── setupSessionGuard()  → guards/session-guard.ts
              ├── setupInit()          → capabilities/init.ts
              ├── setupCreateGoal()    → capabilities/create-goal.ts
              ├── setupDeleteGoal()    → capabilities/delete-goal.ts

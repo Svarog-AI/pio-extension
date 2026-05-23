@@ -13,7 +13,7 @@ Steps chain together in a dependency pipeline:
 
 1. **create-goal** — Interviews about a feature/fix, produces `GOAL.md` (current state + target description)
 2. **create-plan** — Reads `GOAL.md`, produces `PLAN.md` (numbered steps with acceptance criteria)
-3. **evolve-plan** — Finds next incomplete step in `PLAN.md`, produces `TASK.md` + `TEST.md` in `S{NN}/`
+3. **evolve-plan** — Finds next incomplete step in `PLAN.md`, produces `TASK.md` in `S{NN}/` (or spawns a subgoal for composite steps)
 4. **execute-task** — Reads specs from `S{NN}/`, implements step (test-first/TDD), writes `COMPLETED`/`BLOCKED` marker + `SUMMARY.md`
 5. **review-task** — Reviews completed step, writes `REVIEW.md`. Approve → advances to next step. Reject → deletes `COMPLETED`, re-executes same step.
 
@@ -23,6 +23,8 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 
 **Alternative:** `execute-plan` runs all plan steps in a single session (no evolve/execute/review loop). Requires both `GOAL.md` and `PLAN.md`.
 
+**Nested subgoals:** When a plan step has `complexity: "subgoal"` in the PLAN.md frontmatter `steps` array, `evolve-plan` spawns a child goal workspace at `S{NN}/subgoals/<name>/` instead of producing TASK.md. The subgoal runs through the full pio lifecycle recursively: `create-goal` → `create-plan` → `evolve-plan` → `execute-task` → `review-task` → `finalize-goal`. Recursive nesting is supported — each level adds `subgoals/<name>/` to the path. After the subgoal's `finalize-goal`, completion propagates back to the parent's `evolve-plan` for the next step. The subgoal's `COMPLETED` marker is the authoritative signal — subgoal completion equals parent step completion.
+
 ## Command reference
 
 | Command | Tool | Description | Parameters | Output |
@@ -31,7 +33,7 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 | `/pio-create-goal <name>` | `pio_create_goal` | Create goal workspace, launch Goal Definition Assistant | `name` (optional `initialMessage`) | `.pio/goals/<name>/GOAL.md` |
 | `/pio-delete-goal <name>` | `pio_delete_goal` | Remove a goal workspace directory | `name` | — |
 | `/pio-create-plan <name>` | `pio_create_plan` | Launch Planning Agent to produce PLAN.md from GOAL.md | `name` | `.pio/goals/<name>/PLAN.md` |
-| `/pio-evolve-plan <name>` | `pio_evolve_plan` | Find next incomplete step, launch Specification Writer | `name` | `.pio/goals/<name>/S{NN}/TASK.md`, `TEST.md` |
+| `/pio-evolve-plan <name>` | `pio_evolve_plan` | Find next incomplete step, launch Specification Writer (or spawn subgoal for composite steps) | `name` | `.pio/goals/<name>/S{NN}/TASK.md` (or subgoal at `S{NN}/subgoals/<name>/`) |
 | `/pio-execute-task <name> [step]` | `pio_execute_task` | Implement one plan step (TDD) | `name`, optional `stepNumber` | `.pio/goals/<name>/S{NN}/COMPLETED` or `BLOCKED`, `SUMMARY.md` |
 | `/pio-review-task <name> [step]` | `pio_review_task` | Review completed step, approve or reject | `name`, optional `stepNumber` | `.pio/goals/<name>/S{NN}/REVIEW.md`, optionally `APPROVED` |
 | `/pio-revise-plan <name>` | `pio_revise_plan` | Archive current PLAN.md, delete incomplete steps, launch fresh planning session | `name` | `.pio/goals/<name>/PLAN.md` (rewritten) |
@@ -48,6 +50,7 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 
 - **`<name>`** always refers to a goal workspace under `.pio/goals/<name>/`.
 - **Step folders** follow `S{NN}/` naming (e.g., `S01/`, `S02/`) inside the goal workspace.
+- **Subgoal directories** live at `S{NN}/subgoals/<name>/` inside parent step directories. The `subgoals/` marker prevents naming collisions with the step scanner regex (`/^S(\d+)$/`). Recursive nesting is supported — each level adds `subgoals/<name>/` to the path. Example: `.pio/goals/parent/S03/subgoals/nested-feature/`.
 - **File protections:** `readOnlyFiles` and `writeAllowlist` are enforced via the `tool_call` event handler. Reads-only prevent modification of input docs; write-allowlists restrict output to expected files. Writes to `.pio/` outside the session's own goal workspace are blocked by default.
 - **Exit-gate validation:** When expected outputs are declared, the agent must call `pio_mark_complete` to validate before switching sessions. This auto-enqueues the next workflow task (single-slot FIFO queue).
 - **No source code in planning docs:** `GOAL.md`, `PLAN.md`, `TASK.md` contain descriptions and interface signatures only — never full implementations.

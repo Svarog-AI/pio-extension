@@ -47,7 +47,9 @@ Before designing implementation steps, engage the user to confirm findings and g
 
 Decompose the gap between current state and to-be state into numbered steps. Use the input from Step 3 to inform your decomposition.
 
-**Follow the step design rules from the `pio-planning` skill:** each step must be concrete, ordered, sized for a single executor session, and independent where possible.
+**Conceptually, each step is a deliverable.** Design steps as coherent outputs — something you can name and verify as complete. Follow the step design rules from the `pio-planning` skill: each step must be concrete, ordered, sized for a single executor session, and independent where possible.
+
+**Classifying steps:** Some deliverables are inherently composite — they contain multiple internal sub-deliverables that can't be described as a single output. These steps should be marked as subgoals so they get their own plan and recursive lifecycle. Follow the subgoal classification guidance in the `pio-planning` skill. When writing PLAN.md frontmatter, set `complexity: "subgoal"` for composite steps and always provide the `name` field for every entry (it serves as the subgoal workspace name when composite).
 
 ### Step 5: Write PLAN.md
 

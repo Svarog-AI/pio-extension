@@ -13,7 +13,8 @@ This skill covers:
 3. **Acceptance Criteria Guidelines** — how to specify verifiable completion checks
 4. **Research Process** — what to investigate before designing steps
 5. **Scope Discipline** — boundaries and constraints on plan content
-6. **User Interaction Protocol** — how to gather decisions during planning
+6. **Subgoal Decomposition** — when and how to nest subgoals within plan steps
+7. **User Interaction Protocol** — how to gather decisions during planning
 
 ## PLAN.md Structure
 
@@ -59,6 +60,8 @@ Where `N` is the step number (1-indexed, sequential) and the title is a concise 
 
 ## Step Design Rules
 
+Each step is a deliverable — a coherent output you can name and verify as complete. Design steps as concrete transformations, not as activities or tasks. A step description should read like "build X" not "work on X".
+
 Each step must contain three required subsections:
 
 ### Description
@@ -80,9 +83,9 @@ List every file created, modified, or deleted:
 
 Steps should be:
 
-- **Concrete:** A reader knows exactly what code changes or new artifacts are involved.
+- **Concrete:** A reader knows exactly what deliverable is produced and what code changes or new artifacts are involved.
 - **Ordered:** Steps that depend on earlier steps come later. No reordering needed during execution. Steps must reflect real implementation order — if step 3 needs an export from step 1, that must be clear. An executor should never have to reorder steps.
-- **Sized for an executor:** Small enough that a single focused session can complete one step without distraction. Aim for steps that take minutes to an hour to implement, not days.
+- **Sized for an executor:** Small enough that a single focused session can produce one deliverable without distraction. Aim for steps that take minutes to an hour to implement, not days.
 - **Independent where possible:** If two steps don't depend on each other, order them so they *could* be done in parallel. Mark such steps with `**Parallel with Step N**` if applicable.
 
 ## Acceptance Criteria Guidelines
@@ -142,6 +145,60 @@ This is where deep research belongs. You need to be confident about implementati
 - **`GOAL.md` is read-only during planning.** Never modify it. Your output is `PLAN.md` only — no source code creation.
 - **Reference real files only.** Every path in PLAN.md should correspond to a file you actually read or confirmed exists. Don't guess paths.
 - **No source code in PLAN.md.** This is a planning document, not an implementation draft. Describe every step in natural language or high-level pseudocode. You may write a short interface signature (type stub) if it clarifies a contract — never full function bodies or class implementations. If you find yourself writing `if`/`for`/`while` blocks, stop and rewrite that section as a description.
+
+## Subgoal Decomposition
+
+When a deliverable is too large or complex for a single executor session, decompose it into a nested subgoal. Subgoals run through the full pio lifecycle recursively — they get their own `GOAL.md`, `PLAN.md`, and independent step execution.
+
+### I/O contract test
+
+A deliverable is a coherent transformation. Can you state its output without listing internal sub-outputs?
+
+- **Yes → leaf step** (`complexity` omitted or `"task"`). The output is a single deliverable you can name in one phrase.
+  - *Example:* "Add input validation to the auth endpoint" — output is the validated endpoint.
+  - *Example:* "Implement JWT token validation" — output is the validation middleware.
+- **No → composite step** (`complexity: "subgoal"`). Stating the output requires listing multiple internal sub-deliverables.
+  - *Example:* "Implement OAuth flow" — output requires token endpoint, callback handler, session store, error pages.
+  - *Example:* "Build the data pipeline" — output requires ingestion, transformation, storage, monitoring.
+
+### Encapsulation rule
+
+Does the parent plan need to know *how* this deliverable is built?
+
+- **Yes → keep as a regular flat step.** The parent coordinates or depends on internal details.
+  - *Example:* "Update the API schema" — parent steps depend on specific field names and types.
+  - *Example:* "Add migration scripts" — parent steps depend on migration order and naming.
+- **No → subgoal.** Internal implementation details are irrelevant to the parent plan.
+  - *Example:* "Implement OAuth flow" — parent only needs the auth middleware endpoint.
+  - *Example:* "Build the notification service" — parent only needs the service interface.
+
+### Frontmatter-based declaration
+
+Subgoal metadata lives exclusively in PLAN.md frontmatter `steps` array. Each entry has:
+
+- **`name`** (required): Human-readable label. Serves as the subgoal workspace directory name when `complexity` is `"subgoal"`. Use slugified form (lowercase, hyphens, no spaces).
+- **`complexity`** (optional): `"task"` (default) for leaf steps, `"subgoal"` for composite steps.
+
+Example frontmatter:
+
+```yaml
+---
+totalSteps: 5
+steps:
+  - name: setup-infrastructure
+    complexity: task
+  - name: build-auth-pipeline
+    complexity: subgoal
+  - name: integrate-payments
+    complexity: task
+  - name: build-notification-service
+    complexity: subgoal
+  - name: end-to-end-testing
+    complexity: task
+---
+```
+
+No in-body annotations or regex parsing — the frontmatter is the single source of truth for subgoal metadata.
 
 ## User Interaction Protocol
 

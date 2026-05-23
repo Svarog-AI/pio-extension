@@ -69,11 +69,8 @@ function createStepStatus(
       if (fs.existsSync(path.join(stepDir, "BLOCKED"))) return "blocked";
       if (fs.existsSync(path.join(stepDir, "COMPLETED"))) return "implemented";
 
-      // No markers — check if step is defined (has both spec files)
-      if (
-        fs.existsSync(path.join(stepDir, TASK_FILE)) &&
-        fs.existsSync(path.join(stepDir, TEST_FILE))
-      ) {
+      // No markers — check if step is defined (has TASK.md)
+      if (fs.existsSync(path.join(stepDir, TASK_FILE))) {
         return "defined";
       }
 

@@ -369,7 +369,7 @@ describe("steps()", () => {
     expect(state.steps()[0].status()).toBe("pending");
   });
 
-  it("StepStatus.status() returns 'defined' when TASK.md + TEST.md exist but no markers", () => {
+  it("StepStatus.status() returns 'defined' when TASK.md exists (no TEST.md required)", () => {
     const goalDir = createGoalTree(tempDir, "defined-step", [
       { number: 1, files: ["TASK.md", "TEST.md"] },
     ]);
@@ -378,6 +378,28 @@ describe("steps()", () => {
     const state = createGoalState(goalDir);
 
     expect(state.steps()[0].status()).toBe("defined");
+  });
+
+  it("StepStatus.status() returns 'defined' when only TASK.md exists (no TEST.md)", () => {
+    const goalDir = createGoalTree(tempDir, "defined-step-task-only", [
+      { number: 1, files: ["TASK.md"] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 1);
+
+    const state = createGoalState(goalDir);
+
+    expect(state.steps()[0].status()).toBe("defined");
+  });
+
+  it("StepStatus.status() returns 'pending' when only TEST.md exists (no TASK.md)", () => {
+    const goalDir = createGoalTree(tempDir, "pending-test-only", [
+      { number: 1, files: ["TEST.md"] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 1);
+
+    const state = createGoalState(goalDir);
+
+    expect(state.steps()[0].status()).toBe("pending");
   });
 
   it("StepStatus.status() returns 'implemented' when COMPLETED marker exists", () => {

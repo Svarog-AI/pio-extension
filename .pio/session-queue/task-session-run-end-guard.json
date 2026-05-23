@@ -1,0 +1,72 @@
+{
+  "capability": "finalize-goal",
+  "params": {
+    "goalName": "session-run-end-guard",
+    "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/session-run-end-guard",
+    "workingDir": "/home/aleksj/git/pio-extension",
+    "_sessionContext": {
+      "goalName": "session-run-end-guard",
+      "stepNumber": 4,
+      "_sessionContext": {
+        "goalName": "session-run-end-guard",
+        "stepNumber": 3,
+        "_sessionContext": {
+          "goalName": "session-run-end-guard",
+          "stepNumber": 3,
+          "_sessionContext": {
+            "goalName": "session-run-end-guard",
+            "stepNumber": 3,
+            "_sessionContext": {
+              "goalName": "session-run-end-guard",
+              "stepNumber": 2,
+              "_sessionContext": {
+                "goalName": "session-run-end-guard",
+                "stepNumber": 2,
+                "_sessionContext": {
+                  "goalName": "session-run-end-guard",
+                  "stepNumber": 2,
+                  "_sessionContext": {
+                    "goalName": "session-run-end-guard",
+                    "stepNumber": 1,
+                    "_sessionContext": {
+                      "goalName": "session-run-end-guard",
+                      "stepNumber": 1,
+                      "_sessionContext": {
+                        "goalName": "session-run-end-guard",
+                        "stepNumber": 1,
+                        "_sessionContext": {
+                          "goalName": "session-run-end-guard",
+                          "stepNumber": 1,
+                          "_sessionContext": {
+                            "goalName": "session-run-end-guard",
+                            "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/session-run-end-guard.md",
+                            "fileCleanup": [
+                              "/home/aleksj/git/pio-extension/.pio/issues/session-run-end-guard.md"
+                            ],
+                            "capability": "create-goal"
+                          },
+                          "capability": "create-plan"
+                        },
+                        "capability": "evolve-plan"
+                      },
+                      "capability": "execute-task"
+                    },
+                    "capability": "review-task"
+                  },
+                  "capability": "evolve-plan"
+                },
+                "capability": "execute-task"
+              },
+              "capability": "review-task"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    },
+    "stepNumber": 4
+  }
+}

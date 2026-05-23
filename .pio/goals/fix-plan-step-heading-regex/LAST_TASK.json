@@ -1,0 +1,15 @@
+{
+  "capability": "create-goal",
+  "params": {
+    "goalName": "fix-plan-step-heading-regex",
+    "stepNumber": 1,
+    "_sessionContext": {
+      "goalName": "fix-plan-step-heading-regex",
+      "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/fix-plan-step-heading-regex.md",
+      "fileCleanup": [
+        "/home/aleksj/git/pio-extension/.pio/issues/fix-plan-step-heading-regex.md"
+      ],
+      "capability": "create-goal"
+    }
+  }
+}

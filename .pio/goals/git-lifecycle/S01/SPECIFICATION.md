@@ -174,3 +174,229 @@ The finalize-goal prompt should add a step instructing the agent to follow the P
 | **`gh` CLI not installed** | `which gh` or `command -v gh` fails | Skip PR creation silently. Log a warning. Branch checkout (git-only) is unaffected. |
 | **Uncommitted changes on branch checkout** | `git checkout -b <branch>` fails with "error: Your local changes to the following files would be overwritten" | **Recommendation:** Warn agent about uncommitted changes. Do not force checkout. Let the agent decide (stash, commit, or discard). This preserves user data. |
 | **Shallow clone** | `git rev-parse --is-shallow-repository` returns `true` | Branching works normally. PR creation may have issues with history depth. Warn but proceed. |
+
+## Section 2: Branching Strategies
+
+### 2.1 Branch collision resolution
+
+When `create-goal` triggers branch checkout, the branch `feat/<goal-name>` may already exist. Four strategies are evaluated below. The preliminary recommendation from Section 1 was "reuse existing" — this section tests that recommendation against alternatives.
+
+#### Strategy A: Reuse existing branch
+
+**Mechanism:** `git checkout feat/<goal-name>` — if the branch exists, checkout and continue. If it doesn't exist, create it with `git checkout -b feat/<goal-name>`.
+
+**Pros:**
+- Simplest implementation — single command path (`git checkout` handles both cases with appropriate flags).
+- Supports goal continuation: if a goal was interrupted and the user re-creates it, work resumes on the existing branch with previous commits intact.
+- Aligns with the graceful failure principle — no blocking on conflicts.
+- Matches developer expectations: re-running `/pio-create-goal` on the same name should resume work, not error.
+
+**Cons:**
+- May inherit stale or diverged state from a previous session. The branch could contain partially completed work, merged changes, or commits from a different context.
+- If the branch was previously merged and deleted locally but still exists remotely, `git checkout` would fail (branch not found locally). Would need a `git fetch` + fallback.
+- No explicit user confirmation — the agent silently continues on a branch that might have unexpected content.
+
+#### Strategy B: Error/abort
+
+**Mechanism:** Check `git rev-parse --verify feat/<goal-name>`. If it succeeds, report an error and stop. Do not create the goal workspace.
+
+**Pros:**
+- Safest approach — guarantees a clean branch for each goal.
+- Forces the user to resolve the conflict explicitly (delete old branch, use a different name, etc.).
+- Prevents accidental data corruption from resuming on a stale branch.
+
+**Cons:**
+- **Violates the graceful failure principle.** The pio-git skill mandates: "If any git command fails, log a warning and proceed — never block workflow completion." Erroring on branch collision directly contradicts this.
+- Blocks the entire workflow — no GOAL.md written, no session launched. The user gets no value from the command.
+- No mechanism for the agent to auto-resolve — requires manual intervention every time.
+
+#### Strategy C: Auto-suffix
+
+**Mechanism:** If `feat/<goal-name>` exists, try `feat/<goal-name>-2`, then `feat/<goal-name>-3`, etc. until a free name is found.
+
+**Pros:**
+- Never blocks — always finds a free branch name.
+- Preserves the original branch for the previous goal session.
+- No user interaction required.
+
+**Cons:**
+- Produces noisy branch names: `feat/git-lifecycle-3` is less readable than `feat/git-lifecycle`.
+- Makes it harder to track which branch corresponds to which goal. The `-2` suffix is not recorded anywhere in `.pio/` state.
+- On goal re-creation (continuation), the user expects to resume on the original branch, not a new suffixed one. This breaks the continuation use case.
+- Branch proliferation: repeated creates/deletes of the same goal accumulate suffixed branches that need manual cleanup.
+
+#### Strategy D: Prompt user via `ask_user`
+
+**Mechanism:** When a collision is detected, call `ask_user` with options: reuse existing, create suffixed branch, or cancel.
+
+**Pros:**
+- Gives the user full control over the resolution strategy.
+- Can provide context about the existing branch (last commit, divergence from main) to inform the decision.
+
+**Cons:**
+- Introduces interaction latency in an otherwise automated flow. The `ask_user` tool requires user input — the session blocks until the user responds.
+- Adds complexity to the skill protocol: the agent must handle the `ask_user` call, parse the response, and branch logic accordingly.
+- For subgoals (which can spawn automatically during `evolve-plan`), prompting the user is impractical — subgoals may spawn without explicit user initiation.
+- Inconsistent with the pio-git skill's non-interactive design: "The agent should not retry or block waiting for user input."
+
+#### Recommendation: Strategy A (reuse existing) with a refinement
+
+**Reuse existing branch, but warn the agent about the branch state.**
+
+The Branch Checkout Protocol should:
+1. Check if the branch exists with `git rev-parse --verify feat/<goal-name>`.
+2. If it exists: `git checkout feat/<goal-name>` and proceed. Emit a warning notification: "Branch `feat/<goal-name>` already exists. Resuming on existing branch."
+3. If it doesn't exist: `git checkout -b feat/<goal-name>` and proceed.
+4. On any git error (no repo, detached HEAD, uncommitted changes): skip branching with a warning and continue with goal creation on the current branch.
+
+This refinement of Strategy A adds user visibility (warning notification) without introducing blocking behavior. It supports the continuation use case (most common collision scenario) while alerting the user that they're resuming on an existing branch. The agent can then decide whether the branch state is appropriate for the goal.
+
+**Trade-off summary:**
+
+| Criterion | Reuse (A) | Error (B) | Suffix (C) | Prompt (D) |
+|-----------|-----------|-----------|------------|------------|
+| Graceful failure | ✅ | ❌ blocks | ✅ | ⚠️ blocks on wait |
+| Continuation support | ✅ | ❌ | ❌ new branch | ✅ with user choice |
+| Implementation complexity | Low | Low | Medium | High |
+| Subgoal compatibility | ✅ | ⚠️ blocks subgoals | ✅ | ❌ impractical |
+| User visibility | ⚠️ warning | ✅ explicit error | ❌ silent | ✅ explicit choice |
+
+### 2.2 Subgoal branching options
+
+A subgoal is a nested goal spawned by `evolve-plan` when a step has `complexity: "subgoal"`. Code evidence from `src/capabilities/evolve-plan.ts`: subgoals are created via `pio_create_goal`, which calls `resolveGoalDir(cwd, name, parentStepDir)` from `src/fs-utils.ts`. This resolves to `<parentStepDir>/subgoals/<name>` — a nested path under the parent step folder.
+
+Critically, the subgoal session runs in the **same working directory** as the parent session (`cwd` is the repo root). The subgoal inherits the parent's git context — same working tree, same branch, same index. There is no mechanism for the subgoal to operate on a different branch or worktree.
+
+Four options are evaluated below across three dimensions: git history quality, implementation complexity, and IDE workflow fit.
+
+#### Option 1: Single branch per top-level goal (subgoals commit inline)
+
+**Mechanism:** Subgoals commit directly on the parent goal's branch. No additional branching or checkout operations. The `pio-git` skill's Staged Commit Protocol already handles this — subgoal agents follow the same commit workflow as any other agent.
+
+| Dimension | Assessment |
+|-----------|-----------|
+| **Git history quality** | Commits from different subgoals are interleaved on the same branch. Traceability is preserved via commit messages referencing the subgoal name (e.g., `feat(subgoal-name): implement X`). However, there is no explicit branch boundary — a `git log` shows a flat history. Merge commits from the top-level PR will include all subgoal work as a single unit. |
+| **Implementation complexity** | **Zero additional changes required.** The current behavior already implements this option. No new protocols, no prompt modifications, no skill changes. Subgoals already commit inline on whatever branch the parent session is on. |
+| **IDE workflow fit** | **Optimal.** VS Code operates on a single working tree. No branch switching means no workspace reload, no file conflicts, and no review disruption. The user sees all changes accumulate on one branch. |
+
+**Pros:** Simplest approach. Zero implementation cost. Best IDE fit. Works with current architecture.
+**Cons:** Flat history — no explicit subgoal boundaries in git. Harder to cherry-pick or revert individual subgoals.
+
+#### Option 2: Branch per subgoal with checkout switching
+
+**Mechanism:** When a subgoal starts (`create-goal` for a nested goal), create a new branch `feat/<goal-name>/<subgoal-name>`. When the subgoal completes (`finalize-goal`), merge back to the parent branch and checkout the parent branch.
+
+Branch name construction: `feat/<top-level-goal>/<subgoal-name>`. For recursive nesting: `feat/<goal>/<subgoal>/<nested-subgoal>`.
+
+| Dimension | Assessment |
+|-----------|-----------|
+| **Git history quality** | **Best traceability.** Each subgoal has an isolated branch with its own commit history. Merging back to the parent creates explicit merge commits: `Merge branch 'feat/goal/subgoal' into feat/goal`. Enables cherry-picking, reverting, and reviewing individual subgoals. Deep nesting produces long branch names: `feat/goal/subgoal/nested` — functional but verbose. |
+| **Implementation complexity** | **High.** Requires: (1) New "Subgoal Branch Protocol" in `pio-git` skill with branch creation, checkout, merge-back, and cleanup logic. (2) Prompt changes to both `create-goal.md` (checkout subgoal branch) and `finalize-goal.md` (merge back). (3) Handling of nested nesting depth — branch names grow with each level. (4) Error recovery: what happens if merge-back fails? What if the parent branch was deleted? (5) Detection of subgoal vs. top-level goal context (requires checking `parentStepDir` or `.pio/goals/` path). |
+| **IDE workflow fit** | **Poor.** VS Code operates on one branch at a time. Branch switching during subgoal execution means: (a) VS Code may reload the workspace on checkout, (b) open files may show conflicts, (c) the user reviewing changes sees a different branch than the parent goal. The single-IDE review constraint makes this difficult. Additionally, the subgoal session runs after the parent session spawned it — the parent session is still active but on a different branch. |
+
+**Pros:** Best git history. Clean subgoal isolation. Enables per-subgoal PRs if desired.
+**Cons:** High implementation cost. Poor IDE fit. Branch switching complexity. Deep nesting produces unwieldy names.
+
+#### Option 3: Top-level goals only (subgoals skip independent branching)
+
+**Mechanism:** Only top-level goals (created via `/pio-create-goal` at the repo root) get independent branches. Subgoals (created via `evolve-plan` with `complexity: "subgoal"`) explicitly skip branching — they commit inline on the parent branch. This is a hybrid: top-level goals get full branch lifecycle (checkout on create, PR on finalize), subgoals use Option 1 behavior.
+
+| Dimension | Assessment |
+|-----------|-----------|
+| **Git history quality** | Good for top-level goals (isolated branch per goal). Subgoal work is interleaved on the parent branch — same trade-off as Option 1 for the subgoal portion. Traceability via commit message scoping: `feat(subgoal-name): description`. |
+| **Implementation complexity** | **Low.** Requires only one new distinction: detect whether a goal is top-level or nested. Code evidence: `resolveGoalDir()` in `src/fs-utils.ts` — when `parentStepDir` is provided, the goal is nested. The Branch Checkout Protocol can check: if the goal path contains `/subgoals/`, skip branching. No new protocols needed — just a conditional in the existing protocol. |
+| **IDE workflow fit** | **Optimal.** Same as Option 1 — no branch switching during subgoal execution. The parent goal's branch is the active branch throughout. |
+
+**Pros:** Best trade-off — top-level isolation with subgoal simplicity. Low implementation cost. Optimal IDE fit. Natural distinction (top-level vs. nested is a clear binary).
+**Cons:** Subgoal history is still flat (same as Option 1). If subgoal isolation becomes important later, migration to Option 2 would require protocol changes.
+
+#### Option 4: Commit grouping via merge commits (squash-merge subgoals)
+
+**Mechanism:** Subgoals commit inline on the parent branch (like Option 1), but at subgoal completion (`finalize-goal`), create a merge commit that groups all subgoal commits into a single boundary. This is achieved by: (1) creating a temporary branch from the pre-subgoal commit, (2) cherry-picking subgoal commits onto it, (3) merging back with `--no-ff`.
+
+**Note:** This option was discovered during research as a potential middle ground between Options 1 and 2.
+
+| Dimension | Assessment |
+|-----------|-----------|
+| **Git history quality** | Creates explicit merge boundaries without branch switching during execution. `git log --oneline --graph` shows a clean merge commit for each subgoal. However, the temporary branch and cherry-pick process is complex and error-prone. |
+| **Implementation complexity** | **Very high.** Requires: (1) Recording the pre-subgoal commit hash at subgoal start. (2) At subgoal end, creating a temp branch, cherry-picking, merging, and cleaning up. (3) Handling edge cases: what if the parent branch received new commits during subgoal execution? (4) All of this via shell commands in a skill protocol — no programmatic git library. |
+| **IDE workflow fit** | **Moderate.** No branch switching during execution (good), but the merge-commit creation at the end requires temporary branch manipulation that could confuse VS Code's git view. |
+
+**Pros:** Clean history boundaries without execution-time branch switching.
+**Cons:** Extremely complex implementation. High risk of git state corruption. Not worth the complexity for the marginal history improvement.
+
+#### Recommendation: Option 3 (top-level goals only)
+
+**Top-level goals get branches; subgoals commit inline.**
+
+Rationale:
+- **Implementation simplicity:** Requires only a path-based check (`/subgoals/` in the goal path) in the Branch Checkout Protocol. No new protocols, no checkout switching.
+- **IDE workflow fit:** No branch switching during subgoal execution. VS Code stays on the parent goal's branch throughout.
+- **History quality:** Top-level goals get clean isolated branches. Subgoal work is traceable via commit message scoping (`feat(subgoal-name): ...`). This is sufficient for most workflows — if per-subgoal isolation becomes critical, Option 2 can be adopted later.
+- **Deep nesting:** Avoids the branch name explosion problem of Option 2 (`feat/goal/subgoal/nested/sub-subgoal`). With Option 3, nesting depth has no impact on branch naming.
+- **Natural alignment:** The distinction between top-level goals (user-initiated, explicit) and subgoals (auto-spawned by `evolve-plan`) maps cleanly to the branching distinction. Users expect top-level goals to have branches; subgoals are an implementation detail.
+
+**Trade-off summary:**
+
+| Criterion | Option 1 (all inline) | Option 2 (per-subgoal) | Option 3 (top-level only) | Option 4 (merge commits) |
+|-----------|----------------------|----------------------|--------------------------|-------------------------|
+| History quality | Flat | Best | Good (top-level isolated) | Good (merge boundaries) |
+| Implementation cost | Zero | High | Low | Very high |
+| IDE workflow fit | Optimal | Poor | Optimal | Moderate |
+| Deep nesting support | ✅ | ⚠️ long names | ✅ | ✅ |
+| Subgoal PR support | ❌ | ✅ | ❌ | ❌ |
+
+### 2.3 Git worktree assessment
+
+Git worktrees (`git worktree add <path> <branch>`) enable multiple working trees attached to the same repository. Each worktree has its own working directory and index but shares the same object store, refs, and logs.
+
+#### Value proposition
+
+**Parallel goal development:** The primary value of worktrees is enabling simultaneous work on multiple branches. In the pio context, this means:
+- Goal A on `feat/goal-a` in worktree A
+- Goal B on `feat/goal-b` in worktree B
+- Both worktrees operate on the same repo without branch switching
+
+**Theoretical benefit:** A user could run two pio sub-sessions in parallel — one per worktree — to develop two features simultaneously.
+
+#### Constraints
+
+**Single-IDE review (primary constraint):** VS Code opens one workspace at a time. To work with multiple worktrees:
+- Option A: Open each worktree in a separate VS Code instance. This works but requires managing multiple windows. The user reviews changes in the context of one worktree at a time.
+- Option B: Use VS Code's multi-root workspace to open both worktrees. This is possible but complex — source control view shows both worktrees interleaved, which is confusing for review.
+- Option C: Switch the workspace between worktrees. This defeats the purpose of worktrees (parallel work) and is equivalent to branch switching.
+
+**pio workflow coordination:** Each worktree would have its own `.pio/` directory. The session queue (`.pio/session-queue/`) is per-worktree — there is no cross-worktree coordination mechanism. If a subgoal in worktree A depends on work from worktree B, pio has no way to express or enforce that dependency.
+
+**Graceful failure complexity:** Worktree operations add significant failure surface:
+- `git worktree add` fails if the path already exists, if the branch is checked out elsewhere, or if the repo doesn't support worktrees (bare repos).
+- `git worktree remove` fails if the worktree is locked (active git operation).
+- `git worktree prune` is needed to clean up stale worktree refs.
+- Cross-worktree operations (e.g., pushing from one worktree affects all worktrees) can cause unexpected state changes.
+
+**Agent context:** The pio agent runs inside a single VS Code session with a single working directory. The agent's `bash` tool executes commands in the current working directory. To operate across worktrees, the agent would need to `cd` between worktree paths — this is fragile and error-prone.
+
+#### Evaluation
+
+| Criterion | Assessment |
+|-----------|-----------|
+| **Value for pio workflow** | Low. pio sub-sessions are sequential by design (one task per goal slot). Parallel goal development is not a stated requirement in GOAL.md. The session queue enforces FIFO execution — parallelism is not a workflow goal. |
+| **Implementation complexity** | High. Requires worktree management protocol (add, remove, prune), cross-worktree state tracking, and agent path management. Significantly expands the pio-git skill scope. |
+| **IDE workflow fit** | Poor. VS Code's single-workspace model conflicts with multi-worktree operation. User review becomes fragmented across multiple windows or a confusing multi-root workspace. |
+| **Graceful failure risk** | High. Worktree operations have more failure modes than standard git operations. Each failure mode requires handling in the skill protocol. |
+| **Alternative solutions** | Branch switching (already supported) achieves the same goal (working on multiple branches) without worktree complexity. For truly parallel development, separate VS Code instances on the same repo (without worktrees) is simpler — each instance checks out its own branch. |
+
+#### Recommendation: Exclude from scope
+
+**Git worktrees are explicitly excluded from the git lifecycle specification.**
+
+Rationale:
+1. **No workflow requirement:** GOAL.md does not require parallel goal development. The pio session queue enforces sequential execution. Worktrees solve a problem that pio does not have.
+2. **Single-IDE constraint:** VS Code's workspace model makes multi-worktree operation impractical for the review workflow. The user reviews changes in a single IDE — worktrees fragment this experience.
+3. **High complexity, low value:** The implementation cost (new protocol, error handling, state tracking) far exceeds the benefit (parallel development that pio doesn't require).
+4. **Simpler alternatives exist:** Branch switching achieves the same outcome (working on multiple branches over time) without worktree overhead. For users who want true parallelism, running separate VS Code instances is a simpler solution.
+5. **Future revisitable:** If parallel goal development becomes a requirement, worktrees can be revisited with a clearer use case and dedicated research. The pio-git skill structure (Convention Lookup Rule, graceful failure) provides a foundation for future worktree support.
+
+**Explicit exclusion statement for future reference:**
+
+> Git worktrees were evaluated and excluded from the git lifecycle specification (Step 2, Section 2.3). The primary constraints were: (1) no pio workflow requirement for parallel goal development, (2) VS Code's single-workspace model conflicts with multi-worktree operation, and (3) high implementation complexity with low value relative to branch switching. This decision can be revisited if parallel goal development becomes a stated requirement.

@@ -122,7 +122,11 @@ After all updates are applied, produce a structured summary:
 
 If no updates were warranted, explicitly state: "No PROJECT file updates were warranted. All decisions from this goal were implementation-specific or locally scoped, and none mapped to project-wide patterns, conventions, or structural changes."
 
-### Step 10: Signal completion
+### Step 10: Create a pull request
+
+After producing the summary, create a pull request for this goal's changes. Follow the PR Creation Protocol from the pio-git skill. Pass the goal name and workspace path as context so the skill can derive the PR title and body. If PR creation fails or is skipped, proceed with goal finalization — do not block completion.
+
+### Step 11: Signal completion
 
 After producing the summary, call `pio_mark_complete` to signal that your work is done.
 

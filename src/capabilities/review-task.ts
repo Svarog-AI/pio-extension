@@ -34,6 +34,11 @@ export function applyReviewDecision(
   // Ensure the step directory exists (should already exist with REVIEW.md, but be safe)
   fs.mkdirSync(stepDir, { recursive: true });
 
+  // Remove stale markers from previous review attempts; force:true skips missing files.
+  // This makes the function idempotent — safe to call multiple times with different decisions.
+  fs.rmSync(path.join(stepDir, "APPROVED"), { force: true });
+  fs.rmSync(path.join(stepDir, "REJECTED"), { force: true });
+
   if (outputs.decision === "APPROVED") {
     fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
   } else {

@@ -1,0 +1,55 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "evolve-plan-skill-recommendations",
+    "stepNumber": 3,
+    "_sessionContext": {
+      "goalName": "evolve-plan-skill-recommendations",
+      "stepNumber": 3,
+      "_sessionContext": {
+        "goalName": "evolve-plan-skill-recommendations",
+        "stepNumber": 2,
+        "_sessionContext": {
+          "goalName": "evolve-plan-skill-recommendations",
+          "stepNumber": 2,
+          "_sessionContext": {
+            "goalName": "evolve-plan-skill-recommendations",
+            "stepNumber": 2,
+            "_sessionContext": {
+              "goalName": "evolve-plan-skill-recommendations",
+              "stepNumber": 1,
+              "_sessionContext": {
+                "goalName": "evolve-plan-skill-recommendations",
+                "stepNumber": 1,
+                "_sessionContext": {
+                  "goalName": "evolve-plan-skill-recommendations",
+                  "stepNumber": 1,
+                  "_sessionContext": {
+                    "goalName": "evolve-plan-skill-recommendations",
+                    "stepNumber": 1,
+                    "_sessionContext": {
+                      "goalName": "evolve-plan-skill-recommendations",
+                      "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/evolve-plan-skill-recommendations.md",
+                      "fileCleanup": [
+                        "/home/aleksj/git/pio-extension/.pio/issues/evolve-plan-skill-recommendations.md"
+                      ],
+                      "capability": "create-goal"
+                    },
+                    "capability": "create-plan"
+                  },
+                  "capability": "evolve-plan"
+                },
+                "capability": "execute-task"
+              },
+              "capability": "review-task"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    }
+  }
+}

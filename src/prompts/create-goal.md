@@ -41,7 +41,11 @@ After researching, ask the user about anything still unclear:
 
 Do not ask questions that your research already answered. Do not ask generic "anything else?" filler — only ask when there is a genuine gap that would make GOAL.md vague.
 
-### Step 4: Write GOAL.md
+### Step 4: Checkout a dedicated branch
+
+Before writing GOAL.md, checkout a dedicated branch for this goal. Follow the Branch Checkout Protocol from the pio-git skill. Pass the goal name as context so the skill can derive the branch name. If branching fails or is skipped, proceed on the current branch — do not block goal creation.
+
+### Step 5: Write GOAL.md
 
 When you have enough information, write `GOAL.md` into the goal workspace directory. The file must have exactly three sections, in this order:
 
@@ -71,7 +75,7 @@ reference them.>
 
 After writing and confirming, call `pio_mark_complete` to signal completion.
 
-### Step 5: Signal completion
+### Step 6: Signal completion
 
 When GOAL.md has been written and confirmed, call the `pio_mark_complete` tool to validate that all expected outputs have been produced. If validation reports missing files, produce them before calling again. Do not end your work without calling this tool.
 

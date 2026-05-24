@@ -2,7 +2,14 @@
 
 Consolidated specification covering end-to-end git integration for the pio workflow. Synthesized from research in Steps 1–2. Actionable as input to a follow-up `create-plan` for implementation.
 
-**Separation of concerns:** This document specifies *what* the git lifecycle should do. All executable shell commands, bash scripts, and step-by-step instructions belong in `src/skills/pio-git/SKILL.md` (the skill). The capability prompts (`create-goal.md`, `finalize-goal.md`) only reference the skill by name — they never contain git commands directly.
+**Core pio principle: prompts define WHAT, skills define HOW.**
+
+This is the governing separation of concerns for all pio workflow extensions:
+
+- **Prompts** (`src/prompts/*.md`) define **what** should happen — the workflow steps, the order of operations, and the goals to achieve. A prompt never contains shell commands, bash scripts, or implementation details. It references a skill by name and delegates execution.
+- **Skills** (`src/skills/*/SKILL.md`) define **how** to do it — the concrete protocols, shell commands, error handling, and edge case logic. A skill is capability-agnostic — any prompt can invoke it.
+
+This document specifies *what* the git lifecycle should do. All executable shell commands and step-by-step instructions belong in `src/skills/pio-git/SKILL.md`. The capability prompts (`create-goal.md`, `finalize-goal.md`) only reference the skill by name.
 
 ---
 
@@ -222,19 +229,19 @@ Add two new protocol sections between "Staged Commit Protocol" and "Future Exten
 
 ### Changes to `src/prompts/create-goal.md`
 
-Add a step between Step 3 (Fill gaps) and Step 4 (Write GOAL.md):
+Add a step between Step 3 (Fill gaps) and Step 4 (Write GOAL.md).
 
-- **New step:** "Before writing GOAL.md, follow the Branch Checkout Protocol from the pio-git skill to checkout a dedicated branch for this goal."
-- The step should instruct the agent to load the pio-git skill (if not already loaded) and execute the Branch Checkout Protocol.
-- Pass the goal name as context so the agent can construct the branch name.
+**Prompt (WHAT):** "Before writing GOAL.md, checkout a dedicated branch for this goal. Follow the Branch Checkout Protocol from the pio-git skill."
+
+The prompt states *what* to do (checkout a branch) and delegates *how* to the skill. It never mentions `git checkout`, branch naming patterns, or collision handling — all of that lives in the skill.
 
 ### Changes to `src/prompts/finalize-goal.md`
 
-Add a step after Step 9 (Produce summary output) and before Step 10 (Signal completion):
+Add a step after Step 9 (Produce summary output) and before Step 10 (Signal completion).
 
-- **New step:** "After producing the summary, follow the PR Creation Protocol from the pio-git skill to create a pull request for this goal's changes."
-- The step should instruct the agent to load the pio-git skill (if not already loaded) and execute the PR Creation Protocol.
-- Pass the goal name and goal workspace path as context.
+**Prompt (WHAT):** "After producing the summary, create a pull request for this goal's changes. Follow the PR Creation Protocol from the pio-git skill."
+
+The prompt states *what* to do (create a PR) and delegates *how* to the skill. It never mentions `gh pr create`, auth checks, or branch pushing — all of that lives in the skill.
 
 ### Capability code changes
 

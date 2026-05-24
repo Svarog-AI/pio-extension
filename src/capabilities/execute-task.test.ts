@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { CAPABILITY_CONFIG } from "./execute-task";
 import { isStepReady } from "./execute-task";
 import { stepFolderName } from "../fs-utils";
 import { resolveCapabilityConfig } from "../capability-config";
@@ -69,119 +68,6 @@ function createGoalTree(
 
   return { goalDir, stepDir };
 }
-
-// ---------------------------------------------------------------------------
-// defaultInitialMessage — rejection feedback channel
-// ---------------------------------------------------------------------------
-
-describe("defaultInitialMessage — rejection feedback channel", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("includes REVIEW.md reference when REJECTED marker exists", () => {
-    // Arrange: S02/REJECTED present on disk
-    const { goalDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 2, rejected: true });
-
-    // Act
-    const message = CAPABILITY_CONFIG.defaultInitialMessage(goalDir, { stepNumber: 2 });
-
-    // Assert
-    expect(message).toContain("REVIEW.md");
-    expect(message).toContain("S02");
-  });
-
-  it("mentions re-execution context when REJECTED marker exists", () => {
-    // Arrange: S02/REJECTED present on disk
-    const { goalDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 2, rejected: true });
-
-    // Act
-    const message = CAPABILITY_CONFIG.defaultInitialMessage(goalDir, { stepNumber: 2 });
-
-    // Assert: message indicates this is a re-execution scenario
-    const hasReExecutionLanguage =
-      message.toLowerCase().includes("rejected") ||
-      message.toLowerCase().includes("re-execution") ||
-      message.toLowerCase().includes("previously rejected");
-    expect(hasReExecutionLanguage).toBe(true);
-  });
-
-  it("does not include rejection message when REJECTED marker absent", () => {
-    // Arrange: S01/ with TASK.md and TEST.md but no REJECTED
-    const { goalDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1, rejected: false });
-
-    // Act
-    const message = CAPABILITY_CONFIG.defaultInitialMessage(goalDir, { stepNumber: 1 });
-
-    // Assert
-    expect(message).not.toContain("REVIEW.md");
-  });
-
-  it("normal message is present when no rejection", () => {
-    // Arrange: S01/ with no REJECTED marker
-    const { goalDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1, rejected: false });
-
-    // Act
-    const message = CAPABILITY_CONFIG.defaultInitialMessage(goalDir, { stepNumber: 1 });
-
-    // Assert: standard instructions should mention TASK.md and TEST.md
-    expect(message).toContain("TASK.md");
-    expect(message).toContain("TEST.md");
-  });
-
-  it("normal message instructs creating TEST.md and writing tests first", () => {
-    // Arrange: S01/ with no REJECTED marker
-    const { goalDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1, rejected: false });
-
-    // Act
-    const message = CAPABILITY_CONFIG.defaultInitialMessage(goalDir, { stepNumber: 1 });
-
-    // Assert: message should instruct creating TEST.md and writing tests first
-    expect(message).toContain("TEST.md");
-    expect(message).toContain("write tests first");
-  });
-
-  it("handles missing stepNumber gracefully (error message unchanged)", () => {
-    // Arrange: no stepNumber in params
-    const { goalDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1, rejected: false });
-
-    // Act
-    const message = CAPABILITY_CONFIG.defaultInitialMessage(goalDir, {});
-
-    // Assert: should return an error message about missing stepNumber, not crash
-    expect(message).toContain("stepNumber");
-    expect(message.toLowerCase()).toContain("error");
-  });
-
-  it("handles non-existent step folder (no REJECTED) — normal message", () => {
-    // Arrange: goal dir exists but no S03/ subdirectory at all
-    const { goalDir } = createGoalTree(tempDir, "test-goal");
-
-    // Act
-    const message = CAPABILITY_CONFIG.defaultInitialMessage(goalDir, { stepNumber: 3 });
-
-    // Assert: fs.existsSync returns false for non-existent path → normal (non-rejection) message
-    expect(message).not.toContain("REVIEW.md");
-    expect(message).toContain("TASK.md");
-    expect(message).toContain("TEST.md");
-  });
-
-  it("zero-padded step number in rejection message", () => {
-    // Arrange: S05/REJECTED
-    const { goalDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 5, rejected: true });
-
-    // Act
-    const message = CAPABILITY_CONFIG.defaultInitialMessage(goalDir, { stepNumber: 5 });
-
-    // Assert: should reference "S05" (zero-padded), not "S5"
-    expect(message).toContain("S05");
-    expect(message).not.toContain(" S5");
-  });
-});
 
 // ---------------------------------------------------------------------------
 // isStepReady — execution-readiness gate

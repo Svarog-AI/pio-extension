@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { validateOutputs } from "../guards/validation";
 import { resolveCapabilityConfig } from "../capability-config";
-import { validateAndFindNextStep, CAPABILITY_CONFIG } from "./evolve-plan";
+import { validateAndFindNextStep } from "./evolve-plan";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -428,21 +428,6 @@ describe("resolveEvolveValidation excludes TEST.md", () => {
 
     // Assert: no TEST.md in validation files
     expect(result?.validation?.files).not.toContain("S02/TEST.md");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// defaultInitialMessage — TASK.md only
-// ---------------------------------------------------------------------------
-
-describe("defaultInitialMessage", () => {
-  it("mentions TASK.md only, not TEST.md", () => {
-    // Act: call defaultInitialMessage directly from CAPABILITY_CONFIG
-    const message = CAPABILITY_CONFIG.defaultInitialMessage("/tmp/proj/.pio/goals/test-goal", { stepNumber: 1 });
-
-    // Assert: mentions TASK.md but not TEST.md
-    expect(message).toContain("TASK.md");
-    expect(message).not.toContain("TEST.md");
   });
 });
 

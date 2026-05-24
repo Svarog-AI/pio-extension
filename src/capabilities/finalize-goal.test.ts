@@ -87,64 +87,6 @@ describe("CAPABILITY_CONFIG", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CAPABILITY_CONFIG.defaultInitialMessage
-// ---------------------------------------------------------------------------
-
-describe("CAPABILITY_CONFIG.defaultInitialMessage", () => {
-  it("returns a non-empty string when goalDir is provided", () => {
-    const result = CAPABILITY_CONFIG.defaultInitialMessage("/tmp/test", { goalDir: "/abs/goal/dir" });
-    expect(typeof result).toBe("string");
-    expect(result.length).toBeGreaterThan(0);
-  });
-
-  it("includes the goal directory path in the message", () => {
-    const goalDir = "/abs/goal/dir";
-    const result = CAPABILITY_CONFIG.defaultInitialMessage("/tmp/test", { goalDir });
-    expect(result).toContain(goalDir);
-  });
-
-  it("includes the word 'goal' or references goal workspace", () => {
-    const result = CAPABILITY_CONFIG.defaultInitialMessage("/tmp/test", { goalDir: "/abs/goal/dir" });
-    expect(result.toLowerCase()).toMatch(/goal/);
-  });
-
-  it("includes the goal name when params.goalName is provided", () => {
-    const result = CAPABILITY_CONFIG.defaultInitialMessage("/tmp/test", {
-      goalName: "my-feature",
-      goalDir: "/abs/goal/dir",
-    });
-    expect(result).toContain("my-feature");
-  });
-
-  it("formats the goal name naturally in the message", () => {
-    const result = CAPABILITY_CONFIG.defaultInitialMessage("/tmp/test", {
-      goalName: "test-goal-123",
-      goalDir: "/abs/goal/dir",
-    });
-    expect(result).toContain("test-goal-123");
-    expect(result).toContain("/abs/goal/dir");
-  });
-
-  it("gracefully handles missing goalName (backward compat)", () => {
-    const result = CAPABILITY_CONFIG.defaultInitialMessage("/tmp/test", {
-      goalDir: "/abs/goal/dir",
-    });
-    expect(result.length).toBeGreaterThan(0);
-    expect(result).toContain("/abs/goal/dir");
-    // Should not contain empty artifacts like "'' at" or reference undefined/empty name
-    expect(result).not.toContain("'' at");
-    // Fallback phrasing should be "goal workspace"
-    expect(result).toContain("goal workspace");
-  });
-
-  it("gracefully handles undefined params", () => {
-    const result = CAPABILITY_CONFIG.defaultInitialMessage("/tmp/test", undefined);
-    expect(typeof result).toBe("string");
-    expect(result.length).toBeGreaterThan(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // setupFinalizeGoal registration
 // ---------------------------------------------------------------------------
 

@@ -122,6 +122,17 @@ Cross-reference TASK.md's acceptance criteria with your implementation:
 - Are conventions followed (naming, patterns, styles matching existing code)?
 - Have you stayed within scope — no unplanned refactoring or out-of-scope changes?
 
+### Handling user-requested changes
+
+After initial implementation is complete (from Step 6 onward), you may receive user messages requesting changes — for example: "can you also do X", "change this approach", "merge this with another file". Treat these as **user-requested changes**, distinct from the original `TASK.md` scope.
+
+After applying each user-requested change, before proceeding to final verification (Step 7) or completion (Step 9), you **must** update `SUMMARY.md` to record:
+
+- What the user requested (brief description)
+- Which files were created, modified, or deleted as a result of that specific change
+
+This ensures `SUMMARY.md` always reflects the final state of all files, regardless of how many feedback iterations occur during the session.
+
 ### Step 9: Write completion artifacts
 
 #### On success (all tests pass, all criteria met):
@@ -148,6 +159,16 @@ Cross-reference TASK.md's acceptance criteria with your implementation:
    ## Decisions Made
    - <Key technical decisions during implementation>
 
+   ## User-Requested Changes
+   - (none)
+
+   When user-requested changes did occur, list each one with a description and affected files, e.g.:
+
+   ```
+   ## User-Requested Changes
+   - User requested merging file A into file B. Modified `src/a.ts` (deleted), `src/b.ts` (updated).
+   ```
+
    ## Test Coverage
    - <Which test cases pass, how they're verified>
    ```
@@ -173,6 +194,9 @@ Cross-reference TASK.md's acceptance criteria with your implementation:
    ## Files Created/Modified (before block)
    - `<path>` — brief description
    - ...
+
+   ## User-Requested Changes
+   - (none)
 
    ## Next Steps
    - <What needs to happen to unblock this step>

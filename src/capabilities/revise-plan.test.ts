@@ -123,6 +123,59 @@ describe("CAPABILITY_CONFIG", () => {
     expect(message.length).toBeGreaterThan(0);
     expect(message).toContain("/some/goal/dir");
   });
+
+  it("defaultInitialMessage without revisionTriggerStep mentions preserved incomplete step folders", () => {
+    const message = CAPABILITY_CONFIG.defaultInitialMessage("/some/goal/dir");
+
+    expect(message).toMatch(/preserved|inspection/i);
+    expect(message).not.toMatch(/Revision was triggered/i);
+  });
+
+  it("defaultInitialMessage with revisionTriggerStep references reading trigger step files", () => {
+    const message = CAPABILITY_CONFIG.defaultInitialMessage("/some/goal/dir", {
+      revisionTriggerStep: 3,
+    });
+
+    expect(message).toMatch(/Revision was triggered from Step 3/i);
+    expect(message).toMatch(/TASK\.md/i);
+    expect(message).toMatch(/DECISIONS\.md/i);
+    expect(message).toMatch(/REVISE_PLAN_NEEDED/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CAPABILITY_CONFIG wiring consistency — integration
+// ---------------------------------------------------------------------------
+
+describe("CAPABILITY_CONFIG wiring consistency", () => {
+  it("all lifecycle hooks point to the correct exported functions", () => {
+    // prepareSession must be the exported prepareSession
+    expect(CAPABILITY_CONFIG.prepareSession).toBe(prepareSession);
+    // postExecute must be the exported cleanupIncompleteSteps
+    expect(CAPABILITY_CONFIG.postExecute).toBe(cleanupIncompleteSteps);
+  });
+
+  it("readOnlyFiles is a function callback", () => {
+    expect(typeof CAPABILITY_CONFIG.readOnlyFiles).toBe("function");
+  });
+
+  it("writeAllowlist resolves to include PLAN.md", () => {
+    const wl = CAPABILITY_CONFIG.writeAllowlist;
+    expect(typeof wl === "function" || Array.isArray(wl)).toBe(true);
+
+    const result = typeof wl === "function" ? wl("/tmp/goal") : wl;
+    expect(result).toContain("PLAN.md");
+  });
+
+  it("defaultInitialMessage includes goal workspace path in both modes", () => {
+    const msgWithoutTrigger = CAPABILITY_CONFIG.defaultInitialMessage("/test/goal/dir");
+    expect(msgWithoutTrigger).toContain("/test/goal/dir");
+
+    const msgWithTrigger = CAPABILITY_CONFIG.defaultInitialMessage("/test/goal/dir", {
+      revisionTriggerStep: 2,
+    });
+    expect(msgWithTrigger).toContain("/test/goal/dir");
+  });
 });
 
 // ---------------------------------------------------------------------------

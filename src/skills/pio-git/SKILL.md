@@ -53,6 +53,43 @@ git add <path1> <path2> ...
 git commit -m "<message>"
 ```
 
+## Branch Checkout Protocol
+
+Checkout a dedicated branch when a goal workspace is created. Follow these steps in order:
+
+1. **Subgoal detection** — if the goal workspace path contains `/subgoals/`, skip this protocol entirely.
+2. **Verify git repository** — `git rev-parse --show-toplevel`. On failure: warn and skip.
+3. **Verify git user config** — `git config user.name` and `git config user.email`. On failure: warn and skip.
+4. **Convention lookup** — read `.pio/PROJECT/GIT.md` for branch naming patterns (e.g., `feat/<feature-name>`). Fallback: `feat/<goal-name>`.
+5. **Construct branch name** — apply the pattern with the goal name: lowercase, spaces to hyphens (e.g., `Implement Git Lifecycle` → `feat/implement-git-lifecycle`).
+6. **Detect current branch** — `git symbolic-ref --short HEAD`. On failure (detached HEAD): warn and skip.
+7. **Non-main branch handling** — if current branch is not the main branch (from GIT.md or default `main`), use it as the base for the new branch. Note this branch as the PR target for downstream PR creation.
+8. **Branch collision resolution** — `git rev-parse --verify <branch>`. If the branch exists:
+   - **Top-level goals:** call `ask_user` with three options: (a) Reuse existing branch — `git checkout <branch>`, (b) Create suffixed branch — append `-2`, `-3`, etc. until free, (c) Cancel branching — skip and continue on current branch.
+   - **Subgoals:** auto-suffix without prompting (`-2`, `-3`, etc.).
+9. **Checkout the branch** — `git checkout -b <branch>` (or `git checkout -b <branch> <current-branch>` for non-main base).
+
+**Edge cases:** no git repo (skip silently), detached HEAD (warn and skip), uncommitted changes (`git checkout -b` fails — warn agent, do not force), shallow clone (warn but proceed).
+
+## PR Creation Protocol
+
+Create a pull request when a goal is finalized. Follow these steps in order:
+
+1. **Subgoal detection** — if the goal workspace path contains `/subgoals/`, skip this protocol entirely.
+2. **Verify git repository** — `git rev-parse --show-toplevel`. On failure: warn and skip.
+3. **Verify `gh` CLI available** — `command -v gh`. On failure: warn and skip.
+4. **Verify `gh` authentication** — `gh auth status`. On failure: warn and skip.
+5. **Determine target branch** — read `.pio/PROJECT/GIT.md` for main branch name, fallback `main`, or use the base branch recorded during Branch Checkout Protocol (non-main branch handling).
+6. **Get current branch** — `git symbolic-ref --short HEAD`. On failure: warn and skip.
+7. **Check for existing PR** — `gh pr list --head <branch> --base <target>`. If found and open: report URL and skip. If closed/merged (re-finalize): proceed to create a new one.
+8. **Check for changes** — `git diff --shortstat <target>...<head>`. If empty: warn and skip.
+9. **Push branch to remote** — `git push -u origin <branch>`. On failure: warn and skip.
+10. **Construct PR title** — follow GIT.md Conventional Commits format. Pick type from observed types (`feat`, `fix`, `refactor`, etc.) based on goal name/summary. Fallback: short descriptive one-liner.
+11. **Construct PR body** — if GIT.md specifies a PR body template, follow it. Otherwise construct from: GOAL.md summary, PLAN.md step list, per-step SUMMARY.md files (files changed).
+12. **Create the PR** — `gh pr create --title "<title>" --body "<body>" --base <target> --head <branch>`.
+
+**Edge cases:** `gh` not installed (skip, warn), not authenticated (skip, warn), network failure (skip, warn), branch not pushed (push first, skip on failure), no changes (skip, warn), existing PR (report URL, skip), not a GitHub repo (skip, warn), re-finalize (check existing PR state, create new if closed/merged).
+
 ## Graceful Failure Semantics
 
 If any git command fails, log a warning and proceed — **never block workflow completion**. Git operations may fail due to:
@@ -68,7 +105,8 @@ On failure, emit a warning (e.g., via `console.warn` or a notification) and cont
 
 This skill is structured to accommodate additional git operations without restructuring:
 
-- **Branch checkout on `create-goal`:** Checkout a new branch based on `main` when a goal workspace is created. Branch naming conventions come from GIT.md.
-- **PR creation on `finalize-goal`:** Open a pull request from the goal branch to `main` when a goal is finalized.
+- **Cherry-pick protocol:** Selectively apply commits across branches, following GIT.md conventions for commit selection and message handling.
+- **Tag creation on release:** Annotate releases with versioned tags, following GIT.md tag naming patterns.
+- **Git worktrees:** Evaluated and excluded — pio's sequential execution model (one task per goal slot) and VS Code's single-workspace constraint eliminate the need for parallel worktrees. This decision can be revisited if parallel goal development becomes a stated requirement.
 
-When these operations are added, follow the same patterns: convention lookup from GIT.md, graceful failure semantics, and capability-agnostic protocol design.
+When new operations are added, follow the same patterns: convention lookup from GIT.md, graceful failure semantics, and capability-agnostic protocol design.

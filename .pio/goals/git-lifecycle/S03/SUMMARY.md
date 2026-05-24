@@ -24,7 +24,9 @@ COMPLETED
 - **Implementation plan:** 5 proposed steps for follow-up goal (add protocols to skill, inject into prompts, end-to-end validation)
 
 ## User-Requested Changes
-- (none)
+- **Commands belong in the skill, not the spec.** User clarified that bash scripts and shell commands should be located in the pio-git skill, not presented inline in the spec. Reframed protocol sections as "Steps (to be written into the skill)" with a closing note that executable commands are the skill's responsibility. Modified `SPECIFICATION.md`, `docs/git-lifecycle-specification.md`.
+- **GIT.md is the authority for formats.** User clarified that PR title format, PR body format, and other formatting conventions should defer to `.pio/PROJECT/GIT.md`, not be prescribed by the spec. Removed hardcoded format templates; spec now says "read GIT.md for the format." Modified `SPECIFICATION.md`, `docs/git-lifecycle-specification.md`.
+- **Prompts define WHAT, skills define HOW.** User requested explicit statement of this core pio principle. Added a prominent statement at the top of the spec and reinforced it in §5 prompt change descriptions. Modified `SPECIFICATION.md`, `docs/git-lifecycle-specification.md`.
 
 ## Test Coverage
 - No unit tests (documentation-only task per TDD methodology)

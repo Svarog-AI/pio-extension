@@ -68,6 +68,47 @@ function createGoalTree(
 }
 
 // ---------------------------------------------------------------------------
+// resolveReviewReadOnlyFiles (via CAPABILITY_CONFIG.readOnlyFiles)
+// ---------------------------------------------------------------------------
+
+describe("resolveReviewReadOnlyFiles", () => {
+  it("given stepNumber 1, includes DECISIONS.md in readOnlyFiles", () => {
+    // Act
+    const readOnlyFiles = (CAPABILITY_CONFIG.readOnlyFiles as Function)(
+      "/some/workingDir",
+      { stepNumber: 1 },
+    );
+
+    // Assert
+    expect(readOnlyFiles).toContain("S01/DECISIONS.md");
+  });
+
+  it("given stepNumber 2, includes DECISIONS.md in readOnlyFiles", () => {
+    // Act
+    const readOnlyFiles = (CAPABILITY_CONFIG.readOnlyFiles as Function)(
+      "/some/workingDir",
+      { stepNumber: 2 },
+    );
+
+    // Assert
+    expect(readOnlyFiles).toContain("S02/DECISIONS.md");
+  });
+
+  it("given stepNumber 5, includes DECISIONS.md with zero-padded folder name S05", () => {
+    // Act
+    const readOnlyFiles = (CAPABILITY_CONFIG.readOnlyFiles as Function)(
+      "/some/workingDir",
+      { stepNumber: 5 },
+    );
+
+    // Assert
+    expect(readOnlyFiles).toContain("S05/DECISIONS.md");
+    // Verify no under-padded path exists
+    expect(readOnlyFiles).not.toContain("S5/DECISIONS.md");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // resolveReviewWriteAllowlist (via CAPABILITY_CONFIG.writeAllowlist)
 // ---------------------------------------------------------------------------
 

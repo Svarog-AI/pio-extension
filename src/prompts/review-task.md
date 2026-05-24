@@ -26,13 +26,25 @@ Then read `PLAN.md` from the same directory. Find your assigned step and underst
 - How it fits into the overall plan
 - Dependencies on earlier steps
 
-### Step 2: Read TASK.md, TEST.md, and SUMMARY.md
+### Step 2: Read TASK.md, TEST.md, SUMMARY.md, and DECISIONS.md
 
-Read all three files from `S{NN}/` (your step folder):
+Read all files from `S{NN}/` (your step folder):
 
 - **TASK.md** — the focused specification of what was built. Contains code components, approach decisions, files affected, and acceptance criteria.
 - **TEST.md** — the test plan specifying exactly what must pass. Contains programmatic verification commands and expected results.
 - **SUMMARY.md** — the changelog written by the implementation agent. Lists status (`COMPLETED`), files created/modified/deleted, decisions made, and test coverage notes.
+- **DECISIONS.md** — may exist for Step 2+ (will not exist for Step 1 / `S01/`). Contains accumulated architectural decisions from preceding steps — file placement changes, departures from the original plan, interface choices. Treat it as supplementary context for evaluating whether implementation aligns with actual decisions made during the goal lifecycle. For Step 1 (`S01/`), this file will not exist; proceed using only `TASK.md`.
+
+**User-Requested Changes:** `SUMMARY.md` includes a **User-Requested Changes** section recording explicit user feedback during implementation (e.g., "can you also do X", "merge this file into another"). When present, treat these listed changes as explicit user-approved scope extensions. The reviewer should NOT flag files or behaviors introduced by these changes as unauthorized modifications (HIGH severity). Instead, verify they were applied correctly and note them in the review.
+
+**Authority Hierarchy:** When resolving conflicts between specification sources, use this hierarchy from highest to lowest authority:
+
+1. **User-Requested Changes** (`SUMMARY.md`) — user-approved scope extensions always take precedence
+2. **Decisions** (`DECISIONS.md`) — architectural decisions and plan deviations override the original plan
+3. **Task** (`TASK.md`), **Plan** (`PLAN.md`), and **Test** (`TEST.md`) — formal specification and verification contract; TASK elaborates PLAN, TESTS verify TASK
+4. **Goal** (`GOAL.md`) — high-level target outcome; superseded by everything above
+
+When implementation follows a higher-authority source but deviates from a lower one, this is not an issue. Flag deviations only when they violate a source at its own authority level without justification from a higher source.
 
 ### Step 3: Read implementation files
 
@@ -66,6 +78,10 @@ Evaluate the implementation across these dimensions:
 - **PLAN ↔ TASK**: Does the task spec faithfully represent the plan step?
 - **TASK ↔ TESTS**: Do tests cover all acceptance criteria?
 - **TASK ↔ Implementation**: Does code match the task spec?
+- **TASK ↔ DECISIONS**: Verify that architectural decisions and plan deviations documented in `DECISIONS.md` are respected by the implementation.
+- **TASK ↔ User-Requested Changes**: When `SUMMARY.md`'s "User-Requested Changes" section lists changes, treat those as explicit scope extensions approved by the user. Do not flag files or behaviors introduced solely by user-requested changes as "accidental changes to unrelated files" (HIGH) or scope creep. Instead, verify correctness and document in the review.
+
+**How the hierarchy resolves conflicts:** When you find a deviation from `TASK.md` or `PLAN.md`, check `DECISIONS.md` and `SUMMARY.md` before flagging an issue. A deviation is justified if it appears in either source at a higher authority level.
 
 ### Step 5: Categorize issues
 

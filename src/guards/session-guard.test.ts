@@ -334,6 +334,7 @@ describe("setupSessionGuard", () => {
     expect(sendUserMessageCalls).toHaveLength(1);
     expect(sendUserMessageCalls[0].content).toBeDefined();
     expect(sendUserMessageCalls[0].content.length).toBeGreaterThan(0);
+    expect(sendUserMessageCalls[0].options).toEqual({ deliverAs: "steer" });
   });
 
   // "turn_end does NOT send recovery message when text is present"
@@ -680,13 +681,13 @@ describe("turn_count — refinement loop nudge", () => {
     __testSetTurnCount(0);
     setupSessionGuard(pi);
 
-    // Act: simulate 12 turns (DEFAULT_TURN_THRESHOLD)
-    simulateTurns(handlers, 12);
+    // Act: simulate 15 turns (DEFAULT_TURN_THRESHOLD)
+    simulateTurns(handlers, 15);
 
     // Assert: nudge was sent exactly once
     const nudgeCalls = sendUserMessageCalls.filter((c) => c.content.includes("turn"));
     expect(nudgeCalls).toHaveLength(1);
-    expect(nudgeCalls[0].content).toContain("12");
+    expect(nudgeCalls[0].content).toContain("15");
   });
 
   it("turnCount resets to 0 after the nudge fires", () => {
@@ -696,26 +697,26 @@ describe("turn_count — refinement loop nudge", () => {
     __testSetTurnCount(0);
     setupSessionGuard(pi);
 
-    // Act: simulate 12 turns (threshold)
-    simulateTurns(handlers, 12);
+    // Act: simulate 15 turns (threshold)
+    simulateTurns(handlers, 15);
 
     // Assert: counter reset to 0
     expect(__testSetTurnCount()).toBe(0);
   });
 
-  it("nudge message uses { deliverAs: \"followUp\" }", () => {
+  it("nudge message uses { deliverAs: \"steer\" }", () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
     __testSetActiveSession(true);
     __testSetTurnCount(0);
     setupSessionGuard(pi);
 
-    // Act: simulate 12 turns
-    simulateTurns(handlers, 12);
+    // Act: simulate 15 turns
+    simulateTurns(handlers, 15);
 
     // Assert
     const nudgeCalls = sendUserMessageCalls.filter((c) => c.content.includes("turn"));
-    expect(nudgeCalls[0].options).toEqual({ deliverAs: "followUp" });
+    expect(nudgeCalls[0].options).toEqual({ deliverAs: "steer" });
   });
 
   it("nudge fires again after reset (periodic nudges)", () => {
@@ -725,8 +726,8 @@ describe("turn_count — refinement loop nudge", () => {
     __testSetTurnCount(0);
     setupSessionGuard(pi);
 
-    // Act: simulate 24 turns (2 x threshold)
-    simulateTurns(handlers, 24);
+    // Act: simulate 30 turns (2 x threshold)
+    simulateTurns(handlers, 30);
 
     // Assert: nudge was sent exactly twice
     const nudgeCalls = sendUserMessageCalls.filter((c) => c.content.includes("turn"));
@@ -740,8 +741,8 @@ describe("turn_count — refinement loop nudge", () => {
     __testSetTurnCount(0);
     setupSessionGuard(pi);
 
-    // Act: simulate 11 turns (below threshold of 12)
-    simulateTurns(handlers, 11);
+    // Act: simulate 14 turns (below threshold of 15)
+    simulateTurns(handlers, 14);
 
     // Assert: no nudge sent
     const nudgeCalls = sendUserMessageCalls.filter((c) => c.content.includes("turn"));
@@ -823,20 +824,20 @@ describe("turn_count — refinement loop nudge", () => {
     expect(result).toBe(42);
   });
 
-  it("nudge fires at the exact threshold boundary (turn 12, not 13)", () => {
+  it("nudge fires at the exact threshold boundary (turn 15, not 16)", () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
     __testSetActiveSession(true);
     __testSetTurnCount(0);
     setupSessionGuard(pi);
 
-    // Act: simulate exactly 12 turns
-    simulateTurns(handlers, 12);
+    // Act: simulate exactly 15 turns
+    simulateTurns(handlers, 15);
 
-    // Assert: nudge fired (turnCount was 12, which is >= threshold 12)
+    // Assert: nudge fired (turnCount was 15, which is >= threshold 15)
     const nudgeCalls = sendUserMessageCalls.filter((c) => c.content.includes("turn"));
     expect(nudgeCalls).toHaveLength(1);
-    // And counter reset, so turn 13 would start fresh
+    // And counter reset, so turn 16 would start fresh
     expect(__testSetTurnCount()).toBe(0);
   });
 });

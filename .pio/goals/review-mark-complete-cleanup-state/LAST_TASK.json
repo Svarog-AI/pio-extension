@@ -1,0 +1,55 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "review-mark-complete-cleanup-state",
+    "stepNumber": 3,
+    "_sessionContext": {
+      "goalName": "review-mark-complete-cleanup-state",
+      "stepNumber": 3,
+      "_sessionContext": {
+        "goalName": "review-mark-complete-cleanup-state",
+        "stepNumber": 2,
+        "_sessionContext": {
+          "goalName": "review-mark-complete-cleanup-state",
+          "stepNumber": 2,
+          "_sessionContext": {
+            "goalName": "review-mark-complete-cleanup-state",
+            "stepNumber": 2,
+            "_sessionContext": {
+              "goalName": "review-mark-complete-cleanup-state",
+              "stepNumber": 1,
+              "_sessionContext": {
+                "goalName": "review-mark-complete-cleanup-state",
+                "stepNumber": 1,
+                "_sessionContext": {
+                  "goalName": "review-mark-complete-cleanup-state",
+                  "stepNumber": 1,
+                  "_sessionContext": {
+                    "goalName": "review-mark-complete-cleanup-state",
+                    "stepNumber": 1,
+                    "_sessionContext": {
+                      "goalName": "review-mark-complete-cleanup-state",
+                      "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/review-mark-complete-cleanup-state.md",
+                      "fileCleanup": [
+                        "/home/aleksj/git/pio-extension/.pio/issues/review-mark-complete-cleanup-state.md"
+                      ],
+                      "capability": "create-goal"
+                    },
+                    "capability": "create-plan"
+                  },
+                  "capability": "evolve-plan"
+                },
+                "capability": "execute-task"
+              },
+              "capability": "review-task"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    }
+  }
+}

@@ -644,6 +644,112 @@ describe("applyReviewDecision", () => {
     // Assert
     expect(fs.existsSync(path.join(goalDir, "S03", "APPROVED"))).toBe(true);
   });
+
+  // -----------------------------------------------------------------------
+  // Stale marker cleanup (idempotency)
+  // -----------------------------------------------------------------------
+
+  it("APPROVED then REJECTED leaves only REJECTED on disk", () => {
+    // Arrange: S01 with no pre-existing markers
+    const { goalDir, stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
+
+    const approved: ReviewOutputs = {
+      decision: "APPROVED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+    const rejected: ReviewOutputs = {
+      decision: "REJECTED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+
+    // Act: apply APPROVED first, then REJECTED
+    applyReviewDecision(goalDir, 1, approved);
+    applyReviewDecision(goalDir, 1, rejected);
+
+    // Assert: only REJECTED exists, no stale APPROVED
+    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(false);
+  });
+
+  it("REJECTED then APPROVED leaves only APPROVED on disk", () => {
+    // Arrange: S01 with COMPLETED so REJECTED branch can delete it
+    const { goalDir, stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
+    fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
+
+    const rejected: ReviewOutputs = {
+      decision: "REJECTED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+    const approved: ReviewOutputs = {
+      decision: "APPROVED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+
+    // Act: apply REJECTED first, then APPROVED
+    applyReviewDecision(goalDir, 1, rejected);
+    applyReviewDecision(goalDir, 1, approved);
+
+    // Assert: only APPROVED exists, no stale REJECTED
+    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
+  });
+
+  it("multiple calls with the same decision are idempotent", () => {
+    // Arrange: S01 with no pre-existing markers
+    const { goalDir, stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
+
+    const approved: ReviewOutputs = {
+      decision: "APPROVED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+
+    // Act: call twice with APPROVED — should not throw
+    expect(() => {
+      applyReviewDecision(goalDir, 1, approved);
+      applyReviewDecision(goalDir, 1, approved);
+    }).not.toThrow();
+
+    // Assert: APPROVED exists exactly once
+    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
+  });
+
+  it("removes both markers when both already coexist", () => {
+    // Arrange: S01 with both APPROVED and REJECTED (simulating a prior bug state)
+    const { goalDir, stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
+    fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
+    fs.writeFileSync(path.join(stepDir, "REJECTED"), "", "utf-8");
+
+    const approved: ReviewOutputs = {
+      decision: "APPROVED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+
+    // Act: apply APPROVED — should clean up both, then write APPROVED
+    applyReviewDecision(goalDir, 1, approved);
+
+    // Assert: only APPROVED exists
+    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

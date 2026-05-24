@@ -2,6 +2,8 @@
 
 Consolidated specification covering end-to-end git integration for the pio workflow. Synthesized from research in Steps 1–2. Actionable as input to a follow-up `create-plan` for implementation.
 
+**Separation of concerns:** This document specifies *what* the git lifecycle should do. All executable shell commands, bash scripts, and step-by-step instructions belong in `src/skills/pio-git/SKILL.md` (the skill). The capability prompts (`create-goal.md`, `finalize-goal.md`) only reference the skill by name — they never contain git commands directly.
+
 ---
 
 ## §1 — Branch checkout on `create-goal`
@@ -10,35 +12,18 @@ When a goal workspace is created, the agent should checkout a dedicated branch b
 
 ### Branch Checkout Protocol
 
-Execute these steps in order during `create-goal`, before writing `GOAL.md`:
+A new section in `src/skills/pio-git/SKILL.md` (see §5 for placement). The skill protocol instructs the agent to execute these steps in order during `create-goal`, before writing `GOAL.md`:
 
-```bash
-# 1. Verify git repository exists
-git rev-parse --show-toplevel || { warn "Not a git repository, skipping branch checkout"; exit 0; }
+**Steps (to be written into the skill):**
 
-# 2. Verify git user config
-git config user.name && git config user.email || { warn "Git user not configured, skipping branch checkout"; exit 0; }
+1. **Verify git repository exists** — `git rev-parse --show-toplevel`. On failure: warn and skip.
+2. **Verify git user config** — `git config user.name` and `git config user.email`. On failure: warn and skip.
+3. **Convention lookup** — read `.pio/PROJECT/GIT.md` for branch naming patterns. Fallback: `feat/<goal-name>`.
+4. **Construct branch name** — apply the pattern with the goal name (e.g., `feat/git-lifecycle`).
+5. **Detect current branch** — `git symbolic-ref --short HEAD`. On failure (detached HEAD): warn and skip.
+6. **Check for branch collision** — `git rev-parse --verify <branch>`. If exists: resolve per §1.3. If not: `git checkout -b <branch>` (off current branch).
 
-# 3. Determine branch naming pattern
-#    Read .pio/PROJECT/GIT.md for branch naming patterns (e.g., feat/<feature-name>)
-#    Fallback: feat/<goal-name>
-
-# 4. Construct branch name from goal name using the pattern
-#    Example: goal "git-lifecycle" → branch "feat/git-lifecycle"
-
-# 5. Detect current branch (for non-main branch handling)
-CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null) || { warn "Detached HEAD, skipping branch checkout"; exit 0; }
-
-# 6. Check for branch collision
-if git rev-parse --verify "$BRANCH_NAME" >/dev/null 2>&1; then
-  # Branch already exists — resolve collision (see §1.3)
-else
-  # 7. Create and checkout the branch
-  #    If on main: git checkout -b "$BRANCH_NAME"
-  #    If on non-main: git checkout -b "$BRANCH_NAME" "$CURRENT_BRANCH"
-  git checkout -b "$BRANCH_NAME"
-fi
-```
+All shell commands are the responsibility of the skill — the spec documents the logic, the skill provides the executable instructions.
 
 ### Convention lookup
 
@@ -86,83 +71,33 @@ When a goal is finalized, the agent should create a pull request to review and e
 
 ### PR Creation Protocol
 
-Execute these steps in order during `finalize-goal`, after updating PROJECT files:
+A new section in `src/skills/pio-git/SKILL.md` (see §5 for placement). The skill protocol instructs the agent to execute these steps in order during `finalize-goal`, after updating PROJECT files:
 
-```bash
-# 1. Verify gh CLI is available
-command -v gh >/dev/null 2>&1 || { warn "gh CLI not installed, skipping PR creation"; exit 0; }
+**Steps (to be written into the skill):**
 
-# 2. Verify gh authentication
-gh auth status >/dev/null 2>&1 || { warn "gh not authenticated, skipping PR creation"; exit 0; }
+1. **Verify `gh` CLI available** — `command -v gh`. On failure: warn and skip.
+2. **Verify `gh` authentication** — `gh auth status`. On failure: warn and skip.
+3. **Determine target branch** — default `main`, or from `.pio/PROJECT/GIT.md`, or from the base branch recorded during §1 branch checkout.
+4. **Get current branch** — `git symbolic-ref --short HEAD`. On failure: warn and skip.
+5. **Check for existing PR** — `gh pr list --head <branch> --base <target>`. If found: report URL and skip.
+6. **Check for changes** — `git diff --shortstat <target>...<head>`. If empty: warn and skip.
+7. **Push branch** — `git push -u origin <branch>`. On failure: warn and skip.
+8. **Construct PR title and body** — per formats below.
+9. **Create the PR** — `gh pr create --title <title> --body <body> --base <target> --head <branch>`.
 
-# 3. Determine target branch
-#    Read .pio/PROJECT/GIT.md for target branch (default: main)
-#    If goal was created from a non-main branch, use that branch as target
-TARGET_BRANCH="main"  # or from GIT.md / current branch detection
-
-# 4. Get current branch
-HEAD_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null) || { warn "Cannot determine current branch, skipping PR creation"; exit 0; }
-
-# 5. Check for existing PR
-EXISTING_PR=$(gh pr list --head "$HEAD_BRANCH" --base "$TARGET_BRANCH" --json url --jq '.[0].url' 2>/dev/null)
-if [ -n "$EXISTING_PR" ]; then
-  warn "PR already exists: $EXISTING_PR"
-  exit 0
-fi
-
-# 6. Check for changes
-git diff --shortstat "$TARGET_BRANCH"..."$HEAD_BRANCH" | grep -q '[0-9]' || { warn "No changes detected on branch, skipping PR creation"; exit 0; }
-
-# 7. Push branch if not already pushed
-git push -u origin "$HEAD_BRANCH" 2>/dev/null || { warn "Failed to push branch, skipping PR creation"; exit 0; }
-
-# 8. Construct PR title and body (see below)
-
-# 9. Create the PR
-gh pr create \
-  --title "$PR_TITLE" \
-  --body "$PR_BODY" \
-  --base "$TARGET_BRANCH" \
-  --head "$HEAD_BRANCH"
-```
+All shell commands are the responsibility of the skill — the spec documents the logic, the skill provides the executable instructions.
 
 ### PR title format
 
-Follow Conventional Commits, derived from the goal name:
-
-```
-feat: <goal-summary>
-```
-
-Where `<goal-summary>` is a brief human-readable summary derived from the goal name (e.g., `feat: full git lifecycle in pio`). If the goal name suggests a different type (e.g., `fix/`, `refactor/`), use that type instead. Read `.pio/PROJECT/GIT.md` for observed commit types.
+Read `.pio/PROJECT/GIT.md` for the commit message format (Conventional Commits or custom). The skill must follow whatever format GIT.md specifies — including type, scope, and separator conventions. If GIT.md documents observed types (`feat`, `fix`, `refactor`, etc.), the agent should pick the most appropriate one based on the goal name and summary. If GIT.md does not exist, fall back to a short descriptive one-liner.
 
 ### PR body format
 
-The PR body should include:
-
-```markdown
-## Goal Summary
-
-<1-2 sentence summary from GOAL.md To-Be State section>
-
-## Steps Completed
-
-- [x] Step 1: <title>
-- [x] Step 2: <title>
-...
-
-## Files Changed
-
-<List of files from SUMMARY.md "Files Created" and "Files Modified" sections>
-```
-
-The agent should construct this from `GOAL.md` (summary), `PLAN.md` (step list), and per-step `SUMMARY.md` files (files changed).
+If `.pio/PROJECT/GIT.md` specifies a PR body format or template, follow it exactly. Otherwise, the skill should instruct the agent to construct a body from available goal artifacts: `GOAL.md` (summary), `PLAN.md` (step list), and per-step `SUMMARY.md` files (files changed). The exact structure is not prescribed by this spec — it defers to project conventions in GIT.md.
 
 ### Target branch determination
 
-1. **Default:** `main`
-2. **Configurable via `.pio/PROJECT/GIT.md`:** If GIT.md specifies a default target branch, use it
-3. **Non-main branch goals:** If the goal was created from a non-main branch (detected during branch checkout in §1), use that branch as the PR target. The agent should record the base branch in the goal workspace (e.g., in `transitions.json` or a metadata file) so it can be retrieved during finalize.
+Read `.pio/PROJECT/GIT.md` for the default target branch. If not specified, use `main`. If the goal was created from a non-main branch (detected during branch checkout in §1), use that branch as the PR target instead. The agent should record the base branch in the goal workspace (e.g., in `transitions.json` or a metadata file) so it can be retrieved during finalize.
 
 ### Pre-creation checks
 
@@ -227,29 +162,9 @@ Only top-level goals (created via `/pio-create-goal` at the repo root) get indep
 
 ### Detection mechanism
 
-The Branch Checkout Protocol must detect subgoal context before attempting branching:
+Both protocols in the skill must check for subgoal context as an early step. The check: does the goal workspace path contain `/subgoals/`? If yes, skip the protocol entirely.
 
-```bash
-# Check if this is a subgoal (path contains /subgoals/)
-if echo "$GOAL_WORKSPACE_PATH" | grep -q '/subgoals/'; then
-  echo "Subgoal detected — skipping branch checkout"
-  exit 0
-fi
-```
-
-The goal workspace path is available from the session context (e.g., `.pio/goals/<parent>/S{NN}/subgoals/<name>/`).
-
-### No PR creation for subgoals
-
-Subgoals do not create PRs. They merge into the parent branch implicitly via inline commits. The PR Creation Protocol must also check for subgoal context and skip PR creation:
-
-```bash
-# Check if this is a subgoal
-if echo "$GOAL_WORKSPACE_PATH" | grep -q '/subgoals/'; then
-  echo "Subgoal detected — skipping PR creation"
-  exit 0
-fi
-```
+The goal workspace path is available from the session context (e.g., `.pio/goals/<parent>/S{NN}/subgoals/<name>/`). A `grep -q '/subgoals/'` on the path is sufficient — no need to parse the full hierarchy.
 
 ### Impact on pio-git skill
 

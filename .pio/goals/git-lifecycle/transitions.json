@@ -1,0 +1,179 @@
+[
+  {
+    "timestamp": "2026-05-24T19:02:31.300Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "git-lifecycle",
+        "initialMessage": "Investigate how to support the full git lifecycle in the pio workflow, extending beyond the existing auto-commit (pio-git skill). The goal is to produce a feasibility study or specification that defines the end-to-end git integration.\n\n**Already done:** `execute-task-auto-commit` goal created the `pio-git` skill with per-step commits during `execute-task` and `execute-plan`. The skill's \"Future Extensibility\" section calls out branch checkout on `create-goal` and PR creation on `finalize-goal` as planned next steps.\n\n**Core scope to investigate:**\n1. **Branch checkout on `create-goal`:** Checkout a new branch relative to `main` when a goal workspace is created. Branch naming from GIT.md conventions (`feat/<goal-name>`). Consider: what happens if the branch already exists? What about goals started from an existing feature branch?\n2. **PR creation on `finalize-goal`:** Open a pull request from the goal branch to `main` (or current target) when a goal is finalized. Consider: PR title/body format, using GitHub API vs gh CLI, linking to goal artifacts.\n3. **Subgoal handling:** This is an open question to evaluate. Options include:\n   - Single branch per top-level goal (subgoal commits land on parent branch)\n   - Branch per subgoal with checkout switching back to parent on completion\n   - Top-level goals only — subgoals commit inline but don't get independent branches/PRs\n   - Other approaches we discover during research\n4. **Worktrees:** Evaluate whether git worktrees add value or complexity. User reviews in a single IDE, which makes separate worktrees difficult to manage. Research should assess if there's a viable pattern or if this should be explicitly excluded.\n\n**Constraints:**\n- Prompt+skill-driven (no capability code changes unless absolutely necessary)\n- Graceful failure semantics (git operations must never block workflow completion)\n- Convention lookup from `.pio/PROJECT/GIT.md`\n- Must integrate with existing `pio-git` skill structure\n\n**Expected output:** A feasibility study or specification document that recommends a concrete approach for each dimension, identifies required changes to prompts/skills, and provides a clear implementation plan for the next goal.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T19:05:27.043Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "git-lifecycle",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "git-lifecycle",
+          "initialMessage": "Investigate how to support the full git lifecycle in the pio workflow, extending beyond the existing auto-commit (pio-git skill). The goal is to produce a feasibility study or specification that defines the end-to-end git integration.\n\n**Already done:** `execute-task-auto-commit` goal created the `pio-git` skill with per-step commits during `execute-task` and `execute-plan`. The skill's \"Future Extensibility\" section calls out branch checkout on `create-goal` and PR creation on `finalize-goal` as planned next steps.\n\n**Core scope to investigate:**\n1. **Branch checkout on `create-goal`:** Checkout a new branch relative to `main` when a goal workspace is created. Branch naming from GIT.md conventions (`feat/<goal-name>`). Consider: what happens if the branch already exists? What about goals started from an existing feature branch?\n2. **PR creation on `finalize-goal`:** Open a pull request from the goal branch to `main` (or current target) when a goal is finalized. Consider: PR title/body format, using GitHub API vs gh CLI, linking to goal artifacts.\n3. **Subgoal handling:** This is an open question to evaluate. Options include:\n   - Single branch per top-level goal (subgoal commits land on parent branch)\n   - Branch per subgoal with checkout switching back to parent on completion\n   - Top-level goals only — subgoals commit inline but don't get independent branches/PRs\n   - Other approaches we discover during research\n4. **Worktrees:** Evaluate whether git worktrees add value or complexity. User reviews in a single IDE, which makes separate worktrees difficult to manage. Research should assess if there's a viable pattern or if this should be explicitly excluded.\n\n**Constraints:**\n- Prompt+skill-driven (no capability code changes unless absolutely necessary)\n- Graceful failure semantics (git operations must never block workflow completion)\n- Convention lookup from `.pio/PROJECT/GIT.md`\n- Must integrate with existing `pio-git` skill structure\n\n**Expected output:** A feasibility study or specification document that recommends a concrete approach for each dimension, identifies required changes to prompts/skills, and provides a clear implementation plan for the next goal.",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T19:07:00.873Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T19:09:33.067Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T19:09:57.127Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T20:01:15.864Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T20:02:31.531Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T20:05:18.573Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T20:08:29.156Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T20:09:56.106Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-24T20:17:14.983Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T20:19:34.983Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T20:22:21.838Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T20:24:26.664Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T20:26:11.111Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-24T20:27:52.250Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-24T20:29:52.009Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-24T20:32:33.216Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "git-lifecycle",
+      "stepNumber": 3
+    }
+  }
+]

@@ -17,7 +17,7 @@ Write a failing test before writing the code that makes it pass. For bug fixes, 
 - Adding edge case handling
 - Any change that could break existing behavior
 
-**When NOT to use:** Pure configuration changes, documentation updates, or static content changes that have no behavioral impact.
+**When NOT to use:** Pure configuration changes, documentation updates, or static content changes that have no behavioral impact. This includes **content-based tests for prompts and messages**: do not write unit tests that assert specific words or phrases appear in `.md` prompt files or dynamically constructed message strings (e.g. `toContain("TASK.md")`, `toMatch(/always\s*confirm/i)`). These tests break on any rewording without indicating a behavioral regression — they verify text, not logic. Instead, document in `TEST.md` that no unit tests apply for text-only changes and rely on acceptance criteria verification with programmatic checks (`tsc --noEmit`, existing test suite) as sufficient proof of correctness.
 
 ## The TDD Cycle
 
@@ -308,6 +308,7 @@ test "test 3" { ... }
 | Snapshot abuse | Large snapshots nobody reviews, break on any change | Use snapshots sparingly and review every change |
 | No test isolation | Tests pass individually but fail together | Each test sets up and tears down its own state |
 | Mocking everything | Tests pass but production breaks | Prefer real implementations > fakes > stubs > mocks. Mock only at boundaries where real deps are slow or non-deterministic |
+| Content-based tests for prompts and messages | Tests break on any rewording without indicating a behavioral regression | Document in `TEST.md` that no unit tests apply; rely on programmatic checks (`tsc --noEmit`, existing test suite) |
 
 ## Browser Testing
 

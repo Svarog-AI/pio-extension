@@ -63,7 +63,11 @@ After implementing all steps:
 2. Re-run any existing test suites relevant to the areas you changed.
 3. Confirm that every acceptance criterion across all steps has been satisfied.
 
-### Step 6: Signal completion
+### Step 6: Commit changes
+
+Load the `pio-git` skill and commit the changes. Write a short descriptive one-liner commit message summarizing all changes made during the session. Since no `SUMMARY.md` exists, the skill will use `git status --porcelain` to determine which files to stage. If git fails, log a warning and proceed — never block workflow completion.
+
+### Step 7: Signal completion
 
 When all steps are implemented and verified, call `pio_mark_complete` to signal that your work is done. If validation rules are configured for this session, it will check that expected output files exist — produce any missing files and call again if needed.
 

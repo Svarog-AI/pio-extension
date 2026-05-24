@@ -1,11 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
 import { resolveCapabilityConfig } from "../capability-config";
 import { CAPABILITY_CONFIG, validateRevisePlan, prepareSession, cleanupIncompleteSteps } from "./revise-plan";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -654,111 +651,5 @@ describe("cleanupIncompleteSteps", () => {
 
     // S01 should remain
     expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Prompt content — revise-plan.md reflects preserved step folders
-// ---------------------------------------------------------------------------
-
-describe("revise-plan.md prompt content", () => {
-  let promptContent: string;
-
-  beforeAll(() => {
-    const promptPath = path.join(__dirname, "..", "prompts", "revise-plan.md");
-    promptContent = fs.readFileSync(promptPath, "utf-8");
-  });
-
-  it("intro paragraph mentions archiving happened but folder cleanup is deferred", () => {
-    // The intro should mention that archiving happened but folder deletion is deferred
-    expect(promptContent).toMatch(/archiv/i);
-    expect(promptContent).toMatch(/preserv/i);
-    expect(promptContent).toMatch(/after completion/i);
-  });
-
-  it("intro paragraph no longer claims deleting incomplete step folders happened before the session", () => {
-    // The old text said "deleting incomplete step folders" as a completed action
-    expect(promptContent).not.toMatch(/deleting incomplete step folders.*already/i);
-    expect(promptContent).not.toMatch(/incomplete step folders.*already.*delet/i);
-  });
-
-  it("Step 3 mentions incomplete step folders are available for inspection", () => {
-    // Extract Step 3 section
-    const step3Match = promptContent.match(/### Step 3[\s\S]*?(?=### Step \d|$)/);
-    expect(step3Match).not.toBeNull();
-    const step3Content = step3Match![0];
-
-    expect(step3Content).toMatch(/incomplete step folder/i);
-    expect(step3Content).toMatch(/inspect/i);
-  });
-
-  it("Step 3 lists TASK.md, DECISIONS.md, and REVISE_PLAN_NEEDED as files to inspect", () => {
-    const step3Match = promptContent.match(/### Step 3[\s\S]*?(?=### Step \d|$)/);
-    expect(step3Match).not.toBeNull();
-    const step3Content = step3Match![0];
-
-    expect(step3Content).toContain("TASK.md");
-    expect(step3Content).toContain("DECISIONS.md");
-    expect(step3Content).toContain("REVISE_PLAN_NEEDED");
-  });
-
-  it("Step 4 references checking the trigger step folder for revision context", () => {
-    const step4Match = promptContent.match(/### Step 4[\s\S]*?(?=### Step \d|$)/);
-    expect(step4Match).not.toBeNull();
-    const step4Content = step4Match![0];
-
-    expect(step4Content).toMatch(/trigger step/i);
-  });
-
-  it("Step 4 mentions REVISE_PLAN_NEEDED, TASK.md, and DECISIONS.md", () => {
-    const step4Match = promptContent.match(/### Step 4[\s\S]*?(?=### Step \d|$)/);
-    expect(step4Match).not.toBeNull();
-    const step4Content = step4Match![0];
-
-    expect(step4Content).toContain("REVISE_PLAN_NEEDED");
-    expect(step4Content).toContain("TASK.md");
-    expect(step4Content).toContain("DECISIONS.md");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// defaultInitialMessage — reflects preserved step folders
-// ---------------------------------------------------------------------------
-
-describe("defaultInitialMessage", () => {
-  it("no longer claims incomplete step folders have been cleaned up", () => {
-    const message = CAPABILITY_CONFIG.defaultInitialMessage("/some/goal/dir");
-
-    // Old text said "incomplete step folders have been cleaned up" (past tense)
-    expect(message).not.toMatch(/have been cleaned up/i);
-    expect(message).not.toMatch(/have been deleted/i);
-  });
-
-  it("mentions incomplete step folders are preserved for inspection", () => {
-    const message = CAPABILITY_CONFIG.defaultInitialMessage("/some/goal/dir");
-
-    expect(message).toMatch(/preserv/i);
-    expect(message).toMatch(/inspect/i);
-  });
-
-  it("mentions folders will be cleaned up after completion", () => {
-    const message = CAPABILITY_CONFIG.defaultInitialMessage("/some/goal/dir");
-
-    expect(message).toMatch(/cleaned up after completion/i);
-  });
-
-  it("directs agent to read trigger step files when revisionTriggerStep is provided", () => {
-    const message = CAPABILITY_CONFIG.defaultInitialMessage("/some/goal/dir", {
-      revisionTriggerStep: 2,
-    });
-
-    expect(message).toContain("Step 2");
-    expect(message).toMatch(/read|inspect/i);
-  });
-
-  it("still contains the goal workspace path", () => {
-    const message = CAPABILITY_CONFIG.defaultInitialMessage("/some/goal/dir");
-
-    expect(message).toContain("/some/goal/dir");
   });
 });

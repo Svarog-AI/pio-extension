@@ -179,11 +179,11 @@ The finalize-goal prompt should add a step instructing the agent to follow the P
 
 ### 2.1 Branch collision resolution
 
-When `create-goal` triggers branch checkout, the branch `feat/<goal-name>` may already exist. Four strategies are evaluated below. The preliminary recommendation from Section 1 was "reuse existing" — this section tests that recommendation against alternatives.
+When `create-goal` triggers branch checkout, the branch derived from the goal name (per `.pio/PROJECT/GIT.md` convention lookup, defaulting to `feat/<goal-name>`) may already exist. Four strategies are evaluated below. The preliminary recommendation from Section 1 was "reuse existing" — this section tests that recommendation against alternatives.
 
 #### Strategy A: Reuse existing branch
 
-**Mechanism:** `git checkout feat/<goal-name>` — if the branch exists, checkout and continue. If it doesn't exist, create it with `git checkout -b feat/<goal-name>`.
+**Mechanism:** `git checkout <branch>` — if the branch exists, checkout and continue. If it doesn't exist, create it with `git checkout -b <branch>`. Branch name is constructed from the goal name using the pattern from `.pio/PROJECT/GIT.md` (e.g., `feat/<goal-name>`).
 
 **Pros:**
 - Simplest implementation — single command path (`git checkout` handles both cases with appropriate flags).
@@ -198,7 +198,7 @@ When `create-goal` triggers branch checkout, the branch `feat/<goal-name>` may a
 
 #### Strategy B: Error/abort
 
-**Mechanism:** Check `git rev-parse --verify feat/<goal-name>`. If it succeeds, report an error and stop. Do not create the goal workspace.
+**Mechanism:** Check `git rev-parse --verify <branch>`. If it succeeds, report an error and stop. Do not create the goal workspace. Branch name is constructed from the goal name using the pattern from `.pio/PROJECT/GIT.md`.
 
 **Pros:**
 - Safest approach — guarantees a clean branch for each goal.
@@ -212,7 +212,7 @@ When `create-goal` triggers branch checkout, the branch `feat/<goal-name>` may a
 
 #### Strategy C: Auto-suffix
 
-**Mechanism:** If `feat/<goal-name>` exists, try `feat/<goal-name>-2`, then `feat/<goal-name>-3`, etc. until a free name is found.
+**Mechanism:** If `<branch>` exists, try `<branch>-2`, then `<branch>-3`, etc. until a free name is found. Base branch name is constructed from the goal name using the pattern from `.pio/PROJECT/GIT.md`.
 
 **Pros:**
 - Never blocks — always finds a free branch name.
@@ -220,7 +220,7 @@ When `create-goal` triggers branch checkout, the branch `feat/<goal-name>` may a
 - No user interaction required.
 
 **Cons:**
-- Produces noisy branch names: `feat/git-lifecycle-3` is less readable than `feat/git-lifecycle`.
+- Produces noisy branch names: `feat/git-lifecycle-3` is less readable than `feat/git-lifecycle`. The suffix is not recorded in `.pio/` state.
 - Makes it harder to track which branch corresponds to which goal. The `-2` suffix is not recorded anywhere in `.pio/` state.
 - On goal re-creation (continuation), the user expects to resume on the original branch, not a new suffixed one. This breaks the continuation use case.
 - Branch proliferation: repeated creates/deletes of the same goal accumulate suffixed branches that need manual cleanup.
@@ -237,17 +237,19 @@ When `create-goal` triggers branch checkout, the branch `feat/<goal-name>` may a
 - Introduces interaction latency in an otherwise automated flow. The `ask_user` tool requires user input — the session blocks until the user responds.
 - Adds complexity to the skill protocol: the agent must handle the `ask_user` call, parse the response, and branch logic accordingly.
 - For subgoals (which can spawn automatically during `evolve-plan`), prompting the user is impractical — subgoals may spawn without explicit user initiation.
-- Inconsistent with the pio-git skill's non-interactive design: "The agent should not retry or block waiting for user input."
+- The pio-git skill's graceful failure rule ("The agent should not retry or block waiting for user input") governs **retry behavior on git command failure** — it does not prohibit using `ask_user` to present the user with a choice between valid strategies. However, on git failure the agent should advise the user what to do manually rather than prompting for a retry. This constraint is relevant to error handling, not to the collision decision itself.
 
 #### Recommendation: Strategy A (reuse existing) with a refinement
 
 **Reuse existing branch, but warn the agent about the branch state.**
 
 The Branch Checkout Protocol should:
-1. Check if the branch exists with `git rev-parse --verify feat/<goal-name>`.
-2. If it exists: `git checkout feat/<goal-name>` and proceed. Emit a warning notification: "Branch `feat/<goal-name>` already exists. Resuming on existing branch."
-3. If it doesn't exist: `git checkout -b feat/<goal-name>` and proceed.
-4. On any git error (no repo, detached HEAD, uncommitted changes): skip branching with a warning and continue with goal creation on the current branch.
+1. **Convention lookup:** Read `.pio/PROJECT/GIT.md` to determine the branch naming pattern (e.g., `feat/<feature-name>`). If GIT.md doesn't exist or doesn't specify a pattern, fall back to `feat/<goal-name>`.
+2. **Construct branch name:** Apply the pattern with the goal name (e.g., `feat/<goal-name>`).
+3. **Check if the branch exists** with `git rev-parse --verify <branch>`.
+4. If it exists: `git checkout <branch>` and proceed. Emit a warning notification: "Branch `<branch>` already exists. Resuming on existing branch."
+5. If it doesn't exist: `git checkout -b <branch>` and proceed.
+6. On any git error (no repo, detached HEAD, uncommitted changes): skip branching with a warning and continue with goal creation on the current branch.
 
 This refinement of Strategy A adds user visibility (warning notification) without introducing blocking behavior. It supports the continuation use case (most common collision scenario) while alerting the user that they're resuming on an existing branch. The agent can then decide whether the branch state is appropriate for the goal.
 
@@ -284,13 +286,13 @@ Four options are evaluated below across three dimensions: git history quality, i
 
 #### Option 2: Branch per subgoal with checkout switching
 
-**Mechanism:** When a subgoal starts (`create-goal` for a nested goal), create a new branch `feat/<goal-name>/<subgoal-name>`. When the subgoal completes (`finalize-goal`), merge back to the parent branch and checkout the parent branch.
+**Mechanism:** When a subgoal starts (`create-goal` for a nested goal), create a new branch using the pattern from `.pio/PROJECT/GIT.md` with the subgoal name appended (e.g., `<pattern>/<subgoal-name>`). When the subgoal completes (`finalize-goal`), merge back to the parent branch and checkout the parent branch.
 
-Branch name construction: `feat/<top-level-goal>/<subgoal-name>`. For recursive nesting: `feat/<goal>/<subgoal>/<nested-subgoal>`.
+Branch name construction: derive base pattern from GIT.md, append subgoal name (e.g., `feat/<goal-name>/<subgoal-name>` as default). For recursive nesting: `feat/<goal>/<subgoal>/<nested-subgoal>`. Branch names grow with each nesting level — functional but verbose at depth.
 
 | Dimension | Assessment |
 |-----------|-----------|
-| **Git history quality** | **Best traceability.** Each subgoal has an isolated branch with its own commit history. Merging back to the parent creates explicit merge commits: `Merge branch 'feat/goal/subgoal' into feat/goal`. Enables cherry-picking, reverting, and reviewing individual subgoals. Deep nesting produces long branch names: `feat/goal/subgoal/nested` — functional but verbose. |
+| **Git history quality** | **Best traceability.** Each subgoal has an isolated branch with its own commit history. Merging back to the parent creates explicit merge commits: `Merge branch '<pattern>/goal/subgoal' into <pattern>/goal`. Enables cherry-picking, reverting, and reviewing individual subgoals. Deep nesting produces long branch names: `feat/goal/subgoal/nested` — functional but verbose. |
 | **Implementation complexity** | **High.** Requires: (1) New "Subgoal Branch Protocol" in `pio-git` skill with branch creation, checkout, merge-back, and cleanup logic. (2) Prompt changes to both `create-goal.md` (checkout subgoal branch) and `finalize-goal.md` (merge back). (3) Handling of nested nesting depth — branch names grow with each level. (4) Error recovery: what happens if merge-back fails? What if the parent branch was deleted? (5) Detection of subgoal vs. top-level goal context (requires checking `parentStepDir` or `.pio/goals/` path). |
 | **IDE workflow fit** | **Poor.** VS Code operates on one branch at a time. Branch switching during subgoal execution means: (a) VS Code may reload the workspace on checkout, (b) open files may show conflicts, (c) the user reviewing changes sees a different branch than the parent goal. The single-IDE review constraint makes this difficult. Additionally, the subgoal session runs after the parent session spawned it — the parent session is still active but on a different branch. |
 
@@ -353,8 +355,8 @@ Git worktrees (`git worktree add <path> <branch>`) enable multiple working trees
 #### Value proposition
 
 **Parallel goal development:** The primary value of worktrees is enabling simultaneous work on multiple branches. In the pio context, this means:
-- Goal A on `feat/goal-a` in worktree A
-- Goal B on `feat/goal-b` in worktree B
+- Goal A on `<branch-pattern>/goal-a` (per GIT.md convention) in worktree A
+- Goal B on `<branch-pattern>/goal-b` (per GIT.md convention) in worktree B
 - Both worktrees operate on the same repo without branch switching
 
 **Theoretical benefit:** A user could run two pio sub-sessions in parallel — one per worktree — to develop two features simultaneously.

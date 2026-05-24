@@ -1,18 +1,19 @@
-# Tests: Branching strategy analysis
+# Tests: Branching strategies analysis (Step 2, re-execution)
 
-This verifies that SPECIFICATION.md Section 2 contains complete branching strategy analysis with concrete recommendations, consistent formatting, and accurate file references.
+This verifies that Section 2 of SPECIFICATION.md correctly evaluates branch collision strategies (including a fair assessment of `ask_user`), subgoal branching options, and worktree viability — with GIT.md convention lookup for branch naming throughout.
 
 ## Unit Tests
 
-No unit tests apply. This is a specification/research task producing documentation only. Per TDD guidelines, content-based tests for documentation break on any rewording without indicating a behavioral regression.
+No unit tests apply. This is a research and specification task producing a documentation artifact. Per TDD methodology, content-based tests for specification documents are not appropriate — they verify text, not logic.
 
 ## Programmatic Verification
 
-Given the TypeScript project when `npm run check` (`tsc --noEmit`) is run then it exits with code 0.
-Given the existing test suite when `npm test` is run then all tests pass with 0 failures.
-Given SPECIFICATION.md Section 2 when it is read then it contains subsection 2.1 (branch collision resolution) with at least 4 strategies evaluated and a recommendation.
-Given SPECIFICATION.md Section 2 when it is read then it contains subsection 2.2 (subgoal branching options) with all 4 options evaluated with pros/cons.
-Given SPECIFICATION.md Section 2 when it is read then it contains subsection 2.3 (worktree assessment) with a clear include/exclude recommendation.
-Given SPECIFICATION.md Section 2.2 when each subgoal option is evaluated then it covers all 3 dimensions: git history quality, implementation complexity, and IDE workflow fit.
-Given SPECIFICATION.md Section 2 when file paths are referenced then every path corresponds to an actual file in the codebase.
-Given SPECIFICATION.md Section 2 when formatting is inspected then heading hierarchy and table usage are consistent with Section 1.
+Given SPECIFICATION.md Section 2 when it is read then it contains subsections 2.1 (branch collision), 2.2 (subgoal branching), and 2.3 (worktree assessment).
+Given Section 2.1 Strategy D evaluation when it is read then it does NOT cite "non-interactive design" as a reason to dismiss `ask_user`.
+Given Section 2.1 Strategy D evaluation when it is read then it correctly interprets the pio-git constraint as governing retry behavior, not decision-making.
+Given Section 2.1 collision strategies when they are read then branch names reference GIT.md convention lookup rather than hardcoded `feat/<goal-name>`.
+Given Section 2.2 subgoal options when they are read then branch names reference GIT.md convention lookup rather than hardcoded `feat/<goal-name>`.
+Given the Branch Checkout Protocol recommendation when it is read then it specifies reading branch naming pattern from GIT.md with `feat/<goal-name>` as fallback.
+Given the TypeScript project when `npm run check` is run then it exits with code 0 (no type errors introduced).
+Given the test suite when `npm test` is run then all existing tests pass (no regressions).
+Given every file path referenced in Section 2 when the file is looked up then it exists in the codebase.

@@ -1,0 +1,40 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "review-task-consider-decisions-md",
+    "stepNumber": 2,
+    "_sessionContext": {
+      "goalName": "review-task-consider-decisions-md",
+      "stepNumber": 2,
+      "_sessionContext": {
+        "goalName": "review-task-consider-decisions-md",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "review-task-consider-decisions-md",
+          "stepNumber": 1,
+          "_sessionContext": {
+            "goalName": "review-task-consider-decisions-md",
+            "stepNumber": 1,
+            "_sessionContext": {
+              "goalName": "review-task-consider-decisions-md",
+              "stepNumber": 1,
+              "_sessionContext": {
+                "goalName": "review-task-consider-decisions-md",
+                "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/review-task-consider-decisions-md.md",
+                "fileCleanup": [
+                  "/home/aleksj/git/pio-extension/.pio/issues/review-task-consider-decisions-md.md"
+                ],
+                "capability": "create-goal"
+              },
+              "capability": "create-plan"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    }
+  }
+}

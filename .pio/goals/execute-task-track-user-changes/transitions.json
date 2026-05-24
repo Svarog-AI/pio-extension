@@ -1,0 +1,100 @@
+[
+  {
+    "timestamp": "2026-05-24T11:13:06.594Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "execute-task-track-user-changes",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "execute-task-track-user-changes",
+        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/execute-task-track-user-changes.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/execute-task-track-user-changes.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T11:16:23.276Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "execute-task-track-user-changes",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "execute-task-track-user-changes",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "execute-task-track-user-changes",
+          "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/execute-task-track-user-changes.md",
+          "fileCleanup": [
+            "/home/aleksj/git/pio-extension/.pio/issues/execute-task-track-user-changes.md"
+          ],
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T11:16:25.918Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "execute-task-track-user-changes",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "execute-task-track-user-changes",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "execute-task-track-user-changes",
+          "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/execute-task-track-user-changes.md",
+          "fileCleanup": [
+            "/home/aleksj/git/pio-extension/.pio/issues/execute-task-track-user-changes.md"
+          ],
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T11:17:30.663Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "execute-task-track-user-changes",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T11:19:37.519Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "execute-task-track-user-changes",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T11:21:52.683Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "execute-task-track-user-changes",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T11:22:19.516Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "execute-task-track-user-changes",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/execute-task-track-user-changes",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  }
+]

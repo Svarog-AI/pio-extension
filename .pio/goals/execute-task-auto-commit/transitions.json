@@ -1,0 +1,434 @@
+[
+  {
+    "timestamp": "2026-05-24T07:00:27.506Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "execute-task-auto-commit",
+        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:03:48.225Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "execute-task-auto-commit",
+        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:06:10.245Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "execute-task-auto-commit",
+        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:07:13.025Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "execute-task-auto-commit",
+        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:09:01.557Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "execute-task-auto-commit",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "execute-task-auto-commit",
+          "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md",
+          "fileCleanup": [
+            "/home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md"
+          ],
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:11:44.072Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "execute-task-auto-commit",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "execute-task-auto-commit",
+          "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md",
+          "fileCleanup": [
+            "/home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md"
+          ],
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:15:13.792Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "execute-task-auto-commit",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "execute-task-auto-commit",
+          "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md",
+          "fileCleanup": [
+            "/home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md"
+          ],
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:15:31.757Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "execute-task-auto-commit",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "execute-task-auto-commit",
+          "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md",
+          "fileCleanup": [
+            "/home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md"
+          ],
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:17:04.740Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:23:20.703Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:26:07.768Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:26:11.378Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:27:24.999Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:28:30.734Z",
+    "from": "evolve-plan",
+    "to": "revise-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "revisionTriggerStep": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:31:50.553Z",
+    "from": "evolve-plan",
+    "to": "revise-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "revisionTriggerStep": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:34:14.254Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit"
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:34:29.027Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit"
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:39:25.086Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit"
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:39:30.074Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit"
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:44:16.853Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:44:26.378Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:44:28.101Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:52:18.650Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:55:30.240Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:58:31.099Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T07:59:22.811Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T08:01:14.393Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T08:01:31.307Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T08:03:03.472Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T08:04:40.849Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T08:05:27.755Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T08:11:47.381Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-24T08:12:50.217Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-24T08:14:03.132Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-24T08:14:17.767Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-24T08:17:21.878Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-24T08:18:27.914Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-24T08:20:42.344Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-24T08:21:20.273Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "execute-task-auto-commit",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/execute-task-auto-commit",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  }
+]

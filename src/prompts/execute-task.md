@@ -151,6 +151,7 @@ Cross-reference TASK.md's acceptance criteria with your implementation:
    ## Test Coverage
    - <Which test cases pass, how they're verified>
    ```
+2b. **Commit changes using the `pio-git` skill** — load the `pio-git` skill and commit the changes. If git fails, log a warning and proceed — never block workflow completion.
 3. **Call `pio_mark_complete`** to validate outputs and signal completion.
 
 #### On failure (blocking issues that cannot be resolved):
@@ -176,6 +177,7 @@ Cross-reference TASK.md's acceptance criteria with your implementation:
    ## Next Steps
    - <What needs to happen to unblock this step>
    ```
+2b. **Commit changes using the `pio-git` skill** — load the `pio-git` skill and commit the changes. Even on failure, commit whatever files were created/modified as a checkpoint. If git fails, log a warning and proceed — never block workflow completion.
 3. **Call `pio_mark_complete`** to signal the session is done despite the blocker.
 
 ## Guidelines

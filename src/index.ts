@@ -3,6 +3,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,19 +33,37 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SKILLS_DIR = path.join(__dirname, "skills");
 
+/**
+ * Discover skills by scanning SKILLS_DIR for subdirectories containing SKILL.md.
+ * Registers a resources_discover handler that returns the discovered skill paths.
+ * No hardcoded skill names — adding a new skill requires only creating its directory and SKILL.md.
+ */
+function setupSkills(api: ExtensionAPI): void {
+  const skillPaths: string[] = [];
+
+  try {
+    const entries = fs.readdirSync(SKILLS_DIR);
+
+    for (const entry of entries) {
+      const skillMdPath = path.join(SKILLS_DIR, entry, "SKILL.md");
+      if (fs.existsSync(skillMdPath)) {
+        skillPaths.push(path.join(SKILLS_DIR, entry));
+      }
+    }
+  } catch {
+    // SKILLS_DIR doesn't exist or is unreadable — skip skill registration
+    // rather than crashing at startup
+  }
+
+  api.on("resources_discover", async () => {
+    return { skillPaths };
+  });
+}
+
 export default function (pi: ExtensionAPI) {
   // Register pio capabilities as discoverable skills so they appear in
   // the <available_skills> section of pi's default system prompt.
-  const skillPaths = [
-    path.join(SKILLS_DIR, "pio"),
-    path.join(SKILLS_DIR, "test-driven-development"),
-    path.join(SKILLS_DIR, "pio-project-knowledge"),
-    path.join(SKILLS_DIR, "pio-planning"),
-  ];
-
-  pi.on("resources_discover", async () => {
-    return { skillPaths };
-  });
+  setupSkills(pi);
 
   // Shared session capability handlers (wired once)
   setupCapability(pi);

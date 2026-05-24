@@ -53,11 +53,13 @@ pio-extension/
 │   │   ├── finalize-goal.md       — Finalize Goal Agent (updates PROJECT docs from accumulated decisions)
 │   │   ├── revise-plan.md         — Plan Revision Agent (rewrites PLAN.md after completed steps)
 │   │   └── _skill-loading.md      — Shared skill-loading instructions
-│   ├── skills/                # Discoverable skills for pi's <available_skills>
+│   ├── skills/                # Discoverable skills for pi's <available_skills> (auto-discovered from filesystem)
 │   │   ├── pio/SKILL.md           — pio workflow reference
 │   │   ├── test-driven-development/SKILL.md — TDD methodology guide
 │   │   ├── pio-project-knowledge/SKILL.md  — Canonical knowledge source for .pio/PROJECT/ files
-│   │   └── pio-planning/SKILL.md  — Shared planning methodology (step structure, acceptance criteria, research)
+│   │   ├── pio-planning/SKILL.md  — Shared planning methodology (step structure, acceptance criteria, research)
+│   │   ├── pio-git/SKILL.md       — Git operations for pio agents (convention lookup, staged commit protocol)
+│   │   └── write-a-skill/SKILL.md — Skill authoring guide (structure, progressive disclosure, bundled resources)
 │   ├── index.ts               # Extension entry point — wires all capabilities into pi API
 │   ├── types.ts               # Shared type definitions (ValidationRule, CapabilityConfig, etc.)
 │   ├── fs-utils.ts            # Filesystem helpers (resolveGoalDir, stepFolderName, discoverNextStep)

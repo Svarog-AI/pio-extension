@@ -70,6 +70,7 @@ function resolveReviewReadOnlyFiles(_dir: string, params?: Record<string, unknow
     `${folder}/${TASK_FILE}`,
     `${folder}/${TEST_FILE}`,
     `${folder}/${SUMMARY_FILE}`,
+    `${folder}/${DECISIONS_FILE}`,
   ];
 }
 
@@ -143,6 +144,7 @@ const TEST_FILE = "TEST.md";
 
 const SUMMARY_FILE = "SUMMARY.md";
 const REVIEW_FILE = "REVIEW.md";
+const DECISIONS_FILE = "DECISIONS.md";
 
 /**
  * Shared check: is a step reviewable (COMPLETED + SUMMARY.md, not BLOCKED)?

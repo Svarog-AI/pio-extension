@@ -1,0 +1,144 @@
+[
+  {
+    "timestamp": "2026-05-24T12:04:14.862Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "review-task-consider-decisions-md",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "review-task-consider-decisions-md",
+        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/review-task-consider-decisions-md.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/review-task-consider-decisions-md.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T12:05:17.388Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "review-task-consider-decisions-md",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "review-task-consider-decisions-md",
+        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/review-task-consider-decisions-md.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/review-task-consider-decisions-md.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T12:07:36.609Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "review-task-consider-decisions-md",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "review-task-consider-decisions-md",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "review-task-consider-decisions-md",
+          "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/review-task-consider-decisions-md.md",
+          "fileCleanup": [
+            "/home/aleksj/git/pio-extension/.pio/issues/review-task-consider-decisions-md.md"
+          ],
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T12:08:04.705Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "review-task-consider-decisions-md",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "review-task-consider-decisions-md",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "review-task-consider-decisions-md",
+          "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/review-task-consider-decisions-md.md",
+          "fileCleanup": [
+            "/home/aleksj/git/pio-extension/.pio/issues/review-task-consider-decisions-md.md"
+          ],
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T12:09:59.439Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "review-task-consider-decisions-md",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T12:11:57.301Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "review-task-consider-decisions-md",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T12:15:11.237Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "review-task-consider-decisions-md",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T12:15:28.727Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "review-task-consider-decisions-md",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T12:17:22.654Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "review-task-consider-decisions-md",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T12:19:35.557Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "review-task-consider-decisions-md",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T12:20:11.981Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "review-task-consider-decisions-md",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/review-task-consider-decisions-md",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  }
+]

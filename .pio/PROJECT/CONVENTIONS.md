@@ -42,3 +42,7 @@ Consider adding a formatter (e.g., Prettier or Biome) to standardize code style 
 - **Delegation over duplication:** When a prompt needs to invoke shared behavior (e.g., git commit), it references the relevant skill by name and instructs the agent to load it. The prompt does not duplicate skill internals — the loaded skill provides protocol details at runtime. Example: execute-task and execute-plan prompts reference `pio-git` for commits without explaining staging or message construction
 
 The `_skill-loading.md` prompt instructs all sub-sessions to load relevant skill documentation before acting, including the mandatory `pio/SKILL.md`.
+
+### TASK.md Skills Section
+
+Every `TASK.md` produced by `evolve-plan` includes a `## Skills` section listing skills recommended by the specification writer based on the step's requirements. The `execute-task` agent checks this section as a **primary signal** for skill loading — treating listed skills as targeted recommendations from the writer who has deeper context about the step, and loading them before falling back to general `<available_skills>` scanning. This complements, rather than replaces, the baseline skill-loading protocol from `_skill-loading.md`.

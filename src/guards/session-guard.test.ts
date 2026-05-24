@@ -684,10 +684,10 @@ describe("turn_count — refinement loop nudge", () => {
     // Act: simulate 15 turns (DEFAULT_TURN_THRESHOLD)
     simulateTurns(handlers, 15);
 
-    // Assert: nudge was sent exactly once
-    const nudgeCalls = sendUserMessageCalls.filter((c) => c.content.includes("turn"));
-    expect(nudgeCalls).toHaveLength(1);
-    expect(nudgeCalls[0].content).toContain("15");
+    // Assert: nudge was sent exactly once (steer, not recovery)
+    const steerCalls = sendUserMessageCalls.filter((c) => c.options?.deliverAs === "steer");
+    expect(steerCalls).toHaveLength(1);
+    expect(steerCalls[0].content).toContain("loop");
   });
 
   it("turnCount resets to 0 after the nudge fires", () => {
@@ -715,8 +715,9 @@ describe("turn_count — refinement loop nudge", () => {
     simulateTurns(handlers, 15);
 
     // Assert
-    const nudgeCalls = sendUserMessageCalls.filter((c) => c.content.includes("turn"));
-    expect(nudgeCalls[0].options).toEqual({ deliverAs: "steer" });
+    const steerCalls = sendUserMessageCalls.filter((c) => c.options?.deliverAs === "steer");
+    expect(steerCalls).toHaveLength(1);
+    expect(steerCalls[0].options).toEqual({ deliverAs: "steer" });
   });
 
   it("nudge fires again after reset (periodic nudges)", () => {
@@ -730,8 +731,8 @@ describe("turn_count — refinement loop nudge", () => {
     simulateTurns(handlers, 30);
 
     // Assert: nudge was sent exactly twice
-    const nudgeCalls = sendUserMessageCalls.filter((c) => c.content.includes("turn"));
-    expect(nudgeCalls).toHaveLength(2);
+    const steerCalls = sendUserMessageCalls.filter((c) => c.options?.deliverAs === "steer");
+    expect(steerCalls).toHaveLength(2);
   });
 
   it("does NOT send nudge when turnCount is below threshold", () => {
@@ -744,9 +745,8 @@ describe("turn_count — refinement loop nudge", () => {
     // Act: simulate 14 turns (below threshold of 15)
     simulateTurns(handlers, 14);
 
-    // Assert: no nudge sent
-    const nudgeCalls = sendUserMessageCalls.filter((c) => c.content.includes("turn"));
-    expect(nudgeCalls).toHaveLength(0);
+    // Assert: no steer message sent at all
+    expect(sendUserMessageCalls).toHaveLength(0);
   });
 
   it("before_agent_start resets turnCount when isActivePioSession is true", async () => {
@@ -835,8 +835,9 @@ describe("turn_count — refinement loop nudge", () => {
     simulateTurns(handlers, 15);
 
     // Assert: nudge fired (turnCount was 15, which is >= threshold 15)
-    const nudgeCalls = sendUserMessageCalls.filter((c) => c.content.includes("turn"));
-    expect(nudgeCalls).toHaveLength(1);
+    const steerCalls = sendUserMessageCalls.filter((c) => c.options?.deliverAs === "steer");
+    expect(steerCalls).toHaveLength(1);
+    expect(steerCalls[0].content).toContain("loop");
     // And counter reset, so turn 16 would start fresh
     expect(__testSetTurnCount()).toBe(0);
   });

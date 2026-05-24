@@ -4,6 +4,8 @@ Your work is complete when all tests pass (or are documented as blocked), marker
 
 When writing tests and implementing features, follow the guidance from the `test-driven-development` skill. It covers the TDD cycle (RED → GREEN → REFACTOR), the Prove-It Pattern, Arrange-Act-Assert, DAMP over DRY, assertion patterns across languages, and common anti-patterns. Use it as your reference for test-first best practices throughout this workflow.
 
+When `TASK.md` includes a `## Skills` section, treat it as a primary signal for skill loading. The specification writer had deeper context about the step's requirements — files affected, code components, and approach — so its skill recommendations are targeted guidance for this specific step. Load the skills listed in `## Skills` first, then fall back to heuristic scanning of `<available_skills>` for any additional matches. This complements, rather than replaces, the general skill-loading protocol from `_skill-loading.md`. If `TASK.md` states "No additional skills recommended beyond the mandatory pio skill," proceed with the standard skill-loading process — this is a valid state indicating no extra skills are needed.
+
 ## Setup
 
 Your first user message will tell you the goal workspace directory path and the step number you are responsible for. **Remember this path** — this is where `GOAL.md`, `PLAN.md`, and your output `S{NN}/` folder live.

@@ -78,6 +78,16 @@ Use your tools (`read`, `bash`) to understand the codebase areas your step touch
 
 Be thorough — this research ensures your specification is grounded in reality and your acceptance criteria can be checked programmatically.
 
+### Step 4.5: Identify relevant skills
+
+Before writing `TASK.md`, identify which pi skills are relevant to this step. Review the `<available_skills>` block from your system prompt and analyze the step's requirements against each skill:
+
+- **Bundled skills:** Check `src/skills/` for skills shipped with pio (e.g., `pio`, `pio-git`, `pio-planning`, `test-driven-development`, `write-a-skill`).
+- **External skills:** Skills from other pi extensions may also appear in `<available_skills>` (e.g., `source-research`, `web-browser`, `pi-intercom`).
+- **Consider ALL available skills:** For each skill, evaluate whether it could help the execute-task agent complete this step. Look at the step's files affected, code components, and approach to determine relevance.
+
+For each relevant skill, prepare a one-sentence justification explaining why it applies to this specific step. The mandatory `pio` skill is always loaded via `_skill-loading.md` — focus on identifying *additional* skills beyond this baseline.
+
 ### Step 5: Write TASK.md
 
 Write `TASK.md` into the `S{NN}/` folder. This file is a focused, actionable specification of exactly what needs to be built in this step. It must contain:
@@ -108,6 +118,13 @@ You may include short interface signatures (type stubs) to clarify contracts, bu
 
 <Key technical decisions the executor should follow. E.g., "follow the pattern established in create-plan.ts", "use resolveGoalDir() from utils.ts for path resolution".>
 If relevant prior decisions exist in `DECISIONS.md` (Step 2+), reference those that directly affect this step's implementation here — particularly any plan deviations (where the actual implementation differs from PLAN.md). This ensures the executor sees correct context without needing to read separate files. Do not duplicate DECISIONS.md verbatim; cross-reference and explain relevance to this step only.
+
+## Skills
+
+<List each recommended skill by name with a one-sentence justification explaining why it applies to this step.
+Consider both bundled skills (from `src/skills/`) and external skills from `<available_skills>`.
+The mandatory `pio` skill is always loaded — list only additional recommendations here.
+If no additional skills are relevant, write: "No additional skills recommended beyond the mandatory pio skill.">
 
 ## Dependencies
 

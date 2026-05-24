@@ -23,7 +23,7 @@ Internalize:
 
 ### Step 2: Read archived plans
 
-The old `PLAN.md` has been archived. Find the most recent archived plan in `PLAN_ARCHIVE/` (files are named `PLAN-{YYYYMMDDTHHMMSSZ}.md`, sorted by timestamp in the filename). Read it for reference on what was planned before.
+The old `PLAN.md` has been archived. Find the most recent archived plan in `PLAN_ARCHIVE/` (files are named `PLAN-{YYYYMMDDTHHMMSSZ}.md`, sorted by timestamp in the filename). **This archived plan is your primary authority on implementation details** — formatting decisions, architectural choices, and specific approaches already made by the planning agent. GOAL.md defines scope boundaries (*what* to build); the archived plan defines implementation decisions (*how* to build it). When resolving conflicts between sources, follow the priority hierarchy documented in the `pio-planning` skill.
 
 If there are multiple archived plans, read all of them — they show the revision history and can reveal why previous plans needed changes. The most recent archive is your primary reference; earlier archives provide context on how the plan evolved.
 
@@ -68,6 +68,7 @@ Decompose the remaining work into new steps. Continue numbering after the last c
 - Steps must reflect real implementation order — dependencies on earlier steps must be clear
 - Stay within GOAL.md scope — do not add unrelated refactoring or improvements
 - No source code in PLAN.md — describe changes in natural language only
+- When modifying archived plan decisions, follow the priority hierarchy rules defined in the `pio-planning` skill
 
 ### Step 6: Write PLAN.md
 
@@ -145,6 +146,7 @@ When `PLAN.md` has been written and confirmed, call the `pio_mark_complete` tool
 - **Do not implement.** Your job ends when PLAN.md is written. Do not create source files, modify code, or run build commands as part of this process.
 - **Be proactive about scope.** If the remaining work seems to require major architectural changes, note them in the Notes section so executors are aware.
 - **`totalSteps` must be accurate.** Count all step headings (completed + new) and set the frontmatter value accordingly.
+- **Follow the priority hierarchy for implementation details.** When rewriting the plan, follow the priority hierarchy for implementation details defined in the `pio-planning` skill.
 
 ## Skill References
 

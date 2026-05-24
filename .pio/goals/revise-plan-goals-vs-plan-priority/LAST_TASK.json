@@ -1,0 +1,75 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "revise-plan-goals-vs-plan-priority",
+    "stepNumber": 3,
+    "_sessionContext": {
+      "goalName": "revise-plan-goals-vs-plan-priority",
+      "stepNumber": 3,
+      "_sessionContext": {
+        "goalName": "revise-plan-goals-vs-plan-priority",
+        "stepNumber": 2,
+        "_sessionContext": {
+          "goalName": "revise-plan-goals-vs-plan-priority",
+          "stepNumber": 2,
+          "_sessionContext": {
+            "goalName": "revise-plan-goals-vs-plan-priority",
+            "stepNumber": 2,
+            "_sessionContext": {
+              "goalName": "revise-plan-goals-vs-plan-priority",
+              "stepNumber": 2,
+              "_sessionContext": {
+                "goalName": "revise-plan-goals-vs-plan-priority",
+                "stepNumber": 2,
+                "_sessionContext": {
+                  "goalName": "revise-plan-goals-vs-plan-priority",
+                  "stepNumber": 2,
+                  "_sessionContext": {
+                    "goalName": "revise-plan-goals-vs-plan-priority",
+                    "stepNumber": 2,
+                    "_sessionContext": {
+                      "goalName": "revise-plan-goals-vs-plan-priority",
+                      "stepNumber": 1,
+                      "_sessionContext": {
+                        "goalName": "revise-plan-goals-vs-plan-priority",
+                        "stepNumber": 1,
+                        "_sessionContext": {
+                          "goalName": "revise-plan-goals-vs-plan-priority",
+                          "stepNumber": 1,
+                          "_sessionContext": {
+                            "goalName": "revise-plan-goals-vs-plan-priority",
+                            "stepNumber": 1,
+                            "_sessionContext": {
+                              "goalName": "revise-plan-goals-vs-plan-priority",
+                              "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/revise-plan-goals-vs-plan-priority.md",
+                              "fileCleanup": [
+                                "/home/aleksj/git/pio-extension/.pio/issues/revise-plan-goals-vs-plan-priority.md"
+                              ],
+                              "capability": "create-goal"
+                            },
+                            "capability": "create-plan"
+                          },
+                          "capability": "evolve-plan"
+                        },
+                        "capability": "execute-task"
+                      },
+                      "capability": "review-task"
+                    },
+                    "capability": "evolve-plan"
+                  },
+                  "capability": "execute-task"
+                },
+                "capability": "review-task"
+              },
+              "capability": "execute-task"
+            },
+            "capability": "review-task"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    }
+  }
+}

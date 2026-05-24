@@ -1,0 +1,40 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "execute-task-track-user-changes",
+    "stepNumber": 2,
+    "_sessionContext": {
+      "goalName": "execute-task-track-user-changes",
+      "stepNumber": 2,
+      "_sessionContext": {
+        "goalName": "execute-task-track-user-changes",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "execute-task-track-user-changes",
+          "stepNumber": 1,
+          "_sessionContext": {
+            "goalName": "execute-task-track-user-changes",
+            "stepNumber": 1,
+            "_sessionContext": {
+              "goalName": "execute-task-track-user-changes",
+              "stepNumber": 1,
+              "_sessionContext": {
+                "goalName": "execute-task-track-user-changes",
+                "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/execute-task-track-user-changes.md",
+                "fileCleanup": [
+                  "/home/aleksj/git/pio-extension/.pio/issues/execute-task-track-user-changes.md"
+                ],
+                "capability": "create-goal"
+              },
+              "capability": "create-plan"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    }
+  }
+}

@@ -165,7 +165,7 @@ export function setupSessionGuard(pi: ExtensionAPI) {
     if (turnCount >= turnThreshold) {
       pi.sendUserMessage(
         `You've been running for ${turnCount} turns. Take a step back: recap what you're trying to accomplish, evaluate if you're stuck in a refinement loop, and ship your work if it's ready.`,
-        { deliverAs: "followUp" },
+        { deliverAs: "steer" },
       );
       turnCount = 0;
     }
@@ -178,7 +178,7 @@ export function setupSessionGuard(pi: ExtensionAPI) {
 
     // Detect thinking-only turns and send recovery prompt
     if (isThinkingOnlyTurn(content, event.toolResults)) {
-      pi.sendUserMessage(RECOVERY_PROMPT, { deliverAs: "followUp"});
+      pi.sendUserMessage(RECOVERY_PROMPT, { deliverAs: "steer"});
     }
   });
 

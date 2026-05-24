@@ -30,7 +30,7 @@ export interface PioConfig {
 // ---------------------------------------------------------------------------
 
 /** Default turn threshold before the refinement-loop nudge fires. */
-export const DEFAULT_TURN_THRESHOLD = 12;
+export const DEFAULT_TURN_THRESHOLD = 15;
 
 // ---------------------------------------------------------------------------
 // Config path resolution

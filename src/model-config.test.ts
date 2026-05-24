@@ -284,10 +284,10 @@ describe("resolveModelForCapability — per-capability override", () => {
 // ---------------------------------------------------------------------------
 
 describe("DEFAULT_TURN_THRESHOLD", () => {
-  it("equals 12", async () => {
+  it("equals 15", async () => {
     vi.resetModules();
     const mod = await import("./model-config");
-    expect(mod.DEFAULT_TURN_THRESHOLD).toBe(12);
+    expect(mod.DEFAULT_TURN_THRESHOLD).toBe(15);
   });
 });
 

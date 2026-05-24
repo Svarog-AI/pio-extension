@@ -39,5 +39,6 @@ Consider adding a formatter (e.g., Prettier or Biome) to standardize code style 
 - **Reference real files:** Every file path in generated documents must correspond to a file the agent actually read
 - **Test-first discipline:** `execute-task` follows TDD (RED → GREEN → REFACTOR) per the `test-driven-development` skill
 - **Skill reference convention:** Capability prompts reference shared skills by name (e.g., `pio-planning`) throughout process steps, with full path (`src/skills/pio-planning/SKILL.md`) in a dedicated "Skill References" section at the end of each prompt. Shared methodology lives in skills; prompts retain only capability-specific instructions
+- **Delegation over duplication:** When a prompt needs to invoke shared behavior (e.g., git commit), it references the relevant skill by name and instructs the agent to load it. The prompt does not duplicate skill internals — the loaded skill provides protocol details at runtime. Example: execute-task and execute-plan prompts reference `pio-git` for commits without explaining staging or message construction
 
 The `_skill-loading.md` prompt instructs all sub-sessions to load relevant skill documentation before acting, including the mandatory `pio/SKILL.md`.

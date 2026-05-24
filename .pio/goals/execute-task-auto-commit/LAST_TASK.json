@@ -1,71 +1,81 @@
 {
-  "capability": "execute-task",
+  "capability": "evolve-plan",
   "params": {
     "goalName": "execute-task-auto-commit",
-    "stepNumber": 3,
+    "stepNumber": 4,
     "_sessionContext": {
       "goalName": "execute-task-auto-commit",
-      "stepNumber": 3,
+      "stepNumber": 4,
       "_sessionContext": {
         "goalName": "execute-task-auto-commit",
         "stepNumber": 3,
         "_sessionContext": {
           "goalName": "execute-task-auto-commit",
-          "stepNumber": 2,
+          "stepNumber": 3,
           "_sessionContext": {
             "goalName": "execute-task-auto-commit",
-            "stepNumber": 2,
+            "stepNumber": 3,
             "_sessionContext": {
               "goalName": "execute-task-auto-commit",
               "stepNumber": 2,
               "_sessionContext": {
                 "goalName": "execute-task-auto-commit",
-                "stepNumber": 1,
+                "stepNumber": 2,
                 "_sessionContext": {
                   "goalName": "execute-task-auto-commit",
-                  "stepNumber": 1,
+                  "stepNumber": 2,
                   "_sessionContext": {
                     "goalName": "execute-task-auto-commit",
+                    "stepNumber": 1,
                     "_sessionContext": {
                       "goalName": "execute-task-auto-commit",
-                      "revisionTriggerStep": 1,
+                      "stepNumber": 1,
                       "_sessionContext": {
                         "goalName": "execute-task-auto-commit",
-                        "stepNumber": 1,
                         "_sessionContext": {
                           "goalName": "execute-task-auto-commit",
-                          "stepNumber": 1,
+                          "revisionTriggerStep": 1,
                           "_sessionContext": {
                             "goalName": "execute-task-auto-commit",
-                            "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md",
-                            "fileCleanup": [
-                              "/home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md"
-                            ],
-                            "capability": "create-goal"
+                            "stepNumber": 1,
+                            "_sessionContext": {
+                              "goalName": "execute-task-auto-commit",
+                              "stepNumber": 1,
+                              "_sessionContext": {
+                                "goalName": "execute-task-auto-commit",
+                                "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md",
+                                "fileCleanup": [
+                                  "/home/aleksj/git/pio-extension/.pio/issues/execute-task-auto-commit.md"
+                                ],
+                                "capability": "create-goal"
+                              },
+                              "capability": "create-plan"
+                            },
+                            "capability": "evolve-plan"
                           },
-                          "capability": "create-plan"
+                          "stepNumber": 1,
+                          "capability": "revise-plan"
                         },
+                        "stepNumber": 1,
                         "capability": "evolve-plan"
                       },
-                      "stepNumber": 1,
-                      "capability": "revise-plan"
+                      "capability": "execute-task"
                     },
-                    "stepNumber": 1,
-                    "capability": "evolve-plan"
+                    "capability": "review-task"
                   },
-                  "capability": "execute-task"
+                  "capability": "evolve-plan"
                 },
-                "capability": "review-task"
+                "capability": "execute-task"
               },
-              "capability": "evolve-plan"
+              "capability": "review-task"
             },
-            "capability": "execute-task"
+            "capability": "evolve-plan"
           },
-          "capability": "review-task"
+          "capability": "execute-task"
         },
-        "capability": "evolve-plan"
+        "capability": "review-task"
       },
-      "capability": "execute-task"
+      "capability": "evolve-plan"
     }
   }
 }

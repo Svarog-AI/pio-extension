@@ -9,6 +9,10 @@ pio is a **pi extension** — it registers with the pi coding agent framework vi
 2. Wires shared infrastructure (`setupCapability`, `setupValidation`, `setupSessionGuard`)
 3. Registers individual capabilities (`setupInit`, `setupCreateGoal`, etc.)
 
+### Skill Auto-Discovery
+
+Skills are auto-discovered from the filesystem — no hardcoded registration list. The `setupSkills()` function in `src/index.ts` scans `SKILLS_DIR` at startup using `fs.readdirSync()`, filtering directories by `SKILL.md` existence. To add a new skill, create its directory and `SKILL.md` file under `src/skills/`; it will be registered automatically on next startup. If `SKILLS_DIR` doesn't exist or is unreadable, the scan silently produces an empty array rather than crashing.
+
 ### Capability Pattern
 
 Each workflow capability follows a consistent module structure:

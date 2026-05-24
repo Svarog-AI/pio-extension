@@ -24,6 +24,7 @@ A new section in `src/skills/pio-git/SKILL.md` (see §5 for placement). The skil
 **Steps (to be written into the skill):**
 
 1. **Verify git repository exists** — `git rev-parse --show-toplevel`. On failure: warn and skip.
+1b. **Subgoal detection** — check if goal workspace path contains `/subgoals/`. If yes: skip the protocol entirely (subgoals commit inline on the parent branch).
 2. **Verify git user config** — `git config user.name` and `git config user.email`. On failure: warn and skip.
 3. **Convention lookup** — read `.pio/PROJECT/GIT.md` for branch naming patterns. Fallback: `feat/<goal-name>`.
 4. **Construct branch name** — apply the pattern with the goal name (e.g., `feat/git-lifecycle`).
@@ -82,15 +83,17 @@ A new section in `src/skills/pio-git/SKILL.md` (see §5 for placement). The skil
 
 **Steps (to be written into the skill):**
 
-1. **Verify `gh` CLI available** — `command -v gh`. On failure: warn and skip.
-2. **Verify `gh` authentication** — `gh auth status`. On failure: warn and skip.
-3. **Determine target branch** — default `main`, or from `.pio/PROJECT/GIT.md`, or from the base branch recorded during §1 branch checkout.
-4. **Get current branch** — `git symbolic-ref --short HEAD`. On failure: warn and skip.
-5. **Check for existing PR** — `gh pr list --head <branch> --base <target>`. If found: report URL and skip.
-6. **Check for changes** — `git diff --shortstat <target>...<head>`. If empty: warn and skip.
-7. **Push branch** — `git push -u origin <branch>`. On failure: warn and skip.
-8. **Construct PR title and body** — per formats below.
-9. **Create the PR** — `gh pr create --title <title> --body <body> --base <target> --head <branch>`.
+1. **Verify git repository exists** — `git rev-parse --show-toplevel`. On failure: warn and skip.
+1b. **Subgoal detection** — check if goal workspace path contains `/subgoals/`. If yes: skip the protocol entirely (subgoals commit inline on the parent branch).
+2. **Verify `gh` CLI available** — `command -v gh`. On failure: warn and skip.
+3. **Verify `gh` authentication** — `gh auth status`. On failure: warn and skip.
+4. **Determine target branch** — default `main`, or from `.pio/PROJECT/GIT.md`, or from the base branch recorded during §1 branch checkout.
+5. **Get current branch** — `git symbolic-ref --short HEAD`. On failure: warn and skip.
+6. **Check for existing PR** — `gh pr list --head <branch> --base <target>`. If found: report URL and skip.
+7. **Check for changes** — `git diff --shortstat <target>...<head>`. If empty: warn and skip.
+8. **Push branch** — `git push -u origin <branch>`. On failure: warn and skip.
+9. **Construct PR title and body** — per formats below.
+10. **Create the PR** — `gh pr create --title <title> --body <body> --base <target> --head <branch>`.
 
 All shell commands are the responsibility of the skill — the spec documents the logic, the skill provides the executable instructions.
 

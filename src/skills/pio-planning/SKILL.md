@@ -146,6 +146,34 @@ This is where deep research belongs. You need to be confident about implementati
 - **Reference real files only.** Every path in PLAN.md should correspond to a file you actually read or confirmed exists. Don't guess paths.
 - **No source code in PLAN.md.** This is a planning document, not an implementation draft. Describe every step in natural language or high-level pseudocode. You may write a short interface signature (type stub) if it clarifies a contract — never full function bodies or class implementations. If you find yourself writing `if`/`for`/`while` blocks, stop and rewrite that section as a description.
 
+## Priority Hierarchy for Plan Revision
+
+When `revise-plan` rewrites a plan after some steps are already completed, multiple sources of truth can conflict: `GOAL.md`, the archived `PLAN.md`, and revision notes from the trigger step. Resolve conflicts using this priority hierarchy for implementation details:
+
+**Revision notes > archived PLAN.md > GOAL.md**
+
+- **Revision notes** — from `REVISE_PLAN_NEEDED`, the trigger step's `TASK.md` and `DECISIONS.md`. These specify required changes and override everything.
+- **Archived PLAN.md** — primary reference for implementation details, formatting decisions, and architectural choices already made by the planning agent. Preserve all decisions from the archived plan unless revision notes explicitly require a change.
+- **GOAL.md** — provides scope boundaries and high-level context. Use it to understand *what* should be built, but do not let its high-level description override specific *how* decisions already encoded in the archived plan.
+
+### Scope vs. Implementation
+
+`GOAL.md` defines *what* should be built and the scope boundaries. The archived `PLAN.md` defines *how* it should be built. During revision, preserve the *how* — the concrete implementation decisions, step decomposition, and formatting choices already made by the planning agent.
+
+### When Modifying Archived Plan Decisions Is Permitted
+
+You may modify decisions from the archived plan under exactly three conditions:
+
+1. **Changes explicitly required by revision notes.** The `REVISE_PLAN_NEEDED` marker, trigger step's `TASK.md`, or `DECISIONS.md` specify a change that makes the old plan infeasible.
+2. **New steps required for gaps discovered during specification.** `evolve-plan` revealed that the original plan omitted a necessary step or misjudged complexity.
+3. **Re-numbering after completed steps.** Step numbers must continue sequentially from the last completed step.
+
+Unless one of the above conditions applies, revise-plan must preserve all implementation decisions from the archived plan.
+
+### Relevance
+
+This methodology is primarily relevant to `revise-plan` but is documented in the shared skill so both `create-plan` and `revise-plan` agents inherit consistent planning knowledge.
+
 ## Subgoal Decomposition
 
 When a deliverable is too large or complex for a single executor session, decompose it into a nested subgoal. Subgoals run through the full pio lifecycle recursively — they get their own `GOAL.md`, `PLAN.md`, and independent step execution.

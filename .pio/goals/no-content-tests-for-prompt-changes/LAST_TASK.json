@@ -1,0 +1,55 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "no-content-tests-for-prompt-changes",
+    "stepNumber": 3,
+    "_sessionContext": {
+      "goalName": "no-content-tests-for-prompt-changes",
+      "stepNumber": 3,
+      "_sessionContext": {
+        "goalName": "no-content-tests-for-prompt-changes",
+        "stepNumber": 2,
+        "_sessionContext": {
+          "goalName": "no-content-tests-for-prompt-changes",
+          "stepNumber": 2,
+          "_sessionContext": {
+            "goalName": "no-content-tests-for-prompt-changes",
+            "stepNumber": 2,
+            "_sessionContext": {
+              "goalName": "no-content-tests-for-prompt-changes",
+              "stepNumber": 1,
+              "_sessionContext": {
+                "goalName": "no-content-tests-for-prompt-changes",
+                "stepNumber": 1,
+                "_sessionContext": {
+                  "goalName": "no-content-tests-for-prompt-changes",
+                  "stepNumber": 1,
+                  "_sessionContext": {
+                    "goalName": "no-content-tests-for-prompt-changes",
+                    "stepNumber": 1,
+                    "_sessionContext": {
+                      "goalName": "no-content-tests-for-prompt-changes",
+                      "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/no-content-tests-for-prompt-changes.md",
+                      "fileCleanup": [
+                        "/home/aleksj/git/pio-extension/.pio/issues/no-content-tests-for-prompt-changes.md"
+                      ],
+                      "capability": "create-goal"
+                    },
+                    "capability": "create-plan"
+                  },
+                  "capability": "evolve-plan"
+                },
+                "capability": "execute-task"
+              },
+              "capability": "review-task"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    }
+  }
+}

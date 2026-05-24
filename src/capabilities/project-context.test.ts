@@ -44,32 +44,6 @@ describe("CAPABILITY_CONFIG.writeAllowlist", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CAPABILITY_CONFIG.defaultInitialMessage
-// ---------------------------------------------------------------------------
-
-describe("CAPABILITY_CONFIG.defaultInitialMessage", () => {
-  it("returns a non-empty string", () => {
-    const result = CAPABILITY_CONFIG.defaultInitialMessage("/tmp/test");
-    expect(typeof result).toBe("string");
-    expect(result.length).toBeGreaterThan(0);
-  });
-
-  it("references multi-file structure (not single PROJECT.md)", () => {
-    const result = CAPABILITY_CONFIG.defaultInitialMessage("/tmp/test");
-    // Should NOT reference the old single-file path
-    expect(result).not.toMatch(/\.pio\/PROJECT\.md\b/);
-    // Should reference the new directory or multiple files
-    expect(result).toMatch(/\.pio\/PROJECT\//);
-  });
-
-  it("incorporates workingDir into the message", () => {
-    const workingDir = "/home/user/my-project";
-    const result = CAPABILITY_CONFIG.defaultInitialMessage(workingDir);
-    expect(result).toContain(workingDir);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // setupProjectContext
 // ---------------------------------------------------------------------------
 

@@ -20,7 +20,7 @@ COMPLETED
 - GIT.md is the authoritative source for branch naming patterns throughout Section 2, consistent with GOAL.md integration requirements.
 
 ## User-Requested Changes
-- (none)
+- User directed that existing branches must **not** be reused on collision. Changed the branch collision recommendation from Strategy A (reuse existing) to Strategy C (auto-suffix). Updated §2.1 recommendation, Branch Checkout Protocol steps, and §1.5 edge case catalog accordingly. Modified `.pio/goals/git-lifecycle/S01/SPECIFICATION.md`.
 
 ## Test Coverage
 - No unit tests apply (specification/research task per TDD guidelines).

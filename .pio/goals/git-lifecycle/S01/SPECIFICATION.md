@@ -166,7 +166,7 @@ The finalize-goal prompt should add a step instructing the agent to follow the P
 |-----------|-----------------|---------------------|
 | **No git repository** | `git rev-parse --show-toplevel` fails (exit code ≠ 0) | Skip all git operations silently. No branching, no commits, no PR. This is graceful failure per pio-git conventions. |
 | **Detached HEAD state** | `git symbolic-ref --short HEAD` fails (exit code ≠ 0) | Warn but proceed without branching. Use current state. Do not attempt to create a branch from detached HEAD. |
-| **Branch already exists** | `git rev-parse --verify feat/<goal-name>` succeeds | **Recommendation: Reuse existing branch.** Run `git checkout feat/<goal-name>` and continue. Do not error/abort — the goal workspace may be a continuation of previous work. If the branch has unmerged changes, the agent should be aware but not blocked. |
+| **Branch already exists** | `git rev-parse --verify <branch>` succeeds | **Recommendation: Auto-suffix.** Try `<branch>-2`, then `<branch>-3`, etc. until a free name is found. Warn the agent: "Branch `<branch>` already exists. Creating `<branch>-N`." Never reuse an existing branch — each goal gets a clean branch. |
 | **Goal started from non-main branch** | `git symbolic-ref --short HEAD` returns a non-main branch name | Use current branch as the base for both branching and PR target. Construct branch name as `feat/<goal-name>` off current branch. PR target = current branch (not `main`). |
 | **No changes to commit on PR** | `git diff --shortstat <base>..<head>` returns empty | Skip PR creation. Warn agent: "No changes detected on branch. Skipping PR creation." |
 | **Interrupted workflow (re-finalize)** | Goal branch exists, PR may exist, goal is re-finalized | Push any new commits with `git push`. Check for existing PR with `gh pr list --head <branch>`. If PR exists, skip creation and report URL. If PR was closed/merged, create a new one. |
@@ -239,19 +239,19 @@ When `create-goal` triggers branch checkout, the branch derived from the goal na
 - For subgoals (which can spawn automatically during `evolve-plan`), prompting the user is impractical — subgoals may spawn without explicit user initiation.
 - The pio-git skill's graceful failure rule ("The agent should not retry or block waiting for user input") governs **retry behavior on git command failure** — it does not prohibit using `ask_user` to present the user with a choice between valid strategies. However, on git failure the agent should advise the user what to do manually rather than prompting for a retry. This constraint is relevant to error handling, not to the collision decision itself.
 
-#### Recommendation: Strategy A (reuse existing) with a refinement
+#### Recommendation: Strategy C (auto-suffix)
 
-**Reuse existing branch, but warn the agent about the branch state.**
+**Auto-suffix the branch name when a collision is detected.**
 
 The Branch Checkout Protocol should:
 1. **Convention lookup:** Read `.pio/PROJECT/GIT.md` to determine the branch naming pattern (e.g., `feat/<feature-name>`). If GIT.md doesn't exist or doesn't specify a pattern, fall back to `feat/<goal-name>`.
 2. **Construct branch name:** Apply the pattern with the goal name (e.g., `feat/<goal-name>`).
 3. **Check if the branch exists** with `git rev-parse --verify <branch>`.
-4. If it exists: `git checkout <branch>` and proceed. Emit a warning notification: "Branch `<branch>` already exists. Resuming on existing branch."
+4. If it exists: append `-2` and retry. Keep incrementing (`-3`, `-4`, …) until a free name is found. Emit a warning notification: "Branch `<original>` already exists. Creating `<branch>-N` instead."
 5. If it doesn't exist: `git checkout -b <branch>` and proceed.
 6. On any git error (no repo, detached HEAD, uncommitted changes): skip branching with a warning and continue with goal creation on the current branch.
 
-This refinement of Strategy A adds user visibility (warning notification) without introducing blocking behavior. It supports the continuation use case (most common collision scenario) while alerting the user that they're resuming on an existing branch. The agent can then decide whether the branch state is appropriate for the goal.
+This ensures every goal gets a clean branch — no risk of inheriting stale state from a previous session. The auto-suffix is fully automatic (no user interaction required) and never blocks workflow completion (graceful failure preserved). The trade-off is noisier branch names (`feat/git-lifecycle-2`), but this is preferable to silently reusing a branch with unknown content.
 
 **Trade-off summary:**
 

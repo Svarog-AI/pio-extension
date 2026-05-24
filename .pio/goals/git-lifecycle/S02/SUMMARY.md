@@ -21,6 +21,7 @@ COMPLETED
 
 ## User-Requested Changes
 - User directed that existing branches must **not** be reused on collision. Changed the branch collision recommendation from Strategy A (reuse existing) to Strategy C (auto-suffix). Updated §2.1 recommendation, Branch Checkout Protocol steps, and §1.5 edge case catalog accordingly. Modified `.pio/goals/git-lifecycle/S01/SPECIFICATION.md`.
+- User further directed that the user should ultimately control branch collision resolution via `ask_user`. Changed the recommendation from Strategy C (auto-suffix) to Strategy D (prompt user). The Branch Checkout Protocol now calls `ask_user` on collision with options: reuse, suffix, or cancel. Subgoals fall back to auto-suffix (no prompting). Modified `.pio/goals/git-lifecycle/S01/SPECIFICATION.md`.
 
 ## Test Coverage
 - No unit tests apply (specification/research task per TDD guidelines).

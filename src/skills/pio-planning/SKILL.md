@@ -13,8 +13,9 @@ This skill covers:
 3. **Acceptance Criteria Guidelines** — how to specify verifiable completion checks
 4. **Research Process** — what to investigate before designing steps
 5. **Scope Discipline** — boundaries and constraints on plan content
-6. **Subgoal Decomposition** — when and how to nest subgoals within plan steps
-7. **User Interaction Protocol** — how to gather decisions during planning
+6. **Priority Hierarchy for Plan Revision** — resolving conflicts between GOAL.md, archived plans, and revision notes
+7. **Subgoal Decomposition** — when and how to nest subgoals within plan steps
+8. **User Interaction Protocol** — how to gather decisions during planning
 
 ## PLAN.md Structure
 

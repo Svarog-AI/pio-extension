@@ -148,7 +148,7 @@ This is where deep research belongs. You need to be confident about implementati
 
 ## Priority Hierarchy for Plan Revision
 
-When `revise-plan` rewrites a plan after some steps are already completed, multiple sources of truth can conflict: `GOAL.md`, the archived `PLAN.md`, and revision notes from the trigger step. Resolve conflicts using this priority hierarchy for implementation details:
+When a plan is rewritten after some steps are already completed, multiple sources of truth can conflict: `GOAL.md`, the archived `PLAN.md`, and revision notes from the trigger step. Resolve conflicts using this priority hierarchy for implementation details:
 
 **Revision notes > archived PLAN.md > GOAL.md**
 
@@ -165,14 +165,10 @@ When `revise-plan` rewrites a plan after some steps are already completed, multi
 You may modify decisions from the archived plan under exactly three conditions:
 
 1. **Changes explicitly required by revision notes.** The `REVISE_PLAN_NEEDED` marker, trigger step's `TASK.md`, or `DECISIONS.md` specify a change that makes the old plan infeasible.
-2. **New steps required for gaps discovered during specification.** `evolve-plan` revealed that the original plan omitted a necessary step or misjudged complexity.
+2. **New steps required for gaps discovered during specification.** Specification revealed that the original plan omitted a necessary step or misjudged complexity.
 3. **Re-numbering after completed steps.** Step numbers must continue sequentially from the last completed step.
 
-Unless one of the above conditions applies, revise-plan must preserve all implementation decisions from the archived plan.
-
-### Relevance
-
-This methodology is primarily relevant to `revise-plan` but is documented in the shared skill so both `create-plan` and `revise-plan` agents inherit consistent planning knowledge.
+Unless one of the above conditions applies, the revision must preserve all implementation decisions from the archived plan.
 
 ## Subgoal Decomposition
 

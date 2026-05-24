@@ -1,0 +1,10 @@
+{
+  "capability": "create-goal",
+  "params": {
+    "goalName": "revise-plan-goals-vs-plan-priority",
+    "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/revise-plan-goals-vs-plan-priority.md",
+    "fileCleanup": [
+      "/home/aleksj/git/pio-extension/.pio/issues/revise-plan-goals-vs-plan-priority.md"
+    ]
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "s03-content-deleted-before-revision-analysis",
+    "stepNumber": 4,
+    "_sessionContext": {
+      "goalName": "s03-content-deleted-before-revision-analysis",
+      "stepNumber": 4,
+      "_sessionContext": {
+        "goalName": "s03-content-deleted-before-revision-analysis",
+        "stepNumber": 3,
+        "_sessionContext": {
+          "goalName": "s03-content-deleted-before-revision-analysis",
+          "stepNumber": 3,
+          "_sessionContext": {
+            "goalName": "s03-content-deleted-before-revision-analysis",
+            "stepNumber": 3,
+            "_sessionContext": {
+              "goalName": "s03-content-deleted-before-revision-analysis",
+              "stepNumber": 2,
+              "_sessionContext": {
+                "goalName": "s03-content-deleted-before-revision-analysis",
+                "stepNumber": 2,
+                "_sessionContext": {
+                  "goalName": "s03-content-deleted-before-revision-analysis",
+                  "stepNumber": 2,
+                  "_sessionContext": {
+                    "goalName": "s03-content-deleted-before-revision-analysis",
+                    "stepNumber": 1,
+                    "_sessionContext": {
+                      "goalName": "s03-content-deleted-before-revision-analysis",
+                      "stepNumber": 1,
+                      "_sessionContext": {
+                        "goalName": "s03-content-deleted-before-revision-analysis",
+                        "stepNumber": 1,
+                        "_sessionContext": {
+                          "goalName": "s03-content-deleted-before-revision-analysis",
+                          "stepNumber": 1,
+                          "_sessionContext": {
+                            "goalName": "s03-content-deleted-before-revision-analysis",
+                            "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/s03-content-deleted-before-revision-analysis.md",
+                            "fileCleanup": [
+                              "/home/aleksj/git/pio-extension/.pio/issues/s03-content-deleted-before-revision-analysis.md"
+                            ],
+                            "capability": "create-goal"
+                          },
+                          "capability": "create-plan"
+                        },
+                        "capability": "evolve-plan"
+                      },
+                      "capability": "execute-task"
+                    },
+                    "capability": "review-task"
+                  },
+                  "capability": "evolve-plan"
+                },
+                "capability": "execute-task"
+              },
+              "capability": "review-task"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    }
+  }
+}

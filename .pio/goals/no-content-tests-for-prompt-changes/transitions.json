@@ -1,0 +1,145 @@
+[
+  {
+    "timestamp": "2026-05-24T10:53:20.076Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "no-content-tests-for-prompt-changes",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "no-content-tests-for-prompt-changes",
+        "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/no-content-tests-for-prompt-changes.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/no-content-tests-for-prompt-changes.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T10:56:07.336Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "no-content-tests-for-prompt-changes",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "no-content-tests-for-prompt-changes",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "no-content-tests-for-prompt-changes",
+          "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/no-content-tests-for-prompt-changes.md",
+          "fileCleanup": [
+            "/home/aleksj/git/pio-extension/.pio/issues/no-content-tests-for-prompt-changes.md"
+          ],
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T10:56:10.090Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "no-content-tests-for-prompt-changes",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "no-content-tests-for-prompt-changes",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "no-content-tests-for-prompt-changes",
+          "initialMessage": "Convert the following issue into a goal:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/no-content-tests-for-prompt-changes.md",
+          "fileCleanup": [
+            "/home/aleksj/git/pio-extension/.pio/issues/no-content-tests-for-prompt-changes.md"
+          ],
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-24T10:58:29.462Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "no-content-tests-for-prompt-changes",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T11:01:07.343Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "no-content-tests-for-prompt-changes",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T11:01:28.211Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "no-content-tests-for-prompt-changes",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-24T11:02:39.812Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "no-content-tests-for-prompt-changes",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T11:03:42.218Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "no-content-tests-for-prompt-changes",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T11:05:32.240Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "no-content-tests-for-prompt-changes",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T11:05:46.355Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "no-content-tests-for-prompt-changes",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-24T11:06:51.676Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "no-content-tests-for-prompt-changes",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-24T11:07:08.340Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "no-content-tests-for-prompt-changes",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/no-content-tests-for-prompt-changes",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  }
+]

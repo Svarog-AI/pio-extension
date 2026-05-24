@@ -65,7 +65,7 @@ After implementing all steps:
 
 ### Step 6: Commit changes
 
-Load the `pio-git` skill and commit the changes. Write a short descriptive one-liner commit message summarizing all changes made during the session. Since no `SUMMARY.md` exists, the skill will use `git status --porcelain` to determine which files to stage. If git fails, log a warning and proceed — never block workflow completion.
+Load the `pio-git` skill and commit the changes. Write a short descriptive one-liner commit message summarizing all changes made during the session. If git fails, log a warning and proceed — never block workflow completion.
 
 ### Step 7: Signal completion
 

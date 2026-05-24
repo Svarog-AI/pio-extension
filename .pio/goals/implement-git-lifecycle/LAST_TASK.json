@@ -1,0 +1,77 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "implement-git-lifecycle",
+    "stepNumber": 4,
+    "_sessionContext": {
+      "goalName": "implement-git-lifecycle",
+      "stepNumber": 4,
+      "_sessionContext": {
+        "goalName": "implement-git-lifecycle",
+        "stepNumber": 3,
+        "_sessionContext": {
+          "goalName": "implement-git-lifecycle",
+          "stepNumber": 3,
+          "_sessionContext": {
+            "goalName": "implement-git-lifecycle",
+            "stepNumber": 3,
+            "_sessionContext": {
+              "goalName": "implement-git-lifecycle",
+              "stepNumber": 2,
+              "_sessionContext": {
+                "goalName": "implement-git-lifecycle",
+                "stepNumber": 2,
+                "_sessionContext": {
+                  "goalName": "implement-git-lifecycle",
+                  "stepNumber": 2,
+                  "_sessionContext": {
+                    "goalName": "implement-git-lifecycle",
+                    "stepNumber": 1,
+                    "_sessionContext": {
+                      "goalName": "implement-git-lifecycle",
+                      "stepNumber": 1,
+                      "_sessionContext": {
+                        "goalName": "implement-git-lifecycle",
+                        "stepNumber": 1,
+                        "_sessionContext": {
+                          "goalName": "implement-git-lifecycle",
+                          "stepNumber": 1,
+                          "_sessionContext": {
+                            "goalName": "implement-git-lifecycle",
+                            "stepNumber": 1,
+                            "_sessionContext": {
+                              "goalName": "implement-git-lifecycle",
+                              "stepNumber": 1,
+                              "_sessionContext": {
+                                "goalName": "implement-git-lifecycle",
+                                "initialMessage": "Implement the full git lifecycle specification produced by the `git-lifecycle` goal. The specification is at `.pio/goals/git-lifecycle/SPECIFICATION.md` and should be your primary input.\n\n**Summary of what to build:**\n\n1. **Branch Checkout Protocol** in `src/skills/pio-git/SKILL.md` — checkout a dedicated branch (`feat/<goal-name>`) on `create-goal`, with GIT.md convention lookup, collision resolution (`ask_user` for top-level, auto-suffix for subgoals), subgoal detection, and graceful failure.\n\n2. **PR Creation Protocol** in `src/skills/pio-git/SKILL.md` — create a pull request via `gh pr create` on `finalize-goal`, with pre-creation checks (`gh` CLI/auth/changes/existing PR), target branch determination from GIT.md, and graceful failure.\n\n3. **Prompt changes** — inject branch checkout step into `src/prompts/create-goal.md` (before GOAL.md writing) and PR creation step into `src/prompts/finalize-goal.md` (after summary output). Prompts define WHAT, skills define HOW — no shell commands in prompts.\n\n4. **No capability code changes** — skill + prompt only. Consistent with existing Staged Commit Protocol pattern.\n\n5. **Update \"Future Extensibility\"** in pio-git SKILL.md to remove branch checkout and PR creation entries (now implemented) and note other future extensions.\n\n**Key constraints:**\n- Graceful failure throughout: git errors warn, never block workflow\n- GIT.md is the authority for branch naming, PR formats, target branch\n- Subgoal detection (`/subgoals/` in path) skips both protocols\n- Read the full SPECIFICATION.md — it contains detailed protocol steps, edge cases, and exact file change locations",
+                                "capability": "create-goal"
+                              },
+                              "capability": "create-plan"
+                            },
+                            "capability": "evolve-plan"
+                          },
+                          "capability": "execute-task"
+                        },
+                        "capability": "review-task"
+                      },
+                      "capability": "execute-task"
+                    },
+                    "capability": "review-task"
+                  },
+                  "capability": "evolve-plan"
+                },
+                "capability": "execute-task"
+              },
+              "capability": "review-task"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    }
+  }
+}

@@ -58,7 +58,8 @@ pio-extension/
 │   │   ├── test-driven-development/SKILL.md — TDD methodology guide
 │   │   ├── pio-project-knowledge/SKILL.md  — Canonical knowledge source for .pio/PROJECT/ files
 │   │   ├── pio-planning/SKILL.md  — Shared planning methodology (step structure, acceptance criteria, research)
-│   │   ├── pio-git/SKILL.md       — Git operations for pio agents (convention lookup, staged commit protocol)
+│   │   ├── pio-git/SKILL.md       — Git operations for pio agents (convention lookup, staged commits, branch checkout, PR creation)
+│   │   │   └── REFERENCE.md       — Edge case tables for branch checkout and PR creation protocols (progressive disclosure)
 │   │   └── write-a-skill/SKILL.md — Skill authoring guide (structure, progressive disclosure, bundled resources)
 │   ├── index.ts               # Extension entry point — wires all capabilities into pi API
 │   ├── types.ts               # Shared type definitions (ValidationRule, CapabilityConfig, etc.)

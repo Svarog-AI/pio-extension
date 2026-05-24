@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { resolveCapabilityConfig } from "../capability-config";
-import { CAPABILITY_CONFIG, validateRevisePlan, prepareSession } from "./revise-plan";
+import { CAPABILITY_CONFIG, validateRevisePlan, prepareSession, cleanupIncompleteSteps } from "./revise-plan";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -112,6 +112,10 @@ describe("CAPABILITY_CONFIG", () => {
 
   it("prepareSession is a function", () => {
     expect(typeof CAPABILITY_CONFIG.prepareSession).toBe("function");
+  });
+
+  it("postExecute is defined and references cleanupIncompleteSteps", () => {
+    expect(CAPABILITY_CONFIG.postExecute).toBe(cleanupIncompleteSteps);
   });
 
   it("defaultInitialMessage returns non-empty string containing the goal workspace path", () => {
@@ -282,7 +286,7 @@ describe("prepareSession — cleanup", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("deletes step folders without APPROVED marker", async () => {
+  it("preserves non-APPROVED step folders (cleanup deferred to postExecute)", async () => {
     goalDir = createGoalTree(tempDir, "mixed-steps", {
       withGoal: true,
       withPlan: true,
@@ -294,8 +298,10 @@ describe("prepareSession — cleanup", () => {
 
     await prepareSession(goalDir);
 
-    // S01 should be deleted
-    expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(false);
+    // S01 should still exist — cleanup is deferred to postExecute
+    expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
+    // S01 content should be intact
+    expect(fs.existsSync(path.join(goalDir, "S01", "TASK.md"))).toBe(true);
     // S02 should still exist
     expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(true);
     // S02 APPROVED marker should be intact
@@ -320,7 +326,7 @@ describe("prepareSession — cleanup", () => {
     expect(fs.existsSync(path.join(goalDir, "S02", "APPROVED"))).toBe(true);
   });
 
-  it("deletes multiple non-APPROVED folders", async () => {
+  it("preserves multiple non-APPROVED folders (cleanup deferred to postExecute)", async () => {
     goalDir = createGoalTree(tempDir, "multi-cleanup", {
       withGoal: true,
       withPlan: true,
@@ -333,8 +339,9 @@ describe("prepareSession — cleanup", () => {
 
     await prepareSession(goalDir);
 
-    expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(false);
-    expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(false);
+    // All folders should still exist — cleanup is deferred to postExecute
+    expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
+    expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(true);
     expect(fs.existsSync(path.join(goalDir, "S03"))).toBe(true);
   });
 
@@ -371,7 +378,7 @@ describe("prepareSession — marker cleanup", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("deletes REVISE_PLAN_NEEDED from triggering step folder when revisionTriggerStep provided", async () => {
+  it("preserves REVISE_PLAN_NEEDED marker (cleanup deferred to postExecute)", async () => {
     goalDir = createGoalTree(tempDir, "marker-test", {
       withGoal: true,
       withPlan: true,
@@ -387,11 +394,11 @@ describe("prepareSession — marker cleanup", () => {
 
     // S01 should still exist (it's APPROVED)
     expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
-    // But marker should be deleted
-    expect(fs.existsSync(path.join(goalDir, "S01", "REVISE_PLAN_NEEDED"))).toBe(false);
+    // Marker should also still exist — cleanup is deferred to postExecute
+    expect(fs.existsSync(path.join(goalDir, "S01", "REVISE_PLAN_NEEDED"))).toBe(true);
   });
 
-  it("does not attempt cleanup when revisionTriggerStep is not provided", async () => {
+  it("preserves folder and marker when revisionTriggerStep is not provided", async () => {
     goalDir = createGoalTree(tempDir, "no-trigger", {
       withGoal: true,
       withPlan: true,
@@ -400,13 +407,13 @@ describe("prepareSession — marker cleanup", () => {
       ],
     });
 
-    // Call without params — S02 is non-APPROVED, so it gets deleted entirely
+    // Call without params — S02 is non-APPROVED but should be preserved
     await prepareSession(goalDir);
 
-    // S02 folder should be deleted (non-APPROVED cleanup)
-    expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(false);
-    // Marker naturally removed with the folder
-    expect(fs.existsSync(path.join(goalDir, "S02", "REVISE_PLAN_NEEDED"))).toBe(false);
+    // S02 folder should still exist — cleanup deferred to postExecute
+    expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(true);
+    // Marker should also still exist
+    expect(fs.existsSync(path.join(goalDir, "S02", "REVISE_PLAN_NEEDED"))).toBe(true);
   });
 
   it("handles missing marker gracefully", async () => {
@@ -448,7 +455,7 @@ describe("CAPABILITY_CONFIG callbacks via resolveCapabilityConfig", () => {
 // Integration — end-to-end prepareSession workflow
 // ---------------------------------------------------------------------------
 
-describe("end-to-end prepareSession workflow", () => {
+describe("end-to-end lifecycle: prepareSession then cleanupIncompleteSteps", () => {
   let tempDir: string;
   let goalDir: string;
 
@@ -458,7 +465,7 @@ describe("end-to-end prepareSession workflow", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("full lifecycle: archive, cleanup, marker removal in one run", async () => {
+  it("prepareSession archives plan and preserves all folders; cleanupIncompleteSteps deletes non-APPROVED", async () => {
     const planContent = "---\ntotalSteps: 5\nsteps:\n  - name: step-1\n    complexity: task\n  - name: step-2\n    complexity: task\n  - name: step-3\n    complexity: task\n  - name: step-4\n    complexity: task\n  - name: step-5\n    complexity: task\n---\n# Original Plan\n\n## Step 1: Done\n## Step 2: In progress\n## Step 3: Pending\n";
 
     goalDir = createGoalTree(tempDir, "full-lifecycle", {
@@ -475,6 +482,7 @@ describe("end-to-end prepareSession workflow", () => {
     // Add SUMMARY.md to S03 to make it more realistic
     fs.writeFileSync(path.join(goalDir, "S03", "SUMMARY.md"), "# Summary\n", "utf-8");
 
+    // Phase 1: prepareSession — archive only, preserve all folders
     await prepareSession(goalDir, { revisionTriggerStep: 1 });
 
     // PLAN_ARCHIVE/ has one timestamped file with correct content
@@ -488,13 +496,160 @@ describe("end-to-end prepareSession workflow", () => {
     // Original PLAN.md is gone
     expect(fs.existsSync(path.join(goalDir, "PLAN.md"))).toBe(false);
 
-    // S01 exists with APPROVED but marker removed
+    // All step folders should still exist after prepareSession
+    expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
+    expect(fs.existsSync(path.join(goalDir, "S01", "APPROVED"))).toBe(true);
+    expect(fs.existsSync(path.join(goalDir, "S01", "REVISE_PLAN_NEEDED"))).toBe(true);
+    expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(true);
+    expect(fs.existsSync(path.join(goalDir, "S03"))).toBe(true);
+
+    // Phase 2: cleanupIncompleteSteps — delete non-APPROVED, clean marker
+    await cleanupIncompleteSteps(goalDir, { revisionTriggerStep: 1 });
+
+    // S01 (APPROVED) should remain but marker should be cleaned
     expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
     expect(fs.existsSync(path.join(goalDir, "S01", "APPROVED"))).toBe(true);
     expect(fs.existsSync(path.join(goalDir, "S01", "REVISE_PLAN_NEEDED"))).toBe(false);
 
-    // S02 and S03 are deleted
+    // S02 and S03 (non-APPROVED) should be deleted
     expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(false);
     expect(fs.existsSync(path.join(goalDir, "S03"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// cleanupIncompleteSteps — disk scanning and deletion
+// ---------------------------------------------------------------------------
+
+describe("cleanupIncompleteSteps", () => {
+  let tempDir: string;
+  let goalDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("deletes non-APPROVED S{NN}/ folders found on disk", async () => {
+    goalDir = createGoalTree(tempDir, "mixed-disk", {
+      withGoal: true,
+      withPlan: true,
+      stepFolders: [
+        { stepNumber: 1, approved: true },
+        { stepNumber: 2, approved: false },
+        { stepNumber: 3, approved: false },
+      ],
+    });
+
+    await cleanupIncompleteSteps(goalDir);
+
+    // S01 (APPROVED) should remain
+    expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
+    // S02 and S03 (non-APPROVED) should be deleted
+    expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(false);
+    expect(fs.existsSync(path.join(goalDir, "S03"))).toBe(false);
+  });
+
+  it("preserves APPROVED S{NN}/ folders", async () => {
+    goalDir = createGoalTree(tempDir, "all-approved-disk", {
+      withGoal: true,
+      withPlan: true,
+      stepFolders: [
+        { stepNumber: 1, approved: true },
+        { stepNumber: 2, approved: true },
+        { stepNumber: 3, approved: true },
+      ],
+    });
+
+    await cleanupIncompleteSteps(goalDir);
+
+    expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
+    expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(true);
+    expect(fs.existsSync(path.join(goalDir, "S03"))).toBe(true);
+  });
+
+  it("handles empty goal directory (no step folders)", async () => {
+    goalDir = createGoalTree(tempDir, "empty-goal", {
+      withGoal: true,
+      withPlan: true,
+    });
+
+    // Should not throw
+    await expect(cleanupIncompleteSteps(goalDir)).resolves.toBeUndefined();
+  });
+
+  it("deletes all folders when none are APPROVED", async () => {
+    goalDir = createGoalTree(tempDir, "none-approved", {
+      withGoal: true,
+      withPlan: true,
+      stepFolders: [
+        { stepNumber: 1, approved: false },
+        { stepNumber: 2, approved: false },
+      ],
+    });
+
+    await cleanupIncompleteSteps(goalDir);
+
+    expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(false);
+    expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(false);
+  });
+
+  it("scans disk, not PLAN.md frontmatter", async () => {
+    // Create goalDir with PLAN.md listing 2 steps, but 3 folders on disk
+    goalDir = createGoalTree(tempDir, "disk-scan", {
+      withGoal: true,
+      withPlan: true,
+      planContent: "---\ntotalSteps: 2\nsteps:\n  - name: step-1\n    complexity: task\n  - name: step-2\n    complexity: task\n---\n# Plan\n",
+      stepFolders: [
+        { stepNumber: 1, approved: true },
+        { stepNumber: 2, approved: false },
+        { stepNumber: 3, approved: false },
+      ],
+    });
+
+    // S03 is on disk but NOT in PLAN.md frontmatter — cleanup should still find it
+    await cleanupIncompleteSteps(goalDir);
+
+    // S01 (APPROVED) should remain
+    expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
+    // S02 and S03 (non-APPROVED) should be deleted even though S03 isn't in PLAN.md
+    expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(false);
+    expect(fs.existsSync(path.join(goalDir, "S03"))).toBe(false);
+  });
+
+  it("cleans up REVISE_PLAN_NEEDED marker when trigger step folder exists", async () => {
+    goalDir = createGoalTree(tempDir, "marker-cleanup", {
+      withGoal: true,
+      withPlan: true,
+      stepFolders: [
+        { stepNumber: 1, approved: true, withMarker: true },
+      ],
+    });
+
+    // S01 is APPROVED with a marker — folder should survive but marker should be cleaned
+    await cleanupIncompleteSteps(goalDir, { revisionTriggerStep: 1 });
+
+    expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
+    expect(fs.existsSync(path.join(goalDir, "S01", "APPROVED"))).toBe(true);
+    // Marker should be removed
+    expect(fs.existsSync(path.join(goalDir, "S01", "REVISE_PLAN_NEEDED"))).toBe(false);
+  });
+
+  it("handles missing trigger step folder gracefully", async () => {
+    goalDir = createGoalTree(tempDir, "missing-trigger", {
+      withGoal: true,
+      withPlan: true,
+      stepFolders: [
+        { stepNumber: 1, approved: true },
+      ],
+    });
+
+    // revisionTriggerStep: 99 — S99 doesn't exist
+    // Should not throw
+    await expect(cleanupIncompleteSteps(goalDir, { revisionTriggerStep: 99 })).resolves.toBeUndefined();
+
+    // S01 should remain
+    expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
   });
 });

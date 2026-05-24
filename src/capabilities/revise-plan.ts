@@ -64,24 +64,19 @@ export async function validateRevisePlan(
 }
 
 // ---------------------------------------------------------------------------
-// prepareSession — mechanical cleanup before the agent starts
+// prepareSession — archive PLAN.md before the agent starts
 // ---------------------------------------------------------------------------
 
 /**
- * Handles all mechanical filesystem cleanup before the revise-plan agent starts:
- * 1. Archives current PLAN.md to PLAN_ARCHIVE/ with a timestamped filename
- * 2. Deletes all non-APPROVED S{NN}/ step folders
- * 3. Cleans up REVISE_PLAN_NEEDED marker if revisionTriggerStep is provided
+ * Archives current PLAN.md to PLAN_ARCHIVE/ with a timestamped filename.
+ * Step folder deletion is deferred to cleanupIncompleteSteps (postExecute)
+ * so the Plan Revision Agent can inspect trigger step content.
  */
 export async function prepareSession(
   workingDir: string,
-  params?: Record<string, unknown>,
+  _params?: Record<string, unknown>,
 ): Promise<void> {
-  // Read step list BEFORE archiving PLAN.md — steps() derives from frontmatter.
-  const state = createGoalState(workingDir);
-  const steps = state.steps();
-
-  // Step 1: Archive current PLAN.md
+  // Archive current PLAN.md
   const planPath = path.join(workingDir, PLAN_FILE);
   if (fs.existsSync(planPath)) {
     const archiveDir = path.join(workingDir, PLAN_ARCHIVE_DIR);
@@ -95,23 +90,50 @@ export async function prepareSession(
     fs.copyFileSync(planPath, archivePath);
     fs.unlinkSync(planPath);
   }
+}
 
-  // Step 2: Delete non-APPROVED step folders
-  for (const step of steps) {
-    if (step.status() !== "approved") {
-      const stepDir = path.join(workingDir, step.folderName);
+// ---------------------------------------------------------------------------
+// cleanupIncompleteSteps — postExecute cleanup after the agent completes
+// ---------------------------------------------------------------------------
+
+const STEP_FOLDER_RE = /^S(\d+)$/;
+
+/**
+ * Deletes non-APPROVED S{NN}/ step folders and cleans up the REVISE_PLAN_NEEDED marker.
+ * Runs as postExecute after pio_mark_complete — the agent has already finished reading.
+ *
+ * Scans disk for S{NN}/ folders rather than relying on PLAN.md frontmatter,
+ * since the revision agent may have written a new PLAN.md with a different step list.
+ */
+export async function cleanupIncompleteSteps(
+  goalDir: string,
+  params?: Record<string, unknown>,
+): Promise<void> {
+  // Scan disk for S{NN}/ folders
+  const entries = fs.readdirSync(goalDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (!STEP_FOLDER_RE.test(entry.name)) continue;
+
+    const stepDir = path.join(goalDir, entry.name);
+    const approvedPath = path.join(stepDir, "APPROVED");
+
+    if (!fs.existsSync(approvedPath)) {
+      // Non-APPROVED folder — delete entirely
       fs.rmSync(stepDir, { recursive: true, force: true });
     }
   }
 
-  // Step 3: Clean up REVISE_PLAN_NEEDED marker if revisionTriggerStep is provided
+  // Clean up REVISE_PLAN_NEEDED marker from trigger step folder if it still exists
   const revisionTriggerStep = typeof params?.revisionTriggerStep === "number"
     ? params.revisionTriggerStep
     : undefined;
 
   if (revisionTriggerStep != null) {
     const folderName = stepFolderName(revisionTriggerStep);
-    const markerPath = path.join(workingDir, folderName, REVISE_PLAN_MARKER);
+    const markerPath = path.join(goalDir, folderName, REVISE_PLAN_MARKER);
+    // Use force: true to handle case where folder was already deleted
     if (fs.existsSync(markerPath)) {
       fs.unlinkSync(markerPath);
     }
@@ -157,6 +179,7 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
     return `Goal workspace is at ${workingDir}. The current plan has been archived to PLAN_ARCHIVE/ and incomplete step folders have been cleaned up.${triggerStep} Read the archived plans and completed step folders, then write a fresh PLAN.md continuing from the last completed step.`;
   },
   prepareSession,
+  postExecute: cleanupIncompleteSteps,
 };
 
 // ---------------------------------------------------------------------------

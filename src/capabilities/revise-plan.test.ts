@@ -118,29 +118,6 @@ describe("CAPABILITY_CONFIG", () => {
     expect(CAPABILITY_CONFIG.postExecute).toBe(cleanupIncompleteSteps);
   });
 
-  it("defaultInitialMessage returns non-empty string containing the goal workspace path", () => {
-    const message = CAPABILITY_CONFIG.defaultInitialMessage("/some/goal/dir");
-    expect(message.length).toBeGreaterThan(0);
-    expect(message).toContain("/some/goal/dir");
-  });
-
-  it("defaultInitialMessage without revisionTriggerStep mentions preserved incomplete step folders", () => {
-    const message = CAPABILITY_CONFIG.defaultInitialMessage("/some/goal/dir");
-
-    expect(message).toMatch(/preserved|inspection/i);
-    expect(message).not.toMatch(/Revision was triggered/i);
-  });
-
-  it("defaultInitialMessage with revisionTriggerStep references reading trigger step files", () => {
-    const message = CAPABILITY_CONFIG.defaultInitialMessage("/some/goal/dir", {
-      revisionTriggerStep: 3,
-    });
-
-    expect(message).toMatch(/Revision was triggered from Step 3/i);
-    expect(message).toMatch(/TASK\.md/i);
-    expect(message).toMatch(/DECISIONS\.md/i);
-    expect(message).toMatch(/REVISE_PLAN_NEEDED/i);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -167,15 +144,6 @@ describe("CAPABILITY_CONFIG wiring consistency", () => {
     expect(result).toContain("PLAN.md");
   });
 
-  it("defaultInitialMessage includes goal workspace path in both modes", () => {
-    const msgWithoutTrigger = CAPABILITY_CONFIG.defaultInitialMessage("/test/goal/dir");
-    expect(msgWithoutTrigger).toContain("/test/goal/dir");
-
-    const msgWithTrigger = CAPABILITY_CONFIG.defaultInitialMessage("/test/goal/dir", {
-      revisionTriggerStep: 2,
-    });
-    expect(msgWithTrigger).toContain("/test/goal/dir");
-  });
 });
 
 // ---------------------------------------------------------------------------

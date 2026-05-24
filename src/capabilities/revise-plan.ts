@@ -173,10 +173,10 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   writeAllowlist: resolveReviseWriteAllowlist,
   defaultInitialMessage: (workingDir, params) => {
     const triggerStep = typeof params?.revisionTriggerStep === "number"
-      ? ` Revision was triggered from Step ${params.revisionTriggerStep}.`
+      ? ` Revision was triggered from Step ${params.revisionTriggerStep}. Read its TASK.md, DECISIONS.md, and REVISE_PLAN_NEEDED files to understand why revision was needed.`
       : "";
 
-    return `Goal workspace is at ${workingDir}. The current plan has been archived to PLAN_ARCHIVE/ and incomplete step folders have been cleaned up.${triggerStep} Read the archived plans and completed step folders, then write a fresh PLAN.md continuing from the last completed step.`;
+    return `Goal workspace is at ${workingDir}. The current plan has been archived to PLAN_ARCHIVE/. Incomplete step folders are preserved for inspection during this session and will be cleaned up after completion.${triggerStep} Read the archived plans and completed step folders, then write a fresh PLAN.md continuing from the last completed step.`;
   },
   prepareSession,
   postExecute: cleanupIncompleteSteps,

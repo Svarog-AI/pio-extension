@@ -9,20 +9,21 @@ COMPLETED
 - `.pio/goals/git-lifecycle/S01/COMPLETED` — Step completion marker
 
 ## Files Modified
-- (none — this was a research-only step with no source code changes)
+- `.pio/goals/git-lifecycle/S01/SPECIFICATION.md` — revised recommendation from hybrid (code+skill) to unified skill+prompt approach for both branch checkout and PR creation
 
 ## Files Deleted
 - (none)
 
 ## Decisions Made
-- **Branch checkout on `create-goal`:** Recommended `prepareSession` hook (Option D) combined with a pio-git skill protocol (Option B). The hook provides guaranteed execution with built-in graceful failure; the skill provides canonical documentation. Requires code changes to `src/capabilities/create-goal.ts`.
-- **PR creation on `finalize-goal`:** Recommended prompt instructions (Option A) combined with a pio-git skill protocol (Option B). PR creation is content-aware — the agent should construct PR title/body from goal artifacts. No code changes required.
-- **Branch collision strategy:** Reuse existing branch (checkout and continue). Do not error/abort — goal workspaces may be continuations of previous work.
+- **Unified approach: skill + prompt only.** Both branch checkout and PR creation use skill protocol + prompt instructions. No capability code changes. This maintains consistency with the existing pio-git skill (Staged Commit Protocol) and the GOAL.md constraint of no code changes unless absolutely necessary.
+- **Branch checkout on `create-goal`:** pio-git skill gets a "Branch Checkout Protocol" section. create-goal prompt adds a step to follow it before writing GOAL.md.
+- **PR creation on `finalize-goal`:** pio-git skill gets a "PR Creation Protocol" section. finalize-goal prompt adds a step to follow it after updating PROJECT files.
+- **Branch collision strategy:** Reuse existing branch (checkout and continue). Do not error/abort.
 - **Non-main branch handling:** Detect current branch and use as base for both branching and PR target.
-- **`gh` CLI evaluation:** Confirmed `gh pr create` supports `--title`, `--body`, `--base`, `--head`, `--draft` flags. Auth via `gh auth login` (PAT, GitHub Apps, OAuth). Platform: GitHub only.
+- **`gh` CLI evaluation:** Confirmed `gh pr create` supports `--title`, `--body`, `--base`, `--head`, `--draft` flags. Auth via `gh auth login`. Platform: GitHub only.
 
 ## User-Requested Changes
-- (none)
+- User rejected the hybrid approach (code-based `prepareSession` hook for branch checkout + skill-based PR creation). Revised recommendation to use skill+prompt for both operations — consistent with existing pio-git patterns and GOAL.md constraints.
 
 ## Test Coverage
 - No unit tests (research/specification task — no behavioral code changes).

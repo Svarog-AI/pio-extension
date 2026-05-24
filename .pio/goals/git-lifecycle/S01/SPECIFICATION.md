@@ -44,19 +44,16 @@
 - **Cons:** Requires code changes to `create-goal.ts` to define the `prepareSession` callback. Introduces git operations into capability code.
 - **Feasibility:** High. The hook is designed exactly for this use case — preparation before the agent runs, with graceful failure semantics.
 
-**Recommendation: Option D (`prepareSession` hook) with Option B (skill protocol) as a hybrid approach.**
+**Recommendation: Option B (skill protocol) referenced from Option A (prompt instructions).**
 
-The `prepareSession` hook provides the most robust execution guarantee with built-in graceful failure. However, the pio-git skill should still document the Branch Checkout Protocol so that:
-1. Agents understand the branching convention when reading the skill
-2. The skill remains the canonical reference for all git operations
-3. If the hook fails, the prompt can still instruct the agent to attempt branching manually
+Branch checkout should follow the same skill+prompt pattern as the existing Staged Commit Protocol — no capability code changes. The pio-git skill should add a "Branch Checkout Protocol" section that specifies:
+1. Convention lookup from `.pio/PROJECT/GIT.md` for branch naming patterns
+2. Branch name construction from goal name (e.g., `feat/<goal-name>`)
+3. Collision handling: reuse existing branch (checkout and continue)
+4. Graceful failure: skip on no git repo, detached HEAD, uncommitted changes
+5. Non-main branch detection: use current branch as base
 
-The `prepareSession` callback in `create-goal.ts` would:
-1. Check if a git repo exists (`git rev-parse --show-toplevel`)
-2. Read branch naming convention from `.pio/PROJECT/GIT.md`
-3. Construct branch name from goal name (e.g., `feat/<goal-name>`)
-4. Run `git checkout -b <branch>` (handling collisions per edge case strategy)
-5. On any error, log a warning and proceed (graceful failure)
+The create-goal prompt should add a step instructing the agent to follow the Branch Checkout Protocol from the pio-git skill before writing GOAL.md. This keeps all git operations in the skill layer — consistent with the existing Staged Commit Protocol and the GOAL.md constraint of no capability code changes unless absolutely necessary.
 
 ### 1.2 PR creation on `finalize-goal`
 
@@ -105,7 +102,7 @@ The `prepareSession` callback in `create-goal.ts` would:
 
 **Recommendation: Option B (skill protocol) referenced from Option A (prompt instructions).**
 
-PR creation is inherently content-aware — the PR title and body should reference the goal name, summarize changes from SUMMARY.md files, and link to relevant artifacts. This is best done by the agent with full context, not by code. The pio-git skill should define a "PR Creation Protocol" that specifies:
+PR creation should follow the same skill+prompt pattern as branch checkout — no capability code changes. The pio-git skill should define a "PR Creation Protocol" that specifies:
 1. PR title format: derived from goal name and GOAL.md summary
 2. PR body format: includes goal summary, list of steps completed, files changed
 3. Target branch: default `main`, configurable via GIT.md
@@ -117,8 +114,10 @@ The finalize-goal prompt should add a step instructing the agent to follow the P
 
 | Git Operation | Recommended Approach | Implementation Location | Code Changes Required |
 |---|---|---|---|
-| Branch checkout on `create-goal` | `prepareSession` hook + skill protocol | `src/capabilities/create-goal.ts` (hook) + `src/skills/pio-git/SKILL.md` (protocol) | Yes — add `prepareSession` to create-goal `CAPABILITY_CONFIG` |
+| Branch checkout on `create-goal` | Prompt instructions + skill protocol | `src/prompts/create-goal.md` (step) + `src/skills/pio-git/SKILL.md` (protocol) | No — prompt and skill changes only |
 | PR creation on `finalize-goal` | Prompt instructions + skill protocol | `src/prompts/finalize-goal.md` (step) + `src/skills/pio-git/SKILL.md` (protocol) | No — prompt and skill changes only |
+
+**Consistency principle:** Both operations use the same approach — skill protocol + prompt instruction. No capability code changes. This matches the existing pio-git skill pattern (Staged Commit Protocol) and the GOAL.md constraint of no capability code changes unless absolutely necessary. The `prepareSession` and `postExecute` hooks (Options C/D) were evaluated but rejected to maintain architectural consistency.
 
 ### 1.4 `gh pr create` evaluation
 

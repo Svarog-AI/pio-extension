@@ -8,8 +8,7 @@ COMPLETED
 
 ## Files Modified
 - `src/goal-state.ts` — added `taskSkills()` method to `StepStatus` interface; implemented it inside `createStepStatus()` factory; imported `TASK_FRONTMATTER_SCHEMA`, `TaskFrontmatter`, and `TaskSkills` from `frontmatter-schemas.ts`
-- `src/fs-utils.ts` — added `mergeCapabilitySkills()` pure utility function; imported `CapabilitySkills` from `types.ts` and `TaskSkills` from `frontmatter-schemas.ts`
-- `src/capabilities/session-capability.ts` — added `setMergedSkills()` export for `prepareSession` hooks to set merged skills on the current config
+- `src/capabilities/session-capability.ts` — added `setMergedSkills()` export for `prepareSession` hooks to set merged skills on the current config; added `mergeCapabilitySkills()` pure utility (collocated with `buildSkillLoadingSection` — all skill handling lives here)
 - `src/capabilities/execute-task.ts` — added `prepareExecuteSession` hook that reads TASK.md skills via `StepStatus.taskSkills()` and merges with base skills; imported `setMergedSkills` and `mergeCapabilitySkills`; wired `prepareSession` into `CAPABILITY_CONFIG`
 - `src/capabilities/review-task.ts` — updated `prepareReviewSession` to also read TASK.md skills and merge with base skills; imported `setMergedSkills` and `mergeCapabilitySkills`
 - `src/goal-state.test.ts` — added 11 test cases for `StepStatus.taskSkills()` (valid skills, mandatory-only, recommended-only, no skills key, empty frontmatter, missing file, malformed YAML, invalid schema, no caching, pending step, no-throw)
@@ -21,13 +20,13 @@ COMPLETED
 - (none)
 
 ## Decisions Made
-- **`mergeCapabilitySkills` placed in `fs-utils.ts`:** Pure merge utility operating on typed objects. Doesn't access the filesystem. Its placement is correct as a general-purpose helper.
+- **`mergeCapabilitySkills` placed in `session-capability.ts`:** Pure merge utility operating on typed objects. Collocated with `buildSkillLoadingSection()` and `setMergedSkills()` — all skill handling lives in one module.
 - **`setMergedSkills` added to `session-capability.ts`:** Allows `prepareSession` hooks to set merged skills on `currentConfig` before `before_agent_start` runs `buildSkillLoadingSection()`.
 - **`taskSkills()` returns `null` (not `undefined`):** Consistent with other `StepStatus` methods that return `null` on absence. `prepareSession` hooks check truthiness, which handles both.
 - **Plan deviation from PLAN.md:** The plan suggested a "shared helper" in `fs-utils.ts`. Instead, `readTaskFrontmatterSkills` logic lives on `StepStatus.taskSkills()` — the single source of truth for per-step state (matching `hasTask()`, `status()`, `getMetadata()`).
 
 ## User-Requested Changes
-- (none)
+- User pointed out `mergeCapabilitySkills` in `fs-utils.ts` was a misplacement — it's a pure skill merge utility, not a filesystem operation. Moved it to `session-capability.ts` alongside `buildSkillLoadingSection()` and `setMergedSkills()`. Modified `src/fs-utils.ts` (removed), `src/capabilities/session-capability.ts` (added), `src/capabilities/execute-task.ts` (import updated), `src/capabilities/review-task.ts` (import updated), `src/fs-utils.test.ts` (import updated).
 
 ## Test Coverage
 - 11 new tests for `StepStatus.taskSkills()` covering: valid skills (both mandatory and recommended), mandatory-only, recommended-only, no skills key, empty frontmatter, missing file, malformed YAML, invalid schema, lazy evaluation (no caching), pending steps, and error resilience (never throws).

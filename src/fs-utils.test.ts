@@ -10,8 +10,8 @@ import {
   deriveSessionName,
   stepFolderName,
   discoverNextStep,
-  mergeCapabilitySkills,
 } from "./fs-utils";
+import { mergeCapabilitySkills } from "./capabilities/session-capability";
 import type { CapabilitySkills } from "./types";
 import type { TaskSkills } from "./frontmatter-schemas";
 

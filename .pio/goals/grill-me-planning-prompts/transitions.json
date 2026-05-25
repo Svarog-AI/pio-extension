@@ -1,0 +1,195 @@
+[
+  {
+    "timestamp": "2026-05-25T07:32:08.015Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "grill-me-planning-prompts",
+        "initialMessage": "Review how the `grill-me` skill is incorporated into the `create-plan` and `revise-plan` prompts, ensuring alignment with the core principle: **Capability prompts describe WHAT, skills describe HOW**.\n\n**Files to review:**\n- `src/prompts/create-plan.md` — has inline grill-me instructions in Step 2 (\"Use the grill-me skill to resolve any doubts...\") and Step 3 (\"Use the grill-me skill to make sure you clarify as much as possible...\"). These read like HOW instructions embedded in the prompt.\n- `src/prompts/revise-plan.md` — missing user interaction / grill-me entirely. Needs a step for validating assumptions with the user, especially since revision happens mid-flight and architectural decisions may need re-negotiation.\n- `src/skills/grill-me/SKILL.md` — the skill definition itself (short, focused on relentless interviewing).\n\n**Current problems:**\n1. `create-plan.md` embeds HOW instructions about using grill-me inline in steps (\"Use the grill-me skill to resolve...\") rather than declaring WHAT needs to happen and letting the skill describe HOW. The prompt should say \"validate assumptions with the user\" (WHAT), while the grill-me skill provides the technique (HOW).\n2. `revise-plan.md` has no user interaction step — it researches and designs silently. Revision is one of the highest-risk phases (scope changed, decisions invalidated) and absolutely needs user validation before committing to a new plan.\n\n**Desired outcome:**\n- Both prompts should declare WHAT (outcomes: \"validate assumptions\", \"resolve ambiguity\") without prescribing HOW to use grill-me\n- The HOW lives in the skill — which is already loaded via `<available_skills>` at session start\n- `revise-plan.md` gets a user validation step comparable to create-plan's Step 3, appropriate for the revision context (focused on what changed, scope impacts, decisions that triggered the revision)\n- The `Skill References` section at the bottom of both prompts should list `grill-me` alongside `pio-planning` if not already present\n\n**Key questions the review should answer:**\n- Is the skill definition (`grill-me/SKILL.md`) sufficient to drive the behavior, or does it need augmentation?\n- Should create-plan's inline references be removed entirely in favor of relying on the skill being auto-loaded and referenced, or kept as lightweight WHAT-level reminders?\n- What should revise-plan's user interaction step look like (WHAT) — revision has different dynamics (reacting to a trigger, preserving completed work, negotiating scope changes)?",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-25T07:33:14.594Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "grill-me-planning-prompts",
+        "initialMessage": "Review how the `grill-me` skill is incorporated into the `create-plan` and `revise-plan` prompts, ensuring alignment with the core principle: **Capability prompts describe WHAT, skills describe HOW**.\n\n**Files to review:**\n- `src/prompts/create-plan.md` — has inline grill-me instructions in Step 2 (\"Use the grill-me skill to resolve any doubts...\") and Step 3 (\"Use the grill-me skill to make sure you clarify as much as possible...\"). These read like HOW instructions embedded in the prompt.\n- `src/prompts/revise-plan.md` — missing user interaction / grill-me entirely. Needs a step for validating assumptions with the user, especially since revision happens mid-flight and architectural decisions may need re-negotiation.\n- `src/skills/grill-me/SKILL.md` — the skill definition itself (short, focused on relentless interviewing).\n\n**Current problems:**\n1. `create-plan.md` embeds HOW instructions about using grill-me inline in steps (\"Use the grill-me skill to resolve...\") rather than declaring WHAT needs to happen and letting the skill describe HOW. The prompt should say \"validate assumptions with the user\" (WHAT), while the grill-me skill provides the technique (HOW).\n2. `revise-plan.md` has no user interaction step — it researches and designs silently. Revision is one of the highest-risk phases (scope changed, decisions invalidated) and absolutely needs user validation before committing to a new plan.\n\n**Desired outcome:**\n- Both prompts should declare WHAT (outcomes: \"validate assumptions\", \"resolve ambiguity\") without prescribing HOW to use grill-me\n- The HOW lives in the skill — which is already loaded via `<available_skills>` at session start\n- `revise-plan.md` gets a user validation step comparable to create-plan's Step 3, appropriate for the revision context (focused on what changed, scope impacts, decisions that triggered the revision)\n- The `Skill References` section at the bottom of both prompts should list `grill-me` alongside `pio-planning` if not already present\n\n**Key questions the review should answer:**\n- Is the skill definition (`grill-me/SKILL.md`) sufficient to drive the behavior, or does it need augmentation?\n- Should create-plan's inline references be removed entirely in favor of relying on the skill being auto-loaded and referenced, or kept as lightweight WHAT-level reminders?\n- What should revise-plan's user interaction step look like (WHAT) — revision has different dynamics (reacting to a trigger, preserving completed work, negotiating scope changes)?",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-25T07:34:30.584Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "grill-me-planning-prompts",
+        "initialMessage": "Review how the `grill-me` skill is incorporated into the `create-plan` and `revise-plan` prompts, ensuring alignment with the core principle: **Capability prompts describe WHAT, skills describe HOW**.\n\n**Files to review:**\n- `src/prompts/create-plan.md` — has inline grill-me instructions in Step 2 (\"Use the grill-me skill to resolve any doubts...\") and Step 3 (\"Use the grill-me skill to make sure you clarify as much as possible...\"). These read like HOW instructions embedded in the prompt.\n- `src/prompts/revise-plan.md` — missing user interaction / grill-me entirely. Needs a step for validating assumptions with the user, especially since revision happens mid-flight and architectural decisions may need re-negotiation.\n- `src/skills/grill-me/SKILL.md` — the skill definition itself (short, focused on relentless interviewing).\n\n**Current problems:**\n1. `create-plan.md` embeds HOW instructions about using grill-me inline in steps (\"Use the grill-me skill to resolve...\") rather than declaring WHAT needs to happen and letting the skill describe HOW. The prompt should say \"validate assumptions with the user\" (WHAT), while the grill-me skill provides the technique (HOW).\n2. `revise-plan.md` has no user interaction step — it researches and designs silently. Revision is one of the highest-risk phases (scope changed, decisions invalidated) and absolutely needs user validation before committing to a new plan.\n\n**Desired outcome:**\n- Both prompts should declare WHAT (outcomes: \"validate assumptions\", \"resolve ambiguity\") without prescribing HOW to use grill-me\n- The HOW lives in the skill — which is already loaded via `<available_skills>` at session start\n- `revise-plan.md` gets a user validation step comparable to create-plan's Step 3, appropriate for the revision context (focused on what changed, scope impacts, decisions that triggered the revision)\n- The `Skill References` section at the bottom of both prompts should list `grill-me` alongside `pio-planning` if not already present\n\n**Key questions the review should answer:**\n- Is the skill definition (`grill-me/SKILL.md`) sufficient to drive the behavior, or does it need augmentation?\n- Should create-plan's inline references be removed entirely in favor of relying on the skill being auto-loaded and referenced, or kept as lightweight WHAT-level reminders?\n- What should revise-plan's user interaction step look like (WHAT) — revision has different dynamics (reacting to a trigger, preserving completed work, negotiating scope changes)?",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-25T07:36:49.784Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "grill-me-planning-prompts",
+        "initialMessage": "Review how the `grill-me` skill is incorporated into the `create-plan` and `revise-plan` prompts, ensuring alignment with the core principle: **Capability prompts describe WHAT, skills describe HOW**.\n\n**Files to review:**\n- `src/prompts/create-plan.md` — has inline grill-me instructions in Step 2 (\"Use the grill-me skill to resolve any doubts...\") and Step 3 (\"Use the grill-me skill to make sure you clarify as much as possible...\"). These read like HOW instructions embedded in the prompt.\n- `src/prompts/revise-plan.md` — missing user interaction / grill-me entirely. Needs a step for validating assumptions with the user, especially since revision happens mid-flight and architectural decisions may need re-negotiation.\n- `src/skills/grill-me/SKILL.md` — the skill definition itself (short, focused on relentless interviewing).\n\n**Current problems:**\n1. `create-plan.md` embeds HOW instructions about using grill-me inline in steps (\"Use the grill-me skill to resolve...\") rather than declaring WHAT needs to happen and letting the skill describe HOW. The prompt should say \"validate assumptions with the user\" (WHAT), while the grill-me skill provides the technique (HOW).\n2. `revise-plan.md` has no user interaction step — it researches and designs silently. Revision is one of the highest-risk phases (scope changed, decisions invalidated) and absolutely needs user validation before committing to a new plan.\n\n**Desired outcome:**\n- Both prompts should declare WHAT (outcomes: \"validate assumptions\", \"resolve ambiguity\") without prescribing HOW to use grill-me\n- The HOW lives in the skill — which is already loaded via `<available_skills>` at session start\n- `revise-plan.md` gets a user validation step comparable to create-plan's Step 3, appropriate for the revision context (focused on what changed, scope impacts, decisions that triggered the revision)\n- The `Skill References` section at the bottom of both prompts should list `grill-me` alongside `pio-planning` if not already present\n\n**Key questions the review should answer:**\n- Is the skill definition (`grill-me/SKILL.md`) sufficient to drive the behavior, or does it need augmentation?\n- Should create-plan's inline references be removed entirely in favor of relying on the skill being auto-loaded and referenced, or kept as lightweight WHAT-level reminders?\n- What should revise-plan's user interaction step look like (WHAT) — revision has different dynamics (reacting to a trigger, preserving completed work, negotiating scope changes)?",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-25T07:40:33.268Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "grill-me-planning-prompts",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "grill-me-planning-prompts",
+          "initialMessage": "Review how the `grill-me` skill is incorporated into the `create-plan` and `revise-plan` prompts, ensuring alignment with the core principle: **Capability prompts describe WHAT, skills describe HOW**.\n\n**Files to review:**\n- `src/prompts/create-plan.md` — has inline grill-me instructions in Step 2 (\"Use the grill-me skill to resolve any doubts...\") and Step 3 (\"Use the grill-me skill to make sure you clarify as much as possible...\"). These read like HOW instructions embedded in the prompt.\n- `src/prompts/revise-plan.md` — missing user interaction / grill-me entirely. Needs a step for validating assumptions with the user, especially since revision happens mid-flight and architectural decisions may need re-negotiation.\n- `src/skills/grill-me/SKILL.md` — the skill definition itself (short, focused on relentless interviewing).\n\n**Current problems:**\n1. `create-plan.md` embeds HOW instructions about using grill-me inline in steps (\"Use the grill-me skill to resolve...\") rather than declaring WHAT needs to happen and letting the skill describe HOW. The prompt should say \"validate assumptions with the user\" (WHAT), while the grill-me skill provides the technique (HOW).\n2. `revise-plan.md` has no user interaction step — it researches and designs silently. Revision is one of the highest-risk phases (scope changed, decisions invalidated) and absolutely needs user validation before committing to a new plan.\n\n**Desired outcome:**\n- Both prompts should declare WHAT (outcomes: \"validate assumptions\", \"resolve ambiguity\") without prescribing HOW to use grill-me\n- The HOW lives in the skill — which is already loaded via `<available_skills>` at session start\n- `revise-plan.md` gets a user validation step comparable to create-plan's Step 3, appropriate for the revision context (focused on what changed, scope impacts, decisions that triggered the revision)\n- The `Skill References` section at the bottom of both prompts should list `grill-me` alongside `pio-planning` if not already present\n\n**Key questions the review should answer:**\n- Is the skill definition (`grill-me/SKILL.md`) sufficient to drive the behavior, or does it need augmentation?\n- Should create-plan's inline references be removed entirely in favor of relying on the skill being auto-loaded and referenced, or kept as lightweight WHAT-level reminders?\n- What should revise-plan's user interaction step look like (WHAT) — revision has different dynamics (reacting to a trigger, preserving completed work, negotiating scope changes)?",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-25T07:41:47.206Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-25T07:43:56.470Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-25T07:44:25.009Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-25T07:46:15.980Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-25T07:48:57.560Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-25T07:50:28.484Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-25T07:51:30.946Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-25T07:54:56.803Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-25T07:58:04.511Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-25T07:59:14.864Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-25T08:00:30.543Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-25T08:02:20.883Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-25T08:02:55.610Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "grill-me-planning-prompts",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/grill-me-planning-prompts",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  }
+]

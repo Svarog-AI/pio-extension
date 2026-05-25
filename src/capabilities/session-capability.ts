@@ -1,5 +1,5 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { defineTool } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, Skill } from "@earendil-works/pi-coding-agent";
+import { defineTool, stripFrontmatter } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -24,7 +24,11 @@ const PROMPTS_DIR = path.join(__dirname, "..", "prompts");
 // Module-level cache per runtime instance
 let systemPrompt: string | undefined;
 let projectContext: string | undefined;
-let skillLoadingInstructions: string | undefined;
+let availableSkills: Skill[] | undefined;
+let currentConfig: CapabilityConfig | undefined;
+
+// Global mandatory skills — always injected regardless of capability config
+const GLOBAL_MANDATORY_SKILLS = ["pio", "ask-user"];
 
 /** Resolve the path to the project context overview file.
  * Returns `.pio/PROJECT/OVERVIEW.md` relative to the given working directory.
@@ -210,6 +214,75 @@ const markCompleteTool = defineTool({
 });
 
 // ---------------------------------------------------------------------------
+// Skill injection — builds the --- SKILL LOADING INSTRUCTIONS --- section
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the skill-loading section from capability config and the cached skill registry.
+ * Mandatory skills are force-injected with full content. Recommended skills are listed as instructions.
+ * Global mandatory skills (pio, ask-user) are always included.
+ */
+export function buildSkillLoadingSection(
+  config: Pick<CapabilityConfig, "skills">,
+  skills: Skill[],
+): string | undefined {
+  const parts: string[] = [];
+
+  // Collect all mandatory skill names: global defaults + capability-specific, deduplicated
+  const mandatoryNames = new Set<string>(GLOBAL_MANDATORY_SKILLS);
+  if (config.skills?.mandatory) {
+    for (const name of config.skills.mandatory) {
+      mandatoryNames.add(name);
+    }
+  }
+
+  // Inject mandatory skill content
+  for (const skillName of mandatoryNames) {
+    const skillEntry = skills.find((s) => s.name === skillName);
+    if (!skillEntry) {
+      console.warn(`pio: mandatory skill "${skillName}" not found in skill registry — skipping`);
+      continue;
+    }
+
+    const skillPath = skillEntry.filePath;
+    if (!fs.existsSync(skillPath)) {
+      console.warn(`pio: mandatory skill "${skillName}" file not found: ${skillPath} — skipping`);
+      continue;
+    }
+
+    try {
+      const rawContent = fs.readFileSync(skillPath, "utf-8");
+      const body = stripFrontmatter(rawContent);
+      parts.push(
+        `<skill name="${skillName}" location="${skillPath}">\n` +
+          `References are relative to ${skillEntry.baseDir}.\n\n` +
+          `${body}\n` +
+          `</skill>`,
+      );
+    } catch (err) {
+      console.warn(`pio: failed to read mandatory skill "${skillName}": ${err} — skipping`);
+    }
+  }
+
+  // Generate recommended skills listing
+  const recommended = config.skills?.recommended;
+  if (recommended && recommended.length > 0) {
+    const recLines = recommended.map(
+      (r) => `- \`${r.name}\` — ${r.condition}`,
+    );
+    parts.push(
+      `--- RECOMMENDED SKILLS ---\n\n` +
+        `Load these skills when the listed condition matches your current task:\n\n` +
+        recLines.join("\n"),
+    );
+  }
+
+  if (parts.length === 0) return undefined;
+
+  return `--- SKILL LOADING INSTRUCTIONS ---\n\n${parts.join("\n\n")}`;
+}
+
+// ---------------------------------------------------------------------------
 // Setup — registers capability-specific event handlers
 // ---------------------------------------------------------------------------
 
@@ -278,13 +351,8 @@ export function setupCapability(pi: ExtensionAPI) {
       console.warn(`pio: prompt file not found: ${promptPath}`);
     }
 
-    // Load skill-loading instructions (shared across all capabilities)
-    const skillLoadingPath = path.join(PROMPTS_DIR, "_skill-loading.md");
-    if (fs.existsSync(skillLoadingPath)) {
-      skillLoadingInstructions = fs.readFileSync(skillLoadingPath, "utf-8");
-    } else {
-      console.warn(`pio: skill-loading instructions not found: ${skillLoadingPath}`);
-    }
+    // Cache config for skill injection in before_agent_start
+    currentConfig = config;
   });
 
   // 2. Inject capability prompt as a custom conversation message for all turns.
@@ -300,6 +368,18 @@ export function setupCapability(pi: ExtensionAPI) {
       }
     }
 
+    // Cache skill registry from systemPromptOptions
+    const skillsFromEvent = _event.systemPromptOptions?.skills;
+    if (skillsFromEvent) {
+      availableSkills = skillsFromEvent;
+    }
+
+    // Build dynamic skill-loading section from config
+    const skillLoadingSection = buildSkillLoadingSection(
+      currentConfig ?? {},
+      availableSkills ?? [],
+    );
+
     // Merge capability prompt with project context and skill-loading instructions
     const prompts: string[] = [];
 
@@ -308,9 +388,9 @@ export function setupCapability(pi: ExtensionAPI) {
       prompts.push(`--- PROJECT OVERVIEW ---\n\n${projectContext}`);
     }
 
-    // Skill-loading instructions (if available) — injected between project context and capability prompt
-    if (skillLoadingInstructions) {
-      prompts.push(skillLoadingInstructions);
+    // Skill-loading instructions (dynamically generated) — injected between project context and capability prompt
+    if (skillLoadingSection) {
+      prompts.push(skillLoadingSection);
     }
 
     // Capability-specific prompt (if available)

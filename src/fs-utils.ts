@@ -109,6 +109,10 @@ export function stepFolderName(stepNumber: number): string {
   return `S${String(stepNumber).padStart(2, "0")}`;
 }
 
+// ---------------------------------------------------------------------------
+// Step discovery
+// ---------------------------------------------------------------------------
+
 /**
  * Auto-discover the next step number by scanning for completed step folders.
  * A step folder is considered complete when it contains both TASK.md and TEST.md.

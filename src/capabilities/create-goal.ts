@@ -14,6 +14,12 @@ import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capabil
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "create-goal.md",
+  skills: {
+    mandatory: ["pio-planning", "grill-me", "pio-git"],
+    recommended: [
+      { name: "source-research", condition: "when researching existing solutions or libraries" },
+    ],
+  },
   validation: { files: ["GOAL.md"] },
   writeAllowlist: ["GOAL.md"],
   defaultInitialMessage: (workingDir, params) => {

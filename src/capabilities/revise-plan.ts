@@ -168,6 +168,12 @@ function resolveReviseWriteAllowlist(_workingDir: string, _params?: Record<strin
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "revise-plan.md",
+  skills: {
+    mandatory: ["pio-planning", "grill-me"],
+    recommended: [
+      { name: "source-research", condition: "when researching existing solutions or libraries" },
+    ],
+  },
   validation: { files: [PLAN_FILE] },
   readOnlyFiles: resolveReviseReadOnlyFiles,
   writeAllowlist: resolveReviseWriteAllowlist,

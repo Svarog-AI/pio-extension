@@ -53,6 +53,9 @@ function resolveEvolveWriteAllowlist(_workingDir: string, params?: Record<string
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "evolve-plan.md",
+  skills: {
+    mandatory: ["pio-planning", "grill-me"],
+  },
   validation: resolveEvolveValidation,
   writeAllowlist: resolveEvolveWriteAllowlist,
   defaultInitialMessage: (workingDir, params) => {

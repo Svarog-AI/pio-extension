@@ -1,7 +1,0 @@
-{
-  "capability": "create-goal",
-  "params": {
-    "goalName": "prevalidate-hook",
-    "initialMessage": "Add a `preValidate` lifecycle hook to `StaticCapabilityConfig` and shared invocation factories for tool/command creation, eliminating duplicated inline validation across all capabilities. Current state: every capability (create-plan, evolve-plan, etc.) has a module-private validation function (`validateGoal`, `validateAndFindNextStep`, etc.) that's called identically in both the tool handler and command handler — same pattern repeated 8+ times. Target: a shared infrastructure where validation lives declaratively on `CAPABILITY_CONFIG` as a `preValidate` callback, invoked automatically by shared factories before queuing or launching. Key design requirement from prior discussion: a bare config field is not enough — we need shared factory utilities that wrap tool registration (`defineTool`) and command handling so `preValidate` runs automatically without each capability calling it manually. This includes the factory abstraction for tools (which have varying parameter schemas) and commands (which parse args differently), with customization points for capability-specific needs."
-  }
-}

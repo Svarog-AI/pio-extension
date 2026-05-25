@@ -11,6 +11,9 @@ import {
   stepFolderName,
   discoverNextStep,
 } from "./fs-utils";
+import { mergeCapabilitySkills } from "./capabilities/session-capability";
+import type { CapabilitySkills } from "./types";
+import type { TaskSkills } from "./frontmatter-schemas";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -406,5 +409,145 @@ describe("smoke", () => {
     expect(stepFolderName(1)).toBe("S01");
     expect(stepFolderName(9)).toBe("S09");
     expect(stepFolderName(10)).toBe("S10");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mergeCapabilitySkills
+// ---------------------------------------------------------------------------
+
+describe("mergeCapabilitySkills", () => {
+  it("concatenates and deduplicates mandatory skills from base and task", () => {
+    // Arrange
+    const base: CapabilitySkills = { mandatory: ["pio", "ask-user", "test-driven-development"] };
+    const task: TaskSkills = { mandatory: ["pio-git", "ask-user"] }; // ask-user is duplicate
+
+    // Act
+    const result = mergeCapabilitySkills(base, task);
+
+    // Assert
+    expect(result.mandatory).toEqual(["pio", "ask-user", "test-driven-development", "pio-git"]);
+    expect(result.recommended).toBeUndefined();
+  });
+
+  it("concatenates recommended skills with first-seen-wins dedup by name", () => {
+    // Arrange
+    const base: CapabilitySkills = {
+      recommended: [{ name: "source-research", condition: "for lib internals" }],
+    };
+    const task: TaskSkills = {
+      recommended: [
+        { name: "source-research", condition: "different condition" }, // duplicate name
+        { name: "web-browser", condition: "for browser testing" },
+      ],
+    };
+
+    // Act
+    const result = mergeCapabilitySkills(base, task);
+
+    // Assert: base's source-research wins (first-seen)
+    expect(result.recommended).toEqual([
+      { name: "source-research", condition: "for lib internals" },
+      { name: "web-browser", condition: "for browser testing" },
+    ]);
+    expect(result.mandatory).toBeUndefined();
+  });
+
+  it("returns base skills unchanged when task skills is null", () => {
+    // Arrange
+    const base: CapabilitySkills = { mandatory: ["pio", "ask-user"] };
+
+    // Act
+    const result = mergeCapabilitySkills(base, null);
+
+    // Assert
+    expect(result.mandatory).toEqual(["pio", "ask-user"]);
+    expect(result.recommended).toBeUndefined();
+  });
+
+  it("returns task skills when base is undefined", () => {
+    // Arrange
+    const task: TaskSkills = { mandatory: ["pio-git"] };
+
+    // Act
+    const result = mergeCapabilitySkills(undefined, task);
+
+    // Assert
+    expect(result.mandatory).toEqual(["pio-git"]);
+    expect(result.recommended).toBeUndefined();
+  });
+
+  it("returns empty object when both base and task are empty", () => {
+    // Arrange
+    const base: CapabilitySkills = {};
+    const task: TaskSkills = {};
+
+    // Act
+    const result = mergeCapabilitySkills(base, task);
+
+    // Assert
+    expect(result).toEqual({});
+  });
+
+  it("merges mandatory and recommended from both sources", () => {
+    // Arrange
+    const base: CapabilitySkills = {
+      mandatory: ["pio"],
+      recommended: [{ name: "source-research", condition: "always" }],
+    };
+    const task: TaskSkills = {
+      mandatory: ["pio-git"],
+      recommended: [{ name: "web-browser", condition: "when needed" }],
+    };
+
+    // Act
+    const result = mergeCapabilitySkills(base, task);
+
+    // Assert
+    expect(result.mandatory).toEqual(["pio", "pio-git"]);
+    expect(result.recommended).toEqual([
+      { name: "source-research", condition: "always" },
+      { name: "web-browser", condition: "when needed" },
+    ]);
+  });
+
+  it("does not mutate input objects", () => {
+    // Arrange
+    const base: CapabilitySkills = { mandatory: ["pio"] };
+    const task: TaskSkills = { mandatory: ["pio-git"] };
+    const baseCopy = { ...base, mandatory: [...(base.mandatory ?? [])] };
+    const taskCopy = { ...task, mandatory: [...(task.mandatory ?? [])] };
+
+    // Act
+    mergeCapabilitySkills(base, task);
+
+    // Assert: inputs unchanged
+    expect(base).toEqual(baseCopy);
+    expect(task).toEqual(taskCopy);
+  });
+
+  it("preserves order of base skills before task skills", () => {
+    // Arrange
+    const base: CapabilitySkills = { mandatory: ["a", "b", "c"] };
+    const task: TaskSkills = { mandatory: ["d", "e"] };
+
+    // Act
+    const result = mergeCapabilitySkills(base, task);
+
+    // Assert
+    expect(result.mandatory).toEqual(["a", "b", "c", "d", "e"]);
+  });
+
+  it("handles task with recommended missing name field gracefully (schema would catch this)", () => {
+    // Arrange: TaskSkills type enforces name presence, but test edge case
+    const base: CapabilitySkills = { mandatory: ["pio"] };
+    // @ts-expect-error — testing malformed input
+    const task: TaskSkills = { recommended: [{ condition: "no name" }] };
+
+    // Act
+    const result = mergeCapabilitySkills(base, task);
+
+    // Assert: should not crash
+    expect(result.mandatory).toEqual(["pio"]);
   });
 });

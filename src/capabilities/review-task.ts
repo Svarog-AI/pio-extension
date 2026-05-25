@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { launchCapability } from "./session-capability";
+import { launchCapability, setMergedSkills, mergeCapabilitySkills } from "./session-capability";
 import { resolveGoalDir, stepFolderName } from "../fs-utils";
 import { enqueueTask } from "../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
@@ -88,17 +88,25 @@ function resolveReviewWriteAllowlist(_dir: string, params?: Record<string, unkno
   return [`${folder}/${REVIEW_FILE}`];
 }
 
-function prepareReviewSession(_dir: string, params?: Record<string, unknown>): void {
+function prepareReviewSession(workingDir: string, params?: Record<string, unknown>): void {
   const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
   if (stepNumber == null) {
     throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
   }
   const folder = stepFolderName(stepNumber);
-  const stepDir = path.join(_dir, folder);
+  const stepDir = path.join(workingDir, folder);
 
   // Delete stale markers from previous review attempts; force:true skips missing files.
   fs.rmSync(path.join(stepDir, "APPROVED"), { force: true });
   fs.rmSync(path.join(stepDir, "REJECTED"), { force: true });
+
+  // Read TASK.md skills and merge into capability config
+  const state = createGoalState(workingDir);
+  const step = state.steps().find(s => s.stepNumber === stepNumber);
+  const taskSkills = step?.taskSkills();
+
+  const merged = mergeCapabilitySkills(CAPABILITY_CONFIG.skills, taskSkills);
+  setMergedSkills(merged);
 }
 
 function postValidateReview(goalDir: string, params?: Record<string, unknown>): { success: boolean; message?: string } {
@@ -123,6 +131,9 @@ function postValidateReview(goalDir: string, params?: Record<string, unknown>): 
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "review-task.md",
+  skills: {
+    mandatory: ["test-driven-development"],
+  },
   validation: resolveReviewValidation,
   readOnlyFiles: resolveReviewReadOnlyFiles,
   writeAllowlist: resolveReviewWriteAllowlist,

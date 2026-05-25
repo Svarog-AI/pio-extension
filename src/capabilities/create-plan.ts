@@ -104,6 +104,12 @@ function postValidateCreatePlan(goalDir: string): { success: boolean; message?: 
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "create-plan.md",
+  skills: {
+    mandatory: ["pio-planning", "grill-me"],
+    recommended: [
+      { name: "source-research", condition: "when researching existing solutions or libraries" },
+    ],
+  },
   validation: { files: ["PLAN.md"] },
   readOnlyFiles: ["GOAL.md"],
   writeAllowlist: ["PLAN.md"],

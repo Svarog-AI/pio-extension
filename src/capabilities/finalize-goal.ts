@@ -15,6 +15,9 @@ import { createGoalState } from "../goal-state";
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "finalize-goal.md",
+  skills: {
+    mandatory: ["pio-project-knowledge", "pio-git"],
+  },
   writeAllowlist: [
     ".pio/PROJECT/OVERVIEW.md",
     ".pio/PROJECT/DEVELOPMENT.md",

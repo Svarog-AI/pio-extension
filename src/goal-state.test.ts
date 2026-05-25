@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { createGoalState } from "./goal-state";
 import { stepFolderName } from "./fs-utils";
-import type { PlanFrontmatter, ReviewOutputs, StepMetadata } from "./frontmatter-schemas";
+import type { PlanFrontmatter, ReviewOutputs, StepMetadata, TaskSkills } from "./frontmatter-schemas";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers (mirrors fs-utils.test.ts pattern)
@@ -1982,5 +1982,267 @@ describe("StepStatus.getMetadata() — edge cases", () => {
 
     // Assert: returns different values reflecting the updated frontmatter
     expect(metadata).toEqual({ name: "updated", complexity: "subgoal" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// StepStatus.taskSkills()
+// ---------------------------------------------------------------------------
+
+describe("StepStatus.taskSkills()", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns TaskSkills when TASK.md has valid skills frontmatter", () => {
+    // Arrange: TASK.md with skills in frontmatter
+    const goalDir = createGoalTree(tempDir, "skills-valid", [
+      { number: 1, files: [] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 1);
+    const stepDir = path.join(goalDir, "S01");
+    fs.writeFileSync(
+      path.join(stepDir, "TASK.md"),
+      "---\nskills:\n  mandatory:\n    - ask-user\n  recommended:\n    - name: source-research\n      condition: when library internals are needed\n---\n# Task\n\nSome task content.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const skills = state.steps()[0].taskSkills();
+
+    // Assert
+    expect(skills).not.toBeNull();
+    expect(skills!.mandatory).toEqual(["ask-user"]);
+    expect(skills!.recommended).toEqual([
+      { name: "source-research", condition: "when library internals are needed" },
+    ]);
+  });
+
+  it("returns skills with only mandatory array", () => {
+    // Arrange: TASK.md with only mandatory skills
+    const goalDir = createGoalTree(tempDir, "skills-mandatory-only", [
+      { number: 1, files: [] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 1);
+    const stepDir = path.join(goalDir, "S01");
+    fs.writeFileSync(
+      path.join(stepDir, "TASK.md"),
+      "---\nskills:\n  mandatory:\n    - ask-user\n    - source-research\n---\n# Task\n\nContent.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const skills = state.steps()[0].taskSkills();
+
+    // Assert
+    expect(skills).not.toBeNull();
+    expect(skills!.mandatory).toEqual(["ask-user", "source-research"]);
+    expect(skills!.recommended).toBeUndefined();
+  });
+
+  it("returns skills with only recommended array", () => {
+    // Arrange: TASK.md with only recommended skills
+    const goalDir = createGoalTree(tempDir, "skills-recommended-only", [
+      { number: 1, files: [] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 1);
+    const stepDir = path.join(goalDir, "S01");
+    fs.writeFileSync(
+      path.join(stepDir, "TASK.md"),
+      "---\nskills:\n  recommended:\n    - name: web-browser\n      condition: when browser testing is needed\n---\n# Task\n\nContent.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const skills = state.steps()[0].taskSkills();
+
+    // Assert
+    expect(skills).not.toBeNull();
+    expect(skills!.mandatory).toBeUndefined();
+    expect(skills!.recommended).toEqual([
+      { name: "web-browser", condition: "when browser testing is needed" },
+    ]);
+  });
+
+  it("returns null when TASK.md has no skills key in frontmatter", () => {
+    // Arrange: TASK.md with frontmatter but no skills
+    const goalDir = createGoalTree(tempDir, "skills-no-key", [
+      { number: 1, files: [] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 1);
+    const stepDir = path.join(goalDir, "S01");
+    fs.writeFileSync(
+      path.join(stepDir, "TASK.md"),
+      "---\nsomeOtherField: value\n---\n# Task\n\nContent.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const skills = state.steps()[0].taskSkills();
+
+    // Assert
+    expect(skills).toBeNull();
+  });
+
+  it("returns null when TASK.md has empty frontmatter", () => {
+    // Arrange: TASK.md with empty YAML between delimiters
+    const goalDir = createGoalTree(tempDir, "skills-empty-fm", [
+      { number: 1, files: [] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 1);
+    const stepDir = path.join(goalDir, "S01");
+    fs.writeFileSync(
+      path.join(stepDir, "TASK.md"),
+      "---\n---\n# Task\n\nContent.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const skills = state.steps()[0].taskSkills();
+
+    // Assert
+    expect(skills).toBeNull();
+  });
+
+  it("returns null when TASK.md does not exist", () => {
+    // Arrange: S01/ exists but no TASK.md
+    const goalDir = createGoalTree(tempDir, "skills-no-file", [
+      { number: 1, files: [] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 1);
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const skills = state.steps()[0].taskSkills();
+
+    // Assert
+    expect(skills).toBeNull();
+  });
+
+  it("returns null when TASK.md has malformed YAML", () => {
+    // Arrange: TASK.md with invalid YAML between delimiters
+    const goalDir = createGoalTree(tempDir, "skills-malformed", [
+      { number: 1, files: [] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 1);
+    const stepDir = path.join(goalDir, "S01");
+    fs.writeFileSync(
+      path.join(stepDir, "TASK.md"),
+      "---\ninvalid: yaml: [:\n---\n# Task\n\nContent.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const skills = state.steps()[0].taskSkills();
+
+    // Assert
+    expect(skills).toBeNull();
+  });
+
+  it("returns null when TASK.md skills fail schema validation", () => {
+    // Arrange: TASK.md with skills but invalid structure (mandatory is a string, not array)
+    const goalDir = createGoalTree(tempDir, "skills-invalid-schema", [
+      { number: 1, files: [] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 1);
+    const stepDir = path.join(goalDir, "S01");
+    fs.writeFileSync(
+      path.join(stepDir, "TASK.md"),
+      "---\nskills:\n  mandatory: not-an-array\n---\n# Task\n\nContent.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const skills = state.steps()[0].taskSkills();
+
+    // Assert
+    expect(skills).toBeNull();
+  });
+
+  it("reflects filesystem changes with no caching (lazy evaluation)", () => {
+    // Arrange: S01/ with TASK.md containing valid skills
+    const goalDir = createGoalTree(tempDir, "skills-no-caching", [
+      { number: 1, files: [] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 1);
+    const stepDir = path.join(goalDir, "S01");
+    fs.writeFileSync(
+      path.join(stepDir, "TASK.md"),
+      "---\nskills:\n  mandatory:\n    - ask-user\n---\n# Task\n\nContent.",
+      "utf-8",
+    );
+
+    const state = createGoalState(goalDir);
+
+    // Act: first read
+    let skills = state.steps()[0].taskSkills();
+    expect(skills!.mandatory).toEqual(["ask-user"]);
+
+    // Update TASK.md
+    fs.writeFileSync(
+      path.join(stepDir, "TASK.md"),
+      "---\nskills:\n  mandatory:\n    - source-research\n---\n# Task\n\nUpdated.",
+      "utf-8",
+    );
+
+    // Act: second read — should reflect the new content
+    skills = state.steps()[0].taskSkills();
+    expect(skills!.mandatory).toEqual(["source-research"]);
+
+    // Remove TASK.md
+    fs.rmSync(path.join(stepDir, "TASK.md"));
+
+    // Act: third read — should return null
+    skills = state.steps()[0].taskSkills();
+    expect(skills).toBeNull();
+  });
+
+  it("returns null for step without TASK.md (pending step)", () => {
+    // Arrange: S02/ exists but has no TASK.md
+    const goalDir = createGoalTree(tempDir, "skills-pending", [
+      { number: 1, files: [] },
+      { number: 2, files: [] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 2);
+
+    const state = createGoalState(goalDir);
+
+    // Act
+    const skills = state.steps()[1].taskSkills();
+
+    // Assert
+    expect(skills).toBeNull();
+  });
+
+  it("does not throw on any error condition", () => {
+    // Arrange: S01/ with no TASK.md
+    const goalDir = createGoalTree(tempDir, "skills-no-throw", [
+      { number: 1, files: [] },
+    ]);
+    writePlanWithFrontmatter(goalDir, 1);
+
+    const state = createGoalState(goalDir);
+
+    // Act & Assert: should not throw
+    expect(() => state.steps()[0].taskSkills()).not.toThrow();
   });
 });

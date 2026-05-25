@@ -11,6 +11,9 @@ import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capabil
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "execute-plan.md",
+  skills: {
+    mandatory: ["test-driven-development", "pio-git"],
+  },
   defaultInitialMessage: (goalDir) => `Goal workspace is at ${goalDir}. GOAL.md and PLAN.md exist. Implement all steps from PLAN.md in this session.`,
 };
 

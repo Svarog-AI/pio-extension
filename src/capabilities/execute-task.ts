@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { launchCapability } from "./session-capability";
+import { launchCapability, setMergedSkills, mergeCapabilitySkills } from "./session-capability";
 import { resolveGoalDir, stepFolderName } from "../fs-utils";
 import { enqueueTask } from "../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
@@ -33,10 +33,27 @@ function resolveExecuteReadOnlyFiles(_dir: string, params?: Record<string, unkno
   return [`${folder}/${TASK_FILE}`];
 }
 
+// prepareSession — read TASK.md skills and merge into capability config
+function prepareExecuteSession(workingDir: string, params?: Record<string, unknown>): void {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+  if (stepNumber == null) return;
+
+  const state = createGoalState(workingDir);
+  const step = state.steps().find(s => s.stepNumber === stepNumber);
+  const taskSkills = step?.taskSkills();
+
+  const merged = mergeCapabilitySkills(CAPABILITY_CONFIG.skills, taskSkills);
+  setMergedSkills(merged);
+}
+
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "execute-task.md",
+  skills: {
+    mandatory: ["test-driven-development", "pio-git"],
+  },
   validation: resolveExecuteValidation,
   readOnlyFiles: resolveExecuteReadOnlyFiles,
+  prepareSession: prepareExecuteSession,
   defaultInitialMessage: (workingDir, params) => {
     const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
     if (stepNumber == null) {

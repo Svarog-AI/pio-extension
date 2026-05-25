@@ -28,8 +28,25 @@ function enqueueTaskFile(cwd: string, goalName: string, capability = "create-pla
 }
 
 // ---------------------------------------------------------------------------
-// Single top-level mock for session-capability (used by both describe blocks)
+// Shared skill test helpers (used by skill injection describe blocks)
 // ---------------------------------------------------------------------------
+
+/** Create a SKILL.md file with optional frontmatter and return its path. */
+function writeSkillFile(tempDir: string, skillName: string, body: string, frontmatter?: string): string {
+  const dir = path.join(tempDir, "skills", skillName);
+  fs.mkdirSync(dir, { recursive: true });
+  const filePath = path.join(dir, "SKILL.md");
+  const content = frontmatter
+    ? `---\n${frontmatter}\n---\n\n${body}`
+    : body;
+  fs.writeFileSync(filePath, content, "utf-8");
+  return filePath;
+}
+
+/** Create a mock Skill registry entry. */
+function makeSkill(name: string, filePath: string, baseDir: string) {
+  return { name, filePath, baseDir, description: "", sourceInfo: { path: filePath, source: "test", scope: "project" as const, origin: "package" as const }, disableModelInvocation: false };
+}
 
 // ---------------------------------------------------------------------------
 // Top-level mock for session-capability (used by getSessionGoalName tests)
@@ -738,5 +755,464 @@ describe("pio_mark_complete — queue key propagation", () => {
     const enqueuedParams = enqueueCall[2].params;
     expect(queueKey).toBe("parent");
     expect(enqueuedParams.goalName).toBe("parent");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Skill injection — buildSkillLoadingSection tests
+// ---------------------------------------------------------------------------
+
+describe("buildSkillLoadingSection", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => {
+    cleanup(tempDir);
+  });
+
+  it("given a config with no skills and an empty registry when buildSkillLoadingSection is called then it attempts global mandatory skills and returns undefined when none resolve", async () => {
+    const warnSpy = vi.spyOn(console, "warn");
+    warnSpy.mockImplementation(() => {});
+
+    const mod = await import("./session-capability");
+    const result = mod.buildSkillLoadingSection({}, []);
+
+    // No skills in registry — global mandatory skills are attempted but skipped with warnings
+    expect(result).toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("pio"));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("ask-user"));
+
+    warnSpy.mockRestore();
+  });
+
+  it("given a config with mandatory skills and matching registry entries when buildSkillLoadingSection is called then mandatory skills are wrapped in XML tags", async () => {
+    const skillBody = "# Test Skill\n\nThis is the body.";
+    const filePath = writeSkillFile(tempDir, "test-skill", skillBody);
+    const baseDir = path.dirname(filePath);
+
+    const registry = [makeSkill("test-skill", filePath, baseDir)];
+    const config = { skills: { mandatory: ["test-skill"] } };
+
+    const mod = await import("./session-capability");
+    const result = mod.buildSkillLoadingSection(config, registry);
+
+    expect(result).toContain('<skill name="test-skill"');
+    expect(result).toContain(`location="${filePath}"`);
+    expect(result).toContain("References are relative to");
+    expect(result).toContain(skillBody);
+    expect(result).toContain("</skill>");
+  });
+
+  it("given a config with recommended skills when buildSkillLoadingSection is called then recommended skills appear as instruction-based listings", async () => {
+    const config = {
+      skills: {
+        recommended: [{ name: "source-research", condition: "when researching external libraries" }],
+      },
+    };
+
+    const mod = await import("./session-capability");
+    const result = mod.buildSkillLoadingSection(config, []);
+
+    expect(result).toContain("--- RECOMMENDED SKILLS ---");
+    expect(result).toContain("source-research");
+    expect(result).toContain("when researching external libraries");
+  });
+
+  it("given a config with both mandatory and recommended skills when buildSkillLoadingSection is called then the output contains both sections", async () => {
+    const skillBody = "# My Skill";
+    const filePath = writeSkillFile(tempDir, "my-skill", skillBody);
+    const baseDir = path.dirname(filePath);
+
+    const registry = [makeSkill("my-skill", filePath, baseDir)];
+    const config = {
+      skills: {
+        mandatory: ["my-skill"],
+        recommended: [{ name: "pio-git", condition: "during completion" }],
+      },
+    };
+
+    const mod = await import("./session-capability");
+    const result = mod.buildSkillLoadingSection(config, registry);
+
+    expect(result).toContain('<skill name="my-skill"');
+    expect(result).toContain("--- RECOMMENDED SKILLS ---");
+    expect(result).toContain("pio-git");
+  });
+
+  it("given a mandatory skill whose file does not exist on disk when buildSkillLoadingSection is called then it logs a warning and skips", async () => {
+    const registry = [makeSkill("missing-skill", "/nonexistent/path/SKILL.md", "/nonexistent/path")];
+    const config = { skills: { mandatory: ["missing-skill"] } };
+
+    const warnSpy = vi.spyOn(console, "warn");
+    warnSpy.mockImplementation(() => {});
+
+    const mod = await import("./session-capability");
+    const result = mod.buildSkillLoadingSection(config, registry);
+
+    expect(warnSpy).toHaveBeenCalled();
+    // Result is undefined when all skills skipped (no content to return)
+    expect(result).toBeUndefined();
+
+    warnSpy.mockRestore();
+  });
+
+  it("given a mandatory skill whose name is not in the registry when buildSkillLoadingSection is called then it logs a warning and skips", async () => {
+    const config = { skills: { mandatory: ["unknown-skill"] } };
+
+    const warnSpy = vi.spyOn(console, "warn");
+    warnSpy.mockImplementation(() => {});
+
+    const mod = await import("./session-capability");
+    const result = mod.buildSkillLoadingSection(config, []);
+
+    expect(warnSpy).toHaveBeenCalled();
+    // Result is undefined when all skills skipped (global + config skills all missing)
+    expect(result).toBeUndefined();
+
+    warnSpy.mockRestore();
+  });
+
+  it("given global mandatory skills that overlap with config mandatory skills when buildSkillLoadingSection is called then duplicates are deduplicated", async () => {
+    const skillBody = "# PIO Skill";
+    const filePath = writeSkillFile(tempDir, "pio", skillBody);
+    const baseDir = path.dirname(filePath);
+
+    const registry = [makeSkill("pio", filePath, baseDir)];
+    // Config also declares pio as mandatory — should appear only once
+    const config = { skills: { mandatory: ["pio"] } };
+
+    const mod = await import("./session-capability");
+    const result = mod.buildSkillLoadingSection(config, registry);
+
+    // Count occurrences of the skill XML tag — should be exactly 1
+    const matches = result?.match(/<skill name="pio"/g);
+    expect(matches?.length).toBe(1);
+  });
+
+  it("given a skill with YAML frontmatter in SKILL.md when buildSkillLoadingSection reads and strips it then the injected body does not contain frontmatter delimiters", async () => {
+    const skillBody = "# Test Skill\n\nThis is the body.";
+    const filePath = writeSkillFile(tempDir, "frontmatter-skill", skillBody, "name: frontmatter-skill\ndescription: test");
+    const baseDir = path.dirname(filePath);
+
+    const registry = [makeSkill("frontmatter-skill", filePath, baseDir)];
+    const config = { skills: { mandatory: ["frontmatter-skill"] } };
+
+    const mod = await import("./session-capability");
+    const result = mod.buildSkillLoadingSection(config, registry);
+
+    expect(result).toContain(skillBody);
+    // Frontmatter delimiters should be stripped
+    expect(result).not.toContain("---\nname: frontmatter-skill");
+  });
+
+  it("given a config with undefined skills field when buildSkillLoadingSection is called then it does not crash and returns undefined when no skills in registry", async () => {
+    const config = {};
+
+    const warnSpy = vi.spyOn(console, "warn");
+    warnSpy.mockImplementation(() => {});
+
+    const mod = await import("./session-capability");
+    const result = mod.buildSkillLoadingSection(config, []);
+
+    // No skills in registry — global skills skipped with warnings, returns undefined
+    expect(result).toBeUndefined();
+    // Should have logged warnings for missing global skills
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("pio"));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("ask-user"));
+
+    warnSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Skill injection — before_agent_start integration tests
+// ---------------------------------------------------------------------------
+
+describe("skill injection — before_agent_start integration", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => {
+    cleanup(tempDir);
+  });
+
+  it("given before_agent_start with mandatory skills when the handler runs then the message contains SKILL LOADING INSTRUCTIONS with injected blocks", async () => {
+    const skillBody = "# Test Skill";
+    const filePath = writeSkillFile(tempDir, "test-skill", skillBody);
+    const baseDir = path.dirname(filePath);
+
+    const registry = [makeSkill("test-skill", filePath, baseDir)];
+
+    const registeredHandlers: Record<string, Function> = {};
+    const setModelMock = vi.fn();
+
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      setModel: setModelMock,
+      setSessionName: vi.fn(),
+    };
+
+    const mod = await import("./session-capability");
+    mod.setupCapability(mockPi as any);
+
+    // Trigger resources_discover with skills config
+    const rdHandler = registeredHandlers["resources_discover"];
+    if (rdHandler) {
+      await rdHandler(
+        { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+        {
+          sessionManager: {
+            getEntries: () => [
+              {
+                type: "custom",
+                customType: "pio-config",
+                data: {
+                  capability: "test-cap",
+                  prompt: "create-goal.md",
+                  skills: { mandatory: ["test-skill"] },
+                },
+              },
+            ],
+          },
+        },
+      );
+    }
+
+    // Trigger before_agent_start with skill registry
+    const handler = registeredHandlers["before_agent_start"];
+    if (!handler) throw new Error("before_agent_start handler not registered");
+    const result = await handler(
+      {
+        type: "before_agent_start",
+        prompt: "test",
+        systemPrompt: "",
+        systemPromptOptions: { skills: registry, cwd: process.cwd() },
+      } as any,
+      {} as any,
+    );
+
+    expect(result).toBeDefined();
+    expect(result.message?.customType).toBe("pio-capability-instructions");
+    const text = result.message?.content?.[0]?.text;
+    expect(text).toContain("--- SKILL LOADING INSTRUCTIONS ---");
+    expect(text).toContain('<skill name="test-skill"');
+  });
+
+  it("given before_agent_start when the handler runs then delivery order is PROJECT OVERVIEW, then SKILL LOADING INSTRUCTIONS, then YOUR INSTRUCTIONS", async () => {
+    // Populate registry with "pio" (a global mandatory skill) so buildSkillLoadingSection
+    // generates the SKILL LOADING INSTRUCTIONS section — all three sections must appear
+    const pioSkillBody = "# PIO Skill";
+    const pioFilePath = writeSkillFile(tempDir, "pio", pioSkillBody);
+    const pioBaseDir = path.dirname(pioFilePath);
+
+    const registry = [makeSkill("pio", pioFilePath, pioBaseDir)];
+
+    const registeredHandlers: Record<string, Function> = {};
+    const setModelMock = vi.fn();
+
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      setModel: setModelMock,
+      setSessionName: vi.fn(),
+    };
+
+    const mod = await import("./session-capability");
+    mod.setupCapability(mockPi as any);
+
+    // Trigger resources_discover
+    const rdHandler = registeredHandlers["resources_discover"];
+    if (rdHandler) {
+      await rdHandler(
+        { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+        {
+          sessionManager: {
+            getEntries: () => [
+              {
+                type: "custom",
+                customType: "pio-config",
+                data: { capability: "test-cap", prompt: "create-goal.md" },
+              },
+            ],
+          },
+        },
+      );
+    }
+
+    // Trigger before_agent_start with registry containing "pio" skill
+    const handler = registeredHandlers["before_agent_start"];
+    if (!handler) throw new Error("before_agent_start handler not registered");
+    const result = await handler(
+      {
+        type: "before_agent_start",
+        prompt: "test",
+        systemPrompt: "",
+        systemPromptOptions: { skills: registry, cwd: process.cwd() },
+      } as any,
+      {} as any,
+    );
+
+    const text = result.message?.content?.[0]?.text;
+    expect(text).toBeDefined();
+
+    // Verify order: PROJECT OVERVIEW before SKILL LOADING before YOUR INSTRUCTIONS
+    const projectIdx = text.indexOf("--- PROJECT OVERVIEW ---");
+    const skillIdx = text.indexOf("--- SKILL LOADING INSTRUCTIONS ---");
+    const yourIdx = text.indexOf("--- YOUR INSTRUCTIONS ---");
+
+    expect(projectIdx).toBeGreaterThan(-1);
+    expect(skillIdx).toBeGreaterThan(-1);
+    expect(yourIdx).toBeGreaterThan(-1);
+    expect(projectIdx).toBeLessThan(skillIdx);
+    expect(skillIdx).toBeLessThan(yourIdx);
+  });
+
+  it("given the skill registry is populated via systemPromptOptions.skills when before_agent_start runs then the registry is cached", async () => {
+    const skillBody = "# Cached Skill";
+    const filePath = writeSkillFile(tempDir, "cached-skill", skillBody);
+    const baseDir = path.dirname(filePath);
+
+    const registry = [makeSkill("cached-skill", filePath, baseDir)];
+
+    const registeredHandlers: Record<string, Function> = {};
+    const setModelMock = vi.fn();
+
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      setModel: setModelMock,
+      setSessionName: vi.fn(),
+    };
+
+    const mod = await import("./session-capability");
+    mod.setupCapability(mockPi as any);
+
+    // Trigger resources_discover with the skill in config
+    const rdHandler = registeredHandlers["resources_discover"];
+    if (rdHandler) {
+      await rdHandler(
+        { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+        {
+          sessionManager: {
+            getEntries: () => [
+              {
+                type: "custom",
+                customType: "pio-config",
+                data: {
+                  capability: "test-cap",
+                  prompt: "create-goal.md",
+                  skills: { mandatory: ["cached-skill"] },
+                },
+              },
+            ],
+          },
+        },
+      );
+    }
+
+    // Trigger before_agent_start with registry
+    const handler = registeredHandlers["before_agent_start"];
+    if (!handler) throw new Error("before_agent_start handler not registered");
+    const result = await handler(
+      {
+        type: "before_agent_start",
+        prompt: "test",
+        systemPrompt: "",
+        systemPromptOptions: { skills: registry, cwd: process.cwd() },
+      } as any,
+      {} as any,
+    );
+
+    const text = result.message?.content?.[0]?.text;
+    expect(text).toContain('<skill name="cached-skill"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resources_discover — skill loading uses buildSkillLoadingSection
+// ---------------------------------------------------------------------------
+
+describe("resources_discover — skill loading uses buildSkillLoadingSection", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => {
+    cleanup(tempDir);
+  });
+
+  it("given before_agent_start with mandatory skills when the handler runs then skill content comes from buildSkillLoadingSection not a static file", async () => {
+    const skillBody = "# Dynamic Skill";
+    const filePath = writeSkillFile(tempDir, "dynamic-skill", skillBody);
+    const baseDir = path.dirname(filePath);
+
+    const registry = [makeSkill("dynamic-skill", filePath, baseDir)];
+
+    const registeredHandlers: Record<string, Function> = {};
+
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      setModel: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+
+    const mod = await import("./session-capability");
+    mod.setupCapability(mockPi as any);
+
+    // Trigger resources_discover with skills config
+    const rdHandler = registeredHandlers["resources_discover"];
+    if (rdHandler) {
+      await rdHandler(
+        { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+        {
+          sessionManager: {
+            getEntries: () => [
+              {
+                type: "custom",
+                customType: "pio-config",
+                data: {
+                  capability: "test-cap",
+                  prompt: "create-goal.md",
+                  skills: { mandatory: ["dynamic-skill"] },
+                },
+              },
+            ],
+          },
+        },
+      );
+    }
+
+    // Trigger before_agent_start with skill registry
+    const handler = registeredHandlers["before_agent_start"];
+    if (!handler) throw new Error("before_agent_start handler not registered");
+    const result = await handler(
+      {
+        type: "before_agent_start",
+        prompt: "test",
+        systemPrompt: "",
+        systemPromptOptions: { skills: registry, cwd: process.cwd() },
+      } as any,
+      {} as any,
+    );
+
+    // Assert: skill content is dynamically generated from buildSkillLoadingSection
+    const text = result.message?.content?.[0]?.text;
+    expect(text).toContain("--- SKILL LOADING INSTRUCTIONS ---");
+    expect(text).toContain('<skill name="dynamic-skill"');
+    expect(text).toContain(skillBody);
+    // The skill XML block proves dynamic generation — a static file would not contain this skill
   });
 });

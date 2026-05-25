@@ -28,8 +28,25 @@ function enqueueTaskFile(cwd: string, goalName: string, capability = "create-pla
 }
 
 // ---------------------------------------------------------------------------
-// Single top-level mock for session-capability (used by both describe blocks)
+// Shared skill test helpers (used by skill injection describe blocks)
 // ---------------------------------------------------------------------------
+
+/** Create a SKILL.md file with optional frontmatter and return its path. */
+function writeSkillFile(tempDir: string, skillName: string, body: string, frontmatter?: string): string {
+  const dir = path.join(tempDir, "skills", skillName);
+  fs.mkdirSync(dir, { recursive: true });
+  const filePath = path.join(dir, "SKILL.md");
+  const content = frontmatter
+    ? `---\n${frontmatter}\n---\n\n${body}`
+    : body;
+  fs.writeFileSync(filePath, content, "utf-8");
+  return filePath;
+}
+
+/** Create a mock Skill registry entry. */
+function makeSkill(name: string, filePath: string, baseDir: string) {
+  return { name, filePath, baseDir, description: "", sourceInfo: { path: filePath, source: "test", scope: "project" as const, origin: "package" as const }, disableModelInvocation: false };
+}
 
 // ---------------------------------------------------------------------------
 // Top-level mock for session-capability (used by getSessionGoalName tests)
@@ -757,23 +774,6 @@ describe("buildSkillLoadingSection", () => {
     cleanup(tempDir);
   });
 
-  // Helper: create a SKILL.md file with optional frontmatter
-  function writeSkillFile(skillName: string, body: string, frontmatter?: string): string {
-    const dir = path.join(tempDir, "skills", skillName);
-    fs.mkdirSync(dir, { recursive: true });
-    const filePath = path.join(dir, "SKILL.md");
-    const content = frontmatter
-      ? `---\n${frontmatter}\n---\n\n${body}`
-      : body;
-    fs.writeFileSync(filePath, content, "utf-8");
-    return filePath;
-  }
-
-  // Helper: create a mock Skill registry entry
-  function makeSkill(name: string, filePath: string, baseDir: string) {
-    return { name, filePath, baseDir, description: "", sourceInfo: { path: filePath, source: "test", scope: "project" as const, origin: "package" as const }, disableModelInvocation: false };
-  }
-
   it("given a config with no skills and an empty registry when buildSkillLoadingSection is called then it attempts global mandatory skills and returns undefined when none resolve", async () => {
     const warnSpy = vi.spyOn(console, "warn");
     warnSpy.mockImplementation(() => {});
@@ -791,7 +791,7 @@ describe("buildSkillLoadingSection", () => {
 
   it("given a config with mandatory skills and matching registry entries when buildSkillLoadingSection is called then mandatory skills are wrapped in XML tags", async () => {
     const skillBody = "# Test Skill\n\nThis is the body.";
-    const filePath = writeSkillFile("test-skill", skillBody);
+    const filePath = writeSkillFile(tempDir, "test-skill", skillBody);
     const baseDir = path.dirname(filePath);
 
     const registry = [makeSkill("test-skill", filePath, baseDir)];
@@ -824,7 +824,7 @@ describe("buildSkillLoadingSection", () => {
 
   it("given a config with both mandatory and recommended skills when buildSkillLoadingSection is called then the output contains both sections", async () => {
     const skillBody = "# My Skill";
-    const filePath = writeSkillFile("my-skill", skillBody);
+    const filePath = writeSkillFile(tempDir, "my-skill", skillBody);
     const baseDir = path.dirname(filePath);
 
     const registry = [makeSkill("my-skill", filePath, baseDir)];
@@ -878,7 +878,7 @@ describe("buildSkillLoadingSection", () => {
 
   it("given global mandatory skills that overlap with config mandatory skills when buildSkillLoadingSection is called then duplicates are deduplicated", async () => {
     const skillBody = "# PIO Skill";
-    const filePath = writeSkillFile("pio", skillBody);
+    const filePath = writeSkillFile(tempDir, "pio", skillBody);
     const baseDir = path.dirname(filePath);
 
     const registry = [makeSkill("pio", filePath, baseDir)];
@@ -895,7 +895,7 @@ describe("buildSkillLoadingSection", () => {
 
   it("given a skill with YAML frontmatter in SKILL.md when buildSkillLoadingSection reads and strips it then the injected body does not contain frontmatter delimiters", async () => {
     const skillBody = "# Test Skill\n\nThis is the body.";
-    const filePath = writeSkillFile("frontmatter-skill", skillBody, "name: frontmatter-skill\ndescription: test");
+    const filePath = writeSkillFile(tempDir, "frontmatter-skill", skillBody, "name: frontmatter-skill\ndescription: test");
     const baseDir = path.dirname(filePath);
 
     const registry = [makeSkill("frontmatter-skill", filePath, baseDir)];
@@ -944,21 +944,9 @@ describe("skill injection — before_agent_start integration", () => {
     cleanup(tempDir);
   });
 
-  function writeSkillFile(skillName: string, body: string): string {
-    const dir = path.join(tempDir, "skills", skillName);
-    fs.mkdirSync(dir, { recursive: true });
-    const filePath = path.join(dir, "SKILL.md");
-    fs.writeFileSync(filePath, body, "utf-8");
-    return filePath;
-  }
-
-  function makeSkill(name: string, filePath: string, baseDir: string) {
-    return { name, filePath, baseDir, description: "", sourceInfo: { path: filePath, source: "test", scope: "project" as const, origin: "package" as const }, disableModelInvocation: false };
-  }
-
   it("given before_agent_start with mandatory skills when the handler runs then the message contains SKILL LOADING INSTRUCTIONS with injected blocks", async () => {
     const skillBody = "# Test Skill";
-    const filePath = writeSkillFile("test-skill", skillBody);
+    const filePath = writeSkillFile(tempDir, "test-skill", skillBody);
     const baseDir = path.dirname(filePath);
 
     const registry = [makeSkill("test-skill", filePath, baseDir)];
@@ -1081,7 +1069,7 @@ describe("skill injection — before_agent_start integration", () => {
 
   it("given the skill registry is populated via systemPromptOptions.skills when before_agent_start runs then the registry is cached", async () => {
     const skillBody = "# Cached Skill";
-    const filePath = writeSkillFile("cached-skill", skillBody);
+    const filePath = writeSkillFile(tempDir, "cached-skill", skillBody);
     const baseDir = path.dirname(filePath);
 
     const registry = [makeSkill("cached-skill", filePath, baseDir)];
@@ -1141,10 +1129,10 @@ describe("skill injection — before_agent_start integration", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resources_discover — _skill-loading.md no longer read
+// resources_discover — skill loading uses buildSkillLoadingSection
 // ---------------------------------------------------------------------------
 
-describe("resources_discover — _skill-loading.md no longer read", () => {
+describe("resources_discover — skill loading uses buildSkillLoadingSection", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -1156,8 +1144,12 @@ describe("resources_discover — _skill-loading.md no longer read", () => {
     cleanup(tempDir);
   });
 
-  it("given resources_discover is triggered when the handler runs then it no longer reads _skill-loading.md from disk", async () => {
-    const readFileSyncSpy = vi.spyOn(require("node:fs"), "readFileSync");
+  it("given before_agent_start with mandatory skills when the handler runs then skill content comes from buildSkillLoadingSection not a static file", async () => {
+    const skillBody = "# Dynamic Skill";
+    const filePath = writeSkillFile(tempDir, "dynamic-skill", skillBody);
+    const baseDir = path.dirname(filePath);
+
+    const registry = [makeSkill("dynamic-skill", filePath, baseDir)];
 
     const registeredHandlers: Record<string, Function> = {};
 
@@ -1171,7 +1163,7 @@ describe("resources_discover — _skill-loading.md no longer read", () => {
     const mod = await import("./session-capability");
     mod.setupCapability(mockPi as any);
 
-    // Trigger resources_discover
+    // Trigger resources_discover with skills config
     const rdHandler = registeredHandlers["resources_discover"];
     if (rdHandler) {
       await rdHandler(
@@ -1182,7 +1174,11 @@ describe("resources_discover — _skill-loading.md no longer read", () => {
               {
                 type: "custom",
                 customType: "pio-config",
-                data: { capability: "test-cap", prompt: "create-goal.md" },
+                data: {
+                  capability: "test-cap",
+                  prompt: "create-goal.md",
+                  skills: { mandatory: ["dynamic-skill"] },
+                },
               },
             ],
           },
@@ -1190,12 +1186,24 @@ describe("resources_discover — _skill-loading.md no longer read", () => {
       );
     }
 
-    // Assert: _skill-loading.md should NOT be read
-    const skillLoadingReads = readFileSyncSpy.mock.calls.filter((call: any[]) =>
-      call[0]?.toString().includes("_skill-loading.md"),
+    // Trigger before_agent_start with skill registry
+    const handler = registeredHandlers["before_agent_start"];
+    if (!handler) throw new Error("before_agent_start handler not registered");
+    const result = await handler(
+      {
+        type: "before_agent_start",
+        prompt: "test",
+        systemPrompt: "",
+        systemPromptOptions: { skills: registry, cwd: process.cwd() },
+      } as any,
+      {} as any,
     );
-    expect(skillLoadingReads.length).toBe(0);
 
-    readFileSyncSpy.mockRestore();
+    // Assert: skill content is dynamically generated from buildSkillLoadingSection
+    const text = result.message?.content?.[0]?.text;
+    expect(text).toContain("--- SKILL LOADING INSTRUCTIONS ---");
+    expect(text).toContain('<skill name="dynamic-skill"');
+    expect(text).toContain(skillBody);
+    // The skill XML block proves dynamic generation — a static file would not contain this skill
   });
 });

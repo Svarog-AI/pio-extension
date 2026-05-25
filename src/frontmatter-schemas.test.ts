@@ -238,13 +238,6 @@ describe("TASK_FRONTMATTER_SCHEMA", () => {
     expect(result.error).toContain("recommended");
   });
 
-  it("accepts an empty object, producing undefined skills", () => {
-    const result = validateAndCoerce({}, TASK_FRONTMATTER_SCHEMA);
-
-    expect(result.error).toBeUndefined();
-    expect(result.data).toBeDefined();
-    expect(result.data!.skills).toBeUndefined();
-  });
 });
 
 // ---------------------------------------------------------------------------

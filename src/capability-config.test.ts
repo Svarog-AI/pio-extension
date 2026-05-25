@@ -832,16 +832,20 @@ describe("resolveCapabilityConfig — skills passthrough", () => {
     expect(result!.skills?.recommended).toEqual([{ name: "source-research", condition: "when researching external libraries" }]);
   });
 
-  it("skills are undefined when the static config does not define them (create-plan has no skills)", async () => {
-    // Arrange: create-plan does not define skills yet
+  it("skills are propagated for a capability that defines them (create-plan)", async () => {
+    // Arrange: create-plan defines skills (Step 4)
     const params = { capability: "create-plan" as string, goalName: "my-feature" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: skills is undefined (passthrough of undefined)
+    // Assert: skills are present and match the static config
     expect(result).toBeDefined();
-    expect(result!.skills).toBeUndefined();
+    expect(result!.skills).toBeDefined();
+    expect(result!.skills?.mandatory).toEqual(["pio-planning", "grill-me"]);
+    expect(result!.skills?.recommended).toEqual([
+      { name: "source-research", condition: "when researching existing solutions or libraries" },
+    ]);
   });
 
   it("CapabilityConfig type accepts skills field", () => {

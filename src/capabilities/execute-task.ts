@@ -35,6 +35,9 @@ function resolveExecuteReadOnlyFiles(_dir: string, params?: Record<string, unkno
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "execute-task.md",
+  skills: {
+    mandatory: ["test-driven-development", "pio-git"],
+  },
   validation: resolveExecuteValidation,
   readOnlyFiles: resolveExecuteReadOnlyFiles,
   defaultInitialMessage: (workingDir, params) => {

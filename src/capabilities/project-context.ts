@@ -9,6 +9,12 @@ import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capabil
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "project-context.md",
+  skills: {
+    mandatory: ["pio-project-knowledge"],
+    recommended: [
+      { name: "source-research", condition: "when researching project dependencies or external tools" },
+    ],
+  },
   writeAllowlist: [
     ".pio/PROJECT/OVERVIEW.md",
     ".pio/PROJECT/DEVELOPMENT.md",

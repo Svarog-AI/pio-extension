@@ -27,6 +27,8 @@ Conduct thorough research using your tools (`read`, `bash`). Follow the research
 
 **This is where deep research belongs.** You need to be confident about implementation details before writing the plan. If a step's acceptance criteria can't be made programmatic because you don't understand the test setup, go learn the test setup.
 
+As part of the deep research step, leverage the user as an authorative source on questions related to the goal and what needs to be developed. Use the grill-me skill to resolve any doubts that popped up in the research that are challenging the feasibility or practicallity of the goal. 
+
 ### Step 3: Validate assumptions and gather preferences
 
 Before designing implementation steps, engage the user to confirm findings and gather input. This is where you close gaps that research alone cannot resolve.
@@ -42,6 +44,8 @@ Before designing implementation steps, engage the user to confirm findings and g
 **Execution preferences:** Ask about step sizing (granular vs. larger), parallelism preferences, and any specific tools or approaches they want used or avoided.
 
 **Summarize before proceeding:** After collecting input, present a brief recap of decisions made and confirm you have what you need. Then proceed to step design.
+
+Use the grill-me skill to make sure you clarify as much as possible from the user.
 
 ### Step 4: Design the steps
 

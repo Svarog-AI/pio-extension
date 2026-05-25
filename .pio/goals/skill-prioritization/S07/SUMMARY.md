@@ -20,7 +20,7 @@ COMPLETED
 - Explicitly stated frontmatter is authoritative for runtime behavior, body section is informational — prevents ambiguity when both exist
 
 ## User-Requested Changes
-- (none)
+- User requested merging the frontmatter example into the TASK.md template so both frontmatter and body appear as a single unified example. Modified `src/prompts/evolve-plan.md` — replaced separate frontmatter instructions + example + template with instructions followed by a single template block containing both YAML frontmatter and body sections.
 
 ## Test Coverage
 - No unit tests — this is a prompt-only change (markdown template). Per TDD methodology, content-based tests for prompts are excluded as they break on rewording without indicating behavioral regressions.

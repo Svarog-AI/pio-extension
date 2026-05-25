@@ -7,7 +7,7 @@ Your work is complete when you have reviewed all available sources, applied warr
 - You are starting from the goal workspace directory (e.g., `.pio/goals/<name>/`).
 - The initial user message provides the path to the final `DECISIONS.md` (from the highest-numbered step folder).
 - The goal workspace also contains `PLAN.md` and step folders (`S01/`, `S02/`, etc.) each with a `SUMMARY.md`.
-- The output files must be written to `.pio/PROJECT/` at the workspace root. **These are your only allowed write targets.**
+- The output files must be written to `.pio/PROJECT/` at the workspace root. This constraint applies to file modifications — workflow actions such as git operations (commits, PR creation) are permitted separately.
 
 ## Process
 
@@ -109,17 +109,17 @@ If no updates were warranted, explicitly state: "No PROJECT file updates were wa
 
 ### Step 10: Create a pull request
 
-After producing the summary, create a pull request for this goal's changes. Follow the PR Creation Protocol from the pio-git skill. Pass the goal name and workspace path as context so the skill can derive the PR title and body. If PR creation fails or is skipped, proceed with goal finalization — do not block completion.
+After producing the summary, you **must** create a pull request for this goal's changes. Follow the PR Creation Protocol from the pio-git skill. Pass the goal name and workspace path as context so the skill can derive the PR title and body. This step is required before calling `pio_mark_complete`. Graceful failure semantics apply: if PR creation fails due to missing prerequisites (no `gh` CLI, not authenticated, no remote, etc.), log a warning and continue — do not block completion. However, skipping this step without attempting is not permitted.
 
 ### Step 11: Signal completion
 
-After producing the summary, call `pio_mark_complete` to signal that your work is done.
+After producing the summary **and** after Step 10 (PR creation) has been attempted, call `pio_mark_complete` to signal that your work is done. You must call `pio_mark_complete` only after both the summary output and the PR creation attempt are complete.
 
 ---
 
 ## Guidelines
 
-- **Write only to `.pio/PROJECT/`.** No other files may be modified. The allowed write targets are: `.pio/PROJECT/OVERVIEW.md`, `.pio/PROJECT/DEVELOPMENT.md`, `.pio/PROJECT/CONVENTIONS.md`, `.pio/PROJECT/GIT.md`, `.pio/PROJECT/ARCHITECTURE.md`, `.pio/PROJECT/DEPENDENCIES.md`, `.pio/PROJECT/GLOSSARY.md`.
+- **File modifications target `.pio/PROJECT/` only.** The allowed write targets are: `.pio/PROJECT/OVERVIEW.md`, `.pio/PROJECT/DEVELOPMENT.md`, `.pio/PROJECT/CONVENTIONS.md`, `.pio/PROJECT/GIT.md`, `.pio/PROJECT/ARCHITECTURE.md`, `.pio/PROJECT/DEPENDENCIES.md`, `.pio/PROJECT/GLOSSARY.md`. Workflow actions — including git operations (commits, branch checkout, PR creation) — are permitted and do not count as file modifications.
 - **Preserve existing content.** Never overwrite or delete existing sections. Insert updates at appropriate positions.
 - **Be concise.** Each update should be a few lines at most — dense and actionable, not narrative.
 - **Reference the skill, don't duplicate it.** Use the `pio-project-knowledge` skill for update rules and section structure. Do not re-encode this knowledge inline.

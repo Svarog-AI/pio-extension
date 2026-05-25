@@ -27,7 +27,7 @@ Conduct thorough research using your tools (`read`, `bash`). Follow the research
 
 **This is where deep research belongs.** You need to be confident about implementation details before writing the plan. If a step's acceptance criteria can't be made programmatic because you don't understand the test setup, go learn the test setup.
 
-As part of the deep research step, leverage the user as an authorative source on questions related to the goal and what needs to be developed. Use the grill-me skill to resolve any doubts that popped up in the research that are challenging the feasibility or practicallity of the goal. 
+As part of the deep research step, leverage the user as an authorative source on questions related to the goal and what needs to be developed. When research reveals feasibility doubts or ambiguous areas, engage the user to resolve them before proceeding. 
 
 ### Step 3: Validate assumptions and gather preferences
 
@@ -44,8 +44,6 @@ Before designing implementation steps, engage the user to confirm findings and g
 **Execution preferences:** Ask about step sizing (granular vs. larger), parallelism preferences, and any specific tools or approaches they want used or avoided.
 
 **Summarize before proceeding:** After collecting input, present a brief recap of decisions made and confirm you have what you need. Then proceed to step design.
-
-Use the grill-me skill to make sure you clarify as much as possible from the user.
 
 ### Step 4: Design the steps
 
@@ -83,10 +81,13 @@ When PLAN.md has been written and confirmed, call the `pio_mark_complete` tool t
 
 ## Skill References
 
-This prompt references the `pio-planning` skill for detailed methodology. When designing steps and writing PLAN.md, follow the conventions documented in the `pio-planning` skill (`src/skills/pio-planning/SKILL.md`) for:
-- PLAN.md structure and frontmatter format
-- Step design rules (concrete, ordered, sized for an executor)
-- Acceptance criteria guidelines (programmatic verification, no dedicated test steps)
-- Research process (what to investigate before designing steps)
-- Scope discipline (stay within GOAL.md, reference real files only, no source code)
-- User interaction protocol (when to ask users, how to use ask_user, summarizing before writing)
+This prompt references the following skills for detailed methodology:
+
+- **`pio-planning`** (`src/skills/pio-planning/SKILL.md`) — When designing steps and writing PLAN.md, follow the conventions documented in the `pio-planning` skill for:
+  - PLAN.md structure and frontmatter format
+  - Step design rules (concrete, ordered, sized for an executor)
+  - Acceptance criteria guidelines (programmatic verification, no dedicated test steps)
+  - Research process (what to investigate before designing steps)
+  - Scope discipline (stay within GOAL.md, reference real files only, no source code)
+  - User interaction protocol (when to ask users, how to use ask_user, summarizing before writing)
+- **`grill-me`** (`src/skills/grill-me/SKILL.md`) — Probing technique for resolving research gaps, validating assumptions, and clarifying ambiguous areas during Steps 2 and 3. Provides HOW to ask focused questions, present options, and stop probing at the right time.

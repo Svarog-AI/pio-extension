@@ -55,7 +55,19 @@ Use your tools (`read`, `bash`) to understand the current state of the codebase:
 
 This research ensures your new steps are grounded in the actual state of the codebase, not just the archived plan.
 
-### Step 5: Design new steps
+### Step 5: Validate revision direction with the user
+
+Before designing new steps, engage the user to confirm the revision direction and negotiate any scope changes.
+
+**Present what changed:** Summarize the revision trigger reason and how the remaining work differs from the archived plan. Make it clear what broke or shifted, and why a new plan is needed.
+
+**Validate assumptions:** Confirm the new direction aligns with user intent — especially around scope changes, architectural pivots, or decisions invalidated by completed work. Check that the user agrees with the approach the revision is taking.
+
+**Negotiate scope:** If the remaining work has fundamentally changed in character compared to the original plan, confirm whether to proceed as-is, split into subgoals, or adjust the overall approach.
+
+**Summarize and confirm:** Recap key decisions before proceeding to step design. Present a brief summary of the revision direction and confirm you have what you need.
+
+### Step 6: Design new steps
 
 Decompose the remaining work into new steps. Continue numbering after the last completed step — for example, if steps 1–3 are APPROVED, your new steps start at Step 4.
 
@@ -70,7 +82,7 @@ Decompose the remaining work into new steps. Continue numbering after the last c
 - No source code in PLAN.md — describe changes in natural language only
 - When modifying archived plan decisions, follow the priority hierarchy rules defined in the `pio-planning` skill
 
-### Step 6: Write PLAN.md
+### Step 7: Write PLAN.md
 
 Write a fresh `PLAN.md` into the goal workspace directory. The file must follow the structure defined in the `pio-planning` skill, with one key difference: **completed steps are included as historical anchors.**
 
@@ -131,7 +143,7 @@ totalSteps: 7
 - New steps follow the full step structure from the `pio-planning` skill (Description, Acceptance Criteria, Files Affected)
 - Completed step entries need only a brief description and status marker — they are references, not actionable items
 
-### Step 7: Signal completion
+### Step 8: Signal completion
 
 When `PLAN.md` has been written and confirmed, call the `pio_mark_complete` tool to validate that all expected outputs have been produced. If validation reports missing files, produce them before calling again. Do not end your work without calling this tool.
 
@@ -150,9 +162,12 @@ When `PLAN.md` has been written and confirmed, call the `pio_mark_complete` tool
 
 ## Skill References
 
-This prompt references the `pio-planning` skill for detailed methodology. When executing steps 5 and 6 above, follow the conventions documented in the `pio-planning` skill (`src/skills/pio-planning/SKILL.md`) for:
-- PLAN.md structure and frontmatter format
-- Step design rules (concrete, ordered, sized for an executor)
-- Acceptance criteria guidelines (programmatic verification, no dedicated test steps)
-- Scope discipline (stay within GOAL.md, no source code)
-- Research process (what to investigate before designing steps)
+This prompt references the following skills for detailed methodology:
+
+- **`pio-planning`** (`src/skills/pio-planning/SKILL.md`) — When executing steps 6 and 7 above, follow the conventions documented in the `pio-planning` skill for:
+  - PLAN.md structure and frontmatter format
+  - Step design rules (concrete, ordered, sized for an executor)
+  - Acceptance criteria guidelines (programmatic verification, no dedicated test steps)
+  - Scope discipline (stay within GOAL.md, no source code)
+  - Research process (what to investigate before designing steps)
+- **`grill-me`** (`src/skills/grill-me/SKILL.md`) — Probing technique for validating the revision direction with the user in Step 5. Provides HOW to present changes, negotiate scope, and confirm pivots before committing to a new plan.

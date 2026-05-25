@@ -21,6 +21,7 @@ COMPLETED
 
 ## User-Requested Changes
 - User requested merging the frontmatter example into the TASK.md template so both frontmatter and body appear as a single unified example. Modified `src/prompts/evolve-plan.md` — replaced separate frontmatter instructions + example + template with instructions followed by a single template block containing both YAML frontmatter and body sections.
+- User clarified YAML frontmatter cannot be optional — the `---` delimiters are always required. Modified `src/prompts/evolve-plan.md` — changed "(optional)" to "(required)", added "This block is always present — even when empty", and clarified that `---` delimiters are always kept even when no skills are declared.
 
 ## Test Coverage
 - No unit tests — this is a prompt-only change (markdown template). Per TDD methodology, content-based tests for prompts are excluded as they break on rewording without indicating behavioral regressions.

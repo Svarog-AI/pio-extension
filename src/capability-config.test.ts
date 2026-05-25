@@ -436,11 +436,11 @@ describe("resolveCapabilityConfig — prepareSession", () => {
       const result = await resolveCapabilityConfig("/tmp/proj", params);
       if (result === undefined) continue;
 
-      if (cap.name === "review-task") {
-        // review-task defines prepareSession
+      if (cap.name === "review-task" || cap.name === "execute-task") {
+        // review-task and execute-task define prepareSession
         expect(typeof result.prepareSession).toBe("function");
       } else {
-        // No other capability defines prepareSession yet
+        // Other capabilities without prepareSession
         expect(result.prepareSession).toBeUndefined();
       }
     }
@@ -472,14 +472,14 @@ describe("backward compatibility — capabilities without prepareSession", () =>
     expect(result!.prepareSession).toBeUndefined();
   });
 
-  it("resolving execute-task (no prepareSession yet) produces valid config with undefined prepareSession", async () => {
+  it("resolving execute-task produces valid config with prepareSession defined", async () => {
     const params = { capability: "execute-task" as string, goalName: "my-feature", stepNumber: 1 };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
     expect(result).toBeDefined();
     expect(result!.capability).toBe("execute-task");
-    expect(result!.prepareSession).toBeUndefined();
+    expect(typeof result!.prepareSession).toBe("function");
   });
 
   it("resolving review-task produces valid config with prepareSession defined", async () => {

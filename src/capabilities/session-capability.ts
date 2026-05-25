@@ -27,6 +27,17 @@ let projectContext: string | undefined;
 let availableSkills: Skill[] | undefined;
 let currentConfig: CapabilityConfig | undefined;
 
+/**
+ * Set merged skills on the current capability config.
+ * Called by `prepareSession` hooks after reading TASK.md frontmatter skills.
+ * The merged result is applied to `currentConfig` before `before_agent_start` runs.
+ */
+export function setMergedSkills(skills: Pick<CapabilityConfig, "skills">["skills"]): void {
+  if (currentConfig) {
+    currentConfig.skills = skills;
+  }
+}
+
 // Global mandatory skills — always injected regardless of capability config
 const GLOBAL_MANDATORY_SKILLS = ["pio", "ask-user"];
 

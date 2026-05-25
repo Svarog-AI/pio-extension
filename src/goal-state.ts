@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { stepFolderName } from "./fs-utils";
 import { extractFrontmatter, validateAndCoerce } from "./frontmatter";
-import { PLAN_FRONTMATTER_SCHEMA, REVIEW_OUTPUT_SCHEMA, type PlanFrontmatter, type ReviewOutputs, type StepMetadata } from "./frontmatter-schemas";
+import { PLAN_FRONTMATTER_SCHEMA, REVIEW_OUTPUT_SCHEMA, TASK_FRONTMATTER_SCHEMA, type PlanFrontmatter, type ReviewOutputs, type StepMetadata, type TaskFrontmatter, type TaskSkills } from "./frontmatter-schemas";
 import { deriveQueueKey } from "./queues";
 
 // ---------------------------------------------------------------------------
@@ -46,6 +46,13 @@ export interface StepStatus {
    * Returns `null` when frontmatter is absent, schema validation fails, or the index is out of bounds.
    */
   getMetadata: () => StepMetadata | null;
+  /**
+   * Reads TASK.md frontmatter and returns the `skills` field.
+   * Lazy-evaluated — reads fresh from disk on every call.
+   * Returns `TaskSkills | null`: parsed skills when present, or `null` when
+   * the file is missing, has no frontmatter, has no `skills` key, or fails validation.
+   */
+  taskSkills: () => TaskSkills | null;
 }
 
 function createStepStatus(
@@ -62,6 +69,16 @@ function createStepStatus(
     hasSummary: () => fs.existsSync(path.join(stepDir, SUMMARY_FILE)),
     revisionNeeded: () => fs.existsSync(path.join(stepDir, "REVISE_PLAN_NEEDED")),
     getMetadata: () => metadata,
+    taskSkills: () => {
+      const taskPath = path.join(stepDir, "TASK.md");
+      const raw = extractFrontmatter(taskPath);
+      if (raw === null) return null;
+
+      const result = validateAndCoerce<TaskFrontmatter>(raw, TASK_FRONTMATTER_SCHEMA);
+      if ("error" in result) return null;
+
+      return result.data.skills ?? null;
+    },
     status: () => {
       // Check markers in priority order: APPROVED > REJECTED > BLOCKED > COMPLETED
       if (fs.existsSync(path.join(stepDir, "APPROVED"))) return "approved";

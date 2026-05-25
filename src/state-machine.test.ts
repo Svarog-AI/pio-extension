@@ -50,6 +50,7 @@ function mockStep(
     hasSummary: () => false,
     revisionNeeded: () => overrides?.revisionNeeded ?? false,
     getMetadata: () => overrides?.metadata ?? null,
+    taskSkills: () => null,
     status: () => statusValue as ReturnType<NonNullable<ReturnType<GoalState["steps"]>>[number]["status"]>,
   };
 }

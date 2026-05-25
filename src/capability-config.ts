@@ -82,5 +82,6 @@ export async function resolveCapabilityConfig(
     prepareSession,
     postValidate,
     postExecute,
+    skills: config.skills,
   };
 }

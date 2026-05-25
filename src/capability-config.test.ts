@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import type { PrepareSessionCallback, PostValidateCallback, PostExecuteCallback, StaticCapabilityConfig, CapabilityConfig } from "./types";
+import type { PrepareSessionCallback, PostValidateCallback, PostExecuteCallback, StaticCapabilityConfig, CapabilityConfig, CapabilitySkills } from "./types";
 import { resolveCapabilityConfig } from "./capability-config";
 
 // ---------------------------------------------------------------------------
@@ -810,5 +810,72 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
     // Assert: initialMessage includes the goal name (Step 1 fix works through full chain)
     expect(result).toBeDefined();
     expect(result!.initialMessage).toContain("my-feature");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveCapabilityConfig — skills passthrough
+// ---------------------------------------------------------------------------
+
+describe("resolveCapabilityConfig — skills passthrough", () => {
+  it("skills are copied when the static config defines them (test-skills-cap)", async () => {
+    // Arrange: test-skills-cap is a test-only capability with skills defined
+    const params = { capability: "test-skills-cap" as string, goalName: "my-feature" };
+
+    // Act
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    // Assert: skills are present and match the static config
+    expect(result).toBeDefined();
+    expect(result!.skills).toBeDefined();
+    expect(result!.skills?.mandatory).toEqual(["test-driven-development", "pio-git"]);
+    expect(result!.skills?.recommended).toEqual([{ name: "source-research", condition: "when researching external libraries" }]);
+  });
+
+  it("skills are undefined when the static config does not define them (create-plan has no skills)", async () => {
+    // Arrange: create-plan does not define skills yet
+    const params = { capability: "create-plan" as string, goalName: "my-feature" };
+
+    // Act
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+
+    // Assert: skills is undefined (passthrough of undefined)
+    expect(result).toBeDefined();
+    expect(result!.skills).toBeUndefined();
+  });
+
+  it("CapabilityConfig type accepts skills field", () => {
+    // Arrange + Act: verify the CapabilityConfig type includes skills
+    const config: CapabilityConfig = {
+      capability: "test-cap",
+      skills: {
+        mandatory: ["pio-planning"],
+        recommended: [{ name: "ask-user", condition: "when ambiguous" }],
+      },
+    };
+
+    // Assert: type-level verification — if this compiles, the field exists
+    expect(config.skills?.mandatory).toEqual(["pio-planning"]);
+    expect(config.skills?.recommended).toEqual([{ name: "ask-user", condition: "when ambiguous" }]);
+  });
+
+  it("CapabilityConfig type accepts skills with only mandatory", () => {
+    const config: CapabilityConfig = {
+      capability: "test-cap",
+      skills: { mandatory: ["pio-git"] },
+    };
+
+    expect(config.skills?.mandatory).toEqual(["pio-git"]);
+    expect(config.skills?.recommended).toBeUndefined();
+  });
+
+  it("CapabilityConfig type accepts skills with only recommended", () => {
+    const config: CapabilityConfig = {
+      capability: "test-cap",
+      skills: { recommended: [{ name: "source-research", condition: "when researching" }] },
+    };
+
+    expect(config.skills?.mandatory).toBeUndefined();
+    expect(config.skills?.recommended).toEqual([{ name: "source-research", condition: "when researching" }]);
   });
 });

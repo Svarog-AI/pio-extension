@@ -21,6 +21,14 @@ export interface ValidationRule {
 // Capability config types
 // ---------------------------------------------------------------------------
 
+/** Declares which skills apply to a capability — mandatory skills are force-injected, recommended skills are listed as instructions. */
+export interface CapabilitySkills {
+  /** Skills forcefully injected into the prompt — full SKILL.md content is read at startup */
+  mandatory?: string[];
+  /** Skills listed as instructions for the LLM to load when conditions apply */
+  recommended?: { name: string; condition: string }[];
+}
+
 /** Full configuration passed to a capability sub-session. */
 export interface CapabilityConfig {
   /** Logical capability name (e.g. "create-goal") — determines prompt and transitions */
@@ -49,6 +57,8 @@ export interface CapabilityConfig {
   postValidate?: PostValidateCallback;
   /** Lifecycle hook that runs after transition routing + task enqueuing. Resolved from StaticCapabilityConfig.postExecute. */
   postExecute?: PostExecuteCallback;
+  /** Capability-specific skill declarations — mandatory skills are force-injected, recommended skills are listed as instructions. */
+  skills?: CapabilitySkills;
 }
 
 /** Callback signature for step-dependent config fields. */
@@ -112,4 +122,6 @@ export interface StaticCapabilityConfig {
   postValidate?: PostValidateCallback;
   /** Lifecycle hook that runs after transition routing + task enqueuing. Applies irreversible side effects. Optional. */
   postExecute?: PostExecuteCallback;
+  /** Capability-specific skill declarations — mandatory skills are force-injected, recommended skills are listed as instructions. */
+  skills?: CapabilitySkills;
 }

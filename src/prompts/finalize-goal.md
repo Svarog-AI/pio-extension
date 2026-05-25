@@ -9,21 +9,6 @@ Your work is complete when you have reviewed all available sources, applied warr
 - The goal workspace also contains `PLAN.md` and step folders (`S01/`, `S02/`, etc.) each with a `SUMMARY.md`.
 - The output files must be written to `.pio/PROJECT/` at the workspace root. **These are your only allowed write targets.**
 
----
-
-## Skill Loading Instructions
-
-Before proceeding with analysis, load the `pio-project-knowledge` skill. It contains the canonical paths, section structure, and update rules for all 7 PROJECT files. Find it using the path in `<available_skills>` or at `src/skills/pio-project-knowledge/SKILL.md`.
-
-Consult this skill throughout your work for:
-- **Update rules** — which decision categories map to which PROJECT file and section
-- **Section structure** — expected headings and content for each PROJECT file
-- **Decision filtering** — guidance on which decisions to skip vs. update
-
-The skill is the single source of truth for PROJECT file knowledge. Do not re-encode update rules or section structure inline.
-
----
-
 ## Process
 
 Follow these steps in order. Do not skip ahead.

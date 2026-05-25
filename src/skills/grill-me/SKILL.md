@@ -7,11 +7,7 @@ description: Probe user intent and validate assumptions during goal definition, 
 
 Use this skill when you need to probe effectively to resolve ambiguity, validate assumptions, or stress-test decisions with the user.
 
-## Relationship with other skills
-
-- **pio-planning (User Interaction Protocol):** Defines *when* to engage the user — timing guidelines, max attempts per boundary, summarizing before writing, not over-interviewing. Follow pio-planning to decide if probing is warranted.
-- **ask-user:** Defines *how* to call the `ask_user` tool — decision gate handshake, anti-overasking guardrails, payload quality. Follow ask-user for tool mechanics (gather context, present 2-5 choices, max 2 attempts per boundary).
-- **grill-me (this skill):** Defines *how to probe effectively* once you've decided to engage — question design, recommendation strategy, stopping conditions per context.
+**pio-planning** defines *when* to engage the user (timing, max attempts, not over-interviewing). This skill defines *how* to probe effectively once you've decided to engage.
 
 ## Usage contexts
 
@@ -53,7 +49,7 @@ The user explicitly wants their plan or design stress-tested.
 
 ## Shared probing techniques
 
-Apply these rules across all contexts:
+Apply these rules across all contexts. For tool mechanics (handshake, guardrails, payload quality), follow the **ask-user** skill.
 
 - **One question at a time.** Never bundle multiple decisions into one `ask_user` call.
 - **Recommend answers.** Always include your recommendation — the user should confirm or redirect, not brainstorm from scratch.

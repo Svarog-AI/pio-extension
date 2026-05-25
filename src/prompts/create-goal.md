@@ -89,3 +89,10 @@ When GOAL.md has been written and confirmed, call the `pio_mark_complete` tool t
 - **If research reveals the goal is broader or narrower than expected**, tell the user and adjust scope accordingly.
 - **Do not start implementing.** Your job ends when GOAL.md is written and confirmed. Do not create new source files, modify code, or run build commands as part of this process.
 - **Research is light, not exhaustive.** Reading 2-5 relevant files for context is fine. Deep audits, full dependency tracing, and comprehensive code analysis are out of scope.
+
+## Skill References
+
+This prompt references the following skills for detailed methodology:
+
+- **`pio-planning`** (`src/skills/pio-planning/SKILL.md`) — General planning methodology, including user interaction protocol and scope discipline. Refer to this skill for guidance on when to ask users, how to use `ask_user`, and how to stay focused on goal scope.
+- **`grill-me`** (`src/skills/grill-me/SKILL.md`) — Probing technique for Steps 1 and 3 (goal clarification and gap-filling questions). Provides HOW to ask focused questions, recommend answers, and stop probing at the right time during goal definition.

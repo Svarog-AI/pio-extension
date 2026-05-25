@@ -1008,6 +1008,14 @@ describe("skill injection — before_agent_start integration", () => {
   });
 
   it("given before_agent_start when the handler runs then delivery order is PROJECT OVERVIEW, then SKILL LOADING INSTRUCTIONS, then YOUR INSTRUCTIONS", async () => {
+    // Populate registry with "pio" (a global mandatory skill) so buildSkillLoadingSection
+    // generates the SKILL LOADING INSTRUCTIONS section — all three sections must appear
+    const pioSkillBody = "# PIO Skill";
+    const pioFilePath = writeSkillFile(tempDir, "pio", pioSkillBody);
+    const pioBaseDir = path.dirname(pioFilePath);
+
+    const registry = [makeSkill("pio", pioFilePath, pioBaseDir)];
+
     const registeredHandlers: Record<string, Function> = {};
     const setModelMock = vi.fn();
 
@@ -1040,7 +1048,7 @@ describe("skill injection — before_agent_start integration", () => {
       );
     }
 
-    // Trigger before_agent_start
+    // Trigger before_agent_start with registry containing "pio" skill
     const handler = registeredHandlers["before_agent_start"];
     if (!handler) throw new Error("before_agent_start handler not registered");
     const result = await handler(
@@ -1048,7 +1056,7 @@ describe("skill injection — before_agent_start integration", () => {
         type: "before_agent_start",
         prompt: "test",
         systemPrompt: "",
-        systemPromptOptions: { skills: [], cwd: process.cwd() },
+        systemPromptOptions: { skills: registry, cwd: process.cwd() },
       } as any,
       {} as any,
     );
@@ -1061,10 +1069,11 @@ describe("skill injection — before_agent_start integration", () => {
     const skillIdx = text.indexOf("--- SKILL LOADING INSTRUCTIONS ---");
     const yourIdx = text.indexOf("--- YOUR INSTRUCTIONS ---");
 
-    if (projectIdx >= 0 && skillIdx >= 0 && yourIdx >= 0) {
-      expect(projectIdx).toBeLessThan(skillIdx);
-      expect(skillIdx).toBeLessThan(yourIdx);
-    }
+    expect(projectIdx).toBeGreaterThan(-1);
+    expect(skillIdx).toBeGreaterThan(-1);
+    expect(yourIdx).toBeGreaterThan(-1);
+    expect(projectIdx).toBeLessThan(skillIdx);
+    expect(skillIdx).toBeLessThan(yourIdx);
   });
 
   it("given the skill registry is populated via systemPromptOptions.skills when before_agent_start runs then the registry is cached", async () => {

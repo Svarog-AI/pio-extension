@@ -1,0 +1,636 @@
+[
+  {
+    "timestamp": "2026-05-25T08:12:45.601Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "skill-prioritization",
+        "initialMessage": "The problem: each pio capability (create-goal, create-plan, evolve-plan, execute-task, review-code, execute-plan, revise-plan, project-context, finalize-goal) has a prompt template in `src/prompts/`. These prompts are injected into sub-sessions via the custom message system. The LLM sees all available skills in `<available_skills>` from the system prompt, plus the generic `_skill-loading.md` instructions telling it to \"scan and load matching skills.\"\n\nHowever, this heuristic scanning doesn't guarantee the LLM will prioritize the most relevant skills for each specific capability. Some prompts already have a \"Skill References\" section (create-plan, create-goal, revise-plan, execute-task), but others don't (review-code, execute-plan, project-context) or are inconsistent in format and completeness.\n\nThe goal: make sure each capability prompt explicitly surfaces its most relevant skills so the LLM is more likely to consider them. This could involve:\n\n1. **Adding explicit \"Skill References\" sections** to prompts that lack them (review-code, execute-plan, project-context)\n2. **Standardizing the format** across all prompts — consistent section name, clear mandatory vs. recommended distinction\n3. **Improving `_skill-loading.md`** to make it clearer how capability-specific skill references interact with the general `<available_skills>` scanning (priority hierarchy)\n4. **Potentially adding a programmatic mechanism** in `session-capability.ts` to auto-inject relevant skills per capability, so we don't rely solely on prompt text\n\nKey files:\n- All prompts in `src/prompts/`\n- `src/prompts/_skill-loading.md` — shared skill loading instructions injected into all sessions\n- `src/capabilities/session-capability.ts` — prompt injection logic (resources_discover + before_agent_start)\n- All skills in `src/skills/` — pio, pio-planning, pio-git, test-driven-development, pio-project-knowledge, write-a-skill, grill-me\n- External skills may also be relevant: ask-user, source-research, web-browser, pi-intercom\n\nThe mapping problem: which skills are most relevant per capability?\n- create-goal: pio (mandatory), pio-planning, grill-me, ask-user, pio-git (branch checkout)\n- create-plan: pio (mandatory), pio-planning, grill-me, ask-user, source-research (deep research)\n- evolve-plan: pio (mandatory), pio-planning (step structure)\n- execute-task: pio (mandatory), test-driven-development, pio-git (commits), plus TASK.md \"## Skills\" section from spec writer\n- review-code: pio (mandatory), test-driven-development, pio-git, ask-user\n- execute-plan: pio (mandatory), test-driven-development, pio-git\n- revise-plan: pio (mandatory), pio-planning, grill-me, ask-user\n- project-context: pio (mandatory), pio-project-knowledge, source-research, ask-user\n- finalize-goal: pio (mandatory), pio-project-knowledge, pio-git (PR creation)\n\nPlease define this goal with appropriate current state and to-be state.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-25T08:17:42.826Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "skill-prioritization",
+        "initialMessage": "The problem: each pio capability (create-goal, create-plan, evolve-plan, execute-task, review-code, execute-plan, revise-plan, project-context, finalize-goal) has a prompt template in `src/prompts/`. These prompts are injected into sub-sessions via the custom message system. The LLM sees all available skills in `<available_skills>` from the system prompt, plus the generic `_skill-loading.md` instructions telling it to \"scan and load matching skills.\"\n\nHowever, this heuristic scanning doesn't guarantee the LLM will prioritize the most relevant skills for each specific capability. Some prompts already have a \"Skill References\" section (create-plan, create-goal, revise-plan, execute-task), but others don't (review-code, execute-plan, project-context) or are inconsistent in format and completeness.\n\nThe goal: make sure each capability prompt explicitly surfaces its most relevant skills so the LLM is more likely to consider them. This could involve:\n\n1. **Adding explicit \"Skill References\" sections** to prompts that lack them (review-code, execute-plan, project-context)\n2. **Standardizing the format** across all prompts — consistent section name, clear mandatory vs. recommended distinction\n3. **Improving `_skill-loading.md`** to make it clearer how capability-specific skill references interact with the general `<available_skills>` scanning (priority hierarchy)\n4. **Potentially adding a programmatic mechanism** in `session-capability.ts` to auto-inject relevant skills per capability, so we don't rely solely on prompt text\n\nKey files:\n- All prompts in `src/prompts/`\n- `src/prompts/_skill-loading.md` — shared skill loading instructions injected into all sessions\n- `src/capabilities/session-capability.ts` — prompt injection logic (resources_discover + before_agent_start)\n- All skills in `src/skills/` — pio, pio-planning, pio-git, test-driven-development, pio-project-knowledge, write-a-skill, grill-me\n- External skills may also be relevant: ask-user, source-research, web-browser, pi-intercom\n\nThe mapping problem: which skills are most relevant per capability?\n- create-goal: pio (mandatory), pio-planning, grill-me, ask-user, pio-git (branch checkout)\n- create-plan: pio (mandatory), pio-planning, grill-me, ask-user, source-research (deep research)\n- evolve-plan: pio (mandatory), pio-planning (step structure)\n- execute-task: pio (mandatory), test-driven-development, pio-git (commits), plus TASK.md \"## Skills\" section from spec writer\n- review-code: pio (mandatory), test-driven-development, pio-git, ask-user\n- execute-plan: pio (mandatory), test-driven-development, pio-git\n- revise-plan: pio (mandatory), pio-planning, grill-me, ask-user\n- project-context: pio (mandatory), pio-project-knowledge, source-research, ask-user\n- finalize-goal: pio (mandatory), pio-project-knowledge, pio-git (PR creation)\n\nPlease define this goal with appropriate current state and to-be state.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-25T10:41:04.863Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "skill-prioritization",
+        "initialMessage": "The problem: each pio capability (create-goal, create-plan, evolve-plan, execute-task, review-code, execute-plan, revise-plan, project-context, finalize-goal) has a prompt template in `src/prompts/`. These prompts are injected into sub-sessions via the custom message system. The LLM sees all available skills in `<available_skills>` from the system prompt, plus the generic `_skill-loading.md` instructions telling it to \"scan and load matching skills.\"\n\nHowever, this heuristic scanning doesn't guarantee the LLM will prioritize the most relevant skills for each specific capability. Some prompts already have a \"Skill References\" section (create-plan, create-goal, revise-plan, execute-task), but others don't (review-code, execute-plan, project-context) or are inconsistent in format and completeness.\n\nThe goal: make sure each capability prompt explicitly surfaces its most relevant skills so the LLM is more likely to consider them. This could involve:\n\n1. **Adding explicit \"Skill References\" sections** to prompts that lack them (review-code, execute-plan, project-context)\n2. **Standardizing the format** across all prompts — consistent section name, clear mandatory vs. recommended distinction\n3. **Improving `_skill-loading.md`** to make it clearer how capability-specific skill references interact with the general `<available_skills>` scanning (priority hierarchy)\n4. **Potentially adding a programmatic mechanism** in `session-capability.ts` to auto-inject relevant skills per capability, so we don't rely solely on prompt text\n\nKey files:\n- All prompts in `src/prompts/`\n- `src/prompts/_skill-loading.md` — shared skill loading instructions injected into all sessions\n- `src/capabilities/session-capability.ts` — prompt injection logic (resources_discover + before_agent_start)\n- All skills in `src/skills/` — pio, pio-planning, pio-git, test-driven-development, pio-project-knowledge, write-a-skill, grill-me\n- External skills may also be relevant: ask-user, source-research, web-browser, pi-intercom\n\nThe mapping problem: which skills are most relevant per capability?\n- create-goal: pio (mandatory), pio-planning, grill-me, ask-user, pio-git (branch checkout)\n- create-plan: pio (mandatory), pio-planning, grill-me, ask-user, source-research (deep research)\n- evolve-plan: pio (mandatory), pio-planning (step structure)\n- execute-task: pio (mandatory), test-driven-development, pio-git (commits), plus TASK.md \"## Skills\" section from spec writer\n- review-code: pio (mandatory), test-driven-development, pio-git, ask-user\n- execute-plan: pio (mandatory), test-driven-development, pio-git\n- revise-plan: pio (mandatory), pio-planning, grill-me, ask-user\n- project-context: pio (mandatory), pio-project-knowledge, source-research, ask-user\n- finalize-goal: pio (mandatory), pio-project-knowledge, pio-git (PR creation)\n\nPlease define this goal with appropriate current state and to-be state.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-25T10:45:48.252Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "skill-prioritization",
+        "initialMessage": "The problem: each pio capability (create-goal, create-plan, evolve-plan, execute-task, review-code, execute-plan, revise-plan, project-context, finalize-goal) has a prompt template in `src/prompts/`. These prompts are injected into sub-sessions via the custom message system. The LLM sees all available skills in `<available_skills>` from the system prompt, plus the generic `_skill-loading.md` instructions telling it to \"scan and load matching skills.\"\n\nHowever, this heuristic scanning doesn't guarantee the LLM will prioritize the most relevant skills for each specific capability. Some prompts already have a \"Skill References\" section (create-plan, create-goal, revise-plan, execute-task), but others don't (review-code, execute-plan, project-context) or are inconsistent in format and completeness.\n\nThe goal: make sure each capability prompt explicitly surfaces its most relevant skills so the LLM is more likely to consider them. This could involve:\n\n1. **Adding explicit \"Skill References\" sections** to prompts that lack them (review-code, execute-plan, project-context)\n2. **Standardizing the format** across all prompts — consistent section name, clear mandatory vs. recommended distinction\n3. **Improving `_skill-loading.md`** to make it clearer how capability-specific skill references interact with the general `<available_skills>` scanning (priority hierarchy)\n4. **Potentially adding a programmatic mechanism** in `session-capability.ts` to auto-inject relevant skills per capability, so we don't rely solely on prompt text\n\nKey files:\n- All prompts in `src/prompts/`\n- `src/prompts/_skill-loading.md` — shared skill loading instructions injected into all sessions\n- `src/capabilities/session-capability.ts` — prompt injection logic (resources_discover + before_agent_start)\n- All skills in `src/skills/` — pio, pio-planning, pio-git, test-driven-development, pio-project-knowledge, write-a-skill, grill-me\n- External skills may also be relevant: ask-user, source-research, web-browser, pi-intercom\n\nThe mapping problem: which skills are most relevant per capability?\n- create-goal: pio (mandatory), pio-planning, grill-me, ask-user, pio-git (branch checkout)\n- create-plan: pio (mandatory), pio-planning, grill-me, ask-user, source-research (deep research)\n- evolve-plan: pio (mandatory), pio-planning (step structure)\n- execute-task: pio (mandatory), test-driven-development, pio-git (commits), plus TASK.md \"## Skills\" section from spec writer\n- review-code: pio (mandatory), test-driven-development, pio-git, ask-user\n- execute-plan: pio (mandatory), test-driven-development, pio-git\n- revise-plan: pio (mandatory), pio-planning, grill-me, ask-user\n- project-context: pio (mandatory), pio-project-knowledge, source-research, ask-user\n- finalize-goal: pio (mandatory), pio-project-knowledge, pio-git (PR creation)\n\nPlease define this goal with appropriate current state and to-be state.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-25T10:49:39.782Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "skill-prioritization",
+        "initialMessage": "The problem: each pio capability (create-goal, create-plan, evolve-plan, execute-task, review-code, execute-plan, revise-plan, project-context, finalize-goal) has a prompt template in `src/prompts/`. These prompts are injected into sub-sessions via the custom message system. The LLM sees all available skills in `<available_skills>` from the system prompt, plus the generic `_skill-loading.md` instructions telling it to \"scan and load matching skills.\"\n\nHowever, this heuristic scanning doesn't guarantee the LLM will prioritize the most relevant skills for each specific capability. Some prompts already have a \"Skill References\" section (create-plan, create-goal, revise-plan, execute-task), but others don't (review-code, execute-plan, project-context) or are inconsistent in format and completeness.\n\nThe goal: make sure each capability prompt explicitly surfaces its most relevant skills so the LLM is more likely to consider them. This could involve:\n\n1. **Adding explicit \"Skill References\" sections** to prompts that lack them (review-code, execute-plan, project-context)\n2. **Standardizing the format** across all prompts — consistent section name, clear mandatory vs. recommended distinction\n3. **Improving `_skill-loading.md`** to make it clearer how capability-specific skill references interact with the general `<available_skills>` scanning (priority hierarchy)\n4. **Potentially adding a programmatic mechanism** in `session-capability.ts` to auto-inject relevant skills per capability, so we don't rely solely on prompt text\n\nKey files:\n- All prompts in `src/prompts/`\n- `src/prompts/_skill-loading.md` — shared skill loading instructions injected into all sessions\n- `src/capabilities/session-capability.ts` — prompt injection logic (resources_discover + before_agent_start)\n- All skills in `src/skills/` — pio, pio-planning, pio-git, test-driven-development, pio-project-knowledge, write-a-skill, grill-me\n- External skills may also be relevant: ask-user, source-research, web-browser, pi-intercom\n\nThe mapping problem: which skills are most relevant per capability?\n- create-goal: pio (mandatory), pio-planning, grill-me, ask-user, pio-git (branch checkout)\n- create-plan: pio (mandatory), pio-planning, grill-me, ask-user, source-research (deep research)\n- evolve-plan: pio (mandatory), pio-planning (step structure)\n- execute-task: pio (mandatory), test-driven-development, pio-git (commits), plus TASK.md \"## Skills\" section from spec writer\n- review-code: pio (mandatory), test-driven-development, pio-git, ask-user\n- execute-plan: pio (mandatory), test-driven-development, pio-git\n- revise-plan: pio (mandatory), pio-planning, grill-me, ask-user\n- project-context: pio (mandatory), pio-project-knowledge, source-research, ask-user\n- finalize-goal: pio (mandatory), pio-project-knowledge, pio-git (PR creation)\n\nPlease define this goal with appropriate current state and to-be state.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-25T10:51:27.955Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "skill-prioritization",
+        "initialMessage": "The problem: each pio capability (create-goal, create-plan, evolve-plan, execute-task, review-code, execute-plan, revise-plan, project-context, finalize-goal) has a prompt template in `src/prompts/`. These prompts are injected into sub-sessions via the custom message system. The LLM sees all available skills in `<available_skills>` from the system prompt, plus the generic `_skill-loading.md` instructions telling it to \"scan and load matching skills.\"\n\nHowever, this heuristic scanning doesn't guarantee the LLM will prioritize the most relevant skills for each specific capability. Some prompts already have a \"Skill References\" section (create-plan, create-goal, revise-plan, execute-task), but others don't (review-code, execute-plan, project-context) or are inconsistent in format and completeness.\n\nThe goal: make sure each capability prompt explicitly surfaces its most relevant skills so the LLM is more likely to consider them. This could involve:\n\n1. **Adding explicit \"Skill References\" sections** to prompts that lack them (review-code, execute-plan, project-context)\n2. **Standardizing the format** across all prompts — consistent section name, clear mandatory vs. recommended distinction\n3. **Improving `_skill-loading.md`** to make it clearer how capability-specific skill references interact with the general `<available_skills>` scanning (priority hierarchy)\n4. **Potentially adding a programmatic mechanism** in `session-capability.ts` to auto-inject relevant skills per capability, so we don't rely solely on prompt text\n\nKey files:\n- All prompts in `src/prompts/`\n- `src/prompts/_skill-loading.md` — shared skill loading instructions injected into all sessions\n- `src/capabilities/session-capability.ts` — prompt injection logic (resources_discover + before_agent_start)\n- All skills in `src/skills/` — pio, pio-planning, pio-git, test-driven-development, pio-project-knowledge, write-a-skill, grill-me\n- External skills may also be relevant: ask-user, source-research, web-browser, pi-intercom\n\nThe mapping problem: which skills are most relevant per capability?\n- create-goal: pio (mandatory), pio-planning, grill-me, ask-user, pio-git (branch checkout)\n- create-plan: pio (mandatory), pio-planning, grill-me, ask-user, source-research (deep research)\n- evolve-plan: pio (mandatory), pio-planning (step structure)\n- execute-task: pio (mandatory), test-driven-development, pio-git (commits), plus TASK.md \"## Skills\" section from spec writer\n- review-code: pio (mandatory), test-driven-development, pio-git, ask-user\n- execute-plan: pio (mandatory), test-driven-development, pio-git\n- revise-plan: pio (mandatory), pio-planning, grill-me, ask-user\n- project-context: pio (mandatory), pio-project-knowledge, source-research, ask-user\n- finalize-goal: pio (mandatory), pio-project-knowledge, pio-git (PR creation)\n\nPlease define this goal with appropriate current state and to-be state.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-25T10:52:39.049Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "skill-prioritization",
+        "initialMessage": "The problem: each pio capability (create-goal, create-plan, evolve-plan, execute-task, review-code, execute-plan, revise-plan, project-context, finalize-goal) has a prompt template in `src/prompts/`. These prompts are injected into sub-sessions via the custom message system. The LLM sees all available skills in `<available_skills>` from the system prompt, plus the generic `_skill-loading.md` instructions telling it to \"scan and load matching skills.\"\n\nHowever, this heuristic scanning doesn't guarantee the LLM will prioritize the most relevant skills for each specific capability. Some prompts already have a \"Skill References\" section (create-plan, create-goal, revise-plan, execute-task), but others don't (review-code, execute-plan, project-context) or are inconsistent in format and completeness.\n\nThe goal: make sure each capability prompt explicitly surfaces its most relevant skills so the LLM is more likely to consider them. This could involve:\n\n1. **Adding explicit \"Skill References\" sections** to prompts that lack them (review-code, execute-plan, project-context)\n2. **Standardizing the format** across all prompts — consistent section name, clear mandatory vs. recommended distinction\n3. **Improving `_skill-loading.md`** to make it clearer how capability-specific skill references interact with the general `<available_skills>` scanning (priority hierarchy)\n4. **Potentially adding a programmatic mechanism** in `session-capability.ts` to auto-inject relevant skills per capability, so we don't rely solely on prompt text\n\nKey files:\n- All prompts in `src/prompts/`\n- `src/prompts/_skill-loading.md` — shared skill loading instructions injected into all sessions\n- `src/capabilities/session-capability.ts` — prompt injection logic (resources_discover + before_agent_start)\n- All skills in `src/skills/` — pio, pio-planning, pio-git, test-driven-development, pio-project-knowledge, write-a-skill, grill-me\n- External skills may also be relevant: ask-user, source-research, web-browser, pi-intercom\n\nThe mapping problem: which skills are most relevant per capability?\n- create-goal: pio (mandatory), pio-planning, grill-me, ask-user, pio-git (branch checkout)\n- create-plan: pio (mandatory), pio-planning, grill-me, ask-user, source-research (deep research)\n- evolve-plan: pio (mandatory), pio-planning (step structure)\n- execute-task: pio (mandatory), test-driven-development, pio-git (commits), plus TASK.md \"## Skills\" section from spec writer\n- review-code: pio (mandatory), test-driven-development, pio-git, ask-user\n- execute-plan: pio (mandatory), test-driven-development, pio-git\n- revise-plan: pio (mandatory), pio-planning, grill-me, ask-user\n- project-context: pio (mandatory), pio-project-knowledge, source-research, ask-user\n- finalize-goal: pio (mandatory), pio-project-knowledge, pio-git (PR creation)\n\nPlease define this goal with appropriate current state and to-be state.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-25T10:55:18.326Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "skill-prioritization",
+        "initialMessage": "The problem: each pio capability (create-goal, create-plan, evolve-plan, execute-task, review-code, execute-plan, revise-plan, project-context, finalize-goal) has a prompt template in `src/prompts/`. These prompts are injected into sub-sessions via the custom message system. The LLM sees all available skills in `<available_skills>` from the system prompt, plus the generic `_skill-loading.md` instructions telling it to \"scan and load matching skills.\"\n\nHowever, this heuristic scanning doesn't guarantee the LLM will prioritize the most relevant skills for each specific capability. Some prompts already have a \"Skill References\" section (create-plan, create-goal, revise-plan, execute-task), but others don't (review-code, execute-plan, project-context) or are inconsistent in format and completeness.\n\nThe goal: make sure each capability prompt explicitly surfaces its most relevant skills so the LLM is more likely to consider them. This could involve:\n\n1. **Adding explicit \"Skill References\" sections** to prompts that lack them (review-code, execute-plan, project-context)\n2. **Standardizing the format** across all prompts — consistent section name, clear mandatory vs. recommended distinction\n3. **Improving `_skill-loading.md`** to make it clearer how capability-specific skill references interact with the general `<available_skills>` scanning (priority hierarchy)\n4. **Potentially adding a programmatic mechanism** in `session-capability.ts` to auto-inject relevant skills per capability, so we don't rely solely on prompt text\n\nKey files:\n- All prompts in `src/prompts/`\n- `src/prompts/_skill-loading.md` — shared skill loading instructions injected into all sessions\n- `src/capabilities/session-capability.ts` — prompt injection logic (resources_discover + before_agent_start)\n- All skills in `src/skills/` — pio, pio-planning, pio-git, test-driven-development, pio-project-knowledge, write-a-skill, grill-me\n- External skills may also be relevant: ask-user, source-research, web-browser, pi-intercom\n\nThe mapping problem: which skills are most relevant per capability?\n- create-goal: pio (mandatory), pio-planning, grill-me, ask-user, pio-git (branch checkout)\n- create-plan: pio (mandatory), pio-planning, grill-me, ask-user, source-research (deep research)\n- evolve-plan: pio (mandatory), pio-planning (step structure)\n- execute-task: pio (mandatory), test-driven-development, pio-git (commits), plus TASK.md \"## Skills\" section from spec writer\n- review-code: pio (mandatory), test-driven-development, pio-git, ask-user\n- execute-plan: pio (mandatory), test-driven-development, pio-git\n- revise-plan: pio (mandatory), pio-planning, grill-me, ask-user\n- project-context: pio (mandatory), pio-project-knowledge, source-research, ask-user\n- finalize-goal: pio (mandatory), pio-project-knowledge, pio-git (PR creation)\n\nPlease define this goal with appropriate current state and to-be state.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-25T11:02:52.736Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "skill-prioritization",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "skill-prioritization",
+          "initialMessage": "The problem: each pio capability (create-goal, create-plan, evolve-plan, execute-task, review-code, execute-plan, revise-plan, project-context, finalize-goal) has a prompt template in `src/prompts/`. These prompts are injected into sub-sessions via the custom message system. The LLM sees all available skills in `<available_skills>` from the system prompt, plus the generic `_skill-loading.md` instructions telling it to \"scan and load matching skills.\"\n\nHowever, this heuristic scanning doesn't guarantee the LLM will prioritize the most relevant skills for each specific capability. Some prompts already have a \"Skill References\" section (create-plan, create-goal, revise-plan, execute-task), but others don't (review-code, execute-plan, project-context) or are inconsistent in format and completeness.\n\nThe goal: make sure each capability prompt explicitly surfaces its most relevant skills so the LLM is more likely to consider them. This could involve:\n\n1. **Adding explicit \"Skill References\" sections** to prompts that lack them (review-code, execute-plan, project-context)\n2. **Standardizing the format** across all prompts — consistent section name, clear mandatory vs. recommended distinction\n3. **Improving `_skill-loading.md`** to make it clearer how capability-specific skill references interact with the general `<available_skills>` scanning (priority hierarchy)\n4. **Potentially adding a programmatic mechanism** in `session-capability.ts` to auto-inject relevant skills per capability, so we don't rely solely on prompt text\n\nKey files:\n- All prompts in `src/prompts/`\n- `src/prompts/_skill-loading.md` — shared skill loading instructions injected into all sessions\n- `src/capabilities/session-capability.ts` — prompt injection logic (resources_discover + before_agent_start)\n- All skills in `src/skills/` — pio, pio-planning, pio-git, test-driven-development, pio-project-knowledge, write-a-skill, grill-me\n- External skills may also be relevant: ask-user, source-research, web-browser, pi-intercom\n\nThe mapping problem: which skills are most relevant per capability?\n- create-goal: pio (mandatory), pio-planning, grill-me, ask-user, pio-git (branch checkout)\n- create-plan: pio (mandatory), pio-planning, grill-me, ask-user, source-research (deep research)\n- evolve-plan: pio (mandatory), pio-planning (step structure)\n- execute-task: pio (mandatory), test-driven-development, pio-git (commits), plus TASK.md \"## Skills\" section from spec writer\n- review-code: pio (mandatory), test-driven-development, pio-git, ask-user\n- execute-plan: pio (mandatory), test-driven-development, pio-git\n- revise-plan: pio (mandatory), pio-planning, grill-me, ask-user\n- project-context: pio (mandatory), pio-project-knowledge, source-research, ask-user\n- finalize-goal: pio (mandatory), pio-project-knowledge, pio-git (PR creation)\n\nPlease define this goal with appropriate current state and to-be state.",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-25T11:07:02.018Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "skill-prioritization",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "skill-prioritization",
+          "initialMessage": "The problem: each pio capability (create-goal, create-plan, evolve-plan, execute-task, review-code, execute-plan, revise-plan, project-context, finalize-goal) has a prompt template in `src/prompts/`. These prompts are injected into sub-sessions via the custom message system. The LLM sees all available skills in `<available_skills>` from the system prompt, plus the generic `_skill-loading.md` instructions telling it to \"scan and load matching skills.\"\n\nHowever, this heuristic scanning doesn't guarantee the LLM will prioritize the most relevant skills for each specific capability. Some prompts already have a \"Skill References\" section (create-plan, create-goal, revise-plan, execute-task), but others don't (review-code, execute-plan, project-context) or are inconsistent in format and completeness.\n\nThe goal: make sure each capability prompt explicitly surfaces its most relevant skills so the LLM is more likely to consider them. This could involve:\n\n1. **Adding explicit \"Skill References\" sections** to prompts that lack them (review-code, execute-plan, project-context)\n2. **Standardizing the format** across all prompts — consistent section name, clear mandatory vs. recommended distinction\n3. **Improving `_skill-loading.md`** to make it clearer how capability-specific skill references interact with the general `<available_skills>` scanning (priority hierarchy)\n4. **Potentially adding a programmatic mechanism** in `session-capability.ts` to auto-inject relevant skills per capability, so we don't rely solely on prompt text\n\nKey files:\n- All prompts in `src/prompts/`\n- `src/prompts/_skill-loading.md` — shared skill loading instructions injected into all sessions\n- `src/capabilities/session-capability.ts` — prompt injection logic (resources_discover + before_agent_start)\n- All skills in `src/skills/` — pio, pio-planning, pio-git, test-driven-development, pio-project-knowledge, write-a-skill, grill-me\n- External skills may also be relevant: ask-user, source-research, web-browser, pi-intercom\n\nThe mapping problem: which skills are most relevant per capability?\n- create-goal: pio (mandatory), pio-planning, grill-me, ask-user, pio-git (branch checkout)\n- create-plan: pio (mandatory), pio-planning, grill-me, ask-user, source-research (deep research)\n- evolve-plan: pio (mandatory), pio-planning (step structure)\n- execute-task: pio (mandatory), test-driven-development, pio-git (commits), plus TASK.md \"## Skills\" section from spec writer\n- review-code: pio (mandatory), test-driven-development, pio-git, ask-user\n- execute-plan: pio (mandatory), test-driven-development, pio-git\n- revise-plan: pio (mandatory), pio-planning, grill-me, ask-user\n- project-context: pio (mandatory), pio-project-knowledge, source-research, ask-user\n- finalize-goal: pio (mandatory), pio-project-knowledge, pio-git (PR creation)\n\nPlease define this goal with appropriate current state and to-be state.",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-25T11:09:36.904Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-25T11:11:54.851Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-25T11:13:23.778Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-25T11:14:51.900Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-25T11:20:10.242Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-25T11:27:02.721Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-25T11:28:41.750Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-25T11:31:17.948Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-25T11:36:11.398Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-25T11:53:17.220Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-25T11:56:32.368Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-25T12:02:18.282Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-25T12:04:34.777Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-25T12:47:08.395Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-25T12:49:34.709Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-25T12:53:04.784Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-25T12:54:35.008Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-25T12:56:39.343Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-25T12:59:02.776Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-25T13:04:59.525Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-25T13:07:58.235Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-25T13:10:39.108Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-25T13:14:32.048Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-25T13:16:37.284Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-25T13:18:29.199Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-25T13:21:47.521Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-25T13:21:53.088Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-25T13:26:06.189Z",
+    "from": "evolve-plan",
+    "to": "revise-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "revisionTriggerStep": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-25T13:26:10.226Z",
+    "from": "evolve-plan",
+    "to": "revise-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "revisionTriggerStep": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-25T14:28:20.616Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "skill-prioritization"
+    }
+  },
+  {
+    "timestamp": "2026-05-25T14:28:28.988Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "skill-prioritization"
+    }
+  },
+  {
+    "timestamp": "2026-05-25T14:33:50.584Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "skill-prioritization"
+    }
+  },
+  {
+    "timestamp": "2026-05-25T14:38:52.814Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "skill-prioritization"
+    }
+  },
+  {
+    "timestamp": "2026-05-25T14:39:55.856Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-25T14:43:25.743Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-25T14:44:45.789Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-25T14:45:55.143Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-25T14:48:05.987Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-25T14:48:53.736Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-25T14:49:58.862Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-25T14:58:43.929Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-25T15:01:34.389Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-25T15:03:14.949Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 7
+    }
+  },
+  {
+    "timestamp": "2026-05-25T15:05:03.819Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-25T15:09:10.174Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-25T15:15:17.272Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-25T15:17:24.116Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-25T15:22:42.381Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-25T15:32:53.912Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-25T15:34:25.986Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-25T15:41:11.404Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 8
+    }
+  },
+  {
+    "timestamp": "2026-05-25T15:45:19.139Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "skill-prioritization",
+      "stepNumber": 9
+    }
+  },
+  {
+    "timestamp": "2026-05-25T15:45:56.929Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "skill-prioritization",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/skill-prioritization",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  },
+  {
+    "timestamp": "2026-05-25T15:50:47.117Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "skill-prioritization",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/skill-prioritization",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  }
+]

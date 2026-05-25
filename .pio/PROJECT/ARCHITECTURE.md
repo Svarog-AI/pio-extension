@@ -27,8 +27,8 @@ Each workflow capability follows a consistent module structure:
 
 The `session-capability.ts` module orchestrates sub-sessions:
 1. **Launch:** `launchCapability()` calls `ctx.newSession()` with a custom `pio-config` entry containing prompt, working directory, validation rules, and file protections
-2. **Resources discover:** Config is read, prompts loaded, `prepareSession` hooks run, session name set
-3. **Before agent start:** `.pio/PROJECT/OVERVIEW.md` + `_skill-loading.md` + capability prompt are injected as a custom conversation message (preserves pi's default system prompt). Model switching occurs here if `~/.pi/pio-config.yaml` specifies per-capability models
+2. **Resources discover:** Config is read, prompts loaded, `prepareSession` hooks run, session name set. Capabilities can define `prepareSession` callbacks (e.g., `execute-task`, `review-task`) that execute here — before `before_agent_start`. This allows runtime config enrichment: execute-task and review-task use `prepareSession` to read per-step skills from TASK.md frontmatter and merge them into the capability config via `setMergedSkills()`.
+3. **Before agent start:** `.pio/PROJECT/OVERVIEW.md` + capability prompt are injected as a custom conversation message (preserves pi's default system prompt). Model switching occurs here if `~/.pi/pio-config.yaml` specifies per-capability models. Skill loading runs via `buildSkillLoadingSection()`: mandatory skills from the config are frontmatter-stripped and wrapped in `<skill>` XML tags; recommended skills listed as instructions. Global defaults (`pio`, `ask-user`) are always prepended.
 4. **File protection:** The `tool_call` event handler enforces read-only files and write allowlists, with a default-deny policy for `.pio/` writes outside the session's own goal workspace
 5. **Plan revision trigger:** During evolve-plan, if the specification writer detects significant divergence from the plan, it writes a `REVISE_PLAN_NEEDED` marker in the step folder. The transition resolver checks for this marker and routes to `revise-plan` instead of continuing normally
 6. **Completion:** Agent calls `pio_mark_complete`, which validates outputs, automates review-code markers (APPROVED/REJECTED), resolves transitions, and auto-enqueues the next task
@@ -50,6 +50,16 @@ Plan steps declared with `complexity: "subgoal"` in the PLAN.md frontmatter `ste
 5. **Detection mechanism:** Frontmatter-only — no regex heading parsing or `[subgoal]` body annotations. The `steps` array in PLAN.md frontmatter is the single source of truth
 6. **Universal TASK.md:** Both `execute-task` and subgoal `create-goal` read TASK.md. Evolve-plan produces only TASK.md; tests are derived at execute-time by the executor using the `test-driven-development` skill
 7. **Backward compatible:** Flat goals without subgoal metadata function identically — `planMetadata()` returns null for old plans, `getMetadata()` defaults `complexity` to `"task"`
+
+### Skill Injection Architecture
+
+Skills are loaded dynamically at session startup, replacing the old static `_skill-loading.md` approach. Resolution order (highest priority first):
+
+1. **Per-step skills** — Declared in TASK.md YAML frontmatter (`skills.mandatory`, `skills.recommended`). Read by `StepStatus.taskSkills()` during `prepareSession`. Merged with base config skills via `mergeCapabilitySkills()` (Set-based dedup for mandatory, Map-based first-seen-wins for recommended).
+2. **Base capability skills** — Declared in each capability's `CAPABILITY_CONFIG.skills` field (`StaticCapabilityConfig`). Propagated through `resolveCapabilityConfig()` into runtime `CapabilityConfig`.
+3. **Global mandatory skills** — `pio` and `ask-user` are always injected by `buildSkillLoadingSection()`, regardless of capability config.
+
+Mandatory skills are force-injected (content read from disk, frontmatter stripped, wrapped in `<skill>` XML tags). Recommended skills are listed as loading instructions (LLM decides whether to load based on condition).
 
 ### Key Design Decisions
 

@@ -63,6 +63,7 @@ pio-extension/
 │   │   └── write-a-skill/SKILL.md — Skill authoring guide (structure, progressive disclosure, bundled resources)
 │   ├── index.ts               # Extension entry point — wires all capabilities into pi API
 │   ├── types.ts               # Shared type definitions (ValidationRule, CapabilityConfig, etc.)
+│   ├── frontmatter-schemas.ts # TypeBox schemas for YAML frontmatter validation (PLAN, TASK, REVIEW)
 │   ├── fs-utils.ts            # Filesystem helpers (resolveGoalDir, stepFolderName, discoverNextStep)
 │   ├── capability-config.ts   # Resolve capability name → full CapabilityConfig (dynamic imports)
 │   ├── goal-state.ts          # GoalState — lazy-evaluated filesystem view over goal workspace

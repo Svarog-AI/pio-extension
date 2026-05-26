@@ -181,6 +181,7 @@ Write a `REVISE_PLAN_NEEDED` marker file inside the current `S{NN}/` folder (sam
 2. **Requires completed changes:** Decisions require changes to implementations in already-completed previous steps.
 3. **Additional steps needed:** Decisions require additional steps beyond what the plan accounts for.
 4. **Significant divergence:** The next step's spec diverges significantly from the original plan, making it confusing to read both side by side.
+5. **Probing gate discovery:** The Probing Gate (Step 5) revealed that any of the above conditions are already true before specification began — for example, research during probing uncovered hidden dependencies, constraints, or scope gaps that make the current plan unworkable as-is.
 
 #### When NOT to write the marker
 
@@ -195,7 +196,7 @@ Write `REVISE_PLAN_NEEDED` as a markdown file with YAML frontmatter:
 
 ```yaml
 ---
-reason: "impossible_future_steps" | "requires_completed_changes" | "additional_steps_needed" | "significant_divergence"
+reason: "impossible_future_steps" | "requires_completed_changes" | "additional_steps_needed" | "significant_divergence" | "probing_gate_discovery"
 decisions:
   - "decision description 1"
   - "decision description 2"

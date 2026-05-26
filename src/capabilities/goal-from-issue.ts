@@ -62,7 +62,7 @@ const goalFromIssueTool = defineTool({
       capability: "create-goal",
       params: {
         goalName,
-        initialMessage: `Convert the following issue into a goal:\n\nIssue file: ${validation.issuePath}`,
+        initialMessage: `The following issue has been selected for this goal. Use its content as starting context:\n\nIssue file: ${validation.issuePath}`,
         fileCleanup: [validation.issuePath!],
       },
     });
@@ -99,7 +99,7 @@ async function handleGoalFromIssue(args: string | undefined, ctx: ExtensionComma
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "create-goal",
     goalName,
-    initialMessage: `Convert the following issue into a goal:\n\nIssue file: ${validation.issuePath}`,
+    initialMessage: `The following issue has been selected for this goal. Use its content as starting context:\n\nIssue file: ${validation.issuePath}`,
     fileCleanup: [validation.issuePath!],
   });
   if (!config) {

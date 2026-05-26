@@ -33,6 +33,15 @@ As part of the deep research step, leverage the user as an authorative source on
 
 Before designing implementation steps, engage the user to confirm findings and gather input. This is where you close gaps that research alone cannot resolve.
 
+**Verify dimensions before designing steps:** Before designing steps, verify the following dimensions. Follow the `grill-me` skill for probing technique — walk decision trees, follow implications, and one question at a time.
+
+- **Feasibility:** Can the proposed approach actually work? Are there hidden dependencies, tooling gaps, or architectural constraints that make the plan infeasible?
+- **Scope completeness:** Does GOAL.md cover all necessary changes, or are hard decisions deferred that will bite during implementation?
+- **Constraints from existing code:** What conventions, patterns, or shared utilities must the plan respect to stay consistent with the codebase?
+- **Downstream impact on consumers:** Who consumes the output of this work? What breaks if we get it wrong?
+
+If any dimension cannot be answered from research or user input, ask before proceeding.
+
 **Present findings:** Summarize what your research uncovered — key files and modules, dependencies discovered, hidden complexity, and any risks or constraints. Keep this concise — the user already knows their goal from GOAL.md. Focus on what's *new* or *surprising*.
 
 **Architecture decisions:** When multiple valid approaches exist, present options with trade-offs using `ask_user`. Ask one decision at a time. Follow the ask-user skill protocol: gather context first, present 2-5 clear choices, max 2 attempts per boundary.

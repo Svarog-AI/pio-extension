@@ -1,0 +1,333 @@
+[
+  {
+    "timestamp": "2026-05-26T14:51:28.964Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "jira-integration",
+        "initialMessage": "Create two new commands and a skill for Jira integration via the Atlassian CLI (acli):\n\n## Commands to create\n\n### 1. `jira-to-issue` (`/pio-jira-to-issue` command + `pio_jira_to_issue` tool)\n- Takes a Jira ticket key (e.g., `PROJ-123`) as input\n- Uses `acli jira workitem view PROJ-123 --json` to fetch ticket details\n- Creates a corresponding `.pio/issues/<slug>.md` issue file in the repository\n- Slug should be derived from the Jira key (e.g., `jira-proj-123`)\n- The issue title = Jira summary, description = Jira description\n- If an issue with that slug already exists, warn the user\n\n### 2. `issue-to-jira` (`/pio-issue-to-jira` command + `pio_issue_to_jira` tool)\n- Takes a local issue slug (e.g., `fix-type-error`) as input  \n- Reads `.pio/issues/<slug>.md` to get title and description\n- Uses `acli jira workitem create --summary \"...\" --project \"PROJ\" --type \"Task\" --description \"...\"` to create the Jira ticket\n- Requires a `--project` parameter (or reads from config)\n- Returns the created Jira key in the output\n\n### 3. Skill: `pio-jira` (`src/skills/pio-jira/SKILL.md`)\n- Instructs agents on how to use the `acli` tool for Jira operations\n- Cover: auth status check, creating tickets, reading tickets, searching with JQL\n- Note that `--json` flag should be used for programmatic output\n- Mention error handling: if acli is not installed or user not authenticated\n\n## Important constraints\n\n1. **acli must exist**: Both commands should check if `acli` is available (using `which acli` equivalent) and return a helpful error asking the user to install it if not found\n2. **Authentication**: Auth is handled automatically via `acli auth login` (browser OAuth). The commands don't need manual credential management — if not authenticated, `acli` will return an \"unauthorized\" error. The skill should explain this flow\n3. **JSON output**: Always use `--json` flag with acli for programmatic parsing of results\n4. **Research needed**: The implementer may not be familiar with acli internals. They should research the tool's help output to understand exact flags, JSON structure of responses, and error messages before implementing\n\n## Reference: existing patterns\n- Look at `src/capabilities/create-issue.ts` for how issue creation works (the `createIssue` function, tool definition, command handler)\n- Skills auto-discover from `src/skills/*/SKILL.md` — adding a new skill is just creating the directory and file\n- Register in `src/index.ts` via `setup...` import and call",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-26T15:14:33.426Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "jira-integration",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "jira-integration",
+          "initialMessage": "Create two new commands and a skill for Jira integration via the Atlassian CLI (acli):\n\n## Commands to create\n\n### 1. `jira-to-issue` (`/pio-jira-to-issue` command + `pio_jira_to_issue` tool)\n- Takes a Jira ticket key (e.g., `PROJ-123`) as input\n- Uses `acli jira workitem view PROJ-123 --json` to fetch ticket details\n- Creates a corresponding `.pio/issues/<slug>.md` issue file in the repository\n- Slug should be derived from the Jira key (e.g., `jira-proj-123`)\n- The issue title = Jira summary, description = Jira description\n- If an issue with that slug already exists, warn the user\n\n### 2. `issue-to-jira` (`/pio-issue-to-jira` command + `pio_issue_to_jira` tool)\n- Takes a local issue slug (e.g., `fix-type-error`) as input  \n- Reads `.pio/issues/<slug>.md` to get title and description\n- Uses `acli jira workitem create --summary \"...\" --project \"PROJ\" --type \"Task\" --description \"...\"` to create the Jira ticket\n- Requires a `--project` parameter (or reads from config)\n- Returns the created Jira key in the output\n\n### 3. Skill: `pio-jira` (`src/skills/pio-jira/SKILL.md`)\n- Instructs agents on how to use the `acli` tool for Jira operations\n- Cover: auth status check, creating tickets, reading tickets, searching with JQL\n- Note that `--json` flag should be used for programmatic output\n- Mention error handling: if acli is not installed or user not authenticated\n\n## Important constraints\n\n1. **acli must exist**: Both commands should check if `acli` is available (using `which acli` equivalent) and return a helpful error asking the user to install it if not found\n2. **Authentication**: Auth is handled automatically via `acli auth login` (browser OAuth). The commands don't need manual credential management — if not authenticated, `acli` will return an \"unauthorized\" error. The skill should explain this flow\n3. **JSON output**: Always use `--json` flag with acli for programmatic parsing of results\n4. **Research needed**: The implementer may not be familiar with acli internals. They should research the tool's help output to understand exact flags, JSON structure of responses, and error messages before implementing\n\n## Reference: existing patterns\n- Look at `src/capabilities/create-issue.ts` for how issue creation works (the `createIssue` function, tool definition, command handler)\n- Skills auto-discover from `src/skills/*/SKILL.md` — adding a new skill is just creating the directory and file\n- Register in `src/index.ts` via `setup...` import and call",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-26T15:19:34.162Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-26T15:24:22.621Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-26T15:28:20.312Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-26T15:33:27.815Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-26T15:36:18.039Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-26T15:39:20.869Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-26T15:41:25.475Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-26T15:43:59.433Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-26T15:47:41.645Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-26T15:49:56.924Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-26T15:57:30.938Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-26T16:11:57.607Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-26T16:16:41.906Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-26T16:30:02.263Z",
+    "from": "evolve-plan",
+    "to": "revise-plan",
+    "params": {
+      "goalName": "jira-integration",
+      "revisionTriggerStep": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-26T16:36:31.065Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "jira-integration"
+    }
+  },
+  {
+    "timestamp": "2026-05-26T16:36:44.383Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "jira-integration"
+    }
+  },
+  {
+    "timestamp": "2026-05-26T16:39:13.164Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-26T16:52:53.757Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-26T16:53:53.849Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-26T16:55:32.413Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-26T18:52:28.516Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-26T18:53:28.859Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-26T18:54:30.189Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-26T18:55:31.180Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-26T18:55:54.411Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "jira-integration",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/jira-integration",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  },
+  {
+    "timestamp": "2026-05-26T18:59:18.413Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "jira-integration",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/jira-integration",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:00:48.552Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "jira-integration"
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:02:11.881Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "jira-integration",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/jira-integration",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:04:43.247Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:05:07.356Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:07:49.667Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 5
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:08:59.996Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "jira-integration",
+      "stepNumber": 6
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:09:21.611Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "jira-integration",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/jira-integration",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  }
+]

@@ -1,0 +1,183 @@
+[
+  {
+    "timestamp": "2026-05-26T19:15:34.038Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "improve-pio-jira-config-setup",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "improve-pio-jira-config-setup",
+        "initialMessage": "Improve the pio-jira skill by adding instructions to set up the Jira config file (`.pio/jira-config.yaml`) when it doesn't exist. Currently the skill references this config for project key resolution during push operations, but there's no guidance on how to create or populate it when a project is new or the file is missing.\n\nThe improvement should cover:\n1. When to prompt/setup the config (first Jira operation, before push, etc.)\n2. How to collect the project key from the user (ask_user)\n3. What defaults to use for optional fields (defaultType)\n4. How to write the file using the bash tool (mkdir + write)\n5. Where in the existing workflow this setup step should be inserted",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:18:18.222Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "improve-pio-jira-config-setup",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "improve-pio-jira-config-setup",
+        "initialMessage": "Improve the pio-jira skill by adding instructions to set up the Jira config file (`.pio/jira-config.yaml`) when it doesn't exist. Currently the skill references this config for project key resolution during push operations, but there's no guidance on how to create or populate it when a project is new or the file is missing.\n\nThe improvement should cover:\n1. When to prompt/setup the config (first Jira operation, before push, etc.)\n2. How to collect the project key from the user (ask_user)\n3. What defaults to use for optional fields (defaultType)\n4. How to write the file using the bash tool (mkdir + write)\n5. Where in the existing workflow this setup step should be inserted",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:19:24.171Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "improve-pio-jira-config-setup",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "improve-pio-jira-config-setup",
+        "initialMessage": "Improve the pio-jira skill by adding instructions to set up the Jira config file (`.pio/jira-config.yaml`) when it doesn't exist. Currently the skill references this config for project key resolution during push operations, but there's no guidance on how to create or populate it when a project is new or the file is missing.\n\nThe improvement should cover:\n1. When to prompt/setup the config (first Jira operation, before push, etc.)\n2. How to collect the project key from the user (ask_user)\n3. What defaults to use for optional fields (defaultType)\n4. How to write the file using the bash tool (mkdir + write)\n5. Where in the existing workflow this setup step should be inserted",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:19:27.176Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "improve-pio-jira-config-setup",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "improve-pio-jira-config-setup",
+        "initialMessage": "Improve the pio-jira skill by adding instructions to set up the Jira config file (`.pio/jira-config.yaml`) when it doesn't exist. Currently the skill references this config for project key resolution during push operations, but there's no guidance on how to create or populate it when a project is new or the file is missing.\n\nThe improvement should cover:\n1. When to prompt/setup the config (first Jira operation, before push, etc.)\n2. How to collect the project key from the user (ask_user)\n3. What defaults to use for optional fields (defaultType)\n4. How to write the file using the bash tool (mkdir + write)\n5. Where in the existing workflow this setup step should be inserted",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:22:33.034Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "improve-pio-jira-config-setup",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "improve-pio-jira-config-setup",
+        "initialMessage": "Improve the pio-jira skill by adding instructions to set up the Jira config file (`.pio/jira-config.yaml`) when it doesn't exist. Currently the skill references this config for project key resolution during push operations, but there's no guidance on how to create or populate it when a project is new or the file is missing.\n\nThe improvement should cover:\n1. When to prompt/setup the config (first Jira operation, before push, etc.)\n2. How to collect the project key from the user (ask_user)\n3. What defaults to use for optional fields (defaultType)\n4. How to write the file using the bash tool (mkdir + write)\n5. Where in the existing workflow this setup step should be inserted",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:22:36.462Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "improve-pio-jira-config-setup",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "improve-pio-jira-config-setup",
+        "initialMessage": "Improve the pio-jira skill by adding instructions to set up the Jira config file (`.pio/jira-config.yaml`) when it doesn't exist. Currently the skill references this config for project key resolution during push operations, but there's no guidance on how to create or populate it when a project is new or the file is missing.\n\nThe improvement should cover:\n1. When to prompt/setup the config (first Jira operation, before push, etc.)\n2. How to collect the project key from the user (ask_user)\n3. What defaults to use for optional fields (defaultType)\n4. How to write the file using the bash tool (mkdir + write)\n5. Where in the existing workflow this setup step should be inserted",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:24:16.276Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "improve-pio-jira-config-setup",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "improve-pio-jira-config-setup",
+        "initialMessage": "Improve the pio-jira skill by adding instructions to set up the Jira config file (`.pio/jira-config.yaml`) when it doesn't exist. Currently the skill references this config for project key resolution during push operations, but there's no guidance on how to create or populate it when a project is new or the file is missing.\n\nThe improvement should cover:\n1. When to prompt/setup the config (first Jira operation, before push, etc.)\n2. How to collect the project key from the user (ask_user)\n3. What defaults to use for optional fields (defaultType)\n4. How to write the file using the bash tool (mkdir + write)\n5. Where in the existing workflow this setup step should be inserted",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:26:48.529Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "improve-pio-jira-config-setup",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "improve-pio-jira-config-setup",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "improve-pio-jira-config-setup",
+          "initialMessage": "Improve the pio-jira skill by adding instructions to set up the Jira config file (`.pio/jira-config.yaml`) when it doesn't exist. Currently the skill references this config for project key resolution during push operations, but there's no guidance on how to create or populate it when a project is new or the file is missing.\n\nThe improvement should cover:\n1. When to prompt/setup the config (first Jira operation, before push, etc.)\n2. How to collect the project key from the user (ask_user)\n3. What defaults to use for optional fields (defaultType)\n4. How to write the file using the bash tool (mkdir + write)\n5. Where in the existing workflow this setup step should be inserted",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:26:50.813Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "improve-pio-jira-config-setup",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "improve-pio-jira-config-setup",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "improve-pio-jira-config-setup",
+          "initialMessage": "Improve the pio-jira skill by adding instructions to set up the Jira config file (`.pio/jira-config.yaml`) when it doesn't exist. Currently the skill references this config for project key resolution during push operations, but there's no guidance on how to create or populate it when a project is new or the file is missing.\n\nThe improvement should cover:\n1. When to prompt/setup the config (first Jira operation, before push, etc.)\n2. How to collect the project key from the user (ask_user)\n3. What defaults to use for optional fields (defaultType)\n4. How to write the file using the bash tool (mkdir + write)\n5. Where in the existing workflow this setup step should be inserted",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:27:50.421Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "improve-pio-jira-config-setup",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:30:02.973Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "improve-pio-jira-config-setup",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:32:41.873Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "improve-pio-jira-config-setup",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:35:46.968Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "improve-pio-jira-config-setup",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-26T19:35:56.938Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "improve-pio-jira-config-setup",
+      "stepNumber": 1
+    }
+  }
+]

@@ -19,15 +19,15 @@ Before any Jira operation, verify authentication:
 
 ## Jira Config Setup
 
-During Push, when `.pio/jira-config.yaml` is missing and no project key was provided inline:
+Before any Jira operation, when `.pio/jira-config.yaml` is missing:
 
 1. **Auth prerequisite:** Run the Auth Status Check protocol first. If not authenticated, guide the user through `acli jira auth login`. Proceed only after auth is confirmed.
 2. **Collect site URL:** Call `ask_user` with freeform input: "Which Jira site should we use? (e.g., https://mycompany.atlassian.net)"
-3. **Collect project key:** Call `ask_user` with freeform input: "Which Jira project should we push issues to?" (project keys are short codes like `PROJ`)
+3. **Collect project key:** Call `ask_user` with freeform input: "Which Jira project should we use?" (project keys are short codes like `PROJ`)
 4. **Create the config:** Run via the `bash` tool:
    `bash src/skills/pio-jira/scripts/setup-config.sh SITE PROJECT_KEY [DEFAULT_TYPE]`
    `DEFAULT_TYPE` is optional, defaults to `"Task"`. Paths resolve from project root.
-5. **Resume push:** After setup exits 0, proceed with the original push using values from the new config.
+5. **Resume operation:** After setup exits 0, proceed with the original Jira operation using values from the new config.
 
 See [REFERENCE.md](REFERENCE.md) for execution details.
 

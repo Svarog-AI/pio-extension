@@ -252,6 +252,17 @@ describe("runAcli", () => {
 
     expect((result as { error?: string }).error).toBeDefined();
   });
+
+  it("returns AcliError when acli exits non-zero even with valid JSON", async () => {
+    mockSpawn.mockReturnValue(
+      createMockChild([JSON.stringify({ key: "PROJ-123" })], ["operation failed"], 1),
+    );
+
+    const result = await runAcli(tempDir, ["jira", "workitem", "view", "PROJ-123"]);
+
+    expect((result as { error?: string }).error).toBeDefined();
+    expect((result as { error?: string }).error).toContain("1");
+  });
 });
 
 // ---------------------------------------------------------------------------

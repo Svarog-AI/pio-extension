@@ -111,6 +111,17 @@ export async function runAcli(
         return;
       }
 
+      // Non-zero exit code — treat as error even if JSON parsed successfully
+      if (exitCode != null && exitCode !== 0) {
+        resolve({
+          error: `acli exited with code ${exitCode}. Stderr: ${stderrData || "(none)"}`,
+          stdout: parsed,
+          stderr: stderrData || undefined,
+          exitCode,
+        });
+        return;
+      }
+
       resolve({
         stdout: parsed,
         stderr: stderrData || undefined,

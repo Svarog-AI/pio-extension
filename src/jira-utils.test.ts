@@ -142,7 +142,10 @@ describe("runAcli", () => {
     runAcli = mod.runAcli;
   });
 
-  // Helper to create a mock child process emitter
+  // Helper to create a mock child process emitter.
+  // Models real child_process semantics: when errorEvent is set, only the
+  // `error` event fires (no process was spawned → no `close`). When no
+  // errorEvent, only `close` fires after data events.
   function createMockChild(
     stdoutChunks: string[] = [],
     stderrChunks: string[] = [],
@@ -175,11 +178,16 @@ describe("runAcli", () => {
         emitter._listeners[event] = emitter._listeners[event] || [];
         emitter._listeners[event].push(handler);
 
-        if (event === "error" && errorEvent) {
-          handler(errorEvent);
-        }
-        if (event === "close") {
-          handler(exitCode);
+        if (errorEvent) {
+          // Error event path: process never spawned → only fire `error`, never `close`
+          if (event === "error") {
+            handler(errorEvent);
+          }
+        } else {
+          // Normal path: process ran → fire `close` with exit code
+          if (event === "close") {
+            handler(exitCode);
+          }
         }
 
         return emitter;
@@ -201,7 +209,7 @@ describe("runAcli", () => {
 
   it("returns AcliError when acli output contains unauthorized in stderr", async () => {
     mockSpawn.mockReturnValue(
-      createMockChild([], [], 0, new Error("unauthorized: use 'acli jira auth login' to authenticate")),
+      createMockChild([], ["unauthorized: use 'acli jira auth login' to authenticate"], 1),
     );
 
     const result = await runAcli(tempDir, ["jira", "workitem", "view", "PROJ-123"]);

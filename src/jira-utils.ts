@@ -173,8 +173,8 @@ export function readJiraConfig(cwd: string): JiraConfig | undefined {
     }
 
     const config: JiraConfig = {};
-    if (typeof projectKey === "string") config.projectKey = projectKey;
-    if (typeof defaultType === "string") config.defaultType = defaultType;
+    if (projectKey) config.projectKey = projectKey;
+    if (defaultType) config.defaultType = defaultType;
 
     return config;
   } catch {

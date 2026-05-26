@@ -1,35 +1,34 @@
-# Summary: Jira Utilities Module
+# Summary: Jira Utilities Module (Re-review)
 
 ## Status
 COMPLETED
 
 ## Files Created
-- `src/jira-utils.ts` — new module exporting `runAcli`, `readJiraConfig`, `jiraKeyToSlug` and interfaces `AcliResult`, `AcliError`, `JiraConfig`
-- `src/jira-utils.test.ts` — 15 unit tests covering all three functions and edge cases
-- `.pio/goals/jira-integration/S01/TEST.md` — test specification derived from acceptance criteria
+- (none — all files existed from previous attempt)
 
 ## Files Modified
-- (none)
+- `src/jira-utils.test.ts` — fixed `createMockChild` to emit only `error` OR `close` (never both), matching real `child_process` semantics; rewrote "unauthorized in stderr" test to use stderr data + close handler instead of error event
+- `src/jira-utils.ts` — removed dead `typeof` guards in `readJiraConfig` (values already validated as strings by earlier guards)
 
 ## Files Deleted
 - (none)
 
 ## Decisions Made
-- Used `spawn` from `node:child_process` with event-based data collection (stdout/stderr buffers) instead of `execFile` — gives full control over chunked output
-- Unauthorized detection is case-insensitive via `/unauthorized/i` regex applied to both stdout and stderr
-- ENOENT detection checks `err.message.includes("ENOENT")` — cross-platform, no `which` dependency
-- `readJiraConfig` follows the exact same pattern as `readConfig()` in `model-config.ts`: existence check → read → parse → validate → return
-- Returns `undefined` (not empty object) when config has no recognized string fields, matching the `readConfig()` convention of "no config = undefined"
-- `jiraKeyToSlug` is a pure function with no I/O — simple lowercase + prefix
+- No architectural changes — all fixes addressed review feedback only
+
+## Review Issues Addressed
+- **[CRITICAL]** Fixed "unauthorized in stderr" test: now uses `createMockChild([], ["unauthorized: ..."], 1)` to exercise the `close` handler's stderr parsing branch, matching TEST.md specification
+- **[HIGH]** Fixed `createMockChild` double-resolution: when `errorEvent` is set, only `error` fires (no `close`). When no error, only `close` fires. Correctly models child_process semantics
+- **[HIGH]** Removed dead `typeof` guards in `readJiraConfig`: `projectKey` and `defaultType` are already validated as strings by lines 128–134, making the guards at lines 135–143 unreachable
 
 ## User-Requested Changes
-- User requested moving `jira-utils.ts` from `src/capabilities/` to `src/` root (alongside `fs-utils.ts`, `model-config.ts`). Moved both source and test files.
+- (none)
 
 ## Test Coverage
 - 15 tests covering all three functions:
   - `jiraKeyToSlug`: 3 tests (uppercase, mixed-case, single-word)
   - `readJiraConfig`: 6 tests (missing file, empty file, valid YAML, partial fields, malformed YAML, non-string field)
-  - `runAcli`: 5 tests (ENOENT, unauthorized in error event, unauthorized in stdout, valid JSON, non-JSON)
+  - `runAcli`: 5 tests (ENOENT, unauthorized in stderr via close handler, unauthorized in stdout, valid JSON, non-JSON)
   - Module exports: 1 test (verifies all 3 functions are exported)
 - `npm run check` passes (tsc --noEmit, zero errors)
 - Full test suite passes (750/750 tests, zero regressions)

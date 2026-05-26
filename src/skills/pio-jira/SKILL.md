@@ -60,15 +60,16 @@ This is the natural "Jira → code" workflow: ticket → local issue → goal �
 Push a local `.pio/issues/<slug>.md` file to Jira. Follow this protocol:
 
 1. Read `.pio/issues/<slug>.md` — extract title (first `# heading`) and body (content after heading)
-2. Resolve project key from user parameter or `.pio/jira-config.yaml` (if it exists)
+2. Resolve project key from user parameter or `.pio/jira-config.yaml` — if missing, see **Jira Config Setup** above to create it first
 3. Run `acli jira workitem create --summary "..." --project "KEY" --type "Task" --description "..." --json`
 4. Parse JSON response to extract the created Jira key (likely `key` field)
 5. Report the created Jira key
 
 **Config file:** `.pio/jira-config.yaml` (optional, per-repo):
 ```yaml
-projectKey: "PROJ"      # default project for push operations
-defaultType: "Task"     # default Jira issue type
+site: "https://mycompany.atlassian.net"  # Jira site URL
+projectKey: "PROJ"                        # default project for push operations
+defaultType: "Task"                       # default Jira issue type
 ```
 All fields optional. No credentials — auth is handled by `acli` itself.
 

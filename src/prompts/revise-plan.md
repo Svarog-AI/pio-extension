@@ -59,6 +59,15 @@ This research ensures your new steps are grounded in the actual state of the cod
 
 Before designing new steps, engage the user to confirm the revision direction and negotiate any scope changes.
 
+**Verify dimensions before designing new steps:** Before designing new steps, verify the following dimensions. Follow the `grill-me` skill for probing technique — walk decision trees, follow implications, and one question at a time.
+
+- **Feasibility given completed work:** Can the new direction actually work with the implementations already approved? Are there architectural decisions in completed steps that conflict with the revised approach?
+- **Scope boundaries of remaining work:** Does the revised scope cover all necessary changes, or are hard decisions deferred to later executors?
+- **Constraints from completed implementations:** What patterns, interfaces, or conventions were established in completed steps that the revision must respect?
+- **Downstream impact on future executors:** Will specification choices in the new plan (file placement, interface signatures) break or confuse later step specs?
+
+If any dimension cannot be answered from research or user input, ask before proceeding.
+
 **Present what changed:** Summarize the revision trigger reason and how the remaining work differs from the archived plan. Make it clear what broke or shifted, and why a new plan is needed.
 
 **Validate assumptions:** Confirm the new direction aligns with user intent — especially around scope changes, architectural pivots, or decisions invalidated by completed work. Check that the user agrees with the approach the revision is taking.

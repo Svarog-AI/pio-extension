@@ -132,6 +132,69 @@ acli jira auth login
 # This opens a browser for OAuth authentication
 ```
 
+## Jira Config Setup — Execution
+
+### Step-by-step
+
+```bash
+# Step 1: Verify authentication
+acli jira auth status
+
+# Step 1b (if not authenticated): guide user through login
+# acli jira auth login
+# Wait for user to confirm authentication is complete
+
+# Step 2: Collect site URL
+# Use ask_user with the following payload:
+{
+  "question": "Which Jira site should we use? (e.g., https://mycompany.atlassian.net)",
+  "allowFreeform": true
+}
+# Store the response as $SITE
+
+# Step 3: Collect project key
+# Use ask_user with the following payload:
+{
+  "question": "Which Jira project should we use?",
+  "context": "Project keys are short codes like PROJ, JIRA, or MYAPP.",
+  "allowFreeform": true
+}
+# Store the response as $PROJECT_KEY
+
+# Step 4: Run the setup script with collected values
+bash src/skills/pio-jira/scripts/setup-config.sh "$SITE" "$PROJECT_KEY" [DEFAULT_TYPE]
+# DEFAULT_TYPE is optional — defaults to "Task"
+
+# Step 5: Verify success
+# Check exit code 0. Optionally verify the config file:
+# cat .pio/jira-config.yaml
+# Expected output:
+site: "https://mycompany.atlassian.net"
+projectKey: "PROJ"
+defaultType: "Task"
+
+# Step 6: Proceed with the original Jira operation using values from the new config
+```
+
+### Example ask_user payloads
+
+**Collect site URL:**
+```json
+{
+  "question": "Which Jira site should we use? (e.g., https://mycompany.atlassian.net)",
+  "allowFreeform": true
+}
+```
+
+**Collect project key:**
+```json
+{
+  "question": "Which Jira project should we use?",
+  "context": "Project keys are short codes like PROJ, JIRA, or MYAPP.",
+  "allowFreeform": true
+}
+```
+
 ## JQL Search — Execution
 
 ```bash
@@ -161,6 +224,16 @@ acli jira workitem search --jql "project = PROJ AND type = Bug AND priority = Hi
 | Empty description | Pass empty string to `pio_create_issue`, let tool handle defaults |
 | Network failure | `acli` exits non-zero → log stderr, proceed gracefully |
 | Goal workspace already exists | `pio_goal_from_issue` returns error: "Goal workspace already exists at ..." → advise using a different slug or deleting the existing goal first |
+
+### Jira Config Setup
+
+| Edge Case | Handling |
+|-----------|----------|
+| Config already exists (`.pio/jira-config.yaml` present) | Script overwrites silently (idempotent) — no special handling needed, but warn user that existing config will be replaced |
+| User not authenticated with `acli` | Run Auth Status Check first. If unauthenticated, guide through `acli jira auth login` before proceeding to ask_user calls |
+| Project key collection fails (user cancels `ask_user`) | Abort setup, report "Config setup cancelled" to user — do not create a partial config file |
+| Site URL collection fails (user cancels `ask_user`) | Abort setup, report "Config setup cancelled" to user — do not proceed to project key collection |
+| Script execution fails (disk full, permissions) | Check non-zero exit code, log stderr, report error to user |
 
 ### Push Local Issue → Jira
 

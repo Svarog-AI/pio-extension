@@ -14,7 +14,7 @@ import { issuesDir } from "../fs-utils";
  * Create an issue markdown file under .pio/issues/{slug}.md.
  * Returns error text if the slug is already taken.
  */
-async function createIssue(
+export async function createIssue(
   cwd: string,
   slug: string,
   title: string,

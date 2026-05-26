@@ -21,6 +21,7 @@ import { setupExecutePlan } from "./capabilities/execute-plan";
 import { setupNextTask } from "./capabilities/next-task";
 import { setupProjectContext } from "./capabilities/project-context";
 import { setupCreateIssue } from "./capabilities/create-issue";
+import { setupJiraToIssue } from "./capabilities/jira-to-issue";
 import { setupGoalFromIssue } from "./capabilities/goal-from-issue";
 import { setupListGoals } from "./capabilities/list-goals";
 import { setupFinalizeGoal } from "./capabilities/finalize-goal";
@@ -83,6 +84,7 @@ export default function (pi: ExtensionAPI) {
   setupNextTask(pi);
   setupProjectContext(pi);
   setupCreateIssue(pi);
+  setupJiraToIssue(pi);
   setupGoalFromIssue(pi);
   setupListGoals(pi);
   setupFinalizeGoal(pi);

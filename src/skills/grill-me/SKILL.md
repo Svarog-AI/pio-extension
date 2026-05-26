@@ -64,5 +64,3 @@ Apply these rules across all contexts. For tool mechanics (handshake, guardrails
 - Bundling multiple decisions into one question
 - Probing when the user's intent is already clear from existing documentation
 - Looping on the same question without new evidence or a narrower frame
-- Over-interviewing during goal definition (goal is directional, not a spec)
-- Skipping the "present what changed" step during plan revision

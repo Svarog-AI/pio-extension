@@ -4,8 +4,8 @@
 COMPLETED
 
 ## Files Created
-- `src/capabilities/jira-utils.ts` — new module exporting `runAcli`, `readJiraConfig`, `jiraKeyToSlug` and interfaces `AcliResult`, `AcliError`, `JiraConfig`
-- `src/capabilities/jira-utils.test.ts` — 15 unit tests covering all three functions and edge cases
+- `src/jira-utils.ts` — new module exporting `runAcli`, `readJiraConfig`, `jiraKeyToSlug` and interfaces `AcliResult`, `AcliError`, `JiraConfig`
+- `src/jira-utils.test.ts` — 15 unit tests covering all three functions and edge cases
 - `.pio/goals/jira-integration/S01/TEST.md` — test specification derived from acceptance criteria
 
 ## Files Modified
@@ -23,7 +23,7 @@ COMPLETED
 - `jiraKeyToSlug` is a pure function with no I/O — simple lowercase + prefix
 
 ## User-Requested Changes
-- (none)
+- User requested moving `jira-utils.ts` from `src/capabilities/` to `src/` root (alongside `fs-utils.ts`, `model-config.ts`). Moved both source and test files.
 
 ## Test Coverage
 - 15 tests covering all three functions:

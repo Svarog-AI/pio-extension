@@ -1,12 +1,13 @@
 #!/bin/sh
 # setup-config.sh — Create .pio/jira-config.yaml for pio-jira skill
-# Usage: setup-config.sh PROJECT_KEY [DEFAULT_TYPE]
+# Usage: setup-config.sh SITE PROJECT_KEY [DEFAULT_TYPE]
 
-PROJECT_KEY="$1"
-DEFAULT_TYPE="${2:-Task}"
+SITE="$1"
+PROJECT_KEY="$2"
+DEFAULT_TYPE="${3:-Task}"
 
-if [ -z "$PROJECT_KEY" ]; then
-  printf "Usage: setup-config.sh PROJECT_KEY [DEFAULT_TYPE]\n" >&2
+if [ -z "$SITE" ] || [ -z "$PROJECT_KEY" ]; then
+  printf "Usage: setup-config.sh SITE PROJECT_KEY [DEFAULT_TYPE]\n" >&2
   exit 1
 fi
 
@@ -17,10 +18,10 @@ if ! mkdir -p .pio; then
 fi
 
 # Write YAML config (idempotent — overwrites silently)
-if ! printf 'projectKey: "%s"\ndefaultType: "%s"\n' "$PROJECT_KEY" "$DEFAULT_TYPE" > .pio/jira-config.yaml; then
+if ! printf 'site: "%s"\nprojectKey: "%s"\ndefaultType: "%s"\n' "$SITE" "$PROJECT_KEY" "$DEFAULT_TYPE" > .pio/jira-config.yaml; then
   printf "Error: failed to write .pio/jira-config.yaml\n" >&2
   exit 1
 fi
 
-printf "Created .pio/jira-config.yaml with projectKey=%s\n" "$PROJECT_KEY"
+printf "Created .pio/jira-config.yaml with site=%s projectKey=%s\n" "$SITE" "$PROJECT_KEY"
 exit 0

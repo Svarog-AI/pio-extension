@@ -51,16 +51,16 @@ describe("setup-config.sh", () => {
     cleanup(tempDir);
   });
 
-  it("creates .pio/jira-config.yaml with correct projectKey and defaultType Task", () => {
-    runScript(tempDir, ["PROJ"]);
+  it("creates .pio/jira-config.yaml with site, projectKey, and defaultType Task", () => {
+    runScript(tempDir, ["mysite.atlassian.net", "PROJ"]);
     const content = readConfig(tempDir);
-    expect(content).toBe('projectKey: "PROJ"\ndefaultType: "Task"\n');
+    expect(content).toBe('site: "mysite.atlassian.net"\nprojectKey: "PROJ"\ndefaultType: "Task"\n');
   });
 
-  it("sets custom defaultType when second argument is provided", () => {
-    runScript(tempDir, ["PROJ", "Story"]);
+  it("sets custom defaultType when third argument is provided", () => {
+    runScript(tempDir, ["mysite.atlassian.net", "PROJ", "Story"]);
     const content = readConfig(tempDir);
-    expect(content).toBe('projectKey: "PROJ"\ndefaultType: "Story"\n');
+    expect(content).toBe('site: "mysite.atlassian.net"\nprojectKey: "PROJ"\ndefaultType: "Story"\n');
   });
 
   it("exits non-zero and prints usage to stderr when no arguments given", () => {
@@ -69,36 +69,41 @@ describe("setup-config.sh", () => {
     expect(stderr).toContain("Usage");
   });
 
-  it("exits non-zero when project key is an empty string", () => {
-    const { status, stderr } = runScript(tempDir, [""]);
+  it("exits non-zero when site is an empty string", () => {
+    const { status, stderr } = runScript(tempDir, ["", "PROJ"]);
+    expect(status).not.toBe(0);
+    expect(stderr).toContain("Usage");
+  });
+
+  it("exits non-zero when project key is missing", () => {
+    const { status, stderr } = runScript(tempDir, ["mysite.atlassian.net"]);
     expect(status).not.toBe(0);
     expect(stderr).toContain("Usage");
   });
 
   it("is idempotent — running twice produces identical output", () => {
-    runScript(tempDir, ["PROJ"]);
+    runScript(tempDir, ["mysite.atlassian.net", "PROJ"]);
     const first = readConfig(tempDir);
-    runScript(tempDir, ["PROJ"]);
+    runScript(tempDir, ["mysite.atlassian.net", "PROJ"]);
     const second = readConfig(tempDir);
     expect(first).toBe(second);
   });
 
   it("handles project keys with hyphens", () => {
-    runScript(tempDir, ["MY-PROJ"]);
+    runScript(tempDir, ["mysite.atlassian.net", "MY-PROJ"]);
     const content = readConfig(tempDir);
-    expect(content).toBe('projectKey: "MY-PROJ"\ndefaultType: "Task"\n');
+    expect(content).toBe('site: "mysite.atlassian.net"\nprojectKey: "MY-PROJ"\ndefaultType: "Task"\n');
   });
 
   it("creates .pio directory when it does not exist", () => {
-    // tempDir has no .pio/ yet
     expect(fs.existsSync(path.join(tempDir, ".pio"))).toBe(false);
-    runScript(tempDir, ["PROJ"]);
+    runScript(tempDir, ["mysite.atlassian.net", "PROJ"]);
     expect(fs.existsSync(path.join(tempDir, ".pio"))).toBe(true);
     expect(fs.existsSync(path.join(tempDir, ".pio", "jira-config.yaml"))).toBe(true);
   });
 
   it("prints a confirmation message to stdout on success", () => {
-    const { stdout } = runScript(tempDir, ["PROJ"]);
+    const { stdout } = runScript(tempDir, ["mysite.atlassian.net", "PROJ"]);
     expect(stdout).toContain("jira-config.yaml");
     expect(stdout).toContain("PROJ");
   });

@@ -78,17 +78,18 @@ Use your tools (`read`, `bash`) to understand the codebase areas your step touch
 
 Be thorough — this research ensures your specification is grounded in reality and your acceptance criteria can be checked programmatically.
 
-### Step 4.5: Identify relevant skills
+### Step 5: Probing Gate
 
-Before writing `TASK.md`, identify which pi skills are relevant to this step. Review the `<available_skills>` block from your system prompt and analyze the step's requirements against each skill:
+Before writing TASK.md, verify the following four dimensions. Follow the `grill-me` skill for probing technique — walk decision trees, follow implications, and one question at a time.
 
-- **Bundled skills:** Check `src/skills/` for skills shipped with pio (e.g., `pio`, `pio-git`, `pio-planning`, `test-driven-development`, `write-a-skill`).
-- **External skills:** Skills from other pi extensions may also appear in `<available_skills>` (e.g., `source-research`, `web-browser`, `pi-intercom`).
-- **Consider ALL available skills:** For each skill, evaluate whether it could help the execute-task agent complete this step. Look at the step's files affected, code components, and approach to determine relevance.
+- **Spec completeness:** Does the specification leave implementation-critical decisions to the executor's guesswork? Are interfaces, contracts, and edge cases explicit enough to write tests from?
+- **Downstream impact on future steps:** Will specification choices (file placement, interface signatures, new types) break or confuse later steps' specs?
+- **Plan deviation assessment:** Do specification decisions diverge from the original plan in ways that affect completed work or require revision? Should `REVISE_PLAN_NEEDED` be written?
+- **Skill relevance:** Have all relevant skills been identified for the execute-task agent? Review `<available_skills>` for both bundled skills (from `src/skills/`) and external skills. Does the frontmatter `skills` block cover what the executor will need?
 
-For each relevant skill, prepare a one-sentence justification explaining why it applies to this specific step. The mandatory `pio` skill is always loaded via `_skill-loading.md` — focus on identifying *additional* skills beyond this baseline.
+If any dimension raises doubts, you **must research further or ask the user before proceeding**. This ensures TASK.md is a truly actionable specification, not a restatement of PLAN.md with surface-level detail.
 
-### Step 5: Write TASK.md
+### Step 6: Write TASK.md
 
 Write `TASK.md` into the `S{NN}/` folder. This file is a focused, actionable specification of exactly what needs to be built in this step.
 
@@ -168,7 +169,7 @@ criteria discovered during research that strengthen programmatic verification.>
 <Potential pitfalls, edge cases, or things the executor should watch out for.>
 ```
 
-### Step 6: Assess if plan revision is needed
+### Step 7: Assess if plan revision is needed
 
 After writing `TASK.md`, evaluate whether your specification decisions require a plan revision. This assessment is **optional and additional** — `TASK.md` is always required regardless of whether a marker is written.
 

@@ -17,6 +17,20 @@ Before any Jira operation, verify authentication:
 2. If not authenticated, direct the user to `acli jira auth login`
 3. Proceed only after auth is confirmed
 
+## Jira Config Setup
+
+During Push, when `.pio/jira-config.yaml` is missing and no project key was provided inline:
+
+1. **Auth prerequisite:** Run the Auth Status Check protocol first. If not authenticated, guide the user through `acli jira auth login`. Proceed only after auth is confirmed.
+2. **Collect site URL:** Call `ask_user` with freeform input: "Which Jira site should we use? (e.g., https://mycompany.atlassian.net)"
+3. **Collect project key:** Call `ask_user` with freeform input: "Which Jira project should we push issues to?" (project keys are short codes like `PROJ`)
+4. **Create the config:** Run via the `bash` tool:
+   `bash src/skills/pio-jira/scripts/setup-config.sh SITE PROJECT_KEY [DEFAULT_TYPE]`
+   `DEFAULT_TYPE` is optional, defaults to `"Task"`. Paths resolve from project root.
+5. **Resume push:** After setup exits 0, proceed with the original push using values from the new config.
+
+See [REFERENCE.md](REFERENCE.md) for execution details.
+
 ## Pull Jira → Local Issue
 
 Pull a Jira ticket into a local `.pio/issues/` file. Follow this protocol:

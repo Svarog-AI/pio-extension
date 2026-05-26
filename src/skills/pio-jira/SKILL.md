@@ -31,7 +31,7 @@ Pull a Jira ticket into a local `.pio/issues/` file. Follow this protocol:
 
 ## Goal Creation from Pulled Issue
 
-After pulling a Jira ticket into a local issue, convert it into a pio goal workspace:
+After pulling a Jira ticket into a local issue, convert it into a pio goal workspace if the user asks for it:
 
 1. Call `pio_goal_from_issue <slug>` (e.g., `pio_goal_from_issue jira-proj-123`)
 2. The tool derives the goal name from the issue slug and queues a create-goal session

@@ -26,6 +26,7 @@ Given acli output contains unauthorized in stderr when runAcli is called then it
 Given acli output contains Unauthorized in stdout when runAcli is called then it returns an AcliError referencing acli jira auth login.
 Given acli returns valid JSON on success when runAcli is called then it returns an AcliResult with parsed stdout.
 Given acli returns non-JSON text on success when runAcli is called then it returns an AcliError with raw stderr.
+Given acli exits with non-zero code but produces valid JSON when runAcli is called then it returns an AcliError mentioning the exit code.
 
 ## Programmatic Verification
 

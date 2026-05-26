@@ -1,0 +1,31 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "jira-integration",
+    "stepNumber": 6,
+    "_sessionContext": {
+      "goalName": "jira-integration",
+      "stepNumber": 6,
+      "_sessionContext": {
+        "goalName": "jira-integration",
+        "stepNumber": 5,
+        "_sessionContext": {
+          "goalName": "jira-integration",
+          "stepNumber": 5,
+          "_sessionContext": {
+            "goalName": "jira-integration",
+            "_sessionContext": {
+              "goalName": "jira-integration",
+              "capability": "revise-plan"
+            },
+            "stepNumber": 5,
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    }
+  }
+}

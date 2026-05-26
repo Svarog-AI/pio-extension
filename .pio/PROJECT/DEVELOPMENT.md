@@ -33,7 +33,7 @@ No release cycle, versioning tags, or packaging pipeline exists. The extension i
 
 ## Local Environment Setup
 
-- **Prerequisites:** Node.js 22+, npm
+- **Prerequisites:** Node.js 22+, npm. Optionally `acli` (Atlassian CLI) for Jira integration via the `pio-jira` skill.
 - **Commands:** `npm install` followed by `npm run check` and `npm test`
 - **No external services required:** No database, message broker, or API dependencies for local development
 - **Extension registration:** Add the extension directory to `.pi/config.yaml`:

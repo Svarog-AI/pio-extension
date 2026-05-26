@@ -25,6 +25,9 @@
 - **Plan Frontmatter** — The YAML frontmatter block in PLAN.md containing `totalSteps` and a `steps` array of `{ name, complexity? }` entries. `complexity` is optional, defaulting to `"task"`. Subgoal steps are declared here with `complexity: "subgoal"`. This frontmatter is the single source of truth for step definitions — `GoalState.steps()` derives from it rather than scanning folders.
 - **Queue Key** — The key used to address a goal's task slot in `.pio/session-queue/`. Flat goals use the goal name basename. Nested subgoals produce hierarchical keys (e.g., `parent__S03__nested`) via `deriveQueueKey()`, using `__` as delimiter.
 - **Subgoal** — A child goal workspace spawned by a plan step with `complexity: "subgoal"`. Lives under `S{NN}/subgoals/<name>/` inside the parent step folder. Runs through the full pio lifecycle recursively (create-goal → create-plan → evolve-plan → execute-task → review-code → finalize-goal). On completion, propagates back to the parent's evolve-plan.
+- **acli (Atlassian CLI)** — Command-line tool for interacting with Jira. Used by agents via `bash` tool calls as described in the `pio-jira` skill. Provides issue pull/push, JQL search, and auth management without TypeScript capability code.
+- **Jira Integration** — A skill-only integration: all Jira operations (auth check, pull tickets to local issues, push local issues to Jira, JQL search) are guided by `src/skills/pio-jira/SKILL.md` rather than TypeScript capabilities. Agents invoke `acli` via bash.
+- **Jira config file** — Optional `.pio/jira-config.yaml` storing `projectKey` and `defaultType` for issue push operations. Created by agents following the pio-jira skill push protocol.
 - **Plan Revision** — A workflow capability (`revise-plan`) triggered when evolve-plan's specification writer detects significant divergence from the plan. Archives current PLAN.md to `PLAN_ARCHIVE/`, deletes incomplete step folders, and rewrites a fresh plan with completed steps as anchors.
 - **REVISE_PLAN_NEEDED** — A marker file written by the specification writer (evolve-plan agent) inside a step folder (`S{NN}/REVISE_PLAN_NEEDED`) to signal that the plan must be revised. The transition resolver detects this via `StepStatus.revisionNeeded()` and routes to `revise-plan` instead of continuing normally.
 - **PLAN_ARCHIVE** — Directory inside a goal workspace (`<goalDir>/PLAN_ARCHIVE/`) storing timestamped copies of PLAN.md before each revision. Enables the revise-plan agent to reference previous plan attempts.
@@ -33,6 +36,7 @@
 
 | Acronym | Expansion |
 |---------|-----------|
+| acli | Atlassian CLI — command-line tool for Jira operations |
 | pio | Pi Goal-Driven Workflow (the extension name; not an acronym itself, short for the project) |
 | TDD | Test-Driven Development |
 | LLM | Large Language Model |

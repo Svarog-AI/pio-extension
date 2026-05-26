@@ -60,6 +60,8 @@ pio-extension/
 │   │   ├── pio-planning/SKILL.md  — Shared planning methodology (step structure, acceptance criteria, research)
 │   │   ├── pio-git/SKILL.md       — Git operations for pio agents (convention lookup, staged commits, branch checkout, PR creation)
 │   │   │   └── REFERENCE.md       — Edge case tables for branch checkout and PR creation protocols (progressive disclosure)
+│   │   ├── pio-jira/SKILL.md      — Jira operations via Atlassian CLI (auth, pull/push issues, JQL search, error handling)
+│   │   │   └── REFERENCE.md       — Execution reference with acli command strings, field mapping, edge case tables
 │   │   └── write-a-skill/SKILL.md — Skill authoring guide (structure, progressive disclosure, bundled resources)
 │   ├── index.ts               # Extension entry point — wires all capabilities into pi API
 │   ├── types.ts               # Shared type definitions (ValidationRule, CapabilityConfig, etc.)

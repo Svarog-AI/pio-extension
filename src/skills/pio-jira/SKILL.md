@@ -29,6 +29,18 @@ Pull a Jira ticket into a local `.pio/issues/` file. Follow this protocol:
 6. If not exists: call `pio_create_issue` tool with slug, title, and description
 7. **Use `pio_create_issue`, not manual file writes** — this ensures consistent issue format
 
+## Goal Creation from Pulled Issue
+
+After pulling a Jira ticket into a local issue, convert it into a pio goal workspace:
+
+1. Call `pio_goal_from_issue <slug>` (e.g., `pio_goal_from_issue jira-proj-123`)
+2. The tool derives the goal name from the issue slug and queues a create-goal session
+3. The user runs `/pio-next-task` to start the Goal Definition Assistant session
+4. The assistant interviews about the feature, produces `GOAL.md`, which feeds into planning and implementation
+5. The original issue file is cleaned up (moved/deleted) after the goal is created
+
+This is the natural "Jira → code" workflow: ticket → local issue → goal → plan → implementation.
+
 ## Push Local Issue → Jira
 
 Push a local `.pio/issues/<slug>.md` file to Jira. Follow this protocol:

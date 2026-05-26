@@ -37,6 +37,41 @@ ls .pio/issues/jira-proj-123.md 2>/dev/null
 | `JIRA-1` | `jira-jira-1` |
 | `ABC-DEF-789` | `jira-abc-def-789` |
 
+## Goal from Pulled Issue — Execution
+
+### Step-by-step
+
+After `pio_create_issue` creates `.pio/issues/jira-proj-123.md`:
+
+```bash
+# 1. Convert the local issue into a goal workspace
+# Use the pio_goal_from_issue tool (not a bash command):
+#   issuePath: "jira-proj-123"
+#
+# This queues a create-goal session with the issue content as initial context.
+# The goal name is derived from the issue slug: jira-proj-123
+
+# 2. User runs /pio-next-task to start the Goal Definition Assistant
+# The assistant receives the issue content as starting context,
+# interviews about the feature, and produces GOAL.md
+
+# 3. Expected outcome:
+# Goal workspace created at .pio/goals/jira-proj-123/
+# Original issue file is cleaned up after goal creation
+```
+
+### Workflow summary
+
+```
+Jira ticket (PROJ-123)
+  → acli jira workitem view PROJ-123 --json
+  → pio_create_issue (slug: jira-proj-123)
+  → pio_goal_from_issue jira-proj-123
+  → /pio-next-task (Goal Definition Assistant)
+  → .pio/goals/jira-proj-123/GOAL.md
+  → /pio-create-plan → /pio-evolve-plan → /pio-execute-task → ...
+```
+
 ## Push Local Issue → Jira — Execution
 
 ### Step-by-step
@@ -125,6 +160,7 @@ acli jira workitem search --jql "project = PROJ AND type = Bug AND priority = Hi
 | JSON field names differ | Inspect actual output first, adapt field names accordingly |
 | Empty description | Pass empty string to `pio_create_issue`, let tool handle defaults |
 | Network failure | `acli` exits non-zero → log stderr, proceed gracefully |
+| Goal workspace already exists | `pio_goal_from_issue` returns error: "Goal workspace already exists at ..." → advise using a different slug or deleting the existing goal first |
 
 ### Push Local Issue → Jira
 

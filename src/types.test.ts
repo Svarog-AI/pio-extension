@@ -42,14 +42,14 @@ describe("CapabilitySkills", () => {
   it("accepts an object with both mandatory and recommended skills", () => {
     // Arrange + Act
     const skills: CapabilitySkills = {
-      mandatory: ["test-driven-development"],
+      mandatory: ["tdd"],
       recommended: [
         { name: "pio-git", condition: "during completion" },
       ],
     };
 
     // Assert
-    expect(skills.mandatory).toEqual(["test-driven-development"]);
+    expect(skills.mandatory).toEqual(["tdd"]);
     expect(skills.recommended).toHaveLength(1);
     expect(skills.recommended![0].name).toBe("pio-git");
   });
@@ -133,12 +133,12 @@ describe("StaticCapabilityConfig — skills field", () => {
       prompt: "execute-task.md",
       defaultInitialMessage: () => "Execute step",
       skills: {
-        mandatory: ["test-driven-development"],
+        mandatory: ["tdd"],
       },
     };
 
     // Assert
-    expect(config.skills!.mandatory).toEqual(["test-driven-development"]);
+    expect(config.skills!.mandatory).toEqual(["tdd"]);
     expect(config.skills!.recommended).toBeUndefined();
   });
 });

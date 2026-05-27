@@ -49,7 +49,7 @@ function prepareExecuteSession(workingDir: string, params?: Record<string, unkno
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "execute-task.md",
   skills: {
-    mandatory: ["test-driven-development", "pio-git"],
+    mandatory: ["tdd", "pio-git"],
   },
   validation: resolveExecuteValidation,
   readOnlyFiles: resolveExecuteReadOnlyFiles,

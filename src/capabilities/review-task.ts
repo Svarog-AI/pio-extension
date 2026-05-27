@@ -132,7 +132,7 @@ function postValidateReview(goalDir: string, params?: Record<string, unknown>): 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "review-task.md",
   skills: {
-    mandatory: ["test-driven-development"],
+    mandatory: ["tdd"],
   },
   validation: resolveReviewValidation,
   readOnlyFiles: resolveReviewReadOnlyFiles,

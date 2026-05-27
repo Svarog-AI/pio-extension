@@ -89,7 +89,7 @@ Now implement the test cases from TEST.md as actual test code:
 
 1. **Determine test strategy:** Which test cases from TEST.md can be implemented as actual unit/integration tests (e.g., `.test.ts` files)? Which require command-based verification?
 2. **Write unit tests:** Use the test runner appropriate for the project's ecosystem (such as Jest or Vitest for JavaScript/TypeScript, pytest for Python, cargo test for Rust, go test for Go). .pio/PROJECT/DEVELOPMENT.md may contain information about this.
-3. **Apply TDD methodology:** Follow the `test-driven-development` skill for test structure guidance — RED → GREEN → REFACTOR cycle, Arrange-Act-Assert pattern, DAMP over DRY, one assertion per concept.
+3. **Apply TDD methodology:** Follow the `tdd` skill for test structure guidance — RED → GREEN → REFACTOR cycle, Arrange-Act-Assert pattern, DAMP over DRY, one assertion per concept.
 4. **Verify tests fail initially** — this confirms the tests are valid and the feature doesn't already exist. Tests should be in the "red" state before you implement anything.
 
 If you cannot create meaningful tests for a criterion, document why and rely on command-based verification instead.

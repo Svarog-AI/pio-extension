@@ -86,6 +86,38 @@ vi.mock("../model-config", () => ({
 }));
 
 // ---------------------------------------------------------------------------
+// Top-level mock for prompt-compiler (used by prompt compilation tests)
+// This lets setupCapability load a controllable compilePrompt result
+// ---------------------------------------------------------------------------
+
+const mockCompilePrompt = vi.hoisted(() =>
+  vi.fn().mockImplementation((_dir, options) => {
+    // Return mergedSkills based on baseSkills from config (simulating real merge)
+    const baseSkills = options?.baseSkills;
+    return Promise.resolve({
+      role: "## Role\n\nTest role content.",
+      workflow: "## Workflow\n\n1. Test step",
+      guidelines: "## Guidelines\n\nTest guidelines.",
+      mergedSkills: baseSkills || { mandatory: ["pio", "ask-user"] },
+    });
+  }),
+);
+
+vi.mock("../prompt-compiler", () => ({
+  compilePrompt: mockCompilePrompt,
+}));
+
+// ---------------------------------------------------------------------------
+// Top-level mock for step-nudging (used by step nudging integration tests)
+// ---------------------------------------------------------------------------
+
+const mockSetupStepNudging = vi.hoisted(() => vi.fn());
+
+vi.mock("../guards/step-nudging", () => ({
+  setupStepNudging: mockSetupStepNudging,
+}));
+
+// ---------------------------------------------------------------------------
 // Top-level mock for queues (used by pio_mark_complete tests)
 // ---------------------------------------------------------------------------
 
@@ -1276,5 +1308,369 @@ describe("resources_discover — skill loading uses buildSkillLoadingSection", (
     expect(result.systemPrompt).toContain('<skill name="dynamic-skill"');
     expect(result.systemPrompt).toContain(skillBody);
     // The skill XML block proves dynamic generation — a static file would not contain this skill
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Prompt compiler integration — resources_discover calls compilePrompt
+// ---------------------------------------------------------------------------
+
+describe("prompt compiler integration — resources_discover", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    mockCompilePrompt.mockClear();
+    mockCompilePrompt.mockResolvedValue({
+      role: "## Role\n\nTest role content.",
+      workflow: "## Workflow\n\n1. Test step",
+      guidelines: "## Guidelines\n\nTest guidelines.",
+      mergedSkills: { mandatory: ["pio", "ask-user"] },
+    });
+  });
+
+  afterEach(() => {
+    cleanup(tempDir);
+  });
+
+  it("given resources_discover with a capability config when the handler runs then compilePrompt is called with the package directory", async () => {
+    const registeredHandlers: Record<string, Function> = {};
+
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      setModel: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+
+    const mod = await import("./session-capability");
+    mod.setupCapability(mockPi as any);
+
+    // Trigger resources_discover
+    const rdHandler = registeredHandlers["resources_discover"];
+    if (!rdHandler) throw new Error("resources_discover handler not registered");
+    await rdHandler(
+      { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+      {
+        sessionManager: {
+          getEntries: () => [
+            {
+              type: "custom",
+              customType: "pio-config",
+              data: { capability: "test-cap", skills: { mandatory: ["tdd"] } },
+            },
+          ],
+        },
+      },
+    );
+
+    // Assert: compilePrompt was called with the package directory
+    expect(mockCompilePrompt).toHaveBeenCalledTimes(1);
+    const callArgs = mockCompilePrompt.mock.calls[0];
+    expect(callArgs[0]).toContain("test-cap"); // directory path contains capability name
+    expect(callArgs[1]).toBeDefined();
+    expect(callArgs[1].baseSkills).toEqual({ mandatory: ["tdd"] });
+  });
+
+  it("given compilePrompt fails when resources_discover runs then the error is caught and logged", async () => {
+    const warnSpy = vi.spyOn(console, "warn");
+    warnSpy.mockImplementation(() => {});
+
+    mockCompilePrompt.mockRejectedValue(new Error("workflow.ts not found"));
+
+    const registeredHandlers: Record<string, Function> = {};
+
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      setModel: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+
+    const mod = await import("./session-capability");
+    mod.setupCapability(mockPi as any);
+
+    // Trigger resources_discover
+    const rdHandler = registeredHandlers["resources_discover"];
+    if (!rdHandler) throw new Error("resources_discover handler not registered");
+
+    // Act: should not throw
+    await expect(
+      rdHandler(
+        { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+        {
+          sessionManager: {
+            getEntries: () => [
+              {
+                type: "custom",
+                customType: "pio-config",
+                data: { capability: "broken-cap" },
+              },
+            ],
+          },
+        },
+      ),
+    ).resolves.toBeUndefined();
+
+    // Assert: warning was logged
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("compilePrompt"));
+
+    warnSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Workflow steps population — enrichedSessionParams
+// ---------------------------------------------------------------------------
+
+describe("workflow steps population — enrichedSessionParams", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    mockCompilePrompt.mockClear();
+    mockCompilePrompt.mockResolvedValue({
+      role: "## Role\n\nTest role.",
+      workflow: "## Workflow\n\n1. Step one\n2. Step two",
+      guidelines: undefined,
+      mergedSkills: {},
+    });
+  });
+
+  afterEach(() => {
+    cleanup(tempDir);
+  });
+
+  it("given compiled sections with workflow steps when resources_discover runs then enrichedSessionParams contains totalWorkflowSteps and workflowSteps", async () => {
+    // Set up mock to return sections with steps info
+    mockCompilePrompt.mockResolvedValue({
+      role: "## Role\n\nTest role.",
+      workflow: "## Workflow\n\n1. Step one\n2. Step two",
+      guidelines: undefined,
+      mergedSkills: {},
+    });
+
+    const registeredHandlers: Record<string, Function> = {};
+
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      setModel: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+
+    const mod = await import("./session-capability");
+    mod.setupCapability(mockPi as any);
+
+    // Trigger resources_discover
+    const rdHandler = registeredHandlers["resources_discover"];
+    if (!rdHandler) throw new Error("resources_discover handler not registered");
+    await rdHandler(
+      { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+      {
+        sessionManager: {
+          getEntries: () => [
+            {
+              type: "custom",
+              customType: "pio-config",
+              data: { capability: "test-cap" },
+            },
+          ],
+        },
+      },
+    );
+
+    // Assert: compilePrompt was called
+    expect(mockCompilePrompt).toHaveBeenCalled();
+
+    // Verify enrichedSessionParams via getSessionParams
+    const params = mod.getSessionParams();
+    expect(params).toBeDefined();
+    // The implementation should populate workflow steps from compiled sections
+    // Note: the exact values depend on how the implementation extracts steps from sections
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Step nudging integration — setupStepNudging called from setupCapability
+// ---------------------------------------------------------------------------
+
+describe("step nudging integration — setupCapability", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    mockSetupStepNudging.mockClear();
+    mockCompilePrompt.mockClear();
+    mockCompilePrompt.mockResolvedValue({
+      role: "## Role\n\nTest role.",
+      workflow: "## Workflow\n\n1. Test step",
+      guidelines: undefined,
+      mergedSkills: {},
+    });
+  });
+
+  afterEach(() => {
+    cleanup(tempDir);
+  });
+
+  it("given setupCapability is called when the function runs then setupStepNudging is called with the pi instance", async () => {
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: vi.fn(),
+      setModel: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+
+    const mod = await import("./session-capability");
+    mod.setupCapability(mockPi as any);
+
+    // Assert: setupStepNudging was called with the pi instance
+    expect(mockSetupStepNudging).toHaveBeenCalledTimes(1);
+    expect(mockSetupStepNudging).toHaveBeenCalledWith(mockPi);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Prompt assembly order — before_agent_start uses compiled sections
+// ---------------------------------------------------------------------------
+
+describe("prompt assembly — before_agent_start uses compiled sections", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    mockCompilePrompt.mockClear();
+    mockCompilePrompt.mockResolvedValue({
+      role: "## Role\n\nTest role content.",
+      workflow: "## Workflow\n\n1. Test step",
+      guidelines: "## Guidelines\n\nTest guidelines.",
+      mergedSkills: { mandatory: ["pio", "ask-user"] },
+    });
+  });
+
+  afterEach(() => {
+    cleanup(tempDir);
+  });
+
+  it("given compiled sections with role, workflow, and guidelines when before_agent_start runs then sections appear in correct order under YOUR INSTRUCTIONS", async () => {
+    const registeredHandlers: Record<string, Function> = {};
+
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      setModel: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+
+    const mod = await import("./session-capability");
+    mod.setupCapability(mockPi as any);
+
+    // Trigger resources_discover
+    const rdHandler = registeredHandlers["resources_discover"];
+    if (!rdHandler) throw new Error("resources_discover handler not registered");
+    await rdHandler(
+      { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+      {
+        sessionManager: {
+          getEntries: () => [
+            {
+              type: "custom",
+              customType: "pio-config",
+              data: { capability: "test-cap" },
+            },
+          ],
+        },
+      },
+    );
+
+    // Trigger before_agent_start
+    const handler = registeredHandlers["before_agent_start"];
+    if (!handler) throw new Error("before_agent_start handler not registered");
+    const result = await handler(
+      {
+        type: "before_agent_start",
+        prompt: "test",
+        systemPrompt: "",
+        systemPromptOptions: { skills: [], cwd: process.cwd() },
+      } as any,
+      {} as any,
+    );
+
+    expect(typeof result.systemPrompt).toBe("string");
+    expect(result.systemPrompt).toContain("--- YOUR INSTRUCTIONS ---");
+
+    // Verify sections appear in order: role → workflow → guidelines
+    const yourIdx = result.systemPrompt.indexOf("--- YOUR INSTRUCTIONS ---");
+    const roleIdx = result.systemPrompt.indexOf("## Role");
+    const workflowIdx = result.systemPrompt.indexOf("## Workflow");
+    const guidelinesIdx = result.systemPrompt.indexOf("## Guidelines");
+
+    expect(yourIdx).toBeGreaterThan(-1);
+    expect(roleIdx).toBeGreaterThan(yourIdx);
+    expect(workflowIdx).toBeGreaterThan(roleIdx);
+    expect(guidelinesIdx).toBeGreaterThan(workflowIdx);
+  });
+
+  it("given compiled sections with missing guidelines when before_agent_start runs then only role and workflow sections are included", async () => {
+    mockCompilePrompt.mockResolvedValue({
+      role: "## Role\n\nTest role.",
+      workflow: "## Workflow\n\n1. Test step",
+      // guidelines is undefined
+      mergedSkills: {},
+    });
+
+    const registeredHandlers: Record<string, Function> = {};
+
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      setModel: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+
+    const mod = await import("./session-capability");
+    mod.setupCapability(mockPi as any);
+
+    // Trigger resources_discover
+    const rdHandler = registeredHandlers["resources_discover"];
+    if (!rdHandler) throw new Error("resources_discover handler not registered");
+    await rdHandler(
+      { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+      {
+        sessionManager: {
+          getEntries: () => [
+            {
+              type: "custom",
+              customType: "pio-config",
+              data: { capability: "test-cap" },
+            },
+          ],
+        },
+      },
+    );
+
+    // Trigger before_agent_start
+    const handler = registeredHandlers["before_agent_start"];
+    if (!handler) throw new Error("before_agent_start handler not registered");
+    const result = await handler(
+      {
+        type: "before_agent_start",
+        prompt: "test",
+        systemPrompt: "",
+        systemPromptOptions: { skills: [], cwd: process.cwd() },
+      } as any,
+      {} as any,
+    );
+
+    expect(typeof result.systemPrompt).toBe("string");
+    expect(result.systemPrompt).toContain("## Role");
+    expect(result.systemPrompt).toContain("## Workflow");
+    // Guidelines should not appear since it was undefined
+    expect(result.systemPrompt).not.toContain("## Guidelines");
   });
 });

@@ -49,6 +49,20 @@ vi.mock("../queues", async (importOriginal) => ({
   writeLastTask: mockWriteLastTask,
 }));
 
+// Mock prompt-compiler and step-nudging so they don't interfere with mark-complete tests
+vi.mock("../prompt-compiler", () => ({
+  compilePrompt: vi.fn().mockResolvedValue({
+    role: "## Role\n\nTest role.",
+    workflow: "## Workflow\n\n1. Test step",
+    guidelines: undefined,
+    mergedSkills: {},
+  }),
+}));
+
+vi.mock("../guards/step-nudging", () => ({
+  setupStepNudging: vi.fn(),
+}));
+
 // ---------------------------------------------------------------------------
 // pio_mark_complete — tool registration and execution flow
 // ---------------------------------------------------------------------------

@@ -205,4 +205,6 @@ export interface CompiledPromptSections {
   guidelines?: string;
   /** Merged workflow step skills — carries merged mandatory/recommended skills downstream for skill loading */
   mergedSkills?: CapabilitySkills;
+  /** Raw workflow steps — carried for step nudging (totalWorkflowSteps, workflowSteps). Not rendered in the prompt. */
+  _steps?: WorkflowStep[];
 }

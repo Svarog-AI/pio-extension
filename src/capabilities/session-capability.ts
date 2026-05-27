@@ -5,7 +5,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CapabilityConfig, CapabilitySkills } from "../types";
+import type { CompiledPromptSections } from "../capability-package";
 import type { TaskSkills } from "../frontmatter-schemas";
+import { compilePrompt } from "../prompt-compiler";
+import { setupStepNudging } from "../guards/step-nudging";
 import { discoverNextStep } from "../fs-utils";
 import { resolveModelForCapability } from "../model-config";
 import { validateOutputs } from "../guards/validation";
@@ -16,14 +19,13 @@ import { enqueueTask, writeLastTask } from "../queues";
 // Re-export for backward compatibility
 export type { CapabilityConfig };
 
-// ESM-compatible __dirname for resolving prompts bundled with this extension
+// ESM-compatible __dirname for resolving capability package directories
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PROMPTS_DIR = path.join(__dirname, "..", "prompts");
 
 
 // Module-level cache per runtime instance
-let systemPrompt: string | undefined;
+let compiledSections: CompiledPromptSections | undefined;
 let projectContext: string | undefined;
 let availableSkills: Skill[] | undefined;
 let currentConfig: CapabilityConfig | undefined;
@@ -346,6 +348,9 @@ export function setupCapability(pi: ExtensionAPI) {
   // Register the pio_mark_complete tool
   pi.registerTool(markCompleteTool);
 
+  // Register step nudging tools and handlers
+  setupStepNudging(pi);
+
   // 1. Read config at startup — consume immediately
   pi.on("resources_discover", async (_event, ctx) => {
     const entries = ctx.sessionManager.getEntries();
@@ -390,16 +395,23 @@ export function setupCapability(pi: ExtensionAPI) {
       }
     }
 
-    if (!config.prompt) {
-      console.warn(`pio: no prompt configured for capability "${config.capability}"`);
-      return;
-    }
-    const promptPath = path.join(PROMPTS_DIR, config.prompt);
+    // Compile prompt from capability package directory
+    const capabilityDir = path.join(__dirname, config.capability);
+    try {
+      compiledSections = await compilePrompt(capabilityDir, {
+        baseSkills: config.skills,
+      });
 
-    if (fs.existsSync(promptPath)) {
-      systemPrompt = fs.readFileSync(promptPath, "utf-8");
-    } else {
-      console.warn(`pio: prompt file not found: ${promptPath}`);
+      // Populate enrichedSessionParams with workflow step info for step nudging
+      if (compiledSections && compiledSections._steps) {
+        enrichedSessionParams.totalWorkflowSteps = compiledSections._steps.length;
+        enrichedSessionParams.workflowSteps = compiledSections._steps.map((s) => ({
+          id: s.id,
+          title: s.title,
+        }));
+      }
+    } catch (err) {
+      console.warn(`pio: compilePrompt failed for capability "${config.capability}": ${err}`);
     }
 
     // Cache config for skill injection in before_agent_start
@@ -427,13 +439,13 @@ export function setupCapability(pi: ExtensionAPI) {
       availableSkills = skillsFromEvent;
     }
 
-    // Build dynamic skill-loading section from config
+    // Build dynamic skill-loading section from compiled sections' merged skills
     const skillLoadingSection = buildSkillLoadingSection(
-      currentConfig ?? {},
+      { skills: compiledSections?.mergedSkills },
       availableSkills ?? [],
     );
 
-    // Merge capability prompt with project context and skill-loading instructions
+    // Assemble prompts from structured sections
     const prompts: string[] = [];
 
     // Project context first (if available)
@@ -446,9 +458,15 @@ export function setupCapability(pi: ExtensionAPI) {
       prompts.push(skillLoadingSection);
     }
 
-    // Capability-specific prompt (if available)
-    if (systemPrompt) {
-      prompts.push(`--- YOUR INSTRUCTIONS ---\n\n${systemPrompt}`);
+    // Capability-specific prompt from compiled sections (role → workflow → guidelines)
+    if (compiledSections) {
+      const capabilitySections: string[] = [];
+      if (compiledSections.role) capabilitySections.push(compiledSections.role);
+      if (compiledSections.workflow) capabilitySections.push(compiledSections.workflow);
+      if (compiledSections.guidelines) capabilitySections.push(compiledSections.guidelines);
+      if (capabilitySections.length > 0) {
+        prompts.push(`--- YOUR INSTRUCTIONS ---\n\n${capabilitySections.join("\n\n")}`);
+      }
     }
 
     if (prompts.length === 0) return; // no injection needed

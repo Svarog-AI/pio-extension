@@ -5,6 +5,20 @@ import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { resolveCapabilityConfig } from "../capability-config";
 
+// Mock prompt-compiler and step-nudging so they don't interfere with integration tests
+vi.mock("../prompt-compiler", () => ({
+  compilePrompt: vi.fn().mockResolvedValue({
+    role: "## Role\n\nTest role.",
+    workflow: "## Workflow\n\n1. Test step",
+    guidelines: undefined,
+    mergedSkills: {},
+  }),
+}));
+
+vi.mock("../guards/step-nudging", () => ({
+  setupStepNudging: vi.fn(),
+}));
+
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
 // ---------------------------------------------------------------------------

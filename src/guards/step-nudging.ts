@@ -111,7 +111,7 @@ export function generateNudgeMessage(
 // Tool: workflow-step-finish
 // ---------------------------------------------------------------------------
 
-const workflowStepFinishTool = defineTool({
+export const workflowStepFinishTool = defineTool({
   name: "workflow-step-finish",
   label: "Workflow Step Finish",
   description: "Signal that the current workflow step is complete and advance to the next step.",

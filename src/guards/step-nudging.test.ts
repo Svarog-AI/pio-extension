@@ -2,9 +2,11 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   setupStepNudging,
   generateNudgeMessage,
+  workflowStepFinishTool,
   __testSetActiveSession,
   __testSetCurrentWorkflowStep,
   __testSetTotalWorkflowSteps,
+  __testSetStepsList,
 } from "./step-nudging";
 
 // ---------------------------------------------------------------------------
@@ -397,41 +399,86 @@ describe("turn_end — nudge message injection", () => {
 });
 
 // ---------------------------------------------------------------------------
-// workflow-step-finish tool — behavior
+// workflow-step-finish tool — behavior (direct execute() calls)
 // ---------------------------------------------------------------------------
 
 describe("workflow-step-finish tool — behavior", () => {
+  const mockCtx = {} as any;
+  const mockSignal = new AbortController().signal;
+
+  function getText(result: Awaited<ReturnType<typeof workflowStepFinishTool.execute>>) {
+    const block = result.content[0] as { type: string; text?: string };
+    return block.text!;
+  }
+
   it("returns 'not active' message when isActive is false", async () => {
-    const { pi, handlers } = createMockPi();
-
     __testSetActiveSession(false);
+    __testSetCurrentWorkflowStep(0);
+    __testSetTotalWorkflowSteps(0);
 
-    setupStepNudging(pi);
+    const result = await workflowStepFinishTool.execute("mock-id", {}, mockSignal, undefined, mockCtx);
+    const text = getText(result);
 
-    // The tool is registered, but we need to get its execute function.
-    // Since we can't access it directly from the mock, we simulate via the tool_call handler
-    // by checking that the tool exists and the module state is correct.
-    expect(__testSetActiveSession()).toBe(false);
+    expect(text).toBe("Step nudging is not active in this session.");
   });
 
-  it("increments step counter when called (via state accessors)", () => {
-    // Directly test state manipulation that the tool would perform
+  it("increments step counter and returns next step message (no title)", async () => {
     __testSetActiveSession(true);
     __testSetCurrentWorkflowStep(1);
     __testSetTotalWorkflowSteps(5);
+    __testSetStepsList([]);
 
-    // Simulate what the tool does: increment step
-    const current = __testSetCurrentWorkflowStep(2);
-    expect(current).toBe(2);
+    const result = await workflowStepFinishTool.execute("mock-id", {}, mockSignal, undefined, mockCtx);
+    const text = getText(result);
+
+    expect(__testSetCurrentWorkflowStep()).toBe(2);
+    expect(text).toBe("Workflow step finished. Moving to workflow step 2 of 5. Continue with this step.");
   });
 
-  it("clamps step counter to totalWorkflowSteps", () => {
+  it("increments step counter and returns next step message with title", async () => {
+    __testSetActiveSession(true);
+    __testSetCurrentWorkflowStep(1);
+    __testSetTotalWorkflowSteps(3);
+    __testSetStepsList([
+      { id: "step-1", title: "Understand the goal" },
+      { id: "step-2", title: "Research context" },
+      { id: "step-3", title: "Implement" },
+    ]);
+
+    const result = await workflowStepFinishTool.execute("mock-id", {}, mockSignal, undefined, mockCtx);
+    const text = getText(result);
+
+    expect(__testSetCurrentWorkflowStep()).toBe(2);
+    expect(text).toBe("Workflow step finished. Moving to 'Research context' (workflow step 2 of 3). Continue with this step.");
+  });
+
+  it("clamps step counter and returns last step message", async () => {
+    __testSetActiveSession(true);
+    __testSetCurrentWorkflowStep(4);
+    __testSetTotalWorkflowSteps(5);
+    __testSetStepsList([]);
+
+    // First call: step 4 → 5 (last)
+    const result = await workflowStepFinishTool.execute("mock-id", {}, mockSignal, undefined, mockCtx);
+    const text = getText(result);
+
+    expect(__testSetCurrentWorkflowStep()).toBe(5);
+    expect(text).toBe("All workflow steps completed. You are on the final workflow step (5 of 5). Consider your work done and call pio_mark_complete if all outputs are ready.");
+  });
+
+  it("stays at last step when already at max (clamp on second call)", async () => {
+    __testSetActiveSession(true);
     __testSetCurrentWorkflowStep(5);
     __testSetTotalWorkflowSteps(5);
+    __testSetStepsList([]);
 
-    // Trying to go beyond total should clamp
-    const clamped = __testSetCurrentWorkflowStep(5);
-    expect(clamped).toBe(5);
+    const result = await workflowStepFinishTool.execute("mock-id", {}, mockSignal, undefined, mockCtx);
+    const text = getText(result);
+
+    // Step should still be 5 (clamped), not 6
+    expect(__testSetCurrentWorkflowStep()).toBe(5);
+    expect(text).toContain("All workflow steps completed");
+    expect(text).toContain("pio_mark_complete");
   });
 });
 

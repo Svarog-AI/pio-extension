@@ -26,6 +26,9 @@ import type {
   ValidationRule,
 } from "./types";
 
+// Re-export for downstream consumers (prompt-compiler, session-capability, etc.)
+export type { CapabilitySkills } from "./types";
+
 // ---------------------------------------------------------------------------
 // Directory layout constants
 // ---------------------------------------------------------------------------
@@ -169,8 +172,8 @@ export interface CapabilityPackageDescriptor {
  * undefined if the capability doesn't provide them.
  */
 export interface CapabilityPackageComponents {
-  /** Resolved role from role.md, or undefined if not present */
-  role?: CapabilityRole;
+  /** Raw markdown content from role.md, or undefined if not present */
+  role?: string;
   /** Ordered workflow steps from workflow.ts */
   steps: WorkflowStep[];
   /** Guidelines content from guidelines.md, or undefined if not present */
@@ -200,4 +203,6 @@ export interface CompiledPromptSections {
   workflow?: string;
   /** Guidelines section (from CapabilityGuidelines) */
   guidelines?: string;
+  /** Merged workflow step skills — carries merged mandatory/recommended skills downstream for skill loading */
+  mergedSkills?: CapabilitySkills;
 }

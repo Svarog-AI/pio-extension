@@ -598,9 +598,10 @@ describe("model resolution — backwards compatibility", () => {
       {} as any,
     );
 
-    // Assert: prompt injection returned (system prompt from create-goal.md)
+    // Assert: prompt injection returned via systemPrompt (from create-goal.md)
     expect(result).toBeDefined();
-    expect(result.message?.customType).toBe("pio-capability-instructions");
+    expect(typeof result.systemPrompt).toBe("string");
+    expect(result.systemPrompt).toContain("--- YOUR INSTRUCTIONS ---");
     // Model resolution also ran but didn't call setModel since config is undefined
     expect(setModelMock).not.toHaveBeenCalled();
   });
@@ -1001,10 +1002,9 @@ describe("skill injection — before_agent_start integration", () => {
     );
 
     expect(result).toBeDefined();
-    expect(result.message?.customType).toBe("pio-capability-instructions");
-    const text = result.message?.content?.[0]?.text;
-    expect(text).toContain("--- SKILL LOADING INSTRUCTIONS ---");
-    expect(text).toContain('<skill name="test-skill"');
+    expect(typeof result.systemPrompt).toBe("string");
+    expect(result.systemPrompt).toContain("--- SKILL LOADING INSTRUCTIONS ---");
+    expect(result.systemPrompt).toContain('<skill name="test-skill"');
   });
 
   it("given before_agent_start when the handler runs then delivery order is PROJECT OVERVIEW, then SKILL LOADING INSTRUCTIONS, then YOUR INSTRUCTIONS", async () => {
@@ -1061,13 +1061,12 @@ describe("skill injection — before_agent_start integration", () => {
       {} as any,
     );
 
-    const text = result.message?.content?.[0]?.text;
-    expect(text).toBeDefined();
+    expect(typeof result.systemPrompt).toBe("string");
 
     // Verify order: PROJECT OVERVIEW before SKILL LOADING before YOUR INSTRUCTIONS
-    const projectIdx = text.indexOf("--- PROJECT OVERVIEW ---");
-    const skillIdx = text.indexOf("--- SKILL LOADING INSTRUCTIONS ---");
-    const yourIdx = text.indexOf("--- YOUR INSTRUCTIONS ---");
+    const projectIdx = result.systemPrompt.indexOf("--- PROJECT OVERVIEW ---");
+    const skillIdx = result.systemPrompt.indexOf("--- SKILL LOADING INSTRUCTIONS ---");
+    const yourIdx = result.systemPrompt.indexOf("--- YOUR INSTRUCTIONS ---");
 
     expect(projectIdx).toBeGreaterThan(-1);
     expect(skillIdx).toBeGreaterThan(-1);
@@ -1132,8 +1131,71 @@ describe("skill injection — before_agent_start integration", () => {
       {} as any,
     );
 
-    const text = result.message?.content?.[0]?.text;
-    expect(text).toContain('<skill name="cached-skill"');
+    expect(typeof result.systemPrompt).toBe("string");
+    expect(result.systemPrompt).toContain('<skill name="cached-skill"');
+  });
+
+  it("given before_agent_start with a non-empty base systemPrompt when the handler runs then the base prompt is preserved as a prefix", async () => {
+    const basePrompt = "This is the base prompt";
+
+    const pioSkillBody = "# PIO Skill";
+    const pioFilePath = writeSkillFile(tempDir, "pio", pioSkillBody);
+    const pioBaseDir = path.dirname(pioFilePath);
+
+    const registry = [makeSkill("pio", pioFilePath, pioBaseDir)];
+
+    const registeredHandlers: Record<string, Function> = {};
+    const setModelMock = vi.fn();
+
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      setModel: setModelMock,
+      setSessionName: vi.fn(),
+    };
+
+    const mod = await import("./session-capability");
+    mod.setupCapability(mockPi as any);
+
+    // Trigger resources_discover
+    const rdHandler = registeredHandlers["resources_discover"];
+    if (rdHandler) {
+      await rdHandler(
+        { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+        {
+          sessionManager: {
+            getEntries: () => [
+              {
+                type: "custom",
+                customType: "pio-config",
+                data: { capability: "test-cap", prompt: "create-goal.md" },
+              },
+            ],
+          },
+        },
+      );
+    }
+
+    // Trigger before_agent_start with a non-empty base systemPrompt
+    const handler = registeredHandlers["before_agent_start"];
+    if (!handler) throw new Error("before_agent_start handler not registered");
+    const result = await handler(
+      {
+        type: "before_agent_start",
+        prompt: "test",
+        systemPrompt: basePrompt,
+        systemPromptOptions: { skills: registry, cwd: process.cwd() },
+      } as any,
+      {} as any,
+    );
+
+    // Assert: base prompt is preserved as prefix
+    expect(result.systemPrompt).toBeDefined();
+    expect(typeof result.systemPrompt).toBe("string");
+    expect(result.systemPrompt!.startsWith(basePrompt)).toBe(true);
+    // Appended content follows after the separator
+    expect(result.systemPrompt).toContain("\n\n");
+    expect(result.systemPrompt).toContain("--- YOUR INSTRUCTIONS ---");
   });
 });
 
@@ -1209,10 +1271,10 @@ describe("resources_discover — skill loading uses buildSkillLoadingSection", (
     );
 
     // Assert: skill content is dynamically generated from buildSkillLoadingSection
-    const text = result.message?.content?.[0]?.text;
-    expect(text).toContain("--- SKILL LOADING INSTRUCTIONS ---");
-    expect(text).toContain('<skill name="dynamic-skill"');
-    expect(text).toContain(skillBody);
+    expect(typeof result.systemPrompt).toBe("string");
+    expect(result.systemPrompt).toContain("--- SKILL LOADING INSTRUCTIONS ---");
+    expect(result.systemPrompt).toContain('<skill name="dynamic-skill"');
+    expect(result.systemPrompt).toContain(skillBody);
     // The skill XML block proves dynamic generation — a static file would not contain this skill
   });
 });

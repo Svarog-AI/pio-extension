@@ -49,7 +49,7 @@ function prepareExecuteSession(workingDir: string, params?: Record<string, unkno
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "execute-task.md",
   skills: {
-    mandatory: ["test-driven-development", "pio-git"],
+    mandatory: ["tdd", "pio-git"],
   },
   validation: resolveExecuteValidation,
   readOnlyFiles: resolveExecuteReadOnlyFiles,
@@ -72,7 +72,7 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
       // If filesystem read fails, fall through to the normal message
     }
 
-    return `${prefix}Goal workspace is at ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md inside the \`${folderName}/\` directory, create TEST.md with concise test cases, write tests first, then implement the feature to make them pass.`;
+    return `${prefix}Goal workspace is at ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md inside the \`${folderName}/\` directory and resolve the task.`;
   },
 };
 
@@ -238,7 +238,7 @@ const executeTaskTool = defineTool({
   name: "pio_execute_task",
   label: "Pio Execute Task",
   description:
-    "Execute a single plan step using a test-first workflow. Reads TASK.md, writes tests first based on acceptance criteria, then implements the feature. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
+    "Execute a single plan step using an iterative TDD workflow. Reads TASK.md, applies tracer-bullet development via the tdd skill, and produces implementation with post-hoc TEST.md. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Execute a single plan step (test-first implementation).",
   parameters: Type.Object({
     name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
@@ -323,7 +323,7 @@ export function setupExecuteTask(pi: ExtensionAPI) {
   pi.registerTool(executeTaskTool);
   pi.registerCommand("pio-execute-task", {
     description:
-      "Execute a single plan step using a test-first workflow (write tests first, then implement)",
+      "Execute a single plan step using an iterative TDD workflow (tracer bullet → incremental RED→GREEN cycles)",
     handler: handleExecuteTask,
   });
 }

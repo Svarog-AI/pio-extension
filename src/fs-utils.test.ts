@@ -419,14 +419,14 @@ describe("smoke", () => {
 describe("mergeCapabilitySkills", () => {
   it("concatenates and deduplicates mandatory skills from base and task", () => {
     // Arrange
-    const base: CapabilitySkills = { mandatory: ["pio", "ask-user", "test-driven-development"] };
+    const base: CapabilitySkills = { mandatory: ["pio", "ask-user", "tdd"] };
     const task: TaskSkills = { mandatory: ["pio-git", "ask-user"] }; // ask-user is duplicate
 
     // Act
     const result = mergeCapabilitySkills(base, task);
 
     // Assert
-    expect(result.mandatory).toEqual(["pio", "ask-user", "test-driven-development", "pio-git"]);
+    expect(result.mandatory).toEqual(["pio", "ask-user", "tdd", "pio-git"]);
     expect(result.recommended).toBeUndefined();
   });
 

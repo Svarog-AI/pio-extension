@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { isStepReady } from "./execute-task";
+import { CAPABILITY_CONFIG } from "./execute-task";
 import { stepFolderName } from "../fs-utils";
 import { resolveCapabilityConfig } from "../capability-config";
 
@@ -195,41 +196,50 @@ describe("resolveExecuteReadOnlyFiles", () => {
 });
 
 // ---------------------------------------------------------------------------
-// isStepReady — TASK.md-only readiness (TASK.md-only is sufficient)
+// execute-task defaultInitialMessage — behavioral tests
 // ---------------------------------------------------------------------------
 
-describe("isStepReady — TASK.md only readiness", () => {
-  let tempDir: string;
+describe("execute-task defaultInitialMessage", () => {
+  it("includes working directory in the message", () => {
+    const message = CAPABILITY_CONFIG.defaultInitialMessage("/my/goal/dir", { stepNumber: 1 });
 
-  beforeEach(() => {
-    tempDir = createTempDir();
+    expect(message).toContain("/my/goal/dir");
   });
 
-  afterEach(() => cleanup(tempDir));
+  it("includes step number and folder reference", () => {
+    const message = CAPABILITY_CONFIG.defaultInitialMessage("/dir", { stepNumber: 5 });
 
-  it("TASK.md only, no markers → true (step ready with TASK.md alone)", () => {
-    // Arrange: S01 with only TASK.md, no TEST.md
-    const { goalDir } = createGoalTree(tempDir, "task-only-ready", {
-      steps: [{ number: 1, files: ["TASK.md"] }],
-    });
-
-    // Act
-    const result = isStepReady(goalDir, 1);
-
-    // Assert: TASK.md alone is sufficient
-    expect(result).toBe(true);
+    expect(message).toContain("Step 5");
+    expect(message).toContain("S05");
   });
 
-  it("only TEST.md, no TASK.md → false", () => {
-    // Arrange: S01 with only TEST.md
-    const { goalDir } = createGoalTree(tempDir, "test-only-not-ready", {
-      steps: [{ number: 1, files: ["TEST.md"] }],
-    });
+  it("references TASK.md as the task specification", () => {
+    const message = CAPABILITY_CONFIG.defaultInitialMessage("/dir", { stepNumber: 1 });
 
-    // Act
-    const result = isStepReady(goalDir, 1);
+    expect(message).toContain("TASK.md");
+  });
 
-    // Assert: TEST.md alone is not sufficient
-    expect(result).toBe(false);
+  it("returns error message when stepNumber is missing", () => {
+    const message = CAPABILITY_CONFIG.defaultInitialMessage("/dir", {});
+
+    expect(message.toLowerCase()).toContain("error");
+    expect(message.toLowerCase()).toContain("stepnumber");
+  });
+
+  it("references REVIEW.md when step was previously rejected", () => {
+    // Arrange: create a temp dir with REJECTED marker
+    const tempDir = createTempDir();
+    try {
+      const { goalDir } = createGoalTree(tempDir, "rejected-goal", { stepNumber: 2, rejected: true });
+
+      // Act
+      const message = CAPABILITY_CONFIG.defaultInitialMessage(goalDir, { stepNumber: 2 });
+
+      // Assert: message references REVIEW.md for re-execution context
+      expect(message).toContain("REVIEW.md");
+      expect(message).toContain("previously rejected");
+    } finally {
+      cleanup(tempDir);
+    }
   });
 });

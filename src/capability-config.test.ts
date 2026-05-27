@@ -828,7 +828,7 @@ describe("resolveCapabilityConfig — skills passthrough", () => {
     // Assert: skills are present and match the static config
     expect(result).toBeDefined();
     expect(result!.skills).toBeDefined();
-    expect(result!.skills?.mandatory).toEqual(["test-driven-development", "pio-git"]);
+    expect(result!.skills?.mandatory).toEqual(["tdd", "pio-git"]);
     expect(result!.skills?.recommended).toEqual([{ name: "source-research", condition: "when researching external libraries" }]);
   });
 

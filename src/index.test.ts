@@ -103,7 +103,7 @@ describe("skill registration", () => {
     // Should include all six skills (filesystem discovery)
     const skillNames = result.skillPaths.map((p: string) => path.basename(p));
     expect(skillNames).toContain("pio");
-    expect(skillNames).toContain("test-driven-development");
+    expect(skillNames).toContain("tdd");
     expect(skillNames).toContain("pio-project-knowledge");
     expect(skillNames).toContain("pio-planning");
     expect(skillNames).toContain("write-a-skill");

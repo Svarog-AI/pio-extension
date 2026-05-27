@@ -95,7 +95,7 @@ Write `TASK.md` into the `S{NN}/` folder. This file is a focused, actionable spe
 
 **YAML frontmatter (required):** TASK.md begins with a YAML frontmatter block delimited by `---`. This block is always present — even when empty. It provides machine-readable data consumed at runtime by execute-task and review-task sessions. The frontmatter may include an optional `skills` block:
 
-- `skills.mandatory` — array of skill names critical for step completion. These skills are force-injected into the prompt (full SKILL.md content delivered before the agent starts). Examples: `pio-git` for a migration step, `test-driven-development` for any TDD step.
+- `skills.mandatory` — array of skill names critical for step completion. These skills are force-injected into the prompt (full SKILL.md content delivered before the agent starts). Examples: `pio-git` for a migration step, `tdd` for any TDD step.
 - `skills.recommended` — array of `{name, condition}` pairs for situational skills loaded on demand. The `condition` field describes when the skill is relevant. Examples: `source-research` with condition "when researching external library internals".
 - **Omit `skills.recommended` entirely** (do not write an empty array) when there are no recommended skills — matching the capability config convention.
 - Both `skills.mandatory` and `skills.recommended` are optional — a step with no special skill needs omits the `skills` block entirely, but always keeps the `---` delimiters.
@@ -110,7 +110,7 @@ TASK.md template:
 skills:
   mandatory:
     - pio-git
-    - test-driven-development
+    - tdd
   recommended:
     - name: source-research
       condition: when researching external library internals

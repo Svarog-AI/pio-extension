@@ -140,7 +140,7 @@ describe("TASK_FRONTMATTER_SCHEMA", () => {
     const result = validateAndCoerce(
       {
         skills: {
-          mandatory: ["pio-git", "test-driven-development"],
+          mandatory: ["pio-git", "tdd"],
           recommended: [
             { name: "source-research", condition: "when researching open-source libraries" },
           ],
@@ -153,7 +153,7 @@ describe("TASK_FRONTMATTER_SCHEMA", () => {
     expect(result.data).toBeDefined();
     const data = result.data! as TaskFrontmatter;
     expect(data.skills).toBeDefined();
-    expect(data.skills!.mandatory).toEqual(["pio-git", "test-driven-development"]);
+    expect(data.skills!.mandatory).toEqual(["pio-git", "tdd"]);
     expect(data.skills!.recommended).toHaveLength(1);
     expect(data.skills!.recommended![0].name).toBe("source-research");
   });

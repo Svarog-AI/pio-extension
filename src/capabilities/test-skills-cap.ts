@@ -8,7 +8,7 @@ import type { StaticCapabilityConfig } from "../types";
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "test-skills.md",
   skills: {
-    mandatory: ["test-driven-development", "pio-git"],
+    mandatory: ["tdd", "pio-git"],
     recommended: [{ name: "source-research", condition: "when researching external libraries" }],
   },
   defaultInitialMessage: () => "Test capability with skills",

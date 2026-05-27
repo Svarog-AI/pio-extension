@@ -31,7 +31,7 @@ Then read `PLAN.md` from the same directory. Find your assigned step and underst
 Read all files from `S{NN}/` (your step folder):
 
 - **TASK.md** — the focused specification of what was built. Contains code components, approach decisions, files affected, and acceptance criteria.
-- **TEST.md** — the test plan specifying exactly what must pass. Contains programmatic verification commands and expected results.
+- **TEST.md** — the test record documenting what was tested during implementation. Contains "Given/when/then" test case summaries and programmatic verification commands.
 - **SUMMARY.md** — the changelog written by the implementation agent. Lists status (`COMPLETED`), files created/modified/deleted, decisions made, and test coverage notes.
 - **DECISIONS.md** — may exist for Step 2+ (will not exist for Step 1 / `S01/`). Contains accumulated architectural decisions from preceding steps — file placement changes, departures from the original plan, interface choices. Treat it as supplementary context for evaluating whether implementation aligns with actual decisions made during the goal lifecycle. For Step 1 (`S01/`), this file will not exist; proceed using only `TASK.md`.
 
@@ -41,8 +41,9 @@ Read all files from `S{NN}/` (your step folder):
 
 1. **User-Requested Changes** (`SUMMARY.md`) — user-approved scope extensions always take precedence
 2. **Decisions** (`DECISIONS.md`) — architectural decisions and plan deviations override the original plan
-3. **Task** (`TASK.md`), **Plan** (`PLAN.md`), and **Test** (`TEST.md`) — formal specification and verification contract; TASK elaborates PLAN, TESTS verify TASK
-4. **Goal** (`GOAL.md`) — high-level target outcome; superseded by everything above
+3. **Task** (`TASK.md`) and **Plan** (`PLAN.md`) — formal specification; TASK elaborates PLAN
+4. **Test Record** (`TEST.md`) — summary of what was tested during implementation; verifies TASK was covered
+5. **Goal** (`GOAL.md`) — high-level target outcome; superseded by everything above
 
 When implementation follows a higher-authority source but deviates from a lower one, this is not an issue. Flag deviations only when they violate a source at its own authority level without justification from a higher source.
 
@@ -62,11 +63,15 @@ Evaluate the implementation across these dimensions:
 - Does TEST.md's verification plan actually cover all acceptance criteria from TASK.md?
 - Are there gaps where a criterion has no test or programmatic check?
 - Were tests actually written (or are they only described in TEST.md)?
+- Are there any missing tests that are important for the coverage?
 
 #### Implementation Correctness
 - Does the code actually implement what TASK.md specified?
 - Are interfaces, types, and signatures correct?
 - Do integration points (imports, exports, wiring) work as expected?
+- Does the implementation follow best practices?
+- Is the implementation unnecessarily complex? Is there a solution that's more readable?
+- Are there bugs in the code?
 
 #### Simplicity and Quality
 - Is the implementation the simplest solution that satisfies requirements?
@@ -90,10 +95,11 @@ For each issue found, assign a severity level using the classification rules bel
 #### CRITICAL — Mandatory REJECT
 
 - **Fundamentally wrong implementation.** The code is broken, produces incorrect results, or fails to implement what TASK.md specified.
-- **Test quality deviations.** Tests that deviate from what TEST.md specifies (the design spec). The test plan is the contract — tests must match it.
+- **Test quality deviations.** Tests that fail to cover important behavior described in TASK.md acceptance criteria. Good tests covering important behavior are mandatory.
 - **Meaningless tests.** Tests that don't actually verify behavior: checking cosmetic properties, presence of text lines, trivial assertions that prove nothing.
 - **Tests that don't make sense for the domain.** Tests that verify irrelevant properties or use incorrect assertions for the domain being tested.
 - **Absence of tests covering important behavior.** When the task requires tests, their absence is critical. Good tests covering important behavior are mandatory.
+- **Bugs and bad practices.** The code has bugs that may pass, but may have impact in the future. 
 
 #### HIGH — Mandatory REJECT
 

@@ -406,10 +406,12 @@ export function setupCapability(pi: ExtensionAPI) {
     currentConfig = config;
   });
 
-  // 2. Inject capability prompt as a custom conversation message for all turns.
-  //    This PRESERVES pi's default system prompt (identity, tools, guidelines,
-  //    skills, metadata) while layering our role-specific instructions on top
-  //    as a steering message in the conversation.
+  // 2. Inject capability prompt via systemPrompt for all turns.
+  //    This appends project overview, skill loading instructions, and capability
+  //    prompt to pi's base system prompt (_event.systemPrompt). The systemPrompt
+  //    persists across turns without accumulating in conversation history.
+  //    We must explicitly prepend _event.systemPrompt — the framework uses
+  //    last-writer-wins (runner.js:728-729: currentSystemPrompt = result.systemPrompt).
   pi.on("before_agent_start", async (_event, ctx) => {
     // Discover project context if not yet loaded
     if (projectContext === undefined) {
@@ -451,16 +453,10 @@ export function setupCapability(pi: ExtensionAPI) {
 
     if (prompts.length === 0) return; // no injection needed
 
-    // Return as a custom message instead of replacing the system prompt.
-    // This preserves pi's full default system prompt while delivering our
-    // capability instructions as conversation context.
+    // Return as systemPrompt — persistent across turns without accumulating in history.
+    // Prepend _event.systemPrompt to preserve pi's base prompt (last-writer-wins).
     const result = {
-      message: {
-        customType: "pio-capability-instructions",
-        content: [{ type: "text" as const, text: prompts.join("\n\n") }],
-        display: false,
-        details: {},
-      },
+      systemPrompt: _event.systemPrompt + "\n\n" + prompts.join("\n\n"),
     };
 
     // Model resolution: switch to the configured model for this capability.

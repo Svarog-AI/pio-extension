@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { isStepReady } from "./execute-task";
+import { CAPABILITY_CONFIG } from "./execute-task";
 import { stepFolderName } from "../fs-utils";
 import { resolveCapabilityConfig } from "../capability-config";
 
@@ -197,6 +198,99 @@ describe("resolveExecuteReadOnlyFiles", () => {
 // ---------------------------------------------------------------------------
 // isStepReady — TASK.md-only readiness (TASK.md-only is sufficient)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// execute-task.md prompt content — iterative TDD restructuring
+// ---------------------------------------------------------------------------
+
+const EXECUTE_TASK_PROMPT = fs.readFileSync(
+  path.join(path.dirname(new URL(import.meta.url).pathname), "../prompts/execute-task.md"),
+  "utf-8",
+);
+
+describe("execute-task.md prompt — iterative TDD restructuring", () => {
+  it("does not contain Step 4 about creating TEST.md upfront", () => {
+    expect(EXECUTE_TASK_PROMPT).not.toContain("### Step 4: Create TEST.md");
+  });
+
+  it("does not contain the Given/when/then planning format as a pre-implementation requirement", () => {
+    // The old Step 4 described the format with "Given ____ when ____ then ____" as a planning instruction before implementation
+    // The new prompt uses the pattern only for post-hoc TEST.md ("Given ____ when ____ then ____" in the TEST.md format section is OK)
+    // But it should NOT appear in a Step 4 heading about creating TEST.md upfront
+    expect(EXECUTE_TASK_PROMPT).not.toContain("### Step 4: Create TEST.md");
+    // The old format had "Do not deviate from this pattern" as a planning rule
+    expect(EXECUTE_TASK_PROMPT).not.toContain("Do not deviate from this pattern");
+  });
+
+  it("references the tdd skill for TDD methodology", () => {
+    expect(EXECUTE_TASK_PROMPT).toMatch(/follow.*[`"']?tdd[`"']?\s*skill/i);
+  });
+
+  it("instructs generating TEST.md after all tests pass as a post-hoc summary", () => {
+    expect(EXECUTE_TASK_PROMPT).toMatch(/TEST\.md.*after.*test/i);
+    expect(EXECUTE_TASK_PROMPT).toMatch(/post.?hoc|summary.*record|record.*what.*was.*tested/i);
+  });
+
+  it("does not contain tracer bullet mechanics in the prompt", () => {
+    // HOW details like tracer bullet rules belong in the tdd skill, not the prompt
+    // The prompt should reference the skill but not restate its mechanics
+    expect(EXECUTE_TASK_PROMPT).not.toMatch(/tracer.?bullet.*\(.*→/i);
+    expect(EXECUTE_TASK_PROMPT).not.toMatch(/RED.*→.*GREEN.*→.*refactor/i);
+  });
+
+  it("does not contain incremental loop rules in the prompt", () => {
+    // Rules like "One test at a time" belong in the tdd skill
+    expect(EXECUTE_TASK_PROMPT).not.toMatch(/one test at a time|don't anticipate future tests/i);
+  });
+
+  it("has sequential step numbering with no gaps", () => {
+    const stepHeadings = EXECUTE_TASK_PROMPT.match(/### Step \d+:/g) || [];
+    const stepNumbers = stepHeadings.map(h => parseInt(h.match(/\d+/)![0], 10));
+    for (let i = 1; i < stepNumbers.length; i++) {
+      expect(stepNumbers[i]).toBe(stepNumbers[i - 1] + 1);
+    }
+    expect(stepNumbers.length).toBeGreaterThan(0);
+  });
+
+  it("does not contain the old Test-first discipline guideline", () => {
+    expect(EXECUTE_TASK_PROMPT).not.toContain("Test-first discipline. Write tests before feature code.");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// execute-task.ts defaultInitialMessage — simplified task directive
+// ---------------------------------------------------------------------------
+
+describe("execute-task defaultInitialMessage", () => {
+  it("returns a simple task directive without methodology instructions", () => {
+    const message = CAPABILITY_CONFIG.defaultInitialMessage("/some/goal/dir", { stepNumber: 1 });
+
+    expect(message).toContain("TASK.md");
+    expect(message).not.toContain("create TEST.md");
+    expect(message).not.toContain("write tests first");
+    expect(message).not.toMatch(/write tests.*then implement/i);
+  });
+
+  it("includes the step number and folder name", () => {
+    const message = CAPABILITY_CONFIG.defaultInitialMessage("/some/goal/dir", { stepNumber: 3 });
+
+    expect(message).toContain("Step 3");
+    expect(message).toContain("S03");
+  });
+
+  it("includes the working directory", () => {
+    const message = CAPABILITY_CONFIG.defaultInitialMessage("/my/goal/workspace", { stepNumber: 1 });
+
+    expect(message).toContain("/my/goal/workspace");
+  });
+
+  it("returns error message when stepNumber is missing", () => {
+    const message = CAPABILITY_CONFIG.defaultInitialMessage("/some/goal/dir", {});
+
+    expect(message).toContain("Error");
+    expect(message).toContain("stepNumber");
+  });
+});
 
 describe("isStepReady — TASK.md only readiness", () => {
   let tempDir: string;

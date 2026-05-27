@@ -72,7 +72,7 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
       // If filesystem read fails, fall through to the normal message
     }
 
-    return `${prefix}Goal workspace is at ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md inside the \`${folderName}/\` directory, create TEST.md with concise test cases, write tests first, then implement the feature to make them pass.`;
+    return `${prefix}Goal workspace is at ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md inside the \`${folderName}/\` directory and resolve the task.`;
   },
 };
 

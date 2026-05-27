@@ -1,32 +1,31 @@
-# Summary: Refactor execute-task prompt for WHAT/HOW split
+# Summary: Restructure execute-task and review-task prompts for iterative TDD with post-hoc TEST.md
 
 ## Status
 COMPLETED
 
 ## Files Created
-- `.pio/goals/replace-tdd-with-matt-pocock-skill/S02/TEST.md` — test specification with programmatic verification cases
+- (none)
 
 ## Files Modified
-- `src/prompts/execute-task.md` — refactored Step 5 bullet 3: removed specific TDD pattern names (RED → GREEN → REFACTOR cycle, Arrange-Act-Assert, DAMP over DRY, one assertion per concept), replaced with a reference to the mandatory `tdd` skill as the source of methodology guidance
+- `src/prompts/execute-task.md` — Restructured from linear 9-step workflow (plan tests → write tests → implement) to iterative 8-step workflow. Replaced Steps 4–6 with single "Step 4: Iterative TDD" that references the `tdd` skill for methodology. TEST.md is now created post-hoc as a summary record. Updated intro paragraph, Guidelines section, and all internal step references.
+- `src/capabilities/execute-task.ts` — Simplified `defaultInitialMessage` to a task directive ("Read TASK.md... and resolve the task") following the convention of other capabilities. Removed methodology instructions ("create TEST.md with concise test cases, write tests first, then implement").
+- `src/prompts/review-task.md` — Updated TEST.md references from "the test plan specifying exactly what must pass" to "the test record documenting what was tested during implementation". Updated authority hierarchy to separate TEST.md from the formal specification tier. Updated CRITICAL severity rule to focus on test coverage of important behavior rather than deviation from a "design spec".
+- `src/capabilities/execute-task.test.ts` — Added 12 new tests: prompt content verification (iterative TDD restructuring, no upfront TEST.md, tdd skill reference, post-hoc TEST.md, no tracer bullet mechanics, sequential numbering, no old guideline) and `defaultInitialMessage` verification (no methodology instructions, includes step number/folder, includes working directory, error on missing stepNumber).
+- `src/capabilities/review-task.test.ts` — Added 4 new tests: prompt content verification (no "test plan" language, TEST.md as test record, no "formal specification and verification contract", no "the design spec" qualifier).
 
 ## Files Deleted
 - (none)
 
 ## Decisions Made
-- Replaced HOW-level pattern prescription with a single sentence delegating to the `tdd` skill: "Follow the mandatory `tdd` skill for test structure guidance — it covers test-first workflows, behavior verification, and the patterns you should use."
-- Preserved bullet 4 ("Verify tests fail initially") as it describes WHAT (a verification step), not HOW.
-- Modified only bullet 3 of Step 5 — all other bullets and sections left untouched.
+- Prompt vs skill boundary: The execute-task prompt references the `tdd` skill for methodology (tracer bullets, incremental cycles, refactoring) without restating HOW details. The prompt describes WHAT to do (load skill, iterate, create TEST.md post-hoc).
+- TEST.md format description retained in prompt for post-hoc creation: The "Given/when/then" pattern is still described in the prompt as the TEST.md format, but only in the context of post-hoc summary creation (Step 4, item 3).
+- Authority hierarchy in review-task.md: TEST.md moved from level 3 (formal specification) to level 4 (test record) to reflect its new role as a summary of what was tested rather than a pre-written contract.
+- `review-task.ts` required no changes: `defaultInitialMessage` and tool description are already generic enough ("Read TASK.md, TEST.md, and SUMMARY.md") without characterizing TEST.md as a "test plan".
 
 ## User-Requested Changes
 - (none)
 
 ## Test Coverage
-- All acceptance criteria verified programmatically:
-  - `grep -c "Arrange-Act-Assert" execute-task.md` → 0
-  - `grep -c "DAMP" execute-task.md` → 0
-  - `grep -cE "RED.*GREEN|RED→GREEN" execute-task.md` → 0
-  - `grep -c "one assertion per concept" execute-task.md` → 0
-  - `grep "tdd.*skill" execute-task.md` → confirms skill reference present
-  - Bullets 1, 2, 4 of Step 5 verified preserved
-  - `npm run check` (`tsc --noEmit`) → exits 0
-  - `npx vitest run` → 746 tests pass
+- 16 new tests added across execute-task.test.ts and review-task.test.ts
+- All 762 tests pass (up from 746)
+- `npm run check` (tsc --noEmit) reports no errors

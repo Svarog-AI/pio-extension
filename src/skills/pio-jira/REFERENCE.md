@@ -76,40 +76,39 @@ Jira ticket (PROJ-123)
 
 ### Step-by-step
 
-```bash
-# 1. Read the issue file
-# Title: first "# heading" in markdown
-# Body: content after the heading
+1. **Read** `.pio/issues/<slug>.md` — extract title (first `# heading`) and body (content after heading)
 
-# 2. Resolve project key
-# Check .pio/jira-config.yaml for site, projectKey, defaultType
-# If config missing, run setup first (see Jira Config Setup — Execution above):
-#   ask_user for site URL → ask_user for project key → bash src/skills/pio-jira/scripts/setup-config.sh "$SITE" "$PROJECT_KEY" [DEFAULT_TYPE]
-# If config exists but user provided a project key inline, use the inline value
+2. **Resolve project key:**
+   - Check `.pio/jira-config.yaml` for `site`, `projectKey`, `defaultType`
+   - If config missing, run setup first (see **Jira Config Setup — Execution** above): collect site + project key via `ask_user`, then run the setup script
+   - If config exists but user provided a project key inline, use the inline value
 
-# 3. Create the ticket
-# For single-line descriptions:
-acli jira workitem create \
-  --summary "Fix type error in fs-utils" \
-  --project "PROJ" \
-  --type "Task" \
-  --description "Fix the type error reported in fs-utils.ts" \
-  --json
+3. **Create the ticket.** For single-line descriptions:
 
-# For multi-line descriptions, use heredoc or proper escaping:
-acli jira workitem create \
-  --summary "Fix type error" \
-  --project "PROJ" \
-  --type "Task" \
-  --description "$(cat <<'EOF'
-Line one of description.
-Line two of description.
-EOF
-)" --json
+   ```bash
+   acli jira workitem create \
+     --summary "Fix type error in fs-utils" \
+     --project "PROJ" \
+     --type "Task" \
+     --description "Fix the type error reported in fs-utils.ts" \
+     --json
+   ```
 
-# 4. Parse response for the created key
-# Look for "key" field in JSON output
-```
+   For multi-line descriptions, use heredoc or proper escaping:
+
+   ```bash
+   acli jira workitem create \
+     --summary "Fix type error" \
+     --project "PROJ" \
+     --type "Task" \
+     --description "$(cat <<'EOF'
+   Line one of description.
+   Line two of description.
+   EOF
+   )" --json
+   ```
+
+4. **Parse** JSON response for the created key — look for the `key` field
 
 ### Shell quoting for multi-line descriptions
 
@@ -243,7 +242,7 @@ acli jira workitem search --jql "project = PROJ AND type = Bug AND priority = Hi
 |-----------|----------|
 | `acli` not installed | `command -v acli` fails → report helpful install message |
 | Not authenticated | Output contains `"unauthorized"` → direct to `acli jira auth login` |
-| No project key | `.pio/jira-config.yaml` missing and no user param → ask user for project key |
+| No project key | `.pio/jira-config.yaml` missing and no user param → run setup protocol first (see Jira Config Setup — Execution), which collects site + project key and creates config |
 | Markdown → ADF conversion | Complex formatting may not transfer perfectly → note limitation to user |
 | Multi-line description quoting | Use heredoc `$(cat <<'EOF' ... EOF)` or proper escaping |
 | Create fails (network) | `acli` exits non-zero → log stderr, proceed gracefully |

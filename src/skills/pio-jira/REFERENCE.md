@@ -6,27 +6,26 @@ Detailed execution steps, edge cases, and command patterns for the protocols in 
 
 ### Step-by-step
 
-```bash
-# 1. Fetch ticket data
-acli jira workitem view PROJ-123 --json
+1. **Fetch ticket data:**
 
-# 2. Parse output — inspect actual field names first
-# Common fields: summary, description, key, status
-# Adapt if your acli version uses different names
+   ```bash
+   acli jira workitem view PROJ-123 --json
+   ```
 
-# 3. Derive slug (lowercase, hyphenated)
-# PROJ-123 → jira-proj-123
-# MY-PROJ-456 → jira-my-proj-456
+2. **Parse output** — inspect actual field names first. Common fields: `summary`, `description`, `key`, `status`. Adapt if your `acli` version uses different names.
 
-# 4. Check if issue already exists
-ls .pio/issues/jira-proj-123.md 2>/dev/null
+3. **Derive slug** (lowercase, hyphenated): `PROJ-123` → `jira-proj-123`, `MY-PROJ-456` → `jira-my-proj-456`.
 
-# 5. Create via pio_create_issue tool (NOT manual file writes)
-# Use the pio_create_issue tool with:
-#   slug: "jira-proj-123"
-#   title: "<from summary field>"
-#   description: "<from description field>"
-```
+4. **Check if issue already exists:**
+
+   ```bash
+   ls .pio/issues/jira-proj-123.md 2>/dev/null
+   ```
+
+5. **Create via `pio_create_issue` tool** (NOT manual file writes). Use the `pio_create_issue` tool with:
+   - `slug`: "jira-proj-123"
+   - `title`: "<from summary field>"
+   - `description`: "<from description field>"
 
 ### Slug derivation examples
 
@@ -43,22 +42,14 @@ ls .pio/issues/jira-proj-123.md 2>/dev/null
 
 After `pio_create_issue` creates `.pio/issues/jira-proj-123.md`:
 
-```bash
-# 1. Convert the local issue into a goal workspace
-# Use the pio_goal_from_issue tool (not a bash command):
-#   issuePath: "jira-proj-123"
-#
-# This queues a create-goal session with the issue content as initial context.
-# The goal name is derived from the issue slug: jira-proj-123
+1. **Convert the local issue into a goal workspace.** Use the `pio_goal_from_issue` tool (not a bash command):
+   - `issuePath`: "jira-proj-123"
+   - This queues a create-goal session with the issue content as initial context.
+   - The goal name is derived from the issue slug: `jira-proj-123`.
 
-# 2. User runs /pio-next-task to start the Goal Definition Assistant
-# The assistant receives the issue content as starting context,
-# interviews about the feature, and produces GOAL.md
+2. **User runs `/pio-next-task`** to start the Goal Definition Assistant. The assistant receives the issue content as starting context, interviews about the feature, and produces `GOAL.md`.
 
-# 3. Expected outcome:
-# Goal workspace created at .pio/goals/jira-proj-123/
-# Original issue file is cleaned up after goal creation
-```
+3. **Expected outcome:** Goal workspace created at `.pio/goals/jira-proj-123/`. Original issue file is cleaned up after goal creation.
 
 ### Workflow summary
 
@@ -121,61 +112,79 @@ When passing multi-line text to `acli` via bash:
 
 ## Auth Status Check — Execution
 
-```bash
-# Check auth status
-acli jira auth status
+1. **Check auth status:**
 
-# Expected output on success: authenticated user info
-# Expected output on failure: contains "unauthorized" or similar
+   ```bash
+   acli jira auth status
+   ```
 
-# If not authenticated, instruct user to run:
-acli jira auth login
-# This opens a browser for OAuth authentication
-```
+   Expected output on success: authenticated user info. Expected output on failure: contains `"unauthorized"` or similar.
+
+2. **If not authenticated, instruct user to run:**
+
+   ```bash
+   acli jira auth login
+   ```
+
+   This opens a browser for OAuth authentication.
 
 ## Jira Config Setup — Execution
 
 ### Step-by-step
 
-```bash
-# Step 1: Verify authentication
-acli jira auth status
+1. **Verify authentication:**
 
-# Step 1b (if not authenticated): guide user through login
-# acli jira auth login
-# Wait for user to confirm authentication is complete
+   ```bash
+   acli jira auth status
+   ```
 
-# Step 2: Collect site URL
-# Use ask_user with the following payload:
-{
-  "question": "Which Jira site should we use? (e.g., https://mycompany.atlassian.net)",
-  "allowFreeform": true
-}
-# Store the response as $SITE
+   If not authenticated, guide user through login (`acli jira auth login`). Wait for user to confirm authentication is complete.
 
-# Step 3: Collect project key
-# Use ask_user with the following payload:
-{
-  "question": "Which Jira project should we use?",
-  "context": "Project keys are short codes like PROJ, JIRA, or MYAPP.",
-  "allowFreeform": true
-}
-# Store the response as $PROJECT_KEY
+2. **Collect site URL.** Use `ask_user` with the following payload:
 
-# Step 4: Run the setup script with collected values
-bash src/skills/pio-jira/scripts/setup-config.sh "$SITE" "$PROJECT_KEY" [DEFAULT_TYPE]
-# DEFAULT_TYPE is optional — defaults to "Task"
+   ```json
+   {
+     "question": "Which Jira site should we use? (e.g., https://mycompany.atlassian.net)",
+     "allowFreeform": true
+   }
+   ```
 
-# Step 5: Verify success
-# Check exit code 0. Optionally verify the config file:
-# cat .pio/jira-config.yaml
-# Expected output:
-site: "https://mycompany.atlassian.net"
-projectKey: "PROJ"
-defaultType: "Task"
+   Store the response as `$SITE`.
 
-# Step 6: Proceed with the original Jira operation using values from the new config
-```
+3. **Collect project key.** Use `ask_user` with the following payload:
+
+   ```json
+   {
+     "question": "Which Jira project should we use?",
+     "context": "Project keys are short codes like PROJ, JIRA, or MYAPP.",
+     "allowFreeform": true
+   }
+   ```
+
+   Store the response as `$PROJECT_KEY`.
+
+4. **Run the setup script with collected values:**
+
+   ```bash
+   bash src/skills/pio-jira/scripts/setup-config.sh "$SITE" "$PROJECT_KEY" [DEFAULT_TYPE]
+   ```
+
+   `DEFAULT_TYPE` is optional — defaults to `"Task"`.
+
+5. **Verify success.** Check exit code 0. Optionally verify the config file:
+
+   ```bash
+   cat .pio/jira-config.yaml
+   ```
+
+   Expected output:
+   ```yaml
+   site: "https://mycompany.atlassian.net"
+   projectKey: "PROJ"
+   defaultType: "Task"
+   ```
+
+6. **Proceed** with the original Jira operation using values from the new config.
 
 ### Example ask_user payloads
 

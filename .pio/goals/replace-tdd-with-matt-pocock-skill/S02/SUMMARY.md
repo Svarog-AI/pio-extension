@@ -23,9 +23,14 @@ COMPLETED
 - `review-task.ts` required no changes: `defaultInitialMessage` and tool description are already generic enough ("Read TASK.md, TEST.md, and SUMMARY.md") without characterizing TEST.md as a "test plan".
 
 ## User-Requested Changes
-- (none)
+- User requested adding the full `tdd` skill content (SKILL.md + 5 reference files) and minor execute-task.md prompt tweaks. Modified `src/skills/tdd/SKILL.md` (added), `src/skills/tdd/tests.md` (added), `src/skills/tdd/mocking.md` (added), `src/skills/tdd/interface-design.md` (added), `src/skills/tdd/deep-modules.md` (added), `src/skills/tdd/refactoring.md` (added), `src/prompts/execute-task.md` (minor wording changes: "Load" → "Follow", added TEST.md purpose clarification, added TDD methodology reminder for user-requested changes).
+- User requested improving the review-task prompt with additional review bullets. Modified `src/prompts/review-task.md` (added: "Are there any missing tests that are important for the coverage?", "Does the implementation follow best practices?", "Is the implementation unnecessarily complex?", "Are there bugs in the code?", and a new CRITICAL category for "Bugs and bad practices").
 
 ## Test Coverage
 - 16 new tests added across execute-task.test.ts and review-task.test.ts
 - All 762 tests pass (up from 746)
 - `npm run check` (tsc --noEmit) reports no errors
+
+## Post-Completion Changes (after initial commit)
+- **Commit `8f38461`:** Added full `tdd` skill content (6 files) and minor execute-task.md prompt tweaks.
+- **Commit `3f2bfbe`:** Added review-task.md improvements (4 new review bullets + 1 new CRITICAL category).

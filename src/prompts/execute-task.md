@@ -53,9 +53,9 @@ Be thorough — this research ensures your implementation matches the project's 
 
 Follow the mandatory `tdd` skill for the TDD methodology — it covers tracer bullets, incremental RED→GREEN cycles, refactoring, and test design principles. The skill contains all HOW details; this step describes WHAT to do:
 
-1. **Load the `tdd` skill** and follow its workflow for the iterative development cycle.
+1. **Follow the `tdd` skill workflow** for the iterative development cycle.
 2. **Write tests and implement iteratively.** Do NOT write all tests first then all implementation. Each cycle: write one test, see it fail, write minimal code to pass, repeat.
-3. **After all tests pass and refactoring is done**, create `TEST.md` inside the `S{NN}/` folder as a post-hoc summary record of what was actually tested. Use the "Given ____ when ____ then ____" format for test case descriptions. Include programmatic verification commands below unit test entries.
+3. **After all tests pass and refactoring is done**, create `TEST.md` inside the `S{NN}/` folder as a post-hoc summary record of what was actually tested. Use the "Given ____ when ____ then ____" format for test case descriptions. This is meant to give a human-readable overview of tests.
 
 **TEST.md format:** Start with a single short paragraph describing what is tested. Then list test cases as single sentences following the "Given/when/then" pattern. List programmatic verification commands below unit tests using the same pattern.
 
@@ -83,6 +83,8 @@ Cross-reference TASK.md's acceptance criteria with your implementation:
 ### Handling user-requested changes
 
 After initial implementation is complete (from Step 5 onward), you may receive user messages requesting changes — for example: "can you also do X", "change this approach", "merge this with another file". Treat these as **user-requested changes**, distinct from the original `TASK.md` scope.
+
+If code changes are requested, make sure to keep using the `tdd` skill methodology. Using this is **CRITICAL**!
 
 After applying each user-requested change, before proceeding to final verification (Step 5) or completion (Step 8), you **must** update `SUMMARY.md` to record:
 

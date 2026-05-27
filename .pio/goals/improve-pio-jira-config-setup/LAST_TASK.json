@@ -1,27 +1,92 @@
 {
-  "capability": "execute-task",
+  "capability": "evolve-plan",
   "params": {
     "goalName": "improve-pio-jira-config-setup",
-    "stepNumber": 1,
+    "stepNumber": 5,
     "_sessionContext": {
       "goalName": "improve-pio-jira-config-setup",
-      "stepNumber": 1,
+      "stepNumber": 5,
       "_sessionContext": {
         "goalName": "improve-pio-jira-config-setup",
-        "stepNumber": 1,
+        "stepNumber": 4,
         "_sessionContext": {
           "goalName": "improve-pio-jira-config-setup",
-          "stepNumber": 1,
+          "stepNumber": 4,
           "_sessionContext": {
             "goalName": "improve-pio-jira-config-setup",
-            "initialMessage": "Improve the pio-jira skill by adding instructions to set up the Jira config file (`.pio/jira-config.yaml`) when it doesn't exist. Currently the skill references this config for project key resolution during push operations, but there's no guidance on how to create or populate it when a project is new or the file is missing.\n\nThe improvement should cover:\n1. When to prompt/setup the config (first Jira operation, before push, etc.)\n2. How to collect the project key from the user (ask_user)\n3. What defaults to use for optional fields (defaultType)\n4. How to write the file using the bash tool (mkdir + write)\n5. Where in the existing workflow this setup step should be inserted",
-            "capability": "create-goal"
+            "stepNumber": 4,
+            "_sessionContext": {
+              "goalName": "improve-pio-jira-config-setup",
+              "stepNumber": 4,
+              "_sessionContext": {
+                "goalName": "improve-pio-jira-config-setup",
+                "stepNumber": 4,
+                "_sessionContext": {
+                  "goalName": "improve-pio-jira-config-setup",
+                  "stepNumber": 3,
+                  "_sessionContext": {
+                    "goalName": "improve-pio-jira-config-setup",
+                    "stepNumber": 3,
+                    "_sessionContext": {
+                      "goalName": "improve-pio-jira-config-setup",
+                      "stepNumber": 3,
+                      "_sessionContext": {
+                        "goalName": "improve-pio-jira-config-setup",
+                        "stepNumber": 2,
+                        "_sessionContext": {
+                          "goalName": "improve-pio-jira-config-setup",
+                          "stepNumber": 2,
+                          "_sessionContext": {
+                            "goalName": "improve-pio-jira-config-setup",
+                            "stepNumber": 2,
+                            "_sessionContext": {
+                              "goalName": "improve-pio-jira-config-setup",
+                              "stepNumber": 1,
+                              "_sessionContext": {
+                                "goalName": "improve-pio-jira-config-setup",
+                                "stepNumber": 1,
+                                "_sessionContext": {
+                                  "goalName": "improve-pio-jira-config-setup",
+                                  "stepNumber": 1,
+                                  "_sessionContext": {
+                                    "goalName": "improve-pio-jira-config-setup",
+                                    "stepNumber": 1,
+                                    "_sessionContext": {
+                                      "goalName": "improve-pio-jira-config-setup",
+                                      "initialMessage": "Improve the pio-jira skill by adding instructions to set up the Jira config file (`.pio/jira-config.yaml`) when it doesn't exist. Currently the skill references this config for project key resolution during push operations, but there's no guidance on how to create or populate it when a project is new or the file is missing.\n\nThe improvement should cover:\n1. When to prompt/setup the config (first Jira operation, before push, etc.)\n2. How to collect the project key from the user (ask_user)\n3. What defaults to use for optional fields (defaultType)\n4. How to write the file using the bash tool (mkdir + write)\n5. Where in the existing workflow this setup step should be inserted",
+                                      "capability": "create-goal"
+                                    },
+                                    "capability": "create-plan"
+                                  },
+                                  "capability": "evolve-plan"
+                                },
+                                "capability": "execute-task"
+                              },
+                              "capability": "review-task"
+                            },
+                            "capability": "evolve-plan"
+                          },
+                          "capability": "execute-task"
+                        },
+                        "capability": "review-task"
+                      },
+                      "capability": "evolve-plan"
+                    },
+                    "capability": "execute-task"
+                  },
+                  "capability": "review-task"
+                },
+                "capability": "evolve-plan"
+              },
+              "capability": "execute-task"
+            },
+            "capability": "review-task"
           },
-          "capability": "create-plan"
+          "capability": "execute-task"
         },
-        "capability": "evolve-plan"
+        "capability": "review-task"
       },
-      "capability": "execute-task"
+      "capability": "evolve-plan"
     }
   }
 }

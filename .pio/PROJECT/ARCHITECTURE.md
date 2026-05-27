@@ -96,7 +96,7 @@ Optional `~/.pi/pio-config.yaml` allows per-capability model overrides. Resoluti
 
 Jira operations are handled entirely through the `pio-jira` skill (`src/skills/pio-jira/`) — no TypeScript capability code exists for Jira. Agents invoke the Atlassian CLI (`acli`) via `bash` tool calls, guided by protocol instructions in SKILL.md and REFERENCE.md.
 
-**Config file:** `.pio/jira-config.yaml` (optional) — stores `projectKey` and `defaultType` for push operations.
+**Config file:** `.pio/jira-config.yaml` (optional) — stores `site`, `projectKey`, and `defaultType`. Created by `src/skills/pio-jira/scripts/setup-config.sh` (POSIX shell, invoked via `bash` tool). Triggered before any Jira operation when config is missing.
 
 **Workflow:** Jira ticket → pull to local issue (`pio_create_issue`) → create goal from issue (`pio_goal_from_issue`) → full pio lifecycle.
 

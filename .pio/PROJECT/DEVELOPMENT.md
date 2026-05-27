@@ -17,6 +17,8 @@ Tests are **colocated** alongside source files using the `*.test.ts` naming conv
 
 Configuration: `vitest.config.ts` — Node.js environment, global `describe/it/expect`, include pattern `src/**/*.test.ts`.
 
+**Exception for skill scripts:** Bundled shell scripts in `src/skills/*/scripts/` have colocated `.test.ts` files in the same directory (e.g., `src/skills/pio-jira/scripts/setup-config.test.ts`). These are matched by the `src/**/*.test.ts` pattern and tested using `child_process.spawnSync` to execute the script in temp directories.
+
 Tests use `fs.mkdtempSync()` for temp directories (not mocked filesystems). Most tests create real directory trees under `os.tmpdir()` and clean up in `afterEach`.
 
 ## CI/CD and Release

@@ -86,7 +86,7 @@ After initial implementation is complete (from Step 5 onward), you may receive u
 
 If code changes are requested, make sure to keep using the `tdd` skill methodology. Using this is **CRITICAL**!
 
-After applying each user-requested change, before proceeding to final verification (Step 5) or completion (Step 8), you **must** update `SUMMARY.md` to record:
+After applying each user-requested change, before proceeding to final verification (Step 5) or completion (Step 7), you **must** update `SUMMARY.md` to record:
 
 - What the user requested (brief description)
 - Which files were created, modified, or deleted as a result of that specific change

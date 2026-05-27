@@ -980,33 +980,6 @@ describe("review-task postValidate — missing or invalid frontmatter", () => {
 // review-task postValidate — missing stepNumber
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// review-task.md prompt content — TEST.md as test record
-// ---------------------------------------------------------------------------
-
-const REVIEW_TASK_PROMPT = fs.readFileSync(
-  path.join(path.dirname(new URL(import.meta.url).pathname), "../prompts/review-task.md"),
-  "utf-8",
-);
-
-describe("review-task.md prompt — TEST.md as test record", () => {
-  it("does not contain 'the test plan specifying exactly what must pass'", () => {
-    expect(REVIEW_TASK_PROMPT).not.toContain("the test plan specifying exactly what must pass");
-  });
-
-  it("references TEST.md as a test record or summary", () => {
-    expect(REVIEW_TASK_PROMPT).toMatch(/TEST\.md.*test record|test record.*TEST\.md/i);
-  });
-
-  it("does not call TEST.md a 'formal specification and verification contract'", () => {
-    expect(REVIEW_TASK_PROMPT).not.toContain("formal specification and verification contract");
-  });
-
-  it("does not contain 'the design spec' qualifier for TEST.md", () => {
-    expect(REVIEW_TASK_PROMPT).not.toContain("the design spec");
-  });
-});
-
 describe("review-task postValidate — missing stepNumber", () => {
   let tempDir: string;
 

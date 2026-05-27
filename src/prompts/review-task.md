@@ -63,11 +63,15 @@ Evaluate the implementation across these dimensions:
 - Does TEST.md's verification plan actually cover all acceptance criteria from TASK.md?
 - Are there gaps where a criterion has no test or programmatic check?
 - Were tests actually written (or are they only described in TEST.md)?
+- Are there any missing tests that are important for the coverage?
 
 #### Implementation Correctness
 - Does the code actually implement what TASK.md specified?
 - Are interfaces, types, and signatures correct?
 - Do integration points (imports, exports, wiring) work as expected?
+- Does the implementation follow best practices?
+- Is the implementation unnecessarily complex? Is there a solution that's more readable?
+- Are there bugs in the code?
 
 #### Simplicity and Quality
 - Is the implementation the simplest solution that satisfies requirements?
@@ -95,6 +99,7 @@ For each issue found, assign a severity level using the classification rules bel
 - **Meaningless tests.** Tests that don't actually verify behavior: checking cosmetic properties, presence of text lines, trivial assertions that prove nothing.
 - **Tests that don't make sense for the domain.** Tests that verify irrelevant properties or use incorrect assertions for the domain being tested.
 - **Absence of tests covering important behavior.** When the task requires tests, their absence is critical. Good tests covering important behavior are mandatory.
+- **Bugs and bad practices.** The code has bugs that may pass, but may have impact in the future. 
 
 #### HIGH — Mandatory REJECT
 

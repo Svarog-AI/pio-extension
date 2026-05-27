@@ -15,6 +15,51 @@ description: Test-driven development with red-green-refactor loop. Use when user
 
 See [tests.md](tests.md) for examples and [mocking.md](mocking.md) for mocking guidelines.
 
+## Anti-Pattern: Testing Implementation Details
+
+**Do not test things that are not behavior.** Before writing a test, ask: "if I changed this but the system still did the right thing, should the test fail?" If the answer is no, don't test it.
+
+### Things you should NOT test
+
+**String literal content.** Descriptions, labels, error message text, tool metadata — these are documentation, not behavior. Changing a description from "writes tests first" to "applies iterative TDD" doesn't change what the code *does*. No test needed. Verify via the existing test suite (no regressions) and manual review.
+
+**Configuration values that don't affect observable outcomes.** A tool's `description` field, a command's `label`, a prompt's `title` — these are metadata consumed by UIs or agents, not logic your code exercises. If the only effect is a string shown somewhere, the test is checking the shape of a string, not a capability.
+
+**Internal data structure shape.** Don't assert that an object has `{ a: 1, b: 2 }` when the function only needs `{ a: 1 }` to work. Test the *outcome* of using the data, not the data itself. If the function returns a result, test the result. If it mutates state, test the state change. Don't test intermediate shapes.
+
+**Function signatures and parameter counts.** Don't write `expect(fn.length).toBe(3)`. If the function works correctly with the right inputs, the signature is correct by construction (TypeScript will catch mismatches).
+
+**File contents read as raw strings.** Don't read a source file and assert it contains a substring. This is testing the source code, not the system's behavior. If a prompt file needs to contain certain text, that's a documentation concern — verify by reading the file, not by testing it.
+
+### The decision tree
+
+```
+Does this change have observable behavior?
+├── Yes (function output, state mutation, file creation, error throwing)
+│   └── Write a test that exercises the public interface
+└── No (description string, comment, label, prompt text, metadata)
+    └── No test needed. Verify: existing suite passes + manual review
+```
+
+### Example: bad vs good
+
+**Bad** — testing a description string:
+```typescript
+it("description mentions iterative workflow", () => {
+  expect(tool.description).toContain("iterative TDD");
+});
+// If someone rephrases the description but keeps the meaning, the test breaks.
+// The tool's behavior hasn't changed.
+```
+
+**Good** — testing what the tool *does*:
+```typescript
+it("enqueues a task with the correct capability and params", () => {
+  const result = await tool.execute(/* ... */);
+  // Assert the actual outcome: what was enqueued, what was returned
+});
+```
+
 ## Anti-Pattern: Horizontal Slices
 
 **DO NOT write all tests first, then all implementation.** This is "horizontal slicing" - treating RED as "write all tests" and GREEN as "write all code."

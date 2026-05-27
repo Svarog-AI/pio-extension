@@ -353,6 +353,9 @@ export function setupCapability(pi: ExtensionAPI) {
 
   // 1. Read config at startup — consume immediately
   pi.on("resources_discover", async (_event, ctx) => {
+    // Reset compiled sections to prevent stale state from previous sessions
+    compiledSections = undefined;
+
     const entries = ctx.sessionManager.getEntries();
     const entry = entries.find(
       (e) => e.type === "custom" && e.customType === "pio-config",
@@ -518,6 +521,11 @@ export function setupCapability(pi: ExtensionAPI) {
 export function getSessionParams(): Record<string, unknown> | undefined {
   if (enrichedSessionParams === undefined) return undefined;
   return { ...enrichedSessionParams };
+}
+
+/** Exported for testing — returns the raw enrichedSessionParams (not a copy). */
+export function getEnrichedSessionParamsForTesting(): Record<string, unknown> | undefined {
+  return enrichedSessionParams;
 }
 
 /**

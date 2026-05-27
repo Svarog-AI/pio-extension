@@ -1444,13 +1444,19 @@ describe("workflow steps population — enrichedSessionParams", () => {
   });
 
   it("given compiled sections with workflow steps when resources_discover runs then enrichedSessionParams contains totalWorkflowSteps and workflowSteps", async () => {
-    // Set up mock to return sections with steps info
-    mockCompilePrompt.mockResolvedValue({
-      role: "## Role\n\nTest role.",
-      workflow: "## Workflow\n\n1. Step one\n2. Step two",
-      guidelines: undefined,
-      mergedSkills: {},
-    });
+    // Set up mock to return sections with _steps info
+    mockCompilePrompt.mockImplementation(() =>
+      Promise.resolve({
+        role: "## Role\n\nTest role.",
+        workflow: "## Workflow\n\n1. Step one\n2. Step two",
+        guidelines: undefined,
+        mergedSkills: {},
+        _steps: [
+          { id: "step-1", title: "Step One", instructions: "Do step one" },
+          { id: "step-2", title: "Step Two", instructions: "Do step two" },
+        ],
+      }),
+    );
 
     const registeredHandlers: Record<string, Function> = {};
 
@@ -1485,11 +1491,14 @@ describe("workflow steps population — enrichedSessionParams", () => {
     // Assert: compilePrompt was called
     expect(mockCompilePrompt).toHaveBeenCalled();
 
-    // Verify enrichedSessionParams via getSessionParams
-    const params = mod.getSessionParams();
-    expect(params).toBeDefined();
-    // The implementation should populate workflow steps from compiled sections
-    // Note: the exact values depend on how the implementation extracts steps from sections
+    // Verify enrichedSessionParams via internal getter (getSessionParams is mocked at module level)
+    const rawParams = mod.getEnrichedSessionParamsForTesting();
+    expect(rawParams).toBeDefined();
+    expect(rawParams!.totalWorkflowSteps).toBe(2);
+    expect(rawParams!.workflowSteps).toEqual([
+      { id: "step-1", title: "Step One" },
+      { id: "step-2", title: "Step Two" },
+    ]);
   });
 });
 

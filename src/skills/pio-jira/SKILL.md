@@ -17,6 +17,20 @@ Before any Jira operation, verify authentication:
 2. If not authenticated, direct the user to `acli jira auth login`
 3. Proceed only after auth is confirmed
 
+## Jira Config Setup
+
+Before any Jira operation, when `.pio/jira-config.yaml` is missing:
+
+1. **Auth prerequisite:** Run the Auth Status Check protocol first. If not authenticated, guide the user through `acli jira auth login`. Proceed only after auth is confirmed.
+2. **Collect site URL:** Call `ask_user` with freeform input: "Which Jira site should we use? (e.g., https://mycompany.atlassian.net)"
+3. **Collect project key:** Call `ask_user` with freeform input: "Which Jira project should we use?" (project keys are short codes like `PROJ`)
+4. **Create the config:** Run via the `bash` tool:
+   `bash src/skills/pio-jira/scripts/setup-config.sh SITE PROJECT_KEY [DEFAULT_TYPE]`
+   `DEFAULT_TYPE` is optional, defaults to `"Task"`. Paths resolve from project root.
+5. **Resume operation:** After setup exits 0, proceed with the original Jira operation using values from the new config.
+
+See [REFERENCE.md](REFERENCE.md) for execution details.
+
 ## Pull Jira → Local Issue
 
 Pull a Jira ticket into a local `.pio/issues/` file. Follow this protocol:
@@ -46,15 +60,16 @@ This is the natural "Jira → code" workflow: ticket → local issue → goal �
 Push a local `.pio/issues/<slug>.md` file to Jira. Follow this protocol:
 
 1. Read `.pio/issues/<slug>.md` — extract title (first `# heading`) and body (content after heading)
-2. Resolve project key from user parameter or `.pio/jira-config.yaml` (if it exists)
+2. Resolve project key from user parameter or `.pio/jira-config.yaml` — if missing, see **Jira Config Setup** above to create it first
 3. Run `acli jira workitem create --summary "..." --project "KEY" --type "Task" --description "..." --json`
 4. Parse JSON response to extract the created Jira key (likely `key` field)
 5. Report the created Jira key
 
 **Config file:** `.pio/jira-config.yaml` (optional, per-repo):
 ```yaml
-projectKey: "PROJ"      # default project for push operations
-defaultType: "Task"     # default Jira issue type
+site: "https://mycompany.atlassian.net"  # Jira site URL
+projectKey: "PROJ"                        # default project for push operations
+defaultType: "Task"                       # default Jira issue type
 ```
 All fields optional. No credentials — auth is handled by `acli` itself.
 

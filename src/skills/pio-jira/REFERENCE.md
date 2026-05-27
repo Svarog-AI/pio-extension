@@ -6,27 +6,26 @@ Detailed execution steps, edge cases, and command patterns for the protocols in 
 
 ### Step-by-step
 
-```bash
-# 1. Fetch ticket data
-acli jira workitem view PROJ-123 --json
+1. **Fetch ticket data:**
 
-# 2. Parse output — inspect actual field names first
-# Common fields: summary, description, key, status
-# Adapt if your acli version uses different names
+   ```bash
+   acli jira workitem view PROJ-123 --json
+   ```
 
-# 3. Derive slug (lowercase, hyphenated)
-# PROJ-123 → jira-proj-123
-# MY-PROJ-456 → jira-my-proj-456
+2. **Parse output** — inspect actual field names first. Common fields: `summary`, `description`, `key`, `status`. Adapt if your `acli` version uses different names.
 
-# 4. Check if issue already exists
-ls .pio/issues/jira-proj-123.md 2>/dev/null
+3. **Derive slug** (lowercase, hyphenated): `PROJ-123` → `jira-proj-123`, `MY-PROJ-456` → `jira-my-proj-456`.
 
-# 5. Create via pio_create_issue tool (NOT manual file writes)
-# Use the pio_create_issue tool with:
-#   slug: "jira-proj-123"
-#   title: "<from summary field>"
-#   description: "<from description field>"
-```
+4. **Check if issue already exists:**
+
+   ```bash
+   ls .pio/issues/jira-proj-123.md 2>/dev/null
+   ```
+
+5. **Create via `pio_create_issue` tool** (NOT manual file writes). Use the `pio_create_issue` tool with:
+   - `slug`: "jira-proj-123"
+   - `title`: "<from summary field>"
+   - `description`: "<from description field>"
 
 ### Slug derivation examples
 
@@ -43,22 +42,14 @@ ls .pio/issues/jira-proj-123.md 2>/dev/null
 
 After `pio_create_issue` creates `.pio/issues/jira-proj-123.md`:
 
-```bash
-# 1. Convert the local issue into a goal workspace
-# Use the pio_goal_from_issue tool (not a bash command):
-#   issuePath: "jira-proj-123"
-#
-# This queues a create-goal session with the issue content as initial context.
-# The goal name is derived from the issue slug: jira-proj-123
+1. **Convert the local issue into a goal workspace.** Use the `pio_goal_from_issue` tool (not a bash command):
+   - `issuePath`: "jira-proj-123"
+   - This queues a create-goal session with the issue content as initial context.
+   - The goal name is derived from the issue slug: `jira-proj-123`.
 
-# 2. User runs /pio-next-task to start the Goal Definition Assistant
-# The assistant receives the issue content as starting context,
-# interviews about the feature, and produces GOAL.md
+2. **User runs `/pio-next-task`** to start the Goal Definition Assistant. The assistant receives the issue content as starting context, interviews about the feature, and produces `GOAL.md`.
 
-# 3. Expected outcome:
-# Goal workspace created at .pio/goals/jira-proj-123/
-# Original issue file is cleaned up after goal creation
-```
+3. **Expected outcome:** Goal workspace created at `.pio/goals/jira-proj-123/`. Original issue file is cleaned up after goal creation.
 
 ### Workflow summary
 
@@ -76,38 +67,39 @@ Jira ticket (PROJ-123)
 
 ### Step-by-step
 
-```bash
-# 1. Read the issue file
-# Title: first "# heading" in markdown
-# Body: content after the heading
+1. **Read** `.pio/issues/<slug>.md` — extract title (first `# heading`) and body (content after heading)
 
-# 2. Resolve project key
-# Check .pio/jira-config.yaml for projectKey
-# If not found, ask user for project key
+2. **Resolve project key:**
+   - Check `.pio/jira-config.yaml` for `site`, `projectKey`, `defaultType`
+   - If config missing, run setup first (see **Jira Config Setup — Execution** above): collect site + project key via `ask_user`, then run the setup script
+   - If config exists but user provided a project key inline, use the inline value
 
-# 3. Create the ticket
-# For single-line descriptions:
-acli jira workitem create \
-  --summary "Fix type error in fs-utils" \
-  --project "PROJ" \
-  --type "Task" \
-  --description "Fix the type error reported in fs-utils.ts" \
-  --json
+3. **Create the ticket.** For single-line descriptions:
 
-# For multi-line descriptions, use heredoc or proper escaping:
-acli jira workitem create \
-  --summary "Fix type error" \
-  --project "PROJ" \
-  --type "Task" \
-  --description "$(cat <<'EOF'
-Line one of description.
-Line two of description.
-EOF
-)" --json
+   ```bash
+   acli jira workitem create \
+     --summary "Fix type error in fs-utils" \
+     --project "PROJ" \
+     --type "Task" \
+     --description "Fix the type error reported in fs-utils.ts" \
+     --json
+   ```
 
-# 4. Parse response for the created key
-# Look for "key" field in JSON output
-```
+   For multi-line descriptions, use heredoc or proper escaping:
+
+   ```bash
+   acli jira workitem create \
+     --summary "Fix type error" \
+     --project "PROJ" \
+     --type "Task" \
+     --description "$(cat <<'EOF'
+   Line one of description.
+   Line two of description.
+   EOF
+   )" --json
+   ```
+
+4. **Parse** JSON response for the created key — look for the `key` field
 
 ### Shell quoting for multi-line descriptions
 
@@ -120,16 +112,97 @@ When passing multi-line text to `acli` via bash:
 
 ## Auth Status Check — Execution
 
-```bash
-# Check auth status
-acli jira auth status
+1. **Check auth status:**
 
-# Expected output on success: authenticated user info
-# Expected output on failure: contains "unauthorized" or similar
+   ```bash
+   acli jira auth status
+   ```
 
-# If not authenticated, instruct user to run:
-acli jira auth login
-# This opens a browser for OAuth authentication
+   Expected output on success: authenticated user info. Expected output on failure: contains `"unauthorized"` or similar.
+
+2. **If not authenticated, instruct user to run:**
+
+   ```bash
+   acli jira auth login
+   ```
+
+   This opens a browser for OAuth authentication.
+
+## Jira Config Setup — Execution
+
+### Step-by-step
+
+1. **Verify authentication:**
+
+   ```bash
+   acli jira auth status
+   ```
+
+   If not authenticated, guide user through login (`acli jira auth login`). Wait for user to confirm authentication is complete.
+
+2. **Collect site URL.** Use `ask_user` with the following payload:
+
+   ```json
+   {
+     "question": "Which Jira site should we use? (e.g., https://mycompany.atlassian.net)",
+     "allowFreeform": true
+   }
+   ```
+
+   Store the response as `$SITE`.
+
+3. **Collect project key.** Use `ask_user` with the following payload:
+
+   ```json
+   {
+     "question": "Which Jira project should we use?",
+     "context": "Project keys are short codes like PROJ, JIRA, or MYAPP.",
+     "allowFreeform": true
+   }
+   ```
+
+   Store the response as `$PROJECT_KEY`.
+
+4. **Run the setup script with collected values:**
+
+   ```bash
+   bash src/skills/pio-jira/scripts/setup-config.sh "$SITE" "$PROJECT_KEY" [DEFAULT_TYPE]
+   ```
+
+   `DEFAULT_TYPE` is optional — defaults to `"Task"`.
+
+5. **Verify success.** Check exit code 0. Optionally verify the config file:
+
+   ```bash
+   cat .pio/jira-config.yaml
+   ```
+
+   Expected output:
+   ```yaml
+   site: "https://mycompany.atlassian.net"
+   projectKey: "PROJ"
+   defaultType: "Task"
+   ```
+
+6. **Proceed** with the original Jira operation using values from the new config.
+
+### Example ask_user payloads
+
+**Collect site URL:**
+```json
+{
+  "question": "Which Jira site should we use? (e.g., https://mycompany.atlassian.net)",
+  "allowFreeform": true
+}
+```
+
+**Collect project key:**
+```json
+{
+  "question": "Which Jira project should we use?",
+  "context": "Project keys are short codes like PROJ, JIRA, or MYAPP.",
+  "allowFreeform": true
+}
 ```
 
 ## JQL Search — Execution
@@ -162,13 +235,23 @@ acli jira workitem search --jql "project = PROJ AND type = Bug AND priority = Hi
 | Network failure | `acli` exits non-zero → log stderr, proceed gracefully |
 | Goal workspace already exists | `pio_goal_from_issue` returns error: "Goal workspace already exists at ..." → advise using a different slug or deleting the existing goal first |
 
+### Jira Config Setup
+
+| Edge Case | Handling |
+|-----------|----------|
+| Config already exists (`.pio/jira-config.yaml` present) | Script overwrites silently (idempotent) — no special handling needed, but warn user that existing config will be replaced |
+| User not authenticated with `acli` | Run Auth Status Check first. If unauthenticated, guide through `acli jira auth login` before proceeding to ask_user calls |
+| Project key collection fails (user cancels `ask_user`) | Abort setup, report "Config setup cancelled" to user — do not create a partial config file |
+| Site URL collection fails (user cancels `ask_user`) | Abort setup, report "Config setup cancelled" to user — do not proceed to project key collection |
+| Script execution fails (disk full, permissions) | Check non-zero exit code, log stderr, report error to user |
+
 ### Push Local Issue → Jira
 
 | Edge Case | Handling |
 |-----------|----------|
 | `acli` not installed | `command -v acli` fails → report helpful install message |
 | Not authenticated | Output contains `"unauthorized"` → direct to `acli jira auth login` |
-| No project key | `.pio/jira-config.yaml` missing and no user param → ask user for project key |
+| No project key | `.pio/jira-config.yaml` missing and no user param → run setup protocol first (see Jira Config Setup — Execution), which collects site + project key and creates config |
 | Markdown → ADF conversion | Complex formatting may not transfer perfectly → note limitation to user |
 | Multi-line description quoting | Use heredoc `$(cat <<'EOF' ... EOF)` or proper escaping |
 | Create fails (network) | `acli` exits non-zero → log stderr, proceed gracefully |

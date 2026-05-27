@@ -215,18 +215,13 @@ export async function readPackageComponents(dirPath: string): Promise<Capability
 }
 
 // ---------------------------------------------------------------------------
-// CompilePromptOptions — options for compilePrompt
+// compilePrompt — main entry point
 // ---------------------------------------------------------------------------
-
 /** Options for compiling a prompt from a capability package directory. */
 export interface CompilePromptOptions {
   /** Capability-level skills from config.ts (base for skill merging) */
   baseSkills?: CapabilitySkills;
 }
-
-// ---------------------------------------------------------------------------
-// compilePrompt — main entry point
-// ---------------------------------------------------------------------------
 
 /**
  * Compile the full `CompiledPromptSections` from a capability package directory.

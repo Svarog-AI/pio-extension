@@ -51,11 +51,9 @@ Be thorough — this research ensures your implementation matches the project's 
 
 ### Step 4: Iterative TDD
 
-Follow the mandatory `tdd` skill for the TDD methodology — it covers tracer bullets, incremental RED→GREEN cycles, refactoring, and test design principles. The skill contains all HOW details; this step describes WHAT to do:
+Apply the `tdd` skill for the iterative development cycle (tracer bullet → incremental RED→GREEN → refactor). The skill contains all methodology details.
 
-1. **Follow the `tdd` skill workflow** for the iterative development cycle.
-2. **Write tests and implement iteratively.** Do NOT write all tests first then all implementation. Each cycle: write one test, see it fail, write minimal code to pass, repeat.
-3. **After all tests pass and refactoring is done**, create `TEST.md` inside the `S{NN}/` folder as a post-hoc summary record of what was actually tested. Use the "Given ____ when ____ then ____" format for test case descriptions. This is meant to give a human-readable overview of tests.
+After all tests pass and refactoring is done, create `TEST.md` inside the `S{NN}/` folder as a post-hoc summary record of what was actually tested. Use the "Given ____ when ____ then ____" format for test case descriptions.
 
 **TEST.md format:** Start with a single short paragraph describing what is tested. Then list test cases as single sentences following the "Given/when/then" pattern. List programmatic verification commands below unit tests using the same pattern.
 
@@ -166,7 +164,7 @@ This ensures `SUMMARY.md` always reflects the final state of all files, regardle
 
 ## Guidelines
 
-- **Follow the `tdd` skill for methodology.** The `tdd` skill covers tracer bullets, incremental RED→GREEN cycles, refactoring, and test design. Use its workflow — no upfront test planning, iterate one behavior at a time.
+- **Follow the `tdd` skill for methodology.** Use its iterative workflow — no upfront test planning.
 - **Stay within scope.** Implement only what TASK.md describes. Do not refactor unrelated code, fix style issues in other files, or add "while you're at it" improvements.
 - **Reference real files.** Every file path you create or modify should correspond to a file you actually read or confirmed exists. Don't guess paths.
 - **Follow existing patterns.** Study similar code before writing new code. Match naming conventions, module structure, and architectural patterns established in the project.

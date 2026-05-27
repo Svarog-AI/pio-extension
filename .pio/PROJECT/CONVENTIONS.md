@@ -43,7 +43,7 @@ At runtime, `buildSkillLoadingSection()` reads these from the capability config,
 - **Programmatic verification preferred:** Acceptance criteria should be verifiable via `npm run check`, test execution, or file existence checks
 - **Stay within scope:** Each capability prompt forbids out-of-scope changes (refactoring unrelated code, "while you're at it" improvements)
 - **Reference real files:** Every file path in generated documents must correspond to a file the agent actually read
-- **Test-first discipline:** `execute-task` follows TDD (RED → GREEN → REFACTOR) per the `test-driven-development` skill
+- **Iterative TDD:** `execute-task` uses an iterative tracer-bullet workflow per the `tdd` skill (tracer bullet → incremental RED→GREEN cycles → refactor). TEST.md is created post-hoc as a summary record, not upfront as a test plan
 - **Skill reference convention:** Skills are declared dynamically via `CAPABILITY_CONFIG.skills` (not hardcoded in prompts). Capability prompts may reference shared skills by name throughout process steps — these are legitimate procedural instructions. Dedicated "Skill References" sections have been removed from prompt files; skill loading is handled automatically at runtime via `buildSkillLoadingSection()`. Shared methodology lives in skills; prompts retain only capability-specific instructions
 - **Delegation over duplication:** When a prompt needs to invoke shared behavior (e.g., git commit), it references the relevant skill by name and instructs the agent to load it. The prompt does not duplicate skill internals — the loaded skill provides protocol details at runtime. Example: execute-task and execute-plan prompts reference `pio-git` for commits without explaining staging or message construction
 

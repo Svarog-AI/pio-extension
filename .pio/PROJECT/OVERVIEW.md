@@ -55,7 +55,7 @@ pio-extension/
 │   │   └── _skill-loading.md      — Shared skill-loading instructions
 │   ├── skills/                # Discoverable skills for pi's <available_skills> (auto-discovered from filesystem)
 │   │   ├── pio/SKILL.md           — pio workflow reference
-│   │   ├── test-driven-development/SKILL.md — TDD methodology guide
+│   │   ├── tdd/SKILL.md                 — TDD methodology (Matt Pocock, iterative workflow)
 │   │   ├── pio-project-knowledge/SKILL.md  — Canonical knowledge source for .pio/PROJECT/ files
 │   │   ├── pio-planning/SKILL.md  — Shared planning methodology (step structure, acceptance criteria, research)
 │   │   ├── pio-git/SKILL.md       — Git operations for pio agents (convention lookup, staged commits, branch checkout, PR creation)

@@ -1,0 +1,217 @@
+[
+  {
+    "timestamp": "2026-05-27T09:16:54.075Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "overview-injected-every-message",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "overview-injected-every-message",
+        "initialMessage": "The following issue has been selected for this goal. Use its content as starting context:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:17:00.531Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "overview-injected-every-message",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "overview-injected-every-message",
+        "initialMessage": "The following issue has been selected for this goal. Use its content as starting context:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:21:28.484Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "overview-injected-every-message",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "overview-injected-every-message",
+        "initialMessage": "The following issue has been selected for this goal. Use its content as starting context:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:21:32.164Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "overview-injected-every-message",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "overview-injected-every-message",
+        "initialMessage": "The following issue has been selected for this goal. Use its content as starting context:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:25:48.039Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "overview-injected-every-message",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "overview-injected-every-message",
+        "initialMessage": "The following issue has been selected for this goal. Use its content as starting context:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md",
+        "fileCleanup": [
+          "/home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md"
+        ],
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:32:12.341Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "overview-injected-every-message",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "overview-injected-every-message",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "overview-injected-every-message",
+          "initialMessage": "The following issue has been selected for this goal. Use its content as starting context:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md",
+          "fileCleanup": [
+            "/home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md"
+          ],
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:37:33.775Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "overview-injected-every-message",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "overview-injected-every-message",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "overview-injected-every-message",
+          "initialMessage": "The following issue has been selected for this goal. Use its content as starting context:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md",
+          "fileCleanup": [
+            "/home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md"
+          ],
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:37:45.638Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "overview-injected-every-message",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "overview-injected-every-message",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "overview-injected-every-message",
+          "initialMessage": "The following issue has been selected for this goal. Use its content as starting context:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md",
+          "fileCleanup": [
+            "/home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md"
+          ],
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:41:05.987Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "overview-injected-every-message",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:48:30.978Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "overview-injected-every-message",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:53:15.440Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "overview-injected-every-message",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:54:46.041Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "overview-injected-every-message",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T10:00:30.875Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "overview-injected-every-message",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T10:06:02.338Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "overview-injected-every-message",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-27T10:06:20.835Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "overview-injected-every-message",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/overview-injected-every-message",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  }
+]

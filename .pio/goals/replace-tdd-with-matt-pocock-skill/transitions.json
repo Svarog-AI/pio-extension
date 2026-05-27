@@ -1,0 +1,409 @@
+[
+  {
+    "timestamp": "2026-05-27T06:25:27.872Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "replace-tdd-with-matt-pocock-skill",
+        "initialMessage": "Replace the current test-driven-development skill (src/skills/test-driven-development/SKILL.md) with an adapted version from Matt Pocock's skills library (https://github.com/mattpocock/skills).\n\nKey context:\n- Current TDD skill location: src/skills/test-driven-development/SKILL.md\n- The current skill covers: RED-GREEN-REFACTOR cycle, Prove-It Pattern for bug fixes, test pyramid, DAMP over DRY, state-based assertions, Arrange-Act-Assert, mock preference order, browser testing, anti-patterns, and verification checklists.\n- Matt Pocock's skills repo (github.com/mattpocock/skills) contains his testing methodology — notably \"F-Test\" (Failure Testing) and other craft-focused approaches for AI agents.\n- The replacement skill must be adapted for pio's workflow context: it's loaded into sub-sessions (execute-task, execute-plan) that implement plan steps, and the skill is listed in <available_skills> for the agent to reference.\n- The adapted skill should preserve pio-specific conventions already in the current skill (TEST.md documentation for text-only changes, project-specific convention file references, browser security boundaries).\n- Output: a new or updated SKILL.md at src/skills/test-driven-development/SKILL.md that integrates Matt Pocock's methodology while remaining idiomatic to the pio workflow.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T06:26:06.975Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "replace-tdd-with-matt-pocock-skill",
+        "initialMessage": "Replace the current test-driven-development skill (src/skills/test-driven-development/SKILL.md) with an adapted version from Matt Pocock's skills library (https://github.com/mattpocock/skills).\n\nKey context:\n- Current TDD skill location: src/skills/test-driven-development/SKILL.md\n- The current skill covers: RED-GREEN-REFACTOR cycle, Prove-It Pattern for bug fixes, test pyramid, DAMP over DRY, state-based assertions, Arrange-Act-Assert, mock preference order, browser testing, anti-patterns, and verification checklists.\n- Matt Pocock's skills repo (github.com/mattpocock/skills) contains his testing methodology — notably \"F-Test\" (Failure Testing) and other craft-focused approaches for AI agents.\n- The replacement skill must be adapted for pio's workflow context: it's loaded into sub-sessions (execute-task, execute-plan) that implement plan steps, and the skill is listed in <available_skills> for the agent to reference.\n- The adapted skill should preserve pio-specific conventions already in the current skill (TEST.md documentation for text-only changes, project-specific convention file references, browser security boundaries).\n- Output: a new or updated SKILL.md at src/skills/test-driven-development/SKILL.md that integrates Matt Pocock's methodology while remaining idiomatic to the pio workflow.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T07:02:06.795Z",
+    "from": "create-goal",
+    "to": "create-plan",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "replace-tdd-with-matt-pocock-skill",
+        "initialMessage": "Replace the current test-driven-development skill (src/skills/test-driven-development/SKILL.md) with an adapted version from Matt Pocock's skills library (https://github.com/mattpocock/skills).\n\nKey context:\n- Current TDD skill location: src/skills/test-driven-development/SKILL.md\n- The current skill covers: RED-GREEN-REFACTOR cycle, Prove-It Pattern for bug fixes, test pyramid, DAMP over DRY, state-based assertions, Arrange-Act-Assert, mock preference order, browser testing, anti-patterns, and verification checklists.\n- Matt Pocock's skills repo (github.com/mattpocock/skills) contains his testing methodology — notably \"F-Test\" (Failure Testing) and other craft-focused approaches for AI agents.\n- The replacement skill must be adapted for pio's workflow context: it's loaded into sub-sessions (execute-task, execute-plan) that implement plan steps, and the skill is listed in <available_skills> for the agent to reference.\n- The adapted skill should preserve pio-specific conventions already in the current skill (TEST.md documentation for text-only changes, project-specific convention file references, browser security boundaries).\n- Output: a new or updated SKILL.md at src/skills/test-driven-development/SKILL.md that integrates Matt Pocock's methodology while remaining idiomatic to the pio workflow.",
+        "capability": "create-goal"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T07:10:56.204Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "replace-tdd-with-matt-pocock-skill",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "replace-tdd-with-matt-pocock-skill",
+          "initialMessage": "Replace the current test-driven-development skill (src/skills/test-driven-development/SKILL.md) with an adapted version from Matt Pocock's skills library (https://github.com/mattpocock/skills).\n\nKey context:\n- Current TDD skill location: src/skills/test-driven-development/SKILL.md\n- The current skill covers: RED-GREEN-REFACTOR cycle, Prove-It Pattern for bug fixes, test pyramid, DAMP over DRY, state-based assertions, Arrange-Act-Assert, mock preference order, browser testing, anti-patterns, and verification checklists.\n- Matt Pocock's skills repo (github.com/mattpocock/skills) contains his testing methodology — notably \"F-Test\" (Failure Testing) and other craft-focused approaches for AI agents.\n- The replacement skill must be adapted for pio's workflow context: it's loaded into sub-sessions (execute-task, execute-plan) that implement plan steps, and the skill is listed in <available_skills> for the agent to reference.\n- The adapted skill should preserve pio-specific conventions already in the current skill (TEST.md documentation for text-only changes, project-specific convention file references, browser security boundaries).\n- Output: a new or updated SKILL.md at src/skills/test-driven-development/SKILL.md that integrates Matt Pocock's methodology while remaining idiomatic to the pio workflow.",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T07:11:00.251Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "replace-tdd-with-matt-pocock-skill",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "replace-tdd-with-matt-pocock-skill",
+          "initialMessage": "Replace the current test-driven-development skill (src/skills/test-driven-development/SKILL.md) with an adapted version from Matt Pocock's skills library (https://github.com/mattpocock/skills).\n\nKey context:\n- Current TDD skill location: src/skills/test-driven-development/SKILL.md\n- The current skill covers: RED-GREEN-REFACTOR cycle, Prove-It Pattern for bug fixes, test pyramid, DAMP over DRY, state-based assertions, Arrange-Act-Assert, mock preference order, browser testing, anti-patterns, and verification checklists.\n- Matt Pocock's skills repo (github.com/mattpocock/skills) contains his testing methodology — notably \"F-Test\" (Failure Testing) and other craft-focused approaches for AI agents.\n- The replacement skill must be adapted for pio's workflow context: it's loaded into sub-sessions (execute-task, execute-plan) that implement plan steps, and the skill is listed in <available_skills> for the agent to reference.\n- The adapted skill should preserve pio-specific conventions already in the current skill (TEST.md documentation for text-only changes, project-specific convention file references, browser security boundaries).\n- Output: a new or updated SKILL.md at src/skills/test-driven-development/SKILL.md that integrates Matt Pocock's methodology while remaining idiomatic to the pio workflow.",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T07:11:59.265Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "replace-tdd-with-matt-pocock-skill",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "replace-tdd-with-matt-pocock-skill",
+          "initialMessage": "Replace the current test-driven-development skill (src/skills/test-driven-development/SKILL.md) with an adapted version from Matt Pocock's skills library (https://github.com/mattpocock/skills).\n\nKey context:\n- Current TDD skill location: src/skills/test-driven-development/SKILL.md\n- The current skill covers: RED-GREEN-REFACTOR cycle, Prove-It Pattern for bug fixes, test pyramid, DAMP over DRY, state-based assertions, Arrange-Act-Assert, mock preference order, browser testing, anti-patterns, and verification checklists.\n- Matt Pocock's skills repo (github.com/mattpocock/skills) contains his testing methodology — notably \"F-Test\" (Failure Testing) and other craft-focused approaches for AI agents.\n- The replacement skill must be adapted for pio's workflow context: it's loaded into sub-sessions (execute-task, execute-plan) that implement plan steps, and the skill is listed in <available_skills> for the agent to reference.\n- The adapted skill should preserve pio-specific conventions already in the current skill (TEST.md documentation for text-only changes, project-specific convention file references, browser security boundaries).\n- Output: a new or updated SKILL.md at src/skills/test-driven-development/SKILL.md that integrates Matt Pocock's methodology while remaining idiomatic to the pio workflow.",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T07:14:47.933Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "replace-tdd-with-matt-pocock-skill",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "replace-tdd-with-matt-pocock-skill",
+          "initialMessage": "Replace the current test-driven-development skill (src/skills/test-driven-development/SKILL.md) with an adapted version from Matt Pocock's skills library (https://github.com/mattpocock/skills).\n\nKey context:\n- Current TDD skill location: src/skills/test-driven-development/SKILL.md\n- The current skill covers: RED-GREEN-REFACTOR cycle, Prove-It Pattern for bug fixes, test pyramid, DAMP over DRY, state-based assertions, Arrange-Act-Assert, mock preference order, browser testing, anti-patterns, and verification checklists.\n- Matt Pocock's skills repo (github.com/mattpocock/skills) contains his testing methodology — notably \"F-Test\" (Failure Testing) and other craft-focused approaches for AI agents.\n- The replacement skill must be adapted for pio's workflow context: it's loaded into sub-sessions (execute-task, execute-plan) that implement plan steps, and the skill is listed in <available_skills> for the agent to reference.\n- The adapted skill should preserve pio-specific conventions already in the current skill (TEST.md documentation for text-only changes, project-specific convention file references, browser security boundaries).\n- Output: a new or updated SKILL.md at src/skills/test-driven-development/SKILL.md that integrates Matt Pocock's methodology while remaining idiomatic to the pio workflow.",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T07:16:27.809Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "replace-tdd-with-matt-pocock-skill",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "replace-tdd-with-matt-pocock-skill",
+          "initialMessage": "Replace the current test-driven-development skill (src/skills/test-driven-development/SKILL.md) with an adapted version from Matt Pocock's skills library (https://github.com/mattpocock/skills).\n\nKey context:\n- Current TDD skill location: src/skills/test-driven-development/SKILL.md\n- The current skill covers: RED-GREEN-REFACTOR cycle, Prove-It Pattern for bug fixes, test pyramid, DAMP over DRY, state-based assertions, Arrange-Act-Assert, mock preference order, browser testing, anti-patterns, and verification checklists.\n- Matt Pocock's skills repo (github.com/mattpocock/skills) contains his testing methodology — notably \"F-Test\" (Failure Testing) and other craft-focused approaches for AI agents.\n- The replacement skill must be adapted for pio's workflow context: it's loaded into sub-sessions (execute-task, execute-plan) that implement plan steps, and the skill is listed in <available_skills> for the agent to reference.\n- The adapted skill should preserve pio-specific conventions already in the current skill (TEST.md documentation for text-only changes, project-specific convention file references, browser security boundaries).\n- Output: a new or updated SKILL.md at src/skills/test-driven-development/SKILL.md that integrates Matt Pocock's methodology while remaining idiomatic to the pio workflow.",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T07:17:41.442Z",
+    "from": "create-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 1,
+      "_sessionContext": {
+        "goalName": "replace-tdd-with-matt-pocock-skill",
+        "stepNumber": 1,
+        "_sessionContext": {
+          "goalName": "replace-tdd-with-matt-pocock-skill",
+          "initialMessage": "Replace the current test-driven-development skill (src/skills/test-driven-development/SKILL.md) with an adapted version from Matt Pocock's skills library (https://github.com/mattpocock/skills).\n\nKey context:\n- Current TDD skill location: src/skills/test-driven-development/SKILL.md\n- The current skill covers: RED-GREEN-REFACTOR cycle, Prove-It Pattern for bug fixes, test pyramid, DAMP over DRY, state-based assertions, Arrange-Act-Assert, mock preference order, browser testing, anti-patterns, and verification checklists.\n- Matt Pocock's skills repo (github.com/mattpocock/skills) contains his testing methodology — notably \"F-Test\" (Failure Testing) and other craft-focused approaches for AI agents.\n- The replacement skill must be adapted for pio's workflow context: it's loaded into sub-sessions (execute-task, execute-plan) that implement plan steps, and the skill is listed in <available_skills> for the agent to reference.\n- The adapted skill should preserve pio-specific conventions already in the current skill (TEST.md documentation for text-only changes, project-specific convention file references, browser security boundaries).\n- Output: a new or updated SKILL.md at src/skills/test-driven-development/SKILL.md that integrates Matt Pocock's methodology while remaining idiomatic to the pio workflow.",
+          "capability": "create-goal"
+        },
+        "capability": "create-plan"
+      }
+    }
+  },
+  {
+    "timestamp": "2026-05-27T07:19:42.027Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-27T07:28:22.851Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 1
+    }
+  },
+  {
+    "timestamp": "2026-05-27T07:33:06.554Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T07:35:59.182Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T07:38:04.779Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T07:44:18.391Z",
+    "from": "evolve-plan",
+    "to": "revise-plan",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "revisionTriggerStep": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T07:52:16.887Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill"
+    }
+  },
+  {
+    "timestamp": "2026-05-27T07:52:20.825Z",
+    "from": "revise-plan",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill"
+    }
+  },
+  {
+    "timestamp": "2026-05-27T08:34:03.392Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T08:41:55.510Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T08:44:15.855Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T08:48:45.819Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:06:38.676Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:08:29.537Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:10:45.046Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:17:50.330Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:33:28.826Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:41:15.545Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:49:55.471Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T09:54:07.904Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T10:12:13.730Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T10:12:15.538Z",
+    "from": "review-task",
+    "to": "execute-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T10:14:26.173Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 2
+    }
+  },
+  {
+    "timestamp": "2026-05-27T10:23:46.001Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-27T10:25:19.246Z",
+    "from": "evolve-plan",
+    "to": "execute-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-27T10:26:09.306Z",
+    "from": "execute-task",
+    "to": "review-task",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 3
+    }
+  },
+  {
+    "timestamp": "2026-05-27T10:27:36.309Z",
+    "from": "review-task",
+    "to": "evolve-plan",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 4
+    }
+  },
+  {
+    "timestamp": "2026-05-27T10:28:03.561Z",
+    "from": "evolve-plan",
+    "to": "finalize-goal",
+    "params": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/replace-tdd-with-matt-pocock-skill",
+      "workingDir": "/home/aleksj/git/pio-extension"
+    }
+  }
+]

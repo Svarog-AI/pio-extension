@@ -1,0 +1,108 @@
+{
+  "capability": "evolve-plan",
+  "params": {
+    "goalName": "replace-tdd-with-matt-pocock-skill",
+    "stepNumber": 4,
+    "_sessionContext": {
+      "goalName": "replace-tdd-with-matt-pocock-skill",
+      "stepNumber": 4,
+      "_sessionContext": {
+        "goalName": "replace-tdd-with-matt-pocock-skill",
+        "stepNumber": 3,
+        "_sessionContext": {
+          "goalName": "replace-tdd-with-matt-pocock-skill",
+          "stepNumber": 3,
+          "_sessionContext": {
+            "goalName": "replace-tdd-with-matt-pocock-skill",
+            "stepNumber": 3,
+            "_sessionContext": {
+              "goalName": "replace-tdd-with-matt-pocock-skill",
+              "stepNumber": 2,
+              "_sessionContext": {
+                "goalName": "replace-tdd-with-matt-pocock-skill",
+                "stepNumber": 2,
+                "_sessionContext": {
+                  "goalName": "replace-tdd-with-matt-pocock-skill",
+                  "stepNumber": 2,
+                  "_sessionContext": {
+                    "goalName": "replace-tdd-with-matt-pocock-skill",
+                    "stepNumber": 2,
+                    "_sessionContext": {
+                      "goalName": "replace-tdd-with-matt-pocock-skill",
+                      "stepNumber": 2,
+                      "_sessionContext": {
+                        "goalName": "replace-tdd-with-matt-pocock-skill",
+                        "stepNumber": 2,
+                        "_sessionContext": {
+                          "goalName": "replace-tdd-with-matt-pocock-skill",
+                          "stepNumber": 2,
+                          "_sessionContext": {
+                            "goalName": "replace-tdd-with-matt-pocock-skill",
+                            "stepNumber": 2,
+                            "_sessionContext": {
+                              "goalName": "replace-tdd-with-matt-pocock-skill",
+                              "_sessionContext": {
+                                "goalName": "replace-tdd-with-matt-pocock-skill",
+                                "revisionTriggerStep": 2,
+                                "_sessionContext": {
+                                  "goalName": "replace-tdd-with-matt-pocock-skill",
+                                  "stepNumber": 2,
+                                  "_sessionContext": {
+                                    "goalName": "replace-tdd-with-matt-pocock-skill",
+                                    "stepNumber": 1,
+                                    "_sessionContext": {
+                                      "goalName": "replace-tdd-with-matt-pocock-skill",
+                                      "stepNumber": 1,
+                                      "_sessionContext": {
+                                        "goalName": "replace-tdd-with-matt-pocock-skill",
+                                        "stepNumber": 1,
+                                        "_sessionContext": {
+                                          "goalName": "replace-tdd-with-matt-pocock-skill",
+                                          "stepNumber": 1,
+                                          "_sessionContext": {
+                                            "goalName": "replace-tdd-with-matt-pocock-skill",
+                                            "initialMessage": "Replace the current test-driven-development skill (src/skills/test-driven-development/SKILL.md) with an adapted version from Matt Pocock's skills library (https://github.com/mattpocock/skills).\n\nKey context:\n- Current TDD skill location: src/skills/test-driven-development/SKILL.md\n- The current skill covers: RED-GREEN-REFACTOR cycle, Prove-It Pattern for bug fixes, test pyramid, DAMP over DRY, state-based assertions, Arrange-Act-Assert, mock preference order, browser testing, anti-patterns, and verification checklists.\n- Matt Pocock's skills repo (github.com/mattpocock/skills) contains his testing methodology — notably \"F-Test\" (Failure Testing) and other craft-focused approaches for AI agents.\n- The replacement skill must be adapted for pio's workflow context: it's loaded into sub-sessions (execute-task, execute-plan) that implement plan steps, and the skill is listed in <available_skills> for the agent to reference.\n- The adapted skill should preserve pio-specific conventions already in the current skill (TEST.md documentation for text-only changes, project-specific convention file references, browser security boundaries).\n- Output: a new or updated SKILL.md at src/skills/test-driven-development/SKILL.md that integrates Matt Pocock's methodology while remaining idiomatic to the pio workflow.",
+                                            "capability": "create-goal"
+                                          },
+                                          "capability": "create-plan"
+                                        },
+                                        "capability": "evolve-plan"
+                                      },
+                                      "capability": "execute-task"
+                                    },
+                                    "capability": "review-task"
+                                  },
+                                  "capability": "evolve-plan"
+                                },
+                                "stepNumber": 2,
+                                "capability": "revise-plan"
+                              },
+                              "stepNumber": 2,
+                              "capability": "evolve-plan"
+                            },
+                            "capability": "execute-task"
+                          },
+                          "capability": "review-task"
+                        },
+                        "capability": "execute-task"
+                      },
+                      "capability": "review-task"
+                    },
+                    "capability": "execute-task"
+                  },
+                  "capability": "review-task"
+                },
+                "capability": "execute-task"
+              },
+              "capability": "review-task"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    }
+  }
+}

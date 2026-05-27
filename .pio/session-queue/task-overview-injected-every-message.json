@@ -1,0 +1,57 @@
+{
+  "capability": "finalize-goal",
+  "params": {
+    "goalName": "overview-injected-every-message",
+    "goalDir": "/home/aleksj/git/pio-extension/.pio/goals/overview-injected-every-message",
+    "workingDir": "/home/aleksj/git/pio-extension",
+    "_sessionContext": {
+      "goalName": "overview-injected-every-message",
+      "stepNumber": 3,
+      "_sessionContext": {
+        "goalName": "overview-injected-every-message",
+        "stepNumber": 2,
+        "_sessionContext": {
+          "goalName": "overview-injected-every-message",
+          "stepNumber": 2,
+          "_sessionContext": {
+            "goalName": "overview-injected-every-message",
+            "stepNumber": 2,
+            "_sessionContext": {
+              "goalName": "overview-injected-every-message",
+              "stepNumber": 1,
+              "_sessionContext": {
+                "goalName": "overview-injected-every-message",
+                "stepNumber": 1,
+                "_sessionContext": {
+                  "goalName": "overview-injected-every-message",
+                  "stepNumber": 1,
+                  "_sessionContext": {
+                    "goalName": "overview-injected-every-message",
+                    "stepNumber": 1,
+                    "_sessionContext": {
+                      "goalName": "overview-injected-every-message",
+                      "initialMessage": "The following issue has been selected for this goal. Use its content as starting context:\n\nIssue file: /home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md",
+                      "fileCleanup": [
+                        "/home/aleksj/git/pio-extension/.pio/issues/overview-injected-every-message.md"
+                      ],
+                      "capability": "create-goal"
+                    },
+                    "capability": "create-plan"
+                  },
+                  "capability": "evolve-plan"
+                },
+                "capability": "execute-task"
+              },
+              "capability": "review-task"
+            },
+            "capability": "evolve-plan"
+          },
+          "capability": "execute-task"
+        },
+        "capability": "review-task"
+      },
+      "capability": "evolve-plan"
+    },
+    "stepNumber": 3
+  }
+}

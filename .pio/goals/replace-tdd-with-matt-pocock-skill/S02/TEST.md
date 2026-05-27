@@ -1,15 +1,19 @@
-# Test Coverage: Update execute-task descriptions for iterative workflow
+# Test Coverage: Restructure execute-task and review-task prompts for iterative TDD with post-hoc TEST.md
 
-This step addresses the review's HIGH issue: `executeTaskTool.description` and the command registration description still described the old linear workflow ("writes tests first based on acceptance criteria, then implements") instead of the new iterative TDD approach.
+This step restructured prompts and tightened prompt-vs-skill boundaries. No behavioral code was changed — all changes are to prompt text (`execute-task.md`, `review-task.md`) and capability descriptions. Per the `tdd` skill, string content changes are verified via the existing test suite (no regressions) and manual review.
 
 ## Tests Executed
 
-No new behavioral tests were added — description strings are documentation, not behavior. The `tdd` skill states: "Tests should verify behavior through public interfaces, not implementation details." Testing string literal content would violate this principle.
+No new tests added — prompt text changes do not affect observable behavior. The `tdd` skill explicitly states: "Don't read a source file and assert it contains a substring."
 
-The existing test suite was run to verify no regressions from the description changes.
+The existing test suite was run to verify no regressions from the prompt changes.
 
 ## Programmatic Verification
 
 Given `npm run check` (`tsc --noEmit`) is executed then it reports no errors.
 
-Given `npx vitest run` is executed then all 762 tests pass with exit code 0.
+Given `npx vitest run` is executed then all 750 tests pass with exit code 0.
+
+Given `grep -n "Do NOT write all tests first" src/prompts/execute-task.md` is executed then it returns no results (incremental loop rules removed from prompt).
+
+Given `grep -n "incremental RED→GREEN cycles, refactoring, and test design" src/prompts/execute-task.md` is executed then it returns no results (detailed HOW details removed from Guidelines).

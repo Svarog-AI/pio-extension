@@ -8,7 +8,7 @@ COMPLETED
 - `.pio/goals/improve-pio-jira-config-setup/S04/COMPLETED` — completion marker
 
 ## Files Modified
-- `src/skills/pio-jira/REFERENCE.md` — Restructured Push execution section: replaced misleading `bash` code block with markdown numbered lists for procedural steps; reserved code blocks only for actual `acli` commands. Updated "No project key" edge case row to reference the Jira Config Setup protocol instead of the stale "ask user for project key" behavior.
+- `src/skills/pio-jira/REFERENCE.md` — Restructured ALL execution sections (Pull, Goal from Pulled Issue, Push, Auth Status Check, Jira Config Setup): replaced misleading `bash` code blocks with markdown numbered lists for procedural steps; reserved code blocks only for actual executable commands (`acli`, `bash`, `ls`, `cat`). Updated "No project key" edge case row to reference the Jira Config Setup protocol instead of the stale "ask user for project key" behavior.
 
 ## Files Deleted
 - (none)
@@ -19,7 +19,7 @@ COMPLETED
 - Updated the edge case table entry to explicitly reference "Jira Config Setup — Execution" section for consistency with step 2 of the same Push execution section
 
 ## User-Requested Changes
-- (none)
+- User pointed out the same misleading `bash` code block formatting existed in other execution sections (Pull, Goal from Pulled Issue, Auth Status Check, Jira Config Setup). Restructured ALL execution sections to use numbered lists for procedural steps and reserve code blocks for actual commands. Modified `src/skills/pio-jira/REFERENCE.md` (all execution sections refactored).
 
 ## Test Coverage
 - No unit tests apply (documentation-only change per TDD conventions)

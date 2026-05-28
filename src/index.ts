@@ -7,11 +7,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Direct tools (non-AI tools/commands registered directly)
+import { setupDirectTools } from "./direct-tools";
+
 // Capabilities
-import { setupInit } from "./capabilities/init";
-import { setupParent } from "./capabilities/parent";
 import { setupCreateGoal } from "./capabilities/create-goal";
-import { setupDeleteGoal } from "./capabilities/delete-goal";
 import { setupCreatePlan } from "./capabilities/create-plan";
 import { setupEvolvePlan } from "./capabilities/evolve-plan";
 import { setupExecuteTask } from "./capabilities/execute-task";
@@ -22,7 +22,6 @@ import { setupNextTask } from "./capabilities/next-task";
 import { setupProjectContext } from "./capabilities/project-context";
 import { setupCreateIssue } from "./capabilities/create-issue";
 import { setupGoalFromIssue } from "./capabilities/goal-from-issue";
-import { setupListGoals } from "./capabilities/list-goals";
 import { setupFinalizeGoal } from "./capabilities/finalize-goal";
 import { setupCapability } from "./capabilities/session-capability";
 import { setupValidation } from "./guards/validation";
@@ -70,10 +69,10 @@ export default function (pi: ExtensionAPI) {
   setupValidation(pi);
   setupSessionGuard(pi);
 
-  setupInit(pi);
-  setupParent(pi);
+  // Direct tools (init, delete-goal, list-goals, parent)
+  setupDirectTools(pi);
+
   setupCreateGoal(pi);
-  setupDeleteGoal(pi);
   setupCreatePlan(pi);
   setupEvolvePlan(pi);
   setupExecuteTask(pi);
@@ -84,6 +83,5 @@ export default function (pi: ExtensionAPI) {
   setupProjectContext(pi);
   setupCreateIssue(pi);
   setupGoalFromIssue(pi);
-  setupListGoals(pi);
   setupFinalizeGoal(pi);
 }

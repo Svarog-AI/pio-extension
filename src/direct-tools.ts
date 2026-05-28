@@ -1,12 +1,99 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { defineTool } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { resolveGoalDir } from "../fs-utils";
-import type { SessionQueueTask } from "../queues";
+import { resolveGoalDir, goalExists } from "./fs-utils";
+import type { SessionQueueTask } from "./queues";
 
 // ---------------------------------------------------------------------------
-// Helpers
+// pio_init
+// ---------------------------------------------------------------------------
+
+/**
+ * Initialize a new pio project in the current working directory.
+ */
+async function init(): Promise<string> {
+  const cwd = process.cwd();
+  const pioDir = path.join(cwd, ".pio");
+
+  if (fs.existsSync(pioDir)) {
+    return `Directory .pio already exists at ${pioDir}`;
+  }
+
+  fs.mkdirSync(pioDir, { recursive: true });
+  fs.mkdirSync(path.join(pioDir, "prompts"), { recursive: true });
+  fs.mkdirSync(path.join(pioDir, "work-memory"), { recursive: true });
+
+  return `Initialized pio project at ${pioDir}`;
+}
+
+const initTool = defineTool({
+  name: "pio_init",
+  label: "Pio Init",
+  description: "Initialize a new pio project in the current working directory. Use this tool directly — all filesystem operations are handled internally.",
+  parameters: Type.Object({}),
+
+  async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+    const result = await init();
+    return {
+      content: [{ type: "text", text: result }],
+      details: {},
+    };
+  },
+});
+
+async function handleInit(_args: string | undefined, ctx: ExtensionCommandContext) {
+  const result = await init();
+  ctx.ui.notify(result, "info");
+}
+
+// ---------------------------------------------------------------------------
+// pio_delete_goal
+// ---------------------------------------------------------------------------
+
+async function deleteGoal(name: string, cwd: string): Promise<string> {
+  const goalDir = resolveGoalDir(cwd, name);
+
+  if (!goalExists(goalDir)) {
+    return `Goal workspace not found at ${goalDir}`;
+  }
+
+  fs.rmSync(goalDir, { recursive: true });
+  return `Deleted goal workspace at ${goalDir}`;
+}
+
+const deleteGoalTool = defineTool({
+  name: "pio_delete_goal",
+  label: "Pio Delete Goal",
+  description: "Delete a goal workspace under .pio/<name>. Use this tool directly — all filesystem operations are handled internally.",
+  parameters: Type.Object({
+    name: Type.String({ description: "Name of the goal workspace to delete" }),
+  }),
+
+  async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    const extCtx = ctx as unknown as ExtensionCommandContext;
+    const result = await deleteGoal(params.name, extCtx.cwd);
+    return {
+      content: [{ type: "text", text: result }],
+      details: {},
+    };
+  },
+});
+
+async function handleDeleteGoal(args: string | undefined, ctx: ExtensionCommandContext) {
+  if (!args || !args.trim()) {
+    ctx.ui.notify("Usage: /pio-delete-goal <name>", "warning");
+    return;
+  }
+
+  const result = await deleteGoal(args.trim(), ctx.cwd);
+  ctx.ui.notify(result, "info");
+}
+
+// ---------------------------------------------------------------------------
+// pio_list_goals (command only — helpers exported for tests)
 // ---------------------------------------------------------------------------
 
 /**
@@ -98,10 +185,6 @@ export function findSubgoals(
   return results;
 }
 
-// ---------------------------------------------------------------------------
-// Command
-// ---------------------------------------------------------------------------
-
 async function handleListGoals(_args: string | undefined, ctx: ExtensionCommandContext) {
   const goalsBaseDir = path.join(ctx.cwd, ".pio", "goals");
 
@@ -150,12 +233,57 @@ async function handleListGoals(_args: string | undefined, ctx: ExtensionCommandC
 }
 
 // ---------------------------------------------------------------------------
-// Setup (registers command)
+// pio_parent
 // ---------------------------------------------------------------------------
 
-export function setupListGoals(pi: ExtensionAPI) {
+/** Find the parent session path from the header (set by pi on newSession). */
+async function findParentPath(ctx: ExtensionCommandContext): Promise<string | null> {
+  const header = ctx.sessionManager.getHeader();
+  if (header?.parentSession && fs.existsSync(header.parentSession)) {
+    return header.parentSession;
+  }
+  return null;
+}
+
+async function handleParent(_args: string | undefined, ctx: ExtensionCommandContext) {
+  const parentPath = await findParentPath(ctx);
+
+  if (!parentPath) {
+    ctx.ui.notify("No parent session found", "warning");
+    return;
+  }
+
+  await ctx.switchSession(parentPath);
+}
+
+// ---------------------------------------------------------------------------
+// Setup (registers all direct tools and commands)
+// ---------------------------------------------------------------------------
+
+export function setupDirectTools(pi: ExtensionAPI): void {
+  // pio_init
+  pi.registerTool(initTool);
+  pi.registerCommand("pio-init", {
+    description: "Initialize a new pio project in the current directory",
+    handler: handleInit,
+  });
+
+  // pio_delete_goal
+  pi.registerTool(deleteGoalTool);
+  pi.registerCommand("pio-delete-goal", {
+    description: "Delete a goal workspace under .pio/<name>",
+    handler: handleDeleteGoal,
+  });
+
+  // pio_list_goals
   pi.registerCommand("pio-list-goals", {
     description: "List all goal workspaces with inferred phase and last executed task",
     handler: handleListGoals,
+  });
+
+  // pio_parent
+  pi.registerCommand("pio-parent", {
+    description: "Switch back to the parent session",
+    handler: handleParent,
   });
 }

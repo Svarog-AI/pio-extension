@@ -24,6 +24,21 @@ export function goalExists(goalDir: string): boolean {
   return fs.existsSync(goalDir);
 }
 
+/**
+ * Prepare the goal workspace (mkdir).
+ * Returns { goalDir, ready } — ready is false if directory already exists.
+ */
+export function prepareGoal(name: string, cwd: string): { goalDir: string; ready: boolean } {
+  const goalDir = resolveGoalDir(cwd, name);
+
+  if (goalExists(goalDir)) {
+    return { goalDir, ready: false };
+  }
+
+  fs.mkdirSync(goalDir, { recursive: true });
+  return { goalDir, ready: true };
+}
+
 // ---------------------------------------------------------------------------
 // Issue utilities
 // ---------------------------------------------------------------------------

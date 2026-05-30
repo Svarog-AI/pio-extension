@@ -4,6 +4,7 @@ import * as path from "node:path";
 import {
   resolveGoalDir,
   goalExists,
+  prepareGoal,
   issuesDir,
   findIssuePath,
   readIssue,
@@ -112,6 +113,46 @@ describe("goalExists(goalDir)", () => {
     fs.writeFileSync(filePath, "hello", "utf-8");
     // fs.existsSync returns true for files too — goalExists uses fs.existsSync directly
     expect(goalExists(filePath)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// prepareGoal
+// ---------------------------------------------------------------------------
+
+describe("prepareGoal(name, cwd)", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns ready: false when directory exists", () => {
+    // Arrange: create goal directory
+    const goalDir = path.join(tempDir, ".pio", "goals", "existing-goal");
+    fs.mkdirSync(goalDir, { recursive: true });
+
+    // Act
+    const result = prepareGoal("existing-goal", tempDir);
+
+    // Assert
+    expect(result.ready).toBe(false);
+    expect(result.goalDir).toBe(goalDir);
+  });
+
+  it("creates directory and returns ready: true when it doesn't exist", () => {
+    // Arrange: goal directory does not exist
+    const expectedGoalDir = path.join(tempDir, ".pio", "goals", "new-goal");
+
+    // Act
+    const result = prepareGoal("new-goal", tempDir);
+
+    // Assert
+    expect(result.ready).toBe(true);
+    expect(result.goalDir).toBe(expectedGoalDir);
+    expect(fs.statSync(result.goalDir).isDirectory()).toBe(true);
   });
 });
 

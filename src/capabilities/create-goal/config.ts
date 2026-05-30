@@ -1,32 +1,15 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import * as fs from "node:fs";
 
 import { launchCapability } from "../session-capability";
-import { goalExists, resolveGoalDir } from "../../fs-utils";
+import { prepareGoal } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 
-// ---------------------------------------------------------------------------
-// Capability config — single source of truth for this capability's session shape
-// ---------------------------------------------------------------------------
-
-/** Prepare the goal workspace (mkdir).
- * Returns { goalDir, ready } — call launchCapability separately.
- * Does NOT use ctx so it can be called safely before newSession().
- */
-export async function prepareGoal(name: string, cwd: string): Promise<{ goalDir: string; ready: boolean }> {
-  const goalDir = resolveGoalDir(cwd, name);
-
-  if (goalExists(goalDir)) {
-    return { goalDir, ready: false };
-  }
-
-  fs.mkdirSync(goalDir, { recursive: true });
-  return { goalDir, ready: true };
-}
+// Re-export for backward compat (tests import prepareGoal from this module)
+export { prepareGoal };
 
 // ---------------------------------------------------------------------------
 // Default export: CapabilityPackageConfig (new-style package config)

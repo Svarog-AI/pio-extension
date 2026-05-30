@@ -1,12 +1,31 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { defineTool } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import * as fs from "node:fs";
 
-import { launchCapability } from "./session-capability";
-import { resolveGoalDir } from "../fs-utils";
-import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
+import { launchCapability } from "../session-capability";
+import { resolveGoalDir } from "../../fs-utils";
+import { enqueueTask } from "../../queues";
+import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
+import type { CapabilityPackageConfig } from "../../capability-package";
 
 // ---------------------------------------------------------------------------
-// Capability config — single source of truth for this capability's session shape
+// Default export: CapabilityPackageConfig (new-style package config)
+// ---------------------------------------------------------------------------
+
+export default {
+  capability: "execute-plan",
+  skills: {
+    mandatory: ["tdd", "pio-git"],
+  },
+  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
+    const goalName = typeof params?.goalName === "string" ? params.goalName : undefined;
+    return `Goal workspace is at ${workingDir}. GOAL.md and PLAN.md exist. Implement all steps from PLAN.md in this session.`;
+  },
+} satisfies CapabilityPackageConfig;
+
+// ---------------------------------------------------------------------------
+// Backward-compat export: CAPABILITY_CONFIG (for resolveCapabilityConfig until Step 21)
 // ---------------------------------------------------------------------------
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
@@ -54,6 +73,35 @@ async function validateGoal(name: string, cwd: string): Promise<{ goalDir: strin
 }
 
 // ---------------------------------------------------------------------------
+// Tool
+// ---------------------------------------------------------------------------
+
+const executePlanTool = defineTool({
+  name: "pio_execute_plan",
+  label: "Pio Execute Plan",
+  description: "Execute all steps from an existing plan in a single session. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
+  promptSnippet: "Execute all steps from an existing plan in a single session.",
+  parameters: Type.Object({
+    name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
+  }),
+
+  async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    const result = await validateGoal(params.name, ctx.cwd);
+
+    if (!result.ready) {
+      return { content: [{ type: "text", text: result.error! }], details: {} };
+    }
+
+    enqueueTask(ctx.cwd, params.name, {
+      capability: "execute-plan",
+      params: { goalName: params.name },
+    });
+
+    return { content: [{ type: "text", text: `Task queued for goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.` }], details: {} };
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Command
 // ---------------------------------------------------------------------------
 
@@ -82,12 +130,16 @@ async function handleExecutePlan(args: string | undefined, ctx: ExtensionCommand
 }
 
 // ---------------------------------------------------------------------------
-// Setup (registers command only — no tool)
+// Setup (registers tool and command)
 // ---------------------------------------------------------------------------
 
-export function setupExecutePlan(pi: ExtensionAPI) {
+export function register(pi: ExtensionAPI) {
+  pi.registerTool(executePlanTool);
   pi.registerCommand("pio-execute-plan", {
     description: "Implement all steps from an existing plan in a single session",
     handler: handleExecutePlan,
   });
 }
+
+// Backward-compat: old index.ts imports setupExecutePlan
+export { register as setupExecutePlan };

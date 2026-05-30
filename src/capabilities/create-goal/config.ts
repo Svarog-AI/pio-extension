@@ -3,13 +3,56 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 
-import { launchCapability } from "./session-capability";
-import { goalExists, resolveGoalDir } from "../fs-utils";
-import { enqueueTask } from "../queues";
-import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
+import { launchCapability } from "../session-capability";
+import { goalExists, resolveGoalDir } from "../../fs-utils";
+import { enqueueTask } from "../../queues";
+import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
+import type { CapabilityPackageConfig } from "../../capability-package";
 
 // ---------------------------------------------------------------------------
 // Capability config — single source of truth for this capability's session shape
+// ---------------------------------------------------------------------------
+
+/** Prepare the goal workspace (mkdir).
+ * Returns { goalDir, ready } — call launchCapability separately.
+ * Does NOT use ctx so it can be called safely before newSession().
+ */
+export async function prepareGoal(name: string, cwd: string): Promise<{ goalDir: string; ready: boolean }> {
+  const goalDir = resolveGoalDir(cwd, name);
+
+  if (goalExists(goalDir)) {
+    return { goalDir, ready: false };
+  }
+
+  fs.mkdirSync(goalDir, { recursive: true });
+  return { goalDir, ready: true };
+}
+
+// ---------------------------------------------------------------------------
+// Default export: CapabilityPackageConfig (new-style package config)
+// ---------------------------------------------------------------------------
+
+export default {
+  capability: "create-goal",
+  validation: { files: ["GOAL.md"] },
+  writeAllowlist: ["GOAL.md"],
+  skills: {
+    mandatory: ["pio-planning", "grill-me", "pio-git"],
+    recommended: [
+      { name: "source-research", condition: "when researching existing solutions or libraries" },
+    ],
+  },
+  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
+    const goalName = typeof params?.goalName === "string" ? params.goalName : undefined;
+    if (goalName) {
+      return `Goal workspace created: ${goalName}\n\nWrite GOAL.md in this workspace.`;
+    }
+    return `Created goal workspace at ${workingDir}`;
+  },
+} satisfies CapabilityPackageConfig;
+
+// ---------------------------------------------------------------------------
+// Backward-compat export: CAPABILITY_CONFIG (for resolveCapabilityConfig until Step 20)
 // ---------------------------------------------------------------------------
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
@@ -30,26 +73,6 @@ export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
     return `Created goal workspace at ${workingDir}`;
   },
 };
-
-// ---------------------------------------------------------------------------
-// Function
-// ---------------------------------------------------------------------------
-
-/**
- * Prepare the goal workspace (mkdir).
- * Returns { goalDir, ready } — call launchCapability separately.
- * Does NOT use ctx so it can be called safely before newSession().
- */
-export async function prepareGoal(name: string, cwd: string): Promise<{ goalDir: string; ready: boolean }> {
-  const goalDir = resolveGoalDir(cwd, name);
-
-  if (goalExists(goalDir)) {
-    return { goalDir, ready: false };
-  }
-
-  fs.mkdirSync(goalDir, { recursive: true });
-  return { goalDir, ready: true };
-}
 
 // ---------------------------------------------------------------------------
 // Tool
@@ -113,10 +136,13 @@ async function handleCreateGoal(args: string | undefined, ctx: ExtensionCommandC
 // Setup (registers tool, command, and session capability handlers)
 // ---------------------------------------------------------------------------
 
-export function setupCreateGoal(pi: ExtensionAPI) {
+export function register(pi: ExtensionAPI) {
   pi.registerTool(createGoalTool);
   pi.registerCommand("pio-create-goal", {
     description: "Create a new goal workspace and launch a create-goal session",
     handler: handleCreateGoal,
   });
 }
+
+// Backward-compat: old index.ts imports setupCreateGoal
+export { register as setupCreateGoal };

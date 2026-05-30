@@ -1,0 +1,8 @@
+- **Be specific, not verbose.** GOAL.md should be dense with relevant information, not padded with generalities.
+- **No source code in GOAL.md.** This is a planning document. Describe behaviors, patterns, and changes in natural language only. Do not include function bodies, class implementations, or multi-line code blocks. At most, you may write a short interface signature (type stub) to clarify a contract — never full implementations.
+- **Reference real files.** Every file path in GOAL.md should exist and be relevant. If referencing a file you found during research, use the exact relative path from the project root.
+- **Stay focused on the goal scope.** If the goal is about UI changes, do not describe backend database schemas unless they directly affect the UI work.
+- **If the user says "your call" or delegates a decision**, make a reasonable choice and document it in GOAL.md rather than asking again.
+- **If research reveals the goal is broader or narrower than expected**, tell the user and adjust scope accordingly.
+- **Do not start implementing.** Your job ends when GOAL.md is written and confirmed. Do not create new source files, modify code, or run build commands as part of this process.
+- **Research is light, not exhaustive.** Reading 2-5 relevant files for context is fine. Deep audits, full dependency tracing, and comprehensive code analysis are out of scope.

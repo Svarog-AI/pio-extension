@@ -20,7 +20,6 @@ import { setupRevisePlan } from "./capabilities/revise-plan";
 import { setupExecutePlan } from "./capabilities/execute-plan";
 import { setupNextTask } from "./capabilities/next-task";
 import { setupProjectContext } from "./capabilities/project-context";
-import { setupGoalFromIssue } from "./capabilities/goal-from-issue";
 import { setupFinalizeGoal } from "./capabilities/finalize-goal";
 import { setupCapability } from "./capabilities/session-capability";
 import { setupValidation } from "./guards/validation";
@@ -80,6 +79,5 @@ export default function (pi: ExtensionAPI) {
   setupExecutePlan(pi);
   setupNextTask(pi);
   setupProjectContext(pi);
-  setupGoalFromIssue(pi);
   setupFinalizeGoal(pi);
 }

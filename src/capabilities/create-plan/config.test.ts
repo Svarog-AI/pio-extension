@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { CAPABILITY_CONFIG } from "./create-plan";
+import { CAPABILITY_CONFIG, postValidateCreatePlan } from "./config";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -82,7 +82,7 @@ describe("postValidateCreatePlan — valid frontmatter and matching headings", (
     const goalDir = createGoalTree(tempDir, "valid-3", makePlanContent(3, 3));
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert
     expect(result).toEqual({ success: true });
@@ -93,7 +93,7 @@ describe("postValidateCreatePlan — valid frontmatter and matching headings", (
     const goalDir = createGoalTree(tempDir, "valid-1", makePlanContent(1, 1));
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert
     expect(result).toEqual({ success: true });
@@ -104,190 +104,10 @@ describe("postValidateCreatePlan — valid frontmatter and matching headings", (
     const goalDir = createGoalTree(tempDir, "valid-12", makePlanContent(12, 12));
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert
     expect(result).toEqual({ success: true });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// postValidateCreatePlan — missing or malformed frontmatter
-// ---------------------------------------------------------------------------
-
-describe("postValidateCreatePlan — missing or malformed frontmatter", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("returns failure when PLAN.md has no frontmatter", () => {
-    // Arrange: PLAN.md starts directly with title (no --- delimiters)
-    const planContent = "# Plan: Test Goal\n\n### Step 1: Description";
-    const goalDir = createGoalTree(tempDir, "no-frontmatter", planContent);
-
-    // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
-
-    // Assert
-    expect(result.success).toBe(false);
-    expect(result.message).toMatch(/frontmatter/i);
-  });
-
-  it("returns failure when frontmatter YAML is malformed", () => {
-    // Arrange: Invalid YAML (no colon — not valid YAML)
-    const planContent = "---\ntotalSteps\n---\n# Plan: Test Goal";
-    const goalDir = createGoalTree(tempDir, "malformed-yaml", planContent);
-
-    // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
-
-    // Assert
-    expect(result.success).toBe(false);
-    expect(result.message).toBeDefined();
-    expect(result.message!).toMatch(/frontmatter|pars/i);
-  });
-
-  it("returns failure when frontmatter block has no closing delimiter", () => {
-    // Arrange: Opening --- but no closing ---
-    const planContent = "---\ntotalSteps: 3\n# Plan: Test Goal";
-    const goalDir = createGoalTree(tempDir, "no-closing", planContent);
-
-    // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
-
-    // Assert
-    expect(result.success).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// postValidateCreatePlan — invalid totalSteps value
-// ---------------------------------------------------------------------------
-
-describe("postValidateCreatePlan — invalid totalSteps value", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("returns failure when totalSteps is missing", () => {
-    // Arrange: Frontmatter with otherField but no totalSteps
-    const planContent = "---\notherField: value\n---\n# Plan: Test Goal";
-    const goalDir = createGoalTree(tempDir, "missing-totalSteps", planContent);
-
-    // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
-
-    // Assert
-    expect(result.success).toBe(false);
-    expect(result.message).toContain("totalSteps");
-  });
-
-  it("returns failure when totalSteps is zero", () => {
-    // Arrange: totalSteps: 0 (below minimum of 1)
-    const planContent = "---\ntotalSteps: 0\n---\n# Plan: Test Goal";
-    const goalDir = createGoalTree(tempDir, "zero-totalSteps", planContent);
-
-    // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
-
-    // Assert
-    expect(result.success).toBe(false);
-  });
-
-  it("returns failure when totalSteps is negative", () => {
-    // Arrange: totalSteps: -1
-    const planContent = "---\ntotalSteps: -1\n---\n# Plan: Test Goal";
-    const goalDir = createGoalTree(tempDir, "negative-totalSteps", planContent);
-
-    // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
-
-    // Assert
-    expect(result.success).toBe(false);
-  });
-
-  it("returns failure when totalSteps is a float", () => {
-    // Arrange: totalSteps: 3.5 (not an integer)
-    const planContent = "---\ntotalSteps: 3.5\n---\n# Plan: Test Goal";
-    const goalDir = createGoalTree(tempDir, "float-totalSteps", planContent);
-
-    // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
-
-    // Assert
-    expect(result.success).toBe(false);
-  });
-
-  it("returns failure when totalSteps is a string", () => {
-    // Arrange: totalSteps: "three" (string instead of integer)
-    const planContent = '---\ntotalSteps: "three"\n---\n# Plan: Test Goal';
-    const goalDir = createGoalTree(tempDir, "string-totalSteps", planContent);
-
-    // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
-
-    // Assert
-    expect(result.success).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// postValidateCreatePlan — totalSteps vs heading count mismatch
-// ---------------------------------------------------------------------------
-
-describe("postValidateCreatePlan — totalSteps vs heading count mismatch", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("returns failure when totalSteps > actual heading count", () => {
-    // Arrange: totalSteps: 5 but only 2 headings
-    const goalDir = createGoalTree(tempDir, "too-many", makePlanContent(5, 2));
-
-    // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
-
-    // Assert
-    expect(result.success).toBe(false);
-    expect(result.message).toContain("5");
-    expect(result.message).toContain("2");
-  });
-
-  it("returns failure when totalSteps < actual heading count", () => {
-    // Arrange: totalSteps: 2 but 5 headings
-    const goalDir = createGoalTree(tempDir, "too-few", makePlanContent(2, 5));
-
-    // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
-
-    // Assert
-    expect(result.success).toBe(false);
-    expect(result.message).toContain("2");
-    expect(result.message).toContain("5");
-  });
-
-  it("returns failure when there are zero headings but totalSteps is positive", () => {
-    // Arrange: totalSteps: 3 and no ### Step N: headings at all
-    const planContent = "---\ntotalSteps: 3\n---\n# Plan: Test Goal\n\nNo step headings here.";
-    const goalDir = createGoalTree(tempDir, "zero-headings", planContent);
-
-    // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
-
-    // Assert
-    expect(result.success).toBe(false);
   });
 });
 
@@ -310,7 +130,7 @@ describe("postValidateCreatePlan — steps array is required", () => {
     const goalDir = createGoalTree(tempDir, "missing-steps", planContent);
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert
     expect(result.success).toBe(false);
@@ -336,7 +156,7 @@ describe("postValidateCreatePlan — steps array validation", () => {
     const goalDir = createGoalTree(tempDir, "valid-steps", makePlanContent(3, 3));
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert
     expect(result).toEqual({ success: true });
@@ -355,7 +175,7 @@ describe("postValidateCreatePlan — steps array validation", () => {
     );
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert
     expect(result).toEqual({ success: true });
@@ -374,7 +194,7 @@ describe("postValidateCreatePlan — steps array validation", () => {
     );
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert
     expect(result).toEqual({ success: true });
@@ -389,7 +209,7 @@ describe("postValidateCreatePlan — steps array validation", () => {
     );
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert
     expect(result.success).toBe(false);
@@ -410,7 +230,7 @@ describe("postValidateCreatePlan — steps array validation", () => {
     );
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert
     expect(result.success).toBe(false);
@@ -427,7 +247,7 @@ describe("postValidateCreatePlan — steps array validation", () => {
     );
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert
     expect(result.success).toBe(false);
@@ -451,7 +271,7 @@ describe("postValidateCreatePlan — steps array validation", () => {
     const goalDir = createGoalTree(tempDir, "omit-complexity", planContent);
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert: passes — complexity is optional, defaults to "task"
     expect(result).toEqual({ success: true });
@@ -475,7 +295,7 @@ describe("postValidateCreatePlan — steps array validation", () => {
     const goalDir = createGoalTree(tempDir, "invalid-complexity", planContent);
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert
     expect(result.success).toBe(false);
@@ -513,7 +333,7 @@ describe("postValidateCreatePlan — unique subgoal names", () => {
     );
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert
     expect(result).toEqual({ success: true });
@@ -536,7 +356,7 @@ describe("postValidateCreatePlan — unique subgoal names", () => {
     );
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert
     expect(result.success).toBe(false);
@@ -560,7 +380,7 @@ describe("postValidateCreatePlan — unique subgoal names", () => {
     );
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert: passes — only subgoal names must be unique
     expect(result).toEqual({ success: true });
@@ -582,7 +402,7 @@ describe("postValidateCreatePlan — unique subgoal names", () => {
     );
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert: passes — cross-type duplicates are allowed
     expect(result).toEqual({ success: true });
@@ -605,11 +425,63 @@ describe("postValidateCreatePlan — unique subgoal names", () => {
     );
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir);
+    const result = postValidateCreatePlan(goalDir);
 
     // Assert
     expect(result.success).toBe(false);
     expect(result.message).toContain("data-layer");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// postValidateCreatePlan — totalSteps vs heading count mismatch
+// ---------------------------------------------------------------------------
+
+describe("postValidateCreatePlan — totalSteps vs heading count mismatch", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns failure when totalSteps > actual heading count", () => {
+    // Arrange: totalSteps: 5 but only 2 headings
+    const goalDir = createGoalTree(tempDir, "too-many", makePlanContent(5, 2));
+
+    // Act
+    const result = postValidateCreatePlan(goalDir);
+
+    // Assert
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("5");
+    expect(result.message).toContain("2");
+  });
+
+  it("returns failure when totalSteps < actual heading count", () => {
+    // Arrange: totalSteps: 2 but 5 headings
+    const goalDir = createGoalTree(tempDir, "too-few", makePlanContent(2, 5));
+
+    // Act
+    const result = postValidateCreatePlan(goalDir);
+
+    // Assert
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("2");
+    expect(result.message).toContain("5");
+  });
+
+  it("returns failure when there are zero headings but totalSteps is positive", () => {
+    // Arrange: totalSteps: 3 and no ### Step N: headings at all
+    const planContent = "---\ntotalSteps: 3\n---\n# Plan: Test Goal\n\nNo step headings here.";
+    const goalDir = createGoalTree(tempDir, "zero-headings", planContent);
+
+    // Act
+    const result = postValidateCreatePlan(goalDir);
+
+    // Assert
+    expect(result.success).toBe(false);
   });
 });
 

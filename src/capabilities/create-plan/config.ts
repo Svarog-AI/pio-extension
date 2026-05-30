@@ -3,12 +3,13 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 
-import { launchCapability } from "./session-capability";
-import { resolveGoalDir } from "../fs-utils";
-import { enqueueTask } from "../queues";
-import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
-import { createGoalState } from "../goal-state";
-import { type PlanFrontmatter } from "../frontmatter-schemas";
+import { launchCapability } from "../session-capability";
+import { resolveGoalDir } from "../../fs-utils";
+import { enqueueTask } from "../../queues";
+import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
+import type { CapabilityPackageConfig } from "../../capability-package";
+import { createGoalState } from "../../goal-state";
+import { type PlanFrontmatter, PLAN_FRONTMATTER_SCHEMA } from "../../frontmatter-schemas";
 
 // ---------------------------------------------------------------------------
 // postValidate — validates PLAN.md frontmatter correctness
@@ -31,7 +32,7 @@ const STEP_HEADING_RE = /^### Step \d+:/gm;
  * Delegates frontmatter validation to GoalState.planMetadata() — does not
  * import low-level frontmatter utilities directly.
  */
-function postValidateCreatePlan(goalDir: string): { success: boolean; message?: string } {
+export function postValidateCreatePlan(goalDir: string): { success: boolean; message?: string } {
   // Step 1: Validate frontmatter via GoalState
   const state = createGoalState(goalDir);
   const result = state.planMetadata({ errors: true });
@@ -99,7 +100,32 @@ function postValidateCreatePlan(goalDir: string): { success: boolean; message?: 
 }
 
 // ---------------------------------------------------------------------------
-// Capability config — single source of truth for this capability's session shape
+// Default export: CapabilityPackageConfig (new-style package config)
+// ---------------------------------------------------------------------------
+
+export default {
+  capability: "create-plan",
+  validation: { files: ["PLAN.md"] },
+  readOnlyFiles: ["GOAL.md"],
+  writeAllowlist: ["PLAN.md"],
+  skills: {
+    mandatory: ["pio-planning", "grill-me"],
+    recommended: [
+      { name: "source-research", condition: "when researching existing solutions or libraries" },
+    ],
+  },
+  frontmatterSchemas: [
+    { outputFile: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA },
+  ],
+  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
+    const goalName = typeof params?.goalName === "string" ? params.goalName : undefined;
+    return `Goal workspace is at ${workingDir}. GOAL.md exists. Create PLAN.md in this directory.`;
+  },
+  postValidate: postValidateCreatePlan,
+} satisfies CapabilityPackageConfig;
+
+// ---------------------------------------------------------------------------
+// Backward-compat export: CAPABILITY_CONFIG (for resolveCapabilityConfig until Step 20)
 // ---------------------------------------------------------------------------
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
@@ -210,10 +236,13 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
 // Setup (registers tool and command)
 // ---------------------------------------------------------------------------
 
-export function setupCreatePlan(pi: ExtensionAPI) {
+export function register(pi: ExtensionAPI) {
   pi.registerTool(createPlanTool);
   pi.registerCommand("pio-create-plan", {
     description: "Create an implementation plan for a goal and launch a create-plan session",
     handler: handleCreatePlan,
   });
 }
+
+// Backward-compat: old index.ts imports setupCreatePlan
+export { register as setupCreatePlan };

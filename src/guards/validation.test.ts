@@ -365,7 +365,34 @@ content
     expect(result.message).toContain("totalSteps");
   });
 
+  // --- Extra fields (TypeBox allows additional properties by default) ---
+
+  it("extra frontmatter fields not in schema → passes (TypeBox allows additional properties)", () => {
+    const schema = Type.Object({
+      totalSteps: Type.Integer({ minimum: 1 }),
+    });
+    const declarations = [{ outputFile: "PLAN.md", schema }];
+
+    // Frontmatter has totalSteps (declared) plus an unknown field
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: 3
+extraField: "some value"
+anotherExtra: 42
+---
+# Plan content
+`,
+      "utf-8",
+    );
+
+    const result = validateFrontmatter(declarations, tempDir);
+
+    expect(result.success).toBe(true);
+  });
+
   // --- Schema-only validation (no cross-field checks) ---
+
 
   it("does not perform cross-field validations (schema-only)", () => {
     const schema = Type.Object({

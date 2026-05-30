@@ -1,7 +1,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ValidationRule } from "../types";
+import * as Value from "typebox/value";
+import type { FrontmatterSchemaDeclaration } from "../capability-package";
+import { extractFrontmatter } from "../frontmatter";
+import type { PostValidateCallback, ValidationRule } from "../types";
 
 // Re-export for backward compatibility
 export type { ValidationRule };
@@ -56,6 +59,77 @@ export function validateOutputs(rules: ValidationRule, baseDir: string): Validat
   }
 
   return { passed: missing.length === 0, missing };
+}
+
+// ---------------------------------------------------------------------------
+// Frontmatter schema validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate YAML frontmatter of output files against declared TypeBox schemas.
+ *
+ * Iterates over declarations, reads each file via extractFrontmatter(), and
+ * validates the parsed object against the declared schema using Value.Check().
+ *
+ * Returns on the first failure (fail-fast). Error messages include the
+ * outputFile name so the executor knows which file failed.
+ *
+ * This is a schema-only validation — it does NOT perform cross-field checks
+ * that require reading document body content (e.g., totalSteps vs heading count).
+ */
+export function validateFrontmatter(
+  declarations: FrontmatterSchemaDeclaration[],
+  workingDir: string,
+): { success: boolean; message?: string } {
+  if (!declarations || declarations.length === 0) {
+    return { success: true };
+  }
+
+  for (const decl of declarations) {
+    const filePath = path.join(workingDir, decl.outputFile);
+
+    // Check file exists
+    if (!fs.existsSync(filePath)) {
+      return { success: false, message: `Output file '${decl.outputFile}' does not exist` };
+    }
+
+    // Parse frontmatter
+    const raw = extractFrontmatter(filePath);
+    if (raw === null) {
+      return { success: false, message: `Output file '${decl.outputFile}' has no valid YAML frontmatter` };
+    }
+
+    // Validate against schema
+    if (!Value.Check(decl.schema, raw)) {
+      const errors = [...Value.Errors(decl.schema, raw)];
+      const messages = errors
+        .map((e) => {
+          const field = e.instancePath ? e.instancePath.replace(/^\//, "") : "root";
+          return `Field '${field}': ${e.message}`;
+        })
+        .join("; ");
+      return { success: false, message: `Frontmatter validation failed for '${decl.outputFile}': ${messages}` };
+    }
+  }
+
+  return { success: true };
+}
+
+/**
+ * Factory that produces a ready-to-use PostValidateCallback from
+ * FrontmatterSchemaDeclaration[].
+ *
+ * Bridge between frontmatterSchemas declarations and the existing
+ * postValidate hook system until the exit-gate integrates schema
+ * validation directly (Step 20).
+ *
+ * Usage in migrated capabilities:
+ *   postValidate: createFrontmatterValidator(config.frontmatterSchemas)
+ */
+export function createFrontmatterValidator(
+  declarations: FrontmatterSchemaDeclaration[],
+): PostValidateCallback {
+  return (goalDir, _params) => validateFrontmatter(declarations, goalDir);
 }
 
 // ---------------------------------------------------------------------------

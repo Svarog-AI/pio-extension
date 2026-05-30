@@ -17,6 +17,7 @@
  * other capability modules to avoid circular dependencies.
  */
 
+import type { TSchema } from "typebox";
 import type {
   CapabilitySkills,
   ConfigCallback,
@@ -54,6 +55,30 @@ export const CAPABILITY_SCHEMAS_FILE = "schemas.ts";
 
 /** Custom validation logic (optional). */
 export const CAPABILITY_VALIDATORS_FILE = "validators.ts";
+
+// ---------------------------------------------------------------------------
+// Output schema types
+// ---------------------------------------------------------------------------
+
+/**
+ * Declares an output document and the TypeBox schema its YAML frontmatter
+ * must conform to.
+ *
+ * Used in `CapabilityPackageConfig.frontmatterSchemas` so the exit-gate can
+ * automatically validate structured markdown outputs (PLAN.md, TASK.md,
+ * REVIEW.md) without per-capability postValidate hooks.
+ *
+ * Schema validation covers type constraints (required fields, integer types,
+ * enum values) but NOT cross-field validations that require reading document
+ * body content (e.g., totalSteps matching heading count). Those remain in
+ * per-capability postValidate hooks.
+ */
+export interface FrontmatterSchemaDeclaration {
+  /** Output file path relative to workingDir (e.g. "PLAN.md", "TASK.md") */
+  outputFile: string;
+  /** TypeBox schema the YAML frontmatter must conform to */
+  schema: TSchema;
+}
 
 // ---------------------------------------------------------------------------
 // Component type interfaces
@@ -146,6 +171,8 @@ export interface CapabilityPackageConfig {
   postExecute?: PostExecuteCallback;
   /** Capability-level skill declarations. Workflow step skills are merged into these at prompt compilation time. */
   skills?: CapabilitySkills;
+  /** Declarative output document frontmatter schemas. Each entry declares an output file path and a TypeBox schema. Validated by the exit-gate via validateFrontmatter(). */
+  frontmatterSchemas?: FrontmatterSchemaDeclaration[];
 }
 
 /**

@@ -18,8 +18,7 @@ export default {
   skills: {
     mandatory: ["tdd", "pio-git"],
   },
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
-    const goalName = typeof params?.goalName === "string" ? params.goalName : undefined;
+  defaultInitialMessage: (workingDir: string, _params?: Record<string, unknown>) => {
     return `Goal workspace is at ${workingDir}. GOAL.md and PLAN.md exist. Implement all steps from PLAN.md in this session.`;
   },
 } satisfies CapabilityPackageConfig;

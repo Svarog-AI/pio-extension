@@ -48,10 +48,27 @@ describe("CAPABILITY_CONFIG.writeAllowlist", () => {
 // ---------------------------------------------------------------------------
 
 describe("register", () => {
+  it("registers a tool named pio_create_project_context", () => {
+    const registeredTools: Array<{ name: string }> = [];
+
+    const mockPi = {
+      registerTool: vi.fn((tool: { name: string }) => {
+        registeredTools.push({ name: tool.name });
+      }),
+      registerCommand: vi.fn(),
+    };
+
+    register(mockPi as any);
+
+    const tool = registeredTools.find((t) => t.name === "pio_create_project_context");
+    expect(tool).toBeDefined();
+  });
+
   it("registers a command named pio-project-context", () => {
     const registeredCommands: Array<{ name: string; options: { description: string } }> = [];
 
     const mockPi = {
+      registerTool: vi.fn(),
       registerCommand: vi.fn((name: string, options: { description: string; handler: Function }) => {
         registeredCommands.push({ name, options });
       }),
@@ -67,6 +84,7 @@ describe("register", () => {
     const registeredCommands: Array<{ name: string; options: { description: string } }> = [];
 
     const mockPi = {
+      registerTool: vi.fn(),
       registerCommand: vi.fn((name: string, options: { description: string; handler: Function }) => {
         registeredCommands.push({ name, options });
       }),

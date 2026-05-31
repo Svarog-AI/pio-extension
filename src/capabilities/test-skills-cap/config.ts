@@ -3,7 +3,7 @@
  * Used by capability-config.test.ts to verify the skills passthrough.
  * Not registered in index.ts — exists solely for testing.
  */
-import type { StaticCapabilityConfig } from "../types";
+import type { StaticCapabilityConfig } from "../../types";
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "test-skills.md",

@@ -4,7 +4,7 @@
  * when the static config omits the skills field entirely.
  * Not registered in index.ts — exists solely for testing.
  */
-import type { StaticCapabilityConfig } from "../types";
+import type { StaticCapabilityConfig } from "../../types";
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
   prompt: "test-no-skills.md",

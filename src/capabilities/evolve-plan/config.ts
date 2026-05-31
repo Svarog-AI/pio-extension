@@ -7,7 +7,7 @@ import * as path from "node:path";
 import { launchCapability } from "../../capability-session";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
-import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
+import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 
 // Re-export validator functions for backward compatibility and test access
@@ -19,10 +19,10 @@ import {
 } from "./callbacks";
 
 // ---------------------------------------------------------------------------
-// Default export: CapabilityPackageConfig (new-style package config)
+// CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------
 
-export default {
+const capabilityConfig = {
   capability: "evolve-plan",
   validation: resolveEvolveValidation,
   writeAllowlist: resolveEvolveWriteAllowlist,
@@ -41,26 +41,7 @@ export default {
   },
 } satisfies CapabilityPackageConfig;
 
-// ---------------------------------------------------------------------------
-// Backward-compat export: CAPABILITY_CONFIG (for resolveCapabilityConfig until Step 21)
-// ---------------------------------------------------------------------------
-
-export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
-  prompt: "evolve-plan.md",
-  skills: {
-    mandatory: ["pio-planning", "grill-me"],
-  },
-  validation: resolveEvolveValidation,
-  writeAllowlist: resolveEvolveWriteAllowlist,
-  defaultInitialMessage: (workingDir, params) => {
-    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-    if (stepNumber == null) {
-      throw new Error("stepNumber is required for evolve-plan. Ensure the task was enqueued with a valid step number.");
-    }
-    const folderName = stepFolderName(stepNumber);
-    return `Goal workspace is at ${workingDir}. PLAN.md exists. You are responsible for **Step ${stepNumber}**. Generate TASK.md inside the \`${folderName}/\` directory.`;
-  },
-};
+export default capabilityConfig;
 
 // ---------------------------------------------------------------------------
 // Tool
@@ -146,5 +127,4 @@ export function register(pi: ExtensionAPI) {
   });
 }
 
-// Backward-compat: old index.ts imports setupEvolvePlan
-export { register as setupEvolvePlan };
+

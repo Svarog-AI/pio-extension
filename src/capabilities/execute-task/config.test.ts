@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { isStepReady } from "./callbacks";
-import { CAPABILITY_CONFIG } from "./config";
+import config from "./config";
 import { stepFolderName } from "../../fs-utils";
 import { resolveCapabilityConfig } from "../../capability-config";
 
@@ -201,26 +201,26 @@ describe("resolveExecuteReadOnlyFiles", () => {
 
 describe("execute-task defaultInitialMessage", () => {
   it("includes working directory in the message", () => {
-    const message = CAPABILITY_CONFIG.defaultInitialMessage("/my/goal/dir", { stepNumber: 1 });
+    const message = config.defaultInitialMessage("/my/goal/dir", { stepNumber: 1 });
 
     expect(message).toContain("/my/goal/dir");
   });
 
   it("includes step number and folder reference", () => {
-    const message = CAPABILITY_CONFIG.defaultInitialMessage("/dir", { stepNumber: 5 });
+    const message = config.defaultInitialMessage("/dir", { stepNumber: 5 });
 
     expect(message).toContain("Step 5");
     expect(message).toContain("S05");
   });
 
   it("references TASK.md as the task specification", () => {
-    const message = CAPABILITY_CONFIG.defaultInitialMessage("/dir", { stepNumber: 1 });
+    const message = config.defaultInitialMessage("/dir", { stepNumber: 1 });
 
     expect(message).toContain("TASK.md");
   });
 
   it("returns error message when stepNumber is missing", () => {
-    const message = CAPABILITY_CONFIG.defaultInitialMessage("/dir", {});
+    const message = config.defaultInitialMessage("/dir", {});
 
     expect(message.toLowerCase()).toContain("error");
     expect(message.toLowerCase()).toContain("stepnumber");
@@ -233,7 +233,7 @@ describe("execute-task defaultInitialMessage", () => {
       const { goalDir } = createGoalTree(tempDir, "rejected-goal", { stepNumber: 2, rejected: true });
 
       // Act
-      const message = CAPABILITY_CONFIG.defaultInitialMessage(goalDir, { stepNumber: 2 });
+      const message = config.defaultInitialMessage(goalDir, { stepNumber: 2 });
 
       // Assert: message references REVIEW.md for re-execution context
       expect(message).toContain("REVIEW.md");

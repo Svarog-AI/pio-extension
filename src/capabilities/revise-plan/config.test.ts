@@ -1,8 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resolveCapabilityConfig } from "../../capability-config";
-import { CAPABILITY_CONFIG } from "./config";
+import config from "./config";
 import { validateRevisePlan, prepareSession, cleanupIncompleteSteps } from "./callbacks";
 
 // ---------------------------------------------------------------------------
@@ -94,16 +93,12 @@ function createGoalTree(
 }
 
 // ---------------------------------------------------------------------------
-// CAPABILITY_CONFIG structure
+// config structure
 // ---------------------------------------------------------------------------
 
-describe("CAPABILITY_CONFIG", () => {
-  it('prompt is "revise-plan.md"', () => {
-    expect(CAPABILITY_CONFIG.prompt).toBe("revise-plan.md");
-  });
-
+describe("config structure", () => {
   it("validation requires PLAN.md", () => {
-    const validation = CAPABILITY_CONFIG.validation;
+    const validation = config.validation;
     expect(validation).toBeDefined();
     // validation can be a function or static object
     if (typeof validation === "object" && "files" in validation) {
@@ -112,39 +107,37 @@ describe("CAPABILITY_CONFIG", () => {
   });
 
   it("prepareSession is a function", () => {
-    expect(typeof CAPABILITY_CONFIG.prepareSession).toBe("function");
+    expect(typeof config.prepareSession).toBe("function");
   });
 
   it("postExecute is defined and references cleanupIncompleteSteps", () => {
-    expect(CAPABILITY_CONFIG.postExecute).toBe(cleanupIncompleteSteps);
+    expect(config.postExecute).toBe(cleanupIncompleteSteps);
   });
-
 });
 
 // ---------------------------------------------------------------------------
-// CAPABILITY_CONFIG wiring consistency — integration
+// config wiring consistency — integration
 // ---------------------------------------------------------------------------
 
-describe("CAPABILITY_CONFIG wiring consistency", () => {
+describe("config wiring consistency", () => {
   it("all lifecycle hooks point to the correct exported functions", () => {
     // prepareSession must be the exported prepareSession
-    expect(CAPABILITY_CONFIG.prepareSession).toBe(prepareSession);
+    expect(config.prepareSession).toBe(prepareSession);
     // postExecute must be the exported cleanupIncompleteSteps
-    expect(CAPABILITY_CONFIG.postExecute).toBe(cleanupIncompleteSteps);
+    expect(config.postExecute).toBe(cleanupIncompleteSteps);
   });
 
   it("readOnlyFiles is a function callback", () => {
-    expect(typeof CAPABILITY_CONFIG.readOnlyFiles).toBe("function");
+    expect(typeof config.readOnlyFiles).toBe("function");
   });
 
   it("writeAllowlist resolves to include PLAN.md", () => {
-    const wl = CAPABILITY_CONFIG.writeAllowlist;
+    const wl = config.writeAllowlist;
     expect(typeof wl === "function" || Array.isArray(wl)).toBe(true);
 
     const result = typeof wl === "function" ? wl("/tmp/goal") : wl;
     expect(result).toContain("PLAN.md");
   });
-
 });
 
 // ---------------------------------------------------------------------------
@@ -452,24 +445,6 @@ describe("prepareSession — marker cleanup", () => {
     await expect(prepareSession(goalDir, { revisionTriggerStep: 1 })).resolves.toBeUndefined();
     // S01 should still exist
     expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Config callbacks — readOnlyFiles and writeAllowlist
-// ---------------------------------------------------------------------------
-
-describe("CAPABILITY_CONFIG callbacks via resolveCapabilityConfig", () => {
-  it("writeAllowlist includes PLAN.md", async () => {
-    const params = { capability: "revise-plan" as string, goalName: "test-goal" };
-
-    const result = await resolveCapabilityConfig("/tmp/proj", params);
-
-    expect(result?.writeAllowlist).toContain("PLAN.md");
-  });
-
-  it("readOnlyFiles is a function (callback)", () => {
-    expect(typeof CAPABILITY_CONFIG.readOnlyFiles).toBe("function");
   });
 });
 

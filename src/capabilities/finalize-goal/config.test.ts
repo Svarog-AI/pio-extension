@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { CAPABILITY_CONFIG, setupFinalizeGoal, validateFinalizeGoal } from "./config";
+import config, { register, validateFinalizeGoal } from "./config";
 import { readPendingTask } from "../../queues";
 
 // ---------------------------------------------------------------------------
@@ -41,56 +41,52 @@ function createGoalTree(
 }
 
 // ---------------------------------------------------------------------------
-// CAPABILITY_CONFIG structure
+// config structure
 // ---------------------------------------------------------------------------
 
-describe("CAPABILITY_CONFIG", () => {
-  it("prompt is 'finalize-goal.md'", () => {
-    expect(CAPABILITY_CONFIG.prompt).toBe("finalize-goal.md");
-  });
-
+describe("config", () => {
   it("writeAllowlist contains exactly 7 file paths", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).toHaveLength(7);
+    expect(config.writeAllowlist).toHaveLength(7);
   });
 
   it("writeAllowlist includes OVERVIEW.md", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).toContain(".pio/PROJECT/OVERVIEW.md");
+    expect(config.writeAllowlist).toContain(".pio/PROJECT/OVERVIEW.md");
   });
 
   it("writeAllowlist includes DEVELOPMENT.md", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).toContain(".pio/PROJECT/DEVELOPMENT.md");
+    expect(config.writeAllowlist).toContain(".pio/PROJECT/DEVELOPMENT.md");
   });
 
   it("writeAllowlist includes CONVENTIONS.md", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).toContain(".pio/PROJECT/CONVENTIONS.md");
+    expect(config.writeAllowlist).toContain(".pio/PROJECT/CONVENTIONS.md");
   });
 
   it("writeAllowlist includes GIT.md", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).toContain(".pio/PROJECT/GIT.md");
+    expect(config.writeAllowlist).toContain(".pio/PROJECT/GIT.md");
   });
 
   it("writeAllowlist includes ARCHITECTURE.md", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).toContain(".pio/PROJECT/ARCHITECTURE.md");
+    expect(config.writeAllowlist).toContain(".pio/PROJECT/ARCHITECTURE.md");
   });
 
   it("writeAllowlist includes DEPENDENCIES.md", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).toContain(".pio/PROJECT/DEPENDENCIES.md");
+    expect(config.writeAllowlist).toContain(".pio/PROJECT/DEPENDENCIES.md");
   });
 
   it("writeAllowlist includes GLOSSARY.md", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).toContain(".pio/PROJECT/GLOSSARY.md");
+    expect(config.writeAllowlist).toContain(".pio/PROJECT/GLOSSARY.md");
   });
 
   it("validation is undefined (no file validation)", () => {
-    expect(CAPABILITY_CONFIG.validation).toBeUndefined();
+    expect((config as any).validation).toBeUndefined();
   });
 });
 
 // ---------------------------------------------------------------------------
-// setupFinalizeGoal registration
+// register
 // ---------------------------------------------------------------------------
 
-describe("setupFinalizeGoal", () => {
+describe("register", () => {
   it("registers a tool named pio_finalize_goal", () => {
     const registeredTools: Array<{ name: string }> = [];
 
@@ -101,7 +97,7 @@ describe("setupFinalizeGoal", () => {
       registerCommand: vi.fn(),
     };
 
-    setupFinalizeGoal(mockPi as any);
+    register(mockPi as any);
 
     const tool = registeredTools.find((t) => t.name === "pio_finalize_goal");
     expect(tool).toBeDefined();
@@ -117,7 +113,7 @@ describe("setupFinalizeGoal", () => {
       }),
     };
 
-    setupFinalizeGoal(mockPi as any);
+    register(mockPi as any);
 
     const command = registeredCommands.find((c) => c.name === "pio-finalize-goal");
     expect(command).toBeDefined();
@@ -133,7 +129,7 @@ describe("setupFinalizeGoal", () => {
       }),
     };
 
-    setupFinalizeGoal(mockPi as any);
+    register(mockPi as any);
 
     const command = registeredCommands.find((c) => c.name === "pio-finalize-goal");
     expect(command).toBeDefined();
@@ -208,7 +204,7 @@ describe("finalizeGoalTool.execute", () => {
 
   /**
    * Access the tool definition from the module.
-   * finalizeGoalTool is not exported, but we can access it via setupFinalizeGoal's registration.
+   * finalizeGoalTool is not exported, but we can access it via register's registration.
    */
   function getTool() {
     const registeredTools: Array<any> = [];
@@ -216,7 +212,7 @@ describe("finalizeGoalTool.execute", () => {
       registerTool: vi.fn((tool: any) => registeredTools.push(tool)),
       registerCommand: vi.fn(),
     };
-    setupFinalizeGoal(mockPi as any);
+    register(mockPi as any);
     return registeredTools[0];
   }
 
@@ -309,7 +305,7 @@ describe("handleFinalizeGoal", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  /** Capture the command handler from setupFinalizeGoal registration. */
+  /** Capture the command handler from register registration. */
   function getHandler() {
     let capturedHandler: Function | undefined;
     const mockPi = {
@@ -318,7 +314,7 @@ describe("handleFinalizeGoal", () => {
         capturedHandler = options.handler;
       }),
     };
-    setupFinalizeGoal(mockPi as any);
+    register(mockPi as any);
     return capturedHandler!;
   }
 

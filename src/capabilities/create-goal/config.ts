@@ -5,17 +5,17 @@ import { Type } from "typebox";
 import { launchCapability } from "../../capability-session";
 import { prepareGoal } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
-import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
+import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 
 // Re-export for backward compat (tests import prepareGoal from this module)
 export { prepareGoal };
 
 // ---------------------------------------------------------------------------
-// Default export: CapabilityPackageConfig (new-style package config)
+// CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------
 
-export default {
+const capabilityConfig = {
   capability: "create-goal",
   validation: { files: ["GOAL.md"] },
   writeAllowlist: ["GOAL.md"],
@@ -34,28 +34,7 @@ export default {
   },
 } satisfies CapabilityPackageConfig;
 
-// ---------------------------------------------------------------------------
-// Backward-compat export: CAPABILITY_CONFIG (for resolveCapabilityConfig until Step 20)
-// ---------------------------------------------------------------------------
-
-export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
-  prompt: "create-goal.md",
-  skills: {
-    mandatory: ["pio-planning", "grill-me", "pio-git"],
-    recommended: [
-      { name: "source-research", condition: "when researching existing solutions or libraries" },
-    ],
-  },
-  validation: { files: ["GOAL.md"] },
-  writeAllowlist: ["GOAL.md"],
-  defaultInitialMessage: (workingDir, params) => {
-    const goalName = typeof params?.goalName === "string" ? params.goalName : undefined;
-    if (goalName) {
-      return `Goal workspace created: ${goalName}\n\nWrite GOAL.md in this workspace.`;
-    }
-    return `Created goal workspace at ${workingDir}`;
-  },
-};
+export default capabilityConfig;
 
 // ---------------------------------------------------------------------------
 // Tool
@@ -127,5 +106,4 @@ export function register(pi: ExtensionAPI) {
   });
 }
 
-// Backward-compat: old index.ts imports setupCreateGoal
-export { register as setupCreateGoal };
+

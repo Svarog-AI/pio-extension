@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as Value from "typebox/value";
-import { CAPABILITY_CONFIG } from "./config";
+import config from "./config";
 import { isStepReviewable, findMostRecentCompletedStep, applyReviewDecision } from "./callbacks";
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
 import { stepFolderName } from "../../fs-utils";
@@ -68,13 +68,13 @@ function createGoalTree(
 }
 
 // ---------------------------------------------------------------------------
-// resolveReviewReadOnlyFiles (via CAPABILITY_CONFIG.readOnlyFiles)
+// resolveReviewReadOnlyFiles (via config.readOnlyFiles)
 // ---------------------------------------------------------------------------
 
 describe("resolveReviewReadOnlyFiles", () => {
   it("given stepNumber 1, includes DECISIONS.md in readOnlyFiles", () => {
     // Act
-    const readOnlyFiles = (CAPABILITY_CONFIG.readOnlyFiles as Function)(
+    const readOnlyFiles = (config.readOnlyFiles as Function)(
       "/some/workingDir",
       { stepNumber: 1 },
     );
@@ -85,7 +85,7 @@ describe("resolveReviewReadOnlyFiles", () => {
 
   it("given stepNumber 2, includes DECISIONS.md in readOnlyFiles", () => {
     // Act
-    const readOnlyFiles = (CAPABILITY_CONFIG.readOnlyFiles as Function)(
+    const readOnlyFiles = (config.readOnlyFiles as Function)(
       "/some/workingDir",
       { stepNumber: 2 },
     );
@@ -96,7 +96,7 @@ describe("resolveReviewReadOnlyFiles", () => {
 
   it("given stepNumber 5, includes DECISIONS.md with zero-padded folder name S05", () => {
     // Act
-    const readOnlyFiles = (CAPABILITY_CONFIG.readOnlyFiles as Function)(
+    const readOnlyFiles = (config.readOnlyFiles as Function)(
       "/some/workingDir",
       { stepNumber: 5 },
     );
@@ -109,13 +109,13 @@ describe("resolveReviewReadOnlyFiles", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolveReviewWriteAllowlist (via CAPABILITY_CONFIG.writeAllowlist)
+// resolveReviewWriteAllowlist (via config.writeAllowlist)
 // ---------------------------------------------------------------------------
 
 describe("resolveReviewWriteAllowlist", () => {
   it("given a step number, should return array containing only REVIEW.md path", () => {
     // Act
-    const allowlist = (CAPABILITY_CONFIG.writeAllowlist as Function)(
+    const allowlist = (config.writeAllowlist as Function)(
       "/some/workingDir",
       { stepNumber: 1 },
     );
@@ -127,7 +127,7 @@ describe("resolveReviewWriteAllowlist", () => {
 
   it("excludes APPROVED from the write allowlist", () => {
     // Act
-    const allowlist = (CAPABILITY_CONFIG.writeAllowlist as Function)(
+    const allowlist = (config.writeAllowlist as Function)(
       "/some/workingDir",
       { stepNumber: 3 },
     );
@@ -140,7 +140,7 @@ describe("resolveReviewWriteAllowlist", () => {
   it("throws when stepNumber is missing", () => {
     // Act & Assert
     expect(() => {
-      (CAPABILITY_CONFIG.writeAllowlist as Function)("/some/workingDir", {});
+      (config.writeAllowlist as Function)("/some/workingDir", {});
     }).toThrow(/stepNumber/i);
   });
 });
@@ -149,10 +149,10 @@ describe("resolveReviewWriteAllowlist", () => {
 // prepareSession
 // ---------------------------------------------------------------------------
 
-describe("CAPABILITY_CONFIG.prepareSession", () => {
+describe("config.prepareSession", () => {
   // Basic existence check — no filesystem needed.
   it("should be defined as a function", () => {
-    expect(typeof CAPABILITY_CONFIG.prepareSession).toBe("function");
+    expect(typeof config.prepareSession).toBe("function");
   });
 
   let tempDir: string;
@@ -169,7 +169,7 @@ describe("CAPABILITY_CONFIG.prepareSession", () => {
     fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
 
     // Act
-    (CAPABILITY_CONFIG.prepareSession!)(goalDir, { stepNumber: 1 });
+    (config.prepareSession!)(goalDir, { stepNumber: 1 });
 
     // Assert
     expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(false);
@@ -181,7 +181,7 @@ describe("CAPABILITY_CONFIG.prepareSession", () => {
     fs.writeFileSync(path.join(stepDir, "REJECTED"), "", "utf-8");
 
     // Act
-    (CAPABILITY_CONFIG.prepareSession!)(goalDir, { stepNumber: 2 });
+    (config.prepareSession!)(goalDir, { stepNumber: 2 });
 
     // Assert
     expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
@@ -194,7 +194,7 @@ describe("CAPABILITY_CONFIG.prepareSession", () => {
     fs.writeFileSync(path.join(stepDir, "REJECTED"), "", "utf-8");
 
     // Act
-    (CAPABILITY_CONFIG.prepareSession!)(goalDir, { stepNumber: 1 });
+    (config.prepareSession!)(goalDir, { stepNumber: 1 });
 
     // Assert
     expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(false);
@@ -208,7 +208,7 @@ describe("CAPABILITY_CONFIG.prepareSession", () => {
     fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
 
     // Act
-    (CAPABILITY_CONFIG.prepareSession!)(goalDir, { stepNumber: 1 });
+    (config.prepareSession!)(goalDir, { stepNumber: 1 });
 
     // Assert: COMPLETED still exists; APPROVED is gone
     expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(true);
@@ -222,7 +222,7 @@ describe("CAPABILITY_CONFIG.prepareSession", () => {
     fs.writeFileSync(path.join(stepDir, "REVIEW.md"), "some review content", "utf-8");
 
     // Act
-    (CAPABILITY_CONFIG.prepareSession!)(goalDir, { stepNumber: 1 });
+    (config.prepareSession!)(goalDir, { stepNumber: 1 });
 
     // Assert: REVIEW.md still exists; APPROVED is gone
     expect(fs.existsSync(path.join(stepDir, "REVIEW.md"))).toBe(true);
@@ -235,7 +235,7 @@ describe("CAPABILITY_CONFIG.prepareSession", () => {
 
     // Act & Assert: should not throw
     expect(() => {
-      (CAPABILITY_CONFIG.prepareSession!)(goalDir, { stepNumber: 1 });
+      (config.prepareSession!)(goalDir, { stepNumber: 1 });
     }).not.toThrow();
   });
 
@@ -245,7 +245,7 @@ describe("CAPABILITY_CONFIG.prepareSession", () => {
 
     // Act & Assert
     expect(() => {
-      (CAPABILITY_CONFIG.prepareSession!)(goalDir, {});
+      (config.prepareSession!)(goalDir, {});
     }).toThrow(/stepNumber/i);
   });
 
@@ -255,7 +255,7 @@ describe("CAPABILITY_CONFIG.prepareSession", () => {
     fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
 
     // Act
-    (CAPABILITY_CONFIG.prepareSession!)(goalDir, { stepNumber: 5 });
+    (config.prepareSession!)(goalDir, { stepNumber: 5 });
 
     // Assert: S05/APPROVED should be deleted (stepFolderName(5) = "S05")
     expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(false);
@@ -868,7 +868,7 @@ describe("review-task postValidate — valid frontmatter", () => {
     });
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir, { stepNumber: 1 });
+    const result = config.postValidate!(goalDir, { stepNumber: 1 });
 
     // Assert: returns success, S01/APPROVED exists, no S01/REJECTED
     expect(result.success).toBe(true);
@@ -889,7 +889,7 @@ describe("review-task postValidate — valid frontmatter", () => {
     fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir, { stepNumber: 2 });
+    const result = config.postValidate!(goalDir, { stepNumber: 2 });
 
     // Assert: returns success, S02/REJECTED exists, S02/COMPLETED removed
     expect(result.success).toBe(true);
@@ -916,7 +916,7 @@ describe("review-task postValidate — missing or invalid frontmatter", () => {
     const { goalDir } = createGoalTree(tempDir, "pv-missing", { stepNumber: 3 });
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir, { stepNumber: 3 });
+    const result = config.postValidate!(goalDir, { stepNumber: 3 });
 
     // Assert: success is false, message is non-empty
     expect(result.success).toBe(false);
@@ -930,7 +930,7 @@ describe("review-task postValidate — missing or invalid frontmatter", () => {
     fs.writeFileSync(path.join(stepDir, "REVIEW.md"), "# Review\n\nSome review content.", "utf-8");
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir, { stepNumber: 4 });
+    const result = config.postValidate!(goalDir, { stepNumber: 4 });
 
     // Assert: success is false, message is defined
     expect(result.success).toBe(false);
@@ -949,7 +949,7 @@ describe("review-task postValidate — missing or invalid frontmatter", () => {
     });
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir, { stepNumber: 5 });
+    const result = config.postValidate!(goalDir, { stepNumber: 5 });
 
     // Assert: success is false, message contains "decision"
     expect(result.success).toBe(false);
@@ -968,7 +968,7 @@ describe("review-task postValidate — missing or invalid frontmatter", () => {
     });
 
     // Act
-    const result = CAPABILITY_CONFIG.postValidate!(goalDir, { stepNumber: 6 });
+    const result = config.postValidate!(goalDir, { stepNumber: 6 });
 
     // Assert: success is false, message contains "criticalIssues"
     expect(result.success).toBe(false);
@@ -995,7 +995,7 @@ describe("review-task postValidate — missing stepNumber", () => {
 
     // Act & Assert: throws an error mentioning "stepNumber"
     expect(() => {
-      CAPABILITY_CONFIG.postValidate!(goalDir, {});
+      config.postValidate!(goalDir, {});
     }).toThrow(/stepNumber/i);
   });
 });

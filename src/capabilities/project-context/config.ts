@@ -4,14 +4,14 @@ import { Type } from "typebox";
 
 import { launchCapability } from "../../capability-session";
 import { enqueueTask } from "../../queues";
-import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
+import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 
 // ---------------------------------------------------------------------------
-// Default export: CapabilityPackageConfig (new-style package config)
+// CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------
 
-export default {
+const capabilityConfig = {
   capability: "project-context",
   skills: {
     mandatory: ["pio-project-knowledge"],
@@ -32,30 +32,7 @@ export default {
     `Please explore this project and produce the multi-file project context under ${workingDir}/.pio/PROJECT/ (OVERVIEW.md, DEVELOPMENT.md, CONVENTIONS.md, GIT.md, ARCHITECTURE.md, DEPENDENCIES.md, GLOSSARY.md).`,
 } satisfies CapabilityPackageConfig;
 
-// ---------------------------------------------------------------------------
-// Backward-compat export: CAPABILITY_CONFIG (for resolveCapabilityConfig until Step 21)
-// ---------------------------------------------------------------------------
-
-export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
-  prompt: "project-context.md",
-  skills: {
-    mandatory: ["pio-project-knowledge"],
-    recommended: [
-      { name: "source-research", condition: "when researching project dependencies or external tools" },
-    ],
-  },
-  writeAllowlist: [
-    ".pio/PROJECT/OVERVIEW.md",
-    ".pio/PROJECT/DEVELOPMENT.md",
-    ".pio/PROJECT/CONVENTIONS.md",
-    ".pio/PROJECT/GIT.md",
-    ".pio/PROJECT/ARCHITECTURE.md",
-    ".pio/PROJECT/DEPENDENCIES.md",
-    ".pio/PROJECT/GLOSSARY.md",
-  ],
-  defaultInitialMessage: (workingDir) =>
-    `Please explore this project and produce the multi-file project context under ${workingDir}/.pio/PROJECT/ (OVERVIEW.md, DEVELOPMENT.md, CONVENTIONS.md, GIT.md, ARCHITECTURE.md, DEPENDENCIES.md, GLOSSARY.md).`,
-};
+export default capabilityConfig;
 
 // ---------------------------------------------------------------------------
 // Tool: pio_create_project_context
@@ -103,5 +80,4 @@ export function register(pi: ExtensionAPI) {
   });
 }
 
-// Backward-compat: old index.ts imports setupProjectContext
-export { register as setupProjectContext };
+

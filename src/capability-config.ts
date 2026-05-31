@@ -1,12 +1,9 @@
-import type { CapabilityConfig, ConfigCallback, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback, StaticCapabilityConfig, ValidationRule } from "./types";
+import type { CapabilityConfig, ConfigCallback, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback, ValidationRule } from "./types";
 import type { CapabilityPackageConfig, FrontmatterSchemaDeclaration, CapabilitySkills } from "./capability-package";
 import {
   resolveGoalDir,
   deriveSessionName,
 } from "./fs-utils";
-
-// Re-export for backward compatibility — originally defined in types.ts
-export type { StaticCapabilityConfig } from "./types";
 
 /**
  * Resolve a step-dependent config field: if it's a callback, invoke it;
@@ -143,45 +140,10 @@ function normalizePackageConfig(
 }
 
 /**
- * Normalize a StaticCapabilityConfig (old-style CAPABILITY_CONFIG) to CapabilityConfig.
- */
-function normalizeStaticConfig(
-  cap: string,
-  config: StaticCapabilityConfig,
-  cwd: string,
-  params?: Record<string, unknown>,
-): CapabilityConfig {
-  const extracted = extractParams(cwd, params);
-
-  const validation = resolveField<ValidationRule>(config.validation, extracted.workingDir, params);
-  const readOnlyFiles = resolveField<string[]>(config.readOnlyFiles, extracted.workingDir, params);
-  const writeAllowlist = resolveField<string[]>(config.writeAllowlist, extracted.workingDir, params);
-
-  return buildCapabilityConfig(
-    cap,
-    config.prompt,
-    extracted.workingDir,
-    validation,
-    readOnlyFiles,
-    writeAllowlist,
-    extracted.initialMessage ?? config.defaultInitialMessage(extracted.workingDir, params),
-    extracted.fileCleanup,
-    params,
-    deriveSessionName(extracted.goalName, cap, extracted.stepNumber),
-    config.prepareSession,
-    config.postValidate,
-    config.postExecute,
-    config.skills,
-    config.frontmatterSchemas,
-  );
-}
-
-/**
  * Resolve a capability name to its full CapabilityConfig.
  *
- * Resolution order:
- * 1. Try directory-based `config.ts` default export (`./capabilities/${cap}/config`)
- * 2. Fall back to old-style `CAPABILITY_CONFIG` named export (`./capabilities/${cap}`)
+ * Imports from `./capabilities/${cap}/config` and reads the default export
+ * as `CapabilityPackageConfig`.
  */
 export async function resolveCapabilityConfig(
   cwd: string,
@@ -190,30 +152,16 @@ export async function resolveCapabilityConfig(
   const cap = typeof params?.capability === "string" ? params.capability : null;
   if (!cap) return undefined;
 
-  // 1. Try directory-based default export first
   try {
     const mod = await import(`./capabilities/${cap}/config`);
     if (mod.default) {
       return normalizePackageConfig(cap, mod.default as CapabilityPackageConfig, cwd, params);
     }
-  } catch {
-    // Not a directory package or import failed — fall through to old-style
-  }
-
-  // 2. Fall back to old-style CAPABILITY_CONFIG named export
-  let oldMod: { CAPABILITY_CONFIG: StaticCapabilityConfig } | undefined;
-  try {
-    oldMod = await import(`./capabilities/${cap}`);
   } catch (err) {
     console.warn(`pio: could not load capability "${cap}": ${err}`);
     return undefined;
   }
 
-  const config = oldMod?.CAPABILITY_CONFIG;
-  if (!config) {
-    console.warn(`pio: no CAPABILITY_CONFIG found for "${cap}"`);
-    return undefined;
-  }
-
-  return normalizeStaticConfig(cap, config, cwd, params);
+  console.warn(`pio: no default export found for capability "${cap}"`);
+  return undefined;
 }

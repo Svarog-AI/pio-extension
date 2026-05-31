@@ -1,50 +1,50 @@
 import { describe, it, expect, vi } from "vitest";
-import { CAPABILITY_CONFIG, register } from "./config";
+import config, { register } from "./config";
 
 // ---------------------------------------------------------------------------
-// CAPABILITY_CONFIG.writeAllowlist
+// config.writeAllowlist
 // ---------------------------------------------------------------------------
 
-describe("CAPABILITY_CONFIG.writeAllowlist", () => {
+describe("config.writeAllowlist", () => {
   it("contains exactly 7 file paths", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).toHaveLength(7);
+    expect(config.writeAllowlist).toHaveLength(7);
   });
 
   it("includes OVERVIEW.md", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).toContain(".pio/PROJECT/OVERVIEW.md");
+    expect(config.writeAllowlist).toContain(".pio/PROJECT/OVERVIEW.md");
   });
 
   it("includes DEVELOPMENT.md", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).toContain(".pio/PROJECT/DEVELOPMENT.md");
+    expect(config.writeAllowlist).toContain(".pio/PROJECT/DEVELOPMENT.md");
   });
 
   it("includes CONVENTIONS.md", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).toContain(".pio/PROJECT/CONVENTIONS.md");
+    expect(config.writeAllowlist).toContain(".pio/PROJECT/CONVENTIONS.md");
   });
 
   it("includes GIT.md", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).toContain(".pio/PROJECT/GIT.md");
+    expect(config.writeAllowlist).toContain(".pio/PROJECT/GIT.md");
   });
 
   it("includes ARCHITECTURE.md", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).toContain(".pio/PROJECT/ARCHITECTURE.md");
+    expect(config.writeAllowlist).toContain(".pio/PROJECT/ARCHITECTURE.md");
   });
 
   it("includes DEPENDENCIES.md", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).toContain(".pio/PROJECT/DEPENDENCIES.md");
+    expect(config.writeAllowlist).toContain(".pio/PROJECT/DEPENDENCIES.md");
   });
 
   it("includes GLOSSARY.md", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).toContain(".pio/PROJECT/GLOSSARY.md");
+    expect(config.writeAllowlist).toContain(".pio/PROJECT/GLOSSARY.md");
   });
 
   it("does not include the old PROJECT.md path", () => {
-    expect(CAPABILITY_CONFIG.writeAllowlist).not.toContain(".pio/PROJECT.md");
+    expect(config.writeAllowlist).not.toContain(".pio/PROJECT.md");
   });
 });
 
 // ---------------------------------------------------------------------------
-// register (previously setupProjectContext)
+// register
 // ---------------------------------------------------------------------------
 
 describe("register", () => {

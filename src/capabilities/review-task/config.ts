@@ -8,7 +8,7 @@ import { launchCapability, setMergedSkills } from "../../capability-session";
 import { mergeCapabilitySkills } from "../../capability-utils";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
-import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
+import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { createGoalState } from "../../goal-state";
 import {
@@ -21,35 +21,10 @@ import {
 } from "./callbacks";
 
 // ---------------------------------------------------------------------------
-// prepareSession — read TASK.md skills and merge into capability config
+// CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------
 
-function prepareReviewSession(workingDir: string, params?: Record<string, unknown>): void {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-  if (stepNumber == null) {
-    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
-  }
-  const folder = stepFolderName(stepNumber);
-  const stepDir = path.join(workingDir, folder);
-
-  // Delete stale markers from previous review attempts; force:true skips missing files.
-  fs.rmSync(path.join(stepDir, "APPROVED"), { force: true });
-  fs.rmSync(path.join(stepDir, "REJECTED"), { force: true });
-
-  // Read TASK.md skills and merge into capability config
-  const state = createGoalState(workingDir);
-  const step = state.steps().find(s => s.stepNumber === stepNumber);
-  const taskSkills = step?.taskSkills();
-
-  const merged = mergeCapabilitySkills(CAPABILITY_CONFIG.skills, taskSkills);
-  setMergedSkills(merged);
-}
-
-// ---------------------------------------------------------------------------
-// Default export: CapabilityPackageConfig (new-style package config)
-// ---------------------------------------------------------------------------
-
-export default {
+const capabilityConfig = {
   capability: "review-task",
   validation: resolveReviewValidation,
   readOnlyFiles: resolveReviewReadOnlyFiles,
@@ -72,29 +47,32 @@ export default {
   },
 } satisfies CapabilityPackageConfig;
 
+export default capabilityConfig;
+
 // ---------------------------------------------------------------------------
-// Backward-compat export: CAPABILITY_CONFIG (for resolveCapabilityConfig until Step 21)
+// prepareSession — read TASK.md skills and merge into capability config
 // ---------------------------------------------------------------------------
 
-export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
-  prompt: "review-task.md",
-  skills: {
-    mandatory: ["tdd"],
-  },
-  validation: resolveReviewValidation,
-  readOnlyFiles: resolveReviewReadOnlyFiles,
-  writeAllowlist: resolveReviewWriteAllowlist,
-  prepareSession: prepareReviewSession,
-  postValidate: postValidateReview,
-  defaultInitialMessage: (workingDir, params) => {
-    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-    if (stepNumber == null) {
-      return "Error: stepNumber is required for review-task. The task was not enqueued with a valid step number.";
-    }
-    const folderName = stepFolderName(stepNumber);
-    return `Goal workspace is at ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md, TEST.md, and SUMMARY.md inside the \`${folderName}/\` directory. Review the implementation, write REVIEW.md, and decide whether to approve or reject.`;
-  },
-};
+function prepareReviewSession(workingDir: string, params?: Record<string, unknown>): void {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+  if (stepNumber == null) {
+    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
+  }
+  const folder = stepFolderName(stepNumber);
+  const stepDir = path.join(workingDir, folder);
+
+  // Delete stale markers from previous review attempts; force:true skips missing files.
+  fs.rmSync(path.join(stepDir, "APPROVED"), { force: true });
+  fs.rmSync(path.join(stepDir, "REJECTED"), { force: true });
+
+  // Read TASK.md skills and merge into capability config
+  const state = createGoalState(workingDir);
+  const step = state.steps().find(s => s.stepNumber === stepNumber);
+  const taskSkills = step?.taskSkills();
+
+  const merged = mergeCapabilitySkills(capabilityConfig.skills, taskSkills);
+  setMergedSkills(merged);
+}
 
 // ---------------------------------------------------------------------------
 // Tool
@@ -192,5 +170,4 @@ export function register(pi: ExtensionAPI) {
   });
 }
 
-// Backward-compat: old index.ts imports setupReviewTask
-export { register as setupReviewTask };
+

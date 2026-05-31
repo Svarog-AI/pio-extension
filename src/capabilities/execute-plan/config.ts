@@ -6,14 +6,14 @@ import * as fs from "node:fs";
 import { launchCapability } from "../../capability-session";
 import { resolveGoalDir } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
-import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
+import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 
 // ---------------------------------------------------------------------------
-// Default export: CapabilityPackageConfig (new-style package config)
+// CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------
 
-export default {
+const capabilityConfig = {
   capability: "execute-plan",
   skills: {
     mandatory: ["tdd", "pio-git"],
@@ -23,17 +23,7 @@ export default {
   },
 } satisfies CapabilityPackageConfig;
 
-// ---------------------------------------------------------------------------
-// Backward-compat export: CAPABILITY_CONFIG (for resolveCapabilityConfig until Step 21)
-// ---------------------------------------------------------------------------
-
-export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
-  prompt: "execute-plan.md",
-  skills: {
-    mandatory: ["tdd", "pio-git"],
-  },
-  defaultInitialMessage: (goalDir) => `Goal workspace is at ${goalDir}. GOAL.md and PLAN.md exist. Implement all steps from PLAN.md in this session.`,
-};
+export default capabilityConfig;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -140,5 +130,4 @@ export function register(pi: ExtensionAPI) {
   });
 }
 
-// Backward-compat: old index.ts imports setupExecutePlan
-export { register as setupExecutePlan };
+

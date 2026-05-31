@@ -8,7 +8,7 @@ import { launchCapability, setMergedSkills } from "../../capability-session";
 import { mergeCapabilitySkills } from "../../capability-utils";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
-import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
+import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { createGoalState } from "../../goal-state";
 import {
@@ -19,26 +19,10 @@ import {
 } from "./callbacks";
 
 // ---------------------------------------------------------------------------
-// prepareSession — read TASK.md skills and merge into capability config
+// CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------
 
-function prepareExecuteSession(workingDir: string, params?: Record<string, unknown>): void {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-  if (stepNumber == null) return;
-
-  const state = createGoalState(workingDir);
-  const step = state.steps().find(s => s.stepNumber === stepNumber);
-  const taskSkills = step?.taskSkills();
-
-  const merged = mergeCapabilitySkills(CAPABILITY_CONFIG.skills, taskSkills);
-  setMergedSkills(merged);
-}
-
-// ---------------------------------------------------------------------------
-// Default export: CapabilityPackageConfig (new-style package config)
-// ---------------------------------------------------------------------------
-
-export default {
+const capabilityConfig = {
   capability: "execute-task",
   validation: resolveExecuteValidation,
   readOnlyFiles: resolveExecuteReadOnlyFiles,
@@ -68,39 +52,23 @@ export default {
   },
 } satisfies CapabilityPackageConfig;
 
+export default capabilityConfig;
+
 // ---------------------------------------------------------------------------
-// Backward-compat export: CAPABILITY_CONFIG (for resolveCapabilityConfig until Step 21)
+// prepareSession — read TASK.md skills and merge into capability config
 // ---------------------------------------------------------------------------
 
-export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
-  prompt: "execute-task.md",
-  skills: {
-    mandatory: ["tdd", "pio-git"],
-  },
-  validation: resolveExecuteValidation,
-  readOnlyFiles: resolveExecuteReadOnlyFiles,
-  prepareSession: prepareExecuteSession,
-  defaultInitialMessage: (workingDir, params) => {
-    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-    if (stepNumber == null) {
-      return "Error: stepNumber is required for execute-task. The task was not enqueued with a valid step number.";
-    }
-    const folderName = stepFolderName(stepNumber);
+function prepareExecuteSession(workingDir: string, params?: Record<string, unknown>): void {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+  if (stepNumber == null) return;
 
-    // Check if this is a re-execution after review rejection
-    let prefix = "";
-    try {
-      const rejectedPath = path.join(workingDir, folderName, "REJECTED");
-      if (fs.existsSync(rejectedPath)) {
-        prefix = `This step was previously rejected. Read \`${folderName}/REVIEW.md\` for detailed review feedback before implementing. Address all critical and high-priority issues identified in the review.\n\n`;
-      }
-    } catch {
-      // If filesystem read fails, fall through to the normal message
-    }
+  const state = createGoalState(workingDir);
+  const step = state.steps().find(s => s.stepNumber === stepNumber);
+  const taskSkills = step?.taskSkills();
 
-    return `${prefix}Goal workspace is at ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md inside the \`${folderName}/\` directory and resolve the task.`;
-  },
-};
+  const merged = mergeCapabilitySkills(capabilityConfig.skills, taskSkills);
+  setMergedSkills(merged);
+}
 
 // ---------------------------------------------------------------------------
 // Tool
@@ -200,5 +168,4 @@ export function register(pi: ExtensionAPI) {
   });
 }
 
-// Backward-compat: old index.ts imports setupExecuteTask
-export { register as setupExecuteTask };
+

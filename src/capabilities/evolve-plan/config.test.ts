@@ -188,7 +188,7 @@ describe("REVISE_PLAN_NEEDED marker filename consistency", () => {
     expect(basename).toBe("REVISE_PLAN_NEEDED");
 
     // Cross-check: the revise-plan module uses the same constant value
-    const { REVISE_PLAN_MARKER } = await import("../revise-plan");
+    const { REVISE_PLAN_MARKER } = await import("../revise-plan/callbacks");
     expect(basename).toBe(REVISE_PLAN_MARKER);
   });
 });

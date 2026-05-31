@@ -4,7 +4,7 @@ import { Type } from "typebox";
 
 import { launchCapability } from "../../capability-session";
 import { enqueueTask } from "../../queues";
-import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
+import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 
 // Re-export validator functions for backward compatibility and test access
@@ -17,10 +17,10 @@ import {
 } from "./callbacks";
 
 // ---------------------------------------------------------------------------
-// Default export: CapabilityPackageConfig (new-style package config)
+// CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------
 
-export default {
+const capabilityConfig = {
   capability: "revise-plan",
   validation: { files: ["PLAN.md"] },
   readOnlyFiles: resolveReviseReadOnlyFiles,
@@ -42,31 +42,7 @@ export default {
   postExecute: cleanupIncompleteSteps,
 } satisfies CapabilityPackageConfig;
 
-// ---------------------------------------------------------------------------
-// Backward-compat export: CAPABILITY_CONFIG (for resolveCapabilityConfig until Step 21)
-// ---------------------------------------------------------------------------
-
-export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
-  prompt: "revise-plan.md",
-  skills: {
-    mandatory: ["pio-planning", "grill-me"],
-    recommended: [
-      { name: "source-research", condition: "when researching existing solutions or libraries" },
-    ],
-  },
-  validation: { files: ["PLAN.md"] },
-  readOnlyFiles: resolveReviseReadOnlyFiles,
-  writeAllowlist: resolveReviseWriteAllowlist,
-  defaultInitialMessage: (workingDir, params) => {
-    const triggerStep = typeof params?.revisionTriggerStep === "number"
-      ? ` Revision was triggered from Step ${params.revisionTriggerStep}. Read its TASK.md, DECISIONS.md, and REVISE_PLAN_NEEDED files to understand why revision was needed.`
-      : "";
-
-    return `Goal workspace is at ${workingDir}. The current plan has been archived to PLAN_ARCHIVE/. Incomplete step folders are preserved for inspection during this session and will be cleaned up after completion.${triggerStep} Read the archived plans and completed step folders, then write a fresh PLAN.md continuing from the last completed step.`;
-  },
-  prepareSession,
-  postExecute: cleanupIncompleteSteps,
-};
+export default capabilityConfig;
 
 // ---------------------------------------------------------------------------
 // Tool
@@ -147,5 +123,4 @@ export function register(pi: ExtensionAPI) {
   });
 }
 
-// Backward-compat: old index.ts imports setupRevisePlan
-export { register as setupRevisePlan };
+

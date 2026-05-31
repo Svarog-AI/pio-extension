@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { CAPABILITY_CONFIG, postValidateCreatePlan } from "./config";
+import config, { postValidateCreatePlan } from "./config";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -486,12 +486,12 @@ describe("postValidateCreatePlan — totalSteps vs heading count mismatch", () =
 });
 
 // ---------------------------------------------------------------------------
-// postValidateCreatePlan — CAPABILITY_CONFIG wiring
+// postValidateCreatePlan — config wiring
 // ---------------------------------------------------------------------------
 
-describe("postValidateCreatePlan — CAPABILITY_CONFIG wiring", () => {
-  it("postValidate is defined on CAPABILITY_CONFIG", () => {
+describe("postValidateCreatePlan — config wiring", () => {
+  it("postValidate is defined on config", () => {
     // Act & Assert
-    expect(typeof CAPABILITY_CONFIG.postValidate).toBe("function");
+    expect(typeof config.postValidate).toBe("function");
   });
 });

@@ -6,7 +6,7 @@ import * as fs from "node:fs";
 import { launchCapability } from "../../capability-session";
 import { resolveGoalDir } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
-import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
+import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { createGoalState } from "../../goal-state";
 import { type PlanFrontmatter, PLAN_FRONTMATTER_SCHEMA } from "./schemas";
@@ -100,10 +100,10 @@ export function postValidateCreatePlan(goalDir: string): { success: boolean; mes
 }
 
 // ---------------------------------------------------------------------------
-// Default export: CapabilityPackageConfig (new-style package config)
+// CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------
 
-export default {
+const capabilityConfig = {
   capability: "create-plan",
   validation: { files: ["PLAN.md"] },
   readOnlyFiles: ["GOAL.md"],
@@ -124,27 +124,7 @@ export default {
   postValidate: postValidateCreatePlan,
 } satisfies CapabilityPackageConfig;
 
-// ---------------------------------------------------------------------------
-// Backward-compat export: CAPABILITY_CONFIG (for resolveCapabilityConfig until Step 20)
-// ---------------------------------------------------------------------------
-
-export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
-  prompt: "create-plan.md",
-  skills: {
-    mandatory: ["pio-planning", "grill-me"],
-    recommended: [
-      { name: "source-research", condition: "when researching existing solutions or libraries" },
-    ],
-  },
-  validation: { files: ["PLAN.md"] },
-  readOnlyFiles: ["GOAL.md"],
-  writeAllowlist: ["PLAN.md"],
-  defaultInitialMessage: (goalDir) => `Goal workspace is at ${goalDir}. GOAL.md exists. Create PLAN.md in this directory.`,
-  postValidate: postValidateCreatePlan,
-  frontmatterSchemas: [
-    { outputFile: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA },
-  ],
-};
+export default capabilityConfig;
 
 // ---------------------------------------------------------------------------
 // Function
@@ -247,5 +227,4 @@ export function register(pi: ExtensionAPI) {
   });
 }
 
-// Backward-compat: old index.ts imports setupCreatePlan
-export { register as setupCreatePlan };
+

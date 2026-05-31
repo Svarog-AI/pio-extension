@@ -21,7 +21,8 @@ import { setupExecutePlan } from "./capabilities/execute-plan";
 import { setupNextTask } from "./capabilities/next-task";
 import { setupProjectContext } from "./capabilities/project-context";
 import { setupFinalizeGoal } from "./capabilities/finalize-goal";
-import { setupCapability } from "./capabilities/session-capability";
+import { setupSessionInfrastructure } from "./capability-session";
+import { setupMarkComplete } from "./guards/mark-complete";
 import { setupValidation } from "./guards/validation";
 import { setupSessionGuard } from "./guards/session-guard";
 
@@ -62,8 +63,9 @@ export default function (pi: ExtensionAPI) {
   // the <available_skills> section of pi's default system prompt.
   setupSkills(pi);
 
-  // Shared session capability handlers (wired once)
-  setupCapability(pi);
+  // Shared session infrastructure (wired once)
+  setupSessionInfrastructure(pi);
+  setupMarkComplete(pi);
   setupValidation(pi);
   setupSessionGuard(pi);
 

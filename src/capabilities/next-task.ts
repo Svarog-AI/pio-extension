@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { launchCapability, getSessionGoalName } from "./session-capability";
+import { launchCapability, getSessionGoalName } from "../capability-session";
 import { queueDir, readPendingTask, listPendingGoals, type SessionQueueTask } from "../queues";
 import { resolveCapabilityConfig } from "../capability-config";
 

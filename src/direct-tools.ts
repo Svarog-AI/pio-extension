@@ -7,7 +7,7 @@ import * as path from "node:path";
 import { resolveGoalDir, goalExists, issuesDir, findIssuePath } from "./fs-utils";
 import type { SessionQueueTask } from "./queues";
 import { enqueueTask } from "./queues";
-import { launchCapability } from "./capabilities/session-capability";
+import { launchCapability } from "./capability-session";
 import { resolveCapabilityConfig } from "./capability-config";
 
 // ---------------------------------------------------------------------------

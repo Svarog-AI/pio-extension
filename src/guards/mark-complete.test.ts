@@ -8,7 +8,7 @@ import { vi, beforeEach, afterEach, describe, it, expect } from "vitest";
 // ---------------------------------------------------------------------------
 
 function createTempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "pio-mark-complete-test-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "pio-mark-complete-guard-"));
 }
 
 function cleanup(tempDir: string): void {
@@ -16,10 +16,11 @@ function cleanup(tempDir: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Module-level mocks — isolated to this test file
+// Module-level mocks
 // ---------------------------------------------------------------------------
 
 const mockValidateOutputs = vi.hoisted(() => vi.fn());
+const mockValidateFrontmatter = vi.hoisted(() => vi.fn());
 const mockCreateGoalState = vi.hoisted(() => vi.fn().mockReturnValue({
   goalName: "test-goal",
   steps: vi.fn().mockReturnValue([]),
@@ -32,6 +33,7 @@ const mockWriteLastTask = vi.hoisted(() => vi.fn());
 
 vi.mock("../guards/validation", () => ({
   validateOutputs: mockValidateOutputs,
+  validateFrontmatter: mockValidateFrontmatter,
 }));
 
 vi.mock("../goal-state", () => ({
@@ -49,25 +51,11 @@ vi.mock("../queues", async (importOriginal) => ({
   writeLastTask: mockWriteLastTask,
 }));
 
-// Mock prompt-compiler and step-nudging so they don't interfere with mark-complete tests
-vi.mock("../prompt-compiler", () => ({
-  compilePrompt: vi.fn().mockResolvedValue({
-    role: "## Role\n\nTest role.",
-    workflow: "## Workflow\n\n1. Test step",
-    guidelines: undefined,
-    mergedSkills: {},
-  }),
-}));
-
-vi.mock("../guards/step-nudging", () => ({
-  setupStepNudging: vi.fn(),
-}));
-
 // ---------------------------------------------------------------------------
-// pio_mark_complete — tool registration and execution flow
+// pio_mark_complete — tool registration via setupMarkComplete
 // ---------------------------------------------------------------------------
 
-describe("pio_mark_complete", () => {
+describe("mark-complete (setupMarkComplete)", () => {
   let tempDir: string;
   let registeredTool: { name: string; label: string; execute: Function } | undefined;
 
@@ -77,6 +65,7 @@ describe("pio_mark_complete", () => {
 
     // Clear mock call history and reset return values
     mockValidateOutputs.mockClear().mockReturnValue({ passed: true, missing: [] });
+    mockValidateFrontmatter.mockClear().mockReturnValue({ success: true });
     mockCreateGoalState.mockClear().mockReturnValue({
       goalName: "test-goal",
       steps: vi.fn().mockReturnValue([]),
@@ -90,7 +79,7 @@ describe("pio_mark_complete", () => {
     registeredTool = undefined;
 
     // Import and set up
-    const mod = await import("../guards/mark-complete");
+    const mod = await import("./mark-complete");
 
     const mockPi = {
       registerTool: (tool: { name: string; label: string; execute: Function }) => {
@@ -389,33 +378,24 @@ describe("pio_mark_complete", () => {
 });
 
 // ---------------------------------------------------------------------------
-// pio_mark_complete — review-task specific behavior
+// Frontmatter schema validation — exit-gate integration
 // ---------------------------------------------------------------------------
 
-describe("pio_mark_complete for review-task", () => {
-  let tempCwd: string;
-  let goalDir: string;
-  let stepDir: string;
+describe("pio_mark_complete — frontmatterSchemas validation", () => {
+  let tempDir: string;
   let registeredTool: { name: string; label: string; execute: Function } | undefined;
 
   beforeEach(async () => {
     vi.resetModules();
-    tempCwd = createTempDir();
+    tempDir = createTempDir();
 
-    // Set up goal workspace structure
-    goalDir = path.join(tempCwd, ".pio", "goals", "test-goal");
-    stepDir = path.join(goalDir, "S01");
-    fs.mkdirSync(stepDir, { recursive: true });
-
-    // Create required goal files
-    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Test Goal", "utf-8");
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n\n## Step 1: Test", "utf-8");
-
-    // Create queue directory
-    fs.mkdirSync(path.join(tempCwd, ".pio", "session-queue"), { recursive: true });
-
-    // Clear mock call history
     mockValidateOutputs.mockClear().mockReturnValue({ passed: true, missing: [] });
+    mockValidateFrontmatter.mockClear().mockReturnValue({ success: true });
+    mockCreateGoalState.mockClear().mockReturnValue({
+      goalName: "test-goal",
+      steps: vi.fn().mockReturnValue([]),
+      currentStepNumber: vi.fn().mockReturnValue(1),
+    });
     mockResolveTransition.mockClear();
     mockRecordTransition.mockClear();
     mockEnqueueTask.mockClear();
@@ -423,8 +403,7 @@ describe("pio_mark_complete for review-task", () => {
 
     registeredTool = undefined;
 
-    // Import and set up
-    const mod = await import("../guards/mark-complete");
+    const mod = await import("./mark-complete");
 
     const mockPi = {
       registerTool: (tool: { name: string; label: string; execute: Function }) => {
@@ -438,18 +417,24 @@ describe("pio_mark_complete for review-task", () => {
   });
 
   afterEach(() => {
-    cleanup(tempCwd);
+    cleanup(tempDir);
   });
 
-  it("valid APPROVED frontmatter creates APPROVED marker and enqueues evolve-plan", async () => {
-    // Simulate a successful postValidate that creates markers
+  it("validates frontmatterSchemas after file validation passes, before postValidate", async () => {
+    const callOrder: string[] = [];
+
+    mockValidateFrontmatter.mockImplementation(() => {
+      callOrder.push("validateFrontmatter");
+      return { success: true };
+    });
+
     const postValidateMock = vi.fn().mockImplementation(() => {
-      fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
+      callOrder.push("postValidate");
       return { success: true };
     });
 
     mockResolveTransition.mockReturnValue(
-      { capability: "evolve-plan", params: { goalName: "test-goal", stepNumber: 2 } }
+      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
     );
 
     const mockCtx = {
@@ -459,9 +444,10 @@ describe("pio_mark_complete for review-task", () => {
             type: "custom",
             customType: "pio-config",
             data: {
-              capability: "review-task",
-              workingDir: goalDir,
-              validation: { files: ["S01/REVIEW.md"] },
+              capability: "create-plan",
+              workingDir: tempDir,
+              validation: { files: [] },
+              frontmatterSchemas: [{ outputFile: "PLAN.md", schema: {} }],
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
             },
@@ -470,66 +456,22 @@ describe("pio_mark_complete for review-task", () => {
       },
     };
 
-    const result = await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+    await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
 
-    expect(postValidateMock).toHaveBeenCalledWith(goalDir, { goalName: "test-goal", stepNumber: 1 });
-    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
-    expect(mockEnqueueTask).toHaveBeenCalledWith(
-      expect.any(String),
-      "test-goal",
-      expect.objectContaining({ capability: "evolve-plan" }),
+    expect(callOrder).toEqual(["validateFrontmatter", "postValidate"]);
+    expect(mockValidateFrontmatter).toHaveBeenCalledWith(
+      [{ outputFile: "PLAN.md", schema: {} }],
+      tempDir,
     );
-    expect(result.terminate).toBe(true);
   });
 
-  it("valid REJECTED frontmatter creates REJECTED marker and deletes COMPLETED", async () => {
-    fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
-
-    const postValidateMock = vi.fn().mockImplementation(() => {
-      fs.writeFileSync(path.join(stepDir, "REJECTED"), "", "utf-8");
-      fs.rmSync(path.join(stepDir, "COMPLETED"), { force: true });
-      return { success: true };
-    });
-
-    mockResolveTransition.mockReturnValue(
-      { capability: "execute-task", params: { goalName: "test-goal", stepNumber: 1 } }
-    );
-
-    const mockCtx = {
-      sessionManager: {
-        getEntries: () => [
-          {
-            type: "custom",
-            customType: "pio-config",
-            data: {
-              capability: "review-task",
-              workingDir: goalDir,
-              validation: { files: ["S01/REVIEW.md"] },
-              postValidate: postValidateMock,
-              sessionParams: { goalName: "test-goal", stepNumber: 1 },
-            },
-          },
-        ],
-      },
-    };
-
-    const result = await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
-
-    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(false);
-    expect(mockEnqueueTask).toHaveBeenCalledWith(
-      expect.any(String),
-      "test-goal",
-      expect.objectContaining({ capability: "execute-task" }),
-    );
-    expect(result.terminate).toBe(true);
-  });
-
-  it("invalid frontmatter returns error, no markers created", async () => {
-    const postValidateMock = vi.fn().mockReturnValue({
+  it("frontmatter validation failure returns error without terminating", async () => {
+    mockValidateFrontmatter.mockReturnValue({
       success: false,
-      message: "Field 'decision': value must be equal to: APPROVED, REJECTED",
+      message: "Field 'totalSteps': required property",
     });
+
+    const postValidateMock = vi.fn();
 
     const mockCtx = {
       sessionManager: {
@@ -538,9 +480,10 @@ describe("pio_mark_complete for review-task", () => {
             type: "custom",
             customType: "pio-config",
             data: {
-              capability: "review-task",
-              workingDir: goalDir,
-              validation: { files: ["S01/REVIEW.md"] },
+              capability: "create-plan",
+              workingDir: tempDir,
+              validation: { files: [] },
+              frontmatterSchemas: [{ outputFile: "PLAN.md", schema: {} }],
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
             },
@@ -551,11 +494,74 @@ describe("pio_mark_complete for review-task", () => {
 
     const result = await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
 
-    expect(result.content[0].text).toContain("decision");
+    expect(result.content[0].text).toContain("Frontmatter validation failed");
+    expect(result.content[0].text).toContain("Field 'totalSteps'");
     expect(result.terminate).toBeFalsy();
-    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(false);
-    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
+    expect(postValidateMock).not.toHaveBeenCalled();
     expect(mockResolveTransition).not.toHaveBeenCalled();
-    expect(mockEnqueueTask).not.toHaveBeenCalled();
+  });
+
+  it("skips frontmatter validation when frontmatterSchemas is not defined", async () => {
+    const postValidateMock = vi.fn().mockReturnValue({ success: true });
+
+    mockResolveTransition.mockReturnValue(
+      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
+    );
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              workingDir: tempDir,
+              validation: { files: [] },
+              // No frontmatterSchemas
+              postValidate: postValidateMock,
+              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+            },
+          },
+        ],
+      },
+    };
+
+    await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+
+    expect(mockValidateFrontmatter).not.toHaveBeenCalled();
+    expect(postValidateMock).toHaveBeenCalled();
+  });
+
+  it("skips frontmatter validation when frontmatterSchemas is empty array", async () => {
+    const postValidateMock = vi.fn().mockReturnValue({ success: true });
+
+    mockResolveTransition.mockReturnValue(
+      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
+    );
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "create-plan",
+              workingDir: tempDir,
+              validation: { files: [] },
+              frontmatterSchemas: [],
+              postValidate: postValidateMock,
+              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+            },
+          },
+        ],
+      },
+    };
+
+    await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+
+    expect(mockValidateFrontmatter).not.toHaveBeenCalled();
+    expect(postValidateMock).toHaveBeenCalled();
   });
 });

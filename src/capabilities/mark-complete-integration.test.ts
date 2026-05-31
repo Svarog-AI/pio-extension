@@ -103,12 +103,12 @@ describe("pio_mark_complete integration — review-task with real frontmatter", 
     vi.resetModules();
     tempCwd = createTempDir();
 
-    // Import session-capability fresh (no mocks in this file)
-    const mod = await import("./session-capability");
+    // Import mark-complete fresh (no mocks in this file)
+    const mod = await import("../guards/mark-complete");
 
     // Capture registered tool via mockPi
     const { mockPi, getRegisteredTool: getTool } = makeMockPi();
-    mod.setupCapability(mockPi);
+    mod.setupMarkComplete(mockPi);
     getRegisteredTool = getTool;
 
     // Mock process.cwd() so enqueueTask writes to our temp directory

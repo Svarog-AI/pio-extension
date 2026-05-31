@@ -8,6 +8,24 @@
  * a cycle that can cause issues with jiti module loading in sub-sessions.
  */
 
+import type { TSchema } from "typebox";
+
+// ---------------------------------------------------------------------------
+// Frontmatter schema types
+// ---------------------------------------------------------------------------
+
+/**
+ * Declares an output document and the TypeBox schema its YAML frontmatter
+ * must conform to. Defined here (types.ts) to avoid circular imports:
+ * capability-package.ts imports from types.ts, so types.ts cannot import back.
+ */
+export interface FrontmatterSchemaDeclaration {
+  /** Output file path relative to workingDir (e.g. "PLAN.md", "TASK.md") */
+  outputFile: string;
+  /** TypeBox schema the YAML frontmatter must conform to */
+  schema: TSchema;
+}
+
 // ---------------------------------------------------------------------------
 // Validation types
 // ---------------------------------------------------------------------------
@@ -59,6 +77,8 @@ export interface CapabilityConfig {
   postExecute?: PostExecuteCallback;
   /** Capability-specific skill declarations — mandatory skills are force-injected, recommended skills are listed as instructions. */
   skills?: CapabilitySkills;
+  /** Declarative output document frontmatter schemas. Validated by the exit-gate via validateFrontmatter(). */
+  frontmatterSchemas?: FrontmatterSchemaDeclaration[];
 }
 
 /** Callback signature for step-dependent config fields. */
@@ -124,4 +144,6 @@ export interface StaticCapabilityConfig {
   postExecute?: PostExecuteCallback;
   /** Capability-specific skill declarations — mandatory skills are force-injected, recommended skills are listed as instructions. */
   skills?: CapabilitySkills;
+  /** Declarative output document frontmatter schemas. Validated by the exit-gate via validateFrontmatter(). */
+  frontmatterSchemas?: FrontmatterSchemaDeclaration[];
 }

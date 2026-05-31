@@ -83,5 +83,6 @@ export async function resolveCapabilityConfig(
     postValidate,
     postExecute,
     skills: config.skills,
+    frontmatterSchemas: config.frontmatterSchemas,
   };
 }

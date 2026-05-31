@@ -6,15 +6,36 @@ import { launchCapability } from "../session-capability";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
+import { createGoalState } from "../../goal-state";
 
 // Re-export validator functions for backward compatibility and test access
 import {
   validateRevisePlan,
   prepareSession,
   cleanupIncompleteSteps,
-  resolveReviseReadOnlyFiles,
-  resolveReviseWriteAllowlist,
 } from "./validators";
+
+// ---------------------------------------------------------------------------
+// Config callbacks — file protection rules
+// ---------------------------------------------------------------------------
+
+function resolveReviseReadOnlyFiles(workingDir: string, _params?: Record<string, unknown>): string[] {
+  const state = createGoalState(workingDir);
+  const readOnly: string[] = [];
+
+  // All remaining S{NN}/ folders (those with APPROVED markers) are read-only
+  for (const step of state.steps()) {
+    if (step.status() === "approved") {
+      readOnly.push(`${step.folderName}/*`);
+    }
+  }
+
+  return readOnly;
+}
+
+function resolveReviseWriteAllowlist(_workingDir: string, _params?: Record<string, unknown>): string[] {
+  return ["PLAN.md"];
+}
 
 // ---------------------------------------------------------------------------
 // Default export: CapabilityPackageConfig (new-style package config)

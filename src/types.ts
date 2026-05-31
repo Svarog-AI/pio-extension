@@ -51,7 +51,7 @@ export interface CapabilitySkills {
 export interface CapabilityConfig {
   /** Logical capability name (e.g. "create-goal") — determines prompt and transitions */
   capability: string;
-  /** Prompt filename (e.g. "create-goal.md") — resolved from CAPABILITY_CONFIG.prompt */
+  /** Prompt filename (e.g. "create-goal.md") */
   prompt?: string;
   /** Kickoff prompt sent as a user message to trigger the agent */
   initialMessage?: string;

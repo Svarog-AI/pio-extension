@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { discoverCapabilities } from "./capability-discovery";
+import { discoverCapabilities, registerCapability } from "./capability-discovery";
 
 // ---------------------------------------------------------------------------
 // discoverCapabilities
@@ -151,6 +151,101 @@ export default config;`
     expect(result).toEqual([]);
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
+  });
+
+  // ---------------------------------------------------------------------------
+  // registerCapability
+  // ---------------------------------------------------------------------------
+
+  describe("registerCapability", () => {
+    it("calls mod.register(pi) when the export exists", async () => {
+      // Arrange: create a valid capability package with register()
+      const capDir = path.join(tempDir, "capabilities", "reg-cap");
+      fs.mkdirSync(capDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(capDir, "config.ts"),
+        `
+let registered = false;
+export const register = (pi) => { registered = true; };
+export const isRegistered = () => registered;
+const config = {
+  capability: "reg-cap",
+  defaultInitialMessage: () => "Hello",
+};
+export default config;`
+      );
+
+      // Import to get the module reference
+      const mod = await import(path.join(capDir, "config.ts"));
+
+      const mockPi = { registerTool: vi.fn(), registerCommand: vi.fn() };
+
+      // Act
+      await registerCapability(mockPi as any, {
+        name: "reg-cap",
+        dirPath: capDir,
+        config: mod.default,
+      });
+
+      // Assert
+      expect(mod.isRegistered()).toBe(true);
+    });
+
+    it("logs warning and skips when register() is missing", async () => {
+      // Arrange: config.ts has default export but no register()
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const capDir = path.join(tempDir, "capabilities", "no-register-cap");
+      fs.mkdirSync(capDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(capDir, "config.ts"),
+        `
+const config = {
+  capability: "no-register-cap",
+  defaultInitialMessage: () => "Hello",
+};
+export default config;`
+      );
+
+      const mod = await import(path.join(capDir, "config.ts"));
+
+      const mockPi = { registerTool: vi.fn(), registerCommand: vi.fn() };
+
+      // Act
+      await registerCapability(mockPi as any, {
+        name: "no-register-cap",
+        dirPath: capDir,
+        config: mod.default,
+      });
+
+      // Assert
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("has no register() export")
+      );
+      warnSpy.mockRestore();
+    });
+
+    it("logs warning and continues when import fails", async () => {
+      // Arrange: descriptor points to non-existent directory
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const mockPi = { registerTool: vi.fn(), registerCommand: vi.fn() };
+
+      // Act
+      await registerCapability(mockPi as any, {
+        name: "missing-cap",
+        dirPath: "/nonexistent/path",
+        config: {
+          capability: "missing-cap",
+          defaultInitialMessage: () => "Hello",
+        },
+      });
+
+      // Assert: no throw, just a warning
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to register")
+      );
+      warnSpy.mockRestore();
+    });
   });
 
   it("skips malformed config and still discovers valid packages", async () => {

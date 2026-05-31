@@ -10,21 +10,17 @@ import { fileURLToPath } from "node:url";
 // Direct tools (non-AI tools/commands registered directly)
 import { setupDirectTools } from "./direct-tools";
 
-// Capabilities
-import { setupCreateGoal } from "./capabilities/create-goal";
-import { setupCreatePlan } from "./capabilities/create-plan";
-import { setupEvolvePlan } from "./capabilities/evolve-plan";
-import { setupExecuteTask } from "./capabilities/execute-task";
-import { setupReviewTask } from "./capabilities/review-task";
-import { setupRevisePlan } from "./capabilities/revise-plan";
-import { setupExecutePlan } from "./capabilities/execute-plan";
+// Non-directory capabilities (single .ts files, not auto-discovered)
 import { setupNextTask } from "./capabilities/next-task";
-import { setupProjectContext } from "./capabilities/project-context";
-import { setupFinalizeGoal } from "./capabilities/finalize-goal";
+
+// Shared session infrastructure (explicit imports)
 import { setupSessionInfrastructure } from "./capability-session";
 import { setupMarkComplete } from "./guards/mark-complete";
 import { setupValidation } from "./guards/validation";
 import { setupSessionGuard } from "./guards/session-guard";
+
+// Auto-discovery
+import { discoverCapabilities, registerCapability } from "./capability-discovery";
 
 // ESM-compatible __dirname for resolving skill directories bundled with this extension
 const __filename = fileURLToPath(import.meta.url);
@@ -58,7 +54,7 @@ function setupSkills(api: ExtensionAPI): void {
   });
 }
 
-export default function (pi: ExtensionAPI) {
+export default async function (pi: ExtensionAPI) {
   // Register pio capabilities as discoverable skills so they appear in
   // the <available_skills> section of pi's default system prompt.
   setupSkills(pi);
@@ -69,17 +65,19 @@ export default function (pi: ExtensionAPI) {
   setupValidation(pi);
   setupSessionGuard(pi);
 
-  // Direct tools (init, delete-goal, list-goals, parent)
+  // Direct tools (init, delete-goal, list-goals, parent, create-issue, goal-from-issue)
   setupDirectTools(pi);
 
-  setupCreateGoal(pi);
-  setupCreatePlan(pi);
-  setupEvolvePlan(pi);
-  setupExecuteTask(pi);
-  setupReviewTask(pi);
-  setupRevisePlan(pi);
-  setupExecutePlan(pi);
+  // Non-directory capability
   setupNextTask(pi);
-  setupProjectContext(pi);
-  setupFinalizeGoal(pi);
+
+  // Auto-discover and register all directory-based capability packages
+  const capabilities = await discoverCapabilities(__dirname);
+  for (const descriptor of capabilities) {
+    // Skip test fixtures — they exist solely for unit tests
+    if (descriptor.name.startsWith("test-")) {
+      continue;
+    }
+    await registerCapability(pi, descriptor);
+  }
 }

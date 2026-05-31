@@ -15,7 +15,7 @@ function makeCwd(): string {
 // ---------------------------------------------------------------------------
 
 describe("resolveCapabilityConfig — happy path with static config", () => {
-  it("resolves create-goal config with correct capability name and prompt", async () => {
+  it("resolves create-goal config with correct capability name (new-style: prompt is undefined)", async () => {
     const cwd = makeCwd();
     const params = { capability: "create-goal" as string, goalName: "my-feature" };
 
@@ -23,17 +23,19 @@ describe("resolveCapabilityConfig — happy path with static config", () => {
 
     expect(result).toBeDefined();
     expect(result!.capability).toBe("create-goal");
-    expect(result!.prompt).toBe("create-goal.md");
+    // New-style capabilities don't have a prompt field — prompts are compiled from component files
+    expect(result!.prompt).toBeUndefined();
   });
 
-  it("resolves create-plan config with correct prompt and validation", async () => {
+  it("resolves create-plan config with validation (new-style: prompt is undefined)", async () => {
     const cwd = makeCwd();
     const params = { capability: "create-plan" as string, goalName: "my-feature" };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
     expect(result).toBeDefined();
-    expect(result!.prompt).toBe("create-plan.md");
+    // New-style capabilities don't have a prompt field — prompts are compiled from component files
+    expect(result!.prompt).toBeUndefined();
     expect(result!.validation?.files).toContain("PLAN.md");
   });
 

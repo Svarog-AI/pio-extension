@@ -15,6 +15,8 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
 import type {
   CapabilityPackageConfig,
   CapabilityPackageDescriptor,
@@ -94,4 +96,36 @@ export async function discoverCapabilities(
   }
 
   return descriptors;
+}
+
+/**
+ * Register a single capability by calling its `register(pi)` export.
+ *
+ * Re-imports the same `config.ts` file that `discoverCapabilities()` already
+ * loaded — Node.js ESM cache returns the cached module, so the `register`
+ * named export is available alongside the default export.
+ *
+ * @param pi - The pi ExtensionAPI instance
+ * @param descriptor - Descriptor from `discoverCapabilities()`
+ */
+export async function registerCapability(
+  pi: ExtensionAPI,
+  descriptor: CapabilityPackageDescriptor,
+): Promise<void> {
+  const configPath = path.join(descriptor.dirPath, CAPABILITY_CONFIG_FILE);
+  try {
+    // Re-import the same file (ESM cache returns cached module)
+    const mod = await import(configPath);
+    if (typeof mod.register !== "function") {
+      console.warn(
+        `[pio] Capability "${descriptor.name}" has no register() export — skipping registration`
+      );
+      return;
+    }
+    mod.register(pi);
+  } catch (err) {
+    console.warn(
+      `[pio] Failed to register capability "${descriptor.name}": ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
 }

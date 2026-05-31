@@ -9,7 +9,6 @@ import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { TASK_FRONTMATTER_SCHEMA } from "./schemas";
 
 // Re-export validator functions for backward compatibility and test access
 import {
@@ -30,9 +29,8 @@ export default {
   skills: {
     mandatory: ["pio-planning", "grill-me"],
   },
-  frontmatterSchemas: [
-    { outputFile: "TASK.md", schema: TASK_FRONTMATTER_SCHEMA },
-  ],
+  // NOTE: frontmatterSchemas omitted — TASK.md is step-relative (S{NN}/TASK.md)
+  // and the exit-gate resolves paths against workingDir (goal root).
   defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
     const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
     if (stepNumber == null) {

@@ -11,7 +11,6 @@ import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { createGoalState } from "../../goal-state";
-import { REVIEW_OUTPUT_SCHEMA } from "./schemas";
 import {
   validateStepForReview,
   validateAndFindReviewStep,
@@ -60,9 +59,9 @@ export default {
   skills: {
     mandatory: ["tdd"],
   },
-  frontmatterSchemas: [
-    { outputFile: "REVIEW.md", schema: REVIEW_OUTPUT_SCHEMA },
-  ],
+  // NOTE: frontmatterSchemas omitted — REVIEW.md is step-relative (S{NN}/REVIEW.md)
+  // and the exit-gate resolves paths against workingDir (goal root).
+  // Validation is handled by the postValidate callback instead.
   defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
     const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
     if (stepNumber == null) {

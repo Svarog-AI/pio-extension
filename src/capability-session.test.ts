@@ -76,7 +76,7 @@ vi.mock(
 
 // ---------------------------------------------------------------------------
 // Top-level mock for model-config (used by model resolution tests)
-// This lets setupCapability load a controllable resolveModelForCapability
+// This lets setupSessionInfrastructure load a controllable resolveModelForCapability
 // ---------------------------------------------------------------------------
 
 const mockResolveModel = vi.hoisted(() => vi.fn());
@@ -87,7 +87,7 @@ vi.mock("./model-config", () => ({
 
 // ---------------------------------------------------------------------------
 // Top-level mock for prompt-compiler (used by prompt compilation tests)
-// This lets setupCapability load a controllable compilePrompt result
+// This lets setupSessionInfrastructure load a controllable compilePrompt result
 // ---------------------------------------------------------------------------
 
 const mockCompilePrompt = vi.hoisted(() =>
@@ -290,13 +290,13 @@ describe("handleNextTask — goal resolution order", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Model resolution — setupCapability and before_agent_start tests
-// These test the integration between setupCapability(), the event handlers,
+// Model resolution — setupSessionInfrastructure and before_agent_start tests
+// These test the integration between setupSessionInfrastructure(), the event handlers,
 // and model resolution. They mock ../model-config to control what
 // resolveModelForCapability returns.
 // ---------------------------------------------------------------------------
 
-describe("model resolution — setupCapability and before_agent_start", () => {
+describe("model resolution — setupSessionInfrastructure and before_agent_start", () => {
   let tempHomeDir: string;
 
   beforeEach(() => {

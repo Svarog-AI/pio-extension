@@ -1,8 +1,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resolveCapabilityConfig } from "../capability-config";
-import { CAPABILITY_CONFIG, validateRevisePlan, prepareSession, cleanupIncompleteSteps } from "./revise-plan";
+import { resolveCapabilityConfig } from "../../capability-config";
+import { CAPABILITY_CONFIG } from "./config";
+import { validateRevisePlan, prepareSession, cleanupIncompleteSteps } from "./validators";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers

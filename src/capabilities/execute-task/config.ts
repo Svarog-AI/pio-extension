@@ -10,22 +10,12 @@ import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { createGoalState } from "../../goal-state";
-
-// Re-export validator functions for backward compatibility and test access
 import {
-  isStepReady,
   validateAndFindNextStep,
   validateExplicitStep,
   resolveExecuteValidation,
   resolveExecuteReadOnlyFiles,
 } from "./validators";
-export {
-  isStepReady,
-  validateAndFindNextStep,
-  validateExplicitStep,
-  resolveExecuteValidation,
-  resolveExecuteReadOnlyFiles,
-};
 
 // ---------------------------------------------------------------------------
 // prepareSession — read TASK.md skills and merge into capability config

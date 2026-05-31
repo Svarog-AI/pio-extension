@@ -2,8 +2,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { CAPABILITY_CONFIG, setupFinalizeGoal, validateFinalizeGoal } from "./finalize-goal";
-import { readPendingTask } from "../queues";
+import { CAPABILITY_CONFIG, setupFinalizeGoal, validateFinalizeGoal } from "./config";
+import { readPendingTask } from "../../queues";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers

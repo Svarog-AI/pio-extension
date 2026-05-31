@@ -1,0 +1,6 @@
+- **File modifications target `.pio/PROJECT/` only.** The allowed write targets are: `.pio/PROJECT/OVERVIEW.md`, `.pio/PROJECT/DEVELOPMENT.md`, `.pio/PROJECT/CONVENTIONS.md`, `.pio/PROJECT/GIT.md`, `.pio/PROJECT/ARCHITECTURE.md`, `.pio/PROJECT/DEPENDENCIES.md`, `.pio/PROJECT/GLOSSARY.md`. Workflow actions — including git operations (commits, branch checkout, PR creation) — are permitted and do not count as file modifications.
+- **Preserve existing content.** Never overwrite or delete existing sections. Insert updates at appropriate positions.
+- **Be concise.** Each update should be a few lines at most — dense and actionable, not narrative.
+- **Reference the skill, don't duplicate it.** Use the `pio-project-knowledge` skill for update rules and section structure. Do not re-encode this knowledge inline.
+- **Handle missing sources gracefully.** If `DECISIONS.md` is missing or empty, proceed with `PLAN.md` and `SUMMARY.md`. If individual `SUMMARY.md` files are missing, skip those steps.
+- **No forced updates.** If a decision doesn't map to any update rule, skip it. Don't stretch a decision to fit a PROJECT file.

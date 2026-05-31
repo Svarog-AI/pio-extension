@@ -3,14 +3,41 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 
-import { launchCapability } from "./session-capability";
-import { resolveGoalDir } from "../fs-utils";
-import { enqueueTask } from "../queues";
-import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
-import { createGoalState } from "../goal-state";
+import { launchCapability } from "../session-capability";
+import { resolveGoalDir } from "../../fs-utils";
+import { enqueueTask } from "../../queues";
+import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
+import { createGoalState } from "../../goal-state";
+import type { CapabilityPackageConfig } from "../../capability-package";
 
 // ---------------------------------------------------------------------------
-// Capability config — single source of truth for this capability's session shape
+// Default export: CapabilityPackageConfig (new-style package config)
+// ---------------------------------------------------------------------------
+
+export default {
+  capability: "finalize-goal",
+  skills: {
+    mandatory: ["pio-project-knowledge", "pio-git"],
+  },
+  writeAllowlist: [
+    ".pio/PROJECT/OVERVIEW.md",
+    ".pio/PROJECT/DEVELOPMENT.md",
+    ".pio/PROJECT/CONVENTIONS.md",
+    ".pio/PROJECT/GIT.md",
+    ".pio/PROJECT/ARCHITECTURE.md",
+    ".pio/PROJECT/DEPENDENCIES.md",
+    ".pio/PROJECT/GLOSSARY.md",
+  ],
+  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
+    const goalDir = typeof params?.goalDir === "string" ? params.goalDir : "";
+    const goalName = typeof params?.goalName === "string" ? params.goalName : "";
+    const goalRef = goalName ? `"${goalName}"` : "goal workspace";
+    return `Finalize the completed ${goalRef} at ${goalDir}. Read accumulated decisions (DECISIONS.md from the highest-numbered step folder), PLAN.md, and per-step SUMMARY.md files. Evaluate each decision against the update rules from the pio-project-knowledge skill. Update the 7 PROJECT files under ${workingDir}/.pio/PROJECT/ where warranted. Produce a summary of all changes made.`;
+  },
+} satisfies CapabilityPackageConfig;
+
+// ---------------------------------------------------------------------------
+// Backward-compat export: CAPABILITY_CONFIG (for resolveCapabilityConfig until Step 22)
 // ---------------------------------------------------------------------------
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
@@ -149,10 +176,13 @@ async function handleFinalizeGoal(args: string | undefined, ctx: ExtensionComman
 // Setup (registers tool and command)
 // ---------------------------------------------------------------------------
 
-export function setupFinalizeGoal(pi: ExtensionAPI) {
+export function register(pi: ExtensionAPI) {
   pi.registerTool(finalizeGoalTool);
   pi.registerCommand("pio-finalize-goal", {
     description: "Update .pio/PROJECT/ documentation based on completed goal decisions",
     handler: handleFinalizeGoal,
   });
 }
+
+// Backward-compat: old index.ts imports setupFinalizeGoal
+export { register as setupFinalizeGoal };

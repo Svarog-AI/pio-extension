@@ -1,0 +1,6 @@
+- **Be thorough.** Read every implementation file. Don't review based on SUMMARY.md alone — verify against actual code.
+- **Be fair.** Review the code that was written, not the code you would have written. Focus on whether it meets requirements, not personal style preferences.
+- **Stay within scope.** Review only what this step produced. Do not critique unrelated files or pre-existing code (unless the changes affected them).
+- **Reference real lines.** When citing issues, reference specific file paths and line numbers. Use `read` tool to confirm before writing the review.
+- **No silent approvals on high/critical.** If you find critical or high issues, REJECT. No exceptions.
+- **Use `ask_user` when uncertain.** If a decision is genuinely ambiguous (e.g., medium issue might be acceptable), ask the user rather than guessing.

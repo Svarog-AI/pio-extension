@@ -18,12 +18,6 @@ import {
   resolveEvolveWriteAllowlist,
   REVISE_PLAN_MARKER,
 } from "./validators";
-export {
-  validateAndFindNextStep,
-  resolveEvolveValidation,
-  resolveEvolveWriteAllowlist,
-  REVISE_PLAN_MARKER,
-};
 
 // ---------------------------------------------------------------------------
 // Default export: CapabilityPackageConfig (new-style package config)

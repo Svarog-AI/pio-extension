@@ -9,7 +9,7 @@
  * `index.ts`): discover from filesystem, no hardcoded names.
  *
  * This module is a leaf: it imports only from `src/capability-package.ts`
- * and Node.js stdlib. It must NOT import from `session-capability`,
+ * and Node.js stdlib. It must NOT import from `capability-session`,
  * `index.ts`, or any capability module to avoid circular dependencies.
  */
 

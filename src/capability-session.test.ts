@@ -49,7 +49,7 @@ function makeSkill(name: string, filePath: string, baseDir: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Top-level mock for session-capability (used by getSessionGoalName tests)
+// Top-level mock for capability-session (used by getSessionGoalName tests)
 // ---------------------------------------------------------------------------
 
 const sessionCapabilityMock = vi.hoisted(() => ({
@@ -331,7 +331,7 @@ describe("model resolution — setupCapability and before_agent_start", () => {
   async function setupWithMockPi() {
     const { mockPi, registeredHandlers, setModelMock } = makeMockPi();
 
-    // Get fresh session-capability module (after vi.resetModules)
+    // Get fresh capability-session module (after vi.resetModules)
     const mod = await import("./capability-session");
     mod.setupSessionInfrastructure(mockPi as any);
 

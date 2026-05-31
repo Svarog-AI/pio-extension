@@ -3,10 +3,10 @@
  *
  * Reads component files from capability package directories and assembles
  * `CompiledPromptSections`. Replaces the old freeform `.md` file loading
- * in `session-capability.ts`.
+ * in `capability-session.ts`.
  *
  * This module is a strict leaf: it imports only from `src/capability-package.ts`
- * and Node.js stdlib (`fs`, `path`). It must NOT import from `session-capability`,
+ * and Node.js stdlib (`fs`, `path`). It must NOT import from `capability-session`,
  * `capability-discovery`, or any other capability module.
  */
 
@@ -228,10 +228,10 @@ export interface CompilePromptOptions {
  *
  * Reads component files (role.md, workflow.ts, guidelines.md), merges workflow
  * step skills into base capability skills, and renders sections in the format
- * expected by `session-capability.ts`.
+ * expected by `capability-session.ts`.
  *
  * Produces: role, workflow, guidelines sections and mergedSkills.
- * Does NOT produce projectContext or skillLoading — those are handled by session-capability.
+ * Does NOT produce projectContext or skillLoading — those are handled by capability-session.
  *
  * @param capabilityDir - Absolute path to the capability package directory
  * @param options - Compile options (baseSkills for merging)

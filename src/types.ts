@@ -2,7 +2,7 @@
  * Shared type definitions for pio extension.
  *
  * These types are extracted here to break circular dependencies between:
- *   utils.ts  ←→  validation.ts  ←→  session-capability.ts
+ *   utils.ts  ←→  validation.ts  ←→  capability-session.ts
  *
  * All three modules previously imported types from each other, creating
  * a cycle that can cause issues with jiti module loading in sub-sessions.

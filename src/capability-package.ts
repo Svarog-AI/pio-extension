@@ -13,7 +13,7 @@
  *     └── validators.ts    — Custom validation logic
  *
  * This module is a leaf: it imports only from `src/types.ts` and external
- * packages. It must NOT import from `fs-utils`, `session-capability`, or
+ * packages. It must NOT import from `fs-utils`, `capability-session`, or
  * other capability modules to avoid circular dependencies.
  */
 
@@ -27,7 +27,7 @@ import type {
   ValidationRule,
 } from "./types";
 
-// Re-export for downstream consumers (prompt-compiler, session-capability, etc.)
+// Re-export for downstream consumers (prompt-compiler, capability-session, etc.)
 export type { CapabilitySkills } from "./types";
 
 // ---------------------------------------------------------------------------

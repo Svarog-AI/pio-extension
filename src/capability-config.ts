@@ -66,8 +66,7 @@ function extractParams(
 /**
  * Assemble a CapabilityConfig from pre-resolved field values.
  *
- * Both `normalizePackageConfig()` and `normalizeStaticConfig()` call this
- * after resolving their input-shape-specific fields (callbacks vs static).
+ * Called by `normalizePackageConfig()` after resolving capability-specific fields.
  */
 function buildCapabilityConfig(
   cap: string,

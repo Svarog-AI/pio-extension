@@ -5,9 +5,6 @@ import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState, type StepStatus } from "../../goal-state";
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "../../frontmatter-schemas";
 
-// Re-export schema for consumers that import from this module
-export { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs };
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------

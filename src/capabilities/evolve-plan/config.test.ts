@@ -1,9 +1,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { validateOutputs } from "../guards/validation";
-import { resolveCapabilityConfig } from "../capability-config";
-import { validateAndFindNextStep } from "./evolve-plan";
+import { validateOutputs } from "../../guards/validation";
+import { resolveCapabilityConfig } from "../../capability-config";
+import { validateAndFindNextStep } from "./validators";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -188,7 +188,7 @@ describe("REVISE_PLAN_NEEDED marker filename consistency", () => {
     expect(basename).toBe("REVISE_PLAN_NEEDED");
 
     // Cross-check: the revise-plan module uses the same constant value
-    const { REVISE_PLAN_MARKER } = await import("./revise-plan");
+    const { REVISE_PLAN_MARKER } = await import("../revise-plan");
     expect(basename).toBe(REVISE_PLAN_MARKER);
   });
 });
@@ -508,5 +508,3 @@ describe("validateAndFindNextStep with TASK.md-only folder", () => {
     }
   });
 });
-
-

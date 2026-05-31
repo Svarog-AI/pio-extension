@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CapabilityConfig, CapabilitySkills } from "../types";
 import type { CompiledPromptSections } from "../capability-package";
-import type { TaskSkills } from "../frontmatter-schemas";
+import type { TaskSkills } from "./evolve-plan/schemas";
 import { compilePrompt } from "../prompt-compiler";
 import { setupStepNudging } from "../guards/step-nudging";
 import { discoverNextStep } from "../fs-utils";

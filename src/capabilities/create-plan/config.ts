@@ -9,7 +9,7 @@ import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { createGoalState } from "../../goal-state";
-import { type PlanFrontmatter, PLAN_FRONTMATTER_SCHEMA } from "../../frontmatter-schemas";
+import { type PlanFrontmatter, PLAN_FRONTMATTER_SCHEMA } from "./schemas";
 
 // ---------------------------------------------------------------------------
 // postValidate — validates PLAN.md frontmatter correctness

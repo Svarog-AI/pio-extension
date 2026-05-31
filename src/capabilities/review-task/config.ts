@@ -10,7 +10,7 @@ import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { createGoalState } from "../../goal-state";
-import { REVIEW_OUTPUT_SCHEMA } from "../../frontmatter-schemas";
+import { REVIEW_OUTPUT_SCHEMA } from "./schemas";
 import {
   validateStepForReview,
   validateAndFindReviewStep,
@@ -18,7 +18,7 @@ import {
   resolveReviewReadOnlyFiles,
   resolveReviewWriteAllowlist,
   postValidateReview,
-} from "./validators";
+} from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // prepareSession — read TASK.md skills and merge into capability config

@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { CAPABILITY_CONFIG } from "./config";
-import { validateRevisePlan, prepareSession, cleanupIncompleteSteps } from "./validators";
+import { validateRevisePlan, prepareSession, cleanupIncompleteSteps } from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers

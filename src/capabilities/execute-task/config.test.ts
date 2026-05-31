@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isStepReady } from "./validators";
+import { isStepReady } from "./callbacks";
 import { CAPABILITY_CONFIG } from "./config";
 import { stepFolderName } from "../../fs-utils";
 import { resolveCapabilityConfig } from "../../capability-config";

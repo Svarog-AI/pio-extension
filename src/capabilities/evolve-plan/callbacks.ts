@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState } from "../../goal-state";
-import type { PlanFrontmatter } from "../../frontmatter-schemas";
+import type { PlanFrontmatter } from "./schemas";
 
 // ---------------------------------------------------------------------------
 // Constants

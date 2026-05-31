@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState, type StepStatus } from "../../goal-state";
-import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "../../frontmatter-schemas";
+import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
 
 // ---------------------------------------------------------------------------
 // Constants

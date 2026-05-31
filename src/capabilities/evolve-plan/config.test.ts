@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { validateOutputs } from "../../guards/validation";
 import { resolveCapabilityConfig } from "../../capability-config";
-import { validateAndFindNextStep } from "./validators";
+import { validateAndFindNextStep } from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers

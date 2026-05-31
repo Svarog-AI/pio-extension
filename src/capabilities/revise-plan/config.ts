@@ -14,7 +14,7 @@ import {
   cleanupIncompleteSteps,
   resolveReviseReadOnlyFiles,
   resolveReviseWriteAllowlist,
-} from "./validators";
+} from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // Default export: CapabilityPackageConfig (new-style package config)

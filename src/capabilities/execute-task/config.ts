@@ -15,7 +15,7 @@ import {
   validateExplicitStep,
   resolveExecuteValidation,
   resolveExecuteReadOnlyFiles,
-} from "./validators";
+} from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // prepareSession — read TASK.md skills and merge into capability config

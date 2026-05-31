@@ -14,7 +14,7 @@ import {
 } from "./fs-utils";
 import { mergeCapabilitySkills } from "./capabilities/session-capability";
 import type { CapabilitySkills } from "./types";
-import type { TaskSkills } from "./frontmatter-schemas";
+import type { TaskSkills } from "./capabilities/evolve-plan/schemas";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers

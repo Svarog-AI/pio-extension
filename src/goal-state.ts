@@ -2,7 +2,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { stepFolderName } from "./fs-utils";
 import { extractFrontmatter, validateAndCoerce } from "./frontmatter";
-import { PLAN_FRONTMATTER_SCHEMA, REVIEW_OUTPUT_SCHEMA, TASK_FRONTMATTER_SCHEMA, type PlanFrontmatter, type ReviewOutputs, type StepMetadata, type TaskFrontmatter, type TaskSkills } from "./frontmatter-schemas";
+import { PLAN_FRONTMATTER_SCHEMA, type PlanFrontmatter, type StepMetadata } from "./capabilities/create-plan/schemas";
+import { TASK_FRONTMATTER_SCHEMA, type TaskFrontmatter, type TaskSkills } from "./capabilities/evolve-plan/schemas";
+import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./capabilities/review-task/schemas";
 import { deriveQueueKey } from "./queues";
 
 // ---------------------------------------------------------------------------

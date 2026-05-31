@@ -9,7 +9,7 @@ import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { TASK_FRONTMATTER_SCHEMA } from "../../frontmatter-schemas";
+import { TASK_FRONTMATTER_SCHEMA } from "./schemas";
 
 // Re-export validator functions for backward compatibility and test access
 import {
@@ -17,7 +17,7 @@ import {
   resolveEvolveValidation,
   resolveEvolveWriteAllowlist,
   REVISE_PLAN_MARKER,
-} from "./validators";
+} from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // Default export: CapabilityPackageConfig (new-style package config)

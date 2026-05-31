@@ -53,8 +53,8 @@ export const CAPABILITY_GUIDELINES_FILE = "guidelines.md";
 /** TypeBox schemas for input/output contracts (optional). */
 export const CAPABILITY_SCHEMAS_FILE = "schemas.ts";
 
-/** Custom validation logic (optional). */
-export const CAPABILITY_VALIDATORS_FILE = "validators.ts";
+/** Custom lifecycle callbacks (optional). */
+export const CAPABILITY_CALLBACKS_FILE = "callbacks.ts";
 
 // ---------------------------------------------------------------------------
 // Output schema types

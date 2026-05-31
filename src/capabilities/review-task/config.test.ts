@@ -3,8 +3,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as Value from "typebox/value";
 import { CAPABILITY_CONFIG } from "./config";
-import { isStepReviewable, findMostRecentCompletedStep, applyReviewDecision } from "./validators";
-import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "../../frontmatter-schemas";
+import { isStepReviewable, findMostRecentCompletedStep, applyReviewDecision } from "./callbacks";
+import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
 import { stepFolderName } from "../../fs-utils";
 
 // ---------------------------------------------------------------------------

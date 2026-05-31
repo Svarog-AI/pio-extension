@@ -2,38 +2,8 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 
 // ---------------------------------------------------------------------------
-// Review output schema and types
+// Plan frontmatter schema and types (needed by callbacks.ts for PLAN.md parsing)
 // ---------------------------------------------------------------------------
-
-/**
- * Typebox schema defining the expected frontmatter fields for REVIEW.md.
- * Single source of truth — change the schema, the type follows automatically.
- *
- * Leaf module — imports only from external packages (typebox).
- * Never imports from the rest of the codebase to avoid circular dependencies.
- */
-export const REVIEW_OUTPUT_SCHEMA = Type.Object({
-  decision: Type.Union([Type.Literal("APPROVED"), Type.Literal("REJECTED")]),
-  criticalIssues: Type.Integer({ minimum: 0 }),
-  highIssues: Type.Integer({ minimum: 0 }),
-  mediumIssues: Type.Integer({ minimum: 0 }),
-  lowIssues: Type.Integer({ minimum: 0 }),
-});
-
-/** Derived type from the schema — no manual interface definition. */
-export type ReviewOutputs = Static<typeof REVIEW_OUTPUT_SCHEMA>;
-
-// ---------------------------------------------------------------------------
-// Plan frontmatter schema and types
-// ---------------------------------------------------------------------------
-
-/**
- * TypeBox schema defining the expected frontmatter fields for PLAN.md.
- * Single source of truth — change the schema, the type follows automatically.
- *
- * Leaf module — imports only from external packages (typebox).
- * Never imports from the rest of the codebase to avoid circular dependencies.
- */
 
 /** Step metadata entry in the `steps` array of PLAN.md frontmatter. */
 export const STEP_ENTRY_SCHEMA = Type.Object({

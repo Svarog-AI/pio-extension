@@ -6,9 +6,6 @@ import type { FrontmatterSchemaDeclaration } from "../capability-package";
 import { extractFrontmatter } from "../frontmatter";
 import type { PostValidateCallback, ValidationRule } from "../types";
 
-// Re-export for backward compatibility
-export type { ValidationRule };
-
 /** Result of a validation run. */
 export interface ValidationResult {
   passed: boolean;

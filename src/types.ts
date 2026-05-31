@@ -128,7 +128,7 @@ export type PostExecuteCallback = (goalDir: string, params?: Record<string, unkn
 // Order: PreValidate → Prepare → agent session → PostValidate →
 //        transition routing → task enqueuing → PostExecute → cleanup → terminate
 
-/** Static shape each capability exports as `CAPABILITY_CONFIG`. */
+/** Static shape previously exported by capabilities as `CAPABILITY_CONFIG`. Retained for compile-time type tests only. */
 export interface StaticCapabilityConfig {
   prompt: string;                    // e.g. "create-goal.md"
   validation?: ValidationRule | ConfigCallback<ValidationRule>;

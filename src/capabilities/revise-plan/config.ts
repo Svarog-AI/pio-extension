@@ -6,15 +6,7 @@ import { launchCapability } from "../../capability-session";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
-
-// Re-export validator functions for backward compatibility and test access
-import {
-  validateRevisePlan,
-  prepareSession,
-  cleanupIncompleteSteps,
-  resolveReviseReadOnlyFiles,
-  resolveReviseWriteAllowlist,
-} from "./callbacks";
+import { validateRevisePlan, prepareSession, cleanupIncompleteSteps, resolveReviseReadOnlyFiles, resolveReviseWriteAllowlist } from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)

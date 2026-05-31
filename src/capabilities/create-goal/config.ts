@@ -8,9 +8,6 @@ import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 
-// Re-export for backward compat (tests import prepareGoal from this module)
-export { prepareGoal };
-
 // ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------

@@ -10,9 +10,6 @@ import { setupStepNudging } from "./guards/step-nudging";
 import { discoverNextStep } from "./fs-utils";
 import { resolveModelForCapability } from "./model-config";
 
-// Re-export for backward compatibility
-export type { CapabilityConfig };
-
 // ESM-compatible __dirname for resolving capability package directories
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

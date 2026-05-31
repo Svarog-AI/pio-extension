@@ -9,14 +9,7 @@ import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
-
-// Re-export validator functions for backward compatibility and test access
-import {
-  validateAndFindNextStep,
-  resolveEvolveValidation,
-  resolveEvolveWriteAllowlist,
-  REVISE_PLAN_MARKER,
-} from "./callbacks";
+import { validateAndFindNextStep, resolveEvolveValidation, resolveEvolveWriteAllowlist } from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)

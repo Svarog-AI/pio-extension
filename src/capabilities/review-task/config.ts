@@ -4,7 +4,8 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { launchCapability, setMergedSkills, mergeCapabilitySkills } from "../session-capability";
+import { launchCapability, setMergedSkills } from "../session-capability";
+import { mergeCapabilitySkills } from "../../capability-utils";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";

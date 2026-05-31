@@ -6,7 +6,6 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CapabilityConfig, CapabilitySkills } from "../types";
 import type { CompiledPromptSections } from "../capability-package";
-import type { TaskSkills } from "./evolve-plan/schemas";
 import { compilePrompt } from "../prompt-compiler";
 import { setupStepNudging } from "../guards/step-nudging";
 import { discoverNextStep } from "../fs-utils";
@@ -39,45 +38,6 @@ export function setMergedSkills(skills: Pick<CapabilityConfig, "skills">["skills
   if (currentConfig) {
     currentConfig.skills = skills;
   }
-}
-
-/**
- * Merge base capability skills with per-step task skills.
- * Pure utility — operates on typed objects, never accesses the filesystem.
- *
- * Mandatory skills: concatenated with Set-based deduplication (preserves order, first-seen wins).
- * Recommended skills: concatenated with Map-based first-seen-wins dedup by `name`.
- * Returns a new object — never mutates inputs.
- */
-export function mergeCapabilitySkills(
-  base: CapabilitySkills | undefined,
-  task: TaskSkills | null | undefined,
-): CapabilitySkills {
-  const mandatory = new Set<string>();
-  const recommended = new Map<string, { name: string; condition: string }>();
-
-  if (base?.mandatory) {
-    for (const name of base.mandatory) mandatory.add(name);
-  }
-  if (base?.recommended) {
-    for (const entry of base.recommended) recommended.set(entry.name, entry);
-  }
-
-  if (task?.mandatory) {
-    for (const name of task.mandatory) mandatory.add(name);
-  }
-  if (task?.recommended) {
-    for (const entry of task.recommended) {
-      if (!recommended.has(entry.name)) {
-        recommended.set(entry.name, entry);
-      }
-    }
-  }
-
-  const result: CapabilitySkills = {};
-  if (mandatory.size > 0) result.mandatory = [...mandatory];
-  if (recommended.size > 0) result.recommended = [...recommended.values()];
-  return result;
 }
 
 // Global mandatory skills — always injected regardless of capability config

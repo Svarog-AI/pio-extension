@@ -1,10 +1,36 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
-import { launchCapability } from "./session-capability";
-import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../capability-config";
+import { launchCapability } from "../session-capability";
+import { resolveCapabilityConfig, type StaticCapabilityConfig } from "../../capability-config";
+import type { CapabilityPackageConfig } from "../../capability-package";
 
 // ---------------------------------------------------------------------------
-// Capability config — single source of truth for this capability's session shape
+// Default export: CapabilityPackageConfig (new-style package config)
+// ---------------------------------------------------------------------------
+
+export default {
+  capability: "project-context",
+  skills: {
+    mandatory: ["pio-project-knowledge"],
+    recommended: [
+      { name: "source-research", condition: "when researching project dependencies or external tools" },
+    ],
+  },
+  writeAllowlist: [
+    ".pio/PROJECT/OVERVIEW.md",
+    ".pio/PROJECT/DEVELOPMENT.md",
+    ".pio/PROJECT/CONVENTIONS.md",
+    ".pio/PROJECT/GIT.md",
+    ".pio/PROJECT/ARCHITECTURE.md",
+    ".pio/PROJECT/DEPENDENCIES.md",
+    ".pio/PROJECT/GLOSSARY.md",
+  ],
+  defaultInitialMessage: (workingDir: string) =>
+    `Please explore this project and produce the multi-file project context under ${workingDir}/.pio/PROJECT/ (OVERVIEW.md, DEVELOPMENT.md, CONVENTIONS.md, GIT.md, ARCHITECTURE.md, DEPENDENCIES.md, GLOSSARY.md).`,
+} satisfies CapabilityPackageConfig;
+
+// ---------------------------------------------------------------------------
+// Backward-compat export: CAPABILITY_CONFIG (for resolveCapabilityConfig until Step 21)
 // ---------------------------------------------------------------------------
 
 export const CAPABILITY_CONFIG: StaticCapabilityConfig = {
@@ -45,9 +71,12 @@ async function handleProjectContext(_args: string | undefined, ctx: ExtensionCom
 // Setup (registers command)
 // ---------------------------------------------------------------------------
 
-export function setupProjectContext(pi: ExtensionAPI) {
+export function register(pi: ExtensionAPI) {
   pi.registerCommand("pio-project-context", {
     description: "Analyze project files and generate .pio/PROJECT/ context files for session context injection",
     handler: handleProjectContext,
   });
 }
+
+// Backward-compat: old index.ts imports setupProjectContext
+export { register as setupProjectContext };

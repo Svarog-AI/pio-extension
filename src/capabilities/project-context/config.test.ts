@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { CAPABILITY_CONFIG, setupProjectContext } from "./project-context";
+import { CAPABILITY_CONFIG, register } from "./config";
 
 // ---------------------------------------------------------------------------
 // CAPABILITY_CONFIG.writeAllowlist
@@ -44,10 +44,10 @@ describe("CAPABILITY_CONFIG.writeAllowlist", () => {
 });
 
 // ---------------------------------------------------------------------------
-// setupProjectContext
+// register (previously setupProjectContext)
 // ---------------------------------------------------------------------------
 
-describe("setupProjectContext", () => {
+describe("register", () => {
   it("registers a command named pio-project-context", () => {
     const registeredCommands: Array<{ name: string; options: { description: string } }> = [];
 
@@ -57,7 +57,7 @@ describe("setupProjectContext", () => {
       }),
     };
 
-    setupProjectContext(mockPi as any);
+    register(mockPi as any);
 
     const command = registeredCommands.find((c) => c.name === "pio-project-context");
     expect(command).toBeDefined();
@@ -72,7 +72,7 @@ describe("setupProjectContext", () => {
       }),
     };
 
-    setupProjectContext(mockPi as any);
+    register(mockPi as any);
 
     const command = registeredCommands.find((c) => c.name === "pio-project-context");
     expect(command).toBeDefined();

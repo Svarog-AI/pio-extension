@@ -23,6 +23,91 @@ function resolveField<T>(
   return value;
 }
 
+// ---------------------------------------------------------------------------
+// Shared parameter extraction and config assembly
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters extracted from session params shared by both normalize functions.
+ */
+interface ExtractedParams {
+  goalName: string;
+  workingDir: string;
+  stepNumber: number | undefined;
+  initialMessage: string | undefined;
+  fileCleanup: string[] | undefined;
+}
+
+/**
+ * Extract shared parameters from session params and cwd.
+ */
+function extractParams(
+  cwd: string,
+  params?: Record<string, unknown>,
+): ExtractedParams {
+  const goalName = typeof params?.goalName === "string" ? params.goalName : "";
+  const explicitWorkingDir =
+    typeof params?.workingDir === "string" && params.workingDir
+      ? params.workingDir
+      : "";
+  const workingDir = explicitWorkingDir
+    ? explicitWorkingDir
+    : goalName
+      ? resolveGoalDir(cwd, goalName)
+      : cwd;
+
+  return {
+    goalName,
+    workingDir,
+    stepNumber: typeof params?.stepNumber === "number" ? params.stepNumber : undefined,
+    initialMessage:
+      typeof params?.initialMessage === "string" ? params.initialMessage : undefined,
+    fileCleanup: Array.isArray(params?.fileCleanup) ? params.fileCleanup : undefined,
+  };
+}
+
+/**
+ * Assemble a CapabilityConfig from pre-resolved field values.
+ *
+ * Both `normalizePackageConfig()` and `normalizeStaticConfig()` call this
+ * after resolving their input-shape-specific fields (callbacks vs static).
+ */
+function buildCapabilityConfig(
+  cap: string,
+  prompt: string | undefined,
+  workingDir: string,
+  validation: ValidationRule | undefined,
+  readOnlyFiles: string[] | undefined,
+  writeAllowlist: string[] | undefined,
+  initialMessage: string | undefined,
+  fileCleanup: string[] | undefined,
+  sessionParams: Record<string, unknown> | undefined,
+  sessionName: string,
+  prepareSession: PrepareSessionCallback | undefined,
+  postValidate: PostValidateCallback | undefined,
+  postExecute: PostExecuteCallback | undefined,
+  skills: CapabilitySkills | undefined,
+  frontmatterSchemas: FrontmatterSchemaDeclaration[] | undefined,
+): CapabilityConfig {
+  return {
+    capability: cap,
+    prompt,
+    workingDir,
+    validation,
+    readOnlyFiles,
+    writeAllowlist,
+    initialMessage,
+    fileCleanup,
+    sessionParams,
+    sessionName,
+    prepareSession,
+    postValidate,
+    postExecute,
+    skills,
+    frontmatterSchemas,
+  };
+}
+
 /**
  * Normalize a CapabilityPackageConfig (new-style default export) to CapabilityConfig.
  */
@@ -32,43 +117,29 @@ function normalizePackageConfig(
   cwd: string,
   params?: Record<string, unknown>,
 ): CapabilityConfig {
-  const goalName = typeof params?.goalName === "string" ? params.goalName : "";
-  const explicitWorkingDir = typeof params?.workingDir === "string" && params.workingDir
-    ? params.workingDir
-    : "";
-  const workingDir = explicitWorkingDir
-    ? explicitWorkingDir
-    : goalName
-      ? resolveGoalDir(cwd, goalName)
-      : cwd;
+  const extracted = extractParams(cwd, params);
 
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+  const validation = resolveField<ValidationRule>(pkg.validation, extracted.workingDir, params);
+  const readOnlyFiles = resolveField<string[]>(pkg.readOnlyFiles, extracted.workingDir, params);
+  const writeAllowlist = resolveField<string[]>(pkg.writeAllowlist, extracted.workingDir, params);
 
-  const validation = resolveField<ValidationRule>(pkg.validation, workingDir, params);
-  const readOnlyFiles = resolveField<string[]>(pkg.readOnlyFiles, workingDir, params);
-  const writeAllowlist = resolveField<string[]>(pkg.writeAllowlist, workingDir, params);
-
-  return {
-    capability: cap,
-    // New-style capabilities don't have a prompt field — prompts are compiled from component files
-    prompt: undefined,
-    workingDir,
+  return buildCapabilityConfig(
+    cap,
+    undefined, // new-style: prompts compiled from component files
+    extracted.workingDir,
     validation,
     readOnlyFiles,
     writeAllowlist,
-    initialMessage:
-      typeof params?.initialMessage === "string"
-        ? params.initialMessage
-        : pkg.defaultInitialMessage(workingDir, params),
-    fileCleanup: Array.isArray(params?.fileCleanup) ? params.fileCleanup : undefined,
-    sessionParams: params,
-    sessionName: deriveSessionName(goalName, cap, stepNumber),
-    prepareSession: pkg.prepareSession,
-    postValidate: pkg.postValidate,
-    postExecute: pkg.postExecute,
-    skills: pkg.skills,
-    frontmatterSchemas: pkg.frontmatterSchemas,
-  };
+    extracted.initialMessage ?? pkg.defaultInitialMessage(extracted.workingDir, params),
+    extracted.fileCleanup,
+    params,
+    deriveSessionName(extracted.goalName, cap, extracted.stepNumber),
+    pkg.prepareSession,
+    pkg.postValidate,
+    pkg.postExecute,
+    pkg.skills,
+    pkg.frontmatterSchemas,
+  );
 }
 
 /**
@@ -80,48 +151,29 @@ function normalizeStaticConfig(
   cwd: string,
   params?: Record<string, unknown>,
 ): CapabilityConfig {
-  const goalName = typeof params?.goalName === "string" ? params.goalName : "";
-  const explicitWorkingDir = typeof params?.workingDir === "string" && params.workingDir
-    ? params.workingDir
-    : "";
-  const workingDir = explicitWorkingDir
-    ? explicitWorkingDir
-    : goalName
-      ? resolveGoalDir(cwd, goalName)
-      : cwd;
+  const extracted = extractParams(cwd, params);
 
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+  const validation = resolveField<ValidationRule>(config.validation, extracted.workingDir, params);
+  const readOnlyFiles = resolveField<string[]>(config.readOnlyFiles, extracted.workingDir, params);
+  const writeAllowlist = resolveField<string[]>(config.writeAllowlist, extracted.workingDir, params);
 
-  const validation = typeof config.validation === "function"
-    ? config.validation(workingDir, params)
-    : config.validation;
-  const readOnlyFiles = typeof config.readOnlyFiles === "function"
-    ? config.readOnlyFiles(workingDir, params)
-    : config.readOnlyFiles;
-  const writeAllowlist = typeof config.writeAllowlist === "function"
-    ? config.writeAllowlist(workingDir, params)
-    : config.writeAllowlist;
-
-  return {
-    capability: cap,
-    prompt: config.prompt,
-    workingDir,
+  return buildCapabilityConfig(
+    cap,
+    config.prompt,
+    extracted.workingDir,
     validation,
     readOnlyFiles,
     writeAllowlist,
-    initialMessage:
-      typeof params?.initialMessage === "string"
-        ? params.initialMessage
-        : config.defaultInitialMessage(workingDir, params),
-    fileCleanup: Array.isArray(params?.fileCleanup) ? params.fileCleanup : undefined,
-    sessionParams: params,
-    sessionName: deriveSessionName(goalName, cap, stepNumber),
-    prepareSession: config.prepareSession,
-    postValidate: config.postValidate,
-    postExecute: config.postExecute,
-    skills: config.skills,
-    frontmatterSchemas: config.frontmatterSchemas,
-  };
+    extracted.initialMessage ?? config.defaultInitialMessage(extracted.workingDir, params),
+    extracted.fileCleanup,
+    params,
+    deriveSessionName(extracted.goalName, cap, extracted.stepNumber),
+    config.prepareSession,
+    config.postValidate,
+    config.postExecute,
+    config.skills,
+    config.frontmatterSchemas,
+  );
 }
 
 /**

@@ -1503,10 +1503,10 @@ describe("workflow steps population — enrichedSessionParams", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Step nudging integration — setupStepNudging called from setupCapability
+// Step nudging integration — setupStepNudging called from setupSessionInfrastructure
 // ---------------------------------------------------------------------------
 
-describe("step nudging integration — setupCapability", () => {
+describe("step nudging integration — setupSessionInfrastructure", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -1526,7 +1526,7 @@ describe("step nudging integration — setupCapability", () => {
     cleanup(tempDir);
   });
 
-  it("given setupCapability is called when the function runs then setupStepNudging is called with the pi instance", async () => {
+  it("given setupSessionInfrastructure is called when the function runs then setupStepNudging is called with the pi instance", async () => {
     const mockPi = {
       registerTool: vi.fn(),
       on: vi.fn(),

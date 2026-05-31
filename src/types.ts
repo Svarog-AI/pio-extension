@@ -69,11 +69,11 @@ export interface CapabilityConfig {
   sessionParams?: Record<string, unknown>;
   /** Human-readable name applied to the sub-session via `setSessionName()`. Derived automatically from goal name + capability. */
   sessionName?: string;
-  /** Lifecycle hook that runs before the agent starts (e.g., stale-state cleanup). Resolved from StaticCapabilityConfig.prepareSession. */
+  /** Lifecycle hook that runs before the agent starts (e.g., stale-state cleanup). */
   prepareSession?: PrepareSessionCallback;
-  /** Lifecycle hook that runs after file-existence validation passes but before transition routing. Resolved from StaticCapabilityConfig.postValidate. */
+  /** Lifecycle hook that runs after file-existence validation passes but before transition routing. */
   postValidate?: PostValidateCallback;
-  /** Lifecycle hook that runs after transition routing + task enqueuing. Resolved from StaticCapabilityConfig.postExecute. */
+  /** Lifecycle hook that runs after transition routing + task enqueuing. */
   postExecute?: PostExecuteCallback;
   /** Capability-specific skill declarations — mandatory skills are force-injected, recommended skills are listed as instructions. */
   skills?: CapabilitySkills;
@@ -128,22 +128,4 @@ export type PostExecuteCallback = (goalDir: string, params?: Record<string, unkn
 // Order: PreValidate → Prepare → agent session → PostValidate →
 //        transition routing → task enqueuing → PostExecute → cleanup → terminate
 
-/** Static shape previously exported by capabilities as `CAPABILITY_CONFIG`. Retained for compile-time type tests only. */
-export interface StaticCapabilityConfig {
-  prompt: string;                    // e.g. "create-goal.md"
-  validation?: ValidationRule | ConfigCallback<ValidationRule>;
-  readOnlyFiles?: string[] | ConfigCallback<string[]>;
-  writeAllowlist?: string[] | ConfigCallback<string[]>;
-  /** Derive initialMessage from workingDir (optional override via params.initialMessage) */
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => string;
-  /** Lifecycle hook that runs before the agent starts (e.g., stale-state cleanup). Optional — capabilities without a prepare hook simply omit it. */
-  prepareSession?: PrepareSessionCallback;
-  /** Lifecycle hook that runs after file-existence validation passes but before transition routing. Can fail to keep agent in session. Optional. */
-  postValidate?: PostValidateCallback;
-  /** Lifecycle hook that runs after transition routing + task enqueuing. Applies irreversible side effects. Optional. */
-  postExecute?: PostExecuteCallback;
-  /** Capability-specific skill declarations — mandatory skills are force-injected, recommended skills are listed as instructions. */
-  skills?: CapabilitySkills;
-  /** Declarative output document frontmatter schemas. Validated by the exit-gate via validateFrontmatter(). */
-  frontmatterSchemas?: FrontmatterSchemaDeclaration[];
-}
+

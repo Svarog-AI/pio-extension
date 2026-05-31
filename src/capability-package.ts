@@ -148,10 +148,9 @@ export interface CapabilityGuidelines {
 /**
  * Declarative config exported by each capability's `config.ts`.
  *
- * Replaces `StaticCapabilityConfig` from single-file capabilities.
- * Fields mirror the old shape (same hook signatures, same validation
- * shape) so migration is straightforward. The `prompt` field is removed
- * since the prompt is now compiled from component files
+ * Fields mirror the legacy single-file capability shape (same hook signatures,
+ * same validation shape) so migration is straightforward. The `prompt` field
+ * is removed since the prompt is now compiled from component files
  * (role.md + workflow.ts + guidelines.md).
  */
 export interface CapabilityPackageConfig {
@@ -165,7 +164,7 @@ export interface CapabilityPackageConfig {
   writeAllowlist?: string[] | ConfigCallback<string[]>;
   /** Derive initialMessage from workingDir and params */
   defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => string;
-  /** Lifecycle hooks — same as existing StaticCapabilityConfig */
+  /** Lifecycle hooks */
   prepareSession?: PrepareSessionCallback;
   postValidate?: PostValidateCallback;
   postExecute?: PostExecuteCallback;

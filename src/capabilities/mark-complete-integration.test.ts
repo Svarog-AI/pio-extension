@@ -5,6 +5,20 @@ import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { resolveCapabilityConfig } from "../capability-config";
 
+// Mock prompt-compiler and step-nudging so they don't interfere with integration tests
+vi.mock("../prompt-compiler", () => ({
+  compilePrompt: vi.fn().mockResolvedValue({
+    role: "## Role\n\nTest role.",
+    workflow: "## Workflow\n\n1. Test step",
+    guidelines: undefined,
+    mergedSkills: {},
+  }),
+}));
+
+vi.mock("../guards/step-nudging", () => ({
+  setupStepNudging: vi.fn(),
+}));
+
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
 // ---------------------------------------------------------------------------
@@ -89,12 +103,12 @@ describe("pio_mark_complete integration — review-task with real frontmatter", 
     vi.resetModules();
     tempCwd = createTempDir();
 
-    // Import session-capability fresh (no mocks in this file)
-    const mod = await import("./session-capability");
+    // Import mark-complete fresh (no mocks in this file)
+    const mod = await import("../guards/mark-complete");
 
     // Capture registered tool via mockPi
     const { mockPi, getRegisteredTool: getTool } = makeMockPi();
-    mod.setupCapability(mockPi);
+    mod.setupMarkComplete(mockPi);
     getRegisteredTool = getTool;
 
     // Mock process.cwd() so enqueueTask writes to our temp directory

@@ -2,11 +2,29 @@
  * Shared type definitions for pio extension.
  *
  * These types are extracted here to break circular dependencies between:
- *   utils.ts  ←→  validation.ts  ←→  session-capability.ts
+ *   utils.ts  ←→  validation.ts  ←→  capability-session.ts
  *
  * All three modules previously imported types from each other, creating
  * a cycle that can cause issues with jiti module loading in sub-sessions.
  */
+
+import type { TSchema } from "typebox";
+
+// ---------------------------------------------------------------------------
+// Frontmatter schema types
+// ---------------------------------------------------------------------------
+
+/**
+ * Declares an output document and the TypeBox schema its YAML frontmatter
+ * must conform to. Defined here (types.ts) to avoid circular imports:
+ * capability-package.ts imports from types.ts, so types.ts cannot import back.
+ */
+export interface FrontmatterSchemaDeclaration {
+  /** Output file path relative to workingDir (e.g. "PLAN.md", "TASK.md") */
+  outputFile: string;
+  /** TypeBox schema the YAML frontmatter must conform to */
+  schema: TSchema;
+}
 
 // ---------------------------------------------------------------------------
 // Validation types
@@ -33,7 +51,7 @@ export interface CapabilitySkills {
 export interface CapabilityConfig {
   /** Logical capability name (e.g. "create-goal") — determines prompt and transitions */
   capability: string;
-  /** Prompt filename (e.g. "create-goal.md") — resolved from CAPABILITY_CONFIG.prompt */
+  /** Prompt filename (e.g. "create-goal.md") */
   prompt?: string;
   /** Kickoff prompt sent as a user message to trigger the agent */
   initialMessage?: string;
@@ -51,14 +69,16 @@ export interface CapabilityConfig {
   sessionParams?: Record<string, unknown>;
   /** Human-readable name applied to the sub-session via `setSessionName()`. Derived automatically from goal name + capability. */
   sessionName?: string;
-  /** Lifecycle hook that runs before the agent starts (e.g., stale-state cleanup). Resolved from StaticCapabilityConfig.prepareSession. */
+  /** Lifecycle hook that runs before the agent starts (e.g., stale-state cleanup). */
   prepareSession?: PrepareSessionCallback;
-  /** Lifecycle hook that runs after file-existence validation passes but before transition routing. Resolved from StaticCapabilityConfig.postValidate. */
+  /** Lifecycle hook that runs after file-existence validation passes but before transition routing. */
   postValidate?: PostValidateCallback;
-  /** Lifecycle hook that runs after transition routing + task enqueuing. Resolved from StaticCapabilityConfig.postExecute. */
+  /** Lifecycle hook that runs after transition routing + task enqueuing. */
   postExecute?: PostExecuteCallback;
   /** Capability-specific skill declarations — mandatory skills are force-injected, recommended skills are listed as instructions. */
   skills?: CapabilitySkills;
+  /** Declarative output document frontmatter schemas. Validated by the exit-gate via validateFrontmatter(). */
+  frontmatterSchemas?: FrontmatterSchemaDeclaration[];
 }
 
 /** Callback signature for step-dependent config fields. */
@@ -108,20 +128,4 @@ export type PostExecuteCallback = (goalDir: string, params?: Record<string, unkn
 // Order: PreValidate → Prepare → agent session → PostValidate →
 //        transition routing → task enqueuing → PostExecute → cleanup → terminate
 
-/** Static shape each capability exports as `CAPABILITY_CONFIG`. */
-export interface StaticCapabilityConfig {
-  prompt: string;                    // e.g. "create-goal.md"
-  validation?: ValidationRule | ConfigCallback<ValidationRule>;
-  readOnlyFiles?: string[] | ConfigCallback<string[]>;
-  writeAllowlist?: string[] | ConfigCallback<string[]>;
-  /** Derive initialMessage from workingDir (optional override via params.initialMessage) */
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => string;
-  /** Lifecycle hook that runs before the agent starts (e.g., stale-state cleanup). Optional — capabilities without a prepare hook simply omit it. */
-  prepareSession?: PrepareSessionCallback;
-  /** Lifecycle hook that runs after file-existence validation passes but before transition routing. Can fail to keep agent in session. Optional. */
-  postValidate?: PostValidateCallback;
-  /** Lifecycle hook that runs after transition routing + task enqueuing. Applies irreversible side effects. Optional. */
-  postExecute?: PostExecuteCallback;
-  /** Capability-specific skill declarations — mandatory skills are force-injected, recommended skills are listed as instructions. */
-  skills?: CapabilitySkills;
-}
+

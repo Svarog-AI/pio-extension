@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { findSubgoals, inferPhase, readLastTask } from "./list-goals";
+import { findSubgoals, inferPhase, readLastTask } from "../direct-tools";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers

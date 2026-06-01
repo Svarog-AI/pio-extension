@@ -1,0 +1,7 @@
+- **Follow the `tdd` skill for methodology.** Use its iterative workflow — no upfront test planning.
+- **Stay within scope.** Implement only what TASK.md describes. Do not refactor unrelated code, fix style issues in other files, or add "while you're at it" improvements.
+- **Reference real files.** Every file path you create or modify should correspond to a file you actually read or confirmed exists. Don't guess paths.
+- **Follow existing patterns.** Study similar code before writing new code. Match naming conventions, module structure, and architectural patterns established in the project.
+- **No unplanned work.** If you discover bugs, missing features, or improvements not in TASK.md, note them but don't fix them. They belong in separate goals.
+- **Iterate on failure.** If tests fail after implementation, debug and fix — don't declare blocked prematurely. Only mark BLOCKED for issues truly outside your control (external services, ambiguous specs).
+- **Verify programmatically.** Prefer running commands (`npm run check`, test suites) over visual inspection. Document command output when relevant.

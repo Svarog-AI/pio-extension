@@ -4,6 +4,7 @@ import * as path from "node:path";
 import {
   resolveGoalDir,
   goalExists,
+  prepareGoal,
   issuesDir,
   findIssuePath,
   readIssue,
@@ -11,9 +12,8 @@ import {
   stepFolderName,
   discoverNextStep,
 } from "./fs-utils";
-import { mergeCapabilitySkills } from "./capabilities/session-capability";
+import { mergeCapabilitySkills } from "./capability-utils";
 import type { CapabilitySkills } from "./types";
-import type { TaskSkills } from "./frontmatter-schemas";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -112,6 +112,46 @@ describe("goalExists(goalDir)", () => {
     fs.writeFileSync(filePath, "hello", "utf-8");
     // fs.existsSync returns true for files too — goalExists uses fs.existsSync directly
     expect(goalExists(filePath)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// prepareGoal
+// ---------------------------------------------------------------------------
+
+describe("prepareGoal(name, cwd)", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns ready: false when directory exists", () => {
+    // Arrange: create goal directory
+    const goalDir = path.join(tempDir, ".pio", "goals", "existing-goal");
+    fs.mkdirSync(goalDir, { recursive: true });
+
+    // Act
+    const result = prepareGoal("existing-goal", tempDir);
+
+    // Assert
+    expect(result.ready).toBe(false);
+    expect(result.goalDir).toBe(goalDir);
+  });
+
+  it("creates directory and returns ready: true when it doesn't exist", () => {
+    // Arrange: goal directory does not exist
+    const expectedGoalDir = path.join(tempDir, ".pio", "goals", "new-goal");
+
+    // Act
+    const result = prepareGoal("new-goal", tempDir);
+
+    // Assert
+    expect(result.ready).toBe(true);
+    expect(result.goalDir).toBe(expectedGoalDir);
+    expect(fs.statSync(result.goalDir).isDirectory()).toBe(true);
   });
 });
 
@@ -420,7 +460,7 @@ describe("mergeCapabilitySkills", () => {
   it("concatenates and deduplicates mandatory skills from base and task", () => {
     // Arrange
     const base: CapabilitySkills = { mandatory: ["pio", "ask-user", "tdd"] };
-    const task: TaskSkills = { mandatory: ["pio-git", "ask-user"] }; // ask-user is duplicate
+    const task: CapabilitySkills = { mandatory: ["pio-git", "ask-user"] }; // ask-user is duplicate
 
     // Act
     const result = mergeCapabilitySkills(base, task);
@@ -435,7 +475,7 @@ describe("mergeCapabilitySkills", () => {
     const base: CapabilitySkills = {
       recommended: [{ name: "source-research", condition: "for lib internals" }],
     };
-    const task: TaskSkills = {
+    const task: CapabilitySkills = {
       recommended: [
         { name: "source-research", condition: "different condition" }, // duplicate name
         { name: "web-browser", condition: "for browser testing" },
@@ -467,7 +507,7 @@ describe("mergeCapabilitySkills", () => {
 
   it("returns task skills when base is undefined", () => {
     // Arrange
-    const task: TaskSkills = { mandatory: ["pio-git"] };
+    const task: CapabilitySkills = { mandatory: ["pio-git"] };
 
     // Act
     const result = mergeCapabilitySkills(undefined, task);
@@ -480,7 +520,7 @@ describe("mergeCapabilitySkills", () => {
   it("returns empty object when both base and task are empty", () => {
     // Arrange
     const base: CapabilitySkills = {};
-    const task: TaskSkills = {};
+    const task: CapabilitySkills = {};
 
     // Act
     const result = mergeCapabilitySkills(base, task);
@@ -495,7 +535,7 @@ describe("mergeCapabilitySkills", () => {
       mandatory: ["pio"],
       recommended: [{ name: "source-research", condition: "always" }],
     };
-    const task: TaskSkills = {
+    const task: CapabilitySkills = {
       mandatory: ["pio-git"],
       recommended: [{ name: "web-browser", condition: "when needed" }],
     };
@@ -514,7 +554,7 @@ describe("mergeCapabilitySkills", () => {
   it("does not mutate input objects", () => {
     // Arrange
     const base: CapabilitySkills = { mandatory: ["pio"] };
-    const task: TaskSkills = { mandatory: ["pio-git"] };
+    const task: CapabilitySkills = { mandatory: ["pio-git"] };
     const baseCopy = { ...base, mandatory: [...(base.mandatory ?? [])] };
     const taskCopy = { ...task, mandatory: [...(task.mandatory ?? [])] };
 
@@ -529,7 +569,7 @@ describe("mergeCapabilitySkills", () => {
   it("preserves order of base skills before task skills", () => {
     // Arrange
     const base: CapabilitySkills = { mandatory: ["a", "b", "c"] };
-    const task: TaskSkills = { mandatory: ["d", "e"] };
+    const task: CapabilitySkills = { mandatory: ["d", "e"] };
 
     // Act
     const result = mergeCapabilitySkills(base, task);
@@ -539,10 +579,10 @@ describe("mergeCapabilitySkills", () => {
   });
 
   it("handles task with recommended missing name field gracefully (schema would catch this)", () => {
-    // Arrange: TaskSkills type enforces name presence, but test edge case
+    // Arrange: CapabilitySkills type enforces name presence, but test edge case
     const base: CapabilitySkills = { mandatory: ["pio"] };
     // @ts-expect-error — testing malformed input
-    const task: TaskSkills = { recommended: [{ condition: "no name" }] };
+    const task: CapabilitySkills = { recommended: [{ condition: "no name" }] };
 
     // Act
     const result = mergeCapabilitySkills(base, task);

@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import type { PrepareSessionCallback, PostValidateCallback, PostExecuteCallback, StaticCapabilityConfig, CapabilityConfig, CapabilitySkills } from "./types";
+import type { PrepareSessionCallback, PostValidateCallback, PostExecuteCallback, CapabilityConfig, CapabilitySkills } from "./types";
 import { resolveCapabilityConfig } from "./capability-config";
 
 // ---------------------------------------------------------------------------
@@ -15,7 +15,7 @@ function makeCwd(): string {
 // ---------------------------------------------------------------------------
 
 describe("resolveCapabilityConfig — happy path with static config", () => {
-  it("resolves create-goal config with correct capability name and prompt", async () => {
+  it("resolves create-goal config with correct capability name", async () => {
     const cwd = makeCwd();
     const params = { capability: "create-goal" as string, goalName: "my-feature" };
 
@@ -23,17 +23,15 @@ describe("resolveCapabilityConfig — happy path with static config", () => {
 
     expect(result).toBeDefined();
     expect(result!.capability).toBe("create-goal");
-    expect(result!.prompt).toBe("create-goal.md");
   });
 
-  it("resolves create-plan config with correct prompt and validation", async () => {
+  it("resolves create-plan config with correct validation", async () => {
     const cwd = makeCwd();
     const params = { capability: "create-plan" as string, goalName: "my-feature" };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
     expect(result).toBeDefined();
-    expect(result!.prompt).toBe("create-plan.md");
     expect(result!.validation?.files).toContain("PLAN.md");
   });
 
@@ -324,55 +322,6 @@ describe("PrepareSessionCallback", () => {
 });
 
 // ---------------------------------------------------------------------------
-// StaticCapabilityConfig.prepareSession — compile-time type verification
-// ---------------------------------------------------------------------------
-
-describe("StaticCapabilityConfig.prepareSession", () => {
-  it("prepareSession is optional — config without it is valid", () => {
-    // Arrange + Act: A StaticCapabilityConfig without prepareSession should be valid
-    const config: StaticCapabilityConfig = {
-      prompt: "review-task.md",
-      defaultInitialMessage: () => "Review this code",
-    };
-
-    // Assert: verify the field is absent
-    expect(config.prepareSession).toBeUndefined();
-  });
-
-  it("prepareSession accepts a matching callback", () => {
-    // Arrange: define a prepare callback
-    const prepareCb: PrepareSessionCallback = (workingDir, params) => {
-      // cleanup logic would go here
-    };
-
-    // Act: config with prepareSession should be valid
-    const config: StaticCapabilityConfig = {
-      prompt: "review-task.md",
-      defaultInitialMessage: () => "Review this code",
-      prepareSession: prepareCb,
-    };
-
-    // Assert: verify the callback is present and callable
-    expect(config.prepareSession).toBe(prepareCb);
-    expect(typeof config.prepareSession).toBe("function");
-  });
-
-  it("prepareSession can be defined inline as an arrow function", () => {
-    // Arrange + Act
-    const config: StaticCapabilityConfig = {
-      prompt: "test.md",
-      defaultInitialMessage: () => "Hello",
-      prepareSession: (workingDir: string, params?: Record<string, unknown>) => {
-        if (workingDir) { /* cleanup */ }
-      },
-    };
-
-    // Assert
-    expect(typeof config.prepareSession).toBe("function");
-  });
-});
-
-// ---------------------------------------------------------------------------
 // CapabilityConfig.prepareSession — compile-time type verification
 // ---------------------------------------------------------------------------
 
@@ -591,88 +540,6 @@ describe("PostExecuteCallback", () => {
     // Assert: calling it should resolve without error
     await cb("/tmp/test");
     expect(true).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// StaticCapabilityConfig.postValidate and postExecute — compile-time type verification
-// ---------------------------------------------------------------------------
-
-describe("StaticCapabilityConfig.postValidate and postExecute", () => {
-  it("postValidate is optional — config without it is valid", () => {
-    // Arrange + Act: A StaticCapabilityConfig without postValidate should be valid
-    const config: StaticCapabilityConfig = {
-      prompt: "review-task.md",
-      defaultInitialMessage: () => "Review this code",
-    };
-
-    // Assert: verify the fields are absent
-    expect(config.postValidate).toBeUndefined();
-    expect(config.postExecute).toBeUndefined();
-  });
-
-  it("postValidate accepts a matching callback", () => {
-    // Arrange: define a postValidate callback
-    const postValidateCb: PostValidateCallback = (goalDir, params) => {
-      return { success: true };
-    };
-
-    // Act: config with postValidate should be valid
-    const config: StaticCapabilityConfig = {
-      prompt: "review-task.md",
-      defaultInitialMessage: () => "Review this code",
-      postValidate: postValidateCb,
-    };
-
-    // Assert: verify the callback is present and callable
-    expect(config.postValidate).toBe(postValidateCb);
-    expect(typeof config.postValidate).toBe("function");
-  });
-
-  it("postExecute accepts a matching callback (sync)", () => {
-    // Arrange: define a sync postExecute callback
-    const postExecuteCb: PostExecuteCallback = () => {};
-
-    // Act: config with postExecute should be valid
-    const config: StaticCapabilityConfig = {
-      prompt: "review-task.md",
-      defaultInitialMessage: () => "Review this code",
-      postExecute: postExecuteCb,
-    };
-
-    // Assert: verify the callback is present and callable
-    expect(config.postExecute).toBe(postExecuteCb);
-    expect(typeof config.postExecute).toBe("function");
-  });
-
-  it("postExecute accepts a matching callback (async)", () => {
-    // Arrange: define an async postExecute callback
-    const postExecuteCb: PostExecuteCallback = async () => {};
-
-    // Act: config with postExecute should be valid
-    const config: StaticCapabilityConfig = {
-      prompt: "review-task.md",
-      defaultInitialMessage: () => "Review this code",
-      postExecute: postExecuteCb,
-    };
-
-    // Assert: verify the callback is present and callable
-    expect(config.postExecute).toBe(postExecuteCb);
-    expect(typeof config.postExecute).toBe("function");
-  });
-
-  it("postValidate return type requires success boolean", () => {
-    // Arrange + Act: Define an inline callback returning { success: true, message: "ok" }
-    const config: StaticCapabilityConfig = {
-      prompt: "test.md",
-      defaultInitialMessage: () => "Hello",
-      postValidate: () => ({ success: true, message: "ok" }),
-    };
-
-    // Assert: the returned object has both success: boolean and optional message?: string
-    const result = config.postValidate!("/tmp/test");
-    expect(result.success).toBe(true);
-    expect(result.message).toBe("ok");
   });
 });
 

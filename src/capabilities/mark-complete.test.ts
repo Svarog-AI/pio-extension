@@ -49,6 +49,20 @@ vi.mock("../queues", async (importOriginal) => ({
   writeLastTask: mockWriteLastTask,
 }));
 
+// Mock prompt-compiler and step-nudging so they don't interfere with mark-complete tests
+vi.mock("../prompt-compiler", () => ({
+  compilePrompt: vi.fn().mockResolvedValue({
+    role: "## Role\n\nTest role.",
+    workflow: "## Workflow\n\n1. Test step",
+    guidelines: undefined,
+    mergedSkills: {},
+  }),
+}));
+
+vi.mock("../guards/step-nudging", () => ({
+  setupStepNudging: vi.fn(),
+}));
+
 // ---------------------------------------------------------------------------
 // pio_mark_complete — tool registration and execution flow
 // ---------------------------------------------------------------------------
@@ -76,7 +90,7 @@ describe("pio_mark_complete", () => {
     registeredTool = undefined;
 
     // Import and set up
-    const mod = await import("./session-capability");
+    const mod = await import("../guards/mark-complete");
 
     const mockPi = {
       registerTool: (tool: { name: string; label: string; execute: Function }) => {
@@ -86,14 +100,14 @@ describe("pio_mark_complete", () => {
       setSessionName: vi.fn(),
     };
 
-    mod.setupCapability(mockPi as any);
+    mod.setupMarkComplete(mockPi as any);
   });
 
   afterEach(() => {
     cleanup(tempDir);
   });
 
-  it("registers as pio_mark_complete via setupCapability", () => {
+  it("registers as pio_mark_complete via setupMarkComplete", () => {
     expect(registeredTool).toBeDefined();
     expect(registeredTool!.name).toBe("pio_mark_complete");
     expect(registeredTool!.label).toBe("Pio Mark Complete");
@@ -410,7 +424,7 @@ describe("pio_mark_complete for review-task", () => {
     registeredTool = undefined;
 
     // Import and set up
-    const mod = await import("./session-capability");
+    const mod = await import("../guards/mark-complete");
 
     const mockPi = {
       registerTool: (tool: { name: string; label: string; execute: Function }) => {
@@ -420,7 +434,7 @@ describe("pio_mark_complete for review-task", () => {
       setSessionName: vi.fn(),
     };
 
-    mod.setupCapability(mockPi as any);
+    mod.setupMarkComplete(mockPi as any);
   });
 
   afterEach(() => {

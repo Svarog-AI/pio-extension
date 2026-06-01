@@ -1,4 +1,4 @@
-import type { CapabilitySkills, StaticCapabilityConfig, CapabilityConfig } from "./types";
+import type { CapabilitySkills, CapabilityConfig } from "./types";
 
 // ---------------------------------------------------------------------------
 // CapabilitySkills — compile-time type verification
@@ -89,57 +89,6 @@ describe("CapabilitySkills", () => {
       expect(typeof rec.name).toBe("string");
       expect(typeof rec.condition).toBe("string");
     }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// StaticCapabilityConfig — skills field (optional, backward-compatible)
-// ---------------------------------------------------------------------------
-
-describe("StaticCapabilityConfig — skills field", () => {
-  it("accepts a config with the skills field", () => {
-    // Arrange + Act
-    const config: StaticCapabilityConfig = {
-      prompt: "create-plan.md",
-      defaultInitialMessage: () => "Create a plan",
-      skills: {
-        mandatory: ["pio-planning", "grill-me"],
-        recommended: [
-          { name: "source-research", condition: "when researching architecture" },
-        ],
-      },
-    };
-
-    // Assert
-    expect(config.skills).toBeDefined();
-    expect(config.skills!.mandatory).toEqual(["pio-planning", "grill-me"]);
-    expect(config.skills!.recommended).toHaveLength(1);
-  });
-
-  it("accepts a config without the skills field (backward compatibility)", () => {
-    // Arrange + Act
-    const config: StaticCapabilityConfig = {
-      prompt: "review-task.md",
-      defaultInitialMessage: () => "Review this code",
-    };
-
-    // Assert
-    expect(config.skills).toBeUndefined();
-  });
-
-  it("skills field is optional — config with only mandatory skills is valid", () => {
-    // Arrange + Act
-    const config: StaticCapabilityConfig = {
-      prompt: "execute-task.md",
-      defaultInitialMessage: () => "Execute step",
-      skills: {
-        mandatory: ["tdd"],
-      },
-    };
-
-    // Assert
-    expect(config.skills!.mandatory).toEqual(["tdd"]);
-    expect(config.skills!.recommended).toBeUndefined();
   });
 });
 

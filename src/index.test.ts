@@ -40,8 +40,8 @@ describe("skill registration", () => {
 
     const { mockPi, registeredHandlers } = makeMockPi();
 
-    // Act: register the extension
-    extensionFactory(mockPi as any);
+    // Act: register the extension (async factory)
+    await extensionFactory(mockPi as any);
 
     // Find the resources_discover handler
     const discoverHandler = registeredHandlers["resources_discover"]?.[0];
@@ -68,7 +68,7 @@ describe("skill registration", () => {
     const { mockPi, registeredHandlers } = makeMockPi();
 
     // Act: register the extension
-    extensionFactory(mockPi as any);
+    await extensionFactory(mockPi as any);
 
     const discoverHandler = registeredHandlers["resources_discover"]?.[0];
     expect(discoverHandler).toBeDefined();
@@ -88,7 +88,7 @@ describe("skill registration", () => {
 
     const { mockPi, registeredHandlers } = makeMockPi();
 
-    extensionFactory(mockPi as any);
+    await extensionFactory(mockPi as any);
 
     const discoverHandler = registeredHandlers["resources_discover"]?.[0];
     const result = await discoverHandler();
@@ -125,7 +125,7 @@ describe("skill registration", () => {
       const extensionFactory = mod.default;
 
       const { mockPi, registeredHandlers } = makeMockPi();
-      extensionFactory(mockPi as any);
+      await extensionFactory(mockPi as any);
 
       const discoverHandler = registeredHandlers["resources_discover"]?.[0];
       const result = await discoverHandler();
@@ -153,7 +153,7 @@ describe("skill registration", () => {
       const extensionFactory = mod.default;
 
       const { mockPi, registeredHandlers } = makeMockPi();
-      extensionFactory(mockPi as any);
+      await extensionFactory(mockPi as any);
 
       const discoverHandler = registeredHandlers["resources_discover"]?.[0];
       const result = await discoverHandler();
@@ -239,15 +239,15 @@ describe("pio-git skill", () => {
 // ---------------------------------------------------------------------------
 
 describe("capability registration", () => {
-  it("setupRevisePlan registers pio_revise_plan tool", async () => {
+  it("auto-discovery registers pio_revise_plan tool", async () => {
     // Arrange
     const mod = await import("./index");
     const extensionFactory = mod.default;
 
     const { mockPi } = makeMockPi();
 
-    // Act: register the extension (calls all setup* functions)
-    extensionFactory(mockPi as any);
+    // Act: register the extension (auto-discovers and registers all capabilities)
+    await extensionFactory(mockPi as any);
 
     // Assert: pio_revise_plan tool was registered (registerTool receives tool definition object)
     const toolCalls = mockPi.registerTool.mock.calls;
@@ -257,7 +257,7 @@ describe("capability registration", () => {
     expect(revisePlanToolCall).toBeDefined();
   });
 
-  it("setupRevisePlan registers pio-revise-plan command", async () => {
+  it("auto-discovery registers pio-revise-plan command", async () => {
     // Arrange
     const mod = await import("./index");
     const extensionFactory = mod.default;
@@ -265,7 +265,7 @@ describe("capability registration", () => {
     const { mockPi } = makeMockPi();
 
     // Act: register the extension
-    extensionFactory(mockPi as any);
+    await extensionFactory(mockPi as any);
 
     // Assert: pio-revise-plan command was registered (command names don't include leading /)
     const commandCalls = mockPi.registerCommand.mock.calls;

@@ -3,7 +3,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { createGoalState } from "./goal-state";
 import { stepFolderName } from "./fs-utils";
-import type { PlanFrontmatter, ReviewOutputs, StepMetadata, TaskSkills } from "./frontmatter-schemas";
+import type { PlanFrontmatter, StepMetadata } from "./capabilities/create-plan/schemas";
+import type { TaskSkills } from "./capabilities/evolve-plan/schemas";
+import type { ReviewOutputs } from "./capabilities/review-task/schemas";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers (mirrors fs-utils.test.ts pattern)

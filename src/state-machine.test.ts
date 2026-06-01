@@ -2,7 +2,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { GoalState } from "./goal-state";
-import type { PlanFrontmatter, ReviewOutputs, StepMetadata } from "./frontmatter-schemas";
+import type { PlanFrontmatter, StepMetadata } from "./capabilities/create-plan/schemas";
+import type { ReviewOutputs } from "./capabilities/review-task/schemas";
 import {
   resolveTransition,
   recordTransition,

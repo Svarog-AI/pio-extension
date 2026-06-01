@@ -1,7 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { validateOutputs, setupValidation } from "./validation";
+import { Type } from "typebox";
+import { validateOutputs, setupValidation, validateFrontmatter, createFrontmatterValidator } from "./validation";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -130,5 +131,347 @@ describe("setupValidation", () => {
     expect(registeredEvents).toContain("resources_discover");
     expect(registeredEvents).toContain("turn_start");
     expect(registeredEvents).toContain("tool_call");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateFrontmatter — frontmatter schema validation
+// ---------------------------------------------------------------------------
+
+describe("validateFrontmatter", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  // --- Empty / undefined declarations ---
+
+  it("empty declarations array → success: true", () => {
+    const result = validateFrontmatter([], tempDir);
+    expect(result).toEqual({ success: true });
+  });
+
+  it("undefined declarations → success: true", () => {
+    const result = validateFrontmatter(undefined as any, tempDir);
+    expect(result).toEqual({ success: true });
+  });
+
+  // --- Missing file ---
+
+  it("missing output file → failure with descriptive message", () => {
+    const schema = Type.Object({ name: Type.String() });
+    const declarations = [{ outputFile: "PLAN.md", schema }];
+
+    const result = validateFrontmatter(declarations, tempDir);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("PLAN.md");
+    expect(result.message).toContain("does not exist");
+  });
+
+  // --- No frontmatter (file exists but no YAML delimiters) ---
+
+  it("file with no frontmatter delimiters → failure", () => {
+    const schema = Type.Object({ name: Type.String() });
+    const declarations = [{ outputFile: "output.md", schema }];
+
+    fs.writeFileSync(path.join(tempDir, "output.md"), "just plain text", "utf-8");
+
+    const result = validateFrontmatter(declarations, tempDir);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("output.md");
+    expect(result.message).toContain("no valid YAML frontmatter");
+  });
+
+  // --- Valid frontmatter that matches schema ---
+
+  it("valid frontmatter matching schema → success: true", () => {
+    const schema = Type.Object({
+      totalSteps: Type.Integer({ minimum: 1 }),
+      steps: Type.Array(Type.Object({ name: Type.String() })),
+    });
+    const declarations = [{ outputFile: "PLAN.md", schema }];
+
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: 3
+steps:
+  - name: step-one
+  - name: step-two
+  - name: step-three
+---
+# Plan content
+`,
+      "utf-8",
+    );
+
+    const result = validateFrontmatter(declarations, tempDir);
+
+    expect(result).toEqual({ success: true });
+  });
+
+  // --- Schema mismatch ---
+
+  it("frontmatter missing required field → failure with error details", () => {
+    const schema = Type.Object({
+      totalSteps: Type.Integer({ minimum: 1 }),
+      steps: Type.Array(Type.Object({ name: Type.String() })),
+    });
+    const declarations = [{ outputFile: "PLAN.md", schema }];
+
+    // Missing 'steps' field
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: 3
+---
+# Plan content
+`,
+      "utf-8",
+    );
+
+    const result = validateFrontmatter(declarations, tempDir);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("PLAN.md");
+    expect(result.message).toContain("steps");
+  });
+
+  it("frontmatter wrong type → failure with error details", () => {
+    const schema = Type.Object({
+      totalSteps: Type.Integer({ minimum: 1 }),
+    });
+    const declarations = [{ outputFile: "PLAN.md", schema }];
+
+    // totalSteps is a string instead of integer
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: "three"
+---
+# Plan content
+`,
+      "utf-8",
+    );
+
+    const result = validateFrontmatter(declarations, tempDir);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("PLAN.md");
+    expect(result.message).toContain("totalSteps");
+  });
+
+  // --- Multiple declarations (fail-fast) ---
+
+  it("first declaration fails → returns immediately without checking second", () => {
+    const schema1 = Type.Object({ totalSteps: Type.Integer() });
+    const schema2 = Type.Object({ decision: Type.String() });
+
+    const declarations = [
+      { outputFile: "PLAN.md", schema: schema1 },
+      { outputFile: "REVIEW.md", schema: schema2 },
+    ];
+
+    // PLAN.md doesn't exist — should fail on first declaration
+    // REVIEW.md also doesn't exist but should not be checked
+
+    const result = validateFrontmatter(declarations, tempDir);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("PLAN.md");
+    // Should NOT mention REVIEW.md (fail-fast)
+    expect(result.message).not.toContain("REVIEW.md");
+  });
+
+  it("first declaration passes, second fails → error from second", () => {
+    const schema1 = Type.Object({ name: Type.String() });
+    const schema2 = Type.Object({ totalSteps: Type.Integer() });
+
+    const declarations = [
+      { outputFile: "output1.md", schema: schema1 },
+      { outputFile: "output2.md", schema: schema2 },
+    ];
+
+    // First file is valid
+    fs.writeFileSync(
+      path.join(tempDir, "output1.md"),
+      `---
+name: test
+---
+content
+`,
+      "utf-8",
+    );
+    // Second file doesn't exist
+
+    const result = validateFrontmatter(declarations, tempDir);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("output2.md");
+  });
+
+  // --- Empty frontmatter (valid YAML but empty object) ---
+
+  it("empty frontmatter with required fields → failure (extractFrontmatter returns null for empty YAML)", () => {
+    const schema = Type.Object({
+      totalSteps: Type.Integer({ minimum: 1 }),
+    });
+    const declarations = [{ outputFile: "PLAN.md", schema }];
+
+    // Empty YAML between delimiters — extractFrontmatter returns null
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+---
+# Plan content
+`,
+      "utf-8",
+    );
+
+    const result = validateFrontmatter(declarations, tempDir);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("PLAN.md");
+    // extractFrontmatter returns null for empty YAML — error is about missing frontmatter
+    expect(result.message).toContain("no valid YAML frontmatter");
+  });
+
+  it("valid YAML empty object {} with required fields → schema validation failure", () => {
+    const schema = Type.Object({
+      totalSteps: Type.Integer({ minimum: 1 }),
+    });
+    const declarations = [{ outputFile: "PLAN.md", schema }];
+
+    // Explicit empty object — extractFrontmatter returns {}, schema validation catches missing fields
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+{}
+---
+# Plan content
+`,
+      "utf-8",
+    );
+
+    const result = validateFrontmatter(declarations, tempDir);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("PLAN.md");
+    expect(result.message).toContain("totalSteps");
+  });
+
+  // --- Extra fields (TypeBox allows additional properties by default) ---
+
+  it("extra frontmatter fields not in schema → passes (TypeBox allows additional properties)", () => {
+    const schema = Type.Object({
+      totalSteps: Type.Integer({ minimum: 1 }),
+    });
+    const declarations = [{ outputFile: "PLAN.md", schema }];
+
+    // Frontmatter has totalSteps (declared) plus an unknown field
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: 3
+extraField: "some value"
+anotherExtra: 42
+---
+# Plan content
+`,
+      "utf-8",
+    );
+
+    const result = validateFrontmatter(declarations, tempDir);
+
+    expect(result.success).toBe(true);
+  });
+
+  // --- Schema-only validation (no cross-field checks) ---
+
+
+  it("does not perform cross-field validations (schema-only)", () => {
+    const schema = Type.Object({
+      totalSteps: Type.Integer({ minimum: 1 }),
+    });
+    const declarations = [{ outputFile: "PLAN.md", schema }];
+
+    // totalSteps says 5 but there are only 2 step headings
+    // This should PASS because schema-only validation doesn't check body content
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: 5
+---
+# Plan
+
+### Step 1
+First step
+
+### Step 2
+Second step
+`,
+      "utf-8",
+    );
+
+    const result = validateFrontmatter(declarations, tempDir);
+
+    expect(result.success).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createFrontmatterValidator — factory for PostValidateCallback
+// ---------------------------------------------------------------------------
+
+describe("createFrontmatterValidator", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns a PostValidateCallback function", () => {
+    const validator = createFrontmatterValidator([]);
+    expect(typeof validator).toBe("function");
+  });
+
+  it("callback with valid frontmatter → success: true", () => {
+    const schema = Type.Object({ name: Type.String() });
+    const validator = createFrontmatterValidator([{ outputFile: "output.md", schema }]);
+
+    fs.writeFileSync(
+      path.join(tempDir, "output.md"),
+      `---
+name: test
+---
+content
+`,
+      "utf-8",
+    );
+
+    const result = validator(tempDir);
+    expect(result.success).toBe(true);
+  });
+
+  it("callback with missing file → failure", () => {
+    const schema = Type.Object({ name: Type.String() });
+    const validator = createFrontmatterValidator([{ outputFile: "missing.md", schema }]);
+
+    const result = validator(tempDir);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("missing.md");
+  });
+
+  it("callback with empty declarations → success: true", () => {
+    const validator = createFrontmatterValidator([]);
+    const result = validator(tempDir);
+    expect(result).toEqual({ success: true });
   });
 });

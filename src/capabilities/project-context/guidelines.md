@@ -1,0 +1,6 @@
+- **Write only to `.pio/PROJECT/`.** No other files may be modified. The allowed write targets are: `.pio/PROJECT/OVERVIEW.md`, `.pio/PROJECT/DEVELOPMENT.md`, `.pio/PROJECT/CONVENTIONS.md`, `.pio/PROJECT/GIT.md`, `.pio/PROJECT/ARCHITECTURE.md`, `.pio/PROJECT/DEPENDENCIES.md`, `.pio/PROJECT/GLOSSARY.md`.
+- **Synthesize, don't copy.** Extract key insights — do not paste entire files.
+- **Be specific.** "Uses React 18 with TypeScript" beats "Has a frontend". "Tests run via `npm test` (Vitest)" beats "Has tests".
+- **Reference real files and paths.** Include exact commands, file names, and directory structures.
+- **Respect user answers.** If the user clarifies something, incorporate it faithfully — do not contradict or ignore it.
+- **Keep it manageable.** Each file should be dense and useful, not exhaustive or padded. Target ~2000 tokens per file.

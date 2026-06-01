@@ -3,9 +3,8 @@ import * as path from "node:path";
 import type { GoalState } from "./goal-state";
 import { resolveGoalDir, stepFolderName } from "./fs-utils";
 
-// ---------------------------------------------------------------------------
-// Re-exported types for backward compatibility
-// ---------------------------------------------------------------------------
+// Re-export for test access
+export { stepFolderName } from "./fs-utils";
 
 /** Context passed to transition resolver callbacks. */
 export interface TransitionContext {
@@ -24,9 +23,6 @@ export interface TransitionResult {
   /** Adjusted params to propagate (e.g. incremented stepNumber). If omitted, use ctx.params as-is. */
   params?: Record<string, unknown>;
 }
-
-/** Re-export stepFolderName for backward compatibility. */
-export { stepFolderName, resolveGoalDir } from "./fs-utils";
 
 // ---------------------------------------------------------------------------
 // Pure transition functions — no filesystem I/O

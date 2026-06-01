@@ -1,0 +1,6 @@
+- **No source code.** TASK.md is a specification document only. Describe every behavior, interface, and change in natural language or high-level pseudocode. You may write a short interface signature (type stub) if it clarifies a contract — never full function bodies, class implementations, or multi-line logic blocks.
+- **Reference real files.** Every file path should correspond to a file you actually read or confirmed exists during research. Don't guess paths.
+- **Stay within step scope.** Do not add tasks, tests, or analysis for other steps in the plan. Focus exclusively on your assigned step.
+- **Acceptance criteria must be verifiable.** Prefer programmatic checks (type checking, linting, build commands, file existence) over manual verification. If automation is truly impossible for something, say so explicitly and provide clear manual instructions.
+- **Do not implement.** Your job ends when TASK.md is written and validated. Do not create source files, modify code, or run build commands as part of this process (reading files for research is fine).
+- **Be specific, not verbose.** TASK.md should be dense with actionable information, not padded with generalities or restating the plan verbatim without added value.

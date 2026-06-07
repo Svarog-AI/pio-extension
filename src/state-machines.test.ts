@@ -288,36 +288,35 @@ describe("dispatch — isContext guard", () => {
   });
 
   it("skips machines whose isContext guard rejects the context", () => {
-    const aMachine = makeMachine(
-      "mode-a",
+    const matchingMachine = makeMachine(
+      "matches",
       [
         {
           from: "start",
           to: "end",
-          resolve: () => ({ capability: "end", stateMachineId: "mode-a" }),
+          resolve: () => ({ capability: "end", stateMachineId: "matches" }),
         },
       ],
-      (ctx): ctx is TestContext => typeof ctx === "object" && ctx !== null && "mode" in ctx && (ctx as any).mode === "a",
+      () => true,
     );
-    const bMachine = makeMachine(
-      "mode-b",
+    const rejectingMachine = makeMachine(
+      "rejects",
       [
         {
           from: "start",
           to: "end",
-          resolve: () => ({ capability: "end", stateMachineId: "mode-b" }),
+          resolve: () => ({ capability: "end", stateMachineId: "rejects" }),
         },
       ],
-      (ctx): ctx is TestContext => typeof ctx === "object" && ctx !== null && "mode" in ctx && (ctx as any).mode === "b",
+      () => false,
     );
 
-    registerTestMachine(aMachine);
-    registerTestMachine(bMachine);
+    registerTestMachine(matchingMachine);
+    registerTestMachine(rejectingMachine);
 
-    // Only mode-a should fire.
-    const results = dispatch(undefined, "start", { mode: "a" });
+    const results = dispatch(undefined, "start", { mode: "x" });
     expect(results).toHaveLength(1);
-    expect(results[0].stateMachineId).toBe("mode-a");
+    expect(results[0].stateMachineId).toBe("matches");
   });
 
   it("evaluates machines without isContext guard as-is", () => {
@@ -337,13 +336,12 @@ describe("dispatch — isContext guard", () => {
           resolve: () => ({ capability: "end", stateMachineId: "guarded" }),
         },
       ],
-      (ctx): ctx is TestContext => typeof ctx === "object" && ctx !== null && "mode" in ctx && (ctx as any).mode === "b",
+      () => false,
     );
 
     registerTestMachine(noGuardMachine);
     registerTestMachine(guardedMachine);
 
-    // Guard rejects mode "x" — only no-guard machine fires.
     const results = dispatch(undefined, "start", { mode: "x" });
     expect(results).toHaveLength(1);
     expect(results[0].stateMachineId).toBe("no-guard");
@@ -359,10 +357,9 @@ describe("dispatch — isContext guard", () => {
           resolve: () => ({ capability: "end", stateMachineId: "single" }),
         },
       ],
-      (ctx): ctx is TestContext => typeof ctx === "object" && ctx !== null && "mode" in ctx && (ctx as any).mode === "a",
+      () => false,
     );
 
-    // Guard would reject mode "x" — single-machine path still fires.
     const results = dispatch(machine, "start", { mode: "x" });
     expect(results).toHaveLength(1);
     expect(results[0].stateMachineId).toBe("single");

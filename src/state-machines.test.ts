@@ -287,47 +287,8 @@ describe("dispatch — isContext guard", () => {
     registeredIds.length = 0;
   });
 
-  it("skips machines whose isContext guard rejects the context", () => {
-    const matchingMachine = makeMachine(
-      "matches",
-      [
-        {
-          from: "start",
-          to: "end",
-          resolve: () => ({ capability: "end", stateMachineId: "matches" }),
-        },
-      ],
-      () => true,
-    );
-    const rejectingMachine = makeMachine(
-      "rejects",
-      [
-        {
-          from: "start",
-          to: "end",
-          resolve: () => ({ capability: "end", stateMachineId: "rejects" }),
-        },
-      ],
-      () => false,
-    );
-
-    registerTestMachine(matchingMachine);
-    registerTestMachine(rejectingMachine);
-
-    const results = dispatch(undefined, "start", { mode: "x" });
-    expect(results).toHaveLength(1);
-    expect(results[0].stateMachineId).toBe("matches");
-  });
-
-  it("evaluates machines without isContext guard as-is", () => {
-    const noGuardMachine = makeMachine("no-guard", [
-      {
-        from: "start",
-        to: "end",
-        resolve: () => ({ capability: "end", stateMachineId: "no-guard" }),
-      },
-    ]);
-    const guardedMachine = makeMachine(
+  it("fires when context passes the guard", () => {
+    const machine = makeMachine(
       "guarded",
       [
         {
@@ -336,11 +297,47 @@ describe("dispatch — isContext guard", () => {
           resolve: () => ({ capability: "end", stateMachineId: "guarded" }),
         },
       ],
-      () => false,
+      (ctx): ctx is TestContext =>
+        typeof ctx === "object" && ctx !== null && "mode" in ctx,
     );
 
-    registerTestMachine(noGuardMachine);
-    registerTestMachine(guardedMachine);
+    registerTestMachine(machine);
+
+    const results = dispatch(undefined, "start", { mode: "x" });
+    expect(results).toHaveLength(1);
+    expect(results[0].stateMachineId).toBe("guarded");
+  });
+
+  it("skips when context fails the guard", () => {
+    const machine = makeMachine(
+      "guarded",
+      [
+        {
+          from: "start",
+          to: "end",
+          resolve: () => ({ capability: "end", stateMachineId: "guarded" }),
+        },
+      ],
+      (ctx): ctx is TestContext =>
+        typeof ctx === "object" && ctx !== null && "mode" in ctx,
+    );
+
+    registerTestMachine(machine);
+
+    const results = dispatch(undefined, "start", { reviewId: "1" } as any);
+    expect(results).toHaveLength(0);
+  });
+
+  it("evaluates machines without isContext guard as-is", () => {
+    const machine = makeMachine("no-guard", [
+      {
+        from: "start",
+        to: "end",
+        resolve: () => ({ capability: "end", stateMachineId: "no-guard" }),
+      },
+    ]);
+
+    registerTestMachine(machine);
 
     const results = dispatch(undefined, "start", { mode: "x" });
     expect(results).toHaveLength(1);
@@ -357,10 +354,11 @@ describe("dispatch — isContext guard", () => {
           resolve: () => ({ capability: "end", stateMachineId: "single" }),
         },
       ],
-      () => false,
+      (ctx): ctx is TestContext =>
+        typeof ctx === "object" && ctx !== null && "mode" in ctx,
     );
 
-    const results = dispatch(machine, "start", { mode: "x" });
+    const results = dispatch(machine, "start", { reviewId: "1" } as any);
     expect(results).toHaveLength(1);
     expect(results[0].stateMachineId).toBe("single");
   });

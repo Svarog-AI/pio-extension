@@ -36,6 +36,24 @@ export interface ValidationRule {
 }
 
 // ---------------------------------------------------------------------------
+// Input validation types
+// ---------------------------------------------------------------------------
+
+/**
+ * Declarative input contract: which files must exist (or must not exist)
+ * before a capability session can start.
+ *
+ * File paths can contain `{key}` placeholder tokens (e.g., `S{stepNumber}/TASK.md`)
+ * that are resolved at runtime via `resolvePaths()` using session params.
+ */
+export interface InputValidationSpec {
+  /** Files that must exist before the session starts (relative to goalDir). Paths can contain `{key}` placeholder tokens (e.g., `S{stepNumber}/TASK.md`). */
+  requiredFiles: string[];
+  /** Files that must NOT exist before the session starts. Same placeholder syntax as requiredFiles. */
+  excludedFiles?: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Capability config types
 // ---------------------------------------------------------------------------
 
@@ -79,6 +97,8 @@ export interface CapabilityConfig {
   skills?: CapabilitySkills;
   /** Declarative output document frontmatter schemas. Validated by the exit-gate via validateFrontmatter(). */
   frontmatterSchemas?: FrontmatterSchemaDeclaration[];
+  /** Declarative input contract: files that must/must-not exist before the session starts. */
+  inputValidation?: InputValidationSpec;
 }
 
 /** Callback signature for step-dependent config fields. */

@@ -1,4 +1,4 @@
-import type { CapabilityConfig, ConfigCallback, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback, ValidationRule } from "./types";
+import type { CapabilityConfig, ConfigCallback, InputValidationSpec, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback, ValidationRule } from "./types";
 import type { CapabilityPackageConfig, FrontmatterSchemaDeclaration, CapabilitySkills } from "./capability-package";
 import {
   resolveGoalDir,
@@ -18,6 +18,36 @@ function resolveField<T>(
     return (value as ConfigCallback<T>)(workingDir, params);
   }
   return value;
+}
+
+// ---------------------------------------------------------------------------
+// Path placeholder resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Replace `{key}` placeholder tokens in file paths with values from params.
+ *
+ * Uses regex /\{(\w+)\}/g to find placeholders. If a key exists in params,
+ * its value is converted to a string and substituted. If the key is missing,
+ * the original `{key}` token is preserved as-is.
+ *
+ * Example: resolvePaths(["S{stepNumber}/TASK.md"], { stepNumber: 3 })
+ *   → ["S3/TASK.md"]
+ *
+ * @param paths - Array of file paths (possibly containing `{key}` tokens)
+ * @param params - Key-value map for placeholder substitution
+ * @returns Paths with placeholders replaced
+ */
+export function resolvePaths(
+  paths: string[],
+  params: Record<string, unknown>,
+): string[] {
+  return paths.map((p) =>
+    p.replace(/\{(\w+)\}/g, (_match, key) => {
+      const value = params[key];
+      return value !== undefined && value !== null ? String(value) : `{${key}}`;
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -84,6 +114,7 @@ function buildCapabilityConfig(
   postExecute: PostExecuteCallback | undefined,
   skills: CapabilitySkills | undefined,
   frontmatterSchemas: FrontmatterSchemaDeclaration[] | undefined,
+  inputValidation: InputValidationSpec | undefined,
 ): CapabilityConfig {
   return {
     capability: cap,
@@ -101,6 +132,7 @@ function buildCapabilityConfig(
     postExecute,
     skills,
     frontmatterSchemas,
+    inputValidation,
   };
 }
 
@@ -118,6 +150,7 @@ function normalizePackageConfig(
   const validation = resolveField<ValidationRule>(pkg.validation, extracted.workingDir, params);
   const readOnlyFiles = resolveField<string[]>(pkg.readOnlyFiles, extracted.workingDir, params);
   const writeAllowlist = resolveField<string[]>(pkg.writeAllowlist, extracted.workingDir, params);
+  const inputValidation = resolveField<InputValidationSpec>(pkg.inputValidation, extracted.workingDir, params);
 
   return buildCapabilityConfig(
     cap,
@@ -135,6 +168,7 @@ function normalizePackageConfig(
     pkg.postExecute,
     pkg.skills,
     pkg.frontmatterSchemas,
+    inputValidation,
   );
 }
 

@@ -113,6 +113,44 @@ export function validateFrontmatter(
 }
 
 /**
+ * Check that required files exist and excluded files do not exist.
+ *
+ * Iterates requiredFiles first (fail-fast on first missing), then
+ * excludedFiles (fail-fast on first existing). Returns success only
+ * when all checks pass.
+ *
+ * This is a generic file-existence checker — it does not know anything
+ * about goals or state machines. The caller provides the base directory
+ * and already-resolved paths.
+ *
+ * @param baseDir - Base directory for resolving relative paths
+ * @param requiredFiles - Files that must exist (relative paths)
+ * @param excludedFiles - Files that must NOT exist (relative paths)
+ * @returns Success result or failure with descriptive message
+ */
+export function validateInputs(
+  baseDir: string,
+  requiredFiles: string[],
+  excludedFiles?: string[],
+): { success: boolean; message?: string } {
+  for (const file of requiredFiles) {
+    if (!fs.existsSync(path.join(baseDir, file))) {
+      return { success: false, message: `Required file missing: ${file}` };
+    }
+  }
+
+  if (excludedFiles) {
+    for (const file of excludedFiles) {
+      if (fs.existsSync(path.join(baseDir, file))) {
+        return { success: false, message: `File must not exist: ${file}` };
+      }
+    }
+  }
+
+  return { success: true };
+}
+
+/**
  * Factory that produces a ready-to-use PostValidateCallback from
  * FrontmatterSchemaDeclaration[].
  *

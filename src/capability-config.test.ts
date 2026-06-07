@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import type { PrepareSessionCallback, PostValidateCallback, PostExecuteCallback, CapabilityConfig, CapabilitySkills } from "./types";
-import { resolveCapabilityConfig } from "./capability-config";
+import { resolveCapabilityConfig, resolvePaths } from "./capability-config";
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -683,6 +683,50 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
 // ---------------------------------------------------------------------------
 // resolveCapabilityConfig — skills passthrough
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// resolvePaths — placeholder replacement utility
+// ---------------------------------------------------------------------------
+
+describe("resolvePaths", () => {
+  it("replaces single placeholder with param value", () => {
+    const result = resolvePaths(["S{stepNumber}/TASK.md"], { stepNumber: 3 });
+    expect(result).toEqual(["S3/TASK.md"]);
+  });
+
+  it("replaces multiple placeholders in the same path", () => {
+    const result = resolvePaths(["S{stepNumber}/{fileName}.md"], { stepNumber: 2, fileName: "TASK" });
+    expect(result).toEqual(["S2/TASK.md"]);
+  });
+
+  it("replaces placeholders across multiple paths", () => {
+    const result = resolvePaths(
+      ["S{stepNumber}/TASK.md", "S{stepNumber}/TEST.md"],
+      { stepNumber: 5 },
+    );
+    expect(result).toEqual(["S5/TASK.md", "S5/TEST.md"]);
+  });
+
+  it("preserves unknown placeholder as-is", () => {
+    const result = resolvePaths(["S{stepNumber}/TASK.md"], { otherKey: "value" });
+    expect(result).toEqual(["S{stepNumber}/TASK.md"]);
+  });
+
+  it("returns empty array for empty input", () => {
+    const result = resolvePaths([], { stepNumber: 1 });
+    expect(result).toEqual([]);
+  });
+
+  it("converts numeric param values to strings", () => {
+    const result = resolvePaths(["S{stepNumber}/TASK.md"], { stepNumber: 3 });
+    expect(result).toEqual(["S3/TASK.md"]);
+  });
+
+  it("leaves paths without placeholders unchanged", () => {
+    const result = resolvePaths(["GOAL.md", "PLAN.md"], { stepNumber: 1 });
+    expect(result).toEqual(["GOAL.md", "PLAN.md"]);
+  });
+});
 
 describe("resolveCapabilityConfig — skills passthrough", () => {
   it("skills are copied when the static config defines them (test-skills-cap)", async () => {

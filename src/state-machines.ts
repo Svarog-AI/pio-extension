@@ -177,9 +177,13 @@ export function dispatch<C>(
   for (const m of machines) {
     const edges = getOutgoingEdges(m as StateMachine<C>, currentNode);
     for (const edge of edges) {
-      const result = edge.resolve(context, params);
-      if (result !== undefined) {
-        results.push(result);
+      try {
+        const result = edge.resolve(context, params);
+        if (result !== undefined) {
+          results.push(result);
+        }
+      } catch (err) {
+        console.warn(`dispatch: resolve threw in machine "${m.id}", edge ${edge.from} → ${edge.to}`, err);
       }
     }
   }

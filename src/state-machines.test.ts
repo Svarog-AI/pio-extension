@@ -268,6 +268,36 @@ describe("dispatch — multi-machine (machine === undefined)", () => {
     expect(ourResults).toHaveLength(1);
     expect(ourResults[0].stateMachineId).toBe("id-test-machine");
   });
+
+  it("continues evaluating other machines when one resolve throws", () => {
+    const goodMachine = makeMachine("good-machine", [
+      {
+        from: "x",
+        to: "y",
+        resolve: () => ({ capability: "y", stateMachineId: "good-machine" }),
+      },
+    ]);
+    const badMachine = makeMachine("bad-machine", [
+      {
+        from: "x",
+        to: "z",
+        resolve: () => { throw new Error("boom"); },
+      },
+    ]);
+
+    registerTestMachine(badMachine);
+    registerTestMachine(goodMachine);
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const results = dispatch(undefined, "x", { mode: "x" });
+
+    expect(warnSpy).toHaveBeenCalledOnce();
+    expect(results).toHaveLength(1);
+    expect(results[0].stateMachineId).toBe("good-machine");
+
+    warnSpy.mockRestore();
+  });
 });
 
 // ---------------------------------------------------------------------------

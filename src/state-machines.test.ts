@@ -36,7 +36,8 @@ function makeMachine(
 // Track machine IDs registered in this test file for cleanup.
 const registeredIds: string[] = [];
 
-function registerTestMachine(machine: StateMachine<TestContext>): void {
+/** Register a machine and track its ID for afterEach cleanup. */
+function registerTestMachine<C>(machine: StateMachine<C>): void {
   registerMachine(machine);
   registeredIds.push(machine.id);
 }
@@ -319,9 +320,8 @@ describe("dispatch — isContext guard", () => {
         typeof ctx === "object" && ctx !== null && "reviewId" in ctx,
     };
 
-    registerMachine(goalMachine);
-    registerMachine(reviewMachine);
-    registeredIds.push("goal-machine", "review-machine");
+    registerTestMachine(goalMachine);
+    registerTestMachine(reviewMachine);
 
     // Dispatch with a goal-style context — only goalMachine should fire.
     const results = dispatch(undefined, "start", { goalName: "my-goal" } as any);
@@ -357,8 +357,7 @@ describe("dispatch — isContext guard", () => {
     };
 
     registerTestMachine(noGuardMachine);
-    registerMachine(guardedMachine);
-    registeredIds.push("guarded");
+    registerTestMachine(guardedMachine);
 
     const results = dispatch(undefined, "start", { mode: "x" } as any);
 

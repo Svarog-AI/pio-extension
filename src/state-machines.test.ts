@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { StateMachine, TransitionEdge, TransitionResult } from "./state-machines";
+import type { StateMachine, TransitionEdge } from "./state-machines";
 import { dispatch, getOutgoingEdges, registerMachine, unregisterMachine } from "./state-machines";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -19,13 +19,18 @@ interface TestContext {
 function makeMachine(
   id: string,
   edges: { from: string; to: string; resolve: TransitionEdge<TestContext>["resolve"] }[],
+  isContext?: (ctx: unknown) => ctx is TestContext,
 ): StateMachine<TestContext> {
-  return {
+  const machine: StateMachine<TestContext> = {
     id,
     name: id,
     description: "test machine",
     edges: edges.map((e) => ({ from: e.from, to: e.to, resolve: e.resolve })),
   };
+  if (isContext !== undefined) {
+    machine.isContext = isContext;
+  }
+  return machine;
 }
 
 // Track machine IDs registered in this test file for cleanup.
@@ -283,50 +288,39 @@ describe("dispatch — isContext guard", () => {
   });
 
   it("skips machines whose isContext guard rejects the context", () => {
-    // Machine that only accepts contexts with a `goalName` property.
-    const goalMachine: StateMachine<{ goalName: string }> = {
-      id: "goal-machine",
-      name: "Goal Machine",
-      description: "test",
-      edges: [
+    const aMachine = makeMachine(
+      "mode-a",
+      [
         {
           from: "start",
           to: "end",
-          resolve: () => ({ capability: "end", stateMachineId: "goal-machine" }),
+          resolve: () => ({ capability: "end", stateMachineId: "mode-a" }),
         },
       ],
-      isContext: (ctx): ctx is { goalName: string } =>
-        typeof ctx === "object" && ctx !== null && "goalName" in ctx,
-    };
-
-    // Machine that only accepts contexts with a `reviewId` property.
-    const reviewMachine: StateMachine<{ reviewId: string }> = {
-      id: "review-machine",
-      name: "Review Machine",
-      description: "test",
-      edges: [
+      (ctx): ctx is TestContext => typeof ctx === "object" && ctx !== null && "mode" in ctx && (ctx as any).mode === "a",
+    );
+    const bMachine = makeMachine(
+      "mode-b",
+      [
         {
           from: "start",
           to: "end",
-          resolve: () => ({ capability: "end", stateMachineId: "review-machine" }),
+          resolve: () => ({ capability: "end", stateMachineId: "mode-b" }),
         },
       ],
-      isContext: (ctx): ctx is { reviewId: string } =>
-        typeof ctx === "object" && ctx !== null && "reviewId" in ctx,
-    };
+      (ctx): ctx is TestContext => typeof ctx === "object" && ctx !== null && "mode" in ctx && (ctx as any).mode === "b",
+    );
 
-    registerTestMachine(goalMachine);
-    registerTestMachine(reviewMachine);
+    registerTestMachine(aMachine);
+    registerTestMachine(bMachine);
 
-    // Dispatch with a goal-style context — only goalMachine should fire.
-    const results = dispatch(undefined, "start", { goalName: "my-goal" } as any);
-
+    // Only mode-a should fire.
+    const results = dispatch(undefined, "start", { mode: "a" });
     expect(results).toHaveLength(1);
-    expect(results[0].stateMachineId).toBe("goal-machine");
+    expect(results[0].stateMachineId).toBe("mode-a");
   });
 
   it("evaluates machines without isContext guard as-is", () => {
-    // Machine with no guard — always evaluated.
     const noGuardMachine = makeMachine("no-guard", [
       {
         from: "start",
@@ -334,53 +328,42 @@ describe("dispatch — isContext guard", () => {
         resolve: () => ({ capability: "end", stateMachineId: "no-guard" }),
       },
     ]);
-
-    // Machine with a guard that rejects this context.
-    const guardedMachine: StateMachine<{ reviewId: string }> = {
-      id: "guarded",
-      name: "Guarded",
-      description: "test",
-      edges: [
+    const guardedMachine = makeMachine(
+      "guarded",
+      [
         {
           from: "start",
           to: "end",
           resolve: () => ({ capability: "end", stateMachineId: "guarded" }),
         },
       ],
-      isContext: (ctx): ctx is { reviewId: string } =>
-        typeof ctx === "object" && ctx !== null && "reviewId" in ctx,
-    };
+      (ctx): ctx is TestContext => typeof ctx === "object" && ctx !== null && "mode" in ctx && (ctx as any).mode === "b",
+    );
 
     registerTestMachine(noGuardMachine);
     registerTestMachine(guardedMachine);
 
-    const results = dispatch(undefined, "start", { mode: "x" } as any);
-
-    // Only the machine without a guard should produce results.
+    // Guard rejects mode "x" — only no-guard machine fires.
+    const results = dispatch(undefined, "start", { mode: "x" });
     expect(results).toHaveLength(1);
     expect(results[0].stateMachineId).toBe("no-guard");
   });
 
   it("single-machine dispatch ignores isContext guard", () => {
-    // Even if the guard would reject, single-machine dispatch proceeds.
-    const machine: StateMachine<{ goalName: string }> = {
-      id: "single",
-      name: "Single",
-      description: "test",
-      edges: [
+    const machine = makeMachine(
+      "single",
+      [
         {
           from: "start",
           to: "end",
           resolve: () => ({ capability: "end", stateMachineId: "single" }),
         },
       ],
-      isContext: (ctx): ctx is { goalName: string } =>
-        typeof ctx === "object" && ctx !== null && "goalName" in ctx,
-    };
+      (ctx): ctx is TestContext => typeof ctx === "object" && ctx !== null && "mode" in ctx && (ctx as any).mode === "a",
+    );
 
-    // Pass a context that doesn't match the guard — single-machine path still works.
-    const results = dispatch(machine, "start", { mode: "x" } as any);
-
+    // Guard would reject mode "x" — single-machine path still fires.
+    const results = dispatch(machine, "start", { mode: "x" });
     expect(results).toHaveLength(1);
     expect(results[0].stateMachineId).toBe("single");
   });

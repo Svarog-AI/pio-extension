@@ -3,6 +3,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 import type { CapabilityConfig } from "../types";
+import { getSessionConfig } from "../capability-utils";
 import { validateOutputs, validateFrontmatter } from "./validation";
 import { dispatch } from "../state-machines";
 import { recordTransition } from "../state-machines/pio-workflow-machine";
@@ -21,17 +22,12 @@ export const markCompleteTool = defineTool({
   parameters: Type.Object({}),
 
   async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-    const entries = ctx.sessionManager.getEntries();
-    const entry = entries.find(
-      (e) => e.type === "custom" && e.customType === "pio-config",
-    );
+    const config = getSessionConfig(ctx);
 
     // No config — not a capability session, always pass
-    if (!entry || entry.type !== "custom") {
+    if (!config) {
       return { content: [{ type: "text", text: "No validation rules configured for this session." }], details: {}, terminate: true };
     }
-
-    const config = entry.data as CapabilityConfig;
     const dir = config.workingDir;
 
     // No workingDir — can't do anything meaningful, pass and terminate

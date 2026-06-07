@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as Value from "typebox/value";
 import type { FrontmatterSchemaDeclaration } from "../capability-package";
 import { extractFrontmatter } from "../frontmatter";
+import { getSessionConfig } from "../capability-utils";
 import type { PostValidateCallback, ValidationRule } from "../types";
 
 /** Result of a validation run. */
@@ -174,14 +175,8 @@ export function createFrontmatterValidator(
 export function setupValidation(pi: ExtensionAPI) {
   // 1. Read validation config on session discovery; reset counters
   pi.on("resources_discover", async (_event, ctx) => {
-    const entries = ctx.sessionManager.getEntries();
-    const entry = entries.find(
-      (e) => e.type === "custom" && e.customType === "pio-config",
-    );
-
-    if (!entry || entry.type !== "custom") return;
-
-    const config = entry.data as { capability?: string; workingDir?: string; validation?: ValidationRule; readOnlyFiles?: string[]; writeAllowlist?: string[] };
+    const config = getSessionConfig(ctx);
+    if (!config) return;
     workingDir = config.workingDir;
 
     // Resolve read-only file paths to absolute paths

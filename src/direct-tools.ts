@@ -12,6 +12,7 @@ import { resolveCapabilityConfig } from "./capability-config";
 import { dispatch } from "./state-machines";
 import { recordTransition } from "./state-machines/pio-workflow-machine";
 import { createGoalState } from "./goal-state";
+import { getSessionConfig } from "./capability-utils";
 import type { CapabilityConfig } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -459,30 +460,8 @@ async function handleGoalFromIssue(args: string | undefined, ctx: ExtensionComma
 }
 
 // ---------------------------------------------------------------------------
-// Helpers — session context reading (shared by tool and command)
+// Helpers (shared by tool and command)
 // ---------------------------------------------------------------------------
-
-interface SessionContext {
-  capability?: string;
-  workingDir?: string;
-  sessionParams?: Record<string, unknown>;
-}
-
-/**
- * Read pio-config from the current session entries.
- * Returns null when not inside a capability sub-session.
- */
-export function readSessionContext(ctx: ExtensionCommandContext): SessionContext | null {
-  const entries = ctx.sessionManager.getEntries();
-  const entry = entries.find((e) => e.type === "custom" && e.customType === "pio-config");
-  if (!entry || entry.type !== "custom") return null;
-  const config = entry.data as CapabilityConfig;
-  return {
-    capability: config.capability,
-    workingDir: config.workingDir,
-    sessionParams: config.sessionParams,
-  };
-}
 
 /** Check if a working directory path looks like a goal workspace. */
 export function isGoalWorkspace(workingDir?: string): boolean {
@@ -503,23 +482,23 @@ const transitionTool = defineTool({
   }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const context = readSessionContext(ctx as unknown as ExtensionCommandContext);
-    if (!context) {
+    const config = getSessionConfig(ctx as unknown as ExtensionCommandContext);
+    if (!config) {
       return { content: [{ type: "text", text: "Not inside a capability session. Cannot determine transition context." }], details: {} };
     }
 
     // Derive stateMachineId from session params (prior dispatch result) or default
-    const sessionId = typeof context.sessionParams?.stateMachineId === "string"
-      ? context.sessionParams.stateMachineId
+    const sessionId = typeof config.sessionParams?.stateMachineId === "string"
+      ? config.sessionParams.stateMachineId
       : "goal-driven-development";
 
     // Merge params: session params first, user overrides on top
-    const mergedParams = { ...context.sessionParams, ...params.params };
+    const mergedParams = { ...config.sessionParams, ...params.params };
 
     // Derive queue key from goalName if present
-    const queueKey = typeof context.sessionParams?.goalName === "string"
-      ? context.sessionParams.goalName
-      : context.capability;
+    const queueKey = typeof config.sessionParams?.goalName === "string"
+      ? config.sessionParams.goalName
+      : config.capability;
 
     enqueueTask(process.cwd(), queueKey!, {
       capability: params.capability,
@@ -527,10 +506,10 @@ const transitionTool = defineTool({
     });
 
     // Record audit only for goal workspaces
-    if (isGoalWorkspace(context.workingDir)) {
+    if (isGoalWorkspace(config.workingDir)) {
       recordTransition(
-        context.workingDir!,
-        context.capability!,
+        config.workingDir!,
+        config.capability!,
         { capability: params.capability, stateMachineId: sessionId, params: mergedParams },
       );
     }
@@ -547,22 +526,22 @@ const transitionTool = defineTool({
 // ---------------------------------------------------------------------------
 
 async function handleTransition(_args: string | undefined, ctx: ExtensionCommandContext) {
-  const context = readSessionContext(ctx);
+  const config = getSessionConfig(ctx);
 
-  if (!context?.capability) {
+  if (!config?.capability) {
     ctx.ui.notify("Not inside a capability session. Cannot determine transition context.", "info");
     return;
   }
 
-  const fromCapability = context.capability;
-  const params = typeof context.sessionParams?.goalName === "string"
-    ? { goalName: context.sessionParams.goalName, stepNumber: context.sessionParams.stepNumber, _sessionContext: context.sessionParams }
-    : { ...context.sessionParams };
+  const fromCapability = config.capability;
+  const params = typeof config.sessionParams?.goalName === "string"
+    ? { goalName: config.sessionParams.goalName, stepNumber: config.sessionParams.stepNumber, _sessionContext: config.sessionParams }
+    : { ...config.sessionParams };
 
   // Build state: GoalState for goal workspaces, raw params otherwise
-  const state = isGoalWorkspace(context.workingDir)
-    ? createGoalState(context.workingDir!)
-    : (context.sessionParams as unknown as any);
+  const state = isGoalWorkspace(config.workingDir)
+    ? createGoalState(config.workingDir!)
+    : (config.sessionParams as unknown as any);
 
   const results = dispatch(undefined, fromCapability, state, params);
 

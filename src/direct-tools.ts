@@ -13,7 +13,6 @@ import { dispatch } from "./state-machines";
 import { recordTransition } from "./state-machines/pio-workflow-machine";
 import { createGoalState } from "./goal-state";
 import { getSessionConfig } from "./capability-utils";
-import type { CapabilityConfig } from "./types";
 
 // ---------------------------------------------------------------------------
 // pio_init

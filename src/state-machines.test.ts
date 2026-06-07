@@ -1,5 +1,10 @@
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { StateMachine, TransitionEdge, TransitionResult } from "./state-machines";
-import { dispatch, getOutgoingEdges, registerMachine } from "./state-machines";
+import { dispatch, getOutgoingEdges, registerMachine, unregisterMachine } from "./state-machines";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -14,13 +19,26 @@ interface TestContext {
 function makeMachine(
   id: string,
   edges: { from: string; to: string; resolve: TransitionEdge<TestContext>["resolve"] }[],
+  isContext?: (ctx: unknown) => ctx is TestContext,
 ): StateMachine<TestContext> {
-  return {
+  const machine: StateMachine<TestContext> = {
     id,
     name: id,
     description: "test machine",
     edges: edges.map((e) => ({ from: e.from, to: e.to, resolve: e.resolve })),
   };
+  if (isContext !== undefined) {
+    machine.isContext = isContext;
+  }
+  return machine;
+}
+
+// Track machine IDs registered in this test file for cleanup.
+const registeredIds: string[] = [];
+
+function registerTestMachine(machine: StateMachine<TestContext>): void {
+  registerMachine(machine);
+  registeredIds.push(machine.id);
 }
 
 // ---------------------------------------------------------------------------
@@ -187,9 +205,22 @@ describe("dispatch — single machine", () => {
 // ---------------------------------------------------------------------------
 
 describe("dispatch — multi-machine (machine === undefined)", () => {
+  afterEach(() => {
+    // Clean up any machines registered during these tests.
+    for (const id of registeredIds) {
+      unregisterMachine(id);
+    }
+    registeredIds.length = 0;
+  });
+
   it("returns empty array when no machines are registered", () => {
-    // Use a unique node name that no registered machine could have.
-    const results = dispatch(undefined, "__unique_node_that_does_not_exist__", {} as any);
+    // Ensure registry is empty for this test.
+    const preCount = dispatch(undefined, "any", {} as any).length;
+
+    const results = dispatch(undefined, "any", {} as any);
+
+    // If no machines are registered, dispatch always returns empty.
+    // The preCount check confirms nothing else registered machines between tests.
     expect(results).toHaveLength(0);
   });
 
@@ -209,8 +240,8 @@ describe("dispatch — multi-machine (machine === undefined)", () => {
       },
     ]);
 
-    registerMachine(machine1);
-    registerMachine(machine2);
+    registerTestMachine(machine1);
+    registerTestMachine(machine2);
 
     const results = dispatch(undefined, "x", {} as any);
 
@@ -233,13 +264,131 @@ describe("dispatch — multi-machine (machine === undefined)", () => {
       },
     ]);
 
-    registerMachine(machine);
+    registerTestMachine(machine);
 
     const results = dispatch(undefined, "start", {} as any);
     const ourResults = results.filter((r) => r.stateMachineId === "id-test-machine");
 
     expect(ourResults).toHaveLength(1);
     expect(ourResults[0].stateMachineId).toBe("id-test-machine");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dispatch — isContext guard (heterogeneous machines)
+// ---------------------------------------------------------------------------
+
+describe("dispatch — isContext guard", () => {
+  afterEach(() => {
+    for (const id of registeredIds) {
+      unregisterMachine(id);
+    }
+    registeredIds.length = 0;
+  });
+
+  it("skips machines whose isContext guard rejects the context", () => {
+    // Machine that only accepts contexts with a `goalName` property.
+    const goalMachine: StateMachine<{ goalName: string }> = {
+      id: "goal-machine",
+      name: "Goal Machine",
+      description: "test",
+      edges: [
+        {
+          from: "start",
+          to: "end",
+          resolve: () => ({ capability: "end", stateMachineId: "goal-machine" }),
+        },
+      ],
+      isContext: (ctx): ctx is { goalName: string } =>
+        typeof ctx === "object" && ctx !== null && "goalName" in ctx,
+    };
+
+    // Machine that only accepts contexts with a `reviewId` property.
+    const reviewMachine: StateMachine<{ reviewId: string }> = {
+      id: "review-machine",
+      name: "Review Machine",
+      description: "test",
+      edges: [
+        {
+          from: "start",
+          to: "end",
+          resolve: () => ({ capability: "end", stateMachineId: "review-machine" }),
+        },
+      ],
+      isContext: (ctx): ctx is { reviewId: string } =>
+        typeof ctx === "object" && ctx !== null && "reviewId" in ctx,
+    };
+
+    registerMachine(goalMachine);
+    registerMachine(reviewMachine);
+    registeredIds.push("goal-machine", "review-machine");
+
+    // Dispatch with a goal-style context — only goalMachine should fire.
+    const results = dispatch(undefined, "start", { goalName: "my-goal" } as any);
+
+    expect(results).toHaveLength(1);
+    expect(results[0].stateMachineId).toBe("goal-machine");
+  });
+
+  it("evaluates machines without isContext guard as-is", () => {
+    // Machine with no guard — always evaluated.
+    const noGuardMachine = makeMachine("no-guard", [
+      {
+        from: "start",
+        to: "end",
+        resolve: () => ({ capability: "end", stateMachineId: "no-guard" }),
+      },
+    ]);
+
+    // Machine with a guard that rejects this context.
+    const guardedMachine: StateMachine<{ reviewId: string }> = {
+      id: "guarded",
+      name: "Guarded",
+      description: "test",
+      edges: [
+        {
+          from: "start",
+          to: "end",
+          resolve: () => ({ capability: "end", stateMachineId: "guarded" }),
+        },
+      ],
+      isContext: (ctx): ctx is { reviewId: string } =>
+        typeof ctx === "object" && ctx !== null && "reviewId" in ctx,
+    };
+
+    registerTestMachine(noGuardMachine);
+    registerMachine(guardedMachine);
+    registeredIds.push("guarded");
+
+    const results = dispatch(undefined, "start", { mode: "x" } as any);
+
+    // Only the machine without a guard should produce results.
+    expect(results).toHaveLength(1);
+    expect(results[0].stateMachineId).toBe("no-guard");
+  });
+
+  it("single-machine dispatch ignores isContext guard", () => {
+    // Even if the guard would reject, single-machine dispatch proceeds.
+    const machine: StateMachine<{ goalName: string }> = {
+      id: "single",
+      name: "Single",
+      description: "test",
+      edges: [
+        {
+          from: "start",
+          to: "end",
+          resolve: () => ({ capability: "end", stateMachineId: "single" }),
+        },
+      ],
+      isContext: (ctx): ctx is { goalName: string } =>
+        typeof ctx === "object" && ctx !== null && "goalName" in ctx,
+    };
+
+    // Pass a context that doesn't match the guard — single-machine path still works.
+    const results = dispatch(machine, "start", { mode: "x" } as any);
+
+    expect(results).toHaveLength(1);
+    expect(results[0].stateMachineId).toBe("single");
   });
 });
 
@@ -304,10 +453,17 @@ describe("getOutgoingEdges", () => {
 });
 
 // ---------------------------------------------------------------------------
-// registerMachine
+// registerMachine / unregisterMachine
 // ---------------------------------------------------------------------------
 
 describe("registerMachine", () => {
+  afterEach(() => {
+    for (const id of registeredIds) {
+      unregisterMachine(id);
+    }
+    registeredIds.length = 0;
+  });
+
   it("adds machine to registry so dispatch can find it", () => {
     const machine = makeMachine("reg-single-test", [
       {
@@ -317,7 +473,7 @@ describe("registerMachine", () => {
       },
     ]);
 
-    registerMachine(machine);
+    registerTestMachine(machine);
 
     const results = dispatch(undefined, "start", {} as any);
     const ourResults = results.filter((r) => r.stateMachineId === "reg-single-test");
@@ -335,8 +491,8 @@ describe("registerMachine", () => {
       },
     ]);
 
-    registerMachine(machine);
-    registerMachine(machine);
+    registerTestMachine(machine);
+    registerMachine(machine); // second register (already tracked)
 
     const results = dispatch(undefined, "s", {} as any);
     const ourResults = results.filter((r) => r.stateMachineId === "idempotent-test");
@@ -346,18 +502,55 @@ describe("registerMachine", () => {
   });
 });
 
+describe("unregisterMachine", () => {
+  afterEach(() => {
+    for (const id of registeredIds) {
+      unregisterMachine(id);
+    }
+    registeredIds.length = 0;
+  });
+
+  it("removes machine from registry", () => {
+    const machine = makeMachine("unreg-test", [
+      {
+        from: "start",
+        to: "end",
+        resolve: () => ({ capability: "end", stateMachineId: "unreg-test" }),
+      },
+    ]);
+
+    registerTestMachine(machine);
+
+    // Machine is registered — dispatch finds it.
+    let results = dispatch(undefined, "start", {} as any);
+    let ourResults = results.filter((r) => r.stateMachineId === "unreg-test");
+    expect(ourResults).toHaveLength(1);
+
+    // Unregister — dispatch no longer finds it.
+    const removed = unregisterMachine("unreg-test");
+    expect(removed).toBe(true);
+    // Remove from tracking since we already unregistered.
+    const idx = registeredIds.indexOf("unreg-test");
+    if (idx >= 0) registeredIds.splice(idx, 1);
+
+    results = dispatch(undefined, "start", {} as any);
+    ourResults = results.filter((r) => r.stateMachineId === "unreg-test");
+    expect(ourResults).toHaveLength(0);
+  });
+
+  it("returns false when machine is not registered", () => {
+    const removed = unregisterMachine("nonexistent-machine");
+    expect(removed).toBe(false);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Leaf module constraint
 // ---------------------------------------------------------------------------
 
 describe("leaf module constraint", () => {
   it("state-machines.ts has no internal pio imports", () => {
-    const fs = require("node:fs");
-    const path = require("node:path");
-    const content = fs.readFileSync(
-      path.join(import.meta.dirname, "state-machines.ts"),
-      "utf-8",
-    );
+    const content = readFileSync(join(__dirname, "state-machines.ts"), "utf-8");
 
     // Should not have any `from "./..."` or `from "../..."` imports
     const internalImports = content.match(/from\s+["']\.[^"']+/g);

@@ -9,6 +9,7 @@ import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { createGoalState } from "../../goal-state";
+import { validateInputs } from "../../guards/validation";
 import { type PlanFrontmatter, PLAN_FRONTMATTER_SCHEMA } from "./schemas";
 
 // ---------------------------------------------------------------------------
@@ -108,6 +109,7 @@ const capabilityConfig = {
   validation: { files: ["PLAN.md"] },
   readOnlyFiles: ["GOAL.md"],
   writeAllowlist: ["PLAN.md"],
+  inputValidation: { requiredFiles: ["GOAL.md"], excludedFiles: ["PLAN.md"] },
   skills: {
     mandatory: ["pio-planning", "grill-me"],
     recommended: [
@@ -145,14 +147,9 @@ async function validateGoal(name: string, cwd: string): Promise<{ goalDir: strin
     return { goalDir, ready: false, error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.` };
   }
 
-  const goalPath = `${goalDir}/${GOAL_FILE}`;
-  if (!fs.existsSync(goalPath)) {
-    return { goalDir, ready: false, error: `GOAL.md not found at "${goalPath}". Complete the goal definition first.` };
-  }
-
-  const planPath = `${goalDir}/${PLAN_FILE}`;
-  if (fs.existsSync(planPath)) {
-    return { goalDir, ready: false, error: `PLAN.md already exists at "${planPath}". Delete it or start executing steps if you want to redo the plan.` };
+  const fileCheck = validateInputs(goalDir, [GOAL_FILE], [PLAN_FILE]);
+  if (!fileCheck.success) {
+    return { goalDir, ready: false, error: fileCheck.message! };
   }
 
   return { goalDir, ready: true };

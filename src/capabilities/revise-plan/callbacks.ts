@@ -3,6 +3,7 @@ import * as path from "node:path";
 
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState } from "../../goal-state";
+import { validateInputs } from "../../guards/validation";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -37,22 +38,9 @@ export async function validateRevisePlan(
     };
   }
 
-  const goalPath = path.join(goalDir, GOAL_FILE);
-  if (!fs.existsSync(goalPath)) {
-    return {
-      goalDir,
-      ready: false,
-      error: `GOAL.md not found at "${goalPath}". Complete the goal definition first.`,
-    };
-  }
-
-  const planPath = path.join(goalDir, PLAN_FILE);
-  if (!fs.existsSync(planPath)) {
-    return {
-      goalDir,
-      ready: false,
-      error: `PLAN.md not found at "${planPath}". Create a plan first with /pio-create-plan ${name}.`,
-    };
+  const fileCheck = validateInputs(goalDir, [GOAL_FILE, PLAN_FILE]);
+  if (!fileCheck.success) {
+    return { goalDir, ready: false, error: fileCheck.message! };
   }
 
   return { goalDir, ready: true };

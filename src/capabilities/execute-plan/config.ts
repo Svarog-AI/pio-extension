@@ -8,6 +8,7 @@ import { resolveGoalDir } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
+import { validateInputs } from "../../guards/validation";
 
 // ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
@@ -18,6 +19,7 @@ const capabilityConfig = {
   skills: {
     mandatory: ["tdd", "pio-git"],
   },
+  inputValidation: { requiredFiles: ["GOAL.md", "PLAN.md"] },
   defaultInitialMessage: (workingDir: string, _params?: Record<string, unknown>) => {
     return `Goal workspace is at ${workingDir}. GOAL.md and PLAN.md exist. Implement all steps from PLAN.md in this session.`;
   },
@@ -48,14 +50,9 @@ async function validateGoal(name: string, cwd: string): Promise<{ goalDir: strin
     return { goalDir, ready: false, error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.` };
   }
 
-  const goalPath = `${goalDir}/${GOAL_FILE}`;
-  if (!fs.existsSync(goalPath)) {
-    return { goalDir, ready: false, error: `GOAL.md not found at "${goalPath}". Create a goal first with /pio-create-goal ${name}.` };
-  }
-
-  const planPath = `${goalDir}/${PLAN_FILE}`;
-  if (!fs.existsSync(planPath)) {
-    return { goalDir, ready: false, error: `PLAN.md not found at "${planPath}". Create a plan first with /pio-create-plan ${name}.` };
+  const fileCheck = validateInputs(goalDir, [GOAL_FILE, PLAN_FILE]);
+  if (!fileCheck.success) {
+    return { goalDir, ready: false, error: fileCheck.message! };
   }
 
   return { goalDir, ready: true };

@@ -690,41 +690,73 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
 
 describe("resolvePaths", () => {
   it("replaces single placeholder with param value", () => {
-    const result = resolvePaths(["S{stepNumber}/TASK.md"], { stepNumber: 3 });
-    expect(result).toEqual(["S3/TASK.md"]);
+    const result = resolvePaths(["{name}/file.md"], { name: "my-feature" });
+    expect(result).toEqual(["my-feature/file.md"]);
   });
 
   it("replaces multiple placeholders in the same path", () => {
-    const result = resolvePaths(["S{stepNumber}/{fileName}.md"], { stepNumber: 2, fileName: "TASK" });
-    expect(result).toEqual(["S2/TASK.md"]);
+    const result = resolvePaths(["{dir}/{name}.md"], { dir: "docs", name: "README" });
+    expect(result).toEqual(["docs/README.md"]);
   });
 
   it("replaces placeholders across multiple paths", () => {
     const result = resolvePaths(
-      ["S{stepNumber}/TASK.md", "S{stepNumber}/TEST.md"],
-      { stepNumber: 5 },
+      ["{dir}/a.md", "{dir}/b.md"],
+      { dir: "src" },
     );
-    expect(result).toEqual(["S5/TASK.md", "S5/TEST.md"]);
+    expect(result).toEqual(["src/a.md", "src/b.md"]);
   });
 
   it("preserves unknown placeholder as-is", () => {
-    const result = resolvePaths(["S{stepNumber}/TASK.md"], { otherKey: "value" });
-    expect(result).toEqual(["S{stepNumber}/TASK.md"]);
+    const result = resolvePaths(["{name}/file.md"], { otherKey: "value" });
+    expect(result).toEqual(["{name}/file.md"]);
   });
 
   it("returns empty array for empty input", () => {
-    const result = resolvePaths([], { stepNumber: 1 });
+    const result = resolvePaths([], { name: "test" });
     expect(result).toEqual([]);
   });
 
-  it("converts falsy-zero numeric param value to string", () => {
-    const result = resolvePaths(["S{stepNumber}/TASK.md"], { stepNumber: 0 });
-    expect(result).toEqual(["S0/TASK.md"]);
+  it("leaves paths without placeholders unchanged", () => {
+    const result = resolvePaths(["GOAL.md", "PLAN.md"], { name: "test" });
+    expect(result).toEqual(["GOAL.md", "PLAN.md"]);
   });
 
-  it("leaves paths without placeholders unchanged", () => {
-    const result = resolvePaths(["GOAL.md", "PLAN.md"], { stepNumber: 1 });
-    expect(result).toEqual(["GOAL.md", "PLAN.md"]);
+  // Format specifier: {key:02d}
+
+  it("zero-pads with {key:02d} format specifier", () => {
+    const result = resolvePaths(["S{stepNumber:02d}/TASK.md"], { stepNumber: 3 });
+    expect(result).toEqual(["S03/TASK.md"]);
+  });
+
+  it("zero-pads with {key:02d} — two-digit numbers unchanged", () => {
+    const result = resolvePaths(["S{stepNumber:02d}/TASK.md"], { stepNumber: 12 });
+    expect(result).toEqual(["S12/TASK.md"]);
+  });
+
+  it("zero-pads with {key:02d} — zero becomes 00", () => {
+    const result = resolvePaths(["S{stepNumber:02d}/TASK.md"], { stepNumber: 0 });
+    expect(result).toEqual(["S00/TASK.md"]);
+  });
+
+  it("zero-pads with {key:04d} format specifier", () => {
+    const result = resolvePaths(["S{stepNumber:04d}/TASK.md"], { stepNumber: 7 });
+    expect(result).toEqual(["S0007/TASK.md"]);
+  });
+
+  it("does not pad non-numeric values with :02d", () => {
+    const result = resolvePaths(["{name:02d}/file.md"], { name: "abc" });
+    expect(result).toEqual(["abc/file.md"]);
+  });
+
+  it("preserves unknown placeholder with format specifier", () => {
+    const result = resolvePaths(["S{stepNumber:02d}/TASK.md"], { otherKey: "value" });
+    expect(result).toEqual(["S{stepNumber:02d}/TASK.md"]);
+  });
+
+  it("mixes plain and formatted placeholders", () => {
+    const result = resolvePaths(["{dir}/S{stepNumber:02d}/TASK.md"], { dir: "goals", stepNumber: 3 });
+    expect(result).toEqual(["goals/S03/TASK.md"]);
   });
 });
 

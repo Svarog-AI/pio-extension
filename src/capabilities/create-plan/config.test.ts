@@ -1,7 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import config, { postValidateCreatePlan } from "./config";
+import config, { postValidateCreatePlan, register } from "./config";
+import { vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -493,5 +494,93 @@ describe("postValidateCreatePlan — config wiring", () => {
   it("postValidate is defined on config", () => {
     // Act & Assert
     expect(typeof config.postValidate).toBe("function");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pre-launch validation — validateGoal (tested via tool execute)
+// ---------------------------------------------------------------------------
+
+describe("create-plan tool execute — pre-launch validation", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  /** Access the tool definition from the module. */
+  function getTool() {
+    const registeredTools: Array<any> = [];
+    const mockPi = {
+      registerTool: vi.fn((tool: any) => registeredTools.push(tool)),
+      registerCommand: vi.fn(),
+    };
+    register(mockPi as any);
+    return registeredTools[0];
+  }
+
+  /** Minimal ExtensionContext mock. */
+  function makeCtx(cwd: string) {
+    return {
+      cwd,
+      ui: { notify: vi.fn() },
+      hasUI: false,
+      sessionManager: { getSessionFile: vi.fn(() => ""), getEntries: vi.fn(() => []) },
+      modelRegistry: {},
+      model: undefined,
+      isIdle: vi.fn(() => true),
+      signal: undefined,
+      abort: vi.fn(),
+      hasPendingMessages: vi.fn(() => false),
+      shutdown: vi.fn(),
+      getContextUsage: vi.fn(),
+      compact: vi.fn(),
+      getSystemPrompt: vi.fn(() => ""),
+    };
+  }
+
+  it("returns error when goal workspace does not exist", async () => {
+    const tool = getTool();
+    const result = await tool.execute("test-id", { name: "nonexistent" }, undefined, undefined, makeCtx(tempDir));
+
+    expect(result.content[0].text).toMatch(/does not exist/i);
+  });
+
+  it("returns error when GOAL.md is missing", async () => {
+    // Arrange: goal dir exists but no GOAL.md
+    const goalDir = path.join(tempDir, ".pio", "goals", "no-goal");
+    fs.mkdirSync(goalDir, { recursive: true });
+
+    const tool = getTool();
+    const result = await tool.execute("test-id", { name: "no-goal" }, undefined, undefined, makeCtx(tempDir));
+
+    expect(result.content[0].text).toMatch(/GOAL\.md/i);
+  });
+
+  it("returns error when PLAN.md already exists", async () => {
+    // Arrange: goal dir with GOAL.md and PLAN.md
+    const goalDir = path.join(tempDir, ".pio", "goals", "has-plan");
+    fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
+    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan", "utf-8");
+
+    const tool = getTool();
+    const result = await tool.execute("test-id", { name: "has-plan" }, undefined, undefined, makeCtx(tempDir));
+
+    expect(result.content[0].text).toMatch(/PLAN\.md|must not exist/i);
+  });
+
+  it("enqueues task when GOAL.md exists and PLAN.md does not", async () => {
+    // Arrange: goal dir with GOAL.md only
+    const goalDir = path.join(tempDir, ".pio", "goals", "valid");
+    fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
+
+    const tool = getTool();
+    const result = await tool.execute("test-id", { name: "valid" }, undefined, undefined, makeCtx(tempDir));
+
+    expect(result.content[0].text).toContain("queued");
   });
 });

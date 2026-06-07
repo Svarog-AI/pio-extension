@@ -3,6 +3,8 @@ import * as path from "node:path";
 
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState } from "../../goal-state";
+import { resolvePaths } from "../../capability-config";
+import { validateInputs } from "../../guards/validation";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -90,31 +92,21 @@ export async function validateAndFindNextStep(
     };
   }
 
-  const state = createGoalState(goalDir);
-
-  if (!state.hasGoal()) {
-    return {
-      goalDir,
-      ready: false,
-      error: `GOAL.md not found at "${path.join(goalDir, GOAL_FILE)}". Create a goal first with /pio-create-goal ${name}.`,
-    };
-  }
-
-  if (!state.hasPlan()) {
-    return {
-      goalDir,
-      ready: false,
-      error: `PLAN.md not found at "${path.join(goalDir, PLAN_FILE)}". Create a plan first with /pio-create-plan ${name}.`,
-    };
+  // Validate required base files first (GOAL.md, PLAN.md) — needed before step scanning.
+  const baseCheck = validateInputs(goalDir, [GOAL_FILE, PLAN_FILE]);
+  if (!baseCheck.success) {
+    return { goalDir, ready: false, error: baseCheck.message! };
   }
 
   // Find the first step number (starting at 1) that is ready for execution.
-  // Reuse the existing state to avoid redundant filesystem scans.
+  const state = createGoalState(goalDir);
   const allSteps = state.steps();
+  let foundStep: number | undefined;
   for (let i = 1; ; i++) {
     const step = state.steps().find(s => s.stepNumber === i);
     if (step && step.status() === "defined") {
-      return { goalDir, ready: true, stepNumber: i };
+      foundStep = i;
+      break;
     }
 
     // If we reach a step where the folder doesn't exist at all in state.steps(),
@@ -122,11 +114,23 @@ export async function validateAndFindNextStep(
     if (!allSteps.some(s => s.stepNumber === i)) break;
   }
 
-  return {
-    goalDir,
-    ready: false,
-    error: `No ready steps found for goal "${name}". All steps are either completed or missing specs (TASK.md). Run /pio-evolve-plan ${name} to generate specs.`,
-  };
+  if (foundStep == null) {
+    return {
+      goalDir,
+      ready: false,
+      error: `No ready steps found for goal "${name}". All steps are either completed or missing specs (TASK.md). Run /pio-evolve-plan ${name} to generate specs.`,
+    };
+  }
+
+  // Resolve full file list from inputValidation contract and validate
+  const requiredFiles = resolvePaths([GOAL_FILE, PLAN_FILE, `S{stepNumber:02d}/${TASK_FILE}`], { stepNumber: foundStep });
+  const excludedFiles = resolvePaths([`S{stepNumber:02d}/REVISE_PLAN_NEEDED`], { stepNumber: foundStep });
+  const fileCheck = validateInputs(goalDir, requiredFiles, excludedFiles);
+  if (!fileCheck.success) {
+    return { goalDir, ready: false, error: fileCheck.message! };
+  }
+
+  return { goalDir, ready: true, stepNumber: foundStep };
 }
 
 /**
@@ -150,6 +154,15 @@ export async function validateExplicitStep(
     };
   }
 
+  // Resolve full file list from inputValidation contract and validate
+  const requiredFiles = resolvePaths([GOAL_FILE, PLAN_FILE, `S{stepNumber:02d}/${TASK_FILE}`], { stepNumber });
+  const excludedFiles = resolvePaths([`S{stepNumber:02d}/REVISE_PLAN_NEEDED`], { stepNumber });
+  const fileCheck = validateInputs(goalDir, requiredFiles, excludedFiles);
+  if (!fileCheck.success) {
+    return { goalDir, ready: false, error: fileCheck.message! };
+  }
+
+  // Check step status (implemented/approved/rejected/blocked)
   const state = createGoalState(goalDir);
   const folder = stepFolderName(stepNumber);
   const step = state.steps().find(s => s.stepNumber === stepNumber);
@@ -159,14 +172,6 @@ export async function validateExplicitStep(
       goalDir,
       ready: false,
       error: `Step ${stepNumber} folder "${folder}/" does not exist in goal "${name}". Run /pio-evolve-plan ${name} to generate specs.`,
-    };
-  }
-
-  if (!step.hasTask()) {
-    return {
-      goalDir,
-      ready: false,
-      error: `Step ${stepNumber} is missing ${TASK_FILE} in "${folder}/". Run /pio-evolve-plan ${name} to generate specs.`,
     };
   }
 

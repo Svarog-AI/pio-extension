@@ -24,13 +24,18 @@ function cleanup(tempDir: string): void {
 function createGoalTree(
   tempDir: string,
   goalName: string,
-  options?: { withCompleted?: boolean },
+  options?: { withCompleted?: boolean; withPlan?: boolean },
 ): string {
   const goalDir = path.join(tempDir, ".pio", "goals", goalName);
   fs.mkdirSync(goalDir, { recursive: true });
 
   // GOAL.md is required for goal workspace validity
   fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n\nTest goal.", "utf-8");
+
+  // Optionally create PLAN.md
+  if (options?.withPlan) {
+    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "---\ntotalSteps: 1\nsteps:\n  - name: step-1\n    complexity: task\n---\n# Plan\n\n### Step 1: Test\n", "utf-8");
+  }
 
   // Optionally create COMPLETED marker
   if (options?.withCompleted) {
@@ -152,8 +157,8 @@ describe("validateFinalizeGoal", () => {
   afterEach(() => cleanup(tempDir));
 
   it("returns ready: true when goal dir exists and COMPLETED marker is present", async () => {
-    // Arrange: create goal dir with COMPLETED
-    createGoalTree(tempDir, "completed-goal", { withCompleted: true });
+    // Arrange: create goal dir with PLAN.md and COMPLETED
+    createGoalTree(tempDir, "completed-goal", { withPlan: true, withCompleted: true });
 
     // Act
     const result = await validateFinalizeGoal("completed-goal", tempDir);
@@ -175,8 +180,8 @@ describe("validateFinalizeGoal", () => {
   });
 
   it("returns error when COMPLETED marker is missing (goal not complete)", async () => {
-    // Arrange: create goal dir without COMPLETED
-    createGoalTree(tempDir, "incomplete-goal", { withCompleted: false });
+    // Arrange: create goal dir with PLAN.md but without COMPLETED
+    createGoalTree(tempDir, "incomplete-goal", { withPlan: true, withCompleted: false });
 
     // Act
     const result = await validateFinalizeGoal("incomplete-goal", tempDir);
@@ -184,7 +189,7 @@ describe("validateFinalizeGoal", () => {
     // Assert
     expect(result.ready).toBe(false);
     if (!result.ready) {
-      expect(result.error).toMatch(/not.*complete|complete|finish/i);
+      expect(result.error).toMatch(/not.*complete|finish/i);
     }
   });
 });
@@ -238,7 +243,7 @@ describe("finalizeGoalTool.execute", () => {
 
   it("enqueues task with goalDir (not goalName) when goal is complete", async () => {
     // Arrange: create completed goal
-    createGoalTree(tempDir, "my-goal", { withCompleted: true });
+    createGoalTree(tempDir, "my-goal", { withPlan: true, withCompleted: true });
 
     const tool = getTool();
 
@@ -274,8 +279,8 @@ describe("finalizeGoalTool.execute", () => {
   });
 
   it("returns error when goal is not complete", async () => {
-    // Arrange: create goal without COMPLETED
-    createGoalTree(tempDir, "incomplete", { withCompleted: false });
+    // Arrange: create goal with PLAN.md but without COMPLETED
+    createGoalTree(tempDir, "incomplete", { withPlan: true, withCompleted: false });
 
     const tool = getTool();
 
@@ -383,8 +388,8 @@ describe("handleFinalizeGoal", () => {
   });
 
   it("shows error when goal is not complete", async () => {
-    // Arrange: create goal without COMPLETED
-    createGoalTree(tempDir, "incomplete", { withCompleted: false });
+    // Arrange: create goal with PLAN.md but without COMPLETED
+    createGoalTree(tempDir, "incomplete", { withPlan: true, withCompleted: false });
 
     const handler = getHandler();
     const ctx = makeCtx(tempDir);

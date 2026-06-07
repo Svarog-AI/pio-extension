@@ -3,6 +3,7 @@ import * as path from "node:path";
 
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState } from "../../goal-state";
+import { validateInputs } from "../../guards/validation";
 import type { PlanFrontmatter } from "./schemas";
 
 // ---------------------------------------------------------------------------
@@ -85,15 +86,16 @@ export async function validateAndFindNextStep(
     };
   }
 
-  const state = createGoalState(goalDir);
-
-  if (!state.hasPlan()) {
+  const fileCheck = validateInputs(goalDir, [PLAN_FILE]);
+  if (!fileCheck.success) {
     return {
       goalDir,
       ready: false,
-      error: `PLAN.md not found at "${path.join(goalDir, PLAN_FILE)}". Create a plan first with /pio-create-plan ${name}.`,
+      error: fileCheck.message!,
     };
   }
+
+  const state = createGoalState(goalDir);
 
   // Pre-launch guard: if COMPLETED marker already exists, all steps are specified — do not relaunch.
   if (state.goalCompleted()) {

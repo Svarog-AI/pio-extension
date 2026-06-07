@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as Value from "typebox/value";
 import config from "./config";
-import { isStepReviewable, findMostRecentCompletedStep, applyReviewDecision } from "./callbacks";
+import { isStepReviewable, findMostRecentCompletedStep, applyReviewDecision, validateStepForReview, validateAndFindReviewStep } from "./callbacks";
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
 import { stepFolderName } from "../../fs-utils";
 
@@ -997,5 +997,156 @@ describe("review-task postValidate — missing stepNumber", () => {
     expect(() => {
       config.postValidate!(goalDir, {});
     }).toThrow(/stepNumber/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateStepForReview — pre-launch validation
+// ---------------------------------------------------------------------------
+
+describe("validateStepForReview — pre-launch validation", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns ready: true when GOAL.md, PLAN.md, S01/COMPLETED, and S01/SUMMARY.md exist", async () => {
+    const { goalDir } = createGoalTree(tempDir, "reviewable-goal", {
+      steps: [{ number: 1, files: ["TASK.md", "COMPLETED", "SUMMARY.md"] }],
+    });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n", "utf-8");
+
+    // Act
+    const result = await validateStepForReview("reviewable-goal", tempDir, 1);
+
+    // Assert
+    expect(result.ready).toBe(true);
+    if (result.ready) {
+      expect(result.stepNumber).toBe(1);
+    }
+  });
+
+  it("returns error when GOAL.md is missing", async () => {
+    // Arrange: goal dir with PLAN.md but no GOAL.md
+    const goalDir = path.join(tempDir, ".pio", "goals", "no-goal");
+    fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n", "utf-8");
+    const s01Dir = path.join(goalDir, "S01");
+    fs.mkdirSync(s01Dir, { recursive: true });
+    fs.writeFileSync(path.join(s01Dir, "COMPLETED"), "", "utf-8");
+    fs.writeFileSync(path.join(s01Dir, "SUMMARY.md"), "# Summary\n", "utf-8");
+
+    // Act
+    const result = await validateStepForReview("no-goal", tempDir, 1);
+
+    // Assert
+    expect(result.ready).toBe(false);
+    if (!result.ready) {
+      expect(result.error).toMatch(/GOAL\.md/i);
+    }
+  });
+
+  it("returns error when S01/COMPLETED is missing", async () => {
+    // Arrange: goal dir with GOAL.md, PLAN.md, S01/SUMMARY.md but no S01/COMPLETED
+    const goalDir = path.join(tempDir, ".pio", "goals", "no-completed");
+    fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n", "utf-8");
+    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n", "utf-8");
+    const s01Dir = path.join(goalDir, "S01");
+    fs.mkdirSync(s01Dir, { recursive: true });
+    fs.writeFileSync(path.join(s01Dir, "SUMMARY.md"), "# Summary\n", "utf-8");
+
+    // Act
+    const result = await validateStepForReview("no-completed", tempDir, 1);
+
+    // Assert
+    expect(result.ready).toBe(false);
+    if (!result.ready) {
+      expect(result.error).toMatch(/COMPLETED/i);
+    }
+  });
+
+  it("returns error when S01/SUMMARY.md is missing", async () => {
+    // Arrange: goal dir with GOAL.md, PLAN.md, S01/COMPLETED but no S01/SUMMARY.md
+    const goalDir = path.join(tempDir, ".pio", "goals", "no-summary");
+    fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n", "utf-8");
+    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n", "utf-8");
+    const s01Dir = path.join(goalDir, "S01");
+    fs.mkdirSync(s01Dir, { recursive: true });
+    fs.writeFileSync(path.join(s01Dir, "COMPLETED"), "", "utf-8");
+
+    // Act
+    const result = await validateStepForReview("no-summary", tempDir, 1);
+
+    // Assert
+    expect(result.ready).toBe(false);
+    if (!result.ready) {
+      expect(result.error).toMatch(/SUMMARY\.md/i);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateAndFindReviewStep — pre-launch validation
+// ---------------------------------------------------------------------------
+
+describe("validateAndFindReviewStep — pre-launch validation", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns ready: true when GOAL.md, PLAN.md, S01/COMPLETED, and S01/SUMMARY.md exist", async () => {
+    const { goalDir } = createGoalTree(tempDir, "reviewable-goal", {
+      steps: [{ number: 1, files: ["TASK.md", "COMPLETED", "SUMMARY.md"] }],
+    });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n", "utf-8");
+
+    // Act
+    const result = await validateAndFindReviewStep("reviewable-goal", tempDir);
+
+    // Assert
+    expect(result.ready).toBe(true);
+    if (result.ready) {
+      expect(result.stepNumber).toBe(1);
+    }
+  });
+
+  it("returns error when GOAL.md is missing", async () => {
+    // Arrange: goal dir with PLAN.md but no GOAL.md
+    const goalDir = path.join(tempDir, ".pio", "goals", "no-goal");
+    fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n", "utf-8");
+    const s01Dir = path.join(goalDir, "S01");
+    fs.mkdirSync(s01Dir, { recursive: true });
+    fs.writeFileSync(path.join(s01Dir, "COMPLETED"), "", "utf-8");
+    fs.writeFileSync(path.join(s01Dir, "SUMMARY.md"), "# Summary\n", "utf-8");
+
+    // Act
+    const result = await validateAndFindReviewStep("no-goal", tempDir);
+
+    // Assert
+    expect(result.ready).toBe(false);
+    if (!result.ready) {
+      expect(result.error).toMatch(/GOAL\.md/i);
+    }
+  });
+
+  it("returns error when goal workspace does not exist", async () => {
+    // Act
+    const result = await validateAndFindReviewStep("nonexistent", tempDir);
+
+    // Assert
+    expect(result.ready).toBe(false);
+    if (!result.ready) {
+      expect(result.error).toMatch(/does not exist/i);
+    }
   });
 });

@@ -25,16 +25,34 @@ function resolveField<T>(
 // ---------------------------------------------------------------------------
 
 /**
- * Replace `{key}` placeholder tokens in file paths with values from params.
+ * Parse a format specifier like "02d" into { pad: "0", width: 2, type: "d" }.
+ * Returns null if the format is not recognized.
+ */
+function parseFormatSpecifier(spec: string): { pad: string; width: number; type: string } | null {
+  const match = spec.match(/^(.)?(\d+)(.)$/);
+  if (!match) return null;
+  return {
+    pad: match[1] || " ",
+    width: parseInt(match[2], 10),
+    type: match[3],
+  };
+}
+
+/**
+ * Replace `{key}` and `{key:format}` placeholder tokens in file paths with values from params.
  *
- * Uses regex /\{(\w+)\}/g to find placeholders. If a key exists in params,
- * its value is converted to a string and substituted. If the key is missing,
- * the original `{key}` token is preserved as-is.
+ * Uses regex /\{(\w+)(?::([^}]+))?\}/g to find placeholders. Supports format specifiers:
+ *   - `{key:02d}` — zero-pad integer to 2 digits (e.g. 3 → "03")
+ *   - `{key:04d}` — zero-pad integer to 4 digits (e.g. 7 → "0007")
+ *   - `{key}`     — plain string substitution (no formatting)
  *
- * Example: resolvePaths(["S{stepNumber}/TASK.md"], { stepNumber: 3 })
- *   → ["S3/TASK.md"]
+ * If a key is missing from params, the original `{key}` token is preserved as-is.
  *
- * @param paths - Array of file paths (possibly containing `{key}` tokens)
+ * Examples:
+ *   resolvePaths(["S{stepNumber:02d}/TASK.md"], { stepNumber: 3 }) → ["S03/TASK.md"]
+ *   resolvePaths(["{name}/file.md"], { name: "my-feature" })       → ["my-feature/file.md"]
+ *
+ * @param paths - Array of file paths (possibly containing `{key}` or `{key:format}` tokens)
  * @param params - Key-value map for placeholder substitution
  * @returns Paths with placeholders replaced
  */
@@ -43,9 +61,18 @@ export function resolvePaths(
   params: Record<string, unknown>,
 ): string[] {
   return paths.map((p) =>
-    p.replace(/\{(\w+)\}/g, (_match, key) => {
+    p.replace(/\{(\w+)(?::([^}]+))?\}/g, (_match, key, formatSpec) => {
       const value = params[key];
-      return value !== undefined && value !== null ? String(value) : `{${key}}`;
+      if (value === undefined || value === null) return `{${key}${formatSpec ? ":" + formatSpec : ""}}`;
+
+      if (formatSpec) {
+        const parsed = parseFormatSpecifier(formatSpec);
+        if (parsed && parsed.type === "d" && typeof value === "number") {
+          return String(value).padStart(parsed.width, parsed.pad);
+        }
+      }
+
+      return String(value);
     }),
   );
 }

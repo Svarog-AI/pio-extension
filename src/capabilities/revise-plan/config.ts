@@ -17,6 +17,7 @@ const capabilityConfig = {
   validation: { files: ["PLAN.md"] },
   readOnlyFiles: resolveReviseReadOnlyFiles,
   writeAllowlist: resolveReviseWriteAllowlist,
+  inputValidation: { requiredFiles: ["GOAL.md", "PLAN.md"] },
   skills: {
     mandatory: ["pio-planning", "grill-me"],
     recommended: [

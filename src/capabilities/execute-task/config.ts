@@ -8,7 +8,7 @@ import { launchCapability, setMergedSkills } from "../../capability-session";
 import { mergeCapabilitySkills } from "../../capability-utils";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
-import { resolveCapabilityConfig } from "../../capability-config";
+import { resolveCapabilityConfig, resolvePaths } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { createGoalState } from "../../goal-state";
 import {
@@ -27,6 +27,16 @@ const capabilityConfig = {
   validation: resolveExecuteValidation,
   readOnlyFiles: resolveExecuteReadOnlyFiles,
   prepareSession: prepareExecuteSession,
+  inputValidation: (_workingDir: string, params?: Record<string, unknown>) => {
+    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+    if (stepNumber == null) {
+      throw new Error("stepNumber is required for execute-task. Ensure the task was enqueued with a valid step number.");
+    }
+    return {
+      requiredFiles: resolvePaths(["GOAL.md", "PLAN.md", `S{stepNumber:02d}/TASK.md`], { stepNumber }),
+      excludedFiles: resolvePaths([`S{stepNumber:02d}/REVISE_PLAN_NEEDED`], { stepNumber }),
+    };
+  },
   skills: {
     mandatory: ["tdd", "pio-git"],
   },

@@ -19,18 +19,13 @@ interface TestContext {
 function makeMachine(
   id: string,
   edges: { from: string; to: string; resolve: TransitionEdge<TestContext>["resolve"] }[],
-  isContext?: (ctx: unknown) => ctx is TestContext,
 ): StateMachine<TestContext> {
-  const machine: StateMachine<TestContext> = {
+  return {
     id,
     name: id,
     description: "test machine",
     edges: edges.map((e) => ({ from: e.from, to: e.to, resolve: e.resolve })),
   };
-  if (isContext !== undefined) {
-    machine.isContext = isContext;
-  }
-  return machine;
 }
 
 // Track machine IDs registered in this test file for cleanup.

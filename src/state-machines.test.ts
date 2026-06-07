@@ -25,6 +25,8 @@ function makeMachine(
     name: id,
     description: "test machine",
     edges: edges.map((e) => ({ from: e.from, to: e.to, resolve: e.resolve })),
+    isContext: (ctx): ctx is TestContext =>
+      typeof ctx === "object" && ctx !== null && "mode" in ctx,
   };
 }
 
@@ -239,7 +241,7 @@ describe("dispatch — multi-machine (machine === undefined)", () => {
     registerTestMachine(machine1);
     registerTestMachine(machine2);
 
-    const results = dispatch(undefined, "x", {} as any);
+    const results = dispatch(undefined, "x", { mode: "x" });
 
     // Filter to only our test machines' results (other registered machines might exist)
     const ourResults = results.filter(
@@ -262,7 +264,7 @@ describe("dispatch — multi-machine (machine === undefined)", () => {
 
     registerTestMachine(machine);
 
-    const results = dispatch(undefined, "start", {} as any);
+    const results = dispatch(undefined, "start", { mode: "x" });
     const ourResults = results.filter((r) => r.stateMachineId === "id-test-machine");
 
     expect(ourResults).toHaveLength(1);
@@ -325,22 +327,6 @@ describe("dispatch — isContext guard", () => {
 
     const results = dispatch(undefined, "start", { reviewId: "1" } as any);
     expect(results).toHaveLength(0);
-  });
-
-  it("evaluates machines without isContext guard as-is", () => {
-    const machine = makeMachine("no-guard", [
-      {
-        from: "start",
-        to: "end",
-        resolve: () => ({ capability: "end", stateMachineId: "no-guard" }),
-      },
-    ]);
-
-    registerTestMachine(machine);
-
-    const results = dispatch(undefined, "start", { mode: "x" });
-    expect(results).toHaveLength(1);
-    expect(results[0].stateMachineId).toBe("no-guard");
   });
 
   it("single-machine dispatch ignores isContext guard", () => {
@@ -448,7 +434,7 @@ describe("registerMachine", () => {
 
     registerTestMachine(machine);
 
-    const results = dispatch(undefined, "start", {} as any);
+    const results = dispatch(undefined, "start", { mode: "x" });
     const ourResults = results.filter((r) => r.stateMachineId === "reg-single-test");
 
     expect(ourResults).toHaveLength(1);
@@ -467,7 +453,7 @@ describe("registerMachine", () => {
     registerTestMachine(machine);
     registerMachine(machine); // second register (already tracked)
 
-    const results = dispatch(undefined, "s", {} as any);
+    const results = dispatch(undefined, "s", { mode: "x" });
     const ourResults = results.filter((r) => r.stateMachineId === "idempotent-test");
 
     // Should still be exactly 1 result, not 2
@@ -495,7 +481,7 @@ describe("unregisterMachine", () => {
     registerTestMachine(machine);
 
     // Machine is registered — dispatch finds it.
-    let results = dispatch(undefined, "start", {} as any);
+    let results = dispatch(undefined, "start", { mode: "x" });
     let ourResults = results.filter((r) => r.stateMachineId === "unreg-test");
     expect(ourResults).toHaveLength(1);
 
@@ -506,7 +492,7 @@ describe("unregisterMachine", () => {
     const idx = registeredIds.indexOf("unreg-test");
     if (idx >= 0) registeredIds.splice(idx, 1);
 
-    results = dispatch(undefined, "start", {} as any);
+    results = dispatch(undefined, "start", { mode: "x" });
     ourResults = results.filter((r) => r.stateMachineId === "unreg-test");
     expect(ourResults).toHaveLength(0);
   });

@@ -69,27 +69,6 @@ export interface StateMachine<C> {
   description: string;
   /** Ordered array of transition edges. Evaluated in array order during dispatch. */
   edges: TransitionEdge<C>[];
-  /**
-   * Optional runtime type guard to filter out incompatible machines during
-   * multi-machine dispatch (`dispatch(undefined, context)`).
-   *
-   * When `dispatch(undefined, context)` iterates the registry, machines whose
-   * `isContext` guard rejects the provided context are skipped. Machines
-   * without a guard are evaluated as-is (backward compatible).
-   *
-   * The single-machine path (`dispatch(machine, ...)`) doesn't need the guard —
-   * caller types are safe by construction.
-   *
-   * @example
-   * ```ts
-   * const machine: StateMachine<GoalState> = {
-   *   id: "goal-workflow",
-   *   // ...
-   *   isContext: (ctx): ctx is GoalState => typeof ctx === "object" && ctx !== null && "goalName" in ctx,
-   * };
-   * ```
-   */
-  isContext?: (ctx: unknown) => ctx is C;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,14 +173,8 @@ export function dispatch<C>(
   const machines: StateMachine<unknown>[] =
     machine !== undefined ? [machine as StateMachine<unknown>] : _registeredMachines;
 
-  const isMultiMachine = machine === undefined;
   const results: TransitionResult[] = [];
   for (const m of machines) {
-    // In multi-machine dispatch only, skip machines whose isContext guard rejects the context.
-    // Single-machine dispatch ignores the guard — caller types are safe by construction.
-    if (isMultiMachine && m.isContext !== undefined && !m.isContext(context)) {
-      continue;
-    }
     const edges = getOutgoingEdges(m as StateMachine<C>, currentNode);
     for (const edge of edges) {
       const result = edge.resolve(context, params);

@@ -228,6 +228,86 @@ describe("mark-complete (setupMarkComplete)", () => {
     expect(result.terminate).toBe(true);
   });
 
+  it("multiple dispatch results do not enqueue task and recommend /pio-transition", async () => {
+    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockDispatch.mockReturnValue([
+      { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 2 } },
+      { capability: "execute-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } },
+    ]);
+
+    const postValidateMock = vi.fn().mockReturnValue({ success: true });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "review-task",
+              workingDir: tempDir,
+              validation: { files: [] },
+              postValidate: postValidateMock,
+              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+            },
+          },
+        ],
+      },
+    };
+
+    const result = await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+
+    // dispatch was called but no task should be enqueued
+    expect(mockDispatch).toHaveBeenCalled();
+    expect(mockEnqueueTask).not.toHaveBeenCalled();
+    expect(mockRecordTransition).not.toHaveBeenCalled();
+    expect(mockWriteLastTask).not.toHaveBeenCalled();
+
+    // notification should recommend /pio-transition with available capabilities
+    expect(result.content[0].text).toContain("Multiple transitions available");
+    expect(result.content[0].text).toContain("evolve-plan");
+    expect(result.content[0].text).toContain("execute-task");
+    expect(result.content[0].text).toContain("/pio-transition");
+    expect(result.terminate).toBe(true);
+  });
+
+  it("no dispatch results (terminal state) do not enqueue task", async () => {
+    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockDispatch.mockReturnValue([]);
+
+    const postValidateMock = vi.fn().mockReturnValue({ success: true });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "finalize-goal",
+              workingDir: tempDir,
+              validation: { files: [] },
+              postValidate: postValidateMock,
+              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+            },
+          },
+        ],
+      },
+    };
+
+    const result = await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+
+    // dispatch was called but no task should be enqueued
+    expect(mockDispatch).toHaveBeenCalled();
+    expect(mockEnqueueTask).not.toHaveBeenCalled();
+    expect(mockRecordTransition).not.toHaveBeenCalled();
+    expect(mockWriteLastTask).not.toHaveBeenCalled();
+
+    // terminal state — no extra notification, just "Validation passed"
+    expect(result.content[0].text).toBe("Validation passed. All expected outputs have been produced.");
+    expect(result.terminate).toBe(true);
+  });
+
   it("postExecute runs after transition routing", async () => {
     mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
     mockDispatch.mockReturnValue(

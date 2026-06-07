@@ -4,31 +4,43 @@
 
 ### Extension Point Architecture
 
-pio is a **pi extension** — it registers with the pi coding agent framework via `src/index.ts`, which exports a default function `(pi: ExtensionAPI) => void`. This function:
+pio is a **pi extension** — it registers with the pi coding agent framework via `src/index.ts`, which exports an `async` default function `(pi: ExtensionAPI) => void`. This function:
 1. Registers discoverable skills (`resources_discover` event)
-2. Wires shared infrastructure (`setupCapability`, `setupValidation`, `setupSessionGuard`)
-3. Registers individual capabilities (`setupInit`, `setupCreateGoal`, etc.)
+2. Wires shared infrastructure: `setupSessionInfrastructure()`, `setupMarkComplete()`, `setupValidation()`, `setupSessionGuard()`, `setupStepNudging()`, `setupDirectTools()`
+3. **Auto-discovers** AI-driven capabilities via `discoverCapabilities(__dirname)` which scans `src/capabilities/` for directories containing `config.ts`, then calls `registerCapability(pi, descriptor)` for each
+4. Registers non-AI tools (init, delete-goal, list-goals, parent, create-issue, goal-from-issue) via `setupDirectTools(pi)` — consolidated in `src/direct-tools.ts`
+
+Test fixtures (`test-*` prefixed directories) are automatically filtered out from the discovery loop.
 
 ### Skill Auto-Discovery
 
 Skills are auto-discovered from the filesystem — no hardcoded registration list. The `setupSkills()` function in `src/index.ts` scans `SKILLS_DIR` at startup using `fs.readdirSync()`, filtering directories by `SKILL.md` existence. To add a new skill, create its directory and `SKILL.md` file under `src/skills/`; it will be registered automatically on next startup. If `SKILLS_DIR` doesn't exist or is unreadable, the scan silently produces an empty array rather than crashing.
 
-### Capability Pattern
+### Capability Package Pattern
 
-Each workflow capability follows a consistent module structure:
-1. **`CAPABILITY_CONFIG: StaticCapabilityConfig`** — single source of truth for session shape (prompt, validation rules, file protections, initial message)
-2. **Tool (`defineTool`)** — agent-callable with TypeBox parameter schemas
-3. **Command handler** — user-callable via `/pio-*` prefix in the TUI
-4. **`setup*()` function** — registers both tool and command with the pi API
+Each AI-driven capability is a **directory package** under `src/capabilities/<name>/` with structured component files:
+1. **`config.ts`** — default exports `CapabilityPackageConfig` (session shape: validation, file protections, skills, frontmatterSchemas). Named export `register(pi)` registers tool + command with the pi API
+2. **`role.md`** — Role description (prompt component)
+3. **`workflow.ts`** — default exports `WorkflowStep[]`, each step can declare `skills: { mandatory?: string[], recommended?: ... }`
+4. **`guidelines.md`** — Guidelines (prompt component)
+5. **`callbacks.ts`** *(optional)* — Lifecycle callbacks: validation, file protection resolvers
+6. **`schemas.ts`** *(optional)* — Capability-local TypeBox frontmatter schemas for output validation
+7. **`config.test.ts`** — Colocated tests
+
+Prompts are **compiled at runtime** by `prompt-compiler.ts` (`compilePrompt()`) from component files instead of reading single `.md` files. The old `src/prompts/` directory was removed.
+
+**Non-AI capabilities** (init, delete-goal, list-goals, parent, create-issue, goal-from-issue) are consolidated in `src/direct-tools.ts` — they have no prompts, no sub-sessions, no validation hooks.
+
+**Registration:** `discoverCapabilities()` auto-discovers directory packages; `registerCapability(pi, descriptor)` calls the `register(pi)` named export from each `config.ts`. No hardcoded per-capability imports in `index.ts`.
 
 **Project-scoped capabilities:** When a capability writes to `.pio/PROJECT/*.md` (repo-root paths, not goal workspace), pass `goalDir` in enqueue params instead of `goalName`. This keeps `workingDir` as `cwd` so the writeAllowlist resolves relative to repo root. Capabilities like `project-context` and `finalize-goal` follow this pattern.
 
 ### Sub-Session Lifecycle
 
-The `session-capability.ts` module orchestrates sub-sessions:
+The `capability-session.ts` module (renamed from `session-capability.ts`) orchestrates sub-sessions:
 1. **Launch:** `launchCapability()` calls `ctx.newSession()` with a custom `pio-config` entry containing prompt, working directory, validation rules, and file protections
-2. **Resources discover:** Config is read, prompts loaded, `prepareSession` hooks run, session name set. Capabilities can define `prepareSession` callbacks (e.g., `execute-task`, `review-task`) that execute here — before `before_agent_start`. This allows runtime config enrichment: execute-task and review-task use `prepareSession` to read per-step skills from TASK.md frontmatter and merge them into the capability config via `setMergedSkills()`.
-3. **Before agent start:** `.pio/PROJECT/OVERVIEW.md` + capability prompt are injected as a custom conversation message (preserves pi's default system prompt). Model switching occurs here if `~/.pi/pio-config.yaml` specifies per-capability models. Skill loading runs via `buildSkillLoadingSection()`: mandatory skills from the config are frontmatter-stripped and wrapped in `<skill>` XML tags; recommended skills listed as instructions. Global defaults (`pio`, `ask-user`) are always prepended.
+2. **Resources discover:** Config is read, prompts loaded, `prepareSession` hooks run, session name set. New-style capabilities (directory packages) use `compilePrompt()` to assemble prompts from component files; old-style falls back to reading `.md` files directly. Capabilities can define `prepareSession` callbacks (e.g., `execute-task`, `review-task`) that execute here — before `before_agent_start`. This allows runtime config enrichment: execute-task and review-task use `prepareSession` to read per-step skills from TASK.md frontmatter and merge them into the capability config via `mergeCapabilitySkills()` from `capability-utils.ts`.
+3. **Before agent start:** `.pio/PROJECT/OVERVIEW.md` + compiled capability prompt are injected as a custom conversation message (preserves pi's default system prompt). Model switching occurs here if `~/.pi/pio-config.yaml` specifies per-capability models. Skill loading runs via `buildSkillLoadingSection()`: mandatory skills from the config are frontmatter-stripped and wrapped in `<skill>` XML tags; recommended skills listed as instructions. Global defaults (`pio`, `ask-user`) are always prepended.
 4. **File protection:** The `tool_call` event handler enforces read-only files and write allowlists, with a default-deny policy for `.pio/` writes outside the session's own goal workspace
 5. **Plan revision trigger:** During evolve-plan, if the specification writer detects significant divergence from the plan, it writes a `REVISE_PLAN_NEEDED` marker in the step folder. The transition resolver checks for this marker and routes to `revise-plan` instead of continuing normally
 6. **Completion:** Agent calls `pio_mark_complete`, which validates outputs, automates review-code markers (APPROVED/REJECTED), resolves transitions, and auto-enqueues the next task
@@ -55,8 +67,8 @@ Plan steps declared with `complexity: "subgoal"` in the PLAN.md frontmatter `ste
 
 Skills are loaded dynamically at session startup, replacing the old static `_skill-loading.md` approach. Resolution order (highest priority first):
 
-1. **Per-step skills** — Declared in TASK.md YAML frontmatter (`skills.mandatory`, `skills.recommended`). Read by `StepStatus.taskSkills()` during `prepareSession`. Merged with base config skills via `mergeCapabilitySkills()` (Set-based dedup for mandatory, Map-based first-seen-wins for recommended).
-2. **Base capability skills** — Declared in each capability's `CAPABILITY_CONFIG.skills` field (`StaticCapabilityConfig`). Propagated through `resolveCapabilityConfig()` into runtime `CapabilityConfig`.
+1. **Per-step skills** — Declared in TASK.md YAML frontmatter (`skills.mandatory`, `skills.recommended`) or in capability `workflow.ts` step declarations. Read during `prepareSession`. Merged with base config skills via `mergeCapabilitySkills()` from `capability-utils.ts` (Set-based dedup for mandatory, Map-based first-seen-wins for recommended).
+2. **Base capability skills** — Declared in each capability's `CapabilityPackageConfig.skills` field. Propagated through `resolveCapabilityConfig()` into runtime `CapabilityConfig`.
 3. **Global mandatory skills** — `pio` and `ask-user` are always injected by `buildSkillLoadingSection()`, regardless of capability config.
 
 Mandatory skills are force-injected (content read from disk, frontmatter stripped, wrapped in `<skill>` XML tags). Recommended skills are listed as loading instructions (LLM decides whether to load based on condition).
@@ -65,9 +77,15 @@ Mandatory skills are force-injected (content read from disk, frontmatter strippe
 
 1. **Markdown-first workflow:** GOAL.md, PLAN.md, TASK.md, TEST.md, REVIEW.md are the authoritative artifacts. No database or structured state
 2. **File markers for state:** APPROVED, REJECTED, COMPLETED, BLOCKED — empty files as state indicators (checked by marker priority)
-3. **Dynamic capability loading:** `resolveCapabilityConfig()` uses dynamic imports to load capability modules at runtime
-4. **Callback-based config:** Validation rules and file protections can be static arrays or callbacks `(workingDir, params) => T` for step-dependent configuration
-5. **No transpilation:** Runs as raw TypeScript ESM via pi's runtime — `tsconfig.json` is for type checking only
+3. **Capability package system:** AI-driven capabilities are directory packages (`src/capabilities/<name>/`) with component files: `config.ts` (default export + `register(pi)`), `role.md`, `workflow.ts`, `guidelines.md`, optional `callbacks.ts` and `schemas.ts`. Prompts compiled at runtime by `prompt-compiler.ts` from component files
+4. **Auto-discovery:** `discoverCapabilities()` scans `src/capabilities/` for directory packages containing `config.ts`; `registerCapability(pi, descriptor)` handles registration — no hardcoded imports in `index.ts`
+5. **Direct tools consolidation:** Non-AI capabilities (init, delete-goal, list-goals, parent, create-issue, goal-from-issue) consolidated in `src/direct-tools.ts` — single module for simple tool/command registrations
+6. **Frontmatter schema validation:** Capabilities declare `frontmatterSchemas: FrontmatterSchemaDeclaration[]` on `CapabilityPackageConfig`. The exit-gate (`validation.ts`) validates output YAML against TypeBox schemas before allowing session completion
+7. **Step nudging:** `workflow-step-finish` tool + `turn_end` nudge injection guides agents through multi-step workflows. State tracked in `step-nudging.ts`, injected via `pi.sendMessage({ deliverAs: "steer" })`
+8. **Prompt compilation:** `compilePrompt()` reads component files (`role.md`, `workflow.ts`, `guidelines.md`) and assembles the final prompt — replaces monolithic `.md` prompts (old `src/prompts/` directory removed)
+9. **Dynamic capability loading:** `resolveCapabilityConfig()` uses dynamic imports to load capability modules at runtime
+10. **Callback-based config:** Validation rules and file protections can be static arrays or callbacks `(workingDir, params) => T` for step-dependent configuration
+11. **No transpilation:** Runs as raw TypeScript ESM via pi's runtime — `tsconfig.json` is for type checking only
 
 ## Service Integrations
 

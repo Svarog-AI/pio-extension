@@ -17,42 +17,27 @@ Developed by Svarog AI. Licensed under MIT. Repository: `github.com:Svarog-AI/pi
 
 ## Repository Structure
 
+The `src/prompts/` directory was removed — prompts are now component files inside each capability directory package (`role.md`, `workflow.ts`, `guidelines.md`). Direct tools (init, delete-goal, list-goals, parent, create-issue, goal-from-issue) are consolidated in `src/direct-tools.ts`. The `src/frontmatter-schemas.ts` module was deleted — schemas now live in capability-local `schemas.ts` files.
+
 ```
 pio-extension/
 ├── src/
-│   ├── capabilities/        # Tool + command implementations per workflow capability
-│   │   ├── init.ts              — pio_init: bootstraps .pio/ directory
-│   │   ├── create-goal.ts       — pio_create_goal: creates goal workspace, queues definition session
-│   │   ├── create-plan.ts       — pio_create_plan: generates PLAN.md from GOAL.md
-│   │   ├── evolve-plan.ts       — pio_evolve_plan: generates TASK.md per step (tests derived at execute-time)
-│   │   ├── execute-task.ts      — pio_execute_task: implements a single plan step (TDD)
-│   │   ├── review-code.ts       — pio_review_code: reviews implementation, approve/reject
-│   │   ├── execute-plan.ts      — /pio-execute-plan command: all steps in one session
-│   │   ├── delete-goal.ts       — pio_delete_goal: removes a goal workspace
-│   │   ├── next-task.ts         — /pio-next-task: dequeues and launches pending tasks
-│   │   ├── parent.ts            — /pio-parent: switches back to parent session
-│   │   ├── project-context.ts   — pio_create_project_context: generates .pio/PROJECT/ files
-│   │   ├── create-issue.ts      — pio_create_issue: creates .pio/issues/<slug>.md
-│   │   ├── goal-from-issue.ts   — pio_goal_from_issue: converts issue → goal workspace
-│   │   ├── list-goals.ts        — /pio-list-goals: lists goals with phase and last task
-│   │   ├── finalize-goal.ts     — pio_finalize_goal: reads accumulated decisions, updates .pio/PROJECT/
-│   │   ├── revise-plan.ts       — pio_revise_plan: archives PLAN.md, deletes incomplete steps, rewrites plan
-│   │   ├── session-capability.ts — shared launcher + prompt injection + model switching
-│   │   └── *.test.ts            — colocated tests for each capability module
-│   ├── guards/                # Event-handling guards (file protection, session lifecycle)
-│   │   ├── validation.ts        — pio_mark_complete tool + file protection (readOnly/writeAllowlist)
-│   │   └── session-guard.ts     — turn recovery + completion tracking (warns at agent_end if pio_mark_complete not called)
-│   ├── prompts/               # System prompt templates (markdown, injected per session type)
-│   │   ├── create-goal.md         — Goal Definition Assistant
-│   │   ├── create-plan.md         — Planning Agent
-│   │   ├── evolve-plan.md         — Specification Writer
-│   │   ├── execute-task.md        — Execute Task Agent (TDD)
-│   │   ├── review-code.md         — Code Review Agent
-│   │   ├── execute-plan.md        — Implementation Agent (all steps)
-│   │   ├── project-context.md     — Project Context Analyzer
-│   │   ├── finalize-goal.md       — Finalize Goal Agent (updates PROJECT docs from accumulated decisions)
-│   │   ├── revise-plan.md         — Plan Revision Agent (rewrites PLAN.md after completed steps)
-│   │   └── _skill-loading.md      — Shared skill-loading instructions
+│   ├── capabilities/          # AI-driven capability directory packages + direct tools
+│   │   ├── <name>/            # 9 capability packages (create-goal, create-plan, evolve-plan, etc.)
+│   │   │   ├── config.ts        — CapabilityPackageConfig default export + register(pi) named export
+│   │   │   ├── role.md          — Role description (prompt component)
+│   │   │   ├── workflow.ts      — WorkflowStep[] with per-step skill declarations
+│   │   │   ├── guidelines.md    — Guidelines (prompt component)
+│   │   │   ├── callbacks.ts     — Lifecycle callbacks (validation, file protections) [optional]
+│   │   │   ├── schemas.ts       — Capability-local frontmatter TypeBox schemas [optional]
+│   │   │   └── config.test.ts   — Colocated tests
+│   │   ├── direct-tools.ts      # Non-AI tools: init, delete-goal, list-goals, parent, create-issue, goal-from-issue
+│   │   └── next-task.ts         # /pio-next-task command (legacy single-file module)
+│   ├── guards/                # Event-handling guards (file protection, session lifecycle, step nudging)
+│   │   ├── validation.ts        — File protection + frontmatter validation (readOnly/writeAllowlist)
+│   │   ├── mark-complete.ts     — pio_mark_complete tool + setupMarkComplete()
+│   │   ├── session-guard.ts     — Turn recovery + completion tracking
+│   │   └── step-nudging.ts      — workflow-step-finish tool + turn_end nudge injection
 │   ├── skills/                # Discoverable skills for pi's <available_skills> (auto-discovered from filesystem)
 │   │   ├── pio/SKILL.md           — pio workflow reference
 │   │   ├── test-driven-development/SKILL.md — TDD methodology guide
@@ -66,11 +51,15 @@ pio-extension/
 │   │   │       ├── setup-config.sh        — Creates .pio/jira-config.yaml (site, projectKey, defaultType)
 │   │   │       └── setup-config.test.ts   — Tests for setup-config.sh
 │   │   └── write-a-skill/SKILL.md — Skill authoring guide (structure, progressive disclosure, bundled resources)
-│   ├── index.ts               # Extension entry point — wires all capabilities into pi API
-│   ├── types.ts               # Shared type definitions (ValidationRule, CapabilityConfig, etc.)
-│   ├── frontmatter-schemas.ts # TypeBox schemas for YAML frontmatter validation (PLAN, TASK, REVIEW)
-│   ├── fs-utils.ts            # Filesystem helpers (resolveGoalDir, stepFolderName, discoverNextStep)
-│   ├── capability-config.ts   # Resolve capability name → full CapabilityConfig (dynamic imports)
+│   ├── index.ts               # Extension entry point — auto-discovers capabilities via discoverCapabilities()
+│   ├── types.ts               # Shared type definitions (CapabilityConfig, ValidationRule, etc.)
+│   ├── capability-package.ts  # CapabilityPackageConfig, WorkflowStep, FrontmatterSchemaDeclaration types + layout constants
+│   ├── capability-discovery.ts # discoverCapabilities() — scans capabilities/ for directory packages
+│   ├── capability-config.ts   # resolveCapabilityConfig() — resolves config from directory packages
+│   ├── capability-session.ts  # Sub-session orchestration: launch, prompt injection, model switching (was session-capability.ts)
+│   ├── capability-utils.ts    # Leaf utility: mergeCapabilitySkills()
+│   ├── prompt-compiler.ts     # compilePrompt() — assembles prompts from component files (role.md, workflow.ts, guidelines.md)
+│   ├── fs-utils.ts            # Filesystem helpers (resolveGoalDir, stepFolderName, prepareGoal)
 │   ├── goal-state.ts          # GoalState — lazy-evaluated filesystem view over goal workspace
 │   ├── state-machine.ts       # Pure transition resolver (create-goal→create-plan→evolve→execute→review)
 │   ├── queues.ts              # Session task queue (enqueueTask, readPendingTask, per-goal slots)

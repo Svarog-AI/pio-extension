@@ -200,7 +200,7 @@ function resolveReviewTaskToEvolvePlan(
   return undefined;
 }
 
-/** review-task → execute-task: fallback for non-approved steps (rejected, unknown, no stepNumber). */
+/** review-task → execute-task: fires when step is rejected (re-execute same step). */
 function resolveReviewTaskToExecuteTask(
   state: GoalState,
   params?: Record<string, unknown>,
@@ -208,25 +208,24 @@ function resolveReviewTaskToExecuteTask(
   const stepNumber = extractStepNumber(params);
   const goalName = extractGoalName(params);
 
-  // If the step is approved, the evolve-plan edge already fired — don't also fire.
-  // This ensures single-match behavior identical to the old imperative transitionReviewTask.
-  if (stepNumber != null) {
-    const steps = state.steps();
-    const step = steps.find((s) => s.stepNumber === stepNumber);
-    if (step && step.status() === "approved") {
-      return undefined;
-    }
-  }
-
   if (stepNumber == null) {
     return { capability: "execute-task", stateMachineId: MACHINE_ID, params };
   }
 
-  return {
-    capability: "execute-task",
-    stateMachineId: MACHINE_ID,
-    params: { goalName, stepNumber },
-  };
+  const steps = state.steps();
+  const step = steps.find((s) => s.stepNumber === stepNumber);
+
+  // Fire only when the step is rejected — re-execute the same step.
+  // When approved, the evolve-plan edge fires instead (checked first in edges array).
+  if (step && step.status() === "rejected") {
+    return {
+      capability: "execute-task",
+      stateMachineId: MACHINE_ID,
+      params: { goalName, stepNumber },
+    };
+  }
+
+  return undefined;
 }
 
 /** revise-plan → evolve-plan: always fires, preserve goalName and revisionTriggerStep. */

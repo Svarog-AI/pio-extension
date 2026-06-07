@@ -47,23 +47,6 @@ export function resolveExecuteReadOnlyFiles(_workingDir: string, params?: Record
 }
 
 // ---------------------------------------------------------------------------
-// Helper functions (exported for tests)
-// ---------------------------------------------------------------------------
-
-/**
- * Check whether a step is ready for execution: TASK.md exists,
- * but neither COMPLETED nor BLOCKED marker has been written yet.
- */
-export function isStepReady(goalDir: string, stepNumber: number): boolean {
-  const state = createGoalState(goalDir);
-  const step = state.steps().find(s => s.stepNumber === stepNumber);
-  if (!step) return false;
-
-  // "defined" status means TASK.md exists with no COMPLETED/BLOCKED/APPROVED/REJECTED markers.
-  return step.status() === "defined";
-}
-
-// ---------------------------------------------------------------------------
 // Pre-launch validation
 // ---------------------------------------------------------------------------
 

@@ -1,10 +1,22 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isStepReady, validateAndFindNextStep, validateExplicitStep } from "./callbacks";
+import { validateAndFindNextStep, validateExplicitStep } from "./callbacks";
 import config from "./config";
 import { stepFolderName } from "../../fs-utils";
 import { resolveCapabilityConfig } from "../../capability-config";
+import { createGoalState } from "../../goal-state";
+
+// ---------------------------------------------------------------------------
+// Local test helper (moved from callbacks.ts — not used by production code)
+// ---------------------------------------------------------------------------
+
+function isStepReady(goalDir: string, stepNumber: number): boolean {
+  const state = createGoalState(goalDir);
+  const step = state.steps().find(s => s.stepNumber === stepNumber);
+  if (!step) return false;
+  return step.status() === "defined";
+}
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers (unified across merged sources)

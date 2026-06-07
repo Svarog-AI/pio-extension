@@ -131,23 +131,9 @@ export function applyReviewDecision(
   } else {
     // REJECTED
     fs.writeFileSync(path.join(stepDir, "REJECTED"), "", "utf-8");
-    // Delete COMPLETED so isStepReady in execute-task.ts permits re-execution
+    // Delete COMPLETED so execute-task permits re-execution
     fs.rmSync(path.join(stepDir, "COMPLETED"), { force: true });
   }
-}
-
-/**
- * Check whether a step has been completed and is ready for review:
- * COMPLETED marker exists, SUMMARY.md exists, and no BLOCKED marker.
- */
-export function isStepReviewable(goalDir: string, stepNumber: number): boolean {
-  const state = createGoalState(goalDir);
-  const step = state.steps().find(s => s.stepNumber === stepNumber);
-  if (!step) return false;
-
-  // status() === "implemented" means COMPLETED exists and BLOCKED doesn't (BLOCKED has higher priority).
-  // We also need SUMMARY.md — check that explicitly since it's not part of the status computation.
-  return step.status() === "implemented" && step.hasSummary();
 }
 
 /**

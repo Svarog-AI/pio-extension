@@ -3,7 +3,19 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as Value from "typebox/value";
 import config from "./config";
-import { isStepReviewable, findMostRecentCompletedStep, applyReviewDecision, validateStepForReview, validateAndFindReviewStep } from "./callbacks";
+import { findMostRecentCompletedStep, applyReviewDecision, validateStepForReview, validateAndFindReviewStep } from "./callbacks";
+import { createGoalState } from "../../goal-state";
+
+// ---------------------------------------------------------------------------
+// Local test helper (moved from callbacks.ts — not used by production code)
+// ---------------------------------------------------------------------------
+
+function isStepReviewable(goalDir: string, stepNumber: number): boolean {
+  const state = createGoalState(goalDir);
+  const step = state.steps().find(s => s.stepNumber === stepNumber);
+  if (!step) return false;
+  return step.status() === "implemented" && step.hasSummary();
+}
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
 import { stepFolderName } from "../../fs-utils";
 

@@ -1,9 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { StateMachine, TransitionResult } from "./state-machines";
-import { registerMachine } from "./state-machines";
-import type { GoalState } from "./goal-state";
-import { resolveGoalDir, stepFolderName } from "./fs-utils";
+import type { StateMachine, TransitionResult } from "../state-machines";
+import { registerMachine } from "../state-machines";
+import type { GoalState } from "../goal-state";
+import { resolveGoalDir, stepFolderName } from "../fs-utils";
 
 const MACHINE_ID = "goal-driven-development";
 
@@ -26,7 +26,7 @@ function extractGoalName(params?: Record<string, unknown>): string | undefined {
 // ---------------------------------------------------------------------------
 
 /** create-goal → create-plan: always fires, preserve params as-is. */
-function resolveCreateGoal(
+function resolveCreateGoalToCreatePlan(
   _state: GoalState,
   params?: Record<string, unknown>,
 ): TransitionResult {
@@ -34,7 +34,7 @@ function resolveCreateGoal(
 }
 
 /** create-plan → evolve-plan: always fires, preserve params as-is. */
-function resolveCreatePlan(
+function resolveCreatePlanToEvolvePlan(
   _state: GoalState,
   params?: Record<string, unknown>,
 ): TransitionResult {
@@ -42,7 +42,7 @@ function resolveCreatePlan(
 }
 
 /** evolve-plan → revise-plan: fires when current step signals revision is needed. */
-function resolveEvolveToRevise(
+function resolveEvolvePlanToRevisePlan(
   state: GoalState,
   params?: Record<string, unknown>,
 ): TransitionResult | undefined {
@@ -65,7 +65,7 @@ function resolveEvolveToRevise(
 }
 
 /** evolve-plan → create-goal (subgoal): fires when current step has complexity: "subgoal". */
-function resolveEvolveToSubgoal(
+function resolveEvolvePlanToCreateGoal(
   state: GoalState,
   params?: Record<string, unknown>,
 ): TransitionResult | undefined {
@@ -107,7 +107,7 @@ function resolveEvolveToSubgoal(
 }
 
 /** evolve-plan → finalize-goal: fires when all plan steps are complete. */
-function resolveEvolveToFinalize(
+function resolveEvolvePlanToFinalizeGoal(
   state: GoalState,
   params?: Record<string, unknown>,
 ): TransitionResult | undefined {
@@ -127,7 +127,7 @@ function resolveEvolveToFinalize(
 }
 
 /** evolve-plan → execute-task: fallback — no condition, always fires. */
-function resolveEvolveToExecute(
+function resolveEvolvePlanToExecuteTask(
   state: GoalState,
   params?: Record<string, unknown>,
 ): TransitionResult {
@@ -151,7 +151,7 @@ function resolveEvolveToExecute(
 }
 
 /** execute-task → review-task: always fires, propagate goalName and stepNumber. */
-function resolveExecuteTask(
+function resolveExecuteTaskToReviewTask(
   state: GoalState,
   params?: Record<string, unknown>,
 ): TransitionResult {
@@ -175,7 +175,7 @@ function resolveExecuteTask(
 }
 
 /** review-task → evolve-plan: fires when step status is "approved". */
-function resolveReviewApproved(
+function resolveReviewTaskToEvolvePlan(
   state: GoalState,
   params?: Record<string, unknown>,
 ): TransitionResult | undefined {
@@ -201,7 +201,7 @@ function resolveReviewApproved(
 }
 
 /** review-task → execute-task: fallback for non-approved steps (rejected, unknown, no stepNumber). */
-function resolveReviewRejected(
+function resolveReviewTaskToExecuteTask(
   _state: GoalState,
   params?: Record<string, unknown>,
 ): TransitionResult {
@@ -220,7 +220,7 @@ function resolveReviewRejected(
 }
 
 /** revise-plan → evolve-plan: always fires, preserve goalName and revisionTriggerStep. */
-function resolveRevisePlan(
+function resolveRevisePlanToEvolvePlan(
   _state: GoalState,
   params?: Record<string, unknown>,
 ): TransitionResult {
@@ -236,7 +236,7 @@ function resolveRevisePlan(
 }
 
 /** finalize-goal → evolve-plan: fires only when parentGoalName exists (subgoal completion). */
-function resolveFinalizeSubgoal(
+function resolveFinalizeGoalToEvolvePlan(
   _state: GoalState,
   params?: Record<string, unknown>,
 ): TransitionResult | undefined {
@@ -266,17 +266,17 @@ export const goalDrivenDevelopment: StateMachine<GoalState> = {
   name: "Goal-Driven Development",
   description: "Default pio workflow state machine for goal-driven development",
   edges: [
-    { from: "create-goal",   to: "create-plan",   resolve: resolveCreateGoal },
-    { from: "create-plan",   to: "evolve-plan",    resolve: resolveCreatePlan },
-    { from: "evolve-plan",   to: "revise-plan",    resolve: resolveEvolveToRevise },
-    { from: "evolve-plan",   to: "create-goal",    resolve: resolveEvolveToSubgoal },
-    { from: "evolve-plan",   to: "finalize-goal",  resolve: resolveEvolveToFinalize },
-    { from: "evolve-plan",   to: "execute-task",   resolve: resolveEvolveToExecute },
-    { from: "execute-task",  to: "review-task",    resolve: resolveExecuteTask },
-    { from: "review-task",   to: "evolve-plan",    resolve: resolveReviewApproved },
-    { from: "review-task",   to: "execute-task",   resolve: resolveReviewRejected },
-    { from: "revise-plan",   to: "evolve-plan",    resolve: resolveRevisePlan },
-    { from: "finalize-goal", to: "evolve-plan",    resolve: resolveFinalizeSubgoal },
+    { from: "create-goal",   to: "create-plan",   resolve: resolveCreateGoalToCreatePlan },
+    { from: "create-plan",   to: "evolve-plan",    resolve: resolveCreatePlanToEvolvePlan },
+    { from: "evolve-plan",   to: "revise-plan",    resolve: resolveEvolvePlanToRevisePlan },
+    { from: "evolve-plan",   to: "create-goal",    resolve: resolveEvolvePlanToCreateGoal },
+    { from: "evolve-plan",   to: "finalize-goal",  resolve: resolveEvolvePlanToFinalizeGoal },
+    { from: "evolve-plan",   to: "execute-task",   resolve: resolveEvolvePlanToExecuteTask },
+    { from: "execute-task",  to: "review-task",    resolve: resolveExecuteTaskToReviewTask },
+    { from: "review-task",   to: "evolve-plan",    resolve: resolveReviewTaskToEvolvePlan },
+    { from: "review-task",   to: "execute-task",   resolve: resolveReviewTaskToExecuteTask },
+    { from: "revise-plan",   to: "evolve-plan",    resolve: resolveRevisePlanToEvolvePlan },
+    { from: "finalize-goal", to: "evolve-plan",    resolve: resolveFinalizeGoalToEvolvePlan },
   ],
 };
 

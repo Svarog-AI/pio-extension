@@ -1,4 +1,4 @@
-import { slugify, titleCase, truncate } from "./utils";
+import { formatList, slugify, titleCase, truncate } from "./utils";
 
 // ---------------------------------------------------------------------------
 // slugify
@@ -92,5 +92,41 @@ describe("truncate", () => {
 
   it("returns empty string for empty input", () => {
     expect(truncate("", 5)).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatList
+// ---------------------------------------------------------------------------
+
+describe("formatList", () => {
+  it("formats multiple items as a bulleted list", () => {
+    expect(formatList(["a", "b"])).toBe("- a\n- b\n");
+  });
+
+  it("returns empty string for empty array", () => {
+    expect(formatList([])).toBe("");
+  });
+
+  it("formats a single item", () => {
+    expect(formatList(["single"])).toBe("- single\n");
+  });
+
+  it("preserves embedded newlines in items", () => {
+    expect(formatList(["line1\nline2"])).toBe("- line1\nline2\n");
+  });
+
+  it("preserves special characters in items", () => {
+    expect(formatList(["- already has dash", "**bold**", "item: with colon"])).toBe(
+      "- - already has dash\n- **bold**\n- item: with colon\n"
+    );
+  });
+
+  it("handles items with spaces", () => {
+    expect(formatList(["hello world", "foo bar"])).toBe("- hello world\n- foo bar\n");
+  });
+
+  it("handles items with unicode characters", () => {
+    expect(formatList(["café", "naïve"])).toBe("- café\n- naïve\n");
   });
 });

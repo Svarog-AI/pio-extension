@@ -717,9 +717,9 @@ describe("resolvePaths", () => {
     expect(result).toEqual([]);
   });
 
-  it("converts numeric param values to strings", () => {
-    const result = resolvePaths(["S{stepNumber}/TASK.md"], { stepNumber: 3 });
-    expect(result).toEqual(["S3/TASK.md"]);
+  it("converts falsy-zero numeric param value to string", () => {
+    const result = resolvePaths(["S{stepNumber}/TASK.md"], { stepNumber: 0 });
+    expect(result).toEqual(["S0/TASK.md"]);
   });
 
   it("leaves paths without placeholders unchanged", () => {

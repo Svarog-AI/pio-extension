@@ -19,18 +19,13 @@ interface TestContext {
 function makeMachine(
   id: string,
   edges: { from: string; to: string; resolve: TransitionEdge<TestContext>["resolve"] }[],
-  isContext?: (ctx: unknown) => ctx is TestContext,
 ): StateMachine<TestContext> {
-  const machine: StateMachine<TestContext> = {
+  return {
     id,
     name: id,
     description: "test machine",
     edges: edges.map((e) => ({ from: e.from, to: e.to, resolve: e.resolve })),
   };
-  if (isContext !== undefined) {
-    machine.isContext = isContext;
-  }
-  return machine;
 }
 
 // Track machine IDs registered in this test file for cleanup.
@@ -288,18 +283,20 @@ describe("dispatch — isContext guard", () => {
   });
 
   it("fires when context passes the guard", () => {
-    const machine = makeMachine(
-      "guarded",
-      [
+    const machine: StateMachine<TestContext> = {
+      id: "guarded",
+      name: "guarded",
+      description: "test",
+      edges: [
         {
           from: "start",
           to: "end",
           resolve: () => ({ capability: "end", stateMachineId: "guarded" }),
         },
       ],
-      (ctx): ctx is TestContext =>
+      isContext: (ctx): ctx is TestContext =>
         typeof ctx === "object" && ctx !== null && "mode" in ctx,
-    );
+    };
 
     registerTestMachine(machine);
 
@@ -309,18 +306,20 @@ describe("dispatch — isContext guard", () => {
   });
 
   it("skips when context fails the guard", () => {
-    const machine = makeMachine(
-      "guarded",
-      [
+    const machine: StateMachine<TestContext> = {
+      id: "guarded",
+      name: "guarded",
+      description: "test",
+      edges: [
         {
           from: "start",
           to: "end",
           resolve: () => ({ capability: "end", stateMachineId: "guarded" }),
         },
       ],
-      (ctx): ctx is TestContext =>
+      isContext: (ctx): ctx is TestContext =>
         typeof ctx === "object" && ctx !== null && "mode" in ctx,
-    );
+    };
 
     registerTestMachine(machine);
 
@@ -345,18 +344,20 @@ describe("dispatch — isContext guard", () => {
   });
 
   it("single-machine dispatch ignores isContext guard", () => {
-    const machine = makeMachine(
-      "single",
-      [
+    const machine: StateMachine<TestContext> = {
+      id: "single",
+      name: "single",
+      description: "test",
+      edges: [
         {
           from: "start",
           to: "end",
           resolve: () => ({ capability: "end", stateMachineId: "single" }),
         },
       ],
-      (ctx): ctx is TestContext =>
+      isContext: (ctx): ctx is TestContext =>
         typeof ctx === "object" && ctx !== null && "mode" in ctx,
-    );
+    };
 
     const results = dispatch(machine, "start", { reviewId: "1" } as any);
     expect(results).toHaveLength(1);

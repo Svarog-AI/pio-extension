@@ -26,7 +26,7 @@ const mockCreateGoalState = vi.hoisted(() => vi.fn().mockReturnValue({
   steps: vi.fn().mockReturnValue([]),
   currentStepNumber: vi.fn().mockReturnValue(1),
 }));
-const mockResolveTransition = vi.hoisted(() => vi.fn());
+const mockDispatch = vi.hoisted(() => vi.fn());
 const mockRecordTransition = vi.hoisted(() => vi.fn());
 const mockEnqueueTask = vi.hoisted(() => vi.fn());
 const mockWriteLastTask = vi.hoisted(() => vi.fn());
@@ -40,8 +40,12 @@ vi.mock("../goal-state", () => ({
   createGoalState: mockCreateGoalState,
 }));
 
-vi.mock("../state-machine", () => ({
-  resolveTransition: mockResolveTransition,
+vi.mock("../state-machines", () => ({
+  dispatch: mockDispatch,
+}));
+
+vi.mock("../state-machines/pio-workflow-machine", () => ({
+  goalDrivenDevelopment: {},
   recordTransition: mockRecordTransition,
 }));
 
@@ -71,7 +75,7 @@ describe("mark-complete (setupMarkComplete)", () => {
       steps: vi.fn().mockReturnValue([]),
       currentStepNumber: vi.fn().mockReturnValue(1),
     });
-    mockResolveTransition.mockClear();
+    mockDispatch.mockClear();
     mockRecordTransition.mockClear();
     mockEnqueueTask.mockClear();
     mockWriteLastTask.mockClear();
@@ -184,15 +188,15 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
 
-    expect(mockResolveTransition).not.toHaveBeenCalled();
+    expect(mockDispatch).not.toHaveBeenCalled();
     expect(mockEnqueueTask).not.toHaveBeenCalled();
     expect(mockRecordTransition).not.toHaveBeenCalled();
   });
 
   it("postValidate success triggers transition routing", async () => {
     mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
-    mockResolveTransition.mockReturnValue(
-      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
 
     const postValidateMock = vi.fn().mockReturnValue({ success: true });
@@ -217,7 +221,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     const result = await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
 
-    expect(mockResolveTransition).toHaveBeenCalled();
+    expect(mockDispatch).toHaveBeenCalled();
     expect(mockEnqueueTask).toHaveBeenCalled();
     expect(mockRecordTransition).toHaveBeenCalled();
     expect(mockWriteLastTask).toHaveBeenCalled();
@@ -226,8 +230,8 @@ describe("mark-complete (setupMarkComplete)", () => {
 
   it("postExecute runs after transition routing", async () => {
     mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
-    mockResolveTransition.mockReturnValue(
-      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
 
     const callOrder: string[] = [];
@@ -268,8 +272,8 @@ describe("mark-complete (setupMarkComplete)", () => {
 
   it("postExecute errors don't block termination", async () => {
     mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
-    mockResolveTransition.mockReturnValue(
-      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
 
     const warnSpy = vi.spyOn(console, "warn");
@@ -308,8 +312,8 @@ describe("mark-complete (setupMarkComplete)", () => {
 
   it("cleanup deletes files in fileCleanup", async () => {
     mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
-    mockResolveTransition.mockReturnValue(
-      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
 
     // Create a temp file to clean up
@@ -396,7 +400,7 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
       steps: vi.fn().mockReturnValue([]),
       currentStepNumber: vi.fn().mockReturnValue(1),
     });
-    mockResolveTransition.mockClear();
+    mockDispatch.mockClear();
     mockRecordTransition.mockClear();
     mockEnqueueTask.mockClear();
     mockWriteLastTask.mockClear();
@@ -433,8 +437,8 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
       return { success: true };
     });
 
-    mockResolveTransition.mockReturnValue(
-      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
 
     const mockCtx = {
@@ -498,14 +502,14 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
     expect(result.content[0].text).toContain("Field 'totalSteps'");
     expect(result.terminate).toBeFalsy();
     expect(postValidateMock).not.toHaveBeenCalled();
-    expect(mockResolveTransition).not.toHaveBeenCalled();
+    expect(mockDispatch).not.toHaveBeenCalled();
   });
 
   it("skips frontmatter validation when frontmatterSchemas is not defined", async () => {
     const postValidateMock = vi.fn().mockReturnValue({ success: true });
 
-    mockResolveTransition.mockReturnValue(
-      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
 
     const mockCtx = {
@@ -536,8 +540,8 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
   it("skips frontmatter validation when frontmatterSchemas is empty array", async () => {
     const postValidateMock = vi.fn().mockReturnValue({ success: true });
 
-    mockResolveTransition.mockReturnValue(
-      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
 
     const mockCtx = {

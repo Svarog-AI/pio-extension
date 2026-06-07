@@ -4,7 +4,8 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import type { CapabilityConfig } from "../types";
 import { validateOutputs, validateFrontmatter } from "./validation";
-import { resolveTransition, recordTransition } from "../state-machine";
+import { dispatch } from "../state-machines";
+import { recordTransition } from "../state-machines/pio-workflow-machine";
 import { createGoalState } from "../goal-state";
 import { enqueueTask, writeLastTask } from "../queues";
 
@@ -88,10 +89,12 @@ export const markCompleteTool = defineTool({
       : undefined;
     const stepNumber = explicitStepNumber ?? state.currentStepNumber();
 
-    const nextTask = capability
-      ? resolveTransition(capability, state, { goalName, stepNumber, _sessionContext: sessionParams })
-      : undefined;
-    if (nextTask && capability) {
+    const results = capability
+      ? dispatch(undefined, capability, state, { goalName, stepNumber, _sessionContext: sessionParams })
+      : [];
+
+    if (capability && results.length === 1) {
+      const nextTask = results[0];
       try {
         // Use adjusted params from the transition (may contain incremented stepNumber)
         const adjustedParams = nextTask.params || {};
@@ -133,6 +136,9 @@ export const markCompleteTool = defineTool({
       } catch (err) {
         console.warn(`pio: failed to enqueue next task: ${err}`);
       }
+    } else if (capability && results.length > 1) {
+      const capabilities = results.map((r) => r.capability).join(", ");
+      notification = `\n\nMultiple transitions available: ${capabilities}. Use \`/pio-transition\` to select one.`;
     }
 
     // 4. PostExecute hook — runs after transitions, errors are non-fatal

@@ -202,11 +202,21 @@ function resolveReviewTaskToEvolvePlan(
 
 /** review-task → execute-task: fallback for non-approved steps (rejected, unknown, no stepNumber). */
 function resolveReviewTaskToExecuteTask(
-  _state: GoalState,
+  state: GoalState,
   params?: Record<string, unknown>,
-): TransitionResult {
+): TransitionResult | undefined {
   const stepNumber = extractStepNumber(params);
   const goalName = extractGoalName(params);
+
+  // If the step is approved, the evolve-plan edge already fired — don't also fire.
+  // This ensures single-match behavior identical to the old imperative transitionReviewTask.
+  if (stepNumber != null) {
+    const steps = state.steps();
+    const step = steps.find((s) => s.stepNumber === stepNumber);
+    if (step && step.status() === "approved") {
+      return undefined;
+    }
+  }
 
   if (stepNumber == null) {
     return { capability: "execute-task", stateMachineId: MACHINE_ID, params };

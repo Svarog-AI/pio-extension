@@ -25,8 +25,5 @@ export function truncate(text: string, maxLength: number): string {
 
 /** Formats an array of strings as a bulleted list string. */
 export function formatList(items: string[]): string {
-  if (items.length === 0) {
-    return "";
-  }
   return items.map((item) => `- ${item}\n`).join("");
 }

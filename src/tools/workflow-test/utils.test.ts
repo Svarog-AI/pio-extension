@@ -1,4 +1,4 @@
-import { formatList, slugify, titleCase, truncate } from "./utils";
+import { deepMerge, formatList, layerConfig, slugify, titleCase, truncate } from "./utils";
 
 // ---------------------------------------------------------------------------
 // slugify
@@ -128,5 +128,79 @@ describe("formatList", () => {
 
   it("handles items with unicode characters", () => {
     expect(formatList(["café", "naïve"])).toBe("- café\n- naïve\n");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deepMerge
+// ---------------------------------------------------------------------------
+
+describe("deepMerge", () => {
+  it("merges two flat objects", () => {
+    expect(deepMerge({ a: 1 }, { b: 2 })).toEqual({ a: 1, b: 2 });
+  });
+
+  it("recursively merges nested plain objects", () => {
+    expect(deepMerge({ a: { x: 1 } }, { a: { y: 2 } })).toEqual({ a: { x: 1, y: 2 } });
+  });
+
+  it("replaces arrays from source entirely", () => {
+    expect(deepMerge({ items: [1, 2] }, { items: [3] })).toEqual({ items: [3] });
+  });
+
+  it("leaves target intact with empty source", () => {
+    expect(deepMerge({ a: 1 }, {})).toEqual({ a: 1 });
+  });
+
+  it("returns source with empty target", () => {
+    expect(deepMerge({}, { a: 1 })).toEqual({ a: 1 });
+  });
+
+  it("overwrites null in target with source scalar", () => {
+    expect(deepMerge({ a: null }, { a: 1 })).toEqual({ a: 1 });
+  });
+
+  it("uses null from source as leaf replacement", () => {
+    expect(deepMerge({ a: 1 }, { a: null })).toEqual({ a: null });
+  });
+
+  it("uses undefined from source as overwrite", () => {
+    expect(deepMerge({ a: 1 }, { a: undefined })).toEqual({ a: undefined });
+  });
+
+  it("does not mutate the original target", () => {
+    const target = { a: 1, b: { x: 1 } };
+    const targetCopy = JSON.parse(JSON.stringify(target));
+    deepMerge(target, { b: { y: 2 }, c: 3 });
+    expect(target).toEqual(targetCopy);
+  });
+
+  it("handles deeply nested structures (3+ levels)", () => {
+    expect(
+      deepMerge({ a: { b: { c: 1 } } }, { a: { b: { d: 2 } } }),
+    ).toEqual({ a: { b: { c: 1, d: 2 } } });
+  });
+
+  it("handles mixed nesting with array replacement and new keys", () => {
+    expect(
+      deepMerge({ a: { x: [1, 2] } }, { a: { x: [3], y: 4 } }),
+    ).toEqual({ a: { x: [3], y: 4 } });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// layerConfig
+// ---------------------------------------------------------------------------
+
+describe("layerConfig", () => {
+  it("preserves nested defaults not overridden", () => {
+    expect(layerConfig({ a: 1, b: { x: 1 } }, { b: { y: 2 } })).toEqual({
+      a: 1,
+      b: { x: 1, y: 2 },
+    });
+  });
+
+  it("preserves all defaults with empty overrides", () => {
+    expect(layerConfig({ a: 1 }, {})).toEqual({ a: 1 });
   });
 });

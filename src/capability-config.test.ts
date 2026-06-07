@@ -635,12 +635,12 @@ describe("resolveCapabilityConfig — postValidate/postExecute passthrough", () 
 /**
  * These tests verify the end-to-end interaction between state machine transition
  * output (Step 2) and capability config resolution (Step 3).
- * They simulate the params shape that transitionEvolvePlan() returns for a
+ * They simulate the params shape that resolveEvolvePlanToFinalizeGoal() returns for a
  * completed goal and verify resolveCapabilityConfig() handles it correctly.
  */
 describe("resolveCapabilityConfig — finalize-goal auto-transition integration", () => {
   it("finalize-goal auto-transition params resolve workingDir to project root", async () => {
-    // Arrange: simulate the params shape that transitionEvolvePlan() returns
+    // Arrange: simulate the params shape that resolveEvolvePlanToFinalizeGoal() returns
     // for a completed goal: { goalName, goalDir, workingDir: <project root> }
     const cwd = "/tmp/auto-transition-proj";
     const params = {
@@ -662,7 +662,7 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
   });
 
   it("finalize-goal initial message includes goal name via auto-transition params", async () => {
-    // Arrange: same params shape as transitionEvolvePlan() for a completed goal
+    // Arrange: same params shape as resolveEvolvePlanToFinalizeGoal() for a completed goal
     const cwd = "/tmp/auto-transition-proj";
     const params = {
       capability: "finalize-goal" as string,

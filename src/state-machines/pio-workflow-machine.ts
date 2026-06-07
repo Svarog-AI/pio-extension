@@ -64,7 +64,7 @@ function resolveEvolvePlanToRevisePlan(
   return undefined;
 }
 
-/** evolve-plan → create-goal (subgoal): fires when current step has complexity: "subgoal". */
+/** evolve-plan → create-goal (subgoal): fires when current step has complexity: "subgoal" (and revision is NOT needed). */
 function resolveEvolvePlanToCreateGoal(
   state: GoalState,
   params?: Record<string, unknown>,
@@ -76,30 +76,37 @@ function resolveEvolvePlanToCreateGoal(
     const steps = state.steps();
     const currentStep = steps.find((s) => s.stepNumber === explicitStepNumber);
     if (currentStep) {
-      const stepMetadata = currentStep.getMetadata();
-
-      if (stepMetadata && stepMetadata.complexity === "subgoal") {
-        const cwd = process.cwd();
-        const goalDir = resolveGoalDir(cwd, goalName);
-        const parentStepDir = path.join(goalDir, stepFolderName(explicitStepNumber));
-        const subgoalWorkingDir = resolveGoalDir(cwd, stepMetadata.name, parentStepDir);
-
-        const relativeTaskPath = path.relative(subgoalWorkingDir, path.join(parentStepDir, "TASK.md"));
-        const initialMessage = `This is a subgoal step. Read ${relativeTaskPath} from the parent goal for decomposition scope context.`;
-
-        return {
-          capability: "create-goal",
-          stateMachineId: MACHINE_ID,
-          params: {
-            goalName: stepMetadata.name,
-            parentGoalName: goalName,
-            parentStepNumber: explicitStepNumber,
-            subgoalType: true,
-            workingDir: subgoalWorkingDir,
-            initialMessage,
-          },
-        };
+      // Guard: revision takes priority over subgoal spawning
+      if (currentStep.revisionNeeded()) {
+        return undefined;
       }
+    } else {
+      return undefined;
+    }
+
+    const stepMetadata = currentStep.getMetadata();
+
+    if (stepMetadata && stepMetadata.complexity === "subgoal") {
+      const cwd = process.cwd();
+      const goalDir = resolveGoalDir(cwd, goalName);
+      const parentStepDir = path.join(goalDir, stepFolderName(explicitStepNumber));
+      const subgoalWorkingDir = resolveGoalDir(cwd, stepMetadata.name, parentStepDir);
+
+      const relativeTaskPath = path.relative(subgoalWorkingDir, path.join(parentStepDir, "TASK.md"));
+      const initialMessage = `This is a subgoal step. Read ${relativeTaskPath} from the parent goal for decomposition scope context.`;
+
+      return {
+        capability: "create-goal",
+        stateMachineId: MACHINE_ID,
+        params: {
+          goalName: stepMetadata.name,
+          parentGoalName: goalName,
+          parentStepNumber: explicitStepNumber,
+          subgoalType: true,
+          workingDir: subgoalWorkingDir,
+          initialMessage,
+        },
+      };
     }
   }
 
@@ -126,13 +133,35 @@ function resolveEvolvePlanToFinalizeGoal(
   return undefined;
 }
 
-/** evolve-plan → execute-task: fallback — no condition, always fires. */
+/** evolve-plan → execute-task: fallback — fires only when no higher-priority edge matched (no revision, no subgoal, goal not complete). */
 function resolveEvolvePlanToExecuteTask(
   state: GoalState,
   params?: Record<string, unknown>,
-): TransitionResult {
+): TransitionResult | undefined {
   const explicitStepNumber = extractStepNumber(params);
   const goalName = extractGoalName(params);
+
+  // Guard: if all plan steps are complete, finalize-goal edge should have fired.
+  // Don't also fire execute-task.
+  if (state.goalCompleted()) {
+    return undefined;
+  }
+
+  // Guard: if the current step signals revision or is a subgoal,
+  // those edges should have fired instead. Don't also fire execute-task.
+  if (explicitStepNumber != null) {
+    const steps = state.steps();
+    const currentStep = steps.find((s) => s.stepNumber === explicitStepNumber);
+    if (currentStep) {
+      if (currentStep.revisionNeeded()) {
+        return undefined;
+      }
+      const stepMetadata = currentStep.getMetadata();
+      if (stepMetadata && stepMetadata.complexity === "subgoal") {
+        return undefined;
+      }
+    }
+  }
 
   if (explicitStepNumber != null) {
     return {

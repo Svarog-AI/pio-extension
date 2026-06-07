@@ -101,7 +101,7 @@ export const markCompleteTool = defineTool({
           ? adjustedParams.stepNumber
           : stepNumber;
 
-        // For subgoals completing via finalize-goal, transitionFinalizeGoal sets
+        // For subgoals completing via finalize-goal, resolveFinalizeGoalToEvolvePlan sets
         // goalName to parentGoalName in returned params. Use this as the queue key
         // to restore the parent workflow slot. For flat goals, this equals state.goalName.
         const queueGoalName = typeof adjustedParams.goalName === "string"

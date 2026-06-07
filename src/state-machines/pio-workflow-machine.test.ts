@@ -1,16 +1,12 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { GoalState } from "./goal-state";
-import type { PlanFrontmatter, StepMetadata } from "./capabilities/create-plan/schemas";
-import type { ReviewOutputs } from "./capabilities/review-task/schemas";
-import {
-  resolveTransition,
-  recordTransition,
-  type TransitionContext,
-  type TransitionResult,
-  stepFolderName,
-} from "./state-machine";
+import { dispatch, unregisterMachine } from "../state-machines";
+import { goalDrivenDevelopment, recordTransition } from "./pio-workflow-machine";
+import type { TransitionResult } from "../state-machines";
+import type { GoalState } from "../goal-state";
+import type { PlanFrontmatter, StepMetadata } from "../capabilities/create-plan/schemas";
+import type { ReviewOutputs } from "../capabilities/review-task/schemas";
 
 // ---------------------------------------------------------------------------
 // Helpers — mock GoalState construction
@@ -57,81 +53,76 @@ function mockStep(
 }
 
 // ---------------------------------------------------------------------------
-// exports — module structure verification
+// Test setup/teardown
 // ---------------------------------------------------------------------------
 
-describe("exports", () => {
-  it("exports resolveTransition as a function", () => {
-    expect(typeof resolveTransition).toBe("function");
-  });
-
-  it("exports recordTransition as a function", () => {
-    expect(typeof recordTransition).toBe("function");
-  });
-
-  it("exports stepFolderName as a function", () => {
-    expect(typeof stepFolderName).toBe("function");
-  });
-
-  it("stepFolderName produces zero-padded folder names", () => {
-    expect(stepFolderName(1)).toBe("S01");
-    expect(stepFolderName(10)).toBe("S10");
-  });
+afterEach(() => {
+  // Clean up: unregister goalDrivenDevelopment if it was auto-registered by the import.
+  // This prevents interference with other tests that use dispatch(undefined, ...).
+  unregisterMachine("goal-driven-development");
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — create-goal → create-plan
+// dispatch — create-goal → create-plan
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — create-goal → create-plan", () => {
+describe("dispatch — create-goal → create-plan", () => {
   it("returns create-plan with params preserved", () => {
     const state = mockState({});
-    const result = resolveTransition("create-goal", state, { goalName: "my-feature" });
+    const results = dispatch(goalDrivenDevelopment, "create-goal", state, { goalName: "my-feature" });
 
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "create-plan",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "my-feature" },
     });
   });
 
   it("returns create-plan when params is undefined", () => {
     const state = mockState({});
-    const result = resolveTransition("create-goal", state, undefined);
+    const results = dispatch(goalDrivenDevelopment, "create-goal", state, undefined);
 
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "create-plan",
+      stateMachineId: "goal-driven-development",
       params: undefined,
     });
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — create-plan → evolve-plan
+// dispatch — create-plan → evolve-plan
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — create-plan → evolve-plan", () => {
+describe("dispatch — create-plan → evolve-plan", () => {
   it("returns evolve-plan with params preserved", () => {
     const state = mockState({});
-    const result = resolveTransition("create-plan", state, { goalName: "my-feature" });
+    const results = dispatch(goalDrivenDevelopment, "create-plan", state, { goalName: "my-feature" });
 
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "evolve-plan",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "my-feature" },
     });
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — evolve-plan → execute-task
+// dispatch — evolve-plan → execute-task
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — evolve-plan → execute-task", () => {
+describe("dispatch — evolve-plan → execute-task", () => {
   it("returns execute-task with goalName and stepNumber propagated when present", () => {
     const state = mockState({});
-    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "feat", stepNumber: 3 });
 
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "execute-task",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "feat", stepNumber: 3 },
     });
   });
@@ -140,10 +131,12 @@ describe("resolveTransition — evolve-plan → execute-task", () => {
     const state = mockState({
       currentStepNumber: () => 3,
     });
-    const result = resolveTransition("evolve-plan", state, { goalName: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "feat" });
 
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "execute-task",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "feat", stepNumber: 3 },
     });
   });
@@ -152,21 +145,23 @@ describe("resolveTransition — evolve-plan → execute-task", () => {
     const state = mockState({
       currentStepNumber: () => 5,
     });
-    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "feat", stepNumber: 2 });
 
     // Explicit param takes precedence
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "execute-task",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "feat", stepNumber: 2 },
     });
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — full transition chain: review → evolve → finalize
+// dispatch — full transition chain: review → evolve → finalize
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — review→evolve→finalize chain", () => {
+describe("dispatch — review→evolve→finalize chain", () => {
   it("review-task approval leads to evolve-plan which routes to finalize-goal when complete", () => {
     // Arrange: step 3 is approved AND goal is complete
     const approvedState = mockState({
@@ -178,20 +173,24 @@ describe("resolveTransition — review→evolve→finalize chain", () => {
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/chain/test");
 
     // Act step 1: review-task approval → evolve-plan with incremented stepNumber
-    const reviewResult = resolveTransition("review-task", approvedState, { goalName: "feat", stepNumber: 3 });
+    const reviewResults = dispatch(goalDrivenDevelopment, "review-task", approvedState, { goalName: "feat", stepNumber: 3 });
 
     // Assert step 1: routes to evolve-plan with stepNumber 4
-    expect(reviewResult).toEqual({
+    expect(reviewResults).toHaveLength(1);
+    expect(reviewResults[0]).toEqual({
       capability: "evolve-plan",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "feat", stepNumber: 4 },
     });
 
     // Act step 2: evolve-plan with goalCompleted → finalize-goal
-    const evolveResult = resolveTransition("evolve-plan", completeState, { goalName: "feat", stepNumber: 4 });
+    const evolveResults = dispatch(goalDrivenDevelopment, "evolve-plan", completeState, { goalName: "feat", stepNumber: 4 });
 
     // Assert step 2: routes to finalize-goal with all three params
-    expect(evolveResult).toEqual({
+    expect(evolveResults).toHaveLength(1);
+    expect(evolveResults[0]).toEqual({
       capability: "finalize-goal",
+      stateMachineId: "goal-driven-development",
       params: {
         goalName: "feat",
         goalDir: "/chain/test/.pio/goals/feat",
@@ -204,10 +203,10 @@ describe("resolveTransition — review→evolve→finalize chain", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — evolve-plan completion detection
+// dispatch — evolve-plan completion detection
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — evolve-plan completion detection", () => {
+describe("dispatch — evolve-plan completion detection", () => {
   it("routes to finalize-goal when goal is completed", () => {
     // Arrange: mock state with goalCompleted returning true
     const state = mockState({
@@ -216,11 +215,13 @@ describe("resolveTransition — evolve-plan completion detection", () => {
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/fake/cwd");
 
     // Act
-    const result = resolveTransition("evolve-plan", state, { goalName: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "feat" });
 
     // Assert: routes to finalize-goal with goalName, goalDir, and workingDir
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "finalize-goal",
+      stateMachineId: "goal-driven-development",
       params: {
         goalName: "feat",
         goalDir: "/fake/cwd/.pio/goals/feat",
@@ -239,13 +240,14 @@ describe("resolveTransition — evolve-plan completion detection", () => {
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/test/project");
 
     // Act
-    const result = resolveTransition("evolve-plan", state, { goalName: "my-feature", stepNumber: 5 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "my-feature", stepNumber: 5 });
 
     // Assert: goalName, goalDir, and workingDir are all propagated in params
-    expect(result?.capability).toBe("finalize-goal");
-    expect(result?.params?.goalName).toBe("my-feature");
-    expect(result?.params?.goalDir).toBe("/test/project/.pio/goals/my-feature");
-    expect(result?.params?.workingDir).toBe("/test/project");
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("finalize-goal");
+    expect(results[0].params?.goalName).toBe("my-feature");
+    expect(results[0].params?.goalDir).toBe("/test/project/.pio/goals/my-feature");
+    expect(results[0].params?.workingDir).toBe("/test/project");
 
     cwdSpy.mockRestore();
   });
@@ -258,10 +260,11 @@ describe("resolveTransition — evolve-plan completion detection", () => {
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/test/project");
 
     // Act
-    const result = resolveTransition("evolve-plan", state, { goalName: "my-goal" });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "my-goal" });
 
     // Assert: goalDir is computed via resolveGoalDir(cwd, goalName)
-    expect(result?.params?.goalDir).toBe("/test/project/.pio/goals/my-goal");
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.goalDir).toBe("/test/project/.pio/goals/my-goal");
 
     cwdSpy.mockRestore();
   });
@@ -274,10 +277,11 @@ describe("resolveTransition — evolve-plan completion detection", () => {
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/my/root");
 
     // Act
-    const result = resolveTransition("evolve-plan", state, { goalName: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "feat" });
 
     // Assert: workingDir is set to process.cwd() (project root)
-    expect(result?.params?.workingDir).toBe("/my/root");
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.workingDir).toBe("/my/root");
 
     cwdSpy.mockRestore();
   });
@@ -290,11 +294,13 @@ describe("resolveTransition — evolve-plan completion detection", () => {
     });
 
     // Act
-    const result = resolveTransition("evolve-plan", state, { goalName: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "feat" });
 
     // Assert: normal routing to execute-task
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "execute-task",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "feat", stepNumber: 3 },
     });
   });
@@ -307,27 +313,31 @@ describe("resolveTransition — evolve-plan completion detection", () => {
     });
 
     // Act
-    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "feat", stepNumber: 2 });
 
     // Assert: explicit param takes precedence
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "execute-task",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "feat", stepNumber: 2 },
     });
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — execute-task → review-task
+// dispatch — execute-task → review-task
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — execute-task → review-task", () => {
+describe("dispatch — execute-task → review-task", () => {
   it("returns review-task with goalName and stepNumber propagated when present", () => {
     const state = mockState({});
-    const result = resolveTransition("execute-task", state, { goalName: "feat", stepNumber: 5 });
+    const results = dispatch(goalDrivenDevelopment, "execute-task", state, { goalName: "feat", stepNumber: 5 });
 
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "review-task",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "feat", stepNumber: 5 },
     });
   });
@@ -336,10 +346,12 @@ describe("resolveTransition — execute-task → review-task", () => {
     const state = mockState({
       currentStepNumber: () => 4,
     });
-    const result = resolveTransition("execute-task", state, { goalName: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "execute-task", state, { goalName: "feat" });
 
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "review-task",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "feat", stepNumber: 4 },
     });
   });
@@ -348,30 +360,34 @@ describe("resolveTransition — execute-task → review-task", () => {
     const state = mockState({
       currentStepNumber: () => 1,
     });
-    const result = resolveTransition("execute-task", state, { goalName: "feat", stepNumber: 5 });
+    const results = dispatch(goalDrivenDevelopment, "execute-task", state, { goalName: "feat", stepNumber: 5 });
 
     // Explicit param takes precedence
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "review-task",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "feat", stepNumber: 5 },
     });
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — review-task (approval path)
+// dispatch — review-task approval
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — review-task approval", () => {
+describe("dispatch — review-task approval", () => {
   it("routes to evolve-plan with incremented stepNumber when status is approved", () => {
     const state = mockState({
       steps: () => [mockStep(3, "approved")],
     });
 
-    const result = resolveTransition("review-task", state, { goalName: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", state, { goalName: "feat", stepNumber: 3 });
 
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "evolve-plan",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "feat", stepNumber: 4 },
     });
   });
@@ -382,10 +398,11 @@ describe("resolveTransition — review-task approval", () => {
       steps: () => [mockStep(3, "approved")],
     });
 
-    const result = resolveTransition("review-task", state, { goalName: "my-big-feature", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", state, { goalName: "my-big-feature", stepNumber: 3 });
 
-    expect(result?.params?.goalName).toBe("my-big-feature");
-    expect(result?.params?.stepNumber).toBe(4);
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.goalName).toBe("my-big-feature");
+    expect(results[0].params?.stepNumber).toBe(4);
   });
 
   it("falls back to execute-task when stepNumber is missing from params", () => {
@@ -393,29 +410,35 @@ describe("resolveTransition — review-task approval", () => {
       steps: () => [mockStep(3, "approved")],
     });
 
-    const result = resolveTransition("review-task", state, { goalName: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "review-task", state, { goalName: "feat" });
 
-    expect(result).toEqual({
+    // When stepNumber is null, resolveReviewTaskToEvolvePlan returns undefined.
+    // resolveReviewTaskToExecuteTask handles null stepNumber and returns execute-task.
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "execute-task",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "feat" },
     });
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — review-task (rejection path)
+// dispatch — review-task rejection
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — review-task rejection", () => {
+describe("dispatch — review-task rejection", () => {
   it("routes to execute-task with same stepNumber when status is rejected", () => {
     const state = mockState({
       steps: () => [mockStep(3, "rejected")],
     });
 
-    const result = resolveTransition("review-task", state, { goalName: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", state, { goalName: "feat", stepNumber: 3 });
 
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "execute-task",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "feat", stepNumber: 3 },
     });
   });
@@ -425,76 +448,90 @@ describe("resolveTransition — review-task rejection", () => {
       steps: () => [mockStep(2, "rejected")],
     });
 
-    const result = resolveTransition("review-task", state, { goalName: "my-feature", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", state, { goalName: "my-feature", stepNumber: 2 });
 
-    expect(result?.params?.goalName).toBe("my-feature");
-    expect(result?.params?.stepNumber).toBe(2);
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.goalName).toBe("my-feature");
+    expect(results[0].params?.stepNumber).toBe(2);
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — review-task (unknown/missing step fallback)
+// dispatch — review-task fallback (intentional behavioral change)
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — review-task fallback", () => {
-  it("routes to execute-task when steps() returns empty array", () => {
+/**
+ * BEHAVIORAL CHANGE: The old `transitionReviewTask` had a catch-all fallback:
+ * when step status was unknown ("implemented", "blocked") or the step wasn't found,
+ * it returned `{ capability: "execute-task" }`. The new framework has exactly two
+ * edges from review-task — approved→evolve-plan and rejected→execute-task.
+ * There is no third fallback edge.
+ *
+ * Unknown review statuses now correctly produce no matches (empty array) —
+ * treating this as a terminal state rather than implicitly retrying.
+ */
+describe("dispatch — review-task fallback (behavioral change: empty array)", () => {
+  it("returns empty array when steps() returns empty array", () => {
     const state = mockState({
       steps: () => [],
     });
 
-    const result = resolveTransition("review-task", state, { goalName: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", state, { goalName: "feat", stepNumber: 3 });
 
-    expect(result).toEqual({
-      capability: "execute-task",
-      params: { goalName: "feat", stepNumber: 3 },
-    });
+    // Behavioral change: old code returned { capability: "execute-task" }
+    // New framework: no edge fires → empty array (terminal state)
+    expect(results).toHaveLength(0);
   });
 
-  it("routes to execute-task when step status is implemented (COMPLETED but not reviewed)", () => {
+  it("returns empty array when step status is implemented (COMPLETED but not reviewed)", () => {
     const state = mockState({
       steps: () => [mockStep(3, "implemented")],
     });
 
-    const result = resolveTransition("review-task", state, { goalName: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", state, { goalName: "feat", stepNumber: 3 });
 
-    expect(result).toEqual({
-      capability: "execute-task",
-      params: { goalName: "feat", stepNumber: 3 },
-    });
+    // Behavioral change: old code returned { capability: "execute-task" }
+    // New framework: no edge fires → empty array (terminal state)
+    expect(results).toHaveLength(0);
   });
 
-  it("routes to execute-task when step status is blocked", () => {
+  it("returns empty array when step status is blocked", () => {
     const state = mockState({
       steps: () => [mockStep(3, "blocked")],
     });
 
-    const result = resolveTransition("review-task", state, { goalName: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", state, { goalName: "feat", stepNumber: 3 });
 
-    expect(result).toEqual({
-      capability: "execute-task",
-      params: { goalName: "feat", stepNumber: 3 },
-    });
+    // Behavioral change: old code returned { capability: "execute-task" }
+    // New framework: no edge fires → empty array (terminal state)
+    expect(results).toHaveLength(0);
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — unknown capabilities
+// dispatch — unknown capability
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — unknown capability", () => {
-  it("returns undefined for unknown string", () => {
+describe("dispatch — unknown capability", () => {
+  it("returns empty array for unknown string", () => {
     const state = mockState({});
-    expect(resolveTransition("nonexistent", state, {})).toBeUndefined();
+    const results = dispatch(goalDrivenDevelopment, "nonexistent", state, {});
+
+    expect(results).toHaveLength(0);
   });
 
-  it("returns undefined for empty string", () => {
+  it("returns empty array for empty string", () => {
     const state = mockState({});
-    expect(resolveTransition("", state, {})).toBeUndefined();
+    const results = dispatch(goalDrivenDevelopment, "", state, {});
+
+    expect(results).toHaveLength(0);
   });
 
-  it("returns undefined for finalize-goal (no outgoing transition)", () => {
+  it("returns empty array for finalize-goal with no parentGoalName (no outgoing transition)", () => {
     const state = mockState({});
-    expect(resolveTransition("finalize-goal", state, { goalName: "feat" })).toBeUndefined();
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", state, { goalName: "feat" });
+
+    expect(results).toHaveLength(0);
   });
 });
 
@@ -503,32 +540,37 @@ describe("resolveTransition — unknown capability", () => {
 // ---------------------------------------------------------------------------
 
 describe("TransitionResult shape consistency", () => {
-  it("string transitions wrap in TransitionResult with params", () => {
+  it("results include stateMachineId and params", () => {
     const state = mockState({});
-    const result = resolveTransition("create-goal", state, { goalName: "test" });
+    const results = dispatch(goalDrivenDevelopment, "create-goal", state, { goalName: "test" });
 
-    expect(result).toBeDefined();
-    expect(typeof result).toBe("object");
-    expect(result).toHaveProperty("capability");
-    expect(result).toHaveProperty("params");
+    expect(results).toHaveLength(1);
+    expect(results[0]).toBeDefined();
+    expect(typeof results[0]).toBe("object");
+    expect(results[0]).toHaveProperty("capability");
+    expect(results[0]).toHaveProperty("stateMachineId");
+    expect(results[0]).toHaveProperty("params");
+    expect(results[0].stateMachineId).toBe("goal-driven-development");
   });
 
-  it("callback transitions return TransitionResult directly (not double-wrapped)", () => {
+  it("edge resolve functions return TransitionResult directly (not double-wrapped)", () => {
     const state = mockState({});
-    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "feat", stepNumber: 2 });
 
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "execute-task",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "feat", stepNumber: 2 },
     });
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — evolve-plan → revise-plan
+// dispatch — evolve-plan → revise-plan
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — evolve-plan → revise-plan", () => {
+describe("dispatch — evolve-plan → revise-plan", () => {
   it("routes to revise-plan when current step has revisionNeeded() returning true", () => {
     const step = mockStep(4, "defined");
     step.revisionNeeded = () => true;
@@ -536,9 +578,10 @@ describe("resolveTransition — evolve-plan → revise-plan", () => {
       steps: () => [step],
     });
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 4 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "feat", stepNumber: 4 });
 
-    expect(result?.capability).toBe("revise-plan");
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("revise-plan");
   });
 
   it("includes revisionTriggerStep set to current step number", () => {
@@ -548,9 +591,10 @@ describe("resolveTransition — evolve-plan → revise-plan", () => {
       steps: () => [step],
     });
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 4 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "feat", stepNumber: 4 });
 
-    expect(result?.params?.revisionTriggerStep).toBe(4);
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.revisionTriggerStep).toBe(4);
   });
 
   it("preserves goalName in revise-plan params", () => {
@@ -560,9 +604,10 @@ describe("resolveTransition — evolve-plan → revise-plan", () => {
       steps: () => [step],
     });
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "my-feature", stepNumber: 4 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "my-feature", stepNumber: 4 });
 
-    expect(result?.params?.goalName).toBe("my-feature");
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.goalName).toBe("my-feature");
   });
 
   it("falls through to execute-task when revisionNeeded returns false", () => {
@@ -571,9 +616,10 @@ describe("resolveTransition — evolve-plan → revise-plan", () => {
     });
     // revisionNeeded defaults to false in mockStep
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 4 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "feat", stepNumber: 4 });
 
-    expect(result?.capability).toBe("execute-task");
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("execute-task");
   });
 
   it("falls through to finalize-goal when all steps complete and no revision needed", () => {
@@ -583,9 +629,10 @@ describe("resolveTransition — evolve-plan → revise-plan", () => {
     });
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/fake/cwd");
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 4 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "feat", stepNumber: 4 });
 
-    expect(result?.capability).toBe("finalize-goal");
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("finalize-goal");
 
     cwdSpy.mockRestore();
   });
@@ -595,9 +642,10 @@ describe("resolveTransition — evolve-plan → revise-plan", () => {
       steps: () => [],
     });
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 5 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "feat", stepNumber: 5 });
 
-    expect(result?.capability).toBe("execute-task");
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("execute-task");
   });
 
   it("falls through to existing behavior when stepNumber is missing from params", () => {
@@ -605,50 +653,56 @@ describe("resolveTransition — evolve-plan → revise-plan", () => {
       currentStepNumber: () => 3,
     });
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "feat" });
 
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "execute-task",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "feat", stepNumber: 3 },
     });
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — revise-plan → evolve-plan
+// dispatch — revise-plan → evolve-plan
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — revise-plan → evolve-plan", () => {
+describe("dispatch — revise-plan → evolve-plan", () => {
   it("routes to evolve-plan after revise-plan completes", () => {
     const state = mockState({});
 
-    const result = resolveTransition("revise-plan", state, { goalName: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "revise-plan", state, { goalName: "feat" });
 
-    expect(result?.capability).toBe("evolve-plan");
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("evolve-plan");
   });
 
   it("preserves goalName in evolve-plan params", () => {
     const state = mockState({});
 
-    const result = resolveTransition("revise-plan", state, { goalName: "my-feature" });
+    const results = dispatch(goalDrivenDevelopment, "revise-plan", state, { goalName: "my-feature" });
 
-    expect(result?.params?.goalName).toBe("my-feature");
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.goalName).toBe("my-feature");
   });
 
   it("does not pass explicit stepNumber (let evolve-plan discover next step)", () => {
     const state = mockState({});
 
-    const result = resolveTransition("revise-plan", state, { goalName: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "revise-plan", state, { goalName: "feat" });
 
-    expect(result?.params?.stepNumber).toBeUndefined();
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.stepNumber).toBeUndefined();
   });
 
   it("preserves revisionTriggerStep if present in params", () => {
     const state = mockState({});
 
-    const result = resolveTransition("revise-plan", state, { goalName: "feat", revisionTriggerStep: 4 });
+    const results = dispatch(goalDrivenDevelopment, "revise-plan", state, { goalName: "feat", revisionTriggerStep: 4 });
 
-    expect(result?.params?.revisionTriggerStep).toBe(4);
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.revisionTriggerStep).toBe(4);
   });
 });
 
@@ -668,7 +722,7 @@ describe("recordTransition — file creation", () => {
   });
 
   it("creates transitions.json with a single-entry JSON array", () => {
-    const result: TransitionResult = { capability: "evolve-plan", params: { stepNumber: 2 } };
+    const result: TransitionResult = { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { stepNumber: 2 } };
     recordTransition(tempDir, "create-plan", result);
 
     const content = fs.readFileSync(path.join(tempDir, "transitions.json"), "utf-8");
@@ -683,7 +737,7 @@ describe("recordTransition — file creation", () => {
   });
 
   it("entry contains ISO timestamp", () => {
-    const result: TransitionResult = { capability: "execute-task" };
+    const result: TransitionResult = { capability: "execute-task", stateMachineId: "goal-driven-development" };
     recordTransition(tempDir, "evolve-plan", result);
 
     const content = fs.readFileSync(path.join(tempDir, "transitions.json"), "utf-8");
@@ -710,8 +764,8 @@ describe("recordTransition — append to existing", () => {
   });
 
   it("second call appends to the existing JSON array", () => {
-    recordTransition(tempDir, "create-goal", { capability: "create-plan" });
-    recordTransition(tempDir, "create-plan", { capability: "evolve-plan" });
+    recordTransition(tempDir, "create-goal", { capability: "create-plan", stateMachineId: "goal-driven-development" });
+    recordTransition(tempDir, "create-plan", { capability: "evolve-plan", stateMachineId: "goal-driven-development" });
 
     const content = fs.readFileSync(path.join(tempDir, "transitions.json"), "utf-8");
     const entries = JSON.parse(content);
@@ -723,7 +777,7 @@ describe("recordTransition — append to existing", () => {
 
   it("subsequent calls continue appending (entry count matches call count)", () => {
     for (let i = 0; i < 5; i++) {
-      recordTransition(tempDir, "capability", { capability: "next" });
+      recordTransition(tempDir, "capability", { capability: "next", stateMachineId: "goal-driven-development" });
     }
 
     const content = fs.readFileSync(path.join(tempDir, "transitions.json"), "utf-8");
@@ -743,13 +797,13 @@ describe("recordTransition — error handling", () => {
     const unwritablePath = "/nonexistent/path/that/cannot/be/created/transitions.json";
 
     expect(() => {
-      recordTransition(unwritablePath, "test-cap", { capability: "next" });
+      recordTransition(unwritablePath, "test-cap", { capability: "next", stateMachineId: "goal-driven-development" });
     }).not.toThrow();
   });
 });
 
 // ---------------------------------------------------------------------------
-// recordTransition — isolation from resolveTransition
+// recordTransition — isolation from dispatch
 // ---------------------------------------------------------------------------
 
 describe("recordTransition isolation", () => {
@@ -763,27 +817,29 @@ describe("recordTransition isolation", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("calling recordTransition does not affect subsequent resolveTransition calls", () => {
+  it("calling recordTransition does not affect subsequent dispatch calls", () => {
     const state = mockState({});
 
     // Call recordTransition (real I/O)
-    recordTransition(tempDir, "test-cap", { capability: "next" });
+    recordTransition(tempDir, "test-cap", { capability: "next", stateMachineId: "goal-driven-development" });
 
-    // Verify resolveTransition still works correctly with mock state
-    const result = resolveTransition("create-goal", state, { goalName: "test" });
+    // Verify dispatch still works correctly with mock state
+    const results = dispatch(goalDrivenDevelopment, "create-goal", state, { goalName: "test" });
 
-    expect(result).toEqual({
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
       capability: "create-plan",
+      stateMachineId: "goal-driven-development",
       params: { goalName: "test" },
     });
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — evolve-plan → create-goal (subgoal spawning)
+// dispatch — evolve-plan → create-goal (subgoal spawning)
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — evolve-plan → create-goal (subgoal)", () => {
+describe("dispatch — evolve-plan → create-goal (subgoal)", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -803,9 +859,10 @@ describe("resolveTransition — evolve-plan → create-goal (subgoal)", () => {
     });
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "parent", stepNumber: 2 });
 
-    expect(result?.capability).toBe("create-goal");
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("create-goal");
 
     cwdSpy.mockRestore();
   });
@@ -819,11 +876,12 @@ describe("resolveTransition — evolve-plan → create-goal (subgoal)", () => {
     });
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "parent", stepNumber: 2 });
 
-    expect(result?.params?.parentGoalName).toBe("parent");
-    expect(result?.params?.parentStepNumber).toBe(2);
-    expect(result?.params?.subgoalType).toBe(true);
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.parentGoalName).toBe("parent");
+    expect(results[0].params?.parentStepNumber).toBe(2);
+    expect(results[0].params?.subgoalType).toBe(true);
 
     cwdSpy.mockRestore();
   });
@@ -837,9 +895,10 @@ describe("resolveTransition — evolve-plan → create-goal (subgoal)", () => {
     });
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "parent", stepNumber: 2 });
 
-    expect(result?.params?.workingDir).toBe(
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.workingDir).toBe(
       path.join(tempDir, ".pio", "goals", "parent", "S02", "subgoals", "nested-child"),
     );
 
@@ -855,9 +914,10 @@ describe("resolveTransition — evolve-plan → create-goal (subgoal)", () => {
     });
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "parent", stepNumber: 2 });
 
-    expect(result?.params?.goalName).toBe("my-subgoal-name");
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.goalName).toBe("my-subgoal-name");
 
     cwdSpy.mockRestore();
   });
@@ -871,10 +931,11 @@ describe("resolveTransition — evolve-plan → create-goal (subgoal)", () => {
     });
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "parent", stepNumber: 2 });
 
-    expect(result?.capability).toBe("execute-task");
-    expect(result?.params?.stepNumber).toBe(2);
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("execute-task");
+    expect(results[0].params?.stepNumber).toBe(2);
 
     cwdSpy.mockRestore();
   });
@@ -887,10 +948,11 @@ describe("resolveTransition — evolve-plan → create-goal (subgoal)", () => {
     });
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "parent", stepNumber: 2 });
 
-    expect(result?.capability).toBe("execute-task");
-    expect(result?.params?.stepNumber).toBe(2);
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("execute-task");
+    expect(results[0].params?.stepNumber).toBe(2);
 
     cwdSpy.mockRestore();
   });
@@ -907,10 +969,11 @@ describe("resolveTransition — evolve-plan → create-goal (subgoal)", () => {
     });
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "parent", stepNumber: 2 });
 
-    expect(result?.capability).toBe("revise-plan");
-    expect(result?.params?.revisionTriggerStep).toBe(2);
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("revise-plan");
+    expect(results[0].params?.revisionTriggerStep).toBe(2);
 
     cwdSpy.mockRestore();
   });
@@ -924,12 +987,13 @@ describe("resolveTransition — evolve-plan → create-goal (subgoal)", () => {
     });
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "parent", stepNumber: 3 });
 
-    expect(result?.params?.initialMessage).toBeDefined();
-    expect(typeof result?.params?.initialMessage).toBe("string");
-    expect(result?.params?.initialMessage).toContain("TASK.md");
-    expect(result?.params?.initialMessage).toContain("subgoal");
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.initialMessage).toBeDefined();
+    expect(typeof results[0].params?.initialMessage).toBe("string");
+    expect(results[0].params?.initialMessage).toContain("TASK.md");
+    expect(results[0].params?.initialMessage).toContain("subgoal");
 
     cwdSpy.mockRestore();
   });
@@ -943,16 +1007,17 @@ describe("resolveTransition — evolve-plan → create-goal (subgoal)", () => {
     });
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "parent", stepNumber: 3 });
 
-    const initialMessage = result?.params?.initialMessage as string;
+    expect(results).toHaveLength(1);
+    const initialMessage = results[0].params?.initialMessage as string;
     // Extract the relative path from the message
     const pathMatch = initialMessage.match(/Read\s+(.+?)\s+from/);
     expect(pathMatch).not.toBeNull();
     const relativePath = pathMatch![1];
 
     // Verify the relative path resolves correctly
-    const subgoalWorkingDir = result?.params?.workingDir as string;
+    const subgoalWorkingDir = results[0].params?.workingDir as string;
     const resolvedPath = path.resolve(subgoalWorkingDir, relativePath);
     const expectedPath = path.join(tempDir, ".pio", "goals", "parent", "S03", "TASK.md");
     expect(resolvedPath).toBe(expectedPath);
@@ -969,10 +1034,11 @@ describe("resolveTransition — evolve-plan → create-goal (subgoal)", () => {
     });
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "parent", stepNumber: 2 });
 
-    expect(result?.capability).toBe("execute-task");
-    expect(result?.params?.initialMessage).toBeUndefined();
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("execute-task");
+    expect(results[0].params?.initialMessage).toBeUndefined();
 
     cwdSpy.mockRestore();
   });
@@ -986,16 +1052,17 @@ describe("resolveTransition — evolve-plan → create-goal (subgoal)", () => {
     });
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 1 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "parent", stepNumber: 1 });
 
-    const initialMessage = result?.params?.initialMessage as string;
+    expect(results).toHaveLength(1);
+    const initialMessage = results[0].params?.initialMessage as string;
     // The relative path should use path.sep (platform-specific)
     // On POSIX it should be ../../TASK.md
     const pathMatch = initialMessage.match(/Read\s+(.+?)\s+from/);
     expect(pathMatch).not.toBeNull();
     const relativePath = pathMatch![1];
     // path.relative produces platform-specific separators — verify it resolves correctly
-    const subgoalWorkingDir = result?.params?.workingDir as string;
+    const subgoalWorkingDir = results[0].params?.workingDir as string;
     const resolvedPath = path.resolve(subgoalWorkingDir, relativePath);
     expect(resolvedPath).toContain("TASK.md");
 
@@ -1004,88 +1071,92 @@ describe("resolveTransition — evolve-plan → create-goal (subgoal)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — finalize-goal completion propagation
+// dispatch — finalize-goal completion propagation
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — finalize-goal completion propagation", () => {
+describe("dispatch — finalize-goal completion propagation", () => {
   it("routes to evolve-plan for parent with stepNumber: parentStepNumber + 1", () => {
     const state = mockState({});
 
-    const result = resolveTransition("finalize-goal", state, {
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", state, {
       goalName: "nested",
       parentGoalName: "parent",
       parentStepNumber: 3,
     });
 
-    expect(result?.capability).toBe("evolve-plan");
-    expect(result?.params?.goalName).toBe("parent");
-    expect(result?.params?.stepNumber).toBe(4);
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("evolve-plan");
+    expect(results[0].params?.goalName).toBe("parent");
+    expect(results[0].params?.stepNumber).toBe(4);
   });
 
   it("uses parentGoalName as the goalName in returned params", () => {
     const state = mockState({});
 
-    const result = resolveTransition("finalize-goal", state, {
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", state, {
       goalName: "child-goal",
       parentGoalName: "my-parent",
       parentStepNumber: 5,
     });
 
-    expect(result?.params?.goalName).toBe("my-parent");
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.goalName).toBe("my-parent");
   });
 
   it("does NOT include parentGoalName or parentStepNumber in returned params (param pollution prevention)", () => {
     const state = mockState({});
 
-    const result = resolveTransition("finalize-goal", state, {
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", state, {
       goalName: "child",
       parentGoalName: "parent",
       parentStepNumber: 3,
     });
 
-    expect(result?.params?.parentGoalName).toBeUndefined();
-    expect(result?.params?.parentStepNumber).toBeUndefined();
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.parentGoalName).toBeUndefined();
+    expect(results[0].params?.parentStepNumber).toBeUndefined();
   });
 
   it("does NOT include subgoalType in returned params", () => {
     const state = mockState({});
 
-    const result = resolveTransition("finalize-goal", state, {
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", state, {
       goalName: "child",
       parentGoalName: "parent",
       parentStepNumber: 3,
       subgoalType: true,
     });
 
-    expect(result?.params?.subgoalType).toBeUndefined();
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.subgoalType).toBeUndefined();
   });
 
-  it("returns undefined when no parentGoalName (top-level goal, backward compatible)", () => {
+  it("returns empty array when no parentGoalName (top-level goal, backward compatible)", () => {
     const state = mockState({});
 
-    const result = resolveTransition("finalize-goal", state, { goalName: "my-feature" });
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", state, { goalName: "my-feature" });
 
-    expect(result).toBeUndefined();
+    expect(results).toHaveLength(0);
   });
 
-  it("returns undefined when parentGoalName is not a string (type guard)", () => {
+  it("returns empty array when parentGoalName is not a string (type guard)", () => {
     const state = mockState({});
 
-    const result = resolveTransition("finalize-goal", state, {
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", state, {
       goalName: "child",
       parentGoalName: 123,
       parentStepNumber: 3,
     });
 
-    expect(result).toBeUndefined();
+    expect(results).toHaveLength(0);
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — subgoal lifecycle (integration)
+// dispatch — subgoal lifecycle (integration)
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — subgoal lifecycle", () => {
+describe("dispatch — subgoal lifecycle", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -1105,13 +1176,14 @@ describe("resolveTransition — subgoal lifecycle", () => {
     });
     const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    const result = resolveTransition("evolve-plan", state, { goalName: "parent", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "parent", stepNumber: 2 });
 
-    expect(result?.capability).toBe("create-goal");
-    expect(result?.params?.goalName).toBe("nested-feature");
-    expect(result?.params?.parentGoalName).toBe("parent");
-    expect(result?.params?.parentStepNumber).toBe(2);
-    expect(result?.params?.subgoalType).toBe(true);
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("create-goal");
+    expect(results[0].params?.goalName).toBe("nested-feature");
+    expect(results[0].params?.parentGoalName).toBe("parent");
+    expect(results[0].params?.parentStepNumber).toBe(2);
+    expect(results[0].params?.subgoalType).toBe(true);
 
     cwdSpy.mockRestore();
   });
@@ -1119,48 +1191,50 @@ describe("resolveTransition — subgoal lifecycle", () => {
   it("create-goal → create-plan (existing behavior, no change)", () => {
     const state = mockState({});
 
-    const result = resolveTransition("create-goal", state, {
+    const results = dispatch(goalDrivenDevelopment, "create-goal", state, {
       goalName: "nested-feature",
       parentGoalName: "parent",
       parentStepNumber: 2,
       subgoalType: true,
     });
 
-    expect(result?.capability).toBe("create-plan");
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("create-plan");
     // Params preserved as-is through create-goal
-    expect(result?.params?.parentGoalName).toBe("parent");
+    expect(results[0].params?.parentGoalName).toBe("parent");
   });
 
   it("finalize-goal with parent context → evolve-plan for parent with incremented step number", () => {
     const state = mockState({});
 
-    const result = resolveTransition("finalize-goal", state, {
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", state, {
       goalName: "nested-feature",
       parentGoalName: "parent",
       parentStepNumber: 2,
       subgoalType: true,
     });
 
-    expect(result?.capability).toBe("evolve-plan");
-    expect(result?.params?.goalName).toBe("parent");
-    expect(result?.params?.stepNumber).toBe(3);
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("evolve-plan");
+    expect(results[0].params?.goalName).toBe("parent");
+    expect(results[0].params?.stepNumber).toBe(3);
     // No param pollution
-    expect(result?.params?.parentGoalName).toBeUndefined();
-    expect(result?.params?.subgoalType).toBeUndefined();
+    expect(results[0].params?.parentGoalName).toBeUndefined();
+    expect(results[0].params?.subgoalType).toBeUndefined();
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveTransition — backward compatibility (finalize-goal)
+// dispatch — backward compatibility (finalize-goal)
 // ---------------------------------------------------------------------------
 
-describe("resolveTransition — backward compatibility", () => {
-  it("finalize-goal without parentGoalName still returns undefined", () => {
+describe("dispatch — backward compatibility", () => {
+  it("finalize-goal without parentGoalName still returns empty array", () => {
     const state = mockState({});
 
-    const result = resolveTransition("finalize-goal", state, { goalName: "my-feature" });
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", state, { goalName: "my-feature" });
 
-    expect(result).toBeUndefined();
+    expect(results).toHaveLength(0);
   });
 
   it("evolve-plan with explicit stepNumber still routes to execute-task when no subgoal metadata present", () => {
@@ -1170,9 +1244,10 @@ describe("resolveTransition — backward compatibility", () => {
     });
 
     // getMetadata returns null — no subgoal metadata, falls through to execute-task
-    const result = resolveTransition("evolve-plan", state, { goalName: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", state, { goalName: "feat", stepNumber: 3 });
 
-    expect(result?.capability).toBe("execute-task");
-    expect(result?.params?.stepNumber).toBe(3);
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("execute-task");
+    expect(results[0].params?.stepNumber).toBe(3);
   });
 });

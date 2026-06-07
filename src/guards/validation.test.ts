@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Type } from "typebox";
-import { validateOutputs, setupValidation, validateFrontmatter, createFrontmatterValidator } from "./validation";
+import { validateOutputs, setupValidation, validateFrontmatter, createFrontmatterValidator, validateInputs } from "./validation";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -427,6 +427,104 @@ Second step
 // ---------------------------------------------------------------------------
 // createFrontmatterValidator — factory for PostValidateCallback
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// validateInputs — file-existence input validation
+// ---------------------------------------------------------------------------
+
+describe("validateInputs", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  // --- Success path ---
+
+  it("all required files exist, no excluded files → success: true", () => {
+    fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+
+    const result = validateInputs(tempDir, ["GOAL.md", "PLAN.md"]);
+
+    expect(result).toEqual({ success: true });
+  });
+
+  it("empty required files, no excluded files → success: true", () => {
+    const result = validateInputs(tempDir, []);
+
+    expect(result).toEqual({ success: true });
+  });
+
+  it("required files exist and excluded files don't → success: true", () => {
+    fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
+
+    const result = validateInputs(tempDir, ["GOAL.md"], ["PLAN.md"]);
+
+    expect(result).toEqual({ success: true });
+  });
+
+  // --- Missing required file ---
+
+  it("first required file missing → failure with file name", () => {
+    const result = validateInputs(tempDir, ["GOAL.md", "PLAN.md"]);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toBe("Required file missing: GOAL.md");
+  });
+
+  it("second required file missing → failure (first exists)", () => {
+    fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
+
+    const result = validateInputs(tempDir, ["GOAL.md", "PLAN.md"]);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toBe("Required file missing: PLAN.md");
+  });
+
+  // --- Excluded file exists ---
+
+  it("excluded file exists → failure with file name", () => {
+    fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+
+    const result = validateInputs(tempDir, ["GOAL.md"], ["PLAN.md"]);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toBe("File must not exist: PLAN.md");
+  });
+
+  it("first excluded file checked (fail-fast on excluded)", () => {
+    fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "TASK.md"), "content", "utf-8");
+
+    const result = validateInputs(tempDir, ["GOAL.md"], ["PLAN.md", "TASK.md"]);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toBe("File must not exist: PLAN.md");
+  });
+
+  // --- Subdirectory paths ---
+
+  it("required file in subdirectory → success when exists", () => {
+    fs.mkdirSync(path.join(tempDir, "S01"), { recursive: true });
+    fs.writeFileSync(path.join(tempDir, "S01", "TASK.md"), "content", "utf-8");
+
+    const result = validateInputs(tempDir, ["S01/TASK.md"]);
+
+    expect(result).toEqual({ success: true });
+  });
+
+  it("required file in subdirectory → failure when missing", () => {
+    const result = validateInputs(tempDir, ["S01/TASK.md"]);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toBe("Required file missing: S01/TASK.md");
+  });
+});
 
 describe("createFrontmatterValidator", () => {
   let tempDir: string;

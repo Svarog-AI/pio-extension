@@ -1,5 +1,6 @@
 import type { AgentEndEvent, ExtensionAPI, TurnEndEvent } from "@earendil-works/pi-coding-agent";
 import { readTurnThreshold } from "../model-config";
+import { getSessionConfig } from "../capability-utils";
 
 // ---------------------------------------------------------------------------
 // Minimal local interfaces for content blocks
@@ -142,16 +143,8 @@ export function setupSessionGuard(pi: ExtensionAPI) {
 
   // 1. Detect pio sub-sessions at startup
   pi.on("resources_discover", async (_event, ctx) => {
-    const entries = ctx.sessionManager.getEntries();
-    const entry = entries.find(
-      (e) => e.type === "custom" && e.customType === "pio-config",
-    );
-
-    if (entry && entry.type === "custom") {
-      isActivePioSession = true;
-    } else {
-      isActivePioSession = false;
-    }
+    const config = getSessionConfig(ctx);
+    isActivePioSession = !!config;
   });
 
   // 2. Detect dead turns at the end of each turn

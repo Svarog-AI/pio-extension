@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CapabilityConfig, CapabilitySkills } from "./types";
+import { getSessionConfig } from "./capability-utils";
 import type { CompiledPromptSections } from "./capability-package";
 import { compilePrompt } from "./prompt-compiler";
 import { setupStepNudging } from "./guards/step-nudging";
@@ -158,13 +159,8 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
     // Reset compiled sections to prevent stale state from previous sessions
     compiledSections = undefined;
 
-    const entries = ctx.sessionManager.getEntries();
-    const entry = entries.find(
-      (e) => e.type === "custom" && e.customType === "pio-config",
-    );
-    if (!entry || entry.type !== "custom") return;
-
-    const config = entry.data as CapabilityConfig;
+    const config = getSessionConfig(ctx);
+    if (!config) return;
 
     // Capture capability name for model resolution in before_agent_start
     capabilityName = config.capability;

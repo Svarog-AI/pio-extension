@@ -9,6 +9,7 @@ import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { createGoalState } from "../../goal-state";
 import type { CapabilityPackageConfig } from "../../capability-package";
+import { validateInputs } from "../../guards/validation";
 
 // ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
@@ -16,6 +17,7 @@ import type { CapabilityPackageConfig } from "../../capability-package";
 
 const capabilityConfig = {
   capability: "finalize-goal",
+  inputValidation: { requiredFiles: ["GOAL.md", "PLAN.md"] },
   skills: {
     mandatory: ["pio-project-knowledge", "pio-git"],
   },
@@ -63,6 +65,11 @@ export async function validateFinalizeGoal(
       ready: false,
       error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.`,
     };
+  }
+
+  const fileCheck = validateInputs(goalDir, ["GOAL.md", "PLAN.md"]);
+  if (!fileCheck.success) {
+    return { goalDir, ready: false, error: fileCheck.message! };
   }
 
   const state = createGoalState(goalDir);

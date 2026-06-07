@@ -21,6 +21,7 @@ import type { TSchema } from "typebox";
 import type {
   CapabilitySkills,
   ConfigCallback,
+  InputValidationSpec,
   PostExecuteCallback,
   PostValidateCallback,
   PrepareSessionCallback,
@@ -172,6 +173,8 @@ export interface CapabilityPackageConfig {
   skills?: CapabilitySkills;
   /** Declarative output document frontmatter schemas. Each entry declares an output file path and a TypeBox schema. Validated by the exit-gate via validateFrontmatter(). */
   frontmatterSchemas?: FrontmatterSchemaDeclaration[];
+  /** Declarative input contract: files that must/must-not exist before the session starts. Can be a static spec or a callback `(workingDir, params) => InputValidationSpec`. */
+  inputValidation?: InputValidationSpec | ConfigCallback<InputValidationSpec>;
 }
 
 /**

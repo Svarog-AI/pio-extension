@@ -19,6 +19,7 @@ const capabilityConfig = {
   capability: "evolve-plan",
   validation: resolveEvolveValidation,
   writeAllowlist: resolveEvolveWriteAllowlist,
+  inputValidation: { requiredFiles: ["PLAN.md"] },
   skills: {
     mandatory: ["pio-planning", "grill-me"],
   },

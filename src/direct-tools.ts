@@ -9,6 +9,10 @@ import type { SessionQueueTask } from "./queues";
 import { enqueueTask } from "./queues";
 import { launchCapability } from "./capability-session";
 import { resolveCapabilityConfig } from "./capability-config";
+import { dispatch } from "./state-machines";
+import { recordTransition } from "./state-machines/pio-workflow-machine";
+import { createGoalState } from "./goal-state";
+import { getSessionConfig } from "./capability-utils";
 
 // ---------------------------------------------------------------------------
 // pio_init
@@ -455,6 +459,102 @@ async function handleGoalFromIssue(args: string | undefined, ctx: ExtensionComma
 }
 
 // ---------------------------------------------------------------------------
+// Helpers (shared by tool and command)
+// ---------------------------------------------------------------------------
+
+/** Check if a working directory path looks like a goal workspace. */
+export function isGoalWorkspace(workingDir?: string): boolean {
+  return !!workingDir && workingDir.includes("/.pio/goals/");
+}
+
+// ---------------------------------------------------------------------------
+// pio_transition tool
+// ---------------------------------------------------------------------------
+
+const transitionTool = defineTool({
+  name: "pio_transition",
+  label: "Pio Transition",
+  description: `Manually override the default transition routing. Enqueues a task for the target capability using context from the current session. Returns success message with next-task hint.`,
+  parameters: Type.Object({
+    capability: Type.String({ description: "Target capability name to transition to" }),
+    params: Type.Optional(Type.Object({}, { description: "Optional session params to propagate with the enqueued task" })),
+  }),
+
+  async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    const config = getSessionConfig(ctx as unknown as ExtensionCommandContext);
+    if (!config) {
+      return { content: [{ type: "text", text: "Not inside a capability session. Cannot determine transition context." }], details: {} };
+    }
+
+    // Derive stateMachineId from session params (prior dispatch result) or default
+    const sessionId = typeof config.sessionParams?.stateMachineId === "string"
+      ? config.sessionParams.stateMachineId
+      : "goal-driven-development";
+
+    // Merge params: session params first, user overrides on top
+    const mergedParams = { ...config.sessionParams, ...params.params };
+
+    // Derive queue key from goalName if present
+    const queueKey = typeof config.sessionParams?.goalName === "string"
+      ? config.sessionParams.goalName
+      : config.capability;
+
+    enqueueTask(process.cwd(), queueKey!, {
+      capability: params.capability,
+      params: mergedParams,
+    });
+
+    // Record audit only for goal workspaces
+    if (isGoalWorkspace(config.workingDir)) {
+      recordTransition(
+        config.workingDir!,
+        config.capability!,
+        { capability: params.capability, stateMachineId: sessionId, params: mergedParams },
+      );
+    }
+
+    return {
+      content: [{ type: "text", text: `Task enqueued: ${params.capability}. Use /pio-next-task to start the sub-session.` }],
+      details: {},
+    };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// /pio-transition command
+// ---------------------------------------------------------------------------
+
+async function handleTransition(_args: string | undefined, ctx: ExtensionCommandContext) {
+  const config = getSessionConfig(ctx);
+
+  if (!config?.capability) {
+    ctx.ui.notify("Not inside a capability session. Cannot determine transition context.", "info");
+    return;
+  }
+
+  const fromCapability = config.capability;
+  const params = typeof config.sessionParams?.goalName === "string"
+    ? { goalName: config.sessionParams.goalName, stepNumber: config.sessionParams.stepNumber, _sessionContext: config.sessionParams }
+    : { ...config.sessionParams };
+
+  // Build state: GoalState for goal workspaces, raw params otherwise
+  const state = isGoalWorkspace(config.workingDir)
+    ? createGoalState(config.workingDir!)
+    : (config.sessionParams as unknown as any);
+
+  const results = dispatch(undefined, fromCapability, state, params);
+
+  if (results.length > 1) {
+    const list = results.map((r, i) => `${i + 1}. ${r.capability}`).join("\n");
+    ctx.ui.notify(`Multiple transitions available from "${fromCapability}":\n${list}\n\nUse the pio_transition tool to select one.`, "info");
+  } else if (results.length === 1) {
+    ctx.ui.notify(`Only transition from "${fromCapability}": ${results[0].capability}. Use the pio_transition tool to execute it, or /pio-next-task for auto-advance.`, "info");
+  } else {
+    ctx.ui.notify(`No outgoing transitions from "${fromCapability}" — terminal state.`, "info");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Setup (registers all direct tools and commands)
 // ---------------------------------------------------------------------------
 
@@ -497,5 +597,12 @@ export function setupDirectTools(pi: ExtensionAPI): void {
   pi.registerCommand("pio-goal-from-issue", {
     description: "Convert an existing issue into a structured goal",
     handler: handleGoalFromIssue,
+  });
+
+  // pio_transition
+  pi.registerTool(transitionTool);
+  pi.registerCommand("pio-transition", {
+    description: "Manually override transition routing — list and select transitions",
+    handler: handleTransition,
   });
 }

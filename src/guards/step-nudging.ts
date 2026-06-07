@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { getSessionConfig } from "../capability-utils";
 
 // ---------------------------------------------------------------------------
 // Module-level state (per-extension-instance, populated by resources_discover)
@@ -191,15 +192,11 @@ export function setupStepNudging(pi: ExtensionAPI) {
 
   // 2. Detect capability sub-sessions and initialize state
   pi.on("resources_discover", async (_event, ctx) => {
-    const entries = ctx.sessionManager.getEntries();
-    const entry = entries.find(
-      (e) => e.type === "custom" && e.customType === "pio-config",
-    );
+    const config = getSessionConfig(ctx);
 
-    if (entry && entry.type === "custom") {
+    if (config) {
       isActivePioSession = true;
 
-      const config = entry.data as { sessionParams?: Record<string, unknown> };
       const sessionParams = config.sessionParams || {};
 
       // Read totalWorkflowSteps from sessionParams

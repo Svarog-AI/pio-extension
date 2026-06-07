@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import type { PrepareSessionCallback, PostValidateCallback, PostExecuteCallback, CapabilityConfig, CapabilitySkills } from "./types";
-import { resolveCapabilityConfig } from "./capability-config";
+import { resolveCapabilityConfig, resolvePaths } from "./capability-config";
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -635,12 +635,12 @@ describe("resolveCapabilityConfig — postValidate/postExecute passthrough", () 
 /**
  * These tests verify the end-to-end interaction between state machine transition
  * output (Step 2) and capability config resolution (Step 3).
- * They simulate the params shape that transitionEvolvePlan() returns for a
+ * They simulate the params shape that resolveEvolvePlanToFinalizeGoal() returns for a
  * completed goal and verify resolveCapabilityConfig() handles it correctly.
  */
 describe("resolveCapabilityConfig — finalize-goal auto-transition integration", () => {
   it("finalize-goal auto-transition params resolve workingDir to project root", async () => {
-    // Arrange: simulate the params shape that transitionEvolvePlan() returns
+    // Arrange: simulate the params shape that resolveEvolvePlanToFinalizeGoal() returns
     // for a completed goal: { goalName, goalDir, workingDir: <project root> }
     const cwd = "/tmp/auto-transition-proj";
     const params = {
@@ -662,7 +662,7 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
   });
 
   it("finalize-goal initial message includes goal name via auto-transition params", async () => {
-    // Arrange: same params shape as transitionEvolvePlan() for a completed goal
+    // Arrange: same params shape as resolveEvolvePlanToFinalizeGoal() for a completed goal
     const cwd = "/tmp/auto-transition-proj";
     const params = {
       capability: "finalize-goal" as string,
@@ -683,6 +683,82 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
 // ---------------------------------------------------------------------------
 // resolveCapabilityConfig — skills passthrough
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// resolvePaths — placeholder replacement utility
+// ---------------------------------------------------------------------------
+
+describe("resolvePaths", () => {
+  it("replaces single placeholder with param value", () => {
+    const result = resolvePaths(["{name}/file.md"], { name: "my-feature" });
+    expect(result).toEqual(["my-feature/file.md"]);
+  });
+
+  it("replaces multiple placeholders in the same path", () => {
+    const result = resolvePaths(["{dir}/{name}.md"], { dir: "docs", name: "README" });
+    expect(result).toEqual(["docs/README.md"]);
+  });
+
+  it("replaces placeholders across multiple paths", () => {
+    const result = resolvePaths(
+      ["{dir}/a.md", "{dir}/b.md"],
+      { dir: "src" },
+    );
+    expect(result).toEqual(["src/a.md", "src/b.md"]);
+  });
+
+  it("preserves unknown placeholder as-is", () => {
+    const result = resolvePaths(["{name}/file.md"], { otherKey: "value" });
+    expect(result).toEqual(["{name}/file.md"]);
+  });
+
+  it("returns empty array for empty input", () => {
+    const result = resolvePaths([], { name: "test" });
+    expect(result).toEqual([]);
+  });
+
+  it("leaves paths without placeholders unchanged", () => {
+    const result = resolvePaths(["GOAL.md", "PLAN.md"], { name: "test" });
+    expect(result).toEqual(["GOAL.md", "PLAN.md"]);
+  });
+
+  // Format specifier: {key:02d}
+
+  it("zero-pads with {key:02d} format specifier", () => {
+    const result = resolvePaths(["S{stepNumber:02d}/TASK.md"], { stepNumber: 3 });
+    expect(result).toEqual(["S03/TASK.md"]);
+  });
+
+  it("zero-pads with {key:02d} — two-digit numbers unchanged", () => {
+    const result = resolvePaths(["S{stepNumber:02d}/TASK.md"], { stepNumber: 12 });
+    expect(result).toEqual(["S12/TASK.md"]);
+  });
+
+  it("zero-pads with {key:02d} — zero becomes 00", () => {
+    const result = resolvePaths(["S{stepNumber:02d}/TASK.md"], { stepNumber: 0 });
+    expect(result).toEqual(["S00/TASK.md"]);
+  });
+
+  it("zero-pads with {key:04d} format specifier", () => {
+    const result = resolvePaths(["S{stepNumber:04d}/TASK.md"], { stepNumber: 7 });
+    expect(result).toEqual(["S0007/TASK.md"]);
+  });
+
+  it("does not pad non-numeric values with :02d", () => {
+    const result = resolvePaths(["{name:02d}/file.md"], { name: "abc" });
+    expect(result).toEqual(["abc/file.md"]);
+  });
+
+  it("preserves unknown placeholder with format specifier", () => {
+    const result = resolvePaths(["S{stepNumber:02d}/TASK.md"], { otherKey: "value" });
+    expect(result).toEqual(["S{stepNumber:02d}/TASK.md"]);
+  });
+
+  it("mixes plain and formatted placeholders", () => {
+    const result = resolvePaths(["{dir}/S{stepNumber:02d}/TASK.md"], { dir: "goals", stepNumber: 3 });
+    expect(result).toEqual(["goals/S03/TASK.md"]);
+  });
+});
 
 describe("resolveCapabilityConfig — skills passthrough", () => {
   it("skills are copied when the static config defines them (test-skills-cap)", async () => {

@@ -26,7 +26,7 @@ const mockCreateGoalState = vi.hoisted(() => vi.fn().mockReturnValue({
   steps: vi.fn().mockReturnValue([]),
   currentStepNumber: vi.fn().mockReturnValue(1),
 }));
-const mockResolveTransition = vi.hoisted(() => vi.fn());
+const mockDispatch = vi.hoisted(() => vi.fn());
 const mockRecordTransition = vi.hoisted(() => vi.fn());
 const mockEnqueueTask = vi.hoisted(() => vi.fn());
 const mockWriteLastTask = vi.hoisted(() => vi.fn());
@@ -40,8 +40,12 @@ vi.mock("../goal-state", () => ({
   createGoalState: mockCreateGoalState,
 }));
 
-vi.mock("../state-machine", () => ({
-  resolveTransition: mockResolveTransition,
+vi.mock("../state-machines", () => ({
+  dispatch: mockDispatch,
+}));
+
+vi.mock("../state-machines/pio-workflow-machine", () => ({
+  goalDrivenDevelopment: {},
   recordTransition: mockRecordTransition,
 }));
 
@@ -71,7 +75,7 @@ describe("mark-complete (setupMarkComplete)", () => {
       steps: vi.fn().mockReturnValue([]),
       currentStepNumber: vi.fn().mockReturnValue(1),
     });
-    mockResolveTransition.mockClear();
+    mockDispatch.mockClear();
     mockRecordTransition.mockClear();
     mockEnqueueTask.mockClear();
     mockWriteLastTask.mockClear();
@@ -184,15 +188,15 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
 
-    expect(mockResolveTransition).not.toHaveBeenCalled();
+    expect(mockDispatch).not.toHaveBeenCalled();
     expect(mockEnqueueTask).not.toHaveBeenCalled();
     expect(mockRecordTransition).not.toHaveBeenCalled();
   });
 
   it("postValidate success triggers transition routing", async () => {
     mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
-    mockResolveTransition.mockReturnValue(
-      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
 
     const postValidateMock = vi.fn().mockReturnValue({ success: true });
@@ -217,17 +221,97 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     const result = await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
 
-    expect(mockResolveTransition).toHaveBeenCalled();
+    expect(mockDispatch).toHaveBeenCalled();
     expect(mockEnqueueTask).toHaveBeenCalled();
     expect(mockRecordTransition).toHaveBeenCalled();
     expect(mockWriteLastTask).toHaveBeenCalled();
     expect(result.terminate).toBe(true);
   });
 
+  it("multiple dispatch results do not enqueue task and recommend /pio-transition", async () => {
+    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockDispatch.mockReturnValue([
+      { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 2 } },
+      { capability: "execute-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } },
+    ]);
+
+    const postValidateMock = vi.fn().mockReturnValue({ success: true });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "review-task",
+              workingDir: tempDir,
+              validation: { files: [] },
+              postValidate: postValidateMock,
+              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+            },
+          },
+        ],
+      },
+    };
+
+    const result = await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+
+    // dispatch was called but no task should be enqueued
+    expect(mockDispatch).toHaveBeenCalled();
+    expect(mockEnqueueTask).not.toHaveBeenCalled();
+    expect(mockRecordTransition).not.toHaveBeenCalled();
+    expect(mockWriteLastTask).not.toHaveBeenCalled();
+
+    // notification should recommend /pio-transition with available capabilities
+    expect(result.content[0].text).toContain("Multiple transitions available");
+    expect(result.content[0].text).toContain("evolve-plan");
+    expect(result.content[0].text).toContain("execute-task");
+    expect(result.content[0].text).toContain("/pio-transition");
+    expect(result.terminate).toBe(true);
+  });
+
+  it("no dispatch results (terminal state) do not enqueue task", async () => {
+    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockDispatch.mockReturnValue([]);
+
+    const postValidateMock = vi.fn().mockReturnValue({ success: true });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "finalize-goal",
+              workingDir: tempDir,
+              validation: { files: [] },
+              postValidate: postValidateMock,
+              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+            },
+          },
+        ],
+      },
+    };
+
+    const result = await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+
+    // dispatch was called but no task should be enqueued
+    expect(mockDispatch).toHaveBeenCalled();
+    expect(mockEnqueueTask).not.toHaveBeenCalled();
+    expect(mockRecordTransition).not.toHaveBeenCalled();
+    expect(mockWriteLastTask).not.toHaveBeenCalled();
+
+    // terminal state — no extra notification, just "Validation passed"
+    expect(result.content[0].text).toBe("Validation passed. All expected outputs have been produced.");
+    expect(result.terminate).toBe(true);
+  });
+
   it("postExecute runs after transition routing", async () => {
     mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
-    mockResolveTransition.mockReturnValue(
-      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
 
     const callOrder: string[] = [];
@@ -268,8 +352,8 @@ describe("mark-complete (setupMarkComplete)", () => {
 
   it("postExecute errors don't block termination", async () => {
     mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
-    mockResolveTransition.mockReturnValue(
-      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
 
     const warnSpy = vi.spyOn(console, "warn");
@@ -308,8 +392,8 @@ describe("mark-complete (setupMarkComplete)", () => {
 
   it("cleanup deletes files in fileCleanup", async () => {
     mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
-    mockResolveTransition.mockReturnValue(
-      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
 
     // Create a temp file to clean up
@@ -396,7 +480,7 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
       steps: vi.fn().mockReturnValue([]),
       currentStepNumber: vi.fn().mockReturnValue(1),
     });
-    mockResolveTransition.mockClear();
+    mockDispatch.mockClear();
     mockRecordTransition.mockClear();
     mockEnqueueTask.mockClear();
     mockWriteLastTask.mockClear();
@@ -433,8 +517,8 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
       return { success: true };
     });
 
-    mockResolveTransition.mockReturnValue(
-      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
 
     const mockCtx = {
@@ -498,14 +582,14 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
     expect(result.content[0].text).toContain("Field 'totalSteps'");
     expect(result.terminate).toBeFalsy();
     expect(postValidateMock).not.toHaveBeenCalled();
-    expect(mockResolveTransition).not.toHaveBeenCalled();
+    expect(mockDispatch).not.toHaveBeenCalled();
   });
 
   it("skips frontmatter validation when frontmatterSchemas is not defined", async () => {
     const postValidateMock = vi.fn().mockReturnValue({ success: true });
 
-    mockResolveTransition.mockReturnValue(
-      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
 
     const mockCtx = {
@@ -536,8 +620,8 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
   it("skips frontmatter validation when frontmatterSchemas is empty array", async () => {
     const postValidateMock = vi.fn().mockReturnValue({ success: true });
 
-    mockResolveTransition.mockReturnValue(
-      { capability: "review-task", params: { goalName: "test-goal", stepNumber: 1 } }
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
 
     const mockCtx = {

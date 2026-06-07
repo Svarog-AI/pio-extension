@@ -508,3 +508,44 @@ describe("validateAndFindNextStep with TASK.md-only folder", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// validateAndFindNextStep — missing files
+// ---------------------------------------------------------------------------
+
+describe("validateAndFindNextStep — missing files", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns error when PLAN.md is missing", async () => {
+    // Arrange: goal dir exists but no PLAN.md
+    const goalDir = path.join(tempDir, ".pio", "goals", "no-plan");
+    fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n", "utf-8");
+
+    // Act
+    const result = await validateAndFindNextStep("no-plan", tempDir);
+
+    // Assert: ready is false, error mentions PLAN.md
+    expect(result.ready).toBe(false);
+    if (!result.ready) {
+      expect(result.error).toMatch(/PLAN\.md/i);
+    }
+  });
+
+  it("returns error when goal workspace does not exist", async () => {
+    // Act
+    const result = await validateAndFindNextStep("nonexistent", tempDir);
+
+    // Assert: ready is false, error mentions does not exist
+    expect(result.ready).toBe(false);
+    if (!result.ready) {
+      expect(result.error).toMatch(/does not exist/i);
+    }
+  });
+});

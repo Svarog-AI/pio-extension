@@ -3,6 +3,8 @@ import * as path from "node:path";
 
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState, type StepStatus } from "../../goal-state";
+import { resolvePaths } from "../../capability-config";
+import { validateInputs } from "../../guards/validation";
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
 
 // ---------------------------------------------------------------------------
@@ -129,33 +131,9 @@ export function applyReviewDecision(
   } else {
     // REJECTED
     fs.writeFileSync(path.join(stepDir, "REJECTED"), "", "utf-8");
-    // Delete COMPLETED so isStepReady in execute-task.ts permits re-execution
+    // Delete COMPLETED so execute-task permits re-execution
     fs.rmSync(path.join(stepDir, "COMPLETED"), { force: true });
   }
-}
-
-/**
- * Shared check: is a step reviewable (COMPLETED + SUMMARY.md, not BLOCKED)?
- * Used by both `isStepReviewable` and `findMostRecentCompletedStep` to avoid duplication.
- *
- * @param step - A StepStatus from GoalState
- */
-function isReviewable(step: StepStatus): boolean {
-  // status() === "implemented" means COMPLETED exists and BLOCKED doesn't (BLOCKED has higher priority).
-  // We also need SUMMARY.md — check that explicitly since it's not part of the status computation.
-  return step.status() === "implemented" && step.hasSummary();
-}
-
-/**
- * Check whether a step has been completed and is ready for review:
- * COMPLETED marker exists, SUMMARY.md exists, and no BLOCKED marker.
- */
-export function isStepReviewable(goalDir: string, stepNumber: number): boolean {
-  const state = createGoalState(goalDir);
-  const step = state.steps().find(s => s.stepNumber === stepNumber);
-  if (!step) return false;
-
-  return isReviewable(step);
 }
 
 /**
@@ -168,8 +146,9 @@ export function findMostRecentCompletedStep(goalDir: string): number | undefined
 
   // Scan from highest to lowest for a reviewable step
   for (let i = allSteps.length - 1; i >= 0; i--) {
-    if (isReviewable(allSteps[i])) {
-      return allSteps[i].stepNumber;
+    const step = allSteps[i];
+    if (step.status() === "implemented" && step.hasSummary()) {
+      return step.stepNumber;
     }
   }
 
@@ -202,24 +181,15 @@ export async function validateStepForReview(
     };
   }
 
+  // Validate required files from inputValidation contract
+  const requiredFiles = resolvePaths([GOAL_FILE, PLAN_FILE, `S{stepNumber:02d}/COMPLETED`, `S{stepNumber:02d}/SUMMARY.md`], { stepNumber });
+  const fileCheck = validateInputs(goalDir, requiredFiles);
+  if (!fileCheck.success) {
+    return { goalDir, ready: false, error: fileCheck.message! };
+  }
+
+  // Check step status (blocked/implemented)
   const state = createGoalState(goalDir);
-
-  if (!state.hasGoal()) {
-    return {
-      goalDir,
-      ready: false,
-      error: `GOAL.md not found at "${path.join(goalDir, GOAL_FILE)}". Create a goal first with /pio-create-goal ${name}.`,
-    };
-  }
-
-  if (!state.hasPlan()) {
-    return {
-      goalDir,
-      ready: false,
-      error: `PLAN.md not found at "${path.join(goalDir, PLAN_FILE)}". Create a plan first with /pio-create-plan ${name}.`,
-    };
-  }
-
   const folder = stepFolderName(stepNumber);
   const step = state.steps().find(s => s.stepNumber === stepNumber);
 
@@ -250,15 +220,6 @@ export async function validateStepForReview(
     };
   }
 
-  // Has COMPLETED, no BLOCKED — check for SUMMARY.md
-  if (!step.hasSummary()) {
-    return {
-      goalDir,
-      ready: false,
-      error: `Step ${stepNumber} is missing SUMMARY.md. Re-run /pio-execute-task ${name} ${stepNumber}.`,
-    };
-  }
-
   return { goalDir, ready: true, stepNumber };
 }
 
@@ -282,26 +243,13 @@ export async function validateAndFindReviewStep(
     };
   }
 
-  const state = createGoalState(goalDir);
-
-  if (!state.hasGoal()) {
-    return {
-      goalDir,
-      ready: false,
-      error: `GOAL.md not found at "${path.join(goalDir, GOAL_FILE)}". Create a goal first with /pio-create-goal ${name}.`,
-    };
+  // Validate required base files first (GOAL.md, PLAN.md)
+  const baseCheck = validateInputs(goalDir, [GOAL_FILE, PLAN_FILE]);
+  if (!baseCheck.success) {
+    return { goalDir, ready: false, error: baseCheck.message! };
   }
 
-  if (!state.hasPlan()) {
-    return {
-      goalDir,
-      ready: false,
-      error: `PLAN.md not found at "${path.join(goalDir, PLAN_FILE)}". Create a plan first with /pio-create-plan ${name}.`,
-    };
-  }
-
-  // Use the public function — it creates its own state.
-  // The state above was already used for hasGoal/hasPlan checks.
+  // Find the most recently completed step
   const stepNumber = findMostRecentCompletedStep(goalDir);
   if (stepNumber === undefined) {
     return {
@@ -309,6 +257,13 @@ export async function validateAndFindReviewStep(
       ready: false,
       error: `No completed steps found for goal "${name}". Run /pio-execute-task ${name} to complete a step first.`,
     };
+  }
+
+  // Validate step-specific files from inputValidation contract
+  const stepFiles = resolvePaths([`S{stepNumber:02d}/COMPLETED`, `S{stepNumber:02d}/SUMMARY.md`], { stepNumber });
+  const fileCheck = validateInputs(goalDir, stepFiles);
+  if (!fileCheck.success) {
+    return { goalDir, ready: false, error: fileCheck.message! };
   }
 
   return { goalDir, ready: true, stepNumber };

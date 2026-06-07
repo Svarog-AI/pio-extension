@@ -3,8 +3,10 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 import type { CapabilityConfig } from "../types";
+import { getSessionConfig } from "../capability-utils";
 import { validateOutputs, validateFrontmatter } from "./validation";
-import { resolveTransition, recordTransition } from "../state-machine";
+import { dispatch } from "../state-machines";
+import { recordTransition } from "../state-machines/pio-workflow-machine";
 import { createGoalState } from "../goal-state";
 import { enqueueTask, writeLastTask } from "../queues";
 
@@ -20,17 +22,12 @@ export const markCompleteTool = defineTool({
   parameters: Type.Object({}),
 
   async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-    const entries = ctx.sessionManager.getEntries();
-    const entry = entries.find(
-      (e) => e.type === "custom" && e.customType === "pio-config",
-    );
+    const config = getSessionConfig(ctx);
 
     // No config — not a capability session, always pass
-    if (!entry || entry.type !== "custom") {
+    if (!config) {
       return { content: [{ type: "text", text: "No validation rules configured for this session." }], details: {}, terminate: true };
     }
-
-    const config = entry.data as CapabilityConfig;
     const dir = config.workingDir;
 
     // No workingDir — can't do anything meaningful, pass and terminate
@@ -88,10 +85,12 @@ export const markCompleteTool = defineTool({
       : undefined;
     const stepNumber = explicitStepNumber ?? state.currentStepNumber();
 
-    const nextTask = capability
-      ? resolveTransition(capability, state, { goalName, stepNumber, _sessionContext: sessionParams })
-      : undefined;
-    if (nextTask && capability) {
+    const results = capability
+      ? dispatch(undefined, capability, state, { goalName, stepNumber, _sessionContext: sessionParams })
+      : [];
+
+    if (capability && results.length === 1) {
+      const nextTask = results[0];
       try {
         // Use adjusted params from the transition (may contain incremented stepNumber)
         const adjustedParams = nextTask.params || {};
@@ -102,7 +101,7 @@ export const markCompleteTool = defineTool({
           ? adjustedParams.stepNumber
           : stepNumber;
 
-        // For subgoals completing via finalize-goal, transitionFinalizeGoal sets
+        // For subgoals completing via finalize-goal, resolveFinalizeGoalToEvolvePlan sets
         // goalName to parentGoalName in returned params. Use this as the queue key
         // to restore the parent workflow slot. For flat goals, this equals state.goalName.
         const queueGoalName = typeof adjustedParams.goalName === "string"
@@ -133,6 +132,9 @@ export const markCompleteTool = defineTool({
       } catch (err) {
         console.warn(`pio: failed to enqueue next task: ${err}`);
       }
+    } else if (capability && results.length > 1) {
+      const capabilities = results.map((r) => r.capability).join(", ");
+      notification = `\n\nMultiple transitions available: ${capabilities}. Use \`/pio-transition\` to select one.`;
     }
 
     // 4. PostExecute hook — runs after transitions, errors are non-fatal

@@ -12,8 +12,10 @@
 Tests are **colocated** alongside source files using the `*.test.ts` naming convention:
 - `src/goal-state.ts` → `src/goal-state.test.ts`
 - `src/fs-utils.ts` → `src/fs-utils.test.ts`
-- `src/capabilities/evolve-plan.ts` → `src/capabilities/evolve-plan.test.ts`
 - `src/guards/validation.ts` → `src/guards/validation.test.ts`
+- `src/capabilities/evolve-plan/config.ts` → `src/capabilities/evolve-plan/config.test.ts`
+
+**Capability package tests** live inside the capability directory (e.g., `evolve-plan/config.test.ts`) following the same `*.test.ts` pattern.
 
 Configuration: `vitest.config.ts` — Node.js environment, global `describe/it/expect`, include pattern `src/**/*.test.ts`.
 

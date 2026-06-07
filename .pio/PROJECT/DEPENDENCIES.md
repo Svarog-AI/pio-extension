@@ -24,36 +24,33 @@ All devDependencies run at development time or via pi's TypeScript runtime. The 
 ## Internal Module Graph
 
 ```
-index.ts ────┬── setupCapability()    → session-capability.ts
-             ├── setupValidation()    → guards/validation.ts
-             ├── setupSessionGuard()  → guards/session-guard.ts
-             ├── setupInit()          → capabilities/init.ts
-             ├── setupCreateGoal()    → capabilities/create-goal.ts
-             ├── setupDeleteGoal()    → capabilities/delete-goal.ts
-             ├── setupCreatePlan()    → capabilities/create-plan.ts
-             ├── setupEvolvePlan()    → capabilities/evolve-plan.ts
-             ├── setupExecuteTask()   → capabilities/execute-task.ts
-             ├── setupReviewCode()    → capabilities/review-code.ts
-             ├── setupExecutePlan()   → capabilities/execute-plan.ts
-             ├── setupNextTask()      → capabilities/next-task.ts
-             ├── setupProjectContext()→ capabilities/project-context.ts
-             ├── setupCreateIssue()   → capabilities/create-issue.ts
-             ├── setupGoalFromIssue() → capabilities/goal-from-issue.ts
-             ├── setupFinalizeGoal()  → capabilities/finalize-goal.ts
-             ├── setupRevisePlan()    → capabilities/revise-plan.ts
-             └── setupListGoals()     → capabilities/list-goals.ts
+index.ts (async) ──┬── setupSkills()          → skills auto-discovery (filesystem scan)
+                   ├── setupSessionInfrastructure() → capability-session.ts (was session-capability.ts)
+                   ├── setupMarkComplete()    → guards/mark-complete.ts
+                   ├── setupValidation()      → guards/validation.ts
+                   ├── setupSessionGuard()    → guards/session-guard.ts
+                   ├── setupStepNudging()     → guards/step-nudging.ts
+                   ├── setupDirectTools()     → direct-tools.ts (init, delete-goal, list-goals, parent, create-issue, goal-from-issue)
+                   └── discoverCapabilities() → capability-discovery.ts (auto-discovers 9 directory packages + registers via registerCapability())
 
-Shared modules (used by capabilities and guards):
-  fs-utils.ts          — resolveGoalDir, stepFolderName, discoverNextStep, issues helpers
-  types.ts             — CapabilityConfig, ValidationRule, PrepareSessionCallback
-  capability-config.ts — resolveCapabilityConfig() (dynamic imports)
-  goal-state.ts        — createGoalState(), StepStatus, GoalState interface
-  state-machine.ts     — resolveTransition(), recordTransition()
-  queues.ts            — enqueueTask, readPendingTask, writeLastTask
-  model-config.ts      — resolveModelForCapability(), readTurnThreshold(). Reads ~/.pi/pio-config.yaml for both per-capability models and guard settings
+Capability infrastructure:
+  capability-package.ts  — CapabilityPackageConfig, WorkflowStep, FrontmatterSchemaDeclaration types + layout constants
+  capability-discovery.ts — discoverCapabilities(), registerCapability() (scans capabilities/ for config.ts)
+  capability-config.ts   — resolveCapabilityConfig() (dynamic imports, prefers default exports from directory packages)
+  capability-session.ts  — Sub-session orchestration: launch, prompt injection, model switching (renamed from session-capability.ts)
+  capability-utils.ts    — Leaf utility: mergeCapabilitySkills()
+  prompt-compiler.ts     — compilePrompt(), readWorkflowSteps() (assembles prompts from component files)
+
+Shared modules:
+  fs-utils.ts            — resolveGoalDir, stepFolderName, discoverNextStep, prepareGoal, issues helpers
+  types.ts               — CapabilityConfig, ValidationRule, PrepareSessionCallback
+  goal-state.ts          — createGoalState(), StepStatus, GoalState interface
+  state-machine.ts       — resolveTransition(), recordTransition()
+  queues.ts              — enqueueTask, readPendingTask, writeLastTask
+  model-config.ts        — resolveModelForCapability(), readTurnThreshold(). Reads ~/.pi/pio-config.yaml
 ```
 
-**Circular dependency note:** `types.ts` was created specifically to break circular dependencies between `utils.ts` ↔ `validation.ts` ↔ `session-capability.ts`. The refactor decomposed the monolithic `utils.ts` into focused modules.
+**Removed modules:** `src/frontmatter-schemas.ts` (schemas now in capability-local `schemas.ts`), `src/prompts/` directory (prompts are component files inside capability packages).
 
 ## Data Flow Between Services
 

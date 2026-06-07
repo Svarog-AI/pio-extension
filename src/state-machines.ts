@@ -70,3 +70,101 @@ export interface StateMachine<C> {
   /** Ordered array of transition edges. Evaluated in array order during dispatch. */
   edges: TransitionEdge<C>[];
 }
+
+// ---------------------------------------------------------------------------
+// Internal registry
+// ---------------------------------------------------------------------------
+
+/**
+ * Module-level registry of all known state machines.
+ *
+ * Used by {@link dispatch} when no explicit machine is provided (`machine === undefined`).
+ * Stores `StateMachine<unknown>` because different machines may use different context types;
+ * the caller is responsible for providing the correct context type.
+ */
+const _registeredMachines: StateMachine<unknown>[] = [];
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Register a state machine so it can be discovered by {@link dispatch} when
+ * no explicit machine is provided.
+ *
+ * Idempotent: calling with an already-registered machine ID replaces the
+ * existing entry silently.
+ *
+ * @param machine - The state machine to register
+ */
+export function registerMachine<C>(machine: StateMachine<C>): void {
+  const existingIndex = _registeredMachines.findIndex((m) => m.id === machine.id);
+  if (existingIndex >= 0) {
+    _registeredMachines[existingIndex] = machine as StateMachine<unknown>;
+  } else {
+    _registeredMachines.push(machine as StateMachine<unknown>);
+  }
+}
+
+/**
+ * Return all outgoing edges from a given node in a state machine.
+ *
+ * This is a structural lookup — it does NOT call resolve functions.
+ * Used by interactive commands to list available transitions without evaluating them.
+ *
+ * @param machine - The state machine to query
+ * @param from - The source node (capability name)
+ * @returns Edges in array order (same order as in `machine.edges`)
+ */
+export function getOutgoingEdges<C>(
+  machine: StateMachine<C>,
+  from: string,
+): TransitionEdge<C>[] {
+  return machine.edges.filter((edge) => edge.from === from);
+}
+
+/**
+ * Dispatch a transition by iterating over outgoing edges.
+ *
+ * When `machine` is provided, iterates over a single-element array `[machine]`.
+ * When `machine` is `undefined`, iterates over all registered machines
+ * (via {@link registerMachine}). Single loop — no branching between paths.
+ *
+ * For each machine, finds outgoing edges for `currentNode` (via {@link getOutgoingEdges}),
+ * calls each edge's `resolve(context, params)` in array order, and collects
+ * non-undefined results.
+ *
+ * Returns the aggregated array of matching transitions from all machines.
+ * Empty array means no transitions match — either no outgoing edges exist
+ * for that node, or none of the resolve functions returned a result.
+ *
+ * @typeParam C - Context type for the state machine
+ * @param machine - Single machine to dispatch, or `undefined` to search all registered machines
+ * @param currentNode - The current node (capability name) to find outgoing edges from
+ * @param context - Context state passed to resolve functions
+ * @param params - Optional session params passed to resolve functions
+ * @returns Array of matching transitions (may be empty)
+ */
+export function dispatch<C>(
+  machine: StateMachine<C> | undefined,
+  currentNode: string,
+  context: C,
+  params?: Record<string, unknown>,
+): TransitionResult[] {
+  // Always iterate an array of machines — single element or all registered.
+  const machines: StateMachine<unknown>[] =
+    machine !== undefined ? [machine as StateMachine<unknown>] : _registeredMachines;
+
+  const results: TransitionResult[] = [];
+  for (const m of machines) {
+    // Safe: caller provides the correct context type for their use case.
+    const edges = getOutgoingEdges(m as StateMachine<C>, currentNode);
+    for (const edge of edges) {
+      const result = edge.resolve(context, params);
+      if (result !== undefined) {
+        results.push(result);
+      }
+    }
+  }
+  return results;
+}

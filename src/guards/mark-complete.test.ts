@@ -42,9 +42,6 @@ vi.mock("../goal-state", () => ({
 
 vi.mock("../state-machines", () => ({
   dispatch: mockDispatch,
-}));
-
-vi.mock("../state-machines/pio-workflow-machine", () => ({
   goalDrivenDevelopment: {},
   recordTransition: mockRecordTransition,
 }));

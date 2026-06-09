@@ -6,7 +6,7 @@ import type { CapabilityConfig } from "../types";
 import { getSessionConfig } from "../capability-utils";
 import { validateOutputs, validateFrontmatter } from "./validation";
 import { dispatch } from "../state-machines";
-import { recordTransition } from "../state-machines/pio-workflow-machine";
+import { recordTransition } from "../state-machines";
 import { createGoalState } from "../goal-state";
 import { enqueueTask, writeLastTask } from "../queues";
 

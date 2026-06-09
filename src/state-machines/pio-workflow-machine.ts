@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import type { StateMachine, TransitionResult } from "../state-machines";
-import { registerMachine, recordTransition } from "../state-machines";
+import { registerMachine } from "../state-machines";
 import type { GoalState } from "../goal-state";
 import { resolveGoalDir, stepFolderName } from "../fs-utils";
 
@@ -320,5 +320,3 @@ export const goalDrivenDevelopment: StateMachine<GoalState> = {
 // Register so dispatch(undefined, ...) can discover this machine
 registerMachine(goalDrivenDevelopment);
 
-// Re-export for existing consumers (mark-complete, direct-tools, etc.)
-export { recordTransition };

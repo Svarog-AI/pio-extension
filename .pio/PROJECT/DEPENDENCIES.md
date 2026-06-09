@@ -43,9 +43,10 @@ Capability infrastructure:
 
 Shared modules:
   fs-utils.ts            — resolveGoalDir, stepFolderName, discoverNextStep, prepareGoal, issues helpers
-  types.ts               — CapabilityConfig, ValidationRule, PrepareSessionCallback
+  types.ts               — CapabilityConfig, ValidationRule, PrepareSessionCallback, InputValidationSpec, PreValidateCallback
   goal-state.ts          — createGoalState(), StepStatus, GoalState interface
-  state-machine.ts       — resolveTransition(), recordTransition()
+  state-machines.ts      — StateMachine<C>, TransitionEdge<C>, TransitionResult types + dispatch/getOutgoingEdges/registerMachine (leaf module, no internal imports)
+  state-machines/        — pio-workflow-machine.ts (goalDrivenDevelopment machine config, resolve functions, recordTransition)
   queues.ts              — enqueueTask, readPendingTask, writeLastTask
   model-config.ts        — resolveModelForCapability(), readTurnThreshold(). Reads ~/.pi/pio-config.yaml
 ```
@@ -83,8 +84,10 @@ Tool call (pio_create_goal, etc.)
 Agent calls pio_mark_complete
   → validateOutputs() checks expected files exist
   → If review-code: parseReviewFrontmatter(), applyReviewDecision() (create APPROVED/REJECTED markers)
-  → resolveTransition() determines next capability
-  → enqueueTask() writes next task to per-goal queue slot
+  → dispatch(undefined, ...) queries registered state machines for transitions
+    — 1 result → auto-advance (enqueueTask)
+    — >1 results → recommend /pio-transition (no auto-advance)
+    — 0 results → terminal state (no action)
   → recordTransition() appends to transitions.json audit log
   → writeLastTask() updates LAST_TASK.json
 ```

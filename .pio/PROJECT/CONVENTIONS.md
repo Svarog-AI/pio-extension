@@ -35,7 +35,7 @@ Consider adding a formatter (e.g., Prettier or Biome) to standardize code style 
 
 Each AI-driven capability is a directory package under `src/capabilities/<name>/`:
 
-- **`config.ts`** — default exports `CapabilityPackageConfig`, named export `register(pi)` registers tool + command. No `CAPABILITY_CONFIG` or `setup<Name>` aliases (removed in backward-compat cleanup)
+- **`config.ts`** — default exports `CapabilityPackageConfig` (fields: `name`, `skills`, `validation`, `readOnlyFiles`, `writeAllowlist`, `prepareSession`, `postValidate`, `postExecute`, `frontmatterSchemas`, `inputValidation`, `preValidate`), named export `register(pi)` registers tool + command. No `CAPABILITY_CONFIG` or `setup<Name>` aliases (removed in backward-compat cleanup)
 - **`role.md`** — Role description text
 - **`workflow.ts`** — default exports `WorkflowStep[]`. Each step may declare `skills: { mandatory?: string[], recommended?: ... }`
 - **`guidelines.md`** — Guidelines text

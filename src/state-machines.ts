@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+
 /**
  * Declarative state machine framework types.
  *
@@ -201,4 +204,61 @@ export function dispatch<C>(
     }
   }
   return results;
+}
+
+// ---------------------------------------------------------------------------
+// Audit log — recordTransition
+// ---------------------------------------------------------------------------
+
+interface TransitionAuditEntry {
+  timestamp: string;
+  from: string;
+  to: string;
+  params?: Record<string, unknown>;
+}
+
+/**
+ * Record a transition as an audit entry in `<goalDir>/transitions.json`.
+ * Append-only JSON array. Non-fatal — failures are logged but never thrown.
+ *
+ * @param goalDir - Goal workspace directory (e.g. `/repo/.pio/goals/my-feature`)
+ * @param fromCapability - Capability that just completed
+ * @param toResult - Resolved transition result (next capability + params)
+ */
+export function recordTransition(
+  goalDir: string,
+  fromCapability: string,
+  toResult: TransitionResult,
+): void {
+  try {
+    const filePath = path.join(goalDir, "transitions.json");
+    let entries: TransitionAuditEntry[] = [];
+
+    // Try to read existing file
+    if (fs.existsSync(filePath)) {
+      try {
+        const raw = fs.readFileSync(filePath, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          entries = parsed;
+        }
+        // If not an array, start fresh (malformed file recovery)
+      } catch {
+        // Malformed JSON — start fresh
+        entries = [];
+      }
+    }
+
+    const entry: TransitionAuditEntry = {
+      timestamp: new Date().toISOString(),
+      from: fromCapability,
+      to: toResult.capability,
+      params: toResult.params,
+    };
+
+    entries.push(entry);
+    fs.writeFileSync(filePath, JSON.stringify(entries, null, 2), "utf-8");
+  } catch (err) {
+    console.warn(`pio: failed to record transition: ${err}`);
+  }
 }

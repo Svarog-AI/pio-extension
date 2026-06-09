@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { dispatch, unregisterMachine } from "../state-machines";
-import { goalDrivenDevelopment, recordTransition } from "./pio-workflow-machine";
+import { dispatch, unregisterMachine, recordTransition } from "../state-machines";
+import { goalDrivenDevelopment } from "./pio-workflow-machine";
 import type { TransitionResult } from "../state-machines";
 import type { GoalState } from "../goal-state";
 import type { PlanFrontmatter, StepMetadata } from "../capabilities/create-plan/schemas";

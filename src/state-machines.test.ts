@@ -1,8 +1,10 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { StateMachine, TransitionEdge } from "./state-machines";
-import { dispatch, getMachine, getOutgoingEdges, getRegisteredMachines, registerMachine, unregisterMachine } from "./state-machines";
+import type { StateMachine, TransitionEdge, TransitionResult } from "./state-machines";
+import { dispatch, getMachine, getOutgoingEdges, getRegisteredMachines, registerMachine, unregisterMachine, recordTransition } from "./state-machines";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -556,5 +558,144 @@ describe("leaf module constraint", () => {
     // Should not have any `from "./..."` or `from "../..."` imports
     const internalImports = content.match(/from\s+["']\.[^"']+/g);
     expect(internalImports).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// recordTransition — file creation
+// ---------------------------------------------------------------------------
+
+describe("recordTransition — file creation", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(join(os.tmpdir(), "pio-sm-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("creates transitions.json with a single-entry JSON array", () => {
+    const result: TransitionResult = { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { stepNumber: 2 } };
+    recordTransition(tempDir, "create-plan", result);
+
+    const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
+    const entries = JSON.parse(content);
+
+    expect(Array.isArray(entries)).toBe(true);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].from).toBe("create-plan");
+    expect(entries[0].to).toBe("evolve-plan");
+    expect(entries[0].params).toEqual({ stepNumber: 2 });
+    expect(typeof entries[0].timestamp).toBe("string");
+  });
+
+  it("entry contains ISO timestamp", () => {
+    const result: TransitionResult = { capability: "execute-task", stateMachineId: "goal-driven-development" };
+    recordTransition(tempDir, "evolve-plan", result);
+
+    const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
+    const entries = JSON.parse(content);
+
+    // Verify it's a valid ISO date string
+    expect(() => new Date(entries[0].timestamp)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// recordTransition — append to existing
+// ---------------------------------------------------------------------------
+
+describe("recordTransition — append to existing", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(join(os.tmpdir(), "pio-sm-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("second call appends to the existing JSON array", () => {
+    recordTransition(tempDir, "create-goal", { capability: "create-plan", stateMachineId: "goal-driven-development" });
+    recordTransition(tempDir, "create-plan", { capability: "evolve-plan", stateMachineId: "goal-driven-development" });
+
+    const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
+    const entries = JSON.parse(content);
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0].from).toBe("create-goal");
+    expect(entries[1].from).toBe("create-plan");
+  });
+
+  it("subsequent calls continue appending (entry count matches call count)", () => {
+    for (let i = 0; i < 5; i++) {
+      recordTransition(tempDir, "capability", { capability: "next", stateMachineId: "goal-driven-development" });
+    }
+
+    const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
+    const entries = JSON.parse(content);
+
+    expect(entries).toHaveLength(5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// recordTransition — error handling
+// ---------------------------------------------------------------------------
+
+describe("recordTransition — error handling", () => {
+  it("does not throw when goalDir is unwritable", () => {
+    // Use a path that doesn't exist and isn't creatable
+    const unwritablePath = "/nonexistent/path/that/cannot/be/created/transitions.json";
+
+    expect(() => {
+      recordTransition(unwritablePath, "test-cap", { capability: "next", stateMachineId: "goal-driven-development" });
+    }).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// recordTransition — malformed file recovery
+// ---------------------------------------------------------------------------
+
+describe("recordTransition — malformed file recovery", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(join(os.tmpdir(), "pio-sm-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("recovers from malformed JSON by starting fresh", () => {
+    // Write malformed JSON
+    fs.writeFileSync(join(tempDir, "transitions.json"), "not valid json");
+
+    recordTransition(tempDir, "test-cap", { capability: "next", stateMachineId: "test" });
+
+    const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
+    const entries = JSON.parse(content);
+
+    expect(Array.isArray(entries)).toBe(true);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].from).toBe("test-cap");
+  });
+
+  it("recovers from non-array JSON by starting fresh", () => {
+    // Write valid JSON but not an array
+    fs.writeFileSync(join(tempDir, "transitions.json"), JSON.stringify({ key: "value" }));
+
+    recordTransition(tempDir, "test-cap", { capability: "next", stateMachineId: "test" });
+
+    const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
+    const entries = JSON.parse(content);
+
+    expect(Array.isArray(entries)).toBe(true);
+    expect(entries).toHaveLength(1);
   });
 });

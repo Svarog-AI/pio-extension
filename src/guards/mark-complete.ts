@@ -2,11 +2,9 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
-import type { CapabilityConfig } from "../types";
 import { getSessionConfig } from "../capability-utils";
 import { validateOutputs, validateFrontmatter } from "./validation";
-import { dispatch, getMachine } from "../state-machines";
-import { recordTransition } from "../state-machines";
+import { dispatch, getMachine, recordTransition } from "../state-machines";
 import { createGoalState } from "../goal-state";
 import { enqueueTask, writeLastTask } from "../queues";
 

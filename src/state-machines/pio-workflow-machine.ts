@@ -317,6 +317,15 @@ export const goalDrivenDevelopment: StateMachine<GoalState> = {
   ],
 };
 
-// Register so dispatch(undefined, ...) can discover this machine
-registerMachine(goalDrivenDevelopment);
+// ---------------------------------------------------------------------------
+// Setup — registers the pio workflow machine
+// ---------------------------------------------------------------------------
+
+/**
+ * Register the goal-driven-development state machine.
+ * Called from index.ts during extension initialization.
+ */
+export function setupPioWorkflowMachine(): void {
+  registerMachine(goalDrivenDevelopment);
+}
 

@@ -19,6 +19,9 @@ import { setupMarkComplete } from "./guards/mark-complete";
 import { setupValidation } from "./guards/validation";
 import { setupSessionGuard } from "./guards/session-guard";
 
+// State machine — explicit registration (no side-effect imports)
+import { setupPioWorkflowMachine } from "./state-machines/pio-workflow-machine";
+
 // Auto-discovery
 import { discoverCapabilities, registerCapability } from "./capability-discovery";
 
@@ -64,6 +67,9 @@ export default async function (pi: ExtensionAPI) {
   setupMarkComplete(pi);
   setupValidation(pi);
   setupSessionGuard(pi);
+
+  // State machine registration
+  setupPioWorkflowMachine();
 
   // Direct tools (init, delete-goal, list-goals, parent, create-issue, goal-from-issue)
   setupDirectTools(pi);

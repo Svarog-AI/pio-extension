@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import type { CapabilityConfig } from "../types";
 import { getSessionConfig } from "../capability-utils";
 import { validateOutputs, validateFrontmatter } from "./validation";
-import { dispatch } from "../state-machines";
+import { dispatch, getMachine } from "../state-machines";
 import { recordTransition } from "../state-machines";
 import { createGoalState } from "../goal-state";
 import { enqueueTask, writeLastTask } from "../queues";
@@ -85,8 +85,15 @@ export const markCompleteTool = defineTool({
       : undefined;
     const stepNumber = explicitStepNumber ?? state.currentStepNumber();
 
+    // Multi-machine dispatch: read stateMachineId from session params, look up machine explicitly.
+    // Falls back to dispatch(undefined, ...) for first transitions or legacy sessions.
+    const machineId = typeof sessionParams.stateMachineId === "string"
+      ? sessionParams.stateMachineId
+      : undefined;
+    const targetMachine = machineId ? getMachine(machineId) : undefined;
+
     const results = capability
-      ? dispatch(undefined, capability, state, { goalName, stepNumber, _sessionContext: sessionParams })
+      ? dispatch(targetMachine, capability, state, { goalName, stepNumber, _sessionContext: sessionParams })
       : [];
 
     if (capability && results.length === 1) {
@@ -115,6 +122,7 @@ export const markCompleteTool = defineTool({
             ...adjustedParams,
             _sessionContext: sessionParams,
             ...(finalStepNumber != null ? { stepNumber: finalStepNumber } : {}),
+            ...(nextTask.stateMachineId ? { stateMachineId: nextTask.stateMachineId } : {}),
           },
         });
 

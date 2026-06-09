@@ -120,7 +120,7 @@ export const markCompleteTool = defineTool({
             ...adjustedParams,
             _sessionContext: sessionParams,
             ...(finalStepNumber != null ? { stepNumber: finalStepNumber } : {}),
-            ...(nextTask.stateMachineId ? { stateMachineId: nextTask.stateMachineId } : {}),
+            stateMachineId: nextTask.stateMachineId,
           },
         });
 

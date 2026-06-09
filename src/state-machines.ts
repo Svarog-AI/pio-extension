@@ -31,11 +31,21 @@ export interface TransitionResult {
 }
 
 /**
+ * Result returned by a resolver function before dispatch auto-injects `stateMachineId`.
+ *
+ * The `stateMachineId` field is deliberately omitted — `dispatch()` guarantees it
+ * by setting `stateMachineId: m.id` on every result. This makes it impossible for
+ * a resolver to set an incorrect or missing ID.
+ */
+export type ResolverResult = Omit<TransitionResult, "stateMachineId">;
+
+/**
  * A single directed edge in the state machine graph.
  *
  * Each edge carries a `resolve` function that both checks whether the
  * transition applies AND computes result params in one call. Returns
- * `TransitionResult` when the edge fires, `undefined` when it doesn't apply.
+ * `ResolverResult` when the edge fires, `undefined` when it doesn't apply.
+ * The framework's `dispatch()` auto-injects `stateMachineId` on the returned result.
  *
  * @typeParam C - Context type for condition evaluation (e.g. `GoalState` for the default pio workflow)
  */
@@ -47,10 +57,11 @@ export interface TransitionEdge<C> {
   /**
    * Resolve function that evaluates whether this edge fires and computes the transition result.
    * Called during dispatch with context state and session params.
-   * Returns `TransitionResult` when the edge applies, `undefined` when it doesn't.
+   * Returns `ResolverResult` when the edge applies, `undefined` when it doesn't.
+   * The `stateMachineId` is auto-injected by `dispatch()` — do not set it in the return value.
    * This combines condition check + param computation in one call.
    */
-  resolve: (context: C, params?: Record<string, unknown>) => TransitionResult | undefined;
+  resolve: (context: C, params?: Record<string, unknown>) => ResolverResult | undefined;
 }
 
 /**
@@ -196,7 +207,7 @@ export function dispatch<C>(
       try {
         const result = edge.resolve(context, params);
         if (result !== undefined) {
-          results.push(result);
+          results.push({ ...result, stateMachineId: m.id });
         }
       } catch (err) {
         console.warn(`dispatch: resolve threw in machine "${m.id}", edge ${edge.from} → ${edge.to}`, err);

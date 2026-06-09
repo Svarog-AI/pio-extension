@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import type { StateMachine, TransitionResult } from "../state-machines";
+import type { StateMachine, ResolverResult } from "../state-machines";
 import { registerMachine } from "../state-machines";
 import type { GoalState } from "../goal-state";
 import { resolveGoalDir, stepFolderName } from "../fs-utils";
@@ -28,23 +28,23 @@ function extractGoalName(params?: Record<string, unknown>): string | undefined {
 function resolveCreateGoalToCreatePlan(
   _state: GoalState,
   params?: Record<string, unknown>,
-): TransitionResult {
-  return { capability: "create-plan", stateMachineId: MACHINE_ID, params };
+): ResolverResult {
+  return { capability: "create-plan", params };
 }
 
 /** create-plan → evolve-plan: always fires, preserve params as-is. */
 function resolveCreatePlanToEvolvePlan(
   _state: GoalState,
   params?: Record<string, unknown>,
-): TransitionResult {
-  return { capability: "evolve-plan", stateMachineId: MACHINE_ID, params };
+): ResolverResult {
+  return { capability: "evolve-plan", params };
 }
 
 /** evolve-plan → revise-plan: fires when current step signals revision is needed. */
 function resolveEvolvePlanToRevisePlan(
   state: GoalState,
   params?: Record<string, unknown>,
-): TransitionResult | undefined {
+): ResolverResult | undefined {
   const explicitStepNumber = extractStepNumber(params);
   const goalName = extractGoalName(params);
 
@@ -54,7 +54,6 @@ function resolveEvolvePlanToRevisePlan(
     if (currentStep && currentStep.revisionNeeded()) {
       return {
         capability: "revise-plan",
-        stateMachineId: MACHINE_ID,
         params: { goalName, revisionTriggerStep: explicitStepNumber },
       };
     }
@@ -67,7 +66,7 @@ function resolveEvolvePlanToRevisePlan(
 function resolveEvolvePlanToCreateGoal(
   state: GoalState,
   params?: Record<string, unknown>,
-): TransitionResult | undefined {
+): ResolverResult | undefined {
   const explicitStepNumber = extractStepNumber(params);
   const goalName = extractGoalName(params);
 
@@ -96,7 +95,6 @@ function resolveEvolvePlanToCreateGoal(
 
       return {
         capability: "create-goal",
-        stateMachineId: MACHINE_ID,
         params: {
           goalName: stepMetadata.name,
           parentGoalName: goalName,
@@ -116,7 +114,7 @@ function resolveEvolvePlanToCreateGoal(
 function resolveEvolvePlanToFinalizeGoal(
   state: GoalState,
   params?: Record<string, unknown>,
-): TransitionResult | undefined {
+): ResolverResult | undefined {
   const goalName = extractGoalName(params);
 
   if (state.goalCompleted()) {
@@ -124,7 +122,6 @@ function resolveEvolvePlanToFinalizeGoal(
     const goalDir = resolveGoalDir(cwd, goalName!);
     return {
       capability: "finalize-goal",
-      stateMachineId: MACHINE_ID,
       params: { goalName, goalDir, workingDir: cwd },
     };
   }
@@ -136,7 +133,7 @@ function resolveEvolvePlanToFinalizeGoal(
 function resolveEvolvePlanToExecuteTask(
   state: GoalState,
   params?: Record<string, unknown>,
-): TransitionResult | undefined {
+): ResolverResult | undefined {
   const explicitStepNumber = extractStepNumber(params);
   const goalName = extractGoalName(params);
 
@@ -165,7 +162,6 @@ function resolveEvolvePlanToExecuteTask(
   if (explicitStepNumber != null) {
     return {
       capability: "execute-task",
-      stateMachineId: MACHINE_ID,
       params: { goalName, stepNumber: explicitStepNumber },
     };
   }
@@ -173,7 +169,6 @@ function resolveEvolvePlanToExecuteTask(
   const stepNumber = state.currentStepNumber();
   return {
     capability: "execute-task",
-    stateMachineId: MACHINE_ID,
     params: { goalName, stepNumber },
   };
 }
@@ -182,14 +177,13 @@ function resolveEvolvePlanToExecuteTask(
 function resolveExecuteTaskToReviewTask(
   state: GoalState,
   params?: Record<string, unknown>,
-): TransitionResult {
+): ResolverResult {
   const explicitStepNumber = extractStepNumber(params);
   const goalName = extractGoalName(params);
 
   if (explicitStepNumber != null) {
     return {
       capability: "review-task",
-      stateMachineId: MACHINE_ID,
       params: { goalName, stepNumber: explicitStepNumber },
     };
   }
@@ -197,7 +191,6 @@ function resolveExecuteTaskToReviewTask(
   const stepNumber = state.currentStepNumber();
   return {
     capability: "review-task",
-    stateMachineId: MACHINE_ID,
     params: { goalName, stepNumber },
   };
 }
@@ -206,7 +199,7 @@ function resolveExecuteTaskToReviewTask(
 function resolveReviewTaskToEvolvePlan(
   state: GoalState,
   params?: Record<string, unknown>,
-): TransitionResult | undefined {
+): ResolverResult | undefined {
   const stepNumber = extractStepNumber(params);
   const goalName = extractGoalName(params);
 
@@ -220,7 +213,6 @@ function resolveReviewTaskToEvolvePlan(
   if (step && step.status() === "approved") {
     return {
       capability: "evolve-plan",
-      stateMachineId: MACHINE_ID,
       params: { goalName, stepNumber: stepNumber + 1 },
     };
   }
@@ -232,12 +224,12 @@ function resolveReviewTaskToEvolvePlan(
 function resolveReviewTaskToExecuteTask(
   state: GoalState,
   params?: Record<string, unknown>,
-): TransitionResult | undefined {
+): ResolverResult | undefined {
   const stepNumber = extractStepNumber(params);
   const goalName = extractGoalName(params);
 
   if (stepNumber == null) {
-    return { capability: "execute-task", stateMachineId: MACHINE_ID, params };
+    return { capability: "execute-task", params };
   }
 
   const steps = state.steps();
@@ -248,7 +240,6 @@ function resolveReviewTaskToExecuteTask(
   if (step && step.status() === "rejected") {
     return {
       capability: "execute-task",
-      stateMachineId: MACHINE_ID,
       params: { goalName, stepNumber },
     };
   }
@@ -260,14 +251,13 @@ function resolveReviewTaskToExecuteTask(
 function resolveRevisePlanToEvolvePlan(
   _state: GoalState,
   params?: Record<string, unknown>,
-): TransitionResult {
+): ResolverResult {
   const goalName = extractGoalName(params);
   const revisionTriggerStep =
     typeof params?.revisionTriggerStep === "number" ? params.revisionTriggerStep : undefined;
 
   return {
     capability: "evolve-plan",
-    stateMachineId: MACHINE_ID,
     params: { goalName, ...(revisionTriggerStep != null && { revisionTriggerStep }) },
   };
 }
@@ -276,14 +266,13 @@ function resolveRevisePlanToEvolvePlan(
 function resolveFinalizeGoalToEvolvePlan(
   _state: GoalState,
   params?: Record<string, unknown>,
-): TransitionResult | undefined {
+): ResolverResult | undefined {
   const parentGoalName = typeof params?.parentGoalName === "string" ? params.parentGoalName : undefined;
   const parentStepNumber = typeof params?.parentStepNumber === "number" ? params.parentStepNumber : undefined;
 
   if (parentGoalName) {
     return {
       capability: "evolve-plan",
-      stateMachineId: MACHINE_ID,
       params: {
         goalName: parentGoalName,
         stepNumber: (parentStepNumber ?? 0) + 1,

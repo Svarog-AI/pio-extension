@@ -196,6 +196,23 @@ describe("dispatch — single machine", () => {
     expect(results).toHaveLength(1);
     expect(results[0].capability).toBe("c");
   });
+
+  it("dispatch auto-injects stateMachineId overriding resolver value", () => {
+    const machine = makeMachine("inject-test", [
+      {
+        from: "a",
+        to: "b",
+        // Resolver returns a wrong stateMachineId — dispatch should override with machine ID
+        resolve: () => ({ capability: "b", stateMachineId: "wrong-id" } as TransitionResult),
+      },
+    ]);
+
+    const results = dispatch(machine, "a", { mode: "x" });
+
+    expect(results).toHaveLength(1);
+    // dispatch() auto-injects the correct machine ID, overriding the resolver value
+    expect(results[0].stateMachineId).toBe("inject-test");
+  });
 });
 
 // ---------------------------------------------------------------------------

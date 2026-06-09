@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { StateMachine, TransitionEdge } from "./state-machines";
-import { dispatch, getOutgoingEdges, registerMachine, unregisterMachine } from "./state-machines";
+import { dispatch, getMachine, getOutgoingEdges, getRegisteredMachines, registerMachine, unregisterMachine } from "./state-machines";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -449,6 +449,99 @@ describe("unregisterMachine", () => {
   it("returns false when machine is not registered", () => {
     const removed = unregisterMachine("nonexistent-machine");
     expect(removed).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getMachine
+// ---------------------------------------------------------------------------
+
+describe("getMachine", () => {
+  afterEach(() => {
+    for (const id of registeredIds) {
+      unregisterMachine(id);
+    }
+    registeredIds.length = 0;
+  });
+
+  it("returns the machine after registerMachine", () => {
+    const machine = makeMachine("get-1", []);
+    registerTestMachine(machine);
+
+    const found = getMachine("get-1");
+
+    expect(found).toBe(machine);
+  });
+
+  it("returns undefined for an unknown ID", () => {
+    const found = getMachine("does-not-exist");
+
+    expect(found).toBeUndefined();
+  });
+
+  it("returns undefined after unregisterMachine", () => {
+    const machine = makeMachine("get-2", []);
+    registerTestMachine(machine);
+
+    unregisterMachine("get-2");
+    const idx = registeredIds.indexOf("get-2");
+    if (idx >= 0) registeredIds.splice(idx, 1);
+
+    const found = getMachine("get-2");
+
+    expect(found).toBeUndefined();
+  });
+
+  it("returns the new instance after re-registration", () => {
+    const machine1 = makeMachine("get-3", []);
+    const machine2 = makeMachine("get-3", [
+      { from: "a", to: "b", resolve: () => ({ capability: "b", stateMachineId: "get-3" }) },
+    ]);
+
+    registerTestMachine(machine1);
+    registerMachine(machine2);
+
+    const found = getMachine("get-3");
+
+    expect(found).toBe(machine2);
+    expect(found).not.toBe(machine1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getRegisteredMachines
+// ---------------------------------------------------------------------------
+
+describe("getRegisteredMachines", () => {
+  afterEach(() => {
+    for (const id of registeredIds) {
+      unregisterMachine(id);
+    }
+    registeredIds.length = 0;
+  });
+
+  it("returns all registered machines in insertion order", () => {
+    const m1 = makeMachine("list-1", []);
+    const m2 = makeMachine("list-2", []);
+    const m3 = makeMachine("list-3", []);
+
+    registerTestMachine(m1);
+    registerTestMachine(m2);
+    registerTestMachine(m3);
+
+    const list = getRegisteredMachines();
+
+    expect(list.map((m) => m.id)).toEqual(["list-1", "list-2", "list-3"]);
+  });
+
+  it("returns a snapshot — mutations do not affect the registry", () => {
+    const m1 = makeMachine("list-4", []);
+    registerTestMachine(m1);
+
+    const list = getRegisteredMachines();
+    list.length = 0; // mutate the returned array
+
+    expect(getRegisteredMachines()).toHaveLength(1);
   });
 });
 

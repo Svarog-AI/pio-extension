@@ -76,17 +76,40 @@ export interface StateMachine<C> {
 // ---------------------------------------------------------------------------
 
 /**
- * Module-level registry of all known state machines.
- *
- * Used by {@link dispatch} when no explicit machine is provided (`machine === undefined`).
+ * O(1) lookup map keyed by machine ID.
+ * Single source of truth for the machine registry.
+ * Used by {@link dispatch} when no explicit machine is provided (`machine === undefined`) via {@link getRegisteredMachines}.
  * Stores `StateMachine<unknown>` because different machines may use different context types;
  * the caller is responsible for providing the correct context type.
  */
-const _registeredMachines: StateMachine<unknown>[] = [];
+const _machinesById = new Map<string, StateMachine<unknown>>();
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+
+/**
+ * Retrieve a registered state machine by ID.
+ *
+ * Returns `undefined` if no machine with the given ID is registered.
+ *
+ * @param id - The unique identifier of the machine
+ * @returns The machine, or `undefined` if not found
+ */
+export function getMachine(id: string): StateMachine<unknown> | undefined {
+  return _machinesById.get(id);
+}
+
+/**
+ * Return all registered machines as a snapshot array in insertion order.
+ *
+ * Mutations to the returned array do NOT affect the internal registry.
+ *
+ * @returns A new array of all registered machines
+ */
+export function getRegisteredMachines(): StateMachine<unknown>[] {
+  return [..._machinesById.values()];
+}
 
 /**
  * Register a state machine so it can be discovered by {@link dispatch} when
@@ -98,12 +121,7 @@ const _registeredMachines: StateMachine<unknown>[] = [];
  * @param machine - The state machine to register
  */
 export function registerMachine<C>(machine: StateMachine<C>): void {
-  const existingIndex = _registeredMachines.findIndex((m) => m.id === machine.id);
-  if (existingIndex >= 0) {
-    _registeredMachines[existingIndex] = machine as StateMachine<unknown>;
-  } else {
-    _registeredMachines.push(machine as StateMachine<unknown>);
-  }
+  _machinesById.set(machine.id, machine as StateMachine<unknown>);
 }
 
 /**
@@ -116,12 +134,7 @@ export function registerMachine<C>(machine: StateMachine<C>): void {
  * @returns `true` if the machine was removed, `false` if not found
  */
 export function unregisterMachine(machineId: string): boolean {
-  const index = _registeredMachines.findIndex((m) => m.id === machineId);
-  if (index >= 0) {
-    _registeredMachines.splice(index, 1);
-    return true;
-  }
-  return false;
+  return _machinesById.delete(machineId);
 }
 
 /**
@@ -171,7 +184,7 @@ export function dispatch<C>(
 ): TransitionResult[] {
   // Always iterate an array of machines — single element or all registered.
   const machines: StateMachine<unknown>[] =
-    machine !== undefined ? [machine as StateMachine<unknown>] : _registeredMachines;
+    machine !== undefined ? [machine as StateMachine<unknown>] : getRegisteredMachines();
 
   const results: TransitionResult[] = [];
   for (const m of machines) {

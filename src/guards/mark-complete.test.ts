@@ -613,6 +613,52 @@ describe("mark-complete (setupMarkComplete)", () => {
       }),
     );
   });
+
+  it("recordTransition receives enriched params including stateMachineId", async () => {
+    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockGetMachine.mockReturnValue({ id: "goal-driven-development" });
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { stepNumber: 2 } }]
+    );
+
+    const sessionParams = { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development" };
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              workingDir: tempDir,
+              validation: { files: [] },
+              postValidate: vi.fn().mockReturnValue({ success: true }),
+              sessionParams,
+            },
+          },
+        ],
+      },
+    };
+
+    await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+
+    // recordTransition should have been called with 4 arguments
+    expect(mockRecordTransition).toHaveBeenCalledTimes(1);
+    const callArgs = mockRecordTransition.mock.calls[0];
+    expect(callArgs.length).toBe(4);
+
+    // 4th argument (enriched params) should contain stateMachineId at top level
+    const enrichedParams = callArgs[3];
+    expect(enrichedParams).toHaveProperty("stateMachineId", "goal-driven-development");
+    expect(enrichedParams).toHaveProperty("goalName", "test-goal");
+    expect(enrichedParams).toHaveProperty("stepNumber", 2); // from adjustedParams
+    expect(enrichedParams).toHaveProperty("_sessionContext", sessionParams);
+
+    // Verify the same enriched params were passed to enqueueTask
+    const enqueueCall = mockEnqueueTask.mock.calls[0];
+    expect(enqueueCall[2].params).toBe(enrichedParams);
+  });
 });
 
 // ---------------------------------------------------------------------------

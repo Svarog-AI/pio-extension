@@ -113,19 +113,23 @@ export const markCompleteTool = defineTool({
           ? adjustedParams.goalName
           : goalName;
 
+        // Enriched params: same object passed to both enqueueTask and recordTransition
+        // so transitions.json accurately reflects what was actually dispatched.
+        const enrichedParams = {
+          goalName,
+          ...adjustedParams,
+          _sessionContext: sessionParams,
+          ...(finalStepNumber != null ? { stepNumber: finalStepNumber } : {}),
+          stateMachineId: nextTask.stateMachineId,
+        };
+
         enqueueTask(process.cwd(), queueGoalName, {
           capability: nextTask.capability,
-          params: {
-            goalName,
-            ...adjustedParams,
-            _sessionContext: sessionParams,
-            ...(finalStepNumber != null ? { stepNumber: finalStepNumber } : {}),
-            stateMachineId: nextTask.stateMachineId,
-          },
+          params: enrichedParams,
         });
 
-        // Record transition audit entry
-        recordTransition(dir, capability, nextTask);
+        // Record transition audit entry with enriched params
+        recordTransition(dir, capability, nextTask, enrichedParams);
 
         // Record the completed task in the goal directory
         // dir IS the goal directory (config.workingDir) — no need to resolve it again

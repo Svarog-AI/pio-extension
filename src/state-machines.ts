@@ -235,11 +235,16 @@ interface TransitionAuditEntry {
  * @param goalDir - Goal workspace directory (e.g. `/repo/.pio/goals/my-feature`)
  * @param fromCapability - Capability that just completed
  * @param toResult - Resolved transition result (next capability + params)
+ * @param actualParams - Optional enriched params to record instead of `toResult.params`.
+ *   When provided, these are the exact params passed to `enqueueTask()`, making the
+ *   audit log an accurate reflection of what was actually dispatched.
+ *   When omitted, falls back to `toResult.params` for backward compatibility.
  */
 export function recordTransition(
   goalDir: string,
   fromCapability: string,
   toResult: TransitionResult,
+  actualParams?: Record<string, unknown>,
 ): void {
   try {
     const filePath = path.join(goalDir, "transitions.json");
@@ -264,7 +269,7 @@ export function recordTransition(
       timestamp: new Date().toISOString(),
       from: fromCapability,
       to: toResult.capability,
-      params: toResult.params,
+      params: actualParams ?? toResult.params,
     };
 
     entries.push(entry);

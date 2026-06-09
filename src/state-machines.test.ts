@@ -675,6 +675,63 @@ describe("recordTransition — error handling", () => {
 });
 
 // ---------------------------------------------------------------------------
+// recordTransition — actualParams
+// ---------------------------------------------------------------------------
+
+describe("recordTransition — actualParams", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(join(os.tmpdir(), "pio-sm-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("uses actualParams for audit entry when provided", () => {
+    const result: TransitionResult = {
+      capability: "evolve-plan",
+      stateMachineId: "goal-driven-development",
+      params: { stepNumber: 1 },
+    };
+    const actualParams = {
+      stepNumber: 1,
+      stateMachineId: "goal-driven-development",
+      _sessionContext: { goalName: "test-goal" },
+      goalName: "test-goal",
+    };
+    recordTransition(tempDir, "create-plan", result, actualParams);
+
+    const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
+    const entries = JSON.parse(content);
+
+    expect(entries).toHaveLength(1);
+    // The recorded params should be actualParams, not toResult.params
+    expect(entries[0].params).toEqual(actualParams);
+    expect(entries[0].params.stateMachineId).toBe("goal-driven-development");
+    expect(entries[0].params._sessionContext).toEqual({ goalName: "test-goal" });
+  });
+
+  it("falls back to toResult.params when actualParams is omitted", () => {
+    const result: TransitionResult = {
+      capability: "execute-task",
+      stateMachineId: "goal-driven-development",
+      params: { stepNumber: 5, goalName: "my-goal" },
+    };
+    // Call with only 3 arguments — no actualParams
+    recordTransition(tempDir, "evolve-plan", result);
+
+    const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
+    const entries = JSON.parse(content);
+
+    expect(entries).toHaveLength(1);
+    // Should fall back to toResult.params
+    expect(entries[0].params).toEqual({ stepNumber: 5, goalName: "my-goal" });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // recordTransition — malformed file recovery
 // ---------------------------------------------------------------------------
 

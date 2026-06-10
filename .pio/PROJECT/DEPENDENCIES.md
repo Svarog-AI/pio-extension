@@ -45,7 +45,7 @@ Shared modules:
   fs-utils.ts            — resolveGoalDir, stepFolderName, discoverNextStep, prepareGoal, issues helpers
   types.ts               — CapabilityConfig, ValidationRule, PrepareSessionCallback, InputValidationSpec, PreValidateCallback
   goal-state.ts          — createGoalState(), StepStatus, GoalState interface
-  state-machines.ts      — StateMachine<C>, TransitionEdge<C>, TransitionResult types + dispatch/getOutgoingEdges/registerMachine/getMachine/recordTransition (leaf module, no internal imports)
+  state-machines.ts      — StateMachine<C>, TransitionEdge<C>, TransitionResult, ResolverResult types + dispatch/getOutgoingEdges/registerMachine/unregisterMachine/getMachine/getRegisteredMachines/recordTransition with optional actualParams (leaf module, no internal imports)
   state-machines/        — pio-workflow-machine.ts (goalDrivenDevelopment machine config, resolve functions)
   queues.ts              — enqueueTask, readPendingTask, writeLastTask
   model-config.ts        — resolveModelForCapability(), readTurnThreshold(). Reads ~/.pi/pio-config.yaml

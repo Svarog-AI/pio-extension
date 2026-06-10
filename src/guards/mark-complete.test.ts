@@ -27,6 +27,7 @@ const mockCreateGoalState = vi.hoisted(() => vi.fn().mockReturnValue({
   currentStepNumber: vi.fn().mockReturnValue(1),
 }));
 const mockDispatch = vi.hoisted(() => vi.fn());
+const mockGetMachine = vi.hoisted(() => vi.fn());
 const mockRecordTransition = vi.hoisted(() => vi.fn());
 const mockEnqueueTask = vi.hoisted(() => vi.fn());
 const mockWriteLastTask = vi.hoisted(() => vi.fn());
@@ -42,9 +43,7 @@ vi.mock("../goal-state", () => ({
 
 vi.mock("../state-machines", () => ({
   dispatch: mockDispatch,
-}));
-
-vi.mock("../state-machines/pio-workflow-machine", () => ({
+  getMachine: mockGetMachine,
   goalDrivenDevelopment: {},
   recordTransition: mockRecordTransition,
 }));
@@ -76,6 +75,7 @@ describe("mark-complete (setupMarkComplete)", () => {
       currentStepNumber: vi.fn().mockReturnValue(1),
     });
     mockDispatch.mockClear();
+    mockGetMachine.mockClear();
     mockRecordTransition.mockClear();
     mockEnqueueTask.mockClear();
     mockWriteLastTask.mockClear();
@@ -459,6 +459,206 @@ describe("mark-complete (setupMarkComplete)", () => {
     expect(result.content[0].text).toContain("No directory");
     expect(result.terminate).toBe(true);
   });
+
+  it("dispatches with explicit machine when stateMachineId is in session params", async () => {
+    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockGetMachine.mockReturnValue({ id: "goal-driven-development" });
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
+    );
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              workingDir: tempDir,
+              validation: { files: [] },
+              postValidate: vi.fn().mockReturnValue({ success: true }),
+              sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development" },
+            },
+          },
+        ],
+      },
+    };
+
+    await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+
+    // getMachine should have been called with the stateMachineId
+    expect(mockGetMachine).toHaveBeenCalledWith("goal-driven-development");
+    // dispatch should have been called with the explicit machine (not undefined)
+    expect(mockDispatch).toHaveBeenCalledWith(
+      { id: "goal-driven-development" },
+      "execute-task",
+      expect.anything(),
+      expect.objectContaining({ goalName: "test-goal", stepNumber: 1 }),
+    );
+  });
+
+  it("falls back to dispatch(undefined) when stateMachineId is absent", async () => {
+    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
+    );
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              workingDir: tempDir,
+              validation: { files: [] },
+              postValidate: vi.fn().mockReturnValue({ success: true }),
+              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+              // No stateMachineId
+            },
+          },
+        ],
+      },
+    };
+
+    await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+
+    // getMachine should NOT have been called (no stateMachineId to look up)
+    expect(mockGetMachine).not.toHaveBeenCalled();
+    // dispatch should have been called with undefined (fallback)
+    expect(mockDispatch).toHaveBeenCalledWith(
+      undefined,
+      "execute-task",
+      expect.anything(),
+      expect.objectContaining({ goalName: "test-goal", stepNumber: 1 }),
+    );
+  });
+
+  it("falls back to dispatch(undefined) when getMachine returns undefined (unknown ID)", async () => {
+    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockGetMachine.mockReturnValue(undefined);
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
+    );
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              workingDir: tempDir,
+              validation: { files: [] },
+              postValidate: vi.fn().mockReturnValue({ success: true }),
+              sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "unknown-machine" },
+            },
+          },
+        ],
+      },
+    };
+
+    await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+
+    // getMachine was called but returned undefined
+    expect(mockGetMachine).toHaveBeenCalledWith("unknown-machine");
+    // dispatch should have been called with undefined (fallback)
+    expect(mockDispatch).toHaveBeenCalledWith(
+      undefined,
+      "execute-task",
+      expect.anything(),
+      expect.objectContaining({ goalName: "test-goal", stepNumber: 1 }),
+    );
+  });
+
+  it("includes stateMachineId in enqueued task params when transition result provides one", async () => {
+    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockGetMachine.mockReturnValue({ id: "goal-driven-development" });
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
+    );
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              workingDir: tempDir,
+              validation: { files: [] },
+              postValidate: vi.fn().mockReturnValue({ success: true }),
+              sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development" },
+            },
+          },
+        ],
+      },
+    };
+
+    await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+
+    // enqueueTask should have been called with stateMachineId at top level in params
+    expect(mockEnqueueTask).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        capability: "review-task",
+        params: expect.objectContaining({
+          stateMachineId: "goal-driven-development",
+        }),
+      }),
+    );
+  });
+
+  it("recordTransition receives enriched params including stateMachineId", async () => {
+    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockGetMachine.mockReturnValue({ id: "goal-driven-development" });
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { stepNumber: 2 } }]
+    );
+
+    const sessionParams = { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development" };
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              workingDir: tempDir,
+              validation: { files: [] },
+              postValidate: vi.fn().mockReturnValue({ success: true }),
+              sessionParams,
+            },
+          },
+        ],
+      },
+    };
+
+    await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+
+    // recordTransition should have been called with 4 arguments
+    expect(mockRecordTransition).toHaveBeenCalledTimes(1);
+    const callArgs = mockRecordTransition.mock.calls[0];
+    expect(callArgs.length).toBe(4);
+
+    // 4th argument (enriched params) should contain stateMachineId at top level
+    const enrichedParams = callArgs[3];
+    expect(enrichedParams).toHaveProperty("stateMachineId", "goal-driven-development");
+    expect(enrichedParams).toHaveProperty("goalName", "test-goal");
+    expect(enrichedParams).toHaveProperty("stepNumber", 2); // from adjustedParams
+    expect(enrichedParams).toHaveProperty("_sessionContext", sessionParams);
+
+    // Verify the same enriched params were passed to enqueueTask
+    const enqueueCall = mockEnqueueTask.mock.calls[0];
+    expect(enqueueCall[2].params).toBe(enrichedParams);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -481,6 +681,7 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
       currentStepNumber: vi.fn().mockReturnValue(1),
     });
     mockDispatch.mockClear();
+    mockGetMachine.mockClear();
     mockRecordTransition.mockClear();
     mockEnqueueTask.mockClear();
     mockWriteLastTask.mockClear();

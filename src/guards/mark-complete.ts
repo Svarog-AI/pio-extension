@@ -2,11 +2,9 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
-import type { CapabilityConfig } from "../types";
 import { getSessionConfig } from "../capability-utils";
 import { validateOutputs, validateFrontmatter } from "./validation";
-import { dispatch } from "../state-machines";
-import { recordTransition } from "../state-machines/pio-workflow-machine";
+import { dispatch, getMachine, recordTransition } from "../state-machines";
 import { createGoalState } from "../goal-state";
 import { enqueueTask, writeLastTask } from "../queues";
 
@@ -85,8 +83,15 @@ export const markCompleteTool = defineTool({
       : undefined;
     const stepNumber = explicitStepNumber ?? state.currentStepNumber();
 
+    // Multi-machine dispatch: read stateMachineId from session params, look up machine explicitly.
+    // Falls back to dispatch(undefined, ...) for first transitions or legacy sessions.
+    const machineId = typeof sessionParams.stateMachineId === "string"
+      ? sessionParams.stateMachineId
+      : undefined;
+    const targetMachine = machineId ? getMachine(machineId) : undefined;
+
     const results = capability
-      ? dispatch(undefined, capability, state, { goalName, stepNumber, _sessionContext: sessionParams })
+      ? dispatch(targetMachine, capability, state, { goalName, stepNumber, _sessionContext: sessionParams })
       : [];
 
     if (capability && results.length === 1) {
@@ -108,18 +113,23 @@ export const markCompleteTool = defineTool({
           ? adjustedParams.goalName
           : goalName;
 
+        // Enriched params: same object passed to both enqueueTask and recordTransition
+        // so transitions.json accurately reflects what was actually dispatched.
+        const enrichedParams = {
+          goalName,
+          ...adjustedParams,
+          _sessionContext: sessionParams,
+          ...(finalStepNumber != null ? { stepNumber: finalStepNumber } : {}),
+          stateMachineId: nextTask.stateMachineId,
+        };
+
         enqueueTask(process.cwd(), queueGoalName, {
           capability: nextTask.capability,
-          params: {
-            goalName,
-            ...adjustedParams,
-            _sessionContext: sessionParams,
-            ...(finalStepNumber != null ? { stepNumber: finalStepNumber } : {}),
-          },
+          params: enrichedParams,
         });
 
-        // Record transition audit entry
-        recordTransition(dir, capability, nextTask);
+        // Record transition audit entry with enriched params
+        recordTransition(dir, capability, nextTask, enrichedParams);
 
         // Record the completed task in the goal directory
         // dir IS the goal directory (config.workingDir) — no need to resolve it again

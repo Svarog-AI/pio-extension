@@ -61,7 +61,9 @@ pio-extension/
 │   ├── prompt-compiler.ts     # compilePrompt() — assembles prompts from component files (role.md, workflow.ts, guidelines.md)
 │   ├── fs-utils.ts            # Filesystem helpers (resolveGoalDir, stepFolderName, prepareGoal)
 │   ├── goal-state.ts          # GoalState — lazy-evaluated filesystem view over goal workspace
-│   ├── state-machine.ts       # Pure transition resolver (create-goal→create-plan→evolve→execute→review)
+│   ├── state-machines/        # Declarative state machine framework
+│   │   ├── pio-workflow-machine.ts  # pio workflow machine config (11 edges, resolve functions)
+│   ├── state-machines.ts      # Framework types (StateMachine<C>, TransitionEdge<C>) + dispatch API
 │   ├── queues.ts              # Session task queue (enqueueTask, readPendingTask, per-goal slots)
 │   └── model-config.ts        # Per-capability model config from ~/.pi/pio-config.yaml
 ├── .pio/                      # Runtime workspace (goals, issues, session queue)

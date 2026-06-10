@@ -103,6 +103,10 @@ describe("pio_mark_complete integration — review-task with real frontmatter", 
     vi.resetModules();
     tempCwd = createTempDir();
 
+    // Import and explicitly register goalDrivenDevelopment before importing mark-complete.
+    const { setupPioWorkflowMachine } = await import("../state-machines/pio-workflow-machine");
+    setupPioWorkflowMachine();
+
     // Import mark-complete fresh (no mocks in this file)
     const mod = await import("../guards/mark-complete");
 

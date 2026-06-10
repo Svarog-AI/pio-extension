@@ -10,7 +10,7 @@ import { enqueueTask } from "./queues";
 import { launchCapability } from "./capability-session";
 import { resolveCapabilityConfig } from "./capability-config";
 import { dispatch } from "./state-machines";
-import { recordTransition } from "./state-machines/pio-workflow-machine";
+import { recordTransition } from "./state-machines";
 import { createGoalState } from "./goal-state";
 import { getSessionConfig } from "./capability-utils";
 

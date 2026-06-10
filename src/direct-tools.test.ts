@@ -34,16 +34,13 @@ vi.mock("./queues", () => ({
   queueDir: vi.fn().mockReturnValue("/mock/queue"),
 }));
 
-vi.mock("./state-machines/pio-workflow-machine", () => ({
-  recordTransition: mockRecordTransition,
-  goalDrivenDevelopment: { id: "goal-driven-development" },
-}));
-
 vi.mock("./state-machines", () => ({
   dispatch: mockDispatch,
   getOutgoingEdges: vi.fn(),
   registerMachine: vi.fn(),
   unregisterMachine: vi.fn(),
+  recordTransition: mockRecordTransition,
+  goalDrivenDevelopment: { id: "goal-driven-development" },
 }));
 
 vi.mock("./goal-state", () => ({

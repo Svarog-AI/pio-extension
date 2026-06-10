@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+
 /**
  * Declarative state machine framework types.
  *
@@ -28,11 +31,21 @@ export interface TransitionResult {
 }
 
 /**
+ * Result returned by a resolver function before dispatch auto-injects `stateMachineId`.
+ *
+ * The `stateMachineId` field is deliberately omitted — `dispatch()` guarantees it
+ * by setting `stateMachineId: m.id` on every result. This makes it impossible for
+ * a resolver to set an incorrect or missing ID.
+ */
+export type ResolverResult = Omit<TransitionResult, "stateMachineId">;
+
+/**
  * A single directed edge in the state machine graph.
  *
  * Each edge carries a `resolve` function that both checks whether the
  * transition applies AND computes result params in one call. Returns
- * `TransitionResult` when the edge fires, `undefined` when it doesn't apply.
+ * `ResolverResult` when the edge fires, `undefined` when it doesn't apply.
+ * The framework's `dispatch()` auto-injects `stateMachineId` on the returned result.
  *
  * @typeParam C - Context type for condition evaluation (e.g. `GoalState` for the default pio workflow)
  */
@@ -44,10 +57,11 @@ export interface TransitionEdge<C> {
   /**
    * Resolve function that evaluates whether this edge fires and computes the transition result.
    * Called during dispatch with context state and session params.
-   * Returns `TransitionResult` when the edge applies, `undefined` when it doesn't.
+   * Returns `ResolverResult` when the edge applies, `undefined` when it doesn't.
+   * The `stateMachineId` is auto-injected by `dispatch()` — do not set it in the return value.
    * This combines condition check + param computation in one call.
    */
-  resolve: (context: C, params?: Record<string, unknown>) => TransitionResult | undefined;
+  resolve: (context: C, params?: Record<string, unknown>) => ResolverResult | undefined;
 }
 
 /**
@@ -76,17 +90,40 @@ export interface StateMachine<C> {
 // ---------------------------------------------------------------------------
 
 /**
- * Module-level registry of all known state machines.
- *
- * Used by {@link dispatch} when no explicit machine is provided (`machine === undefined`).
+ * O(1) lookup map keyed by machine ID.
+ * Single source of truth for the machine registry.
+ * Used by {@link dispatch} when no explicit machine is provided (`machine === undefined`) via {@link getRegisteredMachines}.
  * Stores `StateMachine<unknown>` because different machines may use different context types;
  * the caller is responsible for providing the correct context type.
  */
-const _registeredMachines: StateMachine<unknown>[] = [];
+const _machinesById = new Map<string, StateMachine<unknown>>();
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+
+/**
+ * Retrieve a registered state machine by ID.
+ *
+ * Returns `undefined` if no machine with the given ID is registered.
+ *
+ * @param id - The unique identifier of the machine
+ * @returns The machine, or `undefined` if not found
+ */
+export function getMachine(id: string): StateMachine<unknown> | undefined {
+  return _machinesById.get(id);
+}
+
+/**
+ * Return all registered machines as a snapshot array in insertion order.
+ *
+ * Mutations to the returned array do NOT affect the internal registry.
+ *
+ * @returns A new array of all registered machines
+ */
+export function getRegisteredMachines(): StateMachine<unknown>[] {
+  return [..._machinesById.values()];
+}
 
 /**
  * Register a state machine so it can be discovered by {@link dispatch} when
@@ -98,12 +135,7 @@ const _registeredMachines: StateMachine<unknown>[] = [];
  * @param machine - The state machine to register
  */
 export function registerMachine<C>(machine: StateMachine<C>): void {
-  const existingIndex = _registeredMachines.findIndex((m) => m.id === machine.id);
-  if (existingIndex >= 0) {
-    _registeredMachines[existingIndex] = machine as StateMachine<unknown>;
-  } else {
-    _registeredMachines.push(machine as StateMachine<unknown>);
-  }
+  _machinesById.set(machine.id, machine as StateMachine<unknown>);
 }
 
 /**
@@ -116,12 +148,7 @@ export function registerMachine<C>(machine: StateMachine<C>): void {
  * @returns `true` if the machine was removed, `false` if not found
  */
 export function unregisterMachine(machineId: string): boolean {
-  const index = _registeredMachines.findIndex((m) => m.id === machineId);
-  if (index >= 0) {
-    _registeredMachines.splice(index, 1);
-    return true;
-  }
-  return false;
+  return _machinesById.delete(machineId);
 }
 
 /**
@@ -171,7 +198,7 @@ export function dispatch<C>(
 ): TransitionResult[] {
   // Always iterate an array of machines — single element or all registered.
   const machines: StateMachine<unknown>[] =
-    machine !== undefined ? [machine as StateMachine<unknown>] : _registeredMachines;
+    machine !== undefined ? [machine as StateMachine<unknown>] : getRegisteredMachines();
 
   const results: TransitionResult[] = [];
   for (const m of machines) {
@@ -180,7 +207,7 @@ export function dispatch<C>(
       try {
         const result = edge.resolve(context, params);
         if (result !== undefined) {
-          results.push(result);
+          results.push({ ...result, stateMachineId: m.id });
         }
       } catch (err) {
         console.warn(`dispatch: resolve threw in machine "${m.id}", edge ${edge.from} → ${edge.to}`, err);
@@ -188,4 +215,66 @@ export function dispatch<C>(
     }
   }
   return results;
+}
+
+// ---------------------------------------------------------------------------
+// Audit log — recordTransition
+// ---------------------------------------------------------------------------
+
+interface TransitionAuditEntry {
+  timestamp: string;
+  from: string;
+  to: string;
+  params?: Record<string, unknown>;
+}
+
+/**
+ * Record a transition as an audit entry in `<goalDir>/transitions.json`.
+ * Append-only JSON array. Non-fatal — failures are logged but never thrown.
+ *
+ * @param goalDir - Goal workspace directory (e.g. `/repo/.pio/goals/my-feature`)
+ * @param fromCapability - Capability that just completed
+ * @param toResult - Resolved transition result (next capability + params)
+ * @param actualParams - Optional enriched params to record instead of `toResult.params`.
+ *   When provided, these are the exact params passed to `enqueueTask()`, making the
+ *   audit log an accurate reflection of what was actually dispatched.
+ *   When omitted, falls back to `toResult.params` for backward compatibility.
+ */
+export function recordTransition(
+  goalDir: string,
+  fromCapability: string,
+  toResult: TransitionResult,
+  actualParams?: Record<string, unknown>,
+): void {
+  try {
+    const filePath = path.join(goalDir, "transitions.json");
+    let entries: TransitionAuditEntry[] = [];
+
+    // Try to read existing file
+    if (fs.existsSync(filePath)) {
+      try {
+        const raw = fs.readFileSync(filePath, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          entries = parsed;
+        }
+        // If not an array, start fresh (malformed file recovery)
+      } catch {
+        // Malformed JSON — start fresh
+        entries = [];
+      }
+    }
+
+    const entry: TransitionAuditEntry = {
+      timestamp: new Date().toISOString(),
+      from: fromCapability,
+      to: toResult.capability,
+      params: actualParams ?? toResult.params,
+    };
+
+    entries.push(entry);
+    fs.writeFileSync(filePath, JSON.stringify(entries, null, 2), "utf-8");
+  } catch (err) {
+    console.warn(`pio: failed to record transition: ${err}`);
+  }
 }

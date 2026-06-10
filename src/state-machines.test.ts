@@ -1,8 +1,10 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { StateMachine, TransitionEdge } from "./state-machines";
-import { dispatch, getOutgoingEdges, registerMachine, unregisterMachine } from "./state-machines";
+import type { StateMachine, TransitionEdge, TransitionResult } from "./state-machines";
+import { dispatch, getMachine, getOutgoingEdges, getRegisteredMachines, registerMachine, unregisterMachine, recordTransition } from "./state-machines";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -193,6 +195,23 @@ describe("dispatch — single machine", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0].capability).toBe("c");
+  });
+
+  it("dispatch auto-injects stateMachineId overriding resolver value", () => {
+    const machine = makeMachine("inject-test", [
+      {
+        from: "a",
+        to: "b",
+        // Resolver returns a wrong stateMachineId — dispatch should override with machine ID
+        resolve: () => ({ capability: "b", stateMachineId: "wrong-id" } as TransitionResult),
+      },
+    ]);
+
+    const results = dispatch(machine, "a", { mode: "x" });
+
+    expect(results).toHaveLength(1);
+    // dispatch() auto-injects the correct machine ID, overriding the resolver value
+    expect(results[0].stateMachineId).toBe("inject-test");
   });
 });
 
@@ -453,6 +472,99 @@ describe("unregisterMachine", () => {
 });
 
 // ---------------------------------------------------------------------------
+// getMachine
+// ---------------------------------------------------------------------------
+
+describe("getMachine", () => {
+  afterEach(() => {
+    for (const id of registeredIds) {
+      unregisterMachine(id);
+    }
+    registeredIds.length = 0;
+  });
+
+  it("returns the machine after registerMachine", () => {
+    const machine = makeMachine("get-1", []);
+    registerTestMachine(machine);
+
+    const found = getMachine("get-1");
+
+    expect(found).toBe(machine);
+  });
+
+  it("returns undefined for an unknown ID", () => {
+    const found = getMachine("does-not-exist");
+
+    expect(found).toBeUndefined();
+  });
+
+  it("returns undefined after unregisterMachine", () => {
+    const machine = makeMachine("get-2", []);
+    registerTestMachine(machine);
+
+    unregisterMachine("get-2");
+    const idx = registeredIds.indexOf("get-2");
+    if (idx >= 0) registeredIds.splice(idx, 1);
+
+    const found = getMachine("get-2");
+
+    expect(found).toBeUndefined();
+  });
+
+  it("returns the new instance after re-registration", () => {
+    const machine1 = makeMachine("get-3", []);
+    const machine2 = makeMachine("get-3", [
+      { from: "a", to: "b", resolve: () => ({ capability: "b", stateMachineId: "get-3" }) },
+    ]);
+
+    registerTestMachine(machine1);
+    registerMachine(machine2);
+
+    const found = getMachine("get-3");
+
+    expect(found).toBe(machine2);
+    expect(found).not.toBe(machine1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getRegisteredMachines
+// ---------------------------------------------------------------------------
+
+describe("getRegisteredMachines", () => {
+  afterEach(() => {
+    for (const id of registeredIds) {
+      unregisterMachine(id);
+    }
+    registeredIds.length = 0;
+  });
+
+  it("returns all registered machines in insertion order", () => {
+    const m1 = makeMachine("list-1", []);
+    const m2 = makeMachine("list-2", []);
+    const m3 = makeMachine("list-3", []);
+
+    registerTestMachine(m1);
+    registerTestMachine(m2);
+    registerTestMachine(m3);
+
+    const list = getRegisteredMachines();
+
+    expect(list.map((m) => m.id)).toEqual(["list-1", "list-2", "list-3"]);
+  });
+
+  it("returns a snapshot — mutations do not affect the registry", () => {
+    const m1 = makeMachine("list-4", []);
+    registerTestMachine(m1);
+
+    const list = getRegisteredMachines();
+    list.length = 0; // mutate the returned array
+
+    expect(getRegisteredMachines()).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Leaf module constraint
 // ---------------------------------------------------------------------------
 
@@ -463,5 +575,201 @@ describe("leaf module constraint", () => {
     // Should not have any `from "./..."` or `from "../..."` imports
     const internalImports = content.match(/from\s+["']\.[^"']+/g);
     expect(internalImports).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// recordTransition — file creation
+// ---------------------------------------------------------------------------
+
+describe("recordTransition — file creation", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(join(os.tmpdir(), "pio-sm-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("creates transitions.json with a single-entry JSON array", () => {
+    const result: TransitionResult = { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { stepNumber: 2 } };
+    recordTransition(tempDir, "create-plan", result);
+
+    const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
+    const entries = JSON.parse(content);
+
+    expect(Array.isArray(entries)).toBe(true);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].from).toBe("create-plan");
+    expect(entries[0].to).toBe("evolve-plan");
+    expect(entries[0].params).toEqual({ stepNumber: 2 });
+    expect(typeof entries[0].timestamp).toBe("string");
+  });
+
+  it("entry contains ISO timestamp", () => {
+    const result: TransitionResult = { capability: "execute-task", stateMachineId: "goal-driven-development" };
+    recordTransition(tempDir, "evolve-plan", result);
+
+    const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
+    const entries = JSON.parse(content);
+
+    // Verify it's a valid ISO date string
+    expect(() => new Date(entries[0].timestamp)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// recordTransition — append to existing
+// ---------------------------------------------------------------------------
+
+describe("recordTransition — append to existing", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(join(os.tmpdir(), "pio-sm-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("second call appends to the existing JSON array", () => {
+    recordTransition(tempDir, "create-goal", { capability: "create-plan", stateMachineId: "goal-driven-development" });
+    recordTransition(tempDir, "create-plan", { capability: "evolve-plan", stateMachineId: "goal-driven-development" });
+
+    const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
+    const entries = JSON.parse(content);
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0].from).toBe("create-goal");
+    expect(entries[1].from).toBe("create-plan");
+  });
+
+  it("subsequent calls continue appending (entry count matches call count)", () => {
+    for (let i = 0; i < 5; i++) {
+      recordTransition(tempDir, "capability", { capability: "next", stateMachineId: "goal-driven-development" });
+    }
+
+    const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
+    const entries = JSON.parse(content);
+
+    expect(entries).toHaveLength(5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// recordTransition — error handling
+// ---------------------------------------------------------------------------
+
+describe("recordTransition — error handling", () => {
+  it("does not throw when goalDir is unwritable", () => {
+    // Use a path that doesn't exist and isn't creatable
+    const unwritablePath = "/nonexistent/path/that/cannot/be/created/transitions.json";
+
+    expect(() => {
+      recordTransition(unwritablePath, "test-cap", { capability: "next", stateMachineId: "goal-driven-development" });
+    }).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// recordTransition — actualParams
+// ---------------------------------------------------------------------------
+
+describe("recordTransition — actualParams", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(join(os.tmpdir(), "pio-sm-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("uses actualParams for audit entry when provided", () => {
+    const result: TransitionResult = {
+      capability: "evolve-plan",
+      stateMachineId: "goal-driven-development",
+      params: { stepNumber: 1 },
+    };
+    const actualParams = {
+      stepNumber: 1,
+      stateMachineId: "goal-driven-development",
+      _sessionContext: { goalName: "test-goal" },
+      goalName: "test-goal",
+    };
+    recordTransition(tempDir, "create-plan", result, actualParams);
+
+    const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
+    const entries = JSON.parse(content);
+
+    expect(entries).toHaveLength(1);
+    // The recorded params should be actualParams, not toResult.params
+    expect(entries[0].params).toEqual(actualParams);
+    expect(entries[0].params.stateMachineId).toBe("goal-driven-development");
+    expect(entries[0].params._sessionContext).toEqual({ goalName: "test-goal" });
+  });
+
+  it("falls back to toResult.params when actualParams is omitted", () => {
+    const result: TransitionResult = {
+      capability: "execute-task",
+      stateMachineId: "goal-driven-development",
+      params: { stepNumber: 5, goalName: "my-goal" },
+    };
+    // Call with only 3 arguments — no actualParams
+    recordTransition(tempDir, "evolve-plan", result);
+
+    const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
+    const entries = JSON.parse(content);
+
+    expect(entries).toHaveLength(1);
+    // Should fall back to toResult.params
+    expect(entries[0].params).toEqual({ stepNumber: 5, goalName: "my-goal" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// recordTransition — malformed file recovery
+// ---------------------------------------------------------------------------
+
+describe("recordTransition — malformed file recovery", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(join(os.tmpdir(), "pio-sm-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("recovers from malformed JSON by starting fresh", () => {
+    // Write malformed JSON
+    fs.writeFileSync(join(tempDir, "transitions.json"), "not valid json");
+
+    recordTransition(tempDir, "test-cap", { capability: "next", stateMachineId: "test" });
+
+    const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
+    const entries = JSON.parse(content);
+
+    expect(Array.isArray(entries)).toBe(true);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].from).toBe("test-cap");
+  });
+
+  it("recovers from non-array JSON by starting fresh", () => {
+    // Write valid JSON but not an array
+    fs.writeFileSync(join(tempDir, "transitions.json"), JSON.stringify({ key: "value" }));
+
+    recordTransition(tempDir, "test-cap", { capability: "next", stateMachineId: "test" });
+
+    const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
+    const entries = JSON.parse(content);
+
+    expect(Array.isArray(entries)).toBe(true);
+    expect(entries).toHaveLength(1);
   });
 });

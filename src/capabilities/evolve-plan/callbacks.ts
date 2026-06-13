@@ -16,26 +16,8 @@ const DECISIONS_FILE = "DECISIONS.md";
 export const REVISE_PLAN_MARKER = "REVISE_PLAN_NEEDED";
 
 // ---------------------------------------------------------------------------
-// Validation callbacks (used by config.ts and resolveCapabilityConfig)
+// Write allowlist callback (used by config.ts)
 // ---------------------------------------------------------------------------
-
-/**
- * Callback used by the `validation` field in config.
- * Returns `{ files: string[] }` based on step number.
- * Step 1: TASK.md only. Step 2+: TASK.md + DECISIONS.md.
- */
-export function resolveEvolveValidation(_workingDir: string, params?: Record<string, unknown>): { files: string[] } {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-  if (stepNumber == null) {
-    throw new Error("stepNumber is required for evolve-plan. Ensure the task was enqueued with a valid step number.");
-  }
-  const folder = stepFolderName(stepNumber);
-  const files: string[] = [`${folder}/${TASK_FILE}`];
-  if (stepNumber > 1) {
-    files.push(`${folder}/${DECISIONS_FILE}`);
-  }
-  return { files };
-}
 
 /**
  * Callback used by the `writeAllowlist` field in config.

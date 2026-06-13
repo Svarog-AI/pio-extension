@@ -24,41 +24,12 @@ export function resolveExecuteReadOnlyFiles(_workingDir: string, params?: Record
 }
 
 // ---------------------------------------------------------------------------
-// Step discovery
-// ---------------------------------------------------------------------------
-
-/**
- * Find the next ready step by scanning S01/, S02/, … for the first step
- * where TASK.md exists but no COMPLETED/BLOCKED marker is present yet.
- *
- * Returns the step number or undefined if no ready step found.
- * Does NOT do validation — assumes caller has already verified prerequisites.
- */
-export function findNextReadyStep(goalDir: string): number | undefined {
-  const state = createGoalState(goalDir);
-  const allSteps = state.steps();
-
-  for (let i = 1; ; i++) {
-    const step = state.steps().find(s => s.stepNumber === i);
-    if (step && step.status() === "defined") {
-      return i;
-    }
-    // If we reach a step where the folder doesn't exist at all in state.steps(),
-    // there's no ready step beyond this point.
-    if (!allSteps.some(s => s.stepNumber === i)) break;
-  }
-
-  return undefined;
-}
-
-// ---------------------------------------------------------------------------
 // Pre-launch validation
 // ---------------------------------------------------------------------------
 
 /**
  * Validate that the goal workspace exists with both GOAL.md and PLAN.md.
- * Then scan S01/, S02/, … for the first step where TASK.md exists
- * but no COMPLETED/BLOCKED marker is present yet.
+ * Then find the next step ready for execution using GoalState.
  *
  * Returns { goalDir, ready: true, stepNumber } on success,
  * or { goalDir, ready: false, error } when not ready.
@@ -80,32 +51,39 @@ export async function validateAndFindNextStep(
     };
   }
 
-  // Discover the step number first (scans S01/, S02/, … for status "defined").
-  // Requires PLAN.md to exist — if missing, steps() returns empty and this returns undefined.
-  const foundStep = findNextReadyStep(goalDir);
-  if (foundStep == null) {
-    // Provide a better error if PLAN.md is missing (the root cause of empty steps).
-    if (!fs.existsSync(path.join(goalDir, "PLAN.md"))) {
-      return {
-        goalDir,
-        ready: false,
-        error: `Required file missing: PLAN.md. Run /pio-create-plan ${name} to generate a plan first.`,
-      };
-    }
+  const state = createGoalState(goalDir);
+
+  // Check PLAN.md exists — required for currentStepNumber() and CONTRACT validation.
+  if (!state.hasPlan()) {
     return {
       goalDir,
       ready: false,
-      error: `No ready steps found for goal "${name}". All steps are either completed or missing specs (TASK.md). Run /pio-evolve-plan ${name} to generate specs.`,
+      error: `Required file missing: PLAN.md. Run /pio-create-plan ${name} to generate a plan first.`,
+    };
+  }
+
+  // Find the next step via GoalState.
+  const stepNumber = state.currentStepNumber();
+  const step = state.steps().find(s => s.stepNumber === stepNumber);
+
+  // Step is "pending" (no TASK.md yet) — user needs to run evolve-plan first.
+  // CONTRACT validation would fail with a generic "TASK.md missing" error,
+  // so provide a specific message instead.
+  if (step?.status() === "pending") {
+    return {
+      goalDir,
+      ready: false,
+      error: `Step ${stepNumber} is not yet specified. Run /pio-evolve-plan ${name} to generate TASK.md.`,
     };
   }
 
   // All paths resolved — validate full CONTRACT with the discovered stepNumber.
-  const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber: foundStep });
+  const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber });
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }
 
-  return { goalDir, ready: true, stepNumber: foundStep };
+  return { goalDir, ready: true, stepNumber };
 }
 
 /**

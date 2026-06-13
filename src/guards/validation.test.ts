@@ -714,3 +714,206 @@ describe("CONTRACT integration — finalize-goal", () => {
     expect(result.message).toContain("PLAN.md");
   });
 });
+
+// ---------------------------------------------------------------------------
+// CONTRACT integration tests — real capability contracts through validateOutputs()
+// These exercise each real CONTRACT's outputs[] to catch typos in file paths,
+// wrong placeholder syntax, or incorrect requiredWhen predicates. Each capability
+// with outputs gets one "all present → pass" and one "one missing → fail" test.
+// ---------------------------------------------------------------------------
+
+describe("CONTRACT outputs integration — create-goal", () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = createTempDir(); });
+  afterEach(() => cleanup(tempDir));
+
+  it("all outputs present → passed: true", async () => {
+    const { CONTRACT } = await import("../capabilities/create-goal/config");
+    fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
+    const result = validateOutputs(CONTRACT, tempDir);
+    expect(result).toEqual({ passed: true, missing: [] });
+  });
+
+  it("missing GOAL.md → failure naming GOAL.md", async () => {
+    const { CONTRACT } = await import("../capabilities/create-goal/config");
+    const result = validateOutputs(CONTRACT, tempDir);
+    expect(result.passed).toBe(false);
+    expect(result.missing).toContain("GOAL.md");
+  });
+});
+
+describe("CONTRACT outputs integration — create-plan", () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = createTempDir(); });
+  afterEach(() => cleanup(tempDir));
+
+  it("all outputs present → passed: true", async () => {
+    const { CONTRACT } = await import("../capabilities/create-plan/config");
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+    const result = validateOutputs(CONTRACT, tempDir);
+    expect(result).toEqual({ passed: true, missing: [] });
+  });
+
+  it("missing PLAN.md → failure naming PLAN.md", async () => {
+    const { CONTRACT } = await import("../capabilities/create-plan/config");
+    const result = validateOutputs(CONTRACT, tempDir);
+    expect(result.passed).toBe(false);
+    expect(result.missing).toContain("PLAN.md");
+  });
+});
+
+describe("CONTRACT outputs integration — evolve-plan", () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = createTempDir(); });
+  afterEach(() => cleanup(tempDir));
+
+  it("all outputs present (step 1, no DECISIONS.md required) → passed: true", async () => {
+    const { CONTRACT } = await import("../capabilities/evolve-plan/config");
+    fs.mkdirSync(path.join(tempDir, "S01"), { recursive: true });
+    fs.writeFileSync(path.join(tempDir, "S01", "TASK.md"), "content", "utf-8");
+    // stepNumber = 1 → DECISIONS.md not required (requiredWhen returns false)
+    const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 1 });
+    expect(result).toEqual({ passed: true, missing: [] });
+  });
+
+  it("all outputs present (step 3, DECISIONS.md required) → passed: true", async () => {
+    const { CONTRACT } = await import("../capabilities/evolve-plan/config");
+    fs.mkdirSync(path.join(tempDir, "S03"), { recursive: true });
+    fs.writeFileSync(path.join(tempDir, "S03", "TASK.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "S03", "DECISIONS.md"), "content", "utf-8");
+    const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 3 });
+    expect(result).toEqual({ passed: true, missing: [] });
+  });
+
+  it("missing TASK.md → failure naming S02/TASK.md", async () => {
+    const { CONTRACT } = await import("../capabilities/evolve-plan/config");
+    // S02/TASK.md is missing
+    const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 2 });
+    expect(result.passed).toBe(false);
+    expect(result.missing).toContain("S02/TASK.md");
+  });
+
+  it("missing DECISIONS.md (step > 1) → failure naming S03/DECISIONS.md", async () => {
+    const { CONTRACT } = await import("../capabilities/evolve-plan/config");
+    fs.mkdirSync(path.join(tempDir, "S03"), { recursive: true });
+    fs.writeFileSync(path.join(tempDir, "S03", "TASK.md"), "content", "utf-8");
+    // S03/DECISIONS.md is missing but required (stepNumber > 1)
+    const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 3 });
+    expect(result.passed).toBe(false);
+    expect(result.missing).toContain("S03/DECISIONS.md");
+  });
+});
+
+describe("CONTRACT outputs integration — execute-task", () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = createTempDir(); });
+  afterEach(() => cleanup(tempDir));
+
+  it("all outputs present → passed: true", async () => {
+    const { CONTRACT } = await import("../capabilities/execute-task/config");
+    fs.mkdirSync(path.join(tempDir, "S04"), { recursive: true });
+    fs.writeFileSync(path.join(tempDir, "S04", "TEST.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "S04", "SUMMARY.md"), "content", "utf-8");
+    const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 4 });
+    expect(result).toEqual({ passed: true, missing: [] });
+  });
+
+  it("missing SUMMARY.md → failure naming S04/SUMMARY.md", async () => {
+    const { CONTRACT } = await import("../capabilities/execute-task/config");
+    fs.mkdirSync(path.join(tempDir, "S04"), { recursive: true });
+    fs.writeFileSync(path.join(tempDir, "S04", "TEST.md"), "content", "utf-8");
+    // S04/SUMMARY.md is missing
+    const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 4 });
+    expect(result.passed).toBe(false);
+    expect(result.missing).toContain("S04/SUMMARY.md");
+  });
+});
+
+describe("CONTRACT outputs integration — review-task", () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = createTempDir(); });
+  afterEach(() => cleanup(tempDir));
+
+  it("all outputs present → passed: true", async () => {
+    const { CONTRACT } = await import("../capabilities/review-task/config");
+    fs.mkdirSync(path.join(tempDir, "S05"), { recursive: true });
+    fs.writeFileSync(path.join(tempDir, "S05", "REVIEW.md"), "content", "utf-8");
+    const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 5 });
+    expect(result).toEqual({ passed: true, missing: [] });
+  });
+
+  it("missing REVIEW.md → failure naming S05/REVIEW.md", async () => {
+    const { CONTRACT } = await import("../capabilities/review-task/config");
+    // S05/REVIEW.md is missing
+    const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 5 });
+    expect(result.passed).toBe(false);
+    expect(result.missing).toContain("S05/REVIEW.md");
+  });
+});
+
+describe("CONTRACT outputs integration — revise-plan", () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = createTempDir(); });
+  afterEach(() => cleanup(tempDir));
+
+  it("all outputs present → passed: true", async () => {
+    const { CONTRACT } = await import("../capabilities/revise-plan/config");
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+    const result = validateOutputs(CONTRACT, tempDir);
+    expect(result).toEqual({ passed: true, missing: [] });
+  });
+
+  it("missing PLAN.md → failure naming PLAN.md", async () => {
+    const { CONTRACT } = await import("../capabilities/revise-plan/config");
+    const result = validateOutputs(CONTRACT, tempDir);
+    expect(result.passed).toBe(false);
+    expect(result.missing).toContain("PLAN.md");
+  });
+});
+
+describe("CONTRACT outputs integration — execute-plan", () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = createTempDir(); });
+  afterEach(() => cleanup(tempDir));
+
+  it("empty outputs → passed: true", async () => {
+    const { CONTRACT } = await import("../capabilities/execute-plan/config");
+    const result = validateOutputs(CONTRACT, tempDir);
+    expect(result).toEqual({ passed: true, missing: [] });
+  });
+});
+
+describe("CONTRACT outputs integration — finalize-goal", () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = createTempDir(); });
+  afterEach(() => cleanup(tempDir));
+
+  it("empty outputs → passed: true", async () => {
+    const { CONTRACT } = await import("../capabilities/finalize-goal/config");
+    const result = validateOutputs(CONTRACT, tempDir);
+    expect(result).toEqual({ passed: true, missing: [] });
+  });
+});
+
+describe("CONTRACT outputs integration — COMPLETED marker bypass", () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = createTempDir(); });
+  afterEach(() => cleanup(tempDir));
+
+  it("COMPLETED marker bypasses all output checks (evolve-plan with all outputs missing)", async () => {
+    const { CONTRACT } = await import("../capabilities/evolve-plan/config");
+    // COMPLETED exists, but S01/TASK.md is missing
+    fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
+    const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 1 });
+    expect(result).toEqual({ passed: true, missing: [] });
+  });
+});

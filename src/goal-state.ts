@@ -82,7 +82,22 @@ function createStepStatus(
       return result.data.skills ?? null;
     },
     status: () => {
-      // Check markers in priority order: APPROVED > REJECTED > BLOCKED > COMPLETED
+      const reviewFile = path.join(stepDir, "REVIEW.md");
+
+      // Check REVIEW.md frontmatter first — the decision is the source of truth.
+      // Markers (APPROVED/REJECTED files) are created later as a side-effect.
+      if (fs.existsSync(reviewFile)) {
+        const raw = extractFrontmatter(reviewFile);
+        if (raw) {
+          const result = validateAndCoerce<ReviewOutputs>(raw, REVIEW_OUTPUT_SCHEMA);
+          if ("data" in result && result.data) {
+            if (result.data.decision === "APPROVED") return "approved";
+            if (result.data.decision === "REJECTED") return "rejected";
+          }
+        }
+      }
+
+      // Fallback: check markers (for backward compatibility and post-marker-creation reads)
       if (fs.existsSync(path.join(stepDir, "APPROVED"))) return "approved";
       if (fs.existsSync(path.join(stepDir, "REJECTED"))) return "rejected";
       if (fs.existsSync(path.join(stepDir, "BLOCKED"))) return "blocked";

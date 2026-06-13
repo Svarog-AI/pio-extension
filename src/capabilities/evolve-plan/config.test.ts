@@ -68,7 +68,7 @@ describe("validateOutputs with COMPLETED at baseDir", () => {
     const result = validateOutputs(contract, tempDir);
 
     // Assert
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 
   it("passes when COMPLETED is the only expected file and it exists", () => {
@@ -84,7 +84,7 @@ describe("validateOutputs with COMPLETED at baseDir", () => {
     const result = validateOutputs(contract, tempDir);
 
     // Assert
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 
   it("fails normally when COMPLETED does not exist and expected files are missing", () => {
@@ -98,8 +98,8 @@ describe("validateOutputs with COMPLETED at baseDir", () => {
     const result = validateOutputs(contract, tempDir);
 
     // Assert
-    expect(result.passed).toBe(false);
-    expect(result.missing).toContain("TASK.md");
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("TASK.md");
   });
 
   it("does not match COMPLETED in a subfolder", () => {
@@ -117,8 +117,8 @@ describe("validateOutputs with COMPLETED at baseDir", () => {
     const result = validateOutputs(contract, tempDir);
 
     // Assert: fails normally (short-circuit only for baseDir/COMPLETED, not subfolder)
-    expect(result.passed).toBe(false);
-    expect(result.missing).toContain("S01/TASK.md");
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("S01/TASK.md");
   });
 });
 

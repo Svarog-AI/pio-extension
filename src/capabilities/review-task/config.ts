@@ -18,6 +18,7 @@ import {
   resolveReviewReadOnlyFiles,
   resolveReviewWriteAllowlist,
   postValidateReview,
+  postExecuteReview,
 } from "./callbacks";
 
 // ---------------------------------------------------------------------------
@@ -40,6 +41,7 @@ const capabilityConfig = {
   writeAllowlist: resolveReviewWriteAllowlist,
   prepareSession: prepareReviewSession,
   postValidate: postValidateReview,
+  postExecute: postExecuteReview,
   skills: {
     mandatory: ["tdd"],
   },

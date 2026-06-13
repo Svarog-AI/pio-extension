@@ -30,7 +30,7 @@ describe("validateOutputs with CapabilityContract", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("all output files present → passed: true", () => {
+  it("all output files present → success: true", () => {
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
     fs.writeFileSync(path.join(tempDir, "SUMMARY.md"), "content", "utf-8");
 
@@ -40,10 +40,10 @@ describe("validateOutputs with CapabilityContract", () => {
     };
 
     const result = validateOutputs(contract, tempDir);
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 
-  it("output file missing → passed: false with missing list", () => {
+  it("output file missing → success: false with file name in message", () => {
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
 
     const contract: CapabilityContract = {
@@ -52,19 +52,18 @@ describe("validateOutputs with CapabilityContract", () => {
     };
 
     const result = validateOutputs(contract, tempDir);
-    expect(result.passed).toBe(false);
-    expect(result.missing).toContain("SUMMARY.md");
-    expect(result.missing.length).toBe(1);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("SUMMARY.md");
   });
 
-  it("empty outputs array → passed: true", () => {
+  it("empty outputs array → success: true", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [],
     };
 
     const result = validateOutputs(contract, tempDir);
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 
   it("requiredWhen predicate returns false → file skipped", () => {
@@ -80,7 +79,7 @@ describe("validateOutputs with CapabilityContract", () => {
 
     // stepNumber = 1 → DECISIONS.md not required
     const result = validateOutputs(contract, tempDir, { stepNumber: 1 });
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 
   it("requiredWhen predicate returns true → file required", () => {
@@ -96,8 +95,8 @@ describe("validateOutputs with CapabilityContract", () => {
     // DECISIONS.md is missing but requiredWhen returns true for stepNumber = 2
 
     const result = validateOutputs(contract, tempDir, { stepNumber: 2 });
-    expect(result.passed).toBe(false);
-    expect(result.missing).toContain("DECISIONS.md");
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("DECISIONS.md");
   });
 
   it("requiredWhen predicate returns true and file exists → passes", () => {
@@ -113,7 +112,7 @@ describe("validateOutputs with CapabilityContract", () => {
     fs.writeFileSync(path.join(tempDir, "DECISIONS.md"), "content", "utf-8");
 
     const result = validateOutputs(contract, tempDir, { stepNumber: 2 });
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 
   it("OneOfGroup entries treated as no-ops (deferred)", () => {
@@ -129,7 +128,7 @@ describe("validateOutputs with CapabilityContract", () => {
     // Neither APPROVED nor REJECTED exists — should still pass (OneOfGroup is no-op)
 
     const result = validateOutputs(contract, tempDir);
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 
   it("COMPLETED marker bypass still works with contract", () => {
@@ -142,7 +141,7 @@ describe("validateOutputs with CapabilityContract", () => {
     fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
 
     const result = validateOutputs(contract, tempDir);
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 
   it("placeholder resolution in output file paths", () => {
@@ -155,7 +154,7 @@ describe("validateOutputs with CapabilityContract", () => {
     };
 
     const result = validateOutputs(contract, tempDir, { stepNumber: 3 });
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 
   it("placeholder resolution — file missing with resolved path", () => {
@@ -165,8 +164,133 @@ describe("validateOutputs with CapabilityContract", () => {
     };
 
     const result = validateOutputs(contract, tempDir, { stepNumber: 3 });
-    expect(result.passed).toBe(false);
-    expect(result.missing).toContain("S03/TASK.md");
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("S03/TASK.md");
+  });
+
+  // -----------------------------------------------------------------------
+  // Output frontmatter validation (Part A — new in Step 6)
+  // -----------------------------------------------------------------------
+
+  it("valid output frontmatter → success", () => {
+    const schema = Type.Object({ totalSteps: Type.Integer({ minimum: 1 }) });
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ file: "PLAN.md", schema }],
+    };
+
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: 3
+---
+# Plan
+`,
+      "utf-8",
+    );
+
+    const result = validateOutputs(contract, tempDir);
+    expect(result).toEqual({ success: true });
+  });
+
+  it("invalid output frontmatter (schema mismatch) → failure with field errors", () => {
+    const schema = Type.Object({ totalSteps: Type.Integer({ minimum: 1 }) });
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ file: "PLAN.md", schema }],
+    };
+
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: -5
+---
+# Plan
+`,
+      "utf-8",
+    );
+
+    const result = validateOutputs(contract, tempDir);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("PLAN.md");
+    expect(result.message).toContain("totalSteps");
+  });
+
+  it("missing frontmatter on output with schema → failure", () => {
+    const schema = Type.Object({ totalSteps: Type.Integer() });
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ file: "PLAN.md", schema }],
+    };
+
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "# Plan\n\nNo frontmatter.", "utf-8");
+
+    const result = validateOutputs(contract, tempDir);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("PLAN.md");
+    expect(result.message).toContain("no valid YAML frontmatter");
+  });
+
+  it("output entry without schema → skip frontmatter validation (existence only)", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ file: "PLAN.md" }], // no schema
+    };
+
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "just plain text", "utf-8");
+
+    const result = validateOutputs(contract, tempDir);
+    expect(result).toEqual({ success: true });
+  });
+
+  it("collects multiple issues (missing file + frontmatter error) into single message", () => {
+    const schema = Type.Object({ totalSteps: Type.Integer({ minimum: 1 }) });
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { file: "PLAN.md", schema },
+        { file: "SUMMARY.md" },
+      ],
+    };
+
+    // PLAN.md exists but has invalid frontmatter; SUMMARY.md is missing
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: -5
+---
+# Plan
+`,
+      "utf-8",
+    );
+    // SUMMARY.md doesn't exist
+
+    const result = validateOutputs(contract, tempDir);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("PLAN.md");
+    expect(result.message).toContain("SUMMARY.md");
+  });
+
+  it("placeholder resolution works with output frontmatter validation", () => {
+    const schema = Type.Object({ decision: Type.String() });
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ file: "S{stepNumber:02d}/REVIEW.md", schema }],
+    };
+
+    fs.mkdirSync(path.join(tempDir, "S02"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempDir, "S02", "REVIEW.md"),
+      `---
+decision: APPROVED
+---
+# Review
+`,
+      "utf-8",
+    );
+
+    const result = validateOutputs(contract, tempDir, { stepNumber: 2 });
+    expect(result).toEqual({ success: true });
   });
 });
 
@@ -401,6 +525,128 @@ describe("validateInputs with CapabilityContract", () => {
     expect(result.message).toContain("Unresolved placeholder");
     expect(result.message).toContain("stepNumber");
   });
+
+  // -----------------------------------------------------------------------
+  // Input frontmatter validation (Part A — new in Step 6)
+  // -----------------------------------------------------------------------
+
+  it("valid input frontmatter → success", () => {
+    const schema = Type.Object({ totalSteps: Type.Integer({ minimum: 1 }) });
+    const contract: CapabilityContract = {
+      inputs: [{ file: "PLAN.md", schema }],
+      outputs: [],
+    };
+
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: 3
+---
+# Plan
+`,
+      "utf-8",
+    );
+
+    const result = validateInputs(tempDir, contract);
+    expect(result).toEqual({ success: true });
+  });
+
+  it("invalid input frontmatter (schema mismatch) → failure with field errors", () => {
+    const schema = Type.Object({ totalSteps: Type.Integer({ minimum: 1 }) });
+    const contract: CapabilityContract = {
+      inputs: [{ file: "PLAN.md", schema }],
+      outputs: [],
+    };
+
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: -5
+---
+# Plan
+`,
+      "utf-8",
+    );
+
+    const result = validateInputs(tempDir, contract);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("PLAN.md");
+    expect(result.message).toContain("totalSteps");
+  });
+
+  it("missing frontmatter (no YAML delimiters) on input with schema → failure", () => {
+    const schema = Type.Object({ totalSteps: Type.Integer() });
+    const contract: CapabilityContract = {
+      inputs: [{ file: "PLAN.md", schema }],
+      outputs: [],
+    };
+
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "# Plan\n\nNo frontmatter here.", "utf-8");
+
+    const result = validateInputs(tempDir, contract);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("PLAN.md");
+    expect(result.message).toContain("no valid YAML frontmatter");
+  });
+
+  it("input entry without schema → skip frontmatter validation (existence only)", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ file: "PLAN.md" }], // no schema
+      outputs: [],
+    };
+
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "just plain text", "utf-8");
+
+    const result = validateInputs(tempDir, contract);
+    expect(result).toEqual({ success: true });
+  });
+
+  it("placeholder resolution works with frontmatter validation", () => {
+    const schema = Type.Object({ skills: Type.Array(Type.String()) });
+    const contract: CapabilityContract = {
+      inputs: [{ file: "S{stepNumber:02d}/TASK.md", schema }],
+      outputs: [],
+    };
+
+    fs.mkdirSync(path.join(tempDir, "S02"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempDir, "S02", "TASK.md"),
+      `---
+skills:
+  - tdd
+---
+# Task
+`,
+      "utf-8",
+    );
+
+    const result = validateInputs(tempDir, contract, { stepNumber: 2 });
+    expect(result).toEqual({ success: true });
+  });
+
+  it("placeholder resolution — invalid frontmatter in resolved path → failure", () => {
+    const schema = Type.Object({ skills: Type.Array(Type.String()) });
+    const contract: CapabilityContract = {
+      inputs: [{ file: "S{stepNumber:02d}/TASK.md", schema }],
+      outputs: [],
+    };
+
+    fs.mkdirSync(path.join(tempDir, "S03"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempDir, "S03", "TASK.md"),
+      `---
+skills: not-an-array
+---
+# Task
+`,
+      "utf-8",
+    );
+
+    const result = validateInputs(tempDir, contract, { stepNumber: 3 });
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("S03/TASK.md");
+    expect(result.message).toContain("skills");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -530,7 +776,20 @@ describe("CONTRACT integration — evolve-plan", () => {
 
   it("all inputs present → success", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
-    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: 2
+steps:
+  - name: step-1
+    complexity: task
+  - name: step-2
+    complexity: task
+---
+# Plan
+`,
+      "utf-8",
+    );
     const result = validateInputs(tempDir, CONTRACT, { stepNumber: 3 });
     expect(result).toEqual({ success: true });
   });
@@ -542,9 +801,30 @@ describe("CONTRACT integration — evolve-plan", () => {
     expect(result.message).toContain("PLAN.md");
   });
 
+  it("invalid PLAN.md frontmatter → failure", async () => {
+    const { CONTRACT } = await import("../capabilities/evolve-plan/config");
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "# Plan\n\nNo frontmatter.", "utf-8");
+    const result = validateInputs(tempDir, CONTRACT, { stepNumber: 3 });
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("PLAN.md");
+  });
+
   it("excluded REVISE_PLAN_NEEDED exists → failure", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
-    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: 2
+steps:
+  - name: step-1
+    complexity: task
+  - name: step-2
+    complexity: task
+---
+# Plan
+`,
+      "utf-8",
+    );
     fs.mkdirSync(path.join(tempDir, "S03"), { recursive: true });
     fs.writeFileSync(path.join(tempDir, "S03", "REVISE_PLAN_NEEDED"), "", "utf-8");
     const result = validateInputs(tempDir, CONTRACT, { stepNumber: 3 });
@@ -728,18 +1008,18 @@ describe("CONTRACT outputs integration — create-goal", () => {
   beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
-  it("all outputs present → passed: true", async () => {
+  it("all outputs present → success: true", async () => {
     const { CONTRACT } = await import("../capabilities/create-goal/config");
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
     const result = validateOutputs(CONTRACT, tempDir);
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 
   it("missing GOAL.md → failure naming GOAL.md", async () => {
     const { CONTRACT } = await import("../capabilities/create-goal/config");
     const result = validateOutputs(CONTRACT, tempDir);
-    expect(result.passed).toBe(false);
-    expect(result.missing).toContain("GOAL.md");
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("GOAL.md");
   });
 });
 
@@ -749,18 +1029,31 @@ describe("CONTRACT outputs integration — create-plan", () => {
   beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
-  it("all outputs present → passed: true", async () => {
+  it("all outputs present → success: true", async () => {
     const { CONTRACT } = await import("../capabilities/create-plan/config");
-    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: 2
+steps:
+  - name: step-1
+    complexity: task
+  - name: step-2
+    complexity: task
+---
+# Plan
+`,
+      "utf-8",
+    );
     const result = validateOutputs(CONTRACT, tempDir);
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 
   it("missing PLAN.md → failure naming PLAN.md", async () => {
     const { CONTRACT } = await import("../capabilities/create-plan/config");
     const result = validateOutputs(CONTRACT, tempDir);
-    expect(result.passed).toBe(false);
-    expect(result.missing).toContain("PLAN.md");
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("PLAN.md");
   });
 });
 
@@ -770,40 +1063,70 @@ describe("CONTRACT outputs integration — evolve-plan", () => {
   beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
-  it("all outputs present (step 1, no DECISIONS.md required) → passed: true", async () => {
+  it("all outputs present (step 1, no DECISIONS.md required) → success: true", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
     fs.mkdirSync(path.join(tempDir, "S01"), { recursive: true });
-    fs.writeFileSync(path.join(tempDir, "S01", "TASK.md"), "content", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "S01", "TASK.md"),
+      `---
+skills:
+  mandatory:
+    - tdd
+---
+# Task
+`,
+      "utf-8",
+    );
     // stepNumber = 1 → DECISIONS.md not required (requiredWhen returns false)
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 1 });
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 
-  it("all outputs present (step 3, DECISIONS.md required) → passed: true", async () => {
+  it("all outputs present (step 3, DECISIONS.md required) → success: true", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
     fs.mkdirSync(path.join(tempDir, "S03"), { recursive: true });
-    fs.writeFileSync(path.join(tempDir, "S03", "TASK.md"), "content", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "S03", "TASK.md"),
+      `---
+skills:
+  mandatory:
+    - tdd
+---
+# Task
+`,
+      "utf-8",
+    );
     fs.writeFileSync(path.join(tempDir, "S03", "DECISIONS.md"), "content", "utf-8");
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 3 });
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 
   it("missing TASK.md → failure naming S02/TASK.md", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
     // S02/TASK.md is missing
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 2 });
-    expect(result.passed).toBe(false);
-    expect(result.missing).toContain("S02/TASK.md");
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("S02/TASK.md");
   });
 
   it("missing DECISIONS.md (step > 1) → failure naming S03/DECISIONS.md", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
     fs.mkdirSync(path.join(tempDir, "S03"), { recursive: true });
-    fs.writeFileSync(path.join(tempDir, "S03", "TASK.md"), "content", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "S03", "TASK.md"),
+      `---
+skills:
+  mandatory:
+    - tdd
+---
+# Task
+`,
+      "utf-8",
+    );
     // S03/DECISIONS.md is missing but required (stepNumber > 1)
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 3 });
-    expect(result.passed).toBe(false);
-    expect(result.missing).toContain("S03/DECISIONS.md");
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("S03/DECISIONS.md");
   });
 });
 
@@ -813,13 +1136,13 @@ describe("CONTRACT outputs integration — execute-task", () => {
   beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
-  it("all outputs present → passed: true", async () => {
+  it("all outputs present → success: true", async () => {
     const { CONTRACT } = await import("../capabilities/execute-task/config");
     fs.mkdirSync(path.join(tempDir, "S04"), { recursive: true });
     fs.writeFileSync(path.join(tempDir, "S04", "TEST.md"), "content", "utf-8");
     fs.writeFileSync(path.join(tempDir, "S04", "SUMMARY.md"), "content", "utf-8");
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 4 });
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 
   it("missing SUMMARY.md → failure naming S04/SUMMARY.md", async () => {
@@ -828,8 +1151,8 @@ describe("CONTRACT outputs integration — execute-task", () => {
     fs.writeFileSync(path.join(tempDir, "S04", "TEST.md"), "content", "utf-8");
     // S04/SUMMARY.md is missing
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 4 });
-    expect(result.passed).toBe(false);
-    expect(result.missing).toContain("S04/SUMMARY.md");
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("S04/SUMMARY.md");
   });
 });
 
@@ -839,20 +1162,32 @@ describe("CONTRACT outputs integration — review-task", () => {
   beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
-  it("all outputs present → passed: true", async () => {
+  it("all outputs present → success: true", async () => {
     const { CONTRACT } = await import("../capabilities/review-task/config");
     fs.mkdirSync(path.join(tempDir, "S05"), { recursive: true });
-    fs.writeFileSync(path.join(tempDir, "S05", "REVIEW.md"), "content", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "S05", "REVIEW.md"),
+      `---
+decision: APPROVED
+criticalIssues: 0
+highIssues: 0
+mediumIssues: 0
+lowIssues: 0
+---
+# Review
+`,
+      "utf-8",
+    );
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 5 });
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 
   it("missing REVIEW.md → failure naming S05/REVIEW.md", async () => {
     const { CONTRACT } = await import("../capabilities/review-task/config");
     // S05/REVIEW.md is missing
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 5 });
-    expect(result.passed).toBe(false);
-    expect(result.missing).toContain("S05/REVIEW.md");
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("S05/REVIEW.md");
   });
 });
 
@@ -862,18 +1197,31 @@ describe("CONTRACT outputs integration — revise-plan", () => {
   beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
-  it("all outputs present → passed: true", async () => {
+  it("all outputs present → success: true", async () => {
     const { CONTRACT } = await import("../capabilities/revise-plan/config");
-    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: 2
+steps:
+  - name: step-1
+    complexity: task
+  - name: step-2
+    complexity: task
+---
+# Plan
+`,
+      "utf-8",
+    );
     const result = validateOutputs(CONTRACT, tempDir);
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 
   it("missing PLAN.md → failure naming PLAN.md", async () => {
     const { CONTRACT } = await import("../capabilities/revise-plan/config");
     const result = validateOutputs(CONTRACT, tempDir);
-    expect(result.passed).toBe(false);
-    expect(result.missing).toContain("PLAN.md");
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("PLAN.md");
   });
 });
 
@@ -883,10 +1231,10 @@ describe("CONTRACT outputs integration — execute-plan", () => {
   beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
-  it("empty outputs → passed: true", async () => {
+  it("empty outputs → success: true", async () => {
     const { CONTRACT } = await import("../capabilities/execute-plan/config");
     const result = validateOutputs(CONTRACT, tempDir);
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 });
 
@@ -896,10 +1244,10 @@ describe("CONTRACT outputs integration — finalize-goal", () => {
   beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
-  it("empty outputs → passed: true", async () => {
+  it("empty outputs → success: true", async () => {
     const { CONTRACT } = await import("../capabilities/finalize-goal/config");
     const result = validateOutputs(CONTRACT, tempDir);
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 });
 
@@ -914,7 +1262,7 @@ describe("CONTRACT outputs integration — COMPLETED marker bypass", () => {
     // COMPLETED exists, but S01/TASK.md is missing
     fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 1 });
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 });
 
@@ -936,9 +1284,8 @@ describe("validateOutputs — unresolved placeholder handling", () => {
 
     // stepNumber is missing — resolvePaths would throw without try/catch
     const result = validateOutputs(contract, tempDir, { goalName: "test" });
-    expect(result.passed).toBe(false);
-    expect(result.missing.length).toBe(1);
-    expect(result.missing[0]).toContain("Unresolved placeholder");
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("Unresolved placeholder");
   });
 
   it("returns failed result when placeholder key is missing (no params at all)", () => {
@@ -948,9 +1295,8 @@ describe("validateOutputs — unresolved placeholder handling", () => {
     };
 
     const result = validateOutputs(contract, tempDir);
-    expect(result.passed).toBe(false);
-    expect(result.missing.length).toBe(1);
-    expect(result.missing[0]).toContain("stepNumber");
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("stepNumber");
   });
 
   it("passes normally when all placeholders resolved", () => {
@@ -963,7 +1309,7 @@ describe("validateOutputs — unresolved placeholder handling", () => {
     };
 
     const result = validateOutputs(contract, tempDir, { stepNumber: 3 });
-    expect(result).toEqual({ passed: true, missing: [] });
+    expect(result).toEqual({ success: true });
   });
 });
 

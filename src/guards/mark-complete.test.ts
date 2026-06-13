@@ -20,7 +20,6 @@ function cleanup(tempDir: string): void {
 // ---------------------------------------------------------------------------
 
 const mockValidateOutputs = vi.hoisted(() => vi.fn());
-const mockValidateFrontmatter = vi.hoisted(() => vi.fn());
 const mockCreateGoalState = vi.hoisted(() => vi.fn().mockReturnValue({
   goalName: "test-goal",
   steps: vi.fn().mockReturnValue([]),
@@ -34,7 +33,6 @@ const mockWriteLastTask = vi.hoisted(() => vi.fn());
 
 vi.mock("../guards/validation", () => ({
   validateOutputs: mockValidateOutputs,
-  validateFrontmatter: mockValidateFrontmatter,
 }));
 
 vi.mock("../goal-state", () => ({
@@ -67,8 +65,7 @@ describe("mark-complete (setupMarkComplete)", () => {
     tempDir = createTempDir();
 
     // Clear mock call history and reset return values
-    mockValidateOutputs.mockClear().mockReturnValue({ passed: true, missing: [] });
-    mockValidateFrontmatter.mockClear().mockReturnValue({ success: true });
+    mockValidateOutputs.mockClear().mockReturnValue({ success: true });
     mockCreateGoalState.mockClear().mockReturnValue({
       goalName: "test-goal",
       steps: vi.fn().mockReturnValue([]),
@@ -107,7 +104,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   });
 
   it("file validation failure returns error without terminating", async () => {
-    mockValidateOutputs.mockReturnValue({ passed: false, missing: ["missing.md"] });
+    mockValidateOutputs.mockReturnValue({ success: false, message: "Output file 'missing.md' is missing" });
 
     const mockCtx = {
       sessionManager: {
@@ -134,7 +131,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   });
 
   it("file validation success continues to postValidate", async () => {
-    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockValidateOutputs.mockReturnValue({ success: true });
 
     const postValidateMock = vi.fn().mockReturnValue({ success: false, message: "test error" });
 
@@ -164,7 +161,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   });
 
   it("postValidate failure prevents transitions", async () => {
-    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockValidateOutputs.mockReturnValue({ success: true });
 
     const postValidateMock = vi.fn().mockReturnValue({ success: false, message: "validation failed" });
 
@@ -194,7 +191,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   });
 
   it("postValidate success triggers transition routing", async () => {
-    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockValidateOutputs.mockReturnValue({ success: true });
     mockDispatch.mockReturnValue(
       [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
@@ -229,7 +226,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   });
 
   it("multiple dispatch results do not enqueue task and recommend /pio-transition", async () => {
-    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockValidateOutputs.mockReturnValue({ success: true });
     mockDispatch.mockReturnValue([
       { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 2 } },
       { capability: "execute-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } },
@@ -272,7 +269,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   });
 
   it("no dispatch results (terminal state) do not enqueue task", async () => {
-    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockValidateOutputs.mockReturnValue({ success: true });
     mockDispatch.mockReturnValue([]);
 
     const postValidateMock = vi.fn().mockReturnValue({ success: true });
@@ -309,7 +306,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   });
 
   it("postExecute runs after transition routing", async () => {
-    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockValidateOutputs.mockReturnValue({ success: true });
     mockDispatch.mockReturnValue(
       [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
@@ -351,7 +348,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   });
 
   it("postExecute errors don't block termination", async () => {
-    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockValidateOutputs.mockReturnValue({ success: true });
     mockDispatch.mockReturnValue(
       [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
@@ -391,7 +388,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   });
 
   it("cleanup deletes files in fileCleanup", async () => {
-    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockValidateOutputs.mockReturnValue({ success: true });
     mockDispatch.mockReturnValue(
       [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
@@ -461,7 +458,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   });
 
   it("dispatches with explicit machine when stateMachineId is in session params", async () => {
-    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockValidateOutputs.mockReturnValue({ success: true });
     mockGetMachine.mockReturnValue({ id: "goal-driven-development" });
     mockDispatch.mockReturnValue(
       [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
@@ -499,7 +496,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   });
 
   it("falls back to dispatch(undefined) when stateMachineId is absent", async () => {
-    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockValidateOutputs.mockReturnValue({ success: true });
     mockDispatch.mockReturnValue(
       [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
     );
@@ -537,7 +534,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   });
 
   it("falls back to dispatch(undefined) when getMachine returns undefined (unknown ID)", async () => {
-    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockValidateOutputs.mockReturnValue({ success: true });
     mockGetMachine.mockReturnValue(undefined);
     mockDispatch.mockReturnValue(
       [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
@@ -575,7 +572,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   });
 
   it("includes stateMachineId in enqueued task params when transition result provides one", async () => {
-    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockValidateOutputs.mockReturnValue({ success: true });
     mockGetMachine.mockReturnValue({ id: "goal-driven-development" });
     mockDispatch.mockReturnValue(
       [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
@@ -615,7 +612,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   });
 
   it("recordTransition receives enriched params including stateMachineId", async () => {
-    mockValidateOutputs.mockReturnValue({ passed: true, missing: [] });
+    mockValidateOutputs.mockReturnValue({ success: true });
     mockGetMachine.mockReturnValue({ id: "goal-driven-development" });
     mockDispatch.mockReturnValue(
       [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { stepNumber: 2 } }]
@@ -662,190 +659,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Frontmatter schema validation — exit-gate integration
+// Note: frontmatter schema validation is now part of validateOutputs()
+// and is tested in validation.test.ts. mark-complete.ts no longer calls
+// validateFrontmatter() separately.
 // ---------------------------------------------------------------------------
-
-describe("pio_mark_complete — frontmatterSchemas validation", () => {
-  let tempDir: string;
-  let registeredTool: { name: string; label: string; execute: Function } | undefined;
-
-  beforeEach(async () => {
-    vi.resetModules();
-    tempDir = createTempDir();
-
-    mockValidateOutputs.mockClear().mockReturnValue({ passed: true, missing: [] });
-    mockValidateFrontmatter.mockClear().mockReturnValue({ success: true });
-    mockCreateGoalState.mockClear().mockReturnValue({
-      goalName: "test-goal",
-      steps: vi.fn().mockReturnValue([]),
-      currentStepNumber: vi.fn().mockReturnValue(1),
-    });
-    mockDispatch.mockClear();
-    mockGetMachine.mockClear();
-    mockRecordTransition.mockClear();
-    mockEnqueueTask.mockClear();
-    mockWriteLastTask.mockClear();
-
-    registeredTool = undefined;
-
-    const mod = await import("./mark-complete");
-
-    const mockPi = {
-      registerTool: (tool: { name: string; label: string; execute: Function }) => {
-        registeredTool = tool;
-      },
-      on: vi.fn(),
-      setSessionName: vi.fn(),
-    };
-
-    mod.setupMarkComplete(mockPi as any);
-  });
-
-  afterEach(() => {
-    cleanup(tempDir);
-  });
-
-  it("validates frontmatter after file validation passes, before postValidate", async () => {
-    const callOrder: string[] = [];
-
-    mockValidateFrontmatter.mockImplementation(() => {
-      callOrder.push("validateFrontmatter");
-      return { success: true };
-    });
-
-    const postValidateMock = vi.fn().mockImplementation(() => {
-      callOrder.push("postValidate");
-      return { success: true };
-    });
-
-    mockDispatch.mockReturnValue(
-      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
-    );
-
-    const mockCtx = {
-      sessionManager: {
-        getEntries: () => [
-          {
-            type: "custom",
-            customType: "pio-config",
-            data: {
-              capability: "create-plan",
-              workingDir: tempDir,
-              contract: { inputs: [], outputs: [{ file: "PLAN.md", schema: {} }] },
-              postValidate: postValidateMock,
-              sessionParams: { goalName: "test-goal", stepNumber: 1 },
-            },
-          },
-        ],
-      },
-    };
-
-    await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
-
-    expect(callOrder).toEqual(["validateFrontmatter", "postValidate"]);
-    expect(mockValidateFrontmatter).toHaveBeenCalledWith(
-      { inputs: [], outputs: [{ file: "PLAN.md", schema: {} }] },
-      tempDir,
-      { goalName: "test-goal", stepNumber: 1 },
-    );
-  });
-
-  it("frontmatter validation failure returns error without terminating", async () => {
-    mockValidateFrontmatter.mockReturnValue({
-      success: false,
-      message: "Field 'totalSteps': required property",
-    });
-
-    const postValidateMock = vi.fn();
-
-    const mockCtx = {
-      sessionManager: {
-        getEntries: () => [
-          {
-            type: "custom",
-            customType: "pio-config",
-            data: {
-              capability: "create-plan",
-              workingDir: tempDir,
-              contract: { inputs: [], outputs: [{ file: "PLAN.md", schema: {} }] },
-              postValidate: postValidateMock,
-              sessionParams: { goalName: "test-goal", stepNumber: 1 },
-            },
-          },
-        ],
-      },
-    };
-
-    const result = await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
-
-    expect(result.content[0].text).toContain("Frontmatter validation failed");
-    expect(result.content[0].text).toContain("Field 'totalSteps'");
-    expect(result.terminate).toBeFalsy();
-    expect(postValidateMock).not.toHaveBeenCalled();
-    expect(mockDispatch).not.toHaveBeenCalled();
-  });
-
-  it("validates frontmatter with contract (always called)", async () => {
-    const postValidateMock = vi.fn().mockReturnValue({ success: true });
-
-    mockDispatch.mockReturnValue(
-      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
-    );
-
-    const mockCtx = {
-      sessionManager: {
-        getEntries: () => [
-          {
-            type: "custom",
-            customType: "pio-config",
-            data: {
-              capability: "execute-task",
-              workingDir: tempDir,
-              contract: { inputs: [], outputs: [] },
-              postValidate: postValidateMock,
-              sessionParams: { goalName: "test-goal", stepNumber: 1 },
-            },
-          },
-        ],
-      },
-    };
-
-    await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
-
-    // validateFrontmatter is always called with contract
-    expect(mockValidateFrontmatter).toHaveBeenCalled();
-    expect(postValidateMock).toHaveBeenCalled();
-  });
-
-  it("validates frontmatter with contract (empty outputs)", async () => {
-    const postValidateMock = vi.fn().mockReturnValue({ success: true });
-
-    mockDispatch.mockReturnValue(
-      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
-    );
-
-    const mockCtx = {
-      sessionManager: {
-        getEntries: () => [
-          {
-            type: "custom",
-            customType: "pio-config",
-            data: {
-              capability: "create-plan",
-              workingDir: tempDir,
-              contract: { inputs: [], outputs: [] },
-              postValidate: postValidateMock,
-              sessionParams: { goalName: "test-goal", stepNumber: 1 },
-            },
-          },
-        ],
-      },
-    };
-
-    await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
-
-    // validateFrontmatter is always called with contract
-    expect(mockValidateFrontmatter).toHaveBeenCalled();
-    expect(postValidateMock).toHaveBeenCalled();
-  });
-});

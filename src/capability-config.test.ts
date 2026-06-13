@@ -622,15 +622,16 @@ describe("resolveCapabilityConfig — postValidate/postExecute passthrough", () 
     expect(result!.postValidate).toBeUndefined();
   });
 
-  it("postExecute is undefined when the capability does not define it", async () => {
-    // Arrange: no capability defines postExecute yet
+  it("postExecute is defined when the capability defines it (review-task)", async () => {
+    // Arrange: review-task now defines postExecute (Step 6)
     const params = { capability: "review-task" as string, goalName: "my-feature", stepNumber: 1 };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
     // Assert
-    expect(result!.postExecute).toBeUndefined();
+    expect(result!.postExecute).toBeDefined();
+    expect(typeof result!.postExecute).toBe("function");
   });
 });
 

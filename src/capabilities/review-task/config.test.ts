@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as Value from "typebox/value";
 import config from "./config";
-import { findMostRecentCompletedStep, applyReviewDecision, validateReviewStep } from "./callbacks";
+import { findMostRecentCompletedStep, applyReviewDecision, validateReviewStep, postValidateReview, postExecuteReview } from "./callbacks";
 import { createGoalState } from "../../goal-state";
 
 // ---------------------------------------------------------------------------
@@ -868,7 +868,7 @@ describe("review-task postValidate — valid frontmatter", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("valid APPROVED creates marker and returns success", () => {
+  it("valid APPROVED returns success without creating markers", () => {
     // Arrange: temp goal dir with S01/REVIEW.md containing valid APPROVED frontmatter
     const { goalDir, stepDir } = createGoalTree(tempDir, "pv-approved", { stepNumber: 1 });
     writeReviewMd(stepDir, {
@@ -882,13 +882,13 @@ describe("review-task postValidate — valid frontmatter", () => {
     // Act
     const result = config.postValidate!(goalDir, { stepNumber: 1 });
 
-    // Assert: returns success, S01/APPROVED exists, no S01/REJECTED
+    // Assert: returns success, NO markers created (that's postExecute's job)
     expect(result.success).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(false);
     expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
   });
 
-  it("valid REJECTED creates marker and deletes COMPLETED", () => {
+  it("valid REJECTED returns success without creating markers", () => {
     // Arrange: temp goal dir with S02/REVIEW.md (REJECTED) and S02/COMPLETED
     const { goalDir, stepDir } = createGoalTree(tempDir, "pv-rejected", { stepNumber: 2 });
     writeReviewMd(stepDir, {
@@ -903,10 +903,10 @@ describe("review-task postValidate — valid frontmatter", () => {
     // Act
     const result = config.postValidate!(goalDir, { stepNumber: 2 });
 
-    // Assert: returns success, S02/REJECTED exists, S02/COMPLETED removed
+    // Assert: returns success, NO markers created, COMPLETED still exists
     expect(result.success).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(false);
+    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
+    expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(true);
   });
 });
 
@@ -1008,6 +1008,90 @@ describe("review-task postValidate — missing stepNumber", () => {
     // Act & Assert: throws an error mentioning "stepNumber"
     expect(() => {
       config.postValidate!(goalDir, {});
+    }).toThrow(/stepNumber/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// review-task postExecute — marker creation
+// ---------------------------------------------------------------------------
+
+describe("review-task postExecute — marker creation", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("valid APPROVED creates APPROVED marker", () => {
+    // Arrange: temp goal dir with S01/REVIEW.md containing valid APPROVED frontmatter
+    const { goalDir, stepDir } = createGoalTree(tempDir, "pe-approved", { stepNumber: 1 });
+    writeReviewMd(stepDir, {
+      decision: "APPROVED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    });
+
+    // Act
+    config.postExecute!(goalDir, { stepNumber: 1 });
+
+    // Assert: S01/APPROVED exists, no S01/REJECTED
+    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
+  });
+
+  it("valid REJECTED creates REJECTED marker and deletes COMPLETED", () => {
+    // Arrange: temp goal dir with S02/REVIEW.md (REJECTED) and S02/COMPLETED
+    const { goalDir, stepDir } = createGoalTree(tempDir, "pe-rejected", { stepNumber: 2 });
+    writeReviewMd(stepDir, {
+      decision: "REJECTED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    });
+    fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
+
+    // Act
+    config.postExecute!(goalDir, { stepNumber: 2 });
+
+    // Assert: S02/REJECTED exists, S02/COMPLETED removed
+    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(false);
+  });
+
+  it("handles missing REVIEW.md gracefully (logs warning, no crash)", () => {
+    // Arrange: temp goal dir with no REVIEW.md
+    const { goalDir } = createGoalTree(tempDir, "pe-missing", { stepNumber: 3 });
+
+    // Act & Assert: should not throw
+    expect(() => {
+      postExecuteReview(goalDir, { stepNumber: 3 });
+    }).not.toThrow();
+  });
+
+  it("handles invalid frontmatter gracefully (logs warning, no crash)", () => {
+    // Arrange: REVIEW.md with invalid frontmatter
+    const { goalDir, stepDir } = createGoalTree(tempDir, "pe-invalid", { stepNumber: 4 });
+    fs.writeFileSync(path.join(stepDir, "REVIEW.md"), "# Review\n\nNo frontmatter.", "utf-8");
+
+    // Act & Assert: should not throw
+    expect(() => {
+      postExecuteReview(goalDir, { stepNumber: 4 });
+    }).not.toThrow();
+  });
+
+  it("throws when stepNumber is missing", () => {
+    // Arrange
+    const { goalDir } = createGoalTree(tempDir, "pe-no-step");
+
+    // Act & Assert
+    expect(() => {
+      postExecuteReview(goalDir, {});
     }).toThrow(/stepNumber/i);
   });
 });

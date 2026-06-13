@@ -12,6 +12,7 @@ import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { TASK_FRONTMATTER_SCHEMA } from "./schemas";
+import { PLAN_FRONTMATTER_SCHEMA } from "../create-plan/schemas";
 import { validateEvolveStep, resolveEvolveWriteAllowlist } from "./callbacks";
 
 // ---------------------------------------------------------------------------
@@ -19,7 +20,7 @@ import { validateEvolveStep, resolveEvolveWriteAllowlist } from "./callbacks";
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ file: "PLAN.md" }],
+  inputs: [{ file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
   excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
   outputs: [
     { file: "S{stepNumber:02d}/TASK.md", schema: TASK_FRONTMATTER_SCHEMA },

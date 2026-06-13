@@ -7,12 +7,6 @@ import { getSessionConfig } from "../capability-utils";
 import { resolvePaths } from "../capability-config";
 import type { CapabilityContract, MarkdownFileSpec, OutputEntry, PostValidateCallback } from "../types";
 
-/** Result of a validation run. */
-export interface ValidationResult {
-  passed: boolean;
-  missing: string[];
-}
-
 // ---------------------------------------------------------------------------
 // Module-level cache (per-session, populated by resources_discover)
 // ---------------------------------------------------------------------------
@@ -42,22 +36,24 @@ function isMarkdownFileSpec(entry: OutputEntry): entry is MarkdownFileSpec {
 }
 
 /**
- * Check that all declared files exist on disk.
+ * Check that all declared output files exist on disk and validate frontmatter
+ * against declared schemas. Collects all issues into a single message string.
+ *
  * Paths are resolved relative to `baseDir` via `path.join(baseDir, file)`.
  */
 export function validateOutputs(
   contract: CapabilityContract,
   baseDir: string,
   params?: Record<string, unknown>,
-): ValidationResult {
+): { success: boolean; message?: string } {
   // If COMPLETED marker exists at baseDir, pass validation regardless of other expected files.
   // This allows evolve-plan to write just COMPLETED (when all steps are done) and have pio_mark_complete succeed.
   if (fs.existsSync(path.join(baseDir, "COMPLETED"))) {
-    return { passed: true, missing: [] };
+    return { success: true };
   }
 
   try {
-    const missing: string[] = [];
+    const issues: string[] = [];
 
     for (const entry of contract.outputs) {
       if (!isMarkdownFileSpec(entry)) {
@@ -76,13 +72,32 @@ export function validateOutputs(
 
       const fullPath = path.join(baseDir, resolvedFile);
       if (!fs.existsSync(fullPath)) {
-        missing.push(resolvedFile);
+        issues.push(`Output file '${resolvedFile}' is missing`);
+        continue;
+      }
+
+      // Frontmatter validation when schema is declared
+      if (entry.schema) {
+        const raw = extractFrontmatter(fullPath);
+        if (raw === null) {
+          issues.push(`Output file '${resolvedFile}' has no valid YAML frontmatter`);
+        } else if (!Value.Check(entry.schema, raw)) {
+          const errors = [...Value.Errors(entry.schema, raw)];
+          const fieldErrors = errors.map((e) => {
+            const field = e.instancePath ? e.instancePath.replace(/^\//, "") : "root";
+            return `Field '${field}': ${e.message}`;
+          }).join("; ");
+          issues.push(`Frontmatter validation failed for '${resolvedFile}': ${fieldErrors}`);
+        }
       }
     }
 
-    return { passed: missing.length === 0, missing };
+    if (issues.length > 0) {
+      return { success: false, message: issues.join("\n") };
+    }
+    return { success: true };
   } catch (err) {
-    return { passed: false, missing: [err instanceof Error ? err.message : String(err)] };
+    return { success: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -184,8 +199,27 @@ export function validateInputs(
     for (const spec of contract.inputs) {
       const resolvedPaths = resolvePaths([spec.file], resolvedParams);
       const resolvedFile = resolvedPaths[0];
-      if (!fs.existsSync(path.join(baseDir, resolvedFile))) {
+      const fullPath = path.join(baseDir, resolvedFile);
+
+      if (!fs.existsSync(fullPath)) {
         return { success: false, message: `Required file missing: ${resolvedFile}` };
+      }
+
+      // Frontmatter validation when schema is declared on the input entry
+      if (spec.schema) {
+        const raw = extractFrontmatter(fullPath);
+        if (raw === null) {
+          return { success: false, message: `Input file '${resolvedFile}' has no valid YAML frontmatter` };
+        }
+
+        if (!Value.Check(spec.schema, raw)) {
+          const errors = [...Value.Errors(spec.schema, raw)];
+          const messages = errors.map((e) => {
+            const field = e.instancePath ? e.instancePath.replace(/^\//, "") : "root";
+            return `Field '${field}': ${e.message}`;
+          }).join("; ");
+          return { success: false, message: `Frontmatter validation failed for '${resolvedFile}': ${messages}` };
+        }
       }
     }
 

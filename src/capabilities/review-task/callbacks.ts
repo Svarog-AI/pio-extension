@@ -58,8 +58,8 @@ export function resolveReviewWriteAllowlist(_dir: string, params?: Record<string
 // ---------------------------------------------------------------------------
 
 /**
- * Post-validate hook: reads REVIEW.md frontmatter, validates against schema,
- * and creates APPROVED/REJECTED markers via applyReviewDecision().
+ * Post-validate hook: reads REVIEW.md frontmatter and validates against schema.
+ * Does NOT create markers — that is the job of postExecuteReview().
  */
 export function postValidateReview(goalDir: string, params?: Record<string, unknown>): { success: boolean; message?: string } {
   const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
@@ -76,9 +76,33 @@ export function postValidateReview(goalDir: string, params?: Record<string, unkn
     return { success: false, message: result.error };
   }
 
-  // On success: create markers (APPROVED/REJECTED) and return success
-  applyReviewDecision(goalDir, stepNumber, result.data!);
+  // Schema validation passed — do NOT create markers here (that's postExecute's job)
   return { success: true };
+}
+
+/**
+ * Post-execute hook: creates APPROVED/REJECTED markers via applyReviewDecision().
+ * Runs after transition routing + task enqueuing (step 4 in mark-complete.ts).
+ * Re-reads REVIEW.md from disk — both hooks read independently.
+ */
+export function postExecuteReview(goalDir: string, params?: Record<string, unknown>): void {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+  if (stepNumber == null) {
+    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
+  }
+
+  // Re-read REVIEW.md frontmatter (GoalState reads fresh from disk on every call)
+  const state = createGoalState(goalDir);
+  const result = state.getReviewOutputs(stepNumber, { errors: true }) as { data?: ReviewOutputs; error?: string };
+
+  // Defensive: if parsing fails, log warning and return (runs after transitions — don't crash)
+  if (result.error || !result.data) {
+    console.warn(`pio: postExecuteReview could not parse REVIEW.md for step ${stepNumber}: ${result.error || "no data"}`);
+    return;
+  }
+
+  // Create markers (APPROVED/REJECTED) — irreversible side-effect
+  applyReviewDecision(goalDir, stepNumber, result.data);
 }
 
 // ---------------------------------------------------------------------------

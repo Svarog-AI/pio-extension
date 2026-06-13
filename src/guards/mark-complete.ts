@@ -3,7 +3,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 import { getSessionConfig } from "../capability-utils";
-import { validateOutputs, validateFrontmatter } from "./validation";
+import { validateOutputs } from "./validation";
 import { dispatch, getMachine, recordTransition } from "../state-machines";
 import { createGoalState } from "../goal-state";
 import { enqueueTask, writeLastTask } from "../queues";
@@ -33,17 +33,11 @@ export const markCompleteTool = defineTool({
       return { content: [{ type: "text", text: "No directory is defined for this session. Something went wrong." }], details: {}, terminate: true };
     }
 
-    // 1. File-existence validation
+    // 1. Output validation (existence + frontmatter schema — single call)
     const outputsResult = validateOutputs(config.contract, dir, config.sessionParams);
 
-    if (!outputsResult.passed) {
-      return { content: [{ type: "text", text: `Validation failed. Missing files:\n- ${outputsResult.missing.join("\n- ")}\n\nProduce these files and call pio_mark_complete again.` }], details: {} };
-    }
-
-    // 1.5 Frontmatter schema validation
-    const fmResult = validateFrontmatter(config.contract, dir, config.sessionParams);
-    if (!fmResult.success) {
-      return { content: [{ type: "text", text: `Frontmatter validation failed: ${fmResult.message}` }], details: {} };
+    if (!outputsResult.success) {
+      return { content: [{ type: "text", text: `Validation failed: ${outputsResult.message}\n\nProduce these files and call pio_mark_complete again.` }], details: {} };
     }
 
     // 2. PostValidate hook — can fail to keep agent in session

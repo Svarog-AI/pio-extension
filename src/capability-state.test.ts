@@ -37,10 +37,23 @@ const contractWithSchema: CapabilityContract = {
   ],
 };
 
-/** Contract with placeholder paths. */
+/** Contract with placeholder paths (no schema — used for existence checks). */
 const contractWithPlaceholders: CapabilityContract = {
   inputs: [{ file: "PLAN.md" }],
   outputs: [{ file: "S{stepNumber:02d}/TASK.md" }],
+};
+
+/** Contract with placeholder paths AND a schema on the placeholder entry. */
+const contractWithPlaceholderSchema: CapabilityContract = {
+  inputs: [{ file: "PLAN.md" }],
+  outputs: [
+    {
+      file: "S{stepNumber:02d}/TASK.md",
+      schema: Type.Object({
+        stepName: Type.String(),
+      }),
+    },
+  ],
 };
 
 /** Write a file with YAML frontmatter. */
@@ -235,6 +248,33 @@ describe("Placeholder resolution", () => {
     writeWithFrontmatter(tempDir, "S05/TASK.md", { title: "Task 5" });
 
     expect(capState.file("S05/TASK.md").exists()).toBe(true);
+  });
+
+  it("validates against schema on placeholder entry — proving resolution + schema matching", () => {
+    // This contract has a schema on S{stepNumber:02d}/TASK.md.
+    // If resolution is broken, the file won't match any contract entry,
+    // and read() will return raw data (not validated). We verify schema
+    // validation is applied — proving the contract entry was matched.
+    const capState = createCapState(contractWithPlaceholderSchema, tempDir, { stepNumber: 3 });
+
+    // Valid frontmatter — should pass schema validation
+    writeWithFrontmatter(tempDir, "S03/TASK.md", { stepName: "Build feature" });
+    const validData = capState.file<{ stepName: string }>("S03/TASK.md").read();
+    expect(validData).toEqual({ stepName: "Build feature" });
+
+    // Missing required field — should fail schema validation and return null
+    writeWithFrontmatter(tempDir, "S03/TASK.md", { otherField: "value" });
+    const invalidData = capState.file("S03/TASK.md").read();
+    expect(invalidData).toBe(null);
+  });
+
+  it("resolves placeholder at query time — consumer passes unresolved template", () => {
+    // Consumer passes the template string directly; params resolve it in file()
+    const capState = createCapState(contractWithPlaceholderSchema, tempDir, { stepNumber: 7 });
+    writeWithFrontmatter(tempDir, "S07/TASK.md", { stepName: "Query-time resolution" });
+
+    const data = capState.file<{ stepName: string }>("S{stepNumber:02d}/TASK.md").read();
+    expect(data).toEqual({ stepName: "Query-time resolution" });
   });
 });
 

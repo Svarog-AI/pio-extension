@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState, type StepStatus } from "../../goal-state";
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
-import { CONTRACT } from "./config";
+
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -144,8 +144,8 @@ export function findMostRecentCompletedStep(goalDir: string): number | undefined
 // ---------------------------------------------------------------------------
 
 /**
- * Validate inputs via CONTRACT.
- * Step number must be provided — no step discovery in pre-launch.
+ * Resolve the goal directory for review-task.
+ * Input validation is handled automatically by launchCapability().
  */
 export async function validateReviewStep(
   name: string,

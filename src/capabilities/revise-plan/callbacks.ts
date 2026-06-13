@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState } from "../../goal-state";
-import { CONTRACT } from "./config";
+
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -18,9 +18,8 @@ const STEP_FOLDER_RE = /^S(\d+)$/;
 // ---------------------------------------------------------------------------
 
 /**
- * Validate that the goal workspace exists, has GOAL.md, and has PLAN.md.
- * Returns { goalDir, ready } on success, or { goalDir, error } when not ready.
- * Does NOT use ctx so it can be called safely before newSession().
+ * Resolve the goal directory for revise-plan.
+ * Input validation is handled automatically by launchCapability().
  */
 export async function validateRevisePlan(
   name: string,

@@ -1,5 +1,5 @@
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
-import { CONTRACT } from "./config";
+
 
 // ---------------------------------------------------------------------------
 // Config callbacks (used by config.ts and resolveCapabilityConfig)
@@ -23,8 +23,8 @@ export function resolveExecuteReadOnlyFiles(_workingDir: string, params?: Record
 // ---------------------------------------------------------------------------
 
 /**
- * Validate inputs via CONTRACT.
- * Step number must be provided — no step discovery in pre-launch.
+ * Resolve the goal directory for execute-task.
+ * Input validation is handled automatically by launchCapability().
  */
 export async function validateExecuteStep(
   name: string,

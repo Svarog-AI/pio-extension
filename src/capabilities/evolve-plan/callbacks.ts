@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState } from "../../goal-state";
 import type { PlanFrontmatter } from "../create-plan/schemas";
-import { CONTRACT } from "./config";
+
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -40,8 +40,8 @@ export function resolveEvolveWriteAllowlist(_workingDir: string, params?: Record
 // ---------------------------------------------------------------------------
 
 /**
- * Validate inputs via CONTRACT.
- * Step number must be provided — no step discovery in pre-launch.
+ * Resolve the goal directory for evolve-plan.
+ * Input validation is handled automatically by launchCapability().
  */
 export async function validateEvolveStep(
   name: string,

@@ -14,8 +14,7 @@ import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { createGoalState } from "../../goal-state";
 import {
-  validateStepForReview,
-  validateAndFindReviewStep,
+  validateReviewStep,
   resolveReviewReadOnlyFiles,
   resolveReviewWriteAllowlist,
   postValidateReview,
@@ -93,13 +92,11 @@ const reviewTaskTool = defineTool({
   promptSnippet: "Review code implementation for a plan step (approve/reject).",
   parameters: Type.Object({
     name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
-    stepNumber: Type.Optional(Type.Number({ description: "Explicit step number to review (optional — auto-finds most recently completed step)" })),
+    stepNumber: Type.Number({ description: "Step number to review" }),
   }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = params.stepNumber
-      ? await validateStepForReview(params.name, ctx.cwd, params.stepNumber)
-      : await validateAndFindReviewStep(params.name, ctx.cwd);
+    const result = await validateReviewStep(params.name, ctx.cwd, params.stepNumber);
 
     if (!result.ready) {
       return { content: [{ type: "text", text: result.error }], details: {} };
@@ -128,23 +125,20 @@ const reviewTaskTool = defineTool({
 
 async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandContext) {
   if (!args || !args.trim()) {
-    ctx.ui.notify("Usage: /pio-review-task <goal-name> [step-number]", "warning");
+    ctx.ui.notify("Usage: /pio-review-task <goal-name> <step-number>", "warning");
     return;
   }
 
   const parts = args.trim().split(/\s+/);
   const name = parts[0];
-  const explicitStep = parts[1] ? parseInt(parts[1], 10) : undefined;
+  const stepNumber = parts[1] ? parseInt(parts[1], 10) : undefined;
 
-  // Validate explicit step number if provided
-  if (explicitStep !== undefined && (isNaN(explicitStep) || explicitStep < 1)) {
-    ctx.ui.notify(`Invalid step number: "${parts[1]}". Must be a positive integer.`, "error");
+  if (stepNumber === undefined || isNaN(stepNumber) || stepNumber < 1) {
+    ctx.ui.notify(`Step number is required. Usage: /pio-review-task <goal-name> <step-number>`, "error");
     return;
   }
 
-  const result = explicitStep
-    ? await validateStepForReview(name, ctx.cwd, explicitStep)
-    : await validateAndFindReviewStep(name, ctx.cwd);
+  const result = await validateReviewStep(name, ctx.cwd, stepNumber);
 
   if (!result.ready) {
     ctx.ui.notify(result.error, "error");

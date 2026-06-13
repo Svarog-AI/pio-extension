@@ -11,7 +11,7 @@ import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { TASK_FRONTMATTER_SCHEMA } from "./schemas";
-import { validateAndFindNextStep, resolveEvolveWriteAllowlist } from "./callbacks";
+import { validateEvolveStep, resolveEvolveWriteAllowlist } from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // Contract (single source of truth — imported by callbacks)
@@ -61,10 +61,11 @@ const evolvePlanTool = defineTool({
   promptSnippet: "Generate TASK.md for the next plan step.",
   parameters: Type.Object({
     name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
+    stepNumber: Type.Number({ description: "Step number to evolve" }),
   }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = await validateAndFindNextStep(params.name, ctx.cwd);
+    const result = await validateEvolveStep(params.name, ctx.cwd, params.stepNumber);
 
     if (!result.ready) {
       return { content: [{ type: "text", text: result.error }], details: {} };
@@ -93,12 +94,20 @@ const evolvePlanTool = defineTool({
 
 async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandContext) {
   if (!args || !args.trim()) {
-    ctx.ui.notify("Usage: /pio-evolve-plan <goal-name>", "warning");
+    ctx.ui.notify("Usage: /pio-evolve-plan <goal-name> <step-number>", "warning");
     return;
   }
 
-  const name = args.trim();
-  const result = await validateAndFindNextStep(name, ctx.cwd);
+  const parts = args.trim().split(/\s+/);
+  const name = parts[0];
+  const stepNumber = parts[1] ? parseInt(parts[1], 10) : undefined;
+
+  if (stepNumber === undefined || isNaN(stepNumber) || stepNumber < 1) {
+    ctx.ui.notify(`Step number is required. Usage: /pio-evolve-plan <goal-name> <step-number>`, "error");
+    return;
+  }
+
+  const result = await validateEvolveStep(name, ctx.cwd, stepNumber);
 
   if (!result.ready) {
     ctx.ui.notify(result.error, "error");

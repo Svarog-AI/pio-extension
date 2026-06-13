@@ -29,14 +29,6 @@ export async function validateRevisePlan(
 ): Promise<{ goalDir: string; ready: boolean; error?: string }> {
   const goalDir = resolveGoalDir(cwd, name);
 
-  if (!fs.existsSync(goalDir)) {
-    return {
-      goalDir,
-      ready: false,
-      error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.`,
-    };
-  }
-
   const fileCheck = validateInputs(goalDir, CONTRACT);
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };

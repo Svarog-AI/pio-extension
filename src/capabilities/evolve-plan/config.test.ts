@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { validateOutputs } from "../../guards/validation";
 import { resolveCapabilityConfig } from "../../capability-config";
-import { validateAndFindNextStep } from "./callbacks";
+import { validateEvolveStep } from "./callbacks";
 import type { CapabilityContract, MarkdownFileSpec } from "../../types";
 
 // ---------------------------------------------------------------------------
@@ -335,10 +335,10 @@ function createGoalTreeWithFrontmatter(
 }
 
 // ---------------------------------------------------------------------------
-// validateAndFindNextStep — COMPLETED marker guard
+// validateEvolveStep — pre-launch validation
 // ---------------------------------------------------------------------------
 
-describe("validateAndFindNextStep with COMPLETED marker", () => {
+describe("validateEvolveStep — pre-launch validation", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -347,220 +347,29 @@ describe("validateAndFindNextStep with COMPLETED marker", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("returns ready:false when COMPLETED exists at goal root", async () => {
-    // Arrange: goal dir with PLAN.md and a COMPLETED file
-    createGoalTree(tempDir, "done-goal", { withCompleted: true });
-
-    // Act
-    const result = await validateAndFindNextStep("done-goal", tempDir);
-
-    // Assert: ready is false, error mentions COMPLETED or "already specified"
-    expect(result.ready).toBe(false);
-    if (!result.ready) {
-      expect(result.error).toMatch(/COMPLETED|already specified/i);
-    }
-  });
-
-  it("returns ready:true when COMPLETED does not exist and PLAN.md has valid frontmatter", async () => {
-    // Arrange: goal dir with PLAN.md with frontmatter, no COMPLETED
-    createGoalTreeWithFrontmatter(tempDir, "active-goal", 3, {
-      stepFolders: [{ stepNumber: 1, approved: false }],
-    });
-
-    // Act
-    const result = await validateAndFindNextStep("active-goal", tempDir);
-
-    // Assert: ready is true, stepNumber is 1 (no S01/ yet)
-    expect(result.ready).toBe(true);
-    if (result.ready) {
-      expect(result.stepNumber).toBe(1);
-    }
-  });
-
-  it("writes COMPLETED and returns not-ready when currentStepNumber() > totalSteps", async () => {
-    // Arrange: totalSteps=3, all 3 steps APPROVED (currentStepNumber returns 4), no COMPLETED marker
-    // validateAndFindNextStep checks frontmatter exhaustion and writes the marker.
-    createGoalTreeWithFrontmatter(tempDir, "all-approved-no-marker", 3, {
-      stepFolders: [
-        { stepNumber: 1, approved: true },
-        { stepNumber: 2, approved: true },
-        { stepNumber: 3, approved: true },
-      ],
-    });
-
-    // Act
-    const result = await validateAndFindNextStep("all-approved-no-marker", tempDir);
-
-    // Assert: ready is false, COMPLETED was written by infrastructure
-    expect(result.ready).toBe(false);
-    if (!result.ready) {
-      expect(result.error).toMatch(/all.*steps|specified|complete/i);
-    }
-    expect(fs.existsSync(path.join(tempDir, ".pio", "goals", "all-approved-no-marker", "COMPLETED"))).toBe(true);
-  });
-
-  it("proceeds normally when currentStepNumber() <= totalSteps", async () => {
-    // Arrange: totalSteps=5, S01 exists without APPROVED (currentStepNumber=1, which is <= 5)
-    createGoalTreeWithFrontmatter(tempDir, "ongoing-goal", 5, {
-      stepFolders: [{ stepNumber: 1, approved: false }],
-    });
-
-    // Act
-    const result = await validateAndFindNextStep("ongoing-goal", tempDir);
-
-    // Assert: ready is true, stepNumber is 1, COMPLETED does NOT exist
-    expect(result.ready).toBe(true);
-    if (result.ready) {
-      expect(result.stepNumber).toBe(1);
-    }
-    expect(fs.existsSync(path.join(tempDir, ".pio", "goals", "ongoing-goal", "COMPLETED"))).toBe(false);
-  });
-
-  it("throws when frontmatter is missing or invalid (null)", async () => {
-    // Arrange: PLAN.md without YAML frontmatter
-    createGoalTree(tempDir, "no-frontmatter-goal", {
-      planContent: "# Plan\n\n### Step 1: Test step\n",
-    });
-
-    // Act & Assert: should throw because frontmatter is mandatory
-    await expect(validateAndFindNextStep("no-frontmatter-goal", tempDir)).rejects.toThrow(/invalid or missing frontmatter/);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// contract.outputs — TEST.md excluded
-// ---------------------------------------------------------------------------
-
-describe("contract.outputs excludes TEST.md", () => {
-  it("excludes TEST.md for stepNumber=1", async () => {
-    // Arrange: step 1 validation
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1 };
-
-    // Act
-    const result = await resolveCapabilityConfig("/tmp/proj", params);
-
-    // Assert: contract.outputs file paths (resolved) equal ["S01/TASK.md"] exactly
-    const outputFiles = result?.contract.outputs
-      .filter((e: any) => "file" in e)
-      .map((e: any) => e.file.replace("S{stepNumber:02d}", "S01"));
-    expect(outputFiles).toContain("S01/TASK.md");
-    expect(outputFiles).not.toContain("S01/TEST.md");
-  });
-
-  it("excludes TEST.md for stepNumber=2", async () => {
-    // Arrange: step 2 validation
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2 };
-
-    // Act
-    const result = await resolveCapabilityConfig("/tmp/proj", params);
-
-    // Assert: no TEST.md in contract.outputs
-    const outputFiles = result?.contract.outputs
-      .filter((e: any) => "file" in e)
-      .map((e: any) => e.file.replace("S{stepNumber:02d}", "S02"));
-    expect(outputFiles).not.toContain("S02/TEST.md");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// validateAndFindNextStep — TASK.md-only folder finds next step
-// ---------------------------------------------------------------------------
-
-describe("validateAndFindNextStep with TASK.md-only folder", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("TASK.md-only folder is considered defined (status check)", async () => {
-    // Arrange: totalSteps=3, S01 has only TASK.md (status "defined"), no S02
-    const goalDir = path.join(tempDir, ".pio", "goals", "task-only-goal");
+  it("returns ready: true when PLAN.md exists", async () => {
+    // Arrange: goal dir with PLAN.md
+    const goalDir = path.join(tempDir, ".pio", "goals", "ready-goal");
     fs.mkdirSync(goalDir, { recursive: true });
-
-    const stepsYaml = [
-      "  - name: step-1\n    complexity: task",
-      "  - name: step-2\n    complexity: task",
-      "  - name: step-3\n    complexity: task",
-    ].join("\n");
-    fs.writeFileSync(
-      path.join(goalDir, "PLAN.md"),
-      `---\ntotalSteps: 3\nsteps:\n${stepsYaml}\n---\n# Plan`,
-      "utf-8",
-    );
-
-    // S01 with only TASK.md (no TEST.md) — status should be "defined"
-    const s01Dir = path.join(goalDir, "S01");
-    fs.mkdirSync(s01Dir, { recursive: true });
-    fs.writeFileSync(path.join(s01Dir, "TASK.md"), "# Task\n", "utf-8");
+    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n", "utf-8");
 
     // Act
-    const result = await validateAndFindNextStep("task-only-goal", tempDir);
+    const result = await validateEvolveStep("ready-goal", tempDir, 1);
 
-    // Assert: ready is true, stepNumber is 1 (S01 exists but has no APPROVED marker)
-    // currentStepNumber() checks for APPROVED markers, not file status.
-    // S01 with TASK.md only is "defined" but not yet approved — work here.
+    // Assert
     expect(result.ready).toBe(true);
     if (result.ready) {
       expect(result.stepNumber).toBe(1);
     }
   });
-
-  it("APPROVED S01 advances to S02 even with TASK.md-only (no TEST.md)", async () => {
-    // Arrange: totalSteps=3, S01 has TASK.md + APPROVED (no TEST.md needed)
-    const goalDir = path.join(tempDir, ".pio", "goals", "approved-task-only");
-    fs.mkdirSync(goalDir, { recursive: true });
-
-    const stepsYaml = [
-      "  - name: step-1\n    complexity: task",
-      "  - name: step-2\n    complexity: task",
-      "  - name: step-3\n    complexity: task",
-    ].join("\n");
-    fs.writeFileSync(
-      path.join(goalDir, "PLAN.md"),
-      `---\ntotalSteps: 3\nsteps:\n${stepsYaml}\n---\n# Plan`,
-      "utf-8",
-    );
-
-    const s01Dir = path.join(goalDir, "S01");
-    fs.mkdirSync(s01Dir, { recursive: true });
-    fs.writeFileSync(path.join(s01Dir, "TASK.md"), "# Task\n", "utf-8");
-    fs.writeFileSync(path.join(s01Dir, "APPROVED"), "", "utf-8");
-
-    // Act
-    const result = await validateAndFindNextStep("approved-task-only", tempDir);
-
-    // Assert: S01 is approved, moves to S02
-    expect(result.ready).toBe(true);
-    if (result.ready) {
-      expect(result.stepNumber).toBe(2);
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// validateAndFindNextStep — missing files
-// ---------------------------------------------------------------------------
-
-describe("validateAndFindNextStep — missing files", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
 
   it("returns error when PLAN.md is missing", async () => {
     // Arrange: goal dir exists but no PLAN.md
     const goalDir = path.join(tempDir, ".pio", "goals", "no-plan");
     fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n", "utf-8");
 
     // Act
-    const result = await validateAndFindNextStep("no-plan", tempDir);
+    const result = await validateEvolveStep("no-plan", tempDir, 1);
 
     // Assert: ready is false, error mentions PLAN.md
     expect(result.ready).toBe(false);
@@ -571,12 +380,31 @@ describe("validateAndFindNextStep — missing files", () => {
 
   it("returns error when goal workspace does not exist", async () => {
     // Act
-    const result = await validateAndFindNextStep("nonexistent", tempDir);
+    const result = await validateEvolveStep("nonexistent", tempDir, 1);
 
-    // Assert: ready is false, error mentions does not exist
+    // Assert: CONTRACT validation reports the first missing input (PLAN.md)
     expect(result.ready).toBe(false);
     if (!result.ready) {
-      expect(result.error).toMatch(/does not exist/i);
+      expect(result.error).toMatch(/PLAN\.md/i);
+    }
+  });
+
+  it("returns error when REVISE_PLAN_NEEDED marker exists", async () => {
+    // Arrange: goal dir with PLAN.md and S01/REVISE_PLAN_NEEDED
+    const goalDir = path.join(tempDir, ".pio", "goals", "revision-needed");
+    fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n", "utf-8");
+    const s01Dir = path.join(goalDir, "S01");
+    fs.mkdirSync(s01Dir, { recursive: true });
+    fs.writeFileSync(path.join(s01Dir, "REVISE_PLAN_NEEDED"), "", "utf-8");
+
+    // Act
+    const result = await validateEvolveStep("revision-needed", tempDir, 1);
+
+    // Assert: ready is false, error mentions REVISE_PLAN_NEEDED
+    expect(result.ready).toBe(false);
+    if (!result.ready) {
+      expect(result.error).toMatch(/REVISE_PLAN_NEEDED|must not exist/i);
     }
   });
 });

@@ -155,7 +155,7 @@ describe("validateRevisePlan — rejects invalid states", () => {
     const result = await validateRevisePlan("nonexistent", tempDir);
 
     expect(result.ready).toBe(false);
-    expect(result.error).toMatch(/does not exist/i);
+    expect(result.error).toMatch(/GOAL\.md/i);
   });
 
   it("rejects when GOAL.md is missing", async () => {

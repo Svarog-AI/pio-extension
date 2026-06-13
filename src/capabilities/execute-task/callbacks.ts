@@ -1,5 +1,4 @@
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
-import { createGoalState } from "../../goal-state";
 import { validateInputs } from "../../guards/validation";
 import { CONTRACT } from "./config";
 
@@ -25,36 +24,10 @@ export function resolveExecuteReadOnlyFiles(_workingDir: string, params?: Record
 // ---------------------------------------------------------------------------
 
 /**
- * Find the next step ready for execution and validate inputs via CONTRACT.
- *
- * Returns { goalDir, ready: true, stepNumber } on success,
- * or { goalDir, ready: false, error } when not ready.
+ * Validate inputs via CONTRACT.
+ * Step number must be provided — no step discovery in pre-launch.
  */
-export async function validateAndFindNextStep(
-  name: string,
-  cwd: string,
-): Promise<
-  | { goalDir: string; ready: true; stepNumber: number }
-  | { goalDir: string; ready: false; error: string }
-> {
-  const goalDir = resolveGoalDir(cwd, name);
-
-  // Discover the next step — requires PLAN.md (currentStepNumber returns 1 if missing).
-  const stepNumber = createGoalState(goalDir).currentStepNumber();
-
-  // Validate all inputs via CONTRACT — the single source of truth.
-  const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber });
-  if (!fileCheck.success) {
-    return { goalDir, ready: false, error: fileCheck.message! };
-  }
-
-  return { goalDir, ready: true, stepNumber };
-}
-
-/**
- * Validate an explicitly requested step via CONTRACT and check step state.
- */
-export async function validateExplicitStep(
+export async function validateExecuteStep(
   name: string,
   cwd: string,
   stepNumber: number,
@@ -64,41 +37,10 @@ export async function validateExplicitStep(
 > {
   const goalDir = resolveGoalDir(cwd, name);
 
-  // Validate all inputs via CONTRACT — the single source of truth.
+  // Validate inputs via CONTRACT — the single source of truth.
   const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber });
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
-  }
-
-  // Check step status — CONTRACT validates file existence, not step state.
-  const state = createGoalState(goalDir);
-  const folder = stepFolderName(stepNumber);
-  const step = state.steps().find(s => s.stepNumber === stepNumber);
-
-  if (!step) {
-    return {
-      goalDir,
-      ready: false,
-      error: `Step ${stepNumber} folder "${folder}/" does not exist in goal "${name}". Run /pio-evolve-plan ${name} to generate specs.`,
-    };
-  }
-
-  const currentStatus = step.status();
-
-  if (currentStatus === "implemented" || currentStatus === "approved" || currentStatus === "rejected") {
-    return {
-      goalDir,
-      ready: false,
-      error: `Step ${stepNumber} is already marked as COMPLETED.`,
-    };
-  }
-
-  if (currentStatus === "blocked") {
-    return {
-      goalDir,
-      ready: false,
-      error: `Step ${stepNumber} is marked as BLOCKED. Resolve the blocking issue or re-run /pio-evolve-plan ${name} to regenerate specs.`,
-    };
   }
 
   return { goalDir, ready: true, stepNumber };

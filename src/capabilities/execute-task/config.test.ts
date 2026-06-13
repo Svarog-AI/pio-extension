@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { validateAndFindNextStep, validateExplicitStep } from "./callbacks";
+import { validateExecuteStep } from "./callbacks";
 import config from "./config";
 import { stepFolderName } from "../../fs-utils";
 import { resolveCapabilityConfig } from "../../capability-config";
@@ -257,10 +257,10 @@ describe("execute-task defaultInitialMessage", () => {
 });
 
 // ---------------------------------------------------------------------------
-// validateAndFindNextStep — pre-launch validation
+// validateExecuteStep — pre-launch validation
 // ---------------------------------------------------------------------------
 
-describe("validateAndFindNextStep — pre-launch validation", () => {
+describe("validateExecuteStep — pre-launch validation", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -270,14 +270,17 @@ describe("validateAndFindNextStep — pre-launch validation", () => {
   afterEach(() => cleanup(tempDir));
 
   it("returns ready: true when GOAL.md, PLAN.md, and S01/TASK.md exist", async () => {
-    // Arrange: goal dir with GOAL.md, PLAN.md, and S01/TASK.md
-    const { goalDir } = createGoalTree(tempDir, "ready-goal", {
-      steps: [{ number: 1, files: ["TASK.md"] }],
-    });
+    // Arrange: goal dir with GOAL.md, PLAN.md (with frontmatter), and S01/TASK.md
+    const goalDir = path.join(tempDir, ".pio", "goals", "ready-goal");
+    fs.mkdirSync(goalDir, { recursive: true });
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n", "utf-8");
+    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "---\ntotalSteps: 1\nsteps:\n  - name: step-1\n    complexity: task\n---\n# Plan\n", "utf-8");
+    const s01Dir = path.join(goalDir, "S01");
+    fs.mkdirSync(s01Dir, { recursive: true });
+    fs.writeFileSync(path.join(s01Dir, "TASK.md"), "# Task\n", "utf-8");
 
     // Act
-    const result = await validateAndFindNextStep("ready-goal", tempDir);
+    const result = await validateExecuteStep("ready-goal", tempDir, 1);
 
     // Assert
     expect(result.ready).toBe(true);
@@ -306,7 +309,7 @@ steps:
     fs.writeFileSync(path.join(s01Dir, "TASK.md"), "# Task\n", "utf-8");
 
     // Act
-    const result = await validateAndFindNextStep("no-goal", tempDir);
+    const result = await validateExecuteStep("no-goal", tempDir, 1);
 
     // Assert
     expect(result.ready).toBe(false);
@@ -320,80 +323,17 @@ steps:
     const goalDir = path.join(tempDir, ".pio", "goals", "no-plan");
     fs.mkdirSync(goalDir, { recursive: true });
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n", "utf-8");
+    const s01Dir = path.join(goalDir, "S01");
+    fs.mkdirSync(s01Dir, { recursive: true });
+    fs.writeFileSync(path.join(s01Dir, "TASK.md"), "# Task\n", "utf-8");
 
     // Act
-    const result = await validateAndFindNextStep("no-plan", tempDir);
+    const result = await validateExecuteStep("no-plan", tempDir, 1);
 
     // Assert
     expect(result.ready).toBe(false);
     if (!result.ready) {
       expect(result.error).toMatch(/PLAN\.md/i);
-    }
-  });
-
-  it("returns error when goal workspace does not exist", async () => {
-    // Act
-    const result = await validateAndFindNextStep("nonexistent", tempDir);
-
-    // Assert: CONTRACT validation reports the first missing input (GOAL.md)
-    expect(result.ready).toBe(false);
-    if (!result.ready) {
-      expect(result.error).toMatch(/GOAL\.md/i);
-    }
-  });
-
-  it("returns error when REVISE_PLAN_NEEDED marker exists", async () => {
-    // Arrange: goal dir with GOAL.md, PLAN.md (with frontmatter), S01/TASK.md, and S01/REVISE_PLAN_NEEDED
-    const goalDir = path.join(tempDir, ".pio", "goals", "revision-needed");
-    fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n", "utf-8");
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "---\ntotalSteps: 1\nsteps:\n  - name: step-1\n    complexity: task\n---\n# Plan\n", "utf-8");
-    const s01Dir = path.join(goalDir, "S01");
-    fs.mkdirSync(s01Dir, { recursive: true });
-    fs.writeFileSync(path.join(s01Dir, "TASK.md"), "# Task\n", "utf-8");
-    fs.writeFileSync(path.join(s01Dir, "REVISE_PLAN_NEEDED"), "", "utf-8");
-
-    // Act
-    const result = await validateAndFindNextStep("revision-needed", tempDir);
-
-    // Assert: ready is false, error mentions REVISE_PLAN_NEEDED
-    expect(result.ready).toBe(false);
-    if (!result.ready) {
-      expect(result.error).toMatch(/REVISE_PLAN_NEEDED|must not exist/i);
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// validateExplicitStep — pre-launch validation
-// ---------------------------------------------------------------------------
-
-describe("validateExplicitStep — pre-launch validation", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("returns ready: true when GOAL.md, PLAN.md, and S01/TASK.md exist", async () => {
-    // Arrange: goal dir with GOAL.md, PLAN.md (with frontmatter), and S01/TASK.md
-    const goalDir = path.join(tempDir, ".pio", "goals", "ready-goal");
-    fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n", "utf-8");
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "---\ntotalSteps: 1\nsteps:\n  - name: step-1\n    complexity: task\n---\n# Plan\n", "utf-8");
-    const s01Dir = path.join(goalDir, "S01");
-    fs.mkdirSync(s01Dir, { recursive: true });
-    fs.writeFileSync(path.join(s01Dir, "TASK.md"), "# Task\n", "utf-8");
-
-    // Act
-    const result = await validateExplicitStep("ready-goal", tempDir, 1);
-
-    // Assert
-    expect(result.ready).toBe(true);
-    if (result.ready) {
-      expect(result.stepNumber).toBe(1);
     }
   });
 
@@ -407,12 +347,23 @@ describe("validateExplicitStep — pre-launch validation", () => {
     fs.mkdirSync(s01Dir, { recursive: true });
 
     // Act
-    const result = await validateExplicitStep("no-task", tempDir, 1);
+    const result = await validateExecuteStep("no-task", tempDir, 1);
 
     // Assert
     expect(result.ready).toBe(false);
     if (!result.ready) {
       expect(result.error).toMatch(/TASK\.md/i);
+    }
+  });
+
+  it("returns error when goal workspace does not exist", async () => {
+    // Act
+    const result = await validateExecuteStep("nonexistent", tempDir, 1);
+
+    // Assert: CONTRACT validation reports the first missing input (GOAL.md)
+    expect(result.ready).toBe(false);
+    if (!result.ready) {
+      expect(result.error).toMatch(/GOAL\.md/i);
     }
   });
 
@@ -428,33 +379,12 @@ describe("validateExplicitStep — pre-launch validation", () => {
     fs.writeFileSync(path.join(s01Dir, "REVISE_PLAN_NEEDED"), "", "utf-8");
 
     // Act
-    const result = await validateExplicitStep("revision-needed", tempDir, 1);
+    const result = await validateExecuteStep("revision-needed", tempDir, 1);
 
-    // Assert
+    // Assert: ready is false, error mentions REVISE_PLAN_NEEDED
     expect(result.ready).toBe(false);
     if (!result.ready) {
       expect(result.error).toMatch(/REVISE_PLAN_NEEDED|must not exist/i);
-    }
-  });
-
-  it("returns error when step is already implemented", async () => {
-    // Arrange: goal dir with GOAL.md, PLAN.md (with frontmatter), S01/TASK.md, and S01/COMPLETED
-    const goalDir = path.join(tempDir, ".pio", "goals", "already-done");
-    fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n", "utf-8");
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "---\ntotalSteps: 1\nsteps:\n  - name: step-1\n    complexity: task\n---\n# Plan\n", "utf-8");
-    const s01Dir = path.join(goalDir, "S01");
-    fs.mkdirSync(s01Dir, { recursive: true });
-    fs.writeFileSync(path.join(s01Dir, "TASK.md"), "# Task\n", "utf-8");
-    fs.writeFileSync(path.join(s01Dir, "COMPLETED"), "", "utf-8");
-
-    // Act
-    const result = await validateExplicitStep("already-done", tempDir, 1);
-
-    // Assert
-    expect(result.ready).toBe(false);
-    if (!result.ready) {
-      expect(result.error).toMatch(/already|COMPLETED/i);
     }
   });
 });

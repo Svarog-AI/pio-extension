@@ -145,10 +145,10 @@ export function findMostRecentCompletedStep(goalDir: string): number | undefined
 // ---------------------------------------------------------------------------
 
 /**
- * Validate that the goal workspace exists and the specified step is ready for review.
- * The step must have COMPLETED marker and SUMMARY.md (was executed successfully).
+ * Validate inputs via CONTRACT.
+ * Step number must be provided — no step discovery in pre-launch.
  */
-export async function validateStepForReview(
+export async function validateReviewStep(
   name: string,
   cwd: string,
   stepNumber: number,
@@ -158,86 +158,7 @@ export async function validateStepForReview(
 > {
   const goalDir = resolveGoalDir(cwd, name);
 
-  if (!fs.existsSync(goalDir)) {
-    return {
-      goalDir,
-      ready: false,
-      error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.`,
-    };
-  }
-
-  // Validate required files via contract with placeholder resolution
-  const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber });
-  if (!fileCheck.success) {
-    return { goalDir, ready: false, error: fileCheck.message! };
-  }
-
-  // Check step status (blocked/implemented)
-  const state = createGoalState(goalDir);
-  const folder = stepFolderName(stepNumber);
-  const step = state.steps().find(s => s.stepNumber === stepNumber);
-
-  if (!step) {
-    return {
-      goalDir,
-      ready: false,
-      error: `Step ${stepNumber} folder "${folder}/" does not exist. Run /pio-evolve-plan ${name} to generate specs first.`,
-    };
-  }
-
-  const status = step.status();
-
-  if (status === "blocked") {
-    return {
-      goalDir,
-      ready: false,
-      error: `Step ${stepNumber} is marked as BLOCKED. Resolve the blocking issue first.`,
-    };
-  }
-
-  // Not implemented yet (pending or defined, or never had COMPLETED)
-  if (status !== "implemented") {
-    return {
-      goalDir,
-      ready: false,
-      error: `Step ${stepNumber} is not yet completed. Run /pio-execute-task ${name} ${stepNumber} first.`,
-    };
-  }
-
-  return { goalDir, ready: true, stepNumber };
-}
-
-/**
- * Validate that the goal workspace exists and find the most recently completed step for review.
- */
-export async function validateAndFindReviewStep(
-  name: string,
-  cwd: string,
-): Promise<
-  | { goalDir: string; ready: true; stepNumber: number }
-  | { goalDir: string; ready: false; error: string }
-> {
-  const goalDir = resolveGoalDir(cwd, name);
-
-  if (!fs.existsSync(goalDir)) {
-    return {
-      goalDir,
-      ready: false,
-      error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.`,
-    };
-  }
-
-  // Find the most recently completed step
-  const stepNumber = findMostRecentCompletedStep(goalDir);
-  if (stepNumber === undefined) {
-    return {
-      goalDir,
-      ready: false,
-      error: `No completed steps found for goal "${name}". Run /pio-execute-task ${name} to complete a step first.`,
-    };
-  }
-
-  // Validate all required files via contract with placeholder resolution
+  // Validate inputs via CONTRACT — the single source of truth.
   const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber });
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };

@@ -287,10 +287,20 @@ describe("validateAndFindNextStep — pre-launch validation", () => {
   });
 
   it("returns error when GOAL.md is missing", async () => {
-    // Arrange: goal dir with PLAN.md but no GOAL.md
+    // Arrange: goal dir with PLAN.md (with frontmatter) but no GOAL.md
     const goalDir = path.join(tempDir, ".pio", "goals", "no-goal");
     fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n", "utf-8");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      `---
+totalSteps: 1
+steps:
+  - name: step-one
+---
+# Plan
+`,
+      "utf-8",
+    );
     const s01Dir = path.join(goalDir, "S01");
     fs.mkdirSync(s01Dir, { recursive: true });
     fs.writeFileSync(path.join(s01Dir, "TASK.md"), "# Task\n", "utf-8");

@@ -248,12 +248,6 @@ export async function validateAndFindReviewStep(
     };
   }
 
-  // Validate required base files first (GOAL.md, PLAN.md)
-  const baseCheck = validateInputs(goalDir, { inputs: [{ file: GOAL_FILE }, { file: PLAN_FILE }], outputs: [] });
-  if (!baseCheck.success) {
-    return { goalDir, ready: false, error: baseCheck.message! };
-  }
-
   // Find the most recently completed step
   const stepNumber = findMostRecentCompletedStep(goalDir);
   if (stepNumber === undefined) {
@@ -264,11 +258,11 @@ export async function validateAndFindReviewStep(
     };
   }
 
-  // Validate step-specific files via contract with placeholder resolution
+  // Validate all required files via contract with placeholder resolution
   const fileCheck = validateInputs(
     goalDir,
     {
-      inputs: [{ file: `S{stepNumber:02d}/COMPLETED` }, { file: `S{stepNumber:02d}/SUMMARY.md` }],
+      inputs: [{ file: GOAL_FILE }, { file: PLAN_FILE }, { file: `S{stepNumber:02d}/COMPLETED` }, { file: `S{stepNumber:02d}/SUMMARY.md` }],
       outputs: [],
     },
     { stepNumber },

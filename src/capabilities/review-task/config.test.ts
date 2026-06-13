@@ -1132,17 +1132,27 @@ describe("validateAndFindReviewStep — pre-launch validation", () => {
   });
 
   it("returns error when GOAL.md is missing", async () => {
-    // Arrange: goal dir with PLAN.md but no GOAL.md
-    const goalDir = path.join(tempDir, ".pio", "goals", "no-goal");
+    // Arrange: goal dir with PLAN.md (with frontmatter) but no GOAL.md
+    const goalDir = path.join(tempDir, ".pio", "goals", "no-goal-find");
     fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n", "utf-8");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      `---
+totalSteps: 1
+steps:
+  - name: step-one
+---
+# Plan
+`,
+      "utf-8",
+    );
     const s01Dir = path.join(goalDir, "S01");
     fs.mkdirSync(s01Dir, { recursive: true });
     fs.writeFileSync(path.join(s01Dir, "COMPLETED"), "", "utf-8");
     fs.writeFileSync(path.join(s01Dir, "SUMMARY.md"), "# Summary\n", "utf-8");
 
     // Act
-    const result = await validateAndFindReviewStep("no-goal", tempDir);
+    const result = await validateAndFindReviewStep("no-goal-find", tempDir);
 
     // Assert
     expect(result.ready).toBe(false);

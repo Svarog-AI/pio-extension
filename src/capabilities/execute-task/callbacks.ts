@@ -1,5 +1,4 @@
 import * as fs from "node:fs";
-import * as path from "node:path";
 
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState } from "../../goal-state";
@@ -74,10 +73,10 @@ export async function validateAndFindNextStep(
     };
   }
 
-  // Validate required base files first (GOAL.md, PLAN.md) — needed before step scanning.
-  const baseCheck = validateInputs(goalDir, { inputs: [{ file: GOAL_FILE }, { file: PLAN_FILE }], outputs: [] });
-  if (!baseCheck.success) {
-    return { goalDir, ready: false, error: baseCheck.message! };
+  // Validate PLAN.md exists — required for step scanning (state.steps() reads PLAN.md frontmatter).
+  const planCheck = validateInputs(goalDir, { inputs: [{ file: PLAN_FILE }], outputs: [] });
+  if (!planCheck.success) {
+    return { goalDir, ready: false, error: planCheck.message! };
   }
 
   // Find the first step number (starting at 1) that is ready for execution.

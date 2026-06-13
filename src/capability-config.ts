@@ -1,4 +1,4 @@
-import type { CapabilityConfig, ConfigCallback, InputValidationSpec, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback, ValidationRule } from "./types";
+import type { CapabilityConfig, CapabilityContract, ConfigCallback, InputValidationSpec, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback, ValidationRule } from "./types";
 import type { CapabilityPackageConfig, FrontmatterSchemaDeclaration, CapabilitySkills } from "./capability-package";
 import {
   resolveGoalDir,
@@ -142,6 +142,7 @@ function buildCapabilityConfig(
   skills: CapabilitySkills | undefined,
   frontmatterSchemas: FrontmatterSchemaDeclaration[] | undefined,
   inputValidation: InputValidationSpec | undefined,
+  contract: CapabilityContract | undefined,
 ): CapabilityConfig {
   return {
     capability: cap,
@@ -160,6 +161,7 @@ function buildCapabilityConfig(
     skills,
     frontmatterSchemas,
     inputValidation,
+    contract,
   };
 }
 
@@ -178,6 +180,7 @@ function normalizePackageConfig(
   const readOnlyFiles = resolveField<string[]>(pkg.readOnlyFiles, extracted.workingDir, params);
   const writeAllowlist = resolveField<string[]>(pkg.writeAllowlist, extracted.workingDir, params);
   const inputValidation = resolveField<InputValidationSpec>(pkg.inputValidation, extracted.workingDir, params);
+  const contract = pkg.contract; // optional, pass through as-is
 
   return buildCapabilityConfig(
     cap,
@@ -196,6 +199,7 @@ function normalizePackageConfig(
     pkg.skills,
     pkg.frontmatterSchemas,
     inputValidation,
+    contract,
   );
 }
 

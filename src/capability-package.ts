@@ -19,6 +19,7 @@
 
 import type { TSchema } from "typebox";
 import type {
+  CapabilityContract,
   CapabilitySkills,
   ConfigCallback,
   InputValidationSpec,
@@ -175,6 +176,8 @@ export interface CapabilityPackageConfig {
   frontmatterSchemas?: FrontmatterSchemaDeclaration[];
   /** Declarative input contract: files that must/must-not exist before the session starts. Can be a static spec or a callback `(workingDir, params) => InputValidationSpec`. */
   inputValidation?: InputValidationSpec | ConfigCallback<InputValidationSpec>;
+  /** Unified capability contract: consolidated inputs, outputs, excluded files, and frontmatter schemas. Optional during migration — becomes mandatory in a later step. */
+  contract?: CapabilityContract;
 }
 
 /**

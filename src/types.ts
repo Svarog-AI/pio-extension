@@ -54,6 +54,53 @@ export interface InputValidationSpec {
 }
 
 // ---------------------------------------------------------------------------
+// Capability contract types (unified input/output declarations)
+// ---------------------------------------------------------------------------
+
+/**
+ * Describes a single markdown file in a capability contract.
+ *
+ * File paths can contain `{key}` and `{key:format}` placeholder tokens
+ * (e.g., `S{stepNumber:02d}/TASK.md`) resolved at runtime via `resolvePaths()`.
+ * When a `schema` is provided, the file's YAML frontmatter is validated
+ * against the TypeBox schema.
+ */
+export interface MarkdownFileSpec {
+  /** Relative file path with `{key}` / `{key:format}` placeholder support */
+  file: string;
+  /** Optional TypeBox schema for YAML frontmatter validation — plain existence check when absent */
+  schema?: TSchema;
+  /** Optional predicate to determine if this file is required. Receives session params. If absent, file is always required. */
+  requiredWhen?: (params?: Record<string, unknown>) => boolean;
+}
+
+/**
+ * A group where exactly one file must be present (e.g., APPROVED xor REJECTED).
+ */
+export interface OneOfGroup {
+  files: MarkdownFileSpec[];
+}
+
+/** An output entry: either a single file spec or a one-of group. */
+export type OutputEntry = MarkdownFileSpec | OneOfGroup;
+
+/**
+ * Unified capability contract: declares inputs, outputs, excluded files,
+ * and frontmatter schemas in a single object.
+ *
+ * Replaces the fragmented approach of separate `validation`, `frontmatterSchemas`,
+ * and `inputValidation` fields with one consolidated declaration.
+ */
+export interface CapabilityContract {
+  /** Files that must exist, with optional frontmatter schema validation */
+  inputs: MarkdownFileSpec[];
+  /** Files that must NOT exist */
+  excludedFiles?: string[];
+  /** Required output files or one-of groups */
+  outputs: OutputEntry[];
+}
+
+// ---------------------------------------------------------------------------
 // Capability config types
 // ---------------------------------------------------------------------------
 
@@ -99,6 +146,8 @@ export interface CapabilityConfig {
   frontmatterSchemas?: FrontmatterSchemaDeclaration[];
   /** Declarative input contract: files that must/must-not exist before the session starts. */
   inputValidation?: InputValidationSpec;
+  /** Unified capability contract: consolidated inputs, outputs, excluded files, and frontmatter schemas. Optional during migration — becomes mandatory in a later step. */
+  contract?: CapabilityContract;
 }
 
 /** Callback signature for step-dependent config fields. */

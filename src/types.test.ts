@@ -1,4 +1,5 @@
-import type { CapabilitySkills, CapabilityConfig } from "./types";
+import { Type } from "typebox";
+import type { CapabilitySkills, CapabilityConfig, MarkdownFileSpec, OneOfGroup, OutputEntry, CapabilityContract } from "./types";
 
 // ---------------------------------------------------------------------------
 // CapabilitySkills — compile-time type verification
@@ -140,5 +141,166 @@ describe("CapabilityConfig — skills field", () => {
     expect(config.skills!.mandatory).toBeUndefined();
     expect(config.skills!.recommended).toHaveLength(1);
     expect(config.skills!.recommended![0].name).toBe("source-research");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MarkdownFileSpec — compile-time type verification
+// ---------------------------------------------------------------------------
+
+describe("MarkdownFileSpec", () => {
+  it("is importable and accepts a file path only", () => {
+    const spec: MarkdownFileSpec = { file: "PLAN.md" };
+    expect(spec.file).toBe("PLAN.md");
+    expect(spec.schema).toBeUndefined();
+    expect(spec.requiredWhen).toBeUndefined();
+  });
+
+  it("accepts a file path with a TypeBox schema", () => {
+    const schema = Type.Object({ title: Type.String() });
+    const spec: MarkdownFileSpec = { file: "PLAN.md", schema };
+    expect(spec.file).toBe("PLAN.md");
+    expect(spec.schema).toBe(schema);
+  });
+
+  it("accepts a requiredWhen predicate", () => {
+    const spec: MarkdownFileSpec = {
+      file: "S{stepNumber:02d}/DECISIONS.md",
+      requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1,
+    };
+    expect(spec.requiredWhen!({ stepNumber: 2 })).toBe(true);
+    expect(spec.requiredWhen!({ stepNumber: 1 })).toBe(false);
+    expect(spec.requiredWhen!()).toBe(false);
+  });
+
+  it("accepts placeholder tokens in file paths", () => {
+    const spec: MarkdownFileSpec = { file: "S{stepNumber:02d}/TASK.md" };
+    expect(spec.file).toBe("S{stepNumber:02d}/TASK.md");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OneOfGroup — compile-time type verification
+// ---------------------------------------------------------------------------
+
+describe("OneOfGroup", () => {
+  it("is importable and accepts an array of MarkdownFileSpec", () => {
+    const group: OneOfGroup = {
+      files: [
+        { file: "APPROVED" },
+        { file: "REJECTED" },
+      ],
+    };
+    expect(group.files).toHaveLength(2);
+    expect(group.files[0].file).toBe("APPROVED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OutputEntry — union type verification
+// ---------------------------------------------------------------------------
+
+describe("OutputEntry", () => {
+  it("accepts a plain MarkdownFileSpec", () => {
+    const entry: OutputEntry = { file: "PLAN.md" };
+    expect(entry).toEqual({ file: "PLAN.md" });
+  });
+
+  it("accepts a OneOfGroup", () => {
+    const entry: OutputEntry = {
+      files: [{ file: "APPROVED" }, { file: "REJECTED" }],
+    };
+    expect((entry as OneOfGroup).files).toHaveLength(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CapabilityContract — compile-time type verification
+// ---------------------------------------------------------------------------
+
+describe("CapabilityContract", () => {
+  it("is importable and accepts minimal inputs and outputs", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ file: "GOAL.md" }],
+      outputs: [{ file: "PLAN.md" }],
+    };
+    expect(contract.inputs).toHaveLength(1);
+    expect(contract.outputs).toHaveLength(1);
+    expect(contract.excludedFiles).toBeUndefined();
+  });
+
+  it("accepts excludedFiles", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ file: "GOAL.md" }],
+      excludedFiles: ["PLAN.md"],
+      outputs: [{ file: "PLAN.md" }],
+    };
+    expect(contract.excludedFiles).toEqual(["PLAN.md"]);
+  });
+
+  it("accepts schemas on inputs and outputs", () => {
+    const schema = Type.Object({ totalSteps: Type.Integer() });
+    const contract: CapabilityContract = {
+      inputs: [{ file: "GOAL.md" }],
+      outputs: [{ file: "PLAN.md", schema }],
+    };
+    expect((contract.outputs[0] as MarkdownFileSpec).schema).toBe(schema);
+  });
+
+  it("accepts requiredWhen predicates on outputs", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ file: "PLAN.md" }],
+      outputs: [
+        { file: "S{stepNumber:02d}/TASK.md" },
+        {
+          file: "S{stepNumber:02d}/DECISIONS.md",
+          requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1,
+        },
+      ],
+    };
+    expect(contract.outputs).toHaveLength(2);
+    const decisions = contract.outputs[1] as MarkdownFileSpec;
+    expect(decisions.requiredWhen!({ stepNumber: 3 })).toBe(true);
+    expect(decisions.requiredWhen!({ stepNumber: 1 })).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CapabilityConfig — contract field (optional, backward-compatible)
+// ---------------------------------------------------------------------------
+
+describe("CapabilityConfig — contract field", () => {
+  it("accepts a config with the contract field", () => {
+    const config: CapabilityConfig = {
+      capability: "create-plan",
+      contract: {
+        inputs: [{ file: "GOAL.md" }],
+        excludedFiles: ["PLAN.md"],
+        outputs: [{ file: "PLAN.md" }],
+      },
+    };
+    expect(config.contract).toBeDefined();
+    expect(config.contract!.inputs).toHaveLength(1);
+    expect(config.contract!.excludedFiles).toEqual(["PLAN.md"]);
+  });
+
+  it("contract field is optional — config without contract is valid", () => {
+    const config: CapabilityConfig = {
+      capability: "create-goal",
+    };
+    expect(config.contract).toBeUndefined();
+  });
+
+  it("contract coexists with old fields (backward compatibility)", () => {
+    const config: CapabilityConfig = {
+      capability: "create-plan",
+      validation: { files: ["PLAN.md"] },
+      contract: {
+        inputs: [{ file: "GOAL.md" }],
+        outputs: [{ file: "PLAN.md" }],
+      },
+    };
+    expect(config.validation).toBeDefined();
+    expect(config.contract).toBeDefined();
   });
 });

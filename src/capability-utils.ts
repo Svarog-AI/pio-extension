@@ -26,6 +26,19 @@ export function getSessionConfig(ctx: ExtensionContext): CapabilityConfig | null
  * Recommended skills: concatenated with Map-based first-seen-wins dedup by `name`.
  * Returns a new object — never mutates inputs.
  */
+/**
+ * Parse a command argument string into parts.
+ * Returns [name, stepNumber] or [name, undefined] if step number is missing.
+ */
+export function parseCommandArgs(args: string | undefined): { name: string; stepNumber: number | undefined } | null {
+  if (!args || !args.trim()) return null;
+  const parts = args.trim().split(/\s+/);
+  const name = parts[0];
+  const raw = parts[1];
+  const stepNumber = raw ? parseInt(raw, 10) : undefined;
+  return { name, stepNumber: (stepNumber !== undefined && !isNaN(stepNumber) && stepNumber >= 1) ? stepNumber : undefined };
+}
+
 export function mergeCapabilitySkills(
   base: CapabilitySkills | undefined,
   additional: CapabilitySkills | null | undefined,

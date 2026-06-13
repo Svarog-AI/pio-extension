@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { launchCapability } from "../../capability-session";
+import { parseCommandArgs } from "../../capability-utils";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
@@ -93,21 +94,18 @@ const evolvePlanTool = defineTool({
 // ---------------------------------------------------------------------------
 
 async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandContext) {
-  if (!args || !args.trim()) {
+  const parsed = parseCommandArgs(args);
+  if (!parsed) {
     ctx.ui.notify("Usage: /pio-evolve-plan <goal-name> <step-number>", "warning");
     return;
   }
 
-  const parts = args.trim().split(/\s+/);
-  const name = parts[0];
-  const stepNumber = parts[1] ? parseInt(parts[1], 10) : undefined;
-
-  if (stepNumber === undefined || isNaN(stepNumber) || stepNumber < 1) {
-    ctx.ui.notify(`Step number is required. Usage: /pio-evolve-plan <goal-name> <step-number>`, "error");
+  if (parsed.stepNumber === undefined) {
+    ctx.ui.notify("Step number is required. Usage: /pio-evolve-plan <goal-name> <step-number>", "error");
     return;
   }
 
-  const result = await validateEvolveStep(name, ctx.cwd, stepNumber);
+  const result = await validateEvolveStep(parsed.name, ctx.cwd, parsed.stepNumber);
 
   if (!result.ready) {
     ctx.ui.notify(result.error, "error");
@@ -120,7 +118,7 @@ async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandC
   const stepDir = path.join(result.goalDir, folderName);
   fs.mkdirSync(stepDir, { recursive: true });
 
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "evolve-plan", goalName: name, stepNumber: result.stepNumber });
+  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "evolve-plan", goalName: parsed.name, stepNumber: result.stepNumber });
   if (!config) {
     ctx.ui.notify("Failed to resolve evolve-plan config.", "error");
     return;

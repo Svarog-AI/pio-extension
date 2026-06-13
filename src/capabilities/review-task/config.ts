@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { launchCapability, setMergedSkills } from "../../capability-session";
-import { mergeCapabilitySkills } from "../../capability-utils";
+import { mergeCapabilitySkills, parseCommandArgs } from "../../capability-utils";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
@@ -124,21 +124,18 @@ const reviewTaskTool = defineTool({
 // ---------------------------------------------------------------------------
 
 async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandContext) {
-  if (!args || !args.trim()) {
+  const parsed = parseCommandArgs(args);
+  if (!parsed) {
     ctx.ui.notify("Usage: /pio-review-task <goal-name> <step-number>", "warning");
     return;
   }
 
-  const parts = args.trim().split(/\s+/);
-  const name = parts[0];
-  const stepNumber = parts[1] ? parseInt(parts[1], 10) : undefined;
-
-  if (stepNumber === undefined || isNaN(stepNumber) || stepNumber < 1) {
-    ctx.ui.notify(`Step number is required. Usage: /pio-review-task <goal-name> <step-number>`, "error");
+  if (parsed.stepNumber === undefined) {
+    ctx.ui.notify("Step number is required. Usage: /pio-review-task <goal-name> <step-number>", "error");
     return;
   }
 
-  const result = await validateReviewStep(name, ctx.cwd, stepNumber);
+  const result = await validateReviewStep(parsed.name, ctx.cwd, parsed.stepNumber);
 
   if (!result.ready) {
     ctx.ui.notify(result.error, "error");

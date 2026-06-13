@@ -67,7 +67,7 @@ export async function validateFinalizeGoal(
     };
   }
 
-  const fileCheck = validateInputs(goalDir, ["GOAL.md", "PLAN.md"]);
+  const fileCheck = validateInputs(goalDir, { inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }], outputs: [] });
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }

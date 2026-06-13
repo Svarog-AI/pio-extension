@@ -3,7 +3,6 @@ import * as path from "node:path";
 
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState } from "../../goal-state";
-import { resolvePaths } from "../../capability-config";
 import { validateInputs } from "../../guards/validation";
 
 // ---------------------------------------------------------------------------
@@ -76,7 +75,7 @@ export async function validateAndFindNextStep(
   }
 
   // Validate required base files first (GOAL.md, PLAN.md) — needed before step scanning.
-  const baseCheck = validateInputs(goalDir, [GOAL_FILE, PLAN_FILE]);
+  const baseCheck = validateInputs(goalDir, { inputs: [{ file: GOAL_FILE }, { file: PLAN_FILE }], outputs: [] });
   if (!baseCheck.success) {
     return { goalDir, ready: false, error: baseCheck.message! };
   }
@@ -105,10 +104,16 @@ export async function validateAndFindNextStep(
     };
   }
 
-  // Resolve full file list from inputValidation contract and validate
-  const requiredFiles = resolvePaths([GOAL_FILE, PLAN_FILE, `S{stepNumber:02d}/${TASK_FILE}`], { stepNumber: foundStep });
-  const excludedFiles = resolvePaths([`S{stepNumber:02d}/REVISE_PLAN_NEEDED`], { stepNumber: foundStep });
-  const fileCheck = validateInputs(goalDir, requiredFiles, excludedFiles);
+  // Validate inputs via contract with placeholder resolution
+  const fileCheck = validateInputs(
+    goalDir,
+    {
+      inputs: [{ file: GOAL_FILE }, { file: PLAN_FILE }, { file: `S{stepNumber:02d}/${TASK_FILE}` }],
+      excludedFiles: [`S{stepNumber:02d}/REVISE_PLAN_NEEDED`],
+      outputs: [],
+    },
+    { stepNumber: foundStep },
+  );
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }
@@ -137,10 +142,16 @@ export async function validateExplicitStep(
     };
   }
 
-  // Resolve full file list from inputValidation contract and validate
-  const requiredFiles = resolvePaths([GOAL_FILE, PLAN_FILE, `S{stepNumber:02d}/${TASK_FILE}`], { stepNumber });
-  const excludedFiles = resolvePaths([`S{stepNumber:02d}/REVISE_PLAN_NEEDED`], { stepNumber });
-  const fileCheck = validateInputs(goalDir, requiredFiles, excludedFiles);
+  // Validate inputs via contract with placeholder resolution
+  const fileCheck = validateInputs(
+    goalDir,
+    {
+      inputs: [{ file: GOAL_FILE }, { file: PLAN_FILE }, { file: `S{stepNumber:02d}/${TASK_FILE}` }],
+      excludedFiles: [`S{stepNumber:02d}/REVISE_PLAN_NEEDED`],
+      outputs: [],
+    },
+    { stepNumber },
+  );
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }

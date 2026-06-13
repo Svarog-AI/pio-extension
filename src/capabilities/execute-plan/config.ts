@@ -50,7 +50,7 @@ async function validateGoal(name: string, cwd: string): Promise<{ goalDir: strin
     return { goalDir, ready: false, error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.` };
   }
 
-  const fileCheck = validateInputs(goalDir, [GOAL_FILE, PLAN_FILE]);
+  const fileCheck = validateInputs(goalDir, { inputs: [{ file: GOAL_FILE }, { file: PLAN_FILE }], outputs: [] });
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }

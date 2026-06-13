@@ -3,7 +3,6 @@ import * as path from "node:path";
 
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState, type StepStatus } from "../../goal-state";
-import { resolvePaths } from "../../capability-config";
 import { validateInputs } from "../../guards/validation";
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
 
@@ -181,9 +180,15 @@ export async function validateStepForReview(
     };
   }
 
-  // Validate required files from inputValidation contract
-  const requiredFiles = resolvePaths([GOAL_FILE, PLAN_FILE, `S{stepNumber:02d}/COMPLETED`, `S{stepNumber:02d}/SUMMARY.md`], { stepNumber });
-  const fileCheck = validateInputs(goalDir, requiredFiles);
+  // Validate required files via contract with placeholder resolution
+  const fileCheck = validateInputs(
+    goalDir,
+    {
+      inputs: [{ file: GOAL_FILE }, { file: PLAN_FILE }, { file: `S{stepNumber:02d}/COMPLETED` }, { file: `S{stepNumber:02d}/SUMMARY.md` }],
+      outputs: [],
+    },
+    { stepNumber },
+  );
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }
@@ -244,7 +249,7 @@ export async function validateAndFindReviewStep(
   }
 
   // Validate required base files first (GOAL.md, PLAN.md)
-  const baseCheck = validateInputs(goalDir, [GOAL_FILE, PLAN_FILE]);
+  const baseCheck = validateInputs(goalDir, { inputs: [{ file: GOAL_FILE }, { file: PLAN_FILE }], outputs: [] });
   if (!baseCheck.success) {
     return { goalDir, ready: false, error: baseCheck.message! };
   }
@@ -259,9 +264,15 @@ export async function validateAndFindReviewStep(
     };
   }
 
-  // Validate step-specific files from inputValidation contract
-  const stepFiles = resolvePaths([`S{stepNumber:02d}/COMPLETED`, `S{stepNumber:02d}/SUMMARY.md`], { stepNumber });
-  const fileCheck = validateInputs(goalDir, stepFiles);
+  // Validate step-specific files via contract with placeholder resolution
+  const fileCheck = validateInputs(
+    goalDir,
+    {
+      inputs: [{ file: `S{stepNumber:02d}/COMPLETED` }, { file: `S{stepNumber:02d}/SUMMARY.md` }],
+      outputs: [],
+    },
+    { stepNumber },
+  );
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }

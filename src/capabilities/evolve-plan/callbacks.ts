@@ -86,7 +86,7 @@ export async function validateAndFindNextStep(
     };
   }
 
-  const fileCheck = validateInputs(goalDir, [PLAN_FILE]);
+  const fileCheck = validateInputs(goalDir, { inputs: [{ file: PLAN_FILE }], outputs: [] });
   if (!fileCheck.success) {
     return {
       goalDir,

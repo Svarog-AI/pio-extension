@@ -5,7 +5,8 @@ import * as Value from "typebox/value";
 import type { FrontmatterSchemaDeclaration } from "../capability-package";
 import { extractFrontmatter } from "../frontmatter";
 import { getSessionConfig } from "../capability-utils";
-import type { PostValidateCallback, ValidationRule } from "../types";
+import { resolvePaths } from "../capability-config";
+import type { CapabilityContract, MarkdownFileSpec, OutputEntry, PostValidateCallback, ValidationRule } from "../types";
 
 /** Result of a validation run. */
 export interface ValidationResult {
@@ -36,11 +37,26 @@ const MAX_WARNINGS = 3;
 // Core validation engine
 // ---------------------------------------------------------------------------
 
+/** Type guard: distinguish CapabilityContract from ValidationRule or FrontmatterSchemaDeclaration[]. */
+function isCapabilityContract(input: CapabilityContract | ValidationRule | FrontmatterSchemaDeclaration[] | null | undefined): input is CapabilityContract {
+  return typeof input === "object" && input !== null && "outputs" in input && "inputs" in input;
+}
+
+/** Type guard: distinguish MarkdownFileSpec from OneOfGroup within OutputEntry[]. */
+function isMarkdownFileSpec(entry: OutputEntry): entry is MarkdownFileSpec {
+  return "file" in entry && !("files" in entry);
+}
+
 /**
  * Check that all declared files exist on disk.
+ * Accepts either a CapabilityContract (new) or ValidationRule (legacy).
  * Paths are resolved relative to `baseDir` via `path.join(baseDir, file)`.
  */
-export function validateOutputs(rules: ValidationRule, baseDir: string): ValidationResult {
+export function validateOutputs(
+  input: CapabilityContract | ValidationRule,
+  baseDir: string,
+  params?: Record<string, unknown>,
+): ValidationResult {
   // If COMPLETED marker exists at baseDir, pass validation regardless of other expected files.
   // This allows evolve-plan to write just COMPLETED (when all steps are done) and have pio_mark_complete succeed.
   if (fs.existsSync(path.join(baseDir, "COMPLETED"))) {
@@ -49,10 +65,35 @@ export function validateOutputs(rules: ValidationRule, baseDir: string): Validat
 
   const missing: string[] = [];
 
-  for (const file of rules.files || []) {
-    const fullPath = path.join(baseDir, file);
-    if (!fs.existsSync(fullPath)) {
-      missing.push(file);
+  if (isCapabilityContract(input)) {
+    // New path: iterate contract.outputs[]
+    for (const entry of input.outputs) {
+      if (!isMarkdownFileSpec(entry)) {
+        // OneOfGroup — treat as no-op (deferred to later step)
+        continue;
+      }
+
+      // Evaluate requiredWhen predicate
+      if (entry.requiredWhen !== undefined && !entry.requiredWhen(params)) {
+        continue;
+      }
+
+      // Resolve placeholder tokens in file path
+      const resolvedPaths = resolvePaths([entry.file], params || {});
+      const resolvedFile = resolvedPaths[0];
+
+      const fullPath = path.join(baseDir, resolvedFile);
+      if (!fs.existsSync(fullPath)) {
+        missing.push(resolvedFile);
+      }
+    }
+  } else {
+    // Legacy path: iterate rules.files
+    for (const file of input.files || []) {
+      const fullPath = path.join(baseDir, file);
+      if (!fs.existsSync(fullPath)) {
+        missing.push(file);
+      }
     }
   }
 
@@ -65,6 +106,7 @@ export function validateOutputs(rules: ValidationRule, baseDir: string): Validat
 
 /**
  * Validate YAML frontmatter of output files against declared TypeBox schemas.
+ * Accepts either a CapabilityContract (new) or FrontmatterSchemaDeclaration[] (legacy).
  *
  * Iterates over declarations, reads each file via extractFrontmatter(), and
  * validates the parsed object against the declared schema using Value.Check().
@@ -76,74 +118,150 @@ export function validateOutputs(rules: ValidationRule, baseDir: string): Validat
  * that require reading document body content (e.g., totalSteps vs heading count).
  */
 export function validateFrontmatter(
-  declarations: FrontmatterSchemaDeclaration[],
+  input: CapabilityContract | FrontmatterSchemaDeclaration[],
   workingDir: string,
 ): { success: boolean; message?: string } {
-  if (!declarations || declarations.length === 0) {
-    return { success: true };
-  }
+  if (isCapabilityContract(input)) {
+    // New path: iterate contract.outputs[] — only entries with schema defined
+    for (const entry of input.outputs) {
+      if (!isMarkdownFileSpec(entry)) {
+        // OneOfGroup — skip for frontmatter validation
+        continue;
+      }
+      if (!entry.schema) {
+        // No schema — skip frontmatter validation for this file
+        continue;
+      }
 
-  for (const decl of declarations) {
-    const filePath = path.join(workingDir, decl.outputFile);
+      const filePath = path.join(workingDir, entry.file);
 
-    // Check file exists
-    if (!fs.existsSync(filePath)) {
-      return { success: false, message: `Output file '${decl.outputFile}' does not exist` };
+      // Check file exists
+      if (!fs.existsSync(filePath)) {
+        return { success: false, message: `Output file '${entry.file}' does not exist` };
+      }
+
+      // Parse frontmatter
+      const raw = extractFrontmatter(filePath);
+      if (raw === null) {
+        return { success: false, message: `Output file '${entry.file}' has no valid YAML frontmatter` };
+      }
+
+      // Validate against schema
+      if (!Value.Check(entry.schema, raw)) {
+        const errors = [...Value.Errors(entry.schema, raw)];
+        const messages = errors
+          .map((e) => {
+            const field = e.instancePath ? e.instancePath.replace(/^\//, "") : "root";
+            return `Field '${field}': ${e.message}`;
+          })
+          .join("; ");
+        return { success: false, message: `Frontmatter validation failed for '${entry.file}': ${messages}` };
+      }
+    }
+  } else {
+    // Legacy path: iterate FrontmatterSchemaDeclaration[]
+    if (!input || input.length === 0) {
+      return { success: true };
     }
 
-    // Parse frontmatter
-    const raw = extractFrontmatter(filePath);
-    if (raw === null) {
-      return { success: false, message: `Output file '${decl.outputFile}' has no valid YAML frontmatter` };
-    }
+    for (const decl of input) {
+      const filePath = path.join(workingDir, decl.outputFile);
 
-    // Validate against schema
-    if (!Value.Check(decl.schema, raw)) {
-      const errors = [...Value.Errors(decl.schema, raw)];
-      const messages = errors
-        .map((e) => {
-          const field = e.instancePath ? e.instancePath.replace(/^\//, "") : "root";
-          return `Field '${field}': ${e.message}`;
-        })
-        .join("; ");
-      return { success: false, message: `Frontmatter validation failed for '${decl.outputFile}': ${messages}` };
+      // Check file exists
+      if (!fs.existsSync(filePath)) {
+        return { success: false, message: `Output file '${decl.outputFile}' does not exist` };
+      }
+
+      // Parse frontmatter
+      const raw = extractFrontmatter(filePath);
+      if (raw === null) {
+        return { success: false, message: `Output file '${decl.outputFile}' has no valid YAML frontmatter` };
+      }
+
+      // Validate against schema
+      if (!Value.Check(decl.schema, raw)) {
+        const errors = [...Value.Errors(decl.schema, raw)];
+        const messages = errors
+          .map((e) => {
+            const field = e.instancePath ? e.instancePath.replace(/^\//, "") : "root";
+            return `Field '${field}': ${e.message}`;
+          })
+          .join("; ");
+        return { success: false, message: `Frontmatter validation failed for '${decl.outputFile}': ${messages}` };
+      }
     }
   }
 
   return { success: true };
 }
 
+/** Type guard: distinguish CapabilityContract from string[] (old requiredFiles). */
+function isContractSecondArg(input: CapabilityContract | string[]): input is CapabilityContract {
+  return typeof input === "object" && "inputs" in input;
+}
+
 /**
  * Check that required files exist and excluded files do not exist.
+ * Accepts either a CapabilityContract (new) or string[] of required files (legacy).
  *
  * Iterates requiredFiles first (fail-fast on first missing), then
  * excludedFiles (fail-fast on first existing). Returns success only
  * when all checks pass.
  *
- * This is a generic file-existence checker — it does not know anything
- * about goals or state machines. The caller provides the base directory
- * and already-resolved paths.
+ * When receiving a CapabilityContract, paths are resolved via resolvePaths()
+ * using the provided params for placeholder substitution.
  *
  * @param baseDir - Base directory for resolving relative paths
- * @param requiredFiles - Files that must exist (relative paths)
- * @param excludedFiles - Files that must NOT exist (relative paths)
+ * @param input - CapabilityContract (new) or string[] of required files (legacy)
+ * @param paramsOrExcluded - Session params for placeholder resolution (new) or excludedFiles (legacy)
+ * @param excludedOrUnused - Unused in new path; legacy param
  * @returns Success result or failure with descriptive message
  */
 export function validateInputs(
   baseDir: string,
-  requiredFiles: string[],
-  excludedFiles?: string[],
+  input: CapabilityContract | string[],
+  paramsOrExcluded?: Record<string, unknown> | string[],
+  excludedOrUnused?: string[],
 ): { success: boolean; message?: string } {
-  for (const file of requiredFiles) {
-    if (!fs.existsSync(path.join(baseDir, file))) {
-      return { success: false, message: `Required file missing: ${file}` };
-    }
-  }
+  if (isContractSecondArg(input)) {
+    // New path: read from contract.inputs[] and contract.excludedFiles[]
+    const params = (paramsOrExcluded as Record<string, unknown>) || {};
 
-  if (excludedFiles) {
-    for (const file of excludedFiles) {
-      if (fs.existsSync(path.join(baseDir, file))) {
-        return { success: false, message: `File must not exist: ${file}` };
+    // Check required inputs
+    for (const spec of input.inputs) {
+      const resolvedPaths = resolvePaths([spec.file], params);
+      const resolvedFile = resolvedPaths[0];
+      if (!fs.existsSync(path.join(baseDir, resolvedFile))) {
+        return { success: false, message: `Required file missing: ${resolvedFile}` };
+      }
+    }
+
+    // Check excluded files
+    if (input.excludedFiles) {
+      for (const file of input.excludedFiles) {
+        const resolvedPaths = resolvePaths([file], params);
+        const resolvedFile = resolvedPaths[0];
+        if (fs.existsSync(path.join(baseDir, resolvedFile))) {
+          return { success: false, message: `File must not exist: ${resolvedFile}` };
+        }
+      }
+    }
+  } else {
+    // Legacy path: input is requiredFiles (string[]), paramsOrExcluded is excludedFiles
+    const requiredFiles = input;
+    const excludedFiles = paramsOrExcluded as string[] | undefined;
+
+    for (const file of requiredFiles) {
+      if (!fs.existsSync(path.join(baseDir, file))) {
+        return { success: false, message: `Required file missing: ${file}` };
+      }
+    }
+
+    if (excludedFiles) {
+      for (const file of excludedFiles) {
+        if (fs.existsSync(path.join(baseDir, file))) {
+          return { success: false, message: `File must not exist: ${file}` };
+        }
       }
     }
   }
@@ -153,19 +271,19 @@ export function validateInputs(
 
 /**
  * Factory that produces a ready-to-use PostValidateCallback from
- * FrontmatterSchemaDeclaration[].
+ * either a CapabilityContract (new) or FrontmatterSchemaDeclaration[] (legacy).
  *
  * Bridge between frontmatterSchemas declarations and the existing
  * postValidate hook system until the exit-gate integrates schema
- * validation directly (Step 20).
+ * validation directly.
  *
  * Usage in migrated capabilities:
- *   postValidate: createFrontmatterValidator(config.frontmatterSchemas)
+ *   postValidate: createFrontmatterValidator(config.contract)
  */
 export function createFrontmatterValidator(
-  declarations: FrontmatterSchemaDeclaration[],
+  input: CapabilityContract | FrontmatterSchemaDeclaration[],
 ): PostValidateCallback {
-  return (goalDir, _params) => validateFrontmatter(declarations, goalDir);
+  return (goalDir, _params) => validateFrontmatter(input, goalDir);
 }
 
 // ---------------------------------------------------------------------------

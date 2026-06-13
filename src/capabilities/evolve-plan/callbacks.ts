@@ -3,7 +3,6 @@ import * as path from "node:path";
 
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState } from "../../goal-state";
-import { validateInputs } from "../../guards/validation";
 import type { PlanFrontmatter } from "../create-plan/schemas";
 import { CONTRACT } from "./config";
 
@@ -53,12 +52,6 @@ export async function validateEvolveStep(
   | { goalDir: string; ready: false; error: string }
 > {
   const goalDir = resolveGoalDir(cwd, name);
-
-  // Validate inputs via CONTRACT — the single source of truth.
-  const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber });
-  if (!fileCheck.success) {
-    return { goalDir, ready: false, error: fileCheck.message! };
-  }
 
   return { goalDir, ready: true, stepNumber };
 }

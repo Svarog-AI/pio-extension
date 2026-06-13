@@ -376,6 +376,31 @@ describe("validateInputs with CapabilityContract", () => {
     const result = validateInputs(tempDir, contract);
     expect(result).toEqual({ success: true });
   });
+
+  it("unresolved placeholder in input path → failure with descriptive message", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ file: "S{stepNumber:02d}/TASK.md" }],
+      outputs: [],
+    };
+
+    const result = validateInputs(tempDir, contract, {});
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("Unresolved placeholder");
+    expect(result.message).toContain("stepNumber");
+  });
+
+  it("unresolved placeholder in excluded file path → failure with descriptive message", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
+      outputs: [],
+    };
+
+    const result = validateInputs(tempDir, contract, {});
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("Unresolved placeholder");
+    expect(result.message).toContain("stepNumber");
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -139,10 +139,10 @@ describe("config wiring consistency", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Validation — validateRevisePlan preconditions
+// validateRevisePlan — directory resolution
 // ---------------------------------------------------------------------------
 
-describe("validateRevisePlan — rejects invalid states", () => {
+describe("validateRevisePlan", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -151,31 +151,14 @@ describe("validateRevisePlan — rejects invalid states", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("rejects when goal workspace does not exist", async () => {
-    const result = await validateRevisePlan("nonexistent", tempDir);
+  it("resolves goal directory and returns ready", async () => {
+    const goalDir = path.join(tempDir, ".pio", "goals", "my-goal");
+    fs.mkdirSync(goalDir, { recursive: true });
 
-    expect(result.ready).toBe(false);
-    expect(result.error).toMatch(/GOAL\.md/i);
-  });
+    const result = await validateRevisePlan("my-goal", tempDir);
 
-  it("rejects when GOAL.md is missing", async () => {
-    // Create goal dir with PLAN.md but no GOAL.md
-    createGoalTree(tempDir, "no-goal", { withPlan: true });
-
-    const result = await validateRevisePlan("no-goal", tempDir);
-
-    expect(result.ready).toBe(false);
-    expect(result.error).toMatch(/GOAL/i);
-  });
-
-  it("rejects when PLAN.md is missing", async () => {
-    // Create goal dir with GOAL.md but no PLAN.md
-    createGoalTree(tempDir, "no-plan", { withGoal: true });
-
-    const result = await validateRevisePlan("no-plan", tempDir);
-
-    expect(result.ready).toBe(false);
-    expect(result.error).toMatch(/PLAN/i);
+    expect(result.ready).toBe(true);
+    expect(result.goalDir).toBe(goalDir);
   });
 });
 

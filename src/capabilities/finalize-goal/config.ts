@@ -10,7 +10,6 @@ import { resolveCapabilityConfig } from "../../capability-config";
 import { createGoalState } from "../../goal-state";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { validateInputs } from "../../guards/validation";
 
 // ---------------------------------------------------------------------------
 // Contract (single source of truth — imported by callbacks)
@@ -75,11 +74,6 @@ export async function validateFinalizeGoal(
       ready: false,
       error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.`,
     };
-  }
-
-  const fileCheck = validateInputs(goalDir, CONTRACT);
-  if (!fileCheck.success) {
-    return { goalDir, ready: false, error: fileCheck.message! };
   }
 
   const state = createGoalState(goalDir);
@@ -162,7 +156,15 @@ async function handleFinalizeGoal(args: string | undefined, ctx: ExtensionComman
     return;
   }
 
-  await launchCapability(ctx, config);
+  try {
+    await launchCapability(ctx, config);
+  } catch (err) {
+    ctx.ui.notify(
+      `Failed to start ${config.capability}: ${err instanceof Error ? err.message : String(err)}`,
+      "error",
+    );
+    return;
+  }
 }
 
 // ---------------------------------------------------------------------------

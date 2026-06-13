@@ -713,9 +713,13 @@ describe("resolvePaths", () => {
     expect(result).toEqual(["src/a.md", "src/b.md"]);
   });
 
-  it("preserves unknown placeholder as-is", () => {
-    const result = resolvePaths(["{name}/file.md"], { otherKey: "value" });
-    expect(result).toEqual(["{name}/file.md"]);
+  it("throws when placeholder key is missing from params", () => {
+    expect(() => {
+      resolvePaths(["{name}/file.md"], { otherKey: "value" });
+    }).toThrow(/Unresolved placeholder \{name\}/);
+    expect(() => {
+      resolvePaths(["{name}/file.md"], { otherKey: "value" });
+    }).toThrow(/key 'name'/);
   });
 
   it("returns empty array for empty input", () => {
@@ -755,14 +759,41 @@ describe("resolvePaths", () => {
     expect(result).toEqual(["abc/file.md"]);
   });
 
-  it("preserves unknown placeholder with format specifier", () => {
-    const result = resolvePaths(["S{stepNumber:02d}/TASK.md"], { otherKey: "value" });
-    expect(result).toEqual(["S{stepNumber:02d}/TASK.md"]);
+  it("throws when placeholder key is missing (with format specifier)", () => {
+    expect(() => {
+      resolvePaths(["S{stepNumber:02d}/TASK.md"], { otherKey: "value" });
+    }).toThrow(/Unresolved placeholder \{stepNumber:02d\}/);
+    expect(() => {
+      resolvePaths(["S{stepNumber:02d}/TASK.md"], { otherKey: "value" });
+    }).toThrow(/key 'stepNumber'/);
   });
 
   it("mixes plain and formatted placeholders", () => {
     const result = resolvePaths(["{dir}/S{stepNumber:02d}/TASK.md"], { dir: "goals", stepNumber: 3 });
     expect(result).toEqual(["goals/S03/TASK.md"]);
+  });
+
+  it("throws descriptive error naming the missing key", () => {
+    expect(() => {
+      resolvePaths(["S{stepNumber:02d}/TASK.md"], {});
+    }).toThrow(/Unresolved placeholder \{stepNumber:02d\}/);
+    expect(() => {
+      resolvePaths(["S{stepNumber:02d}/TASK.md"], {});
+    }).toThrow(/key 'stepNumber'/);
+  });
+
+  it("throws when one of multiple paths has unresolved placeholder", () => {
+    expect(() => {
+      resolvePaths(["GOAL.md", "S{stepNumber:02d}/TASK.md"], {});
+    }).toThrow(/Unresolved placeholder \{stepNumber:02d\}/);
+  });
+
+  it("does not throw when all placeholders resolved across multiple paths", () => {
+    const result = resolvePaths(
+      ["GOAL.md", "S{stepNumber:02d}/TASK.md"],
+      { stepNumber: 3 },
+    );
+    expect(result).toEqual(["GOAL.md", "S03/TASK.md"]);
   });
 });
 

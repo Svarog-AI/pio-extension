@@ -111,7 +111,15 @@ async function handleRevisePlan(args: string | undefined, ctx: ExtensionCommandC
     return;
   }
 
-  await launchCapability(ctx, config);
+  try {
+    await launchCapability(ctx, config);
+  } catch (err) {
+    ctx.ui.notify(
+      `Failed to start ${config.capability}: ${err instanceof Error ? err.message : String(err)}`,
+      "error",
+    );
+    return;
+  }
 }
 
 // ---------------------------------------------------------------------------

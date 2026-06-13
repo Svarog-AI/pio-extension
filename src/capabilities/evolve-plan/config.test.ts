@@ -335,10 +335,10 @@ function createGoalTreeWithFrontmatter(
 }
 
 // ---------------------------------------------------------------------------
-// validateEvolveStep — pre-launch validation
+// validateEvolveStep — directory resolution
 // ---------------------------------------------------------------------------
 
-describe("validateEvolveStep — pre-launch validation", () => {
+describe("validateEvolveStep", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -347,64 +347,16 @@ describe("validateEvolveStep — pre-launch validation", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("returns ready: true when PLAN.md exists", async () => {
-    // Arrange: goal dir with PLAN.md
-    const goalDir = path.join(tempDir, ".pio", "goals", "ready-goal");
+  it("resolves goal directory and returns ready with stepNumber", async () => {
+    const goalDir = path.join(tempDir, ".pio", "goals", "my-goal");
     fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n", "utf-8");
 
-    // Act
-    const result = await validateEvolveStep("ready-goal", tempDir, 1);
+    const result = await validateEvolveStep("my-goal", tempDir, 3);
 
-    // Assert
     expect(result.ready).toBe(true);
     if (result.ready) {
-      expect(result.stepNumber).toBe(1);
-    }
-  });
-
-  it("returns error when PLAN.md is missing", async () => {
-    // Arrange: goal dir exists but no PLAN.md
-    const goalDir = path.join(tempDir, ".pio", "goals", "no-plan");
-    fs.mkdirSync(goalDir, { recursive: true });
-
-    // Act
-    const result = await validateEvolveStep("no-plan", tempDir, 1);
-
-    // Assert: ready is false, error mentions PLAN.md
-    expect(result.ready).toBe(false);
-    if (!result.ready) {
-      expect(result.error).toMatch(/PLAN\.md/i);
-    }
-  });
-
-  it("returns error when goal workspace does not exist", async () => {
-    // Act
-    const result = await validateEvolveStep("nonexistent", tempDir, 1);
-
-    // Assert: CONTRACT validation reports the first missing input (PLAN.md)
-    expect(result.ready).toBe(false);
-    if (!result.ready) {
-      expect(result.error).toMatch(/PLAN\.md/i);
-    }
-  });
-
-  it("returns error when REVISE_PLAN_NEEDED marker exists", async () => {
-    // Arrange: goal dir with PLAN.md and S01/REVISE_PLAN_NEEDED
-    const goalDir = path.join(tempDir, ".pio", "goals", "revision-needed");
-    fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n", "utf-8");
-    const s01Dir = path.join(goalDir, "S01");
-    fs.mkdirSync(s01Dir, { recursive: true });
-    fs.writeFileSync(path.join(s01Dir, "REVISE_PLAN_NEEDED"), "", "utf-8");
-
-    // Act
-    const result = await validateEvolveStep("revision-needed", tempDir, 1);
-
-    // Assert: ready is false, error mentions REVISE_PLAN_NEEDED
-    expect(result.ready).toBe(false);
-    if (!result.ready) {
-      expect(result.error).toMatch(/REVISE_PLAN_NEEDED|must not exist/i);
+      expect(result.goalDir).toBe(goalDir);
+      expect(result.stepNumber).toBe(3);
     }
   });
 });

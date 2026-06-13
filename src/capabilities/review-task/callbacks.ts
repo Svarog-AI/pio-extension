@@ -3,7 +3,6 @@ import * as path from "node:path";
 
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState, type StepStatus } from "../../goal-state";
-import { validateInputs } from "../../guards/validation";
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
 import { CONTRACT } from "./config";
 
@@ -157,12 +156,6 @@ export async function validateReviewStep(
   | { goalDir: string; ready: false; error: string }
 > {
   const goalDir = resolveGoalDir(cwd, name);
-
-  // Validate inputs via CONTRACT — the single source of truth.
-  const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber });
-  if (!fileCheck.success) {
-    return { goalDir, ready: false, error: fileCheck.message! };
-  }
 
   return { goalDir, ready: true, stepNumber };
 }

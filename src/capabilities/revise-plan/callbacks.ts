@@ -3,7 +3,6 @@ import * as path from "node:path";
 
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState } from "../../goal-state";
-import { validateInputs } from "../../guards/validation";
 import { CONTRACT } from "./config";
 
 // ---------------------------------------------------------------------------
@@ -28,11 +27,6 @@ export async function validateRevisePlan(
   cwd: string,
 ): Promise<{ goalDir: string; ready: boolean; error?: string }> {
   const goalDir = resolveGoalDir(cwd, name);
-
-  const fileCheck = validateInputs(goalDir, CONTRACT);
-  if (!fileCheck.success) {
-    return { goalDir, ready: false, error: fileCheck.message! };
-  }
 
   return { goalDir, ready: true };
 }

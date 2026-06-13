@@ -153,22 +153,13 @@ describe("execute-plan tool execute — pre-launch validation", () => {
     expect(result.content[0].text).toMatch(/does not exist/i);
   });
 
-  it("returns error when GOAL.md is missing", async () => {
-    createGoalTree(tempDir, "no-goal", { withGoal: false, withPlan: true });
+  it("enqueues task when goal workspace exists", async () => {
+    createGoalTree(tempDir, "valid", { withGoal: true, withPlan: true });
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { name: "no-goal" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-id", { name: "valid" }, undefined, undefined, makeCtx(tempDir));
 
-    expect(result.content[0].text).toMatch(/GOAL\.md/i);
-  });
-
-  it("returns error when PLAN.md is missing", async () => {
-    createGoalTree(tempDir, "no-plan", { withGoal: true, withPlan: false });
-
-    const tool = getTool();
-    const result = await tool.execute("test-id", { name: "no-plan" }, undefined, undefined, makeCtx(tempDir));
-
-    expect(result.content[0].text).toMatch(/PLAN\.md/i);
+    expect(result.content[0].text).toContain("queued");
   });
 });
 

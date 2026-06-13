@@ -10,7 +10,6 @@ import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { createGoalState } from "../../goal-state";
-import { validateInputs } from "../../guards/validation";
 import { type PlanFrontmatter, PLAN_FRONTMATTER_SCHEMA } from "./schemas";
 
 // ---------------------------------------------------------------------------
@@ -151,11 +150,6 @@ async function validateGoal(name: string, cwd: string): Promise<{ goalDir: strin
     return { goalDir, ready: false, error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.` };
   }
 
-  const fileCheck = validateInputs(goalDir, CONTRACT);
-  if (!fileCheck.success) {
-    return { goalDir, ready: false, error: fileCheck.message! };
-  }
-
   return { goalDir, ready: true };
 }
 
@@ -213,7 +207,15 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
     ctx.ui.notify("Failed to resolve create-plan config.", "error");
     return;
   }
-  await launchCapability(ctx, config);
+  try {
+    await launchCapability(ctx, config);
+  } catch (err) {
+    ctx.ui.notify(
+      `Failed to start ${config.capability}: ${err instanceof Error ? err.message : String(err)}`,
+      "error",
+    );
+    return;
+  }
 }
 
 // ---------------------------------------------------------------------------

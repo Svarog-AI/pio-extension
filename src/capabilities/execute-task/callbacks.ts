@@ -1,5 +1,4 @@
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
-import { validateInputs } from "../../guards/validation";
 import { CONTRACT } from "./config";
 
 // ---------------------------------------------------------------------------
@@ -36,12 +35,6 @@ export async function validateExecuteStep(
   | { goalDir: string; ready: false; error: string }
 > {
   const goalDir = resolveGoalDir(cwd, name);
-
-  // Validate inputs via CONTRACT — the single source of truth.
-  const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber });
-  if (!fileCheck.success) {
-    return { goalDir, ready: false, error: fileCheck.message! };
-  }
 
   return { goalDir, ready: true, stepNumber };
 }

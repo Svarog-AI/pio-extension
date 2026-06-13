@@ -171,24 +171,28 @@ export function validateInputs(
 ): { success: boolean; message?: string } {
   const resolvedParams = params || {};
 
-  // Check required inputs
-  for (const spec of contract.inputs) {
-    const resolvedPaths = resolvePaths([spec.file], resolvedParams);
-    const resolvedFile = resolvedPaths[0];
-    if (!fs.existsSync(path.join(baseDir, resolvedFile))) {
-      return { success: false, message: `Required file missing: ${resolvedFile}` };
-    }
-  }
-
-  // Check excluded files
-  if (contract.excludedFiles) {
-    for (const file of contract.excludedFiles) {
-      const resolvedPaths = resolvePaths([file], resolvedParams);
+  try {
+    // Check required inputs
+    for (const spec of contract.inputs) {
+      const resolvedPaths = resolvePaths([spec.file], resolvedParams);
       const resolvedFile = resolvedPaths[0];
-      if (fs.existsSync(path.join(baseDir, resolvedFile))) {
-        return { success: false, message: `File must not exist: ${resolvedFile}` };
+      if (!fs.existsSync(path.join(baseDir, resolvedFile))) {
+        return { success: false, message: `Required file missing: ${resolvedFile}` };
       }
     }
+
+    // Check excluded files
+    if (contract.excludedFiles) {
+      for (const file of contract.excludedFiles) {
+        const resolvedPaths = resolvePaths([file], resolvedParams);
+        const resolvedFile = resolvedPaths[0];
+        if (fs.existsSync(path.join(baseDir, resolvedFile))) {
+          return { success: false, message: `File must not exist: ${resolvedFile}` };
+        }
+      }
+    }
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : String(err) };
   }
 
   return { success: true };

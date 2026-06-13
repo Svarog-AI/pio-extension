@@ -60,7 +60,7 @@ export function resolvePaths(
   paths: string[],
   params: Record<string, unknown>,
 ): string[] {
-  return paths.map((p) =>
+  const results = paths.map((p) =>
     p.replace(/\{(\w+)(?::([^}]+))?\}/g, (_match, key, formatSpec) => {
       const value = params[key];
       if (value === undefined || value === null) return `{${key}${formatSpec ? ":" + formatSpec : ""}}`;
@@ -75,6 +75,19 @@ export function resolvePaths(
       return String(value);
     }),
   );
+
+  // Fail fast: detect any remaining unresolved placeholders
+  const unresolved = results.find((r) => r.match(/\{\w+(?::[^}]+)?\}/));
+  if (unresolved !== undefined) {
+    const match = unresolved.match(/\{(\w+)(?::[^}]+)?\}/);
+    const placeholder = match?.[0] ?? "unknown";
+    const keyName = match?.[1] ?? "unknown";
+    throw new Error(
+      `Unresolved placeholder ${placeholder} in path. Ensure session params include key '${keyName}'.`,
+    );
+  }
+
+  return results;
 }
 
 // ---------------------------------------------------------------------------

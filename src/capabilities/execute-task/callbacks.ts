@@ -80,12 +80,9 @@ export async function validateAndFindNextStep(
   }
 
   // Validate goal workspace prerequisites (GOAL.md, PLAN.md) before step discovery.
-  // Use only non-placeholder inputs — step-specific files (S{stepNumber:02d}/TASK.md)
-  // are validated after the step number is known.
-  const planCheck = validateInputs(goalDir, {
-    inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }],
-    outputs: [],
-  });
+  // validateInputs skips inputs with unresolved placeholders — step-specific files
+  // (S{stepNumber:02d}/TASK.md) are validated after the step number is known.
+  const planCheck = validateInputs(goalDir, CONTRACT);
   if (!planCheck.success) {
     return { goalDir, ready: false, error: planCheck.message! };
   }

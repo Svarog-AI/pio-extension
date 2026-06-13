@@ -157,7 +157,10 @@ export function validateFrontmatter(
  * when all checks pass.
  *
  * Paths are resolved via resolvePaths() using the provided params for
- * placeholder substitution.
+ * placeholder substitution. Inputs and excluded files with unresolved
+ * placeholder tokens (e.g. `S{stepNumber:02d}/TASK.md` when stepNumber
+ * is not provided) are silently skipped — this allows the full CONTRACT
+ * to be used before all params are known (e.g., before step discovery).
  *
  * @param baseDir - Base directory for resolving relative paths
  * @param contract - CapabilityContract with inputs and excludedFiles
@@ -175,6 +178,12 @@ export function validateInputs(
   for (const spec of contract.inputs) {
     const resolvedPaths = resolvePaths([spec.file], resolvedParams);
     const resolvedFile = resolvedPaths[0];
+
+    // Skip inputs with unresolved placeholders — they can't be validated yet.
+    // This allows the full CONTRACT to be used before all params are known
+    // (e.g., before step discovery in execute-task's validateAndFindNextStep).
+    if (resolvedFile.includes("{")) continue;
+
     if (!fs.existsSync(path.join(baseDir, resolvedFile))) {
       return { success: false, message: `Required file missing: ${resolvedFile}` };
     }
@@ -185,6 +194,10 @@ export function validateInputs(
     for (const file of contract.excludedFiles) {
       const resolvedPaths = resolvePaths([file], resolvedParams);
       const resolvedFile = resolvedPaths[0];
+
+      // Skip excluded files with unresolved placeholders.
+      if (resolvedFile.includes("{")) continue;
+
       if (fs.existsSync(path.join(baseDir, resolvedFile))) {
         return { success: false, message: `File must not exist: ${resolvedFile}` };
       }

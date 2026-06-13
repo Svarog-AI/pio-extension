@@ -723,6 +723,7 @@ describe("pio_mark_complete — queue key propagation", () => {
     const ctx = makeToolContext({
       capability: "finalize-goal",
       workingDir: path.join(tempDir, ".pio", "goals", "child"),
+      contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "child" },
     });
 
@@ -752,6 +753,7 @@ describe("pio_mark_complete — queue key propagation", () => {
     const ctx = makeToolContext({
       capability: "execute-task",
       workingDir: path.join(tempDir, ".pio", "goals", "my-feature"),
+      contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "my-feature" },
     });
 
@@ -781,6 +783,7 @@ describe("pio_mark_complete — queue key propagation", () => {
     const ctx = makeToolContext({
       capability: "finalize-goal",
       workingDir: path.join(tempDir, ".pio", "goals", "nested"),
+      contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "nested", parentGoalName: "parent", parentStepNumber: 3 },
     });
 

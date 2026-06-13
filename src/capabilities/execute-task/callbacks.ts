@@ -15,21 +15,8 @@ const TEST_FILE = "TEST.md";
 const SUMMARY_FILE = "SUMMARY.md";
 
 // ---------------------------------------------------------------------------
-// Validation callbacks (used by config.ts and resolveCapabilityConfig)
+// Config callbacks (used by config.ts and resolveCapabilityConfig)
 // ---------------------------------------------------------------------------
-
-/**
- * Callback used by the `validation` field in config.
- * Returns `{ files: string[] }` with TEST.md and SUMMARY.md for the given step.
- */
-export function resolveExecuteValidation(_workingDir: string, params?: Record<string, unknown>): { files: string[] } {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-  if (stepNumber == null) {
-    throw new Error("stepNumber is required for execute-task. Ensure the task was enqueued with a valid step number.");
-  }
-  const folder = stepFolderName(stepNumber);
-  return { files: [`${folder}/${TEST_FILE}`, `${folder}/${SUMMARY_FILE}`] };
-}
 
 /**
  * Callback used by the `readOnlyFiles` field in config.

@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { validateOutputs } from "../../guards/validation";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { validateAndFindNextStep } from "./callbacks";
+import type { CapabilityContract, MarkdownFileSpec } from "../../types";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -58,10 +59,13 @@ describe("validateOutputs with COMPLETED at baseDir", () => {
     // Arrange: temp dir with COMPLETED file but no TASK.md/TEST.md
     fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
 
-    const rules = { files: ["TASK.md", "TEST.md"] };
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ file: "TASK.md" }, { file: "TEST.md" }],
+    };
 
     // Act
-    const result = validateOutputs(rules, tempDir);
+    const result = validateOutputs(contract, tempDir);
 
     // Assert
     expect(result).toEqual({ passed: true, missing: [] });
@@ -71,10 +75,13 @@ describe("validateOutputs with COMPLETED at baseDir", () => {
     // Arrange: temp dir with COMPLETED
     fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
 
-    const rules = { files: ["COMPLETED"] };
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ file: "COMPLETED" }],
+    };
 
     // Act
-    const result = validateOutputs(rules, tempDir);
+    const result = validateOutputs(contract, tempDir);
 
     // Assert
     expect(result).toEqual({ passed: true, missing: [] });
@@ -82,10 +89,13 @@ describe("validateOutputs with COMPLETED at baseDir", () => {
 
   it("fails normally when COMPLETED does not exist and expected files are missing", () => {
     // Arrange: temp dir with no COMPLETED, no TASK.md
-    const rules = { files: ["TASK.md"] };
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ file: "TASK.md" }],
+    };
 
     // Act
-    const result = validateOutputs(rules, tempDir);
+    const result = validateOutputs(contract, tempDir);
 
     // Assert
     expect(result.passed).toBe(false);
@@ -98,10 +108,13 @@ describe("validateOutputs with COMPLETED at baseDir", () => {
     fs.mkdirSync(s01Dir, { recursive: true });
     fs.writeFileSync(path.join(s01Dir, "COMPLETED"), "", "utf-8");
 
-    const rules = { files: ["S01/TASK.md"] };
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ file: "S01/TASK.md" }],
+    };
 
     // Act
-    const result = validateOutputs(rules, tempDir);
+    const result = validateOutputs(contract, tempDir);
 
     // Assert: fails normally (short-circuit only for baseDir/COMPLETED, not subfolder)
     expect(result.passed).toBe(false);
@@ -194,10 +207,10 @@ describe("REVISE_PLAN_NEEDED marker filename consistency", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolveEvolveValidation — DECISIONS.md for step > 1
+// contract.outputs — DECISIONS.md requiredWhen for step > 1
 // ---------------------------------------------------------------------------
 
-describe("resolveEvolveValidation with DECISIONS_FILE", () => {
+describe("contract.outputs with DECISIONS_FILE requiredWhen", () => {
   it("excludes DECISIONS.md for stepNumber=1", async () => {
     // Arrange: step 1 should produce only TASK.md
     const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1 };
@@ -205,8 +218,12 @@ describe("resolveEvolveValidation with DECISIONS_FILE", () => {
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: exactly 1 file, no DECISIONS.md, no TEST.md
-    expect(result?.validation?.files).toEqual(["S01/TASK.md"]);
+    // Assert: contract.outputs has requiredWhen predicate for DECISIONS.md
+    const decisionsEntry = result?.contract.outputs.find(
+      (e: any) => "file" in e && e.file.includes("DECISIONS.md"),
+    ) as MarkdownFileSpec | undefined;
+    expect(decisionsEntry).toBeDefined();
+    expect(decisionsEntry!.requiredWhen!(params)).toBe(false);
   });
 
   it("includes DECISIONS.md for stepNumber=2", async () => {
@@ -216,8 +233,12 @@ describe("resolveEvolveValidation with DECISIONS_FILE", () => {
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: exactly 2 files, DECISIONS.md is last, no TEST.md
-    expect(result?.validation?.files).toEqual(["S02/TASK.md", "S02/DECISIONS.md"]);
+    // Assert: requiredWhen returns true for step > 1
+    const decisionsEntry = result?.contract.outputs.find(
+      (e: any) => "file" in e && e.file.includes("DECISIONS.md"),
+    ) as MarkdownFileSpec | undefined;
+    expect(decisionsEntry).toBeDefined();
+    expect(decisionsEntry!.requiredWhen!(params)).toBe(true);
   });
 
   it("includes DECISIONS.md for stepNumber=3", async () => {
@@ -227,9 +248,12 @@ describe("resolveEvolveValidation with DECISIONS_FILE", () => {
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: contains S03/DECISIONS.md, total length is 2, no TEST.md
-    expect(result?.validation?.files).toContain("S03/DECISIONS.md");
-    expect(result?.validation?.files?.length).toBe(2);
+    // Assert: requiredWhen returns true for step > 1
+    const decisionsEntry = result?.contract.outputs.find(
+      (e: any) => "file" in e && e.file.includes("DECISIONS.md"),
+    ) as MarkdownFileSpec | undefined;
+    expect(decisionsEntry).toBeDefined();
+    expect(decisionsEntry!.requiredWhen!(params)).toBe(true);
   });
 });
 
@@ -404,10 +428,10 @@ describe("validateAndFindNextStep with COMPLETED marker", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolveEvolveValidation — TEST.md excluded
+// contract.outputs — TEST.md excluded
 // ---------------------------------------------------------------------------
 
-describe("resolveEvolveValidation excludes TEST.md", () => {
+describe("contract.outputs excludes TEST.md", () => {
   it("excludes TEST.md for stepNumber=1", async () => {
     // Arrange: step 1 validation
     const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1 };
@@ -415,8 +439,12 @@ describe("resolveEvolveValidation excludes TEST.md", () => {
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: validation files equals ["S01/TASK.md"] exactly
-    expect(result?.validation?.files).toEqual(["S01/TASK.md"]);
+    // Assert: contract.outputs file paths (resolved) equal ["S01/TASK.md"] exactly
+    const outputFiles = result?.contract.outputs
+      .filter((e: any) => "file" in e)
+      .map((e: any) => e.file.replace("S{stepNumber:02d}", "S01"));
+    expect(outputFiles).toContain("S01/TASK.md");
+    expect(outputFiles).not.toContain("S01/TEST.md");
   });
 
   it("excludes TEST.md for stepNumber=2", async () => {
@@ -426,8 +454,11 @@ describe("resolveEvolveValidation excludes TEST.md", () => {
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: no TEST.md in validation files
-    expect(result?.validation?.files).not.toContain("S02/TEST.md");
+    // Assert: no TEST.md in contract.outputs
+    const outputFiles = result?.contract.outputs
+      .filter((e: any) => "file" in e)
+      .map((e: any) => e.file.replace("S{stepNumber:02d}", "S02"));
+    expect(outputFiles).not.toContain("S02/TEST.md");
   });
 });
 

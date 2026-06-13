@@ -9,7 +9,8 @@ import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { validateAndFindNextStep, resolveEvolveValidation, resolveEvolveWriteAllowlist } from "./callbacks";
+import { TASK_FRONTMATTER_SCHEMA } from "./schemas";
+import { validateAndFindNextStep, resolveEvolveWriteAllowlist } from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
@@ -17,14 +18,18 @@ import { validateAndFindNextStep, resolveEvolveValidation, resolveEvolveWriteAll
 
 const capabilityConfig = {
   capability: "evolve-plan",
-  validation: resolveEvolveValidation,
+  contract: {
+    inputs: [{ file: "PLAN.md" }],
+    excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
+    outputs: [
+      { file: "S{stepNumber:02d}/TASK.md", schema: TASK_FRONTMATTER_SCHEMA },
+      { file: "S{stepNumber:02d}/DECISIONS.md", requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1 },
+    ],
+  },
   writeAllowlist: resolveEvolveWriteAllowlist,
-  inputValidation: { requiredFiles: ["PLAN.md"] },
   skills: {
     mandatory: ["pio-planning", "grill-me"],
   },
-  // NOTE: frontmatterSchemas omitted — TASK.md is step-relative (S{NN}/TASK.md)
-  // and the exit-gate resolves paths against workingDir (goal root).
   defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
     const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
     if (stepNumber == null) {

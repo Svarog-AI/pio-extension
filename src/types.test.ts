@@ -102,6 +102,7 @@ describe("CapabilityConfig — skills field", () => {
     // Arrange + Act
     const config: CapabilityConfig = {
       capability: "create-plan",
+      contract: { inputs: [], outputs: [] },
       skills: {
         mandatory: ["pio-planning", "grill-me"],
         recommended: [
@@ -120,6 +121,7 @@ describe("CapabilityConfig — skills field", () => {
     // Arrange + Act
     const config: CapabilityConfig = {
       capability: "create-goal",
+      contract: { inputs: [], outputs: [] },
     };
 
     // Assert
@@ -130,6 +132,7 @@ describe("CapabilityConfig — skills field", () => {
     // Arrange + Act
     const config: CapabilityConfig = {
       capability: "create-goal",
+      contract: { inputs: [], outputs: [] },
       skills: {
         recommended: [
           { name: "source-research", condition: "when researching external libraries" },
@@ -171,10 +174,9 @@ describe("unified contract types", () => {
       ],
     };
 
-    // Wire contract into CapabilityConfig alongside old fields (migration coexistence)
+    // Wire contract into CapabilityConfig
     const config: CapabilityConfig = {
       capability: "evolve-plan",
-      validation: { files: ["S{stepNumber:02d}/TASK.md"] },
       contract,
     };
 
@@ -188,22 +190,22 @@ describe("unified contract types", () => {
     const oneOf = contract.outputs[2] as OneOfGroup;
     expect(oneOf.files).toHaveLength(2);
 
-    // Assert: contract coexists with old fields on CapabilityConfig
+    // Assert: contract is set on CapabilityConfig
     expect(config.contract).toBe(contract);
-    expect(config.validation).toBeDefined();
   });
 });
 
 // ---------------------------------------------------------------------------
-// CapabilityConfig — contract field (optional, backward-compatible)
+// CapabilityConfig — contract field (mandatory)
 // ---------------------------------------------------------------------------
 
 describe("CapabilityConfig — contract field", () => {
-  it("contract field is optional — config without contract is valid", () => {
-    // TODO(contracts-frontmatter Step 3): DELETE this test — contract becomes mandatory, old fields are removed
+  it("contract field is mandatory — config must have contract", () => {
+    // contract is now required — this compiles only because contract is present
     const config: CapabilityConfig = {
       capability: "create-goal",
+      contract: { inputs: [], outputs: [] },
     };
-    expect(config.contract).toBeUndefined();
+    expect(config.contract).toBeDefined();
   });
 });

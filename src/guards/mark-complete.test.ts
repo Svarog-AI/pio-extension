@@ -118,7 +118,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             data: {
               capability: "execute-task",
               workingDir: tempDir,
-              validation: { files: ["missing.md"] },
+              contract: { inputs: [], outputs: [{ file: "missing.md" }] },
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
             },
           },
@@ -147,7 +147,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             data: {
               capability: "execute-task",
               workingDir: tempDir,
-              validation: { files: [] },
+              contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
             },
@@ -177,7 +177,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             data: {
               capability: "execute-task",
               workingDir: tempDir,
-              validation: { files: [] },
+              contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
             },
@@ -210,7 +210,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             data: {
               capability: "execute-task",
               workingDir: tempDir,
-              validation: { files: [] },
+              contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
             },
@@ -246,7 +246,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             data: {
               capability: "review-task",
               workingDir: tempDir,
-              validation: { files: [] },
+              contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
             },
@@ -286,7 +286,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             data: {
               capability: "finalize-goal",
               workingDir: tempDir,
-              validation: { files: [] },
+              contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
             },
@@ -334,7 +334,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             data: {
               capability: "execute-task",
               workingDir: tempDir,
-              validation: { files: [] },
+              contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               postExecute: postExecuteMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
@@ -372,7 +372,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             data: {
               capability: "execute-task",
               workingDir: tempDir,
-              validation: { files: [] },
+              contract: { inputs: [], outputs: [] },
               postValidate: vi.fn().mockReturnValue({ success: true }),
               postExecute: postExecuteMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
@@ -409,7 +409,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             data: {
               capability: "execute-task",
               workingDir: tempDir,
-              validation: { files: [] },
+              contract: { inputs: [], outputs: [] },
               postValidate: vi.fn().mockReturnValue({ success: true }),
               fileCleanup: [cleanupFilePath],
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
@@ -476,7 +476,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             data: {
               capability: "execute-task",
               workingDir: tempDir,
-              validation: { files: [] },
+              contract: { inputs: [], outputs: [] },
               postValidate: vi.fn().mockReturnValue({ success: true }),
               sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development" },
             },
@@ -513,7 +513,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             data: {
               capability: "execute-task",
               workingDir: tempDir,
-              validation: { files: [] },
+              contract: { inputs: [], outputs: [] },
               postValidate: vi.fn().mockReturnValue({ success: true }),
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
               // No stateMachineId
@@ -552,7 +552,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             data: {
               capability: "execute-task",
               workingDir: tempDir,
-              validation: { files: [] },
+              contract: { inputs: [], outputs: [] },
               postValidate: vi.fn().mockReturnValue({ success: true }),
               sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "unknown-machine" },
             },
@@ -590,7 +590,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             data: {
               capability: "execute-task",
               workingDir: tempDir,
-              validation: { files: [] },
+              contract: { inputs: [], outputs: [] },
               postValidate: vi.fn().mockReturnValue({ success: true }),
               sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development" },
             },
@@ -632,7 +632,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             data: {
               capability: "execute-task",
               workingDir: tempDir,
-              validation: { files: [] },
+              contract: { inputs: [], outputs: [] },
               postValidate: vi.fn().mockReturnValue({ success: true }),
               sessionParams,
             },
@@ -705,7 +705,7 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
     cleanup(tempDir);
   });
 
-  it("validates frontmatterSchemas after file validation passes, before postValidate", async () => {
+  it("validates frontmatter after file validation passes, before postValidate", async () => {
     const callOrder: string[] = [];
 
     mockValidateFrontmatter.mockImplementation(() => {
@@ -731,8 +731,7 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
             data: {
               capability: "create-plan",
               workingDir: tempDir,
-              validation: { files: [] },
-              frontmatterSchemas: [{ outputFile: "PLAN.md", schema: {} }],
+              contract: { inputs: [], outputs: [{ file: "PLAN.md", schema: {} }] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
             },
@@ -745,8 +744,9 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
 
     expect(callOrder).toEqual(["validateFrontmatter", "postValidate"]);
     expect(mockValidateFrontmatter).toHaveBeenCalledWith(
-      [{ outputFile: "PLAN.md", schema: {} }],
+      { inputs: [], outputs: [{ file: "PLAN.md", schema: {} }] },
       tempDir,
+      { goalName: "test-goal", stepNumber: 1 },
     );
   });
 
@@ -767,8 +767,7 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
             data: {
               capability: "create-plan",
               workingDir: tempDir,
-              validation: { files: [] },
-              frontmatterSchemas: [{ outputFile: "PLAN.md", schema: {} }],
+              contract: { inputs: [], outputs: [{ file: "PLAN.md", schema: {} }] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
             },
@@ -786,7 +785,7 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
     expect(mockDispatch).not.toHaveBeenCalled();
   });
 
-  it("skips frontmatter validation when frontmatterSchemas is not defined", async () => {
+  it("validates frontmatter with contract (always called)", async () => {
     const postValidateMock = vi.fn().mockReturnValue({ success: true });
 
     mockDispatch.mockReturnValue(
@@ -802,8 +801,7 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
             data: {
               capability: "execute-task",
               workingDir: tempDir,
-              validation: { files: [] },
-              // No frontmatterSchemas
+              contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
             },
@@ -814,11 +812,12 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
 
     await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
 
-    expect(mockValidateFrontmatter).not.toHaveBeenCalled();
+    // validateFrontmatter is always called with contract
+    expect(mockValidateFrontmatter).toHaveBeenCalled();
     expect(postValidateMock).toHaveBeenCalled();
   });
 
-  it("skips frontmatter validation when frontmatterSchemas is empty array", async () => {
+  it("validates frontmatter with contract (empty outputs)", async () => {
     const postValidateMock = vi.fn().mockReturnValue({ success: true });
 
     mockDispatch.mockReturnValue(
@@ -834,8 +833,7 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
             data: {
               capability: "create-plan",
               workingDir: tempDir,
-              validation: { files: [] },
-              frontmatterSchemas: [],
+              contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
             },
@@ -846,7 +844,8 @@ describe("pio_mark_complete — frontmatterSchemas validation", () => {
 
     await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
 
-    expect(mockValidateFrontmatter).not.toHaveBeenCalled();
+    // validateFrontmatter is always called with contract
+    expect(mockValidateFrontmatter).toHaveBeenCalled();
     expect(postValidateMock).toHaveBeenCalled();
   });
 });

@@ -16,10 +16,13 @@ import { validateInputs } from "../../guards/validation";
 
 const capabilityConfig = {
   capability: "execute-plan",
+  contract: {
+    inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }],
+    outputs: [],
+  },
   skills: {
     mandatory: ["tdd", "pio-git"],
   },
-  inputValidation: { requiredFiles: ["GOAL.md", "PLAN.md"] },
   defaultInitialMessage: (workingDir: string, _params?: Record<string, unknown>) => {
     return `Goal workspace is at ${workingDir}. GOAL.md and PLAN.md exist. Implement all steps from PLAN.md in this session.`;
   },

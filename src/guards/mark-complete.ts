@@ -33,32 +33,17 @@ export const markCompleteTool = defineTool({
       return { content: [{ type: "text", text: "No directory is defined for this session. Something went wrong." }], details: {}, terminate: true };
     }
 
-    // 1. File-existence validation (prefer contract; fall back to old fields during migration)
-    if (config.contract) {
-      const outputsResult = validateOutputs(config.contract, dir, config.sessionParams);
+    // 1. File-existence validation
+    const outputsResult = validateOutputs(config.contract, dir, config.sessionParams);
 
-      if (!outputsResult.passed) {
-        return { content: [{ type: "text", text: `Validation failed. Missing files:\n- ${outputsResult.missing.join("\n- ")}\n\nProduce these files and call pio_mark_complete again.` }], details: {} };
-      }
-
-      const fmResult = validateFrontmatter(config.contract, dir);
-      if (!fmResult.success) {
-        return { content: [{ type: "text", text: `Frontmatter validation failed: ${fmResult.message}` }], details: {} };
-      }
-    } else if (config.validation) {
-      const result = validateOutputs(config.validation, dir);
-
-      if (!result.passed) {
-        return { content: [{ type: "text", text: `Validation failed. Missing files:\n- ${result.missing.join("\n- ")}\n\nProduce these files and call pio_mark_complete again.` }], details: {} };
-      }
+    if (!outputsResult.passed) {
+      return { content: [{ type: "text", text: `Validation failed. Missing files:\n- ${outputsResult.missing.join("\n- ")}\n\nProduce these files and call pio_mark_complete again.` }], details: {} };
     }
 
-    // 1.5 Frontmatter schema validation (legacy path — only when contract not present)
-    if (!config.contract && config.frontmatterSchemas && config.frontmatterSchemas.length > 0) {
-      const fmResult = validateFrontmatter(config.frontmatterSchemas, dir);
-      if (!fmResult.success) {
-        return { content: [{ type: "text", text: `Frontmatter validation failed: ${fmResult.message}` }], details: {} };
-      }
+    // 1.5 Frontmatter schema validation
+    const fmResult = validateFrontmatter(config.contract, dir, config.sessionParams);
+    if (!fmResult.success) {
+      return { content: [{ type: "text", text: `Frontmatter validation failed: ${fmResult.message}` }], details: {} };
     }
 
     // 2. PostValidate hook — can fail to keep agent in session

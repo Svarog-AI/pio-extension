@@ -47,10 +47,11 @@ describe("config", () => {
     expect(config.capability).toBe("execute-plan");
   });
 
-  it("inputValidation requires GOAL.md and PLAN.md", () => {
-    expect(config.inputValidation).toEqual({
-      requiredFiles: ["GOAL.md", "PLAN.md"],
-    });
+  it("contract inputs requires GOAL.md and PLAN.md", () => {
+    expect(config.contract.inputs).toEqual([
+      { file: "GOAL.md" },
+      { file: "PLAN.md" },
+    ]);
   });
 });
 

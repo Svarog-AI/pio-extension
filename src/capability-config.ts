@@ -1,5 +1,5 @@
-import type { CapabilityConfig, CapabilityContract, ConfigCallback, InputValidationSpec, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback, ValidationRule } from "./types";
-import type { CapabilityPackageConfig, FrontmatterSchemaDeclaration, CapabilitySkills } from "./capability-package";
+import type { CapabilityConfig, CapabilityContract, ConfigCallback, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback } from "./types";
+import type { CapabilityPackageConfig, CapabilitySkills } from "./capability-package";
 import {
   resolveGoalDir,
   deriveSessionName,
@@ -129,7 +129,6 @@ function buildCapabilityConfig(
   cap: string,
   prompt: string | undefined,
   workingDir: string,
-  validation: ValidationRule | undefined,
   readOnlyFiles: string[] | undefined,
   writeAllowlist: string[] | undefined,
   initialMessage: string | undefined,
@@ -140,15 +139,12 @@ function buildCapabilityConfig(
   postValidate: PostValidateCallback | undefined,
   postExecute: PostExecuteCallback | undefined,
   skills: CapabilitySkills | undefined,
-  frontmatterSchemas: FrontmatterSchemaDeclaration[] | undefined,
-  inputValidation: InputValidationSpec | undefined,
-  contract: CapabilityContract | undefined,
+  contract: CapabilityContract,
 ): CapabilityConfig {
   return {
     capability: cap,
     prompt,
     workingDir,
-    validation,
     readOnlyFiles,
     writeAllowlist,
     initialMessage,
@@ -159,8 +155,6 @@ function buildCapabilityConfig(
     postValidate,
     postExecute,
     skills,
-    frontmatterSchemas,
-    inputValidation,
     contract,
   };
 }
@@ -176,17 +170,13 @@ function normalizePackageConfig(
 ): CapabilityConfig {
   const extracted = extractParams(cwd, params);
 
-  const validation = resolveField<ValidationRule>(pkg.validation, extracted.workingDir, params);
   const readOnlyFiles = resolveField<string[]>(pkg.readOnlyFiles, extracted.workingDir, params);
   const writeAllowlist = resolveField<string[]>(pkg.writeAllowlist, extracted.workingDir, params);
-  const inputValidation = resolveField<InputValidationSpec>(pkg.inputValidation, extracted.workingDir, params);
-  const contract = pkg.contract; // optional, pass through as-is
 
   return buildCapabilityConfig(
     cap,
     undefined, // new-style: prompts compiled from component files
     extracted.workingDir,
-    validation,
     readOnlyFiles,
     writeAllowlist,
     extracted.initialMessage ?? pkg.defaultInitialMessage(extracted.workingDir, params),
@@ -197,9 +187,7 @@ function normalizePackageConfig(
     pkg.postValidate,
     pkg.postExecute,
     pkg.skills,
-    pkg.frontmatterSchemas,
-    inputValidation,
-    contract,
+    pkg.contract,
   );
 }
 

@@ -97,13 +97,10 @@ function createGoalTree(
 // ---------------------------------------------------------------------------
 
 describe("config structure", () => {
-  it("validation requires PLAN.md", () => {
-    const validation = config.validation;
-    expect(validation).toBeDefined();
-    // validation can be a function or static object
-    if (typeof validation === "object" && "files" in validation) {
-      expect(validation.files).toContain("PLAN.md");
-    }
+  it("contract outputs includes PLAN.md with schema", () => {
+    expect(config.contract.outputs.length).toBe(1);
+    expect(config.contract.outputs[0].file).toBe("PLAN.md");
+    expect(config.contract.outputs[0].schema).toBeDefined();
   });
 
   it("prepareSession is a function", () => {

@@ -14,7 +14,10 @@ import type { CapabilityPackageConfig } from "../../capability-package";
 
 const capabilityConfig = {
   capability: "create-goal",
-  validation: { files: ["GOAL.md"] },
+  contract: {
+    inputs: [],
+    outputs: [{ file: "GOAL.md" }],
+  },
   writeAllowlist: ["GOAL.md"],
   skills: {
     mandatory: ["pio-planning", "grill-me", "pio-git"],

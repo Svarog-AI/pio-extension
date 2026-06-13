@@ -5,6 +5,7 @@ import { Type } from "typebox";
 import { launchCapability } from "../../capability-session";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
+import { PLAN_FRONTMATTER_SCHEMA } from "../create-plan/schemas";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { validateRevisePlan, prepareSession, cleanupIncompleteSteps, resolveReviseReadOnlyFiles, resolveReviseWriteAllowlist } from "./callbacks";
 
@@ -14,10 +15,12 @@ import { validateRevisePlan, prepareSession, cleanupIncompleteSteps, resolveRevi
 
 const capabilityConfig = {
   capability: "revise-plan",
-  validation: { files: ["PLAN.md"] },
+  contract: {
+    inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }],
+    outputs: [{ file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
+  },
   readOnlyFiles: resolveReviseReadOnlyFiles,
   writeAllowlist: resolveReviseWriteAllowlist,
-  inputValidation: { requiredFiles: ["GOAL.md", "PLAN.md"] },
   skills: {
     mandatory: ["pio-planning", "grill-me"],
     recommended: [

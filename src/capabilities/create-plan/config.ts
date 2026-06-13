@@ -106,19 +106,19 @@ export function postValidateCreatePlan(goalDir: string): { success: boolean; mes
 
 const capabilityConfig = {
   capability: "create-plan",
-  validation: { files: ["PLAN.md"] },
+  contract: {
+    inputs: [{ file: "GOAL.md" }],
+    excludedFiles: ["PLAN.md"],
+    outputs: [{ file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
+  },
   readOnlyFiles: ["GOAL.md"],
   writeAllowlist: ["PLAN.md"],
-  inputValidation: { requiredFiles: ["GOAL.md"], excludedFiles: ["PLAN.md"] },
   skills: {
     mandatory: ["pio-planning", "grill-me"],
     recommended: [
       { name: "source-research", condition: "when researching existing solutions or libraries" },
     ],
   },
-  frontmatterSchemas: [
-    { outputFile: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA },
-  ],
   defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
     const goalName = typeof params?.goalName === "string" ? params.goalName : undefined;
     return `Goal workspace is at ${workingDir}. GOAL.md exists. Create PLAN.md in this directory.`;

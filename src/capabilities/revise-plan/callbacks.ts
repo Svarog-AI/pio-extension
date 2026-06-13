@@ -38,7 +38,7 @@ export async function validateRevisePlan(
     };
   }
 
-  const fileCheck = validateInputs(goalDir, [GOAL_FILE, PLAN_FILE]);
+  const fileCheck = validateInputs(goalDir, { inputs: [{ file: GOAL_FILE }, { file: PLAN_FILE }], outputs: [] });
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }

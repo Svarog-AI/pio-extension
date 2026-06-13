@@ -17,7 +17,10 @@ import { validateInputs } from "../../guards/validation";
 
 const capabilityConfig = {
   capability: "finalize-goal",
-  inputValidation: { requiredFiles: ["GOAL.md", "PLAN.md"] },
+  contract: {
+    inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }],
+    outputs: [],
+  },
   skills: {
     mandatory: ["pio-project-knowledge", "pio-git"],
   },

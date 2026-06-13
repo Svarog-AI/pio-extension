@@ -22,11 +22,9 @@ import type {
   CapabilityContract,
   CapabilitySkills,
   ConfigCallback,
-  InputValidationSpec,
   PostExecuteCallback,
   PostValidateCallback,
   PrepareSessionCallback,
-  ValidationRule,
 } from "./types";
 
 // Re-export for downstream consumers (prompt-compiler, capability-session, etc.)
@@ -57,30 +55,6 @@ export const CAPABILITY_SCHEMAS_FILE = "schemas.ts";
 
 /** Custom lifecycle callbacks (optional). */
 export const CAPABILITY_CALLBACKS_FILE = "callbacks.ts";
-
-// ---------------------------------------------------------------------------
-// Output schema types
-// ---------------------------------------------------------------------------
-
-/**
- * Declares an output document and the TypeBox schema its YAML frontmatter
- * must conform to.
- *
- * Used in `CapabilityPackageConfig.frontmatterSchemas` so the exit-gate can
- * automatically validate structured markdown outputs (PLAN.md, TASK.md,
- * REVIEW.md) without per-capability postValidate hooks.
- *
- * Schema validation covers type constraints (required fields, integer types,
- * enum values) but NOT cross-field validations that require reading document
- * body content (e.g., totalSteps matching heading count). Those remain in
- * per-capability postValidate hooks.
- */
-export interface FrontmatterSchemaDeclaration {
-  /** Output file path relative to workingDir (e.g. "PLAN.md", "TASK.md") */
-  outputFile: string;
-  /** TypeBox schema the YAML frontmatter must conform to */
-  schema: TSchema;
-}
 
 // ---------------------------------------------------------------------------
 // Component type interfaces
@@ -158,8 +132,6 @@ export interface CapabilityGuidelines {
 export interface CapabilityPackageConfig {
   /** Logical capability name (e.g. "create-goal") */
   capability: string;
-  /** Validation rules declared by this capability. Same shape as existing ValidationRule or callback. */
-  validation?: ValidationRule | ConfigCallback<ValidationRule>;
   /** Files that must not be modified during this session (relative to workingDir) */
   readOnlyFiles?: string[] | ConfigCallback<string[]>;
   /** Allowlist of files that may be written. Takes precedence over readOnlyFiles when present. */
@@ -172,12 +144,8 @@ export interface CapabilityPackageConfig {
   postExecute?: PostExecuteCallback;
   /** Capability-level skill declarations. Workflow step skills are merged into these at prompt compilation time. */
   skills?: CapabilitySkills;
-  /** Declarative output document frontmatter schemas. Each entry declares an output file path and a TypeBox schema. Validated by the exit-gate via validateFrontmatter(). */
-  frontmatterSchemas?: FrontmatterSchemaDeclaration[];
-  /** Declarative input contract: files that must/must-not exist before the session starts. Can be a static spec or a callback `(workingDir, params) => InputValidationSpec`. */
-  inputValidation?: InputValidationSpec | ConfigCallback<InputValidationSpec>;
-  /** Unified capability contract: consolidated inputs, outputs, excluded files, and frontmatter schemas. Optional during migration — becomes mandatory in a later step. */
-  contract?: CapabilityContract;
+  /** Unified capability contract: consolidated inputs, outputs, excluded files, and frontmatter schemas. */
+  contract: CapabilityContract;
 }
 
 /**

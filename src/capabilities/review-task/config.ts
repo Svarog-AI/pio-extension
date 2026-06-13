@@ -8,13 +8,13 @@ import { launchCapability, setMergedSkills } from "../../capability-session";
 import { mergeCapabilitySkills } from "../../capability-utils";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
-import { resolveCapabilityConfig, resolvePaths } from "../../capability-config";
+import { resolveCapabilityConfig } from "../../capability-config";
+import { REVIEW_OUTPUT_SCHEMA } from "./schemas";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { createGoalState } from "../../goal-state";
 import {
   validateStepForReview,
   validateAndFindReviewStep,
-  resolveReviewValidation,
   resolveReviewReadOnlyFiles,
   resolveReviewWriteAllowlist,
   postValidateReview,
@@ -26,26 +26,17 @@ import {
 
 const capabilityConfig = {
   capability: "review-task",
-  validation: resolveReviewValidation,
+  contract: {
+    inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }, { file: "S{stepNumber:02d}/COMPLETED" }, { file: "S{stepNumber:02d}/SUMMARY.md" }],
+    outputs: [{ file: "S{stepNumber:02d}/REVIEW.md", schema: REVIEW_OUTPUT_SCHEMA }],
+  },
   readOnlyFiles: resolveReviewReadOnlyFiles,
   writeAllowlist: resolveReviewWriteAllowlist,
   prepareSession: prepareReviewSession,
   postValidate: postValidateReview,
-  inputValidation: (_workingDir: string, params?: Record<string, unknown>) => {
-    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-    if (stepNumber == null) {
-      throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
-    }
-    return {
-      requiredFiles: resolvePaths(["GOAL.md", "PLAN.md", `S{stepNumber:02d}/COMPLETED`, `S{stepNumber:02d}/SUMMARY.md`], { stepNumber }),
-    };
-  },
   skills: {
     mandatory: ["tdd"],
   },
-  // NOTE: frontmatterSchemas omitted — REVIEW.md is step-relative (S{NN}/REVIEW.md)
-  // and the exit-gate resolves paths against workingDir (goal root).
-  // Validation is handled by the postValidate callback instead.
   defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
     const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
     if (stepNumber == null) {

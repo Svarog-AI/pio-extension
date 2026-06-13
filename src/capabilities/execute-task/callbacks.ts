@@ -51,33 +51,10 @@ export async function validateAndFindNextStep(
     };
   }
 
-  const state = createGoalState(goalDir);
+  // Discover the next step — requires PLAN.md (currentStepNumber returns 1 if missing).
+  const stepNumber = createGoalState(goalDir).currentStepNumber();
 
-  // Check PLAN.md exists — required for currentStepNumber() and CONTRACT validation.
-  if (!state.hasPlan()) {
-    return {
-      goalDir,
-      ready: false,
-      error: `Required file missing: PLAN.md. Run /pio-create-plan ${name} to generate a plan first.`,
-    };
-  }
-
-  // Find the next step via GoalState.
-  const stepNumber = state.currentStepNumber();
-  const step = state.steps().find(s => s.stepNumber === stepNumber);
-
-  // Step is "pending" (no TASK.md yet) — user needs to run evolve-plan first.
-  // CONTRACT validation would fail with a generic "TASK.md missing" error,
-  // so provide a specific message instead.
-  if (step?.status() === "pending") {
-    return {
-      goalDir,
-      ready: false,
-      error: `Step ${stepNumber} is not yet specified. Run /pio-evolve-plan ${name} to generate TASK.md.`,
-    };
-  }
-
-  // All paths resolved — validate full CONTRACT with the discovered stepNumber.
+  // Validate all inputs via CONTRACT — the single source of truth.
   const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber });
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };

@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as path from "node:path";
 
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState } from "../../goal-state";
@@ -79,17 +80,18 @@ export async function validateAndFindNextStep(
     };
   }
 
-  // Validate goal workspace prerequisites (GOAL.md, PLAN.md) before step discovery.
-  // validateInputs skips inputs with unresolved placeholders — step-specific files
-  // (S{stepNumber:02d}/TASK.md) are validated after the step number is known.
-  const planCheck = validateInputs(goalDir, CONTRACT);
-  if (!planCheck.success) {
-    return { goalDir, ready: false, error: planCheck.message! };
-  }
-
-  // Find the first step number (starting at 1) that is ready for execution.
+  // Discover the step number first (scans S01/, S02/, … for status "defined").
+  // Requires PLAN.md to exist — if missing, steps() returns empty and this returns undefined.
   const foundStep = findNextReadyStep(goalDir);
   if (foundStep == null) {
+    // Provide a better error if PLAN.md is missing (the root cause of empty steps).
+    if (!fs.existsSync(path.join(goalDir, "PLAN.md"))) {
+      return {
+        goalDir,
+        ready: false,
+        error: `Required file missing: PLAN.md. Run /pio-create-plan ${name} to generate a plan first.`,
+      };
+    }
     return {
       goalDir,
       ready: false,
@@ -97,7 +99,7 @@ export async function validateAndFindNextStep(
     };
   }
 
-  // Validate full contract inputs with the actual stepNumber
+  // All paths resolved — validate full CONTRACT with the discovered stepNumber.
   const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber: foundStep });
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };

@@ -8,9 +8,23 @@ import { launchCapability } from "../../capability-session";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
+import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { TASK_FRONTMATTER_SCHEMA } from "./schemas";
 import { validateAndFindNextStep, resolveEvolveWriteAllowlist } from "./callbacks";
+
+// ---------------------------------------------------------------------------
+// Contract (single source of truth — imported by callbacks)
+// ---------------------------------------------------------------------------
+
+export const CONTRACT: CapabilityContract = {
+  inputs: [{ file: "PLAN.md" }],
+  excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
+  outputs: [
+    { file: "S{stepNumber:02d}/TASK.md", schema: TASK_FRONTMATTER_SCHEMA },
+    { file: "S{stepNumber:02d}/DECISIONS.md", requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1 },
+  ],
+};
 
 // ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
@@ -18,14 +32,7 @@ import { validateAndFindNextStep, resolveEvolveWriteAllowlist } from "./callback
 
 const capabilityConfig = {
   capability: "evolve-plan",
-  contract: {
-    inputs: [{ file: "PLAN.md" }],
-    excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
-    outputs: [
-      { file: "S{stepNumber:02d}/TASK.md", schema: TASK_FRONTMATTER_SCHEMA },
-      { file: "S{stepNumber:02d}/DECISIONS.md", requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1 },
-    ],
-  },
+  contract: CONTRACT,
   writeAllowlist: resolveEvolveWriteAllowlist,
   skills: {
     mandatory: ["pio-planning", "grill-me"],

@@ -3,16 +3,7 @@ import * as fs from "node:fs";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState } from "../../goal-state";
 import { validateInputs } from "../../guards/validation";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const PLAN_FILE = "PLAN.md";
-const GOAL_FILE = "GOAL.md";
-const TASK_FILE = "TASK.md";
-const TEST_FILE = "TEST.md";
-const SUMMARY_FILE = "SUMMARY.md";
+import { CONTRACT } from "./config";
 
 // ---------------------------------------------------------------------------
 // Config callbacks (used by config.ts and resolveCapabilityConfig)
@@ -28,7 +19,35 @@ export function resolveExecuteReadOnlyFiles(_workingDir: string, params?: Record
     throw new Error("stepNumber is required for execute-task. Ensure the task was enqueued with a valid step number.");
   }
   const folder = stepFolderName(stepNumber);
-  return [`${folder}/${TASK_FILE}`];
+  return [`${folder}/TASK.md`];
+}
+
+// ---------------------------------------------------------------------------
+// Step discovery
+// ---------------------------------------------------------------------------
+
+/**
+ * Find the next ready step by scanning S01/, S02/, … for the first step
+ * where TASK.md exists but no COMPLETED/BLOCKED marker is present yet.
+ *
+ * Returns the step number or undefined if no ready step found.
+ * Does NOT do validation — assumes caller has already verified prerequisites.
+ */
+export function findNextReadyStep(goalDir: string): number | undefined {
+  const state = createGoalState(goalDir);
+  const allSteps = state.steps();
+
+  for (let i = 1; ; i++) {
+    const step = state.steps().find(s => s.stepNumber === i);
+    if (step && step.status() === "defined") {
+      return i;
+    }
+    // If we reach a step where the folder doesn't exist at all in state.steps(),
+    // there's no ready step beyond this point.
+    if (!allSteps.some(s => s.stepNumber === i)) break;
+  }
+
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -60,28 +79,19 @@ export async function validateAndFindNextStep(
     };
   }
 
-  // Validate PLAN.md exists — required for step scanning (state.steps() reads PLAN.md frontmatter).
-  const planCheck = validateInputs(goalDir, { inputs: [{ file: PLAN_FILE }], outputs: [] });
+  // Validate goal workspace prerequisites (GOAL.md, PLAN.md) before step discovery.
+  // Use only non-placeholder inputs — step-specific files (S{stepNumber:02d}/TASK.md)
+  // are validated after the step number is known.
+  const planCheck = validateInputs(goalDir, {
+    inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }],
+    outputs: [],
+  });
   if (!planCheck.success) {
     return { goalDir, ready: false, error: planCheck.message! };
   }
 
   // Find the first step number (starting at 1) that is ready for execution.
-  const state = createGoalState(goalDir);
-  const allSteps = state.steps();
-  let foundStep: number | undefined;
-  for (let i = 1; ; i++) {
-    const step = state.steps().find(s => s.stepNumber === i);
-    if (step && step.status() === "defined") {
-      foundStep = i;
-      break;
-    }
-
-    // If we reach a step where the folder doesn't exist at all in state.steps(),
-    // there's no ready step beyond this point.
-    if (!allSteps.some(s => s.stepNumber === i)) break;
-  }
-
+  const foundStep = findNextReadyStep(goalDir);
   if (foundStep == null) {
     return {
       goalDir,
@@ -90,16 +100,8 @@ export async function validateAndFindNextStep(
     };
   }
 
-  // Validate inputs via contract with placeholder resolution
-  const fileCheck = validateInputs(
-    goalDir,
-    {
-      inputs: [{ file: GOAL_FILE }, { file: PLAN_FILE }, { file: `S{stepNumber:02d}/${TASK_FILE}` }],
-      excludedFiles: [`S{stepNumber:02d}/REVISE_PLAN_NEEDED`],
-      outputs: [],
-    },
-    { stepNumber: foundStep },
-  );
+  // Validate full contract inputs with the actual stepNumber
+  const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber: foundStep });
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }
@@ -129,15 +131,7 @@ export async function validateExplicitStep(
   }
 
   // Validate inputs via contract with placeholder resolution
-  const fileCheck = validateInputs(
-    goalDir,
-    {
-      inputs: [{ file: GOAL_FILE }, { file: PLAN_FILE }, { file: `S{stepNumber:02d}/${TASK_FILE}` }],
-      excludedFiles: [`S{stepNumber:02d}/REVISE_PLAN_NEEDED`],
-      outputs: [],
-    },
-    { stepNumber },
-  );
+  const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber });
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }

@@ -7,8 +7,18 @@ import { launchCapability } from "../../capability-session";
 import { resolveGoalDir } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
+import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { validateInputs } from "../../guards/validation";
+
+// ---------------------------------------------------------------------------
+// Contract (single source of truth — imported by callbacks)
+// ---------------------------------------------------------------------------
+
+export const CONTRACT: CapabilityContract = {
+  inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }],
+  outputs: [],
+};
 
 // ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
@@ -16,10 +26,7 @@ import { validateInputs } from "../../guards/validation";
 
 const capabilityConfig = {
   capability: "execute-plan",
-  contract: {
-    inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }],
-    outputs: [],
-  },
+  contract: CONTRACT,
   skills: {
     mandatory: ["tdd", "pio-git"],
   },
@@ -29,13 +36,6 @@ const capabilityConfig = {
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const GOAL_FILE = "GOAL.md";
-const PLAN_FILE = "PLAN.md";
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -53,7 +53,7 @@ async function validateGoal(name: string, cwd: string): Promise<{ goalDir: strin
     return { goalDir, ready: false, error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.` };
   }
 
-  const fileCheck = validateInputs(goalDir, { inputs: [{ file: GOAL_FILE }, { file: PLAN_FILE }], outputs: [] });
+  const fileCheck = validateInputs(goalDir, CONTRACT);
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }

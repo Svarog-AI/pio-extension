@@ -9,6 +9,7 @@ import { mergeCapabilitySkills } from "../../capability-utils";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
+import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { createGoalState } from "../../goal-state";
 import {
@@ -18,16 +19,22 @@ import {
 } from "./callbacks";
 
 // ---------------------------------------------------------------------------
+// Contract (single source of truth — imported by callbacks)
+// ---------------------------------------------------------------------------
+
+export const CONTRACT: CapabilityContract = {
+  inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }, { file: "S{stepNumber:02d}/TASK.md" }],
+  excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
+  outputs: [{ file: "S{stepNumber:02d}/TEST.md" }, { file: "S{stepNumber:02d}/SUMMARY.md" }],
+};
+
+// ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------
 
 const capabilityConfig = {
   capability: "execute-task",
-  contract: {
-    inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }, { file: "S{stepNumber:02d}/TASK.md" }],
-    excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
-    outputs: [{ file: "S{stepNumber:02d}/TEST.md" }, { file: "S{stepNumber:02d}/SUMMARY.md" }],
-  },
+  contract: CONTRACT,
   readOnlyFiles: resolveExecuteReadOnlyFiles,
   prepareSession: prepareExecuteSession,
   skills: {

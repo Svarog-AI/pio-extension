@@ -99,8 +99,9 @@ function createGoalTree(
 describe("config structure", () => {
   it("contract outputs includes PLAN.md with schema", () => {
     expect(config.contract.outputs.length).toBe(1);
-    expect(config.contract.outputs[0].file).toBe("PLAN.md");
-    expect(config.contract.outputs[0].schema).toBeDefined();
+    const output = config.contract.outputs[0] as import("../../types").MarkdownFileSpec;
+    expect(output.file).toBe("PLAN.md");
+    expect(output.schema).toBeDefined();
   });
 
   it("prepareSession is a function", () => {

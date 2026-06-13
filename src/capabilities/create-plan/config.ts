@@ -7,6 +7,7 @@ import { launchCapability } from "../../capability-session";
 import { resolveGoalDir } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
+import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { createGoalState } from "../../goal-state";
 import { validateInputs } from "../../guards/validation";
@@ -101,16 +102,22 @@ export function postValidateCreatePlan(goalDir: string): { success: boolean; mes
 }
 
 // ---------------------------------------------------------------------------
+// Contract (single source of truth — imported by callbacks)
+// ---------------------------------------------------------------------------
+
+export const CONTRACT: CapabilityContract = {
+  inputs: [{ file: "GOAL.md" }],
+  excludedFiles: ["PLAN.md"],
+  outputs: [{ file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
+};
+
+// ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------
 
 const capabilityConfig = {
   capability: "create-plan",
-  contract: {
-    inputs: [{ file: "GOAL.md" }],
-    excludedFiles: ["PLAN.md"],
-    outputs: [{ file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
-  },
+  contract: CONTRACT,
   readOnlyFiles: ["GOAL.md"],
   writeAllowlist: ["PLAN.md"],
   skills: {
@@ -129,11 +136,8 @@ const capabilityConfig = {
 export default capabilityConfig;
 
 // ---------------------------------------------------------------------------
-// Function
+// Validation
 // ---------------------------------------------------------------------------
-
-const GOAL_FILE = "GOAL.md";
-const PLAN_FILE = "PLAN.md";
 
 /**
  * Validate that the goal workspace exists, has a GOAL.md, and does not yet have a PLAN.md.
@@ -147,7 +151,7 @@ async function validateGoal(name: string, cwd: string): Promise<{ goalDir: strin
     return { goalDir, ready: false, error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.` };
   }
 
-  const fileCheck = validateInputs(goalDir, { inputs: [{ file: GOAL_FILE }], excludedFiles: [PLAN_FILE], outputs: [] });
+  const fileCheck = validateInputs(goalDir, CONTRACT);
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }

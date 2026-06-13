@@ -8,8 +8,18 @@ import { resolveGoalDir } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { createGoalState } from "../../goal-state";
+import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { validateInputs } from "../../guards/validation";
+
+// ---------------------------------------------------------------------------
+// Contract (single source of truth — imported by callbacks)
+// ---------------------------------------------------------------------------
+
+export const CONTRACT: CapabilityContract = {
+  inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }],
+  outputs: [],
+};
 
 // ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
@@ -17,10 +27,7 @@ import { validateInputs } from "../../guards/validation";
 
 const capabilityConfig = {
   capability: "finalize-goal",
-  contract: {
-    inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }],
-    outputs: [],
-  },
+  contract: CONTRACT,
   skills: {
     mandatory: ["pio-project-knowledge", "pio-git"],
   },
@@ -70,7 +77,7 @@ export async function validateFinalizeGoal(
     };
   }
 
-  const fileCheck = validateInputs(goalDir, { inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }], outputs: [] });
+  const fileCheck = validateInputs(goalDir, CONTRACT);
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }

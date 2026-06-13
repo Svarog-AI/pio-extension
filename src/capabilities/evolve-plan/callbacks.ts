@@ -4,13 +4,13 @@ import * as path from "node:path";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState } from "../../goal-state";
 import { validateInputs } from "../../guards/validation";
-import type { PlanFrontmatter } from "./schemas";
+import type { PlanFrontmatter } from "../create-plan/schemas";
+import { CONTRACT } from "./config";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const PLAN_FILE = "PLAN.md";
 const TASK_FILE = "TASK.md";
 const DECISIONS_FILE = "DECISIONS.md";
 export const REVISE_PLAN_MARKER = "REVISE_PLAN_NEEDED";
@@ -68,7 +68,10 @@ export async function validateAndFindNextStep(
     };
   }
 
-  const fileCheck = validateInputs(goalDir, { inputs: [{ file: PLAN_FILE }], outputs: [] });
+  // Validate inputs using the CONTRACT from config.
+  // excludedFiles uses S{stepNumber:02d} — pass stepNumber: 0 as a sentinel
+  // so the path resolves to S00/REVISE_PLAN_NEEDED (which can never exist).
+  const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber: 0 });
   if (!fileCheck.success) {
     return {
       goalDir,

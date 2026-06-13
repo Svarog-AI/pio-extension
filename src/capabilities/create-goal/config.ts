@@ -6,7 +6,17 @@ import { launchCapability } from "../../capability-session";
 import { prepareGoal } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
+import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
+
+// ---------------------------------------------------------------------------
+// Contract (single source of truth — imported by callbacks)
+// ---------------------------------------------------------------------------
+
+export const CONTRACT: CapabilityContract = {
+  inputs: [],
+  outputs: [{ file: "GOAL.md" }],
+};
 
 // ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
@@ -14,10 +24,7 @@ import type { CapabilityPackageConfig } from "../../capability-package";
 
 const capabilityConfig = {
   capability: "create-goal",
-  contract: {
-    inputs: [],
-    outputs: [{ file: "GOAL.md" }],
-  },
+  contract: CONTRACT,
   writeAllowlist: ["GOAL.md"],
   skills: {
     mandatory: ["pio-planning", "grill-me", "pio-git"],

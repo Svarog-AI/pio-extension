@@ -6,8 +6,18 @@ import { launchCapability } from "../../capability-session";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { PLAN_FRONTMATTER_SCHEMA } from "../create-plan/schemas";
+import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { validateRevisePlan, prepareSession, cleanupIncompleteSteps, resolveReviseReadOnlyFiles, resolveReviseWriteAllowlist } from "./callbacks";
+
+// ---------------------------------------------------------------------------
+// Contract (single source of truth — imported by callbacks)
+// ---------------------------------------------------------------------------
+
+export const CONTRACT: CapabilityContract = {
+  inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }],
+  outputs: [{ file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
+};
 
 // ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
@@ -15,10 +25,7 @@ import { validateRevisePlan, prepareSession, cleanupIncompleteSteps, resolveRevi
 
 const capabilityConfig = {
   capability: "revise-plan",
-  contract: {
-    inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }],
-    outputs: [{ file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
-  },
+  contract: CONTRACT,
   readOnlyFiles: resolveReviseReadOnlyFiles,
   writeAllowlist: resolveReviseWriteAllowlist,
   skills: {

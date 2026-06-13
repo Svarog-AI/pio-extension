@@ -5,13 +5,12 @@ import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState, type StepStatus } from "../../goal-state";
 import { validateInputs } from "../../guards/validation";
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
+import { CONTRACT } from "./config";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const PLAN_FILE = "PLAN.md";
-const GOAL_FILE = "GOAL.md";
 const TASK_FILE = "TASK.md";
 const TEST_FILE = "TEST.md";
 const SUMMARY_FILE = "SUMMARY.md";
@@ -33,8 +32,8 @@ export function resolveReviewReadOnlyFiles(_dir: string, params?: Record<string,
   }
   const folder = stepFolderName(stepNumber);
   return [
-    GOAL_FILE,
-    PLAN_FILE,
+    "GOAL.md",
+    "PLAN.md",
     `${folder}/${TASK_FILE}`,
     `${folder}/${TEST_FILE}`,
     `${folder}/${SUMMARY_FILE}`,
@@ -168,14 +167,7 @@ export async function validateStepForReview(
   }
 
   // Validate required files via contract with placeholder resolution
-  const fileCheck = validateInputs(
-    goalDir,
-    {
-      inputs: [{ file: GOAL_FILE }, { file: PLAN_FILE }, { file: `S{stepNumber:02d}/COMPLETED` }, { file: `S{stepNumber:02d}/SUMMARY.md` }],
-      outputs: [],
-    },
-    { stepNumber },
-  );
+  const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber });
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }
@@ -246,14 +238,7 @@ export async function validateAndFindReviewStep(
   }
 
   // Validate all required files via contract with placeholder resolution
-  const fileCheck = validateInputs(
-    goalDir,
-    {
-      inputs: [{ file: GOAL_FILE }, { file: PLAN_FILE }, { file: `S{stepNumber:02d}/COMPLETED` }, { file: `S{stepNumber:02d}/SUMMARY.md` }],
-      outputs: [],
-    },
-    { stepNumber },
-  );
+  const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber });
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }

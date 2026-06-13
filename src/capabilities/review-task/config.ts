@@ -10,6 +10,7 @@ import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { REVIEW_OUTPUT_SCHEMA } from "./schemas";
+import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { createGoalState } from "../../goal-state";
 import {
@@ -21,15 +22,21 @@ import {
 } from "./callbacks";
 
 // ---------------------------------------------------------------------------
+// Contract (single source of truth — imported by callbacks)
+// ---------------------------------------------------------------------------
+
+export const CONTRACT: CapabilityContract = {
+  inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }, { file: "S{stepNumber:02d}/COMPLETED" }, { file: "S{stepNumber:02d}/SUMMARY.md" }],
+  outputs: [{ file: "S{stepNumber:02d}/REVIEW.md", schema: REVIEW_OUTPUT_SCHEMA }],
+};
+
+// ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------
 
 const capabilityConfig = {
   capability: "review-task",
-  contract: {
-    inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }, { file: "S{stepNumber:02d}/COMPLETED" }, { file: "S{stepNumber:02d}/SUMMARY.md" }],
-    outputs: [{ file: "S{stepNumber:02d}/REVIEW.md", schema: REVIEW_OUTPUT_SCHEMA }],
-  },
+  contract: CONTRACT,
   readOnlyFiles: resolveReviewReadOnlyFiles,
   writeAllowlist: resolveReviewWriteAllowlist,
   prepareSession: prepareReviewSession,

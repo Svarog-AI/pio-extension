@@ -4,13 +4,12 @@ import * as path from "node:path";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState } from "../../goal-state";
 import { validateInputs } from "../../guards/validation";
+import { CONTRACT } from "./config";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const GOAL_FILE = "GOAL.md";
-const PLAN_FILE = "PLAN.md";
 const PLAN_ARCHIVE_DIR = "PLAN_ARCHIVE";
 export const REVISE_PLAN_MARKER = "REVISE_PLAN_NEEDED";
 const STEP_FOLDER_RE = /^S(\d+)$/;
@@ -38,7 +37,7 @@ export async function validateRevisePlan(
     };
   }
 
-  const fileCheck = validateInputs(goalDir, { inputs: [{ file: GOAL_FILE }, { file: PLAN_FILE }], outputs: [] });
+  const fileCheck = validateInputs(goalDir, CONTRACT);
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }
@@ -60,7 +59,7 @@ export async function prepareSession(
   _params?: Record<string, unknown>,
 ): Promise<void> {
   // Archive current PLAN.md
-  const planPath = path.join(workingDir, PLAN_FILE);
+  const planPath = path.join(workingDir, "PLAN.md");
   if (fs.existsSync(planPath)) {
     const archiveDir = path.join(workingDir, PLAN_ARCHIVE_DIR);
     fs.mkdirSync(archiveDir, { recursive: true });

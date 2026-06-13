@@ -335,10 +335,10 @@ steps:
     // Act
     const result = await validateAndFindNextStep("nonexistent", tempDir);
 
-    // Assert
+    // Assert: CONTRACT validation reports the first missing input (GOAL.md)
     expect(result.ready).toBe(false);
     if (!result.ready) {
-      expect(result.error).toMatch(/does not exist/i);
+      expect(result.error).toMatch(/GOAL\.md/i);
     }
   });
 

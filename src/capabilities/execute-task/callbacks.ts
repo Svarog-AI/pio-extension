@@ -1,6 +1,3 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
-
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { createGoalState } from "../../goal-state";
 import { validateInputs } from "../../guards/validation";
@@ -28,8 +25,7 @@ export function resolveExecuteReadOnlyFiles(_workingDir: string, params?: Record
 // ---------------------------------------------------------------------------
 
 /**
- * Validate that the goal workspace exists with both GOAL.md and PLAN.md.
- * Then find the next step ready for execution using GoalState.
+ * Find the next step ready for execution and validate inputs via CONTRACT.
  *
  * Returns { goalDir, ready: true, stepNumber } on success,
  * or { goalDir, ready: false, error } when not ready.
@@ -42,14 +38,6 @@ export async function validateAndFindNextStep(
   | { goalDir: string; ready: false; error: string }
 > {
   const goalDir = resolveGoalDir(cwd, name);
-
-  if (!fs.existsSync(goalDir)) {
-    return {
-      goalDir,
-      ready: false,
-      error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.`,
-    };
-  }
 
   // Discover the next step — requires PLAN.md (currentStepNumber returns 1 if missing).
   const stepNumber = createGoalState(goalDir).currentStepNumber();
@@ -64,7 +52,7 @@ export async function validateAndFindNextStep(
 }
 
 /**
- * Validate that an explicitly requested step has TASK.md.
+ * Validate an explicitly requested step via CONTRACT and check step state.
  */
 export async function validateExplicitStep(
   name: string,
@@ -76,21 +64,13 @@ export async function validateExplicitStep(
 > {
   const goalDir = resolveGoalDir(cwd, name);
 
-  if (!fs.existsSync(goalDir)) {
-    return {
-      goalDir,
-      ready: false,
-      error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.`,
-    };
-  }
-
-  // Validate inputs via contract with placeholder resolution
+  // Validate all inputs via CONTRACT — the single source of truth.
   const fileCheck = validateInputs(goalDir, CONTRACT, { stepNumber });
   if (!fileCheck.success) {
     return { goalDir, ready: false, error: fileCheck.message! };
   }
 
-  // Check step status (implemented/approved/rejected/blocked)
+  // Check step status — CONTRACT validates file existence, not step state.
   const state = createGoalState(goalDir);
   const folder = stepFolderName(stepNumber);
   const step = state.steps().find(s => s.stepNumber === stepNumber);

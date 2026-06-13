@@ -285,6 +285,7 @@ describe("CapabilityConfig — contract field", () => {
   });
 
   it("contract field is optional — config without contract is valid", () => {
+    // TODO(contracts-frontmatter Step 3): DELETE this test — contract becomes mandatory, old fields are removed
     const config: CapabilityConfig = {
       capability: "create-goal",
     };
@@ -292,6 +293,7 @@ describe("CapabilityConfig — contract field", () => {
   });
 
   it("contract coexists with old fields (backward compatibility)", () => {
+    // TODO(contracts-frontmatter Step 3): DELETE this test — old fields (validation, etc.) are removed in Step 3
     const config: CapabilityConfig = {
       capability: "create-plan",
       validation: { files: ["PLAN.md"] },

@@ -56,30 +56,34 @@ export function validateOutputs(
     return { passed: true, missing: [] };
   }
 
-  const missing: string[] = [];
+  try {
+    const missing: string[] = [];
 
-  for (const entry of contract.outputs) {
-    if (!isMarkdownFileSpec(entry)) {
-      // OneOfGroup — treat as no-op (deferred to later step)
-      continue;
+    for (const entry of contract.outputs) {
+      if (!isMarkdownFileSpec(entry)) {
+        // OneOfGroup — treat as no-op (deferred to later step)
+        continue;
+      }
+
+      // Evaluate requiredWhen predicate
+      if (entry.requiredWhen !== undefined && !entry.requiredWhen(params)) {
+        continue;
+      }
+
+      // Resolve placeholder tokens in file path
+      const resolvedPaths = resolvePaths([entry.file], params || {});
+      const resolvedFile = resolvedPaths[0];
+
+      const fullPath = path.join(baseDir, resolvedFile);
+      if (!fs.existsSync(fullPath)) {
+        missing.push(resolvedFile);
+      }
     }
 
-    // Evaluate requiredWhen predicate
-    if (entry.requiredWhen !== undefined && !entry.requiredWhen(params)) {
-      continue;
-    }
-
-    // Resolve placeholder tokens in file path
-    const resolvedPaths = resolvePaths([entry.file], params || {});
-    const resolvedFile = resolvedPaths[0];
-
-    const fullPath = path.join(baseDir, resolvedFile);
-    if (!fs.existsSync(fullPath)) {
-      missing.push(resolvedFile);
-    }
+    return { passed: missing.length === 0, missing };
+  } catch (err) {
+    return { passed: false, missing: [err instanceof Error ? err.message : String(err)] };
   }
-
-  return { passed: missing.length === 0, missing };
 }
 
 // ---------------------------------------------------------------------------
@@ -106,47 +110,51 @@ export function validateFrontmatter(
 ): { success: boolean; message?: string } {
   const resolvedParams = params || {};
 
-  for (const entry of contract.outputs) {
-    if (!isMarkdownFileSpec(entry)) {
-      // OneOfGroup — skip for frontmatter validation
-      continue;
-    }
-    if (!entry.schema) {
-      // No schema — skip frontmatter validation for this file
-      continue;
+  try {
+    for (const entry of contract.outputs) {
+      if (!isMarkdownFileSpec(entry)) {
+        // OneOfGroup — skip for frontmatter validation
+        continue;
+      }
+      if (!entry.schema) {
+        // No schema — skip frontmatter validation for this file
+        continue;
+      }
+
+      // Resolve placeholder tokens in file path
+      const resolvedPaths = resolvePaths([entry.file], resolvedParams);
+      const resolvedFile = resolvedPaths[0];
+
+      const filePath = path.join(workingDir, resolvedFile);
+
+      // Check file exists
+      if (!fs.existsSync(filePath)) {
+        return { success: false, message: `Output file '${resolvedFile}' does not exist` };
+      }
+
+      // Parse frontmatter
+      const raw = extractFrontmatter(filePath);
+      if (raw === null) {
+        return { success: false, message: `Output file '${resolvedFile}' has no valid YAML frontmatter` };
+      }
+
+      // Validate against schema
+      if (!Value.Check(entry.schema, raw)) {
+        const errors = [...Value.Errors(entry.schema, raw)];
+        const messages = errors
+          .map((e) => {
+            const field = e.instancePath ? e.instancePath.replace(/^\//, "") : "root";
+            return `Field '${field}': ${e.message}`;
+          })
+          .join("; ");
+        return { success: false, message: `Frontmatter validation failed for '${resolvedFile}': ${messages}` };
+      }
     }
 
-    // Resolve placeholder tokens in file path
-    const resolvedPaths = resolvePaths([entry.file], resolvedParams);
-    const resolvedFile = resolvedPaths[0];
-
-    const filePath = path.join(workingDir, resolvedFile);
-
-    // Check file exists
-    if (!fs.existsSync(filePath)) {
-      return { success: false, message: `Output file '${resolvedFile}' does not exist` };
-    }
-
-    // Parse frontmatter
-    const raw = extractFrontmatter(filePath);
-    if (raw === null) {
-      return { success: false, message: `Output file '${resolvedFile}' has no valid YAML frontmatter` };
-    }
-
-    // Validate against schema
-    if (!Value.Check(entry.schema, raw)) {
-      const errors = [...Value.Errors(entry.schema, raw)];
-      const messages = errors
-        .map((e) => {
-          const field = e.instancePath ? e.instancePath.replace(/^\//, "") : "root";
-          return `Field '${field}': ${e.message}`;
-        })
-        .join("; ");
-      return { success: false, message: `Frontmatter validation failed for '${resolvedFile}': ${messages}` };
-    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : String(err) };
   }
-
-  return { success: true };
 }
 
 /**

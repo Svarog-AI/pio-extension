@@ -917,3 +917,106 @@ describe("CONTRACT outputs integration — COMPLETED marker bypass", () => {
     expect(result).toEqual({ passed: true, missing: [] });
   });
 });
+
+// ---------------------------------------------------------------------------
+// validateOutputs — graceful error handling for unresolved placeholders
+// ---------------------------------------------------------------------------
+
+describe("validateOutputs — unresolved placeholder handling", () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = createTempDir(); });
+  afterEach(() => cleanup(tempDir));
+
+  it("returns failed result when placeholder key is missing from params (no crash)", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ file: "S{stepNumber:02d}/TASK.md" }],
+    };
+
+    // stepNumber is missing — resolvePaths would throw without try/catch
+    const result = validateOutputs(contract, tempDir, { goalName: "test" });
+    expect(result.passed).toBe(false);
+    expect(result.missing.length).toBe(1);
+    expect(result.missing[0]).toContain("Unresolved placeholder");
+  });
+
+  it("returns failed result when placeholder key is missing (no params at all)", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ file: "S{stepNumber:02d}/TASK.md" }],
+    };
+
+    const result = validateOutputs(contract, tempDir);
+    expect(result.passed).toBe(false);
+    expect(result.missing.length).toBe(1);
+    expect(result.missing[0]).toContain("stepNumber");
+  });
+
+  it("passes normally when all placeholders resolved", () => {
+    fs.mkdirSync(path.join(tempDir, "S03"), { recursive: true });
+    fs.writeFileSync(path.join(tempDir, "S03", "TASK.md"), "content", "utf-8");
+
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ file: "S{stepNumber:02d}/TASK.md" }],
+    };
+
+    const result = validateOutputs(contract, tempDir, { stepNumber: 3 });
+    expect(result).toEqual({ passed: true, missing: [] });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateFrontmatter — graceful error handling for unresolved placeholders
+// ---------------------------------------------------------------------------
+
+describe("validateFrontmatter — unresolved placeholder handling", () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = createTempDir(); });
+  afterEach(() => cleanup(tempDir));
+
+  it("returns failed result when placeholder key is missing from params (no crash)", () => {
+    const schema = Type.Object({ totalSteps: Type.Integer() });
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ file: "S{stepNumber:02d}/REVIEW.md", schema }],
+    };
+
+    // stepNumber is missing — resolvePaths would throw without try/catch
+    const result = validateFrontmatter(contract, tempDir, { goalName: "test" });
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("Unresolved placeholder");
+  });
+
+  it("returns failed result when placeholder key is missing (no params at all)", () => {
+    const schema = Type.Object({ totalSteps: Type.Integer() });
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ file: "S{stepNumber:02d}/REVIEW.md", schema }],
+    };
+
+    const result = validateFrontmatter(contract, tempDir);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("stepNumber");
+  });
+
+  it("passes normally when all placeholders resolved and frontmatter is valid", () => {
+    const schema = Type.Object({ decision: Type.String() });
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ file: "S{stepNumber:02d}/REVIEW.md", schema }],
+    };
+
+    fs.mkdirSync(path.join(tempDir, "S02"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempDir, "S02", "REVIEW.md"),
+      `---\ndecision: APPROVED\n---\n# Review`,
+      "utf-8",
+    );
+
+    const result = validateFrontmatter(contract, tempDir, { stepNumber: 2 });
+    expect(result).toEqual({ success: true });
+  });
+});

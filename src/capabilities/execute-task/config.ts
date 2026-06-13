@@ -6,7 +6,7 @@ import * as path from "node:path";
 
 import { launchCapability, setMergedSkills } from "../../capability-session";
 import { mergeCapabilitySkills, parseCommandArgs } from "../../capability-utils";
-import { resolveGoalDir, stepFolderName } from "../../fs-utils";
+import { stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityContract } from "../../types";
@@ -144,7 +144,7 @@ async function handleExecuteTask(args: string | undefined, ctx: ExtensionCommand
   const stepDir = path.join(result.goalDir, folderName);
   fs.mkdirSync(stepDir, { recursive: true });
 
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "execute-task", goalName: name, stepNumber: result.stepNumber });
+  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "execute-task", goalName: parsed.name, stepNumber: result.stepNumber });
   if (!config) {
     ctx.ui.notify("Failed to resolve execute-task config.", "error");
     return;

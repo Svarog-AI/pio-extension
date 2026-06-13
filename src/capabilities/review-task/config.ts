@@ -6,7 +6,7 @@ import * as path from "node:path";
 
 import { launchCapability, setMergedSkills } from "../../capability-session";
 import { mergeCapabilitySkills, parseCommandArgs } from "../../capability-utils";
-import { resolveGoalDir, stepFolderName } from "../../fs-utils";
+import { stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { REVIEW_OUTPUT_SCHEMA } from "./schemas";
@@ -146,7 +146,7 @@ async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandC
   // All ctx-dependent work must happen before this line.
   const folderName = stepFolderName(result.stepNumber);
 
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "review-task", goalName: name, stepNumber: result.stepNumber });
+  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "review-task", goalName: parsed.name, stepNumber: result.stepNumber });
   if (!config) {
     ctx.ui.notify("Failed to resolve review-task config.", "error");
     return;

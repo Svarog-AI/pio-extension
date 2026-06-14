@@ -2,7 +2,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
-import type { PlanFrontmatter } from "../create-plan/schemas";
 
 
 // ---------------------------------------------------------------------------

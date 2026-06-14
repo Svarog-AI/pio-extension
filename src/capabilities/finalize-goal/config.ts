@@ -3,6 +3,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { CapState } from "../../capability-state";
 import { launchCapability } from "../../capability-session";
@@ -25,6 +26,9 @@ export const CONTRACT: CapabilityContract = {
 // CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------
 
+// ESM-compatible __dirname for resolving repo root (finalize-goal/config.ts → repo root)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../..");
 
 const capabilityConfig = {

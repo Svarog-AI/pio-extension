@@ -82,6 +82,12 @@ describe("config", () => {
     expect(config.writeAllowlist.some((p: string) => p.endsWith(".pio/PROJECT/GLOSSARY.md"))).toBe(true);
   });
 
+  it("writeAllowlist paths are all absolute (ESM __dirname resolves correctly)", () => {
+    for (const p of config.writeAllowlist) {
+      expect(path.isAbsolute(p)).toBe(true);
+    }
+  });
+
   it("validation is undefined (no file validation)", () => {
     expect((config as any).validation).toBeUndefined();
   });

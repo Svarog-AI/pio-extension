@@ -1,9 +1,9 @@
 id,name,category,status
 1,Alice Johnson,Engineering,active
-2,Bob Smith,Marketing,inactive
+2,Bob Smith,Marketing,new
 3,Carol White,Engineering,pending
 4,David Brown,Design,active
-5,Eve Davis,Marketing,active
+5,Eve Davis,Marketing,closed
 6,Frank Wilson,Design,inactive
 7,Grace Lee,Engineering,pending
 8,Henry Taylor,Marketing,active

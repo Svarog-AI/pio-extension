@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as Value from "typebox/value";
 import config from "./config";
-import { applyReviewDecision, validateReviewStep, postValidateReview, postExecuteReview } from "./callbacks";
+import { applyReviewDecision, validateReviewStep, postExecuteReview } from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // Local test helper (moved from callbacks.ts — not used by production code)

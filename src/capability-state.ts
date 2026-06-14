@@ -153,8 +153,8 @@ export class CapState {
 /**
  * Create a new CapState instance.
  *
- * Mirrors the existing `createGoalState()` factory pattern so consumers
- * can migrate with a simple find-and-replace.
+ * Factory alternative to `new CapState()` — useful when the contract
+ * is determined at runtime (e.g. resolve functions using `getCapState()`).
  */
 export function createCapState(
   contract: CapabilityContract,

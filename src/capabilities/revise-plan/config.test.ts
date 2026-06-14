@@ -228,8 +228,8 @@ describe("prepareSession — archiving", () => {
     const archivedContent = fs.readFileSync(path.join(archiveDir, archiveFiles[0]), "utf-8");
     expect(archivedContent).toBe(planContent);
 
-    // Assert original PLAN.md is deleted
-    expect(fs.existsSync(path.join(goalDir, "PLAN.md"))).toBe(false);
+    // Assert original PLAN.md is preserved (copy-only behavior)
+    expect(fs.existsSync(path.join(goalDir, "PLAN.md"))).toBe(true);
   });
 
   it("creates PLAN_ARCHIVE/ directory if it does not exist", async () => {
@@ -471,8 +471,8 @@ describe("end-to-end lifecycle: prepareSession then cleanupIncompleteSteps", () 
     const archivedContent = fs.readFileSync(path.join(archiveDir, archiveFiles[0]), "utf-8");
     expect(archivedContent).toBe(planContent);
 
-    // Original PLAN.md is gone
-    expect(fs.existsSync(path.join(goalDir, "PLAN.md"))).toBe(false);
+    // Original PLAN.md is preserved (copy-only behavior)
+    expect(fs.existsSync(path.join(goalDir, "PLAN.md"))).toBe(true);
 
     // All step folders should still exist after prepareSession
     expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);

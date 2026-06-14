@@ -5,17 +5,18 @@ import { validateExecuteStep } from "./callbacks";
 import config from "./config";
 import { stepFolderName } from "../../fs-utils";
 import { resolveCapabilityConfig } from "../../capability-config";
-import { createGoalState } from "../../goal-state";
 
 // ---------------------------------------------------------------------------
 // Local test helper (moved from callbacks.ts — not used by production code)
 // ---------------------------------------------------------------------------
 
 function isStepReady(goalDir: string, stepNumber: number): boolean {
-  const state = createGoalState(goalDir);
-  const step = state.steps().find(s => s.stepNumber === stepNumber);
-  if (!step) return false;
-  return step.status() === "defined";
+  const folder = stepFolderName(stepNumber);
+  const stepDir = path.join(goalDir, folder);
+  if (!fs.existsSync(path.join(stepDir, "TASK.md"))) return false;
+  if (fs.existsSync(path.join(stepDir, "COMPLETED"))) return false;
+  if (fs.existsSync(path.join(stepDir, "BLOCKED"))) return false;
+  return true;
 }
 
 // ---------------------------------------------------------------------------

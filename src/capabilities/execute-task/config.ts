@@ -4,14 +4,15 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { CapState } from "../../capability-state";
 import { launchCapability, setMergedSkills } from "../../capability-session";
 import { mergeCapabilitySkills, parseCommandArgs } from "../../capability-utils";
 import { stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
+import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { createGoalState } from "../../goal-state";
 import { validateExecuteStep, resolveExecuteReadOnlyFiles } from "./callbacks";
 
 // ---------------------------------------------------------------------------
@@ -19,7 +20,7 @@ import { validateExecuteStep, resolveExecuteReadOnlyFiles } from "./callbacks";
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }, { file: "S{stepNumber:02d}/TASK.md" }],
+  inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }, { file: "S{stepNumber:02d}/TASK.md", schema: TASK_FRONTMATTER_SCHEMA }],
   excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
   outputs: [{ file: "S{stepNumber:02d}/TEST.md" }, { file: "S{stepNumber:02d}/SUMMARY.md" }],
 };
@@ -68,9 +69,10 @@ function prepareExecuteSession(workingDir: string, params?: Record<string, unkno
   const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
   if (stepNumber == null) return;
 
-  const state = createGoalState(workingDir);
-  const step = state.steps().find(s => s.stepNumber === stepNumber);
-  const taskSkills = step?.taskSkills();
+  const capState = new CapState(CONTRACT, workingDir, { stepNumber });
+  const taskFile = capState.file<{ skills?: unknown }>("S{stepNumber:02d}/TASK.md");
+  const taskData = taskFile.read();
+  const taskSkills = taskData?.skills ?? null;
 
   const merged = mergeCapabilitySkills(capabilityConfig.skills, taskSkills);
   setMergedSkills(merged);

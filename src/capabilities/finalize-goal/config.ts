@@ -3,11 +3,11 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 
+import { CapState } from "../../capability-state";
 import { launchCapability } from "../../capability-session";
 import { resolveGoalDir } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
-import { createGoalState } from "../../goal-state";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 
@@ -16,7 +16,7 @@ import type { CapabilityPackageConfig } from "../../capability-package";
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }],
+  inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }, { file: "COMPLETION_SUMMARY.md" }],
   outputs: [],
 };
 
@@ -76,9 +76,9 @@ export async function validateFinalizeGoal(
     };
   }
 
-  const state = createGoalState(goalDir);
+  const capState = new CapState(CONTRACT, goalDir);
 
-  if (!state.goalCompleted()) {
+  if (!capState.file("COMPLETION_SUMMARY.md").exists()) {
     return {
       goalDir,
       ready: false,

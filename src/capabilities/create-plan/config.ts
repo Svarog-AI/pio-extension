@@ -2,14 +2,16 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
+import * as path from "node:path";
 
 import { launchCapability } from "../../capability-session";
 import { resolveGoalDir } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
+import { CapState } from "../../capability-state";
+import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { createGoalState } from "../../goal-state";
 import { type PlanFrontmatter, PLAN_FRONTMATTER_SCHEMA } from "./schemas";
 
 // ---------------------------------------------------------------------------
@@ -34,18 +36,28 @@ const STEP_HEADING_RE = /^### Step \d+:/gm;
  * import low-level frontmatter utilities directly.
  */
 export function postValidateCreatePlan(goalDir: string): { success: boolean; message?: string } {
-  // Step 1: Validate frontmatter via GoalState
-  const state = createGoalState(goalDir);
-  const result = state.planMetadata({ errors: true });
+  // Step 1: Validate frontmatter via CapState
+  const capState = new CapState(CONTRACT, goalDir);
+  const planFile = capState.file<PlanFrontmatter>("PLAN.md");
 
-  // Type assertion: when { errors: true }, result is always { data?: ...; error?: string }
-  const typedResult = result as { data?: PlanFrontmatter; error?: string };
-
-  if (typedResult.error) {
-    return { success: false, message: typedResult.error };
+  if (!planFile.exists()) {
+    return { success: false, message: "PLAN.md not found" };
+  }
+  const data = planFile.read();
+  if (data === null) {
+    // Get detailed error message via direct validation
+    const raw = extractFrontmatter(path.join(goalDir, "PLAN.md"));
+    if (raw === null) {
+      return { success: false, message: "PLAN.md does not contain valid YAML frontmatter" };
+    }
+    const result = validateAndCoerce<PlanFrontmatter>(raw, PLAN_FRONTMATTER_SCHEMA);
+    if ("error" in result) {
+      return { success: false, message: result.error };
+    }
+    return { success: false, message: "PLAN.md frontmatter validation failed" };
   }
 
-  const { totalSteps, steps } = typedResult.data!;
+  const { totalSteps, steps } = data;
 
   // Step 2: Validate steps array length matches totalSteps
   if (steps.length !== totalSteps) {

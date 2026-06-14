@@ -3,18 +3,17 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as Value from "typebox/value";
 import config from "./config";
-import { findMostRecentCompletedStep, applyReviewDecision, validateReviewStep, postValidateReview, postExecuteReview } from "./callbacks";
-import { createGoalState } from "../../goal-state";
+import { applyReviewDecision, validateReviewStep, postValidateReview, postExecuteReview } from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // Local test helper (moved from callbacks.ts — not used by production code)
 // ---------------------------------------------------------------------------
 
 function isStepReviewable(goalDir: string, stepNumber: number): boolean {
-  const state = createGoalState(goalDir);
-  const step = state.steps().find(s => s.stepNumber === stepNumber);
-  if (!step) return false;
-  return step.status() === "implemented" && step.hasSummary();
+  const folder = stepFolderName(stepNumber);
+  const stepDir = path.join(goalDir, folder);
+  if (fs.existsSync(path.join(stepDir, "BLOCKED"))) return false;
+  return fs.existsSync(path.join(stepDir, "COMPLETED")) && fs.existsSync(path.join(stepDir, "SUMMARY.md"));
 }
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
 import { stepFolderName } from "../../fs-utils";
@@ -352,108 +351,6 @@ describe("isStepReviewable(goalDir, stepNumber)", () => {
 
     // Assert
     expect(result).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// findMostRecentCompletedStep — reverse-scan discovery
-// ---------------------------------------------------------------------------
-
-describe("findMostRecentCompletedStep(goalDir)", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("no step folders → undefined", () => {
-    // Arrange: empty goal directory (no S01/, S02/, etc.)
-    const { goalDir } = createGoalTree(tempDir, "empty-goal");
-
-    // Act
-    const result = findMostRecentCompletedStep(goalDir);
-
-    // Assert
-    expect(result).toBeUndefined();
-  });
-
-  it("one completed step (S01) → 1", () => {
-    // Arrange: S01 with COMPLETED and SUMMARY.md
-    const { goalDir } = createGoalTree(tempDir, "single-complete", {
-      steps: [{ number: 1, files: ["COMPLETED", "SUMMARY.md"] }],
-    });
-
-    // Act
-    const result = findMostRecentCompletedStep(goalDir);
-
-    // Assert
-    expect(result).toBe(1);
-  });
-
-  it("multiple sequential completed steps → returns highest", () => {
-    // Arrange: S01 and S02 both reviewable
-    const { goalDir } = createGoalTree(tempDir, "multi-complete", {
-      steps: [
-        { number: 1, files: ["COMPLETED", "SUMMARY.md"] },
-        { number: 2, files: ["COMPLETED", "SUMMARY.md"] },
-      ],
-    });
-
-    // Act
-    const result = findMostRecentCompletedStep(goalDir);
-
-    // Assert
-    expect(result).toBe(2);
-  });
-
-  it("gap in middle — S01 complete, S02 not reviewable → returns 1", () => {
-    // Arrange: S01 reviewable, S02 exists but has only specs (no COMPLETED)
-    const { goalDir } = createGoalTree(tempDir, "gap-middle", {
-      steps: [
-        { number: 1, files: ["COMPLETED", "SUMMARY.md"] },
-        { number: 2, files: ["TASK.md", "TEST.md"] },
-      ],
-    });
-
-    // Act
-    const result = findMostRecentCompletedStep(goalDir);
-
-    // Assert
-    expect(result).toBe(1);
-  });
-
-  it("S01 blocked, S02 completed → returns 2", () => {
-    // Arrange: S01 has BLOCKED (not reviewable), S02 is reviewable
-    const { goalDir } = createGoalTree(tempDir, "blocked-s01", {
-      steps: [
-        { number: 1, files: ["COMPLETED", "SUMMARY.md", "BLOCKED"] },
-        { number: 2, files: ["COMPLETED", "SUMMARY.md"] },
-      ],
-    });
-
-    // Act
-    const result = findMostRecentCompletedStep(goalDir);
-
-    // Assert
-    expect(result).toBe(2);
-  });
-
-  it("S01 has specs but no COMPLETED, S02 reviewable → returns 2", () => {
-    // Arrange: S01 only has specs, S02 is reviewable
-    const { goalDir } = createGoalTree(tempDir, "specs-only-s01", {
-      steps: [
-        { number: 1, files: ["TASK.md", "TEST.md"] },
-        { number: 2, files: ["COMPLETED", "SUMMARY.md"] },
-      ],
-    });
-
-    // Act
-    const result = findMostRecentCompletedStep(goalDir);
-
-    // Assert
-    expect(result).toBe(2);
   });
 });
 

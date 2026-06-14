@@ -1,9 +1,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { CapState } from "../../capability-state";
+import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
-import { createGoalState, type StepStatus } from "../../goal-state";
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
+import { CONTRACT } from "./config";
 
 
 // ---------------------------------------------------------------------------
@@ -67,13 +69,26 @@ export function postValidateReview(goalDir: string, params?: Record<string, unkn
     throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
   }
 
-  // Single parsing path through GoalState — uses shared frontmatter module + schema internally
-  const state = createGoalState(goalDir);
-  const result = state.getReviewOutputs(stepNumber, { errors: true }) as { data?: ReviewOutputs; error?: string };
+  // Read REVIEW.md via CapState — uses CONTRACT.outputs schema for validation
+  const capState = new CapState(CONTRACT, goalDir, { stepNumber });
+  const reviewFile = capState.file<ReviewOutputs>("S{stepNumber:02d}/REVIEW.md");
 
-  // On failure: propagate the detailed error from GoalState
-  if (result.error) {
-    return { success: false, message: result.error };
+  if (!reviewFile.exists()) {
+    return { success: false, message: `REVIEW.md not found in S${String(stepNumber).padStart(2, "0")}/` };
+  }
+  const data = reviewFile.read();
+  if (data === null) {
+    // Get detailed error message via direct validation
+    const reviewPath = path.join(goalDir, stepFolderName(stepNumber), "REVIEW.md");
+    const raw = extractFrontmatter(reviewPath);
+    if (raw === null) {
+      return { success: false, message: `REVIEW.md does not contain valid YAML frontmatter for step ${stepNumber}` };
+    }
+    const result = validateAndCoerce<ReviewOutputs>(raw, REVIEW_OUTPUT_SCHEMA);
+    if ("error" in result) {
+      return { success: false, message: result.error };
+    }
+    return { success: false, message: `REVIEW.md frontmatter validation failed for step ${stepNumber}` };
   }
 
   // Schema validation passed — do NOT create markers here (that's postExecute's job)
@@ -91,18 +106,22 @@ export function postExecuteReview(goalDir: string, params?: Record<string, unkno
     throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
   }
 
-  // Re-read REVIEW.md frontmatter (GoalState reads fresh from disk on every call)
-  const state = createGoalState(goalDir);
-  const result = state.getReviewOutputs(stepNumber, { errors: true }) as { data?: ReviewOutputs; error?: string };
+  // Re-read REVIEW.md via CapState (reads fresh from disk on every call)
+  const capState = new CapState(CONTRACT, goalDir, { stepNumber });
+  const reviewFile = capState.file<ReviewOutputs>("S{stepNumber:02d}/REVIEW.md");
 
-  // Defensive: if parsing fails, log warning and return (runs after transitions — don't crash)
-  if (result.error || !result.data) {
-    console.warn(`pio: postExecuteReview could not parse REVIEW.md for step ${stepNumber}: ${result.error || "no data"}`);
+  if (!reviewFile.exists()) {
+    console.warn(`pio: postExecuteReview — REVIEW.md not found in S${String(stepNumber).padStart(2, "0")}/`);
+    return;
+  }
+  const data = reviewFile.read();
+  if (data === null) {
+    console.warn(`pio: postExecuteReview could not parse REVIEW.md for step ${stepNumber}: frontmatter validation failed`);
     return;
   }
 
   // Create markers (APPROVED/REJECTED) — irreversible side-effect
-  applyReviewDecision(goalDir, stepNumber, result.data);
+  applyReviewDecision(goalDir, stepNumber, data);
 }
 
 // ---------------------------------------------------------------------------
@@ -142,25 +161,6 @@ export function applyReviewDecision(
     // Delete COMPLETED so execute-task permits re-execution
     fs.rmSync(path.join(stepDir, "COMPLETED"), { force: true });
   }
-}
-
-/**
- * Find the most recently completed step by scanning S01/, S02/, ... in descending order.
- * Returns the step number or undefined if no completed step found.
- */
-export function findMostRecentCompletedStep(goalDir: string): number | undefined {
-  const state = createGoalState(goalDir);
-  const allSteps = state.steps(); // sorted ascending by stepNumber
-
-  // Scan from highest to lowest for a reviewable step
-  for (let i = allSteps.length - 1; i >= 0; i--) {
-    const step = allSteps[i];
-    if (step.status() === "implemented" && step.hasSummary()) {
-      return step.stepNumber;
-    }
-  }
-
-  return undefined;
 }
 
 // ---------------------------------------------------------------------------

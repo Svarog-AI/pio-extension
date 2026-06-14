@@ -4,15 +4,16 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { CapState } from "../../capability-state";
 import { launchCapability, setMergedSkills } from "../../capability-session";
 import { mergeCapabilitySkills, parseCommandArgs } from "../../capability-utils";
 import { stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { REVIEW_OUTPUT_SCHEMA } from "./schemas";
+import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { createGoalState } from "../../goal-state";
 import {
   validateReviewStep,
   resolveReviewReadOnlyFiles,
@@ -26,7 +27,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }, { file: "S{stepNumber:02d}/COMPLETED" }, { file: "S{stepNumber:02d}/SUMMARY.md" }],
+  inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }, { file: "S{stepNumber:02d}/COMPLETED" }, { file: "S{stepNumber:02d}/SUMMARY.md" }, { file: "S{stepNumber:02d}/TASK.md", schema: TASK_FRONTMATTER_SCHEMA }],
   outputs: [{ file: "S{stepNumber:02d}/REVIEW.md", schema: REVIEW_OUTPUT_SCHEMA }],
 };
 
@@ -74,9 +75,10 @@ function prepareReviewSession(workingDir: string, params?: Record<string, unknow
   fs.rmSync(path.join(stepDir, "REJECTED"), { force: true });
 
   // Read TASK.md skills and merge into capability config
-  const state = createGoalState(workingDir);
-  const step = state.steps().find(s => s.stepNumber === stepNumber);
-  const taskSkills = step?.taskSkills();
+  const capState = new CapState(CONTRACT, workingDir, { stepNumber });
+  const taskFile = capState.file<{ skills?: unknown }>("S{stepNumber:02d}/TASK.md");
+  const taskData = taskFile.read();
+  const taskSkills = taskData?.skills ?? null;
 
   const merged = mergeCapabilitySkills(capabilityConfig.skills, taskSkills);
   setMergedSkills(merged);

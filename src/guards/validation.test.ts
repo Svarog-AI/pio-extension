@@ -844,7 +844,7 @@ describe("CONTRACT integration — execute-task", () => {
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
     fs.mkdirSync(path.join(tempDir, "S02"), { recursive: true });
-    fs.writeFileSync(path.join(tempDir, "S02", "TASK.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "S02", "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
     const result = validateInputs(tempDir, CONTRACT, { stepNumber: 2 });
     expect(result).toEqual({ success: true });
   });
@@ -881,6 +881,7 @@ describe("CONTRACT integration — review-task", () => {
     fs.mkdirSync(path.join(tempDir, "S01"), { recursive: true });
     fs.writeFileSync(path.join(tempDir, "S01", "COMPLETED"), "", "utf-8");
     fs.writeFileSync(path.join(tempDir, "S01", "SUMMARY.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "S01", "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
     const result = validateInputs(tempDir, CONTRACT, { stepNumber: 1 });
     expect(result).toEqual({ success: true });
   });
@@ -974,6 +975,7 @@ describe("CONTRACT integration — finalize-goal", () => {
     const { CONTRACT } = await import("../capabilities/finalize-goal/config");
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete", "utf-8");
     const result = validateInputs(tempDir, CONTRACT);
     expect(result).toEqual({ success: true });
   });

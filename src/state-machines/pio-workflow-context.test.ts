@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { buildPioWorkflowContext, type PioWorkflowContext } from "./pio-workflow-machine";
-import type { EnrichedStepStatus } from "./utils";
+import type { SimpleStepStatus } from "./utils";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -196,7 +196,7 @@ describe("PioWorkflowContext — totalPlanSteps()", () => {
 // ---------------------------------------------------------------------------
 
 describe("PioWorkflowContext — steps()", () => {
-  it("returns array of EnrichedStepStatus objects matching PLAN.md steps array length", () => {
+  it("returns array of SimpleStepStatus objects matching PLAN.md steps array length", () => {
     const { ctx } = setupGoal(mktmp(), "test", {
       "PLAN.md": writePlanFrontmatter(3, [
         { name: "add-types" },
@@ -225,7 +225,7 @@ describe("PioWorkflowContext — steps()", () => {
     expect(ctx.steps()).toHaveLength(0);
   });
 
-  it("EnrichedStepStatus objects have correct stepNumber and folderName", () => {
+  it("SimpleStepStatus objects have correct stepNumber and folderName", () => {
     const { ctx } = setupGoal(mktmp(), "test", {
       "PLAN.md": writePlanFrontmatter(2, [{ name: "first" }, { name: "second" }]),
     });
@@ -237,8 +237,8 @@ describe("PioWorkflowContext — steps()", () => {
     expect(steps[1].folderName).toBe("S02");
   });
 
-  it("EnrichedStepStatus.getMetadata() returns StepMetadata with name and complexity", () => {
-    const { goalDir, ctx } = setupGoal(mktmp(), "test", {
+  it("SimpleStepStatus.getMetadata() returns StepMetadata with name and complexity", () => {
+    const { ctx } = setupGoal(mktmp(), "test", {
       "PLAN.md": writePlanFrontmatter(2, [
         { name: "add-types", complexity: "task" },
         { name: "nested-feature", complexity: "subgoal" },
@@ -253,42 +253,7 @@ describe("PioWorkflowContext — steps()", () => {
     expect(meta2).toEqual({ name: "nested-feature", complexity: "subgoal" });
   });
 
-  it("EnrichedStepStatus.taskSkills() reads TASK.md frontmatter and returns skills", () => {
-    const { goalDir, ctx } = setupGoal(mktmp(), "test", {
-      "PLAN.md": writePlanFrontmatter(1, [{ name: "test-step" }]),
-      "S01/TASK.md": writeTaskFrontmatter({
-        mandatory: ["tdd", "pio-git"],
-        recommended: [{ name: "source-research", condition: "when researching" }],
-      }),
-    });
-
-    const steps = ctx.steps();
-    const skills = steps[0].taskSkills();
-    expect(skills).not.toBeNull();
-    expect(skills?.mandatory).toEqual(["tdd", "pio-git"]);
-    expect(skills?.recommended).toHaveLength(1);
-  });
-
-  it("EnrichedStepStatus.taskSkills() returns null when TASK.md missing", () => {
-    const { ctx } = setupGoal(mktmp(), "test", {
-      "PLAN.md": writePlanFrontmatter(1, [{ name: "test-step" }]),
-    });
-
-    const steps = ctx.steps();
-    expect(steps[0].taskSkills()).toBeNull();
-  });
-
-  it("EnrichedStepStatus.taskSkills() returns null when TASK.md has no skills frontmatter", () => {
-    const { ctx } = setupGoal(mktmp(), "test", {
-      "PLAN.md": writePlanFrontmatter(1, [{ name: "test-step" }]),
-      "S01/TASK.md": "---\n---\n# No skills",
-    });
-
-    const steps = ctx.steps();
-    expect(steps[0].taskSkills()).toBeNull();
-  });
-
-  it("EnrichedStepStatus.hasTest() returns true when TEST.md exists", () => {
+  it("SimpleStepStatus.hasTest() returns true when TEST.md exists", () => {
     const { ctx } = setupGoal(mktmp(), "test", {
       "PLAN.md": writePlanFrontmatter(1, [{ name: "test-step" }]),
       "S01/TEST.md": "# Tests",
@@ -297,7 +262,7 @@ describe("PioWorkflowContext — steps()", () => {
     expect(ctx.steps()[0].hasTest()).toBe(true);
   });
 
-  it("EnrichedStepStatus.hasTest() returns false when TEST.md missing", () => {
+  it("SimpleStepStatus.hasTest() returns false when TEST.md missing", () => {
     const { ctx } = setupGoal(mktmp(), "test", {
       "PLAN.md": writePlanFrontmatter(1, [{ name: "test-step" }]),
     });
@@ -305,27 +270,7 @@ describe("PioWorkflowContext — steps()", () => {
     expect(ctx.steps()[0].hasTest()).toBe(false);
   });
 
-  it("EnrichedStepStatus.status() — frontmatter-aware: REVIEW.md APPROVED takes priority over markers", () => {
-    const { ctx } = setupGoal(mktmp(), "test", {
-      "PLAN.md": writePlanFrontmatter(1, [{ name: "test-step" }]),
-      "S01/REVIEW.md": writeReviewFrontmatter("APPROVED"),
-      "S01/COMPLETED": "", // COMPLETED marker also exists
-    });
-
-    expect(ctx.steps()[0].status()).toBe("approved");
-  });
-
-  it("EnrichedStepStatus.status() — frontmatter-aware: REVIEW.md REJECTED takes priority", () => {
-    const { ctx } = setupGoal(mktmp(), "test", {
-      "PLAN.md": writePlanFrontmatter(1, [{ name: "test-step" }]),
-      "S01/REVIEW.md": writeReviewFrontmatter("REJECTED"),
-      "S01/APPROVED": "", // APPROVED marker also exists
-    });
-
-    expect(ctx.steps()[0].status()).toBe("rejected");
-  });
-
-  it("EnrichedStepStatus.status() — falls back to markers when no REVIEW.md", () => {
+  it("SimpleStepStatus.status() — marker-based: returns 'approved' when APPROVED marker exists", () => {
     const { ctx } = setupGoal(mktmp(), "test", {
       "PLAN.md": writePlanFrontmatter(1, [{ name: "test-step" }]),
       "S01/APPROVED": "",
@@ -334,7 +279,16 @@ describe("PioWorkflowContext — steps()", () => {
     expect(ctx.steps()[0].status()).toBe("approved");
   });
 
-  it("EnrichedStepStatus.status() — returns 'pending' for empty folder", () => {
+  it("SimpleStepStatus.status() — marker-based: returns 'rejected' when REJECTED marker exists", () => {
+    const { ctx } = setupGoal(mktmp(), "test", {
+      "PLAN.md": writePlanFrontmatter(1, [{ name: "test-step" }]),
+      "S01/REJECTED": "",
+    });
+
+    expect(ctx.steps()[0].status()).toBe("rejected");
+  });
+
+  it("SimpleStepStatus.status() — marker-based: returns 'pending' for empty folder", () => {
     const { ctx } = setupGoal(mktmp(), "test", {
       "PLAN.md": writePlanFrontmatter(1, [{ name: "test-step" }]),
       "S01/.gitkeep": "",
@@ -343,7 +297,7 @@ describe("PioWorkflowContext — steps()", () => {
     expect(ctx.steps()[0].status()).toBe("pending");
   });
 
-  it("EnrichedStepStatus.status() — returns 'defined' when only TASK.md exists", () => {
+  it("SimpleStepStatus.status() — marker-based: returns 'defined' when only TASK.md exists", () => {
     const { ctx } = setupGoal(mktmp(), "test", {
       "PLAN.md": writePlanFrontmatter(1, [{ name: "test-step" }]),
       "S01/TASK.md": "# Task",
@@ -352,7 +306,7 @@ describe("PioWorkflowContext — steps()", () => {
     expect(ctx.steps()[0].status()).toBe("defined");
   });
 
-  it("EnrichedStepStatus.status() — returns 'implemented' when COMPLETED marker exists (no REVIEW.md)", () => {
+  it("SimpleStepStatus.status() — marker-based: returns 'implemented' when COMPLETED marker exists", () => {
     const { ctx } = setupGoal(mktmp(), "test", {
       "PLAN.md": writePlanFrontmatter(1, [{ name: "test-step" }]),
       "S01/COMPLETED": "",
@@ -361,15 +315,76 @@ describe("PioWorkflowContext — steps()", () => {
     expect(ctx.steps()[0].status()).toBe("implemented");
   });
 
-  it("EnrichedStepStatus.status() — REVIEW.md frontmatter takes priority over APPROVED marker", () => {
+  it("SimpleStepStatus.status() — marker-based: respects priority approved > rejected", () => {
     const { ctx } = setupGoal(mktmp(), "test", {
       "PLAN.md": writePlanFrontmatter(1, [{ name: "test-step" }]),
-      "S01/REVIEW.md": writeReviewFrontmatter("REJECTED"),
       "S01/APPROVED": "",
+      "S01/REJECTED": "",
     });
 
-    // REVIEW.md says REJECTED, marker says APPROVED — frontmatter wins
-    expect(ctx.steps()[0].status()).toBe("rejected");
+    expect(ctx.steps()[0].status()).toBe("approved");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getTaskSkills (on PioWorkflowContext)
+// ---------------------------------------------------------------------------
+
+describe("PioWorkflowContext — getTaskSkills()", () => {
+  it("reads TASK.md frontmatter and returns skills object", () => {
+    const { ctx } = setupGoal(mktmp(), "test", {
+      "S01/TASK.md": writeTaskFrontmatter({
+        mandatory: ["tdd", "pio-git"],
+        recommended: [{ name: "source-research", condition: "when researching" }],
+      }),
+    });
+
+    const skills = ctx.getTaskSkills(1);
+    expect(skills).not.toBeNull();
+    expect(skills?.mandatory).toEqual(["tdd", "pio-git"]);
+    expect(skills?.recommended).toHaveLength(1);
+  });
+
+  it("returns null when TASK.md is missing", () => {
+    const { ctx } = setupGoal(mktmp(), "test");
+    expect(ctx.getTaskSkills(1)).toBeNull();
+  });
+
+  it("returns null when TASK.md has no skills frontmatter", () => {
+    const { ctx } = setupGoal(mktmp(), "test", {
+      "S01/TASK.md": "---\n---\n# No skills",
+    });
+
+    expect(ctx.getTaskSkills(1)).toBeNull();
+  });
+
+  it("returns null when TASK.md has no frontmatter", () => {
+    const { ctx } = setupGoal(mktmp(), "test", {
+      "S01/TASK.md": "# Task without frontmatter",
+    });
+
+    expect(ctx.getTaskSkills(1)).toBeNull();
+  });
+
+  it("returns skills with only mandatory (no recommended)", () => {
+    const { ctx } = setupGoal(mktmp(), "test", {
+      "S01/TASK.md": writeTaskFrontmatter({ mandatory: ["tdd"] }),
+    });
+
+    const skills = ctx.getTaskSkills(1);
+    expect(skills).not.toBeNull();
+    expect(skills?.mandatory).toEqual(["tdd"]);
+    expect(skills?.recommended).toBeUndefined();
+  });
+
+  it("uses correct step number (S03)", () => {
+    const { ctx } = setupGoal(mktmp(), "test", {
+      "S03/TASK.md": writeTaskFrontmatter({ mandatory: ["pio-git"] }),
+    });
+
+    const skills = ctx.getTaskSkills(3);
+    expect(skills).not.toBeNull();
+    expect(skills?.mandatory).toEqual(["pio-git"]);
   });
 });
 
@@ -468,6 +483,20 @@ describe("PioWorkflowContext — getReviewOutputs()", () => {
     const result = ctx.getReviewOutputs(1, { errors: true });
     expect(result).toHaveProperty("error");
   });
+
+  it("uses CapState placeholder resolution for step path", () => {
+    // Verify that getReviewOutputs uses "S{stepNumber:02d}/REVIEW.md"
+    // so CapState handles the placeholder resolution.
+    // If stepNumber is 1, it resolves to S01/REVIEW.md.
+    const { ctx } = setupGoal(mktmp(), "test", {
+      "S01/REVIEW.md": writeReviewFrontmatter("APPROVED"),
+    });
+
+    const result = ctx.getReviewOutputs(1);
+    expect(result).not.toBeNull();
+    const data = result as Exclude<typeof result, null | { data?: unknown; error?: string }>;
+    expect(data.decision).toBe("APPROVED");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -552,9 +581,10 @@ describe("PioWorkflowContext — interface compatibility", () => {
     expect(typeof ctx.getReviewOutputs).toBe("function");
     expect(typeof ctx.planMetadata).toBe("function");
     expect(typeof ctx.goalCompleted).toBe("function");
+    expect(typeof ctx.getTaskSkills).toBe("function");
   });
 
-  it("steps() returns objects with all StepStatus methods", () => {
+  it("steps() returns objects with all SimpleStepStatus methods", () => {
     const { ctx } = setupGoal(mktmp(), "test", {
       "PLAN.md": writePlanFrontmatter(1, [{ name: "test-step" }]),
     });
@@ -564,14 +594,12 @@ describe("PioWorkflowContext — interface compatibility", () => {
     // SimpleStepStatus methods
     expect(typeof step.stepNumber).toBe("number");
     expect(typeof step.folderName).toBe("string");
+    expect(typeof step.metadata).toBeDefined();
     expect(typeof step.hasTask).toBe("function");
+    expect(typeof step.hasTest).toBe("function");
     expect(typeof step.hasSummary).toBe("function");
     expect(typeof step.revisionNeeded).toBe("function");
-    expect(typeof step.status).toBe("function");
-
-    // EnrichedStepStatus additions
-    expect(typeof step.hasTest).toBe("function");
     expect(typeof step.getMetadata).toBe("function");
-    expect(typeof step.taskSkills).toBe("function");
+    expect(typeof step.status).toBe("function");
   });
 });

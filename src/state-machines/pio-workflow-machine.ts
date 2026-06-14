@@ -6,11 +6,12 @@ import type { GoalState } from "../goal-state";
 import { resolveGoalDir, stepFolderName } from "../fs-utils";
 import { CapState } from "../capability-state";
 import { deriveQueueKey, readPendingTask } from "../queues";
-import { isGoalComplete, findCurrentStepNumber, createEnrichedStepStatus, type EnrichedStepStatus } from "./utils";
+import { isGoalComplete, findCurrentStepNumber, createSimpleStepStatus, type SimpleStepStatus } from "./utils";
 import { CONTRACT as createPlanContract } from "../capabilities/create-plan/config";
 import { CONTRACT as evolvePlanContract } from "../capabilities/evolve-plan/config";
 import { CONTRACT as reviewTaskContract } from "../capabilities/review-task/config";
 import type { PlanFrontmatter, StepMetadata } from "../capabilities/create-plan/schemas";
+import type { TaskFrontmatter, TaskSkills } from "../capabilities/evolve-plan/schemas";
 import type { ReviewOutputs } from "../capabilities/review-task/schemas";
 
 const MACHINE_ID = "goal-driven-development";
@@ -352,12 +353,12 @@ export interface PioWorkflowContext {
    */
   totalPlanSteps(): number | undefined;
   /**
-   * Returns an EnrichedStepStatus for each step defined in PLAN.md frontmatter `steps` array.
+   * Returns a SimpleStepStatus for each step defined in PLAN.md frontmatter `steps` array.
    * Derives step list from frontmatter, not from disk scanning.
    * Each step still checks disk for file existence (hasTask, status, etc.).
    * Returns empty array when frontmatter is absent or has no `steps` field.
    */
-  steps(): EnrichedStepStatus[];
+  steps(): SimpleStepStatus[];
   /**
    * Returns the next step to work on.
    * Sequential scan starting at 1: returns the first step without an APPROVED marker,
@@ -404,6 +405,13 @@ export interface PioWorkflowContext {
    * Lazy-evaluated — reads fresh on every call.
    */
   goalCompleted(): boolean;
+  /**
+   * Reads TASK.md frontmatter for a given step and returns the skills field.
+   * Lazy-evaluated — reads fresh from disk on every call.
+   * Returns `TaskSkills | null`: parsed skills when present, or `null` when
+   * the file is missing, has no frontmatter, has no `skills` key, or fails validation.
+   */
+  getTaskSkills(stepNumber: number): TaskSkills | null;
 }
 
 /**
@@ -495,7 +503,7 @@ export function buildPioWorkflowContext(
 
       if (!data || !data.steps || data.steps.length === 0) return [];
 
-      const stepStatuses: EnrichedStepStatus[] = [];
+      const stepStatuses: SimpleStepStatus[] = [];
 
       for (let i = 0; i < data.steps.length; i++) {
         const stepNumber = i + 1;
@@ -508,14 +516,11 @@ export function buildPioWorkflowContext(
         };
 
         stepStatuses.push(
-          createEnrichedStepStatus(
+          createSimpleStepStatus(
             stepDir,
-            baseDir,
             stepNumber,
             folderName,
             stepMetadata,
-            evolvePlanContract,
-            reviewTaskContract,
           ),
         );
       }
@@ -548,7 +553,7 @@ export function buildPioWorkflowContext(
 
     getReviewOutputs: (stepNumber: number, options?: { errors?: boolean }) => {
       const capState = new CapState(reviewTaskContract, baseDir, { stepNumber });
-      const reviewFile = capState.file<ReviewOutputs>(`S${String(stepNumber).padStart(2, "0")}/REVIEW.md`);
+      const reviewFile = capState.file<ReviewOutputs>("S{stepNumber:02d}/REVIEW.md");
 
       if (!reviewFile.exists()) {
         if (options?.errors) {
@@ -572,6 +577,12 @@ export function buildPioWorkflowContext(
     },
 
     goalCompleted: () => isGoalComplete(baseDir),
+
+    getTaskSkills: (stepNumber: number) => {
+      const capState = new CapState(evolvePlanContract, baseDir, { stepNumber });
+      const data = capState.file<TaskFrontmatter>("S{stepNumber:02d}/TASK.md").read();
+      return data?.skills ?? null;
+    },
   };
 }
 

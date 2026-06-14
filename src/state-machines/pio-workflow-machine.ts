@@ -1,8 +1,6 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
 import type { StateMachine, ResolverResult } from "../state-machines";
 import { registerMachine } from "../state-machines";
-import { resolveGoalDir, stepFolderName } from "../fs-utils";
+import { resolveGoalDir } from "../fs-utils";
 import { getCapState } from "./utils";
 import type { ReviewOutputs } from "../capabilities/review-task/schemas";
 

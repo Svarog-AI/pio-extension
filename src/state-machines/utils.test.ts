@@ -1,7 +1,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isGoalComplete, findCurrentStepNumber, createSimpleStepStatus } from "./utils";
+import { isGoalComplete, findCurrentStepNumber, createSimpleStepStatus, createEnrichedStepStatus } from "./utils";
+import { CONTRACT as evolvePlanContract } from "../capabilities/evolve-plan/config";
+import { CONTRACT as reviewTaskContract } from "../capabilities/review-task/config";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -214,3 +216,204 @@ describe("SimpleStepStatus", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// EnrichedStepStatus
+// ---------------------------------------------------------------------------
+
+describe("EnrichedStepStatus", () => {
+  function setupEnrichedStep(tmp: string, goalName: string, stepNum: number, files: Record<string, string> = {}) {
+    const goalDir = createGoalStructure(tmp, goalName);
+    const stepDir = createStepDir(goalDir, stepNum);
+
+    for (const [name, content] of Object.entries(files)) {
+      fs.writeFileSync(path.join(stepDir, name), content, "utf-8");
+    }
+
+    const status = createEnrichedStepStatus(
+      stepDir,
+      goalDir,
+      stepNum,
+      `S${String(stepNum).padStart(2, "0")}`,
+      { name: "test-step", complexity: "task" },
+      evolvePlanContract,
+      reviewTaskContract,
+    );
+
+    return { goalDir, stepDir, status };
+  }
+
+  describe("status() — frontmatter-aware", () => {
+    it("returns 'approved' when REVIEW.md has decision: APPROVED", () => {
+      const { status } = setupEnrichedStep(mktmp(), "frontmatter-approved", 1, {
+        "REVIEW.md": "---\ndecision: APPROVED\ncriticalIssues: 0\nhighIssues: 0\nmediumIssues: 0\nlowIssues: 0\n---\n# Review\n",
+      });
+      expect(status.status()).toBe("approved");
+    });
+
+    it("returns 'rejected' when REVIEW.md has decision: REJECTED", () => {
+      const { status } = setupEnrichedStep(mktmp(), "frontmatter-rejected", 1, {
+        "REVIEW.md": "---\ndecision: REJECTED\ncriticalIssues: 1\nhighIssues: 0\nmediumIssues: 0\nlowIssues: 0\n---\n# Review\n",
+      });
+      expect(status.status()).toBe("rejected");
+    });
+
+    it("REVIEW.md frontmatter APPROVED takes priority over COMPLETED marker", () => {
+      const { status } = setupEnrichedStep(mktmp(), "priority-approved", 1, {
+        "REVIEW.md": "---\ndecision: APPROVED\ncriticalIssues: 0\nhighIssues: 0\nmediumIssues: 0\nlowIssues: 0\n---\n# Review\n",
+        "COMPLETED": "",
+      });
+      expect(status.status()).toBe("approved");
+    });
+
+    it("REVIEW.md frontmatter REJECTED takes priority over APPROVED marker", () => {
+      const { status } = setupEnrichedStep(mktmp(), "priority-rejected", 1, {
+        "REVIEW.md": "---\ndecision: REJECTED\ncriticalIssues: 1\nhighIssues: 0\nmediumIssues: 0\nlowIssues: 0\n---\n# Review\n",
+        "APPROVED": "",
+      });
+      expect(status.status()).toBe("rejected");
+    });
+
+    it("falls back to markers when REVIEW.md is missing", () => {
+      const { status } = setupEnrichedStep(mktmp(), "fallback-markers", 1, {
+        "APPROVED": "",
+      });
+      expect(status.status()).toBe("approved");
+    });
+
+    it("falls back to markers when REVIEW.md has no frontmatter", () => {
+      const { status } = setupEnrichedStep(mktmp(), "fallback-no-frontmatter", 1, {
+        "REVIEW.md": "# No frontmatter review",
+        "COMPLETED": "",
+      });
+      expect(status.status()).toBe("implemented");
+    });
+
+    it("returns 'pending' for empty folder (no REVIEW.md, no markers)", () => {
+      const { status } = setupEnrichedStep(mktmp(), "empty-folder", 1);
+      expect(status.status()).toBe("pending");
+    });
+
+    it("returns 'defined' when only TASK.md exists (no REVIEW.md)", () => {
+      const { status } = setupEnrichedStep(mktmp(), "only-task", 1, {
+        "TASK.md": "# Task",
+      });
+      expect(status.status()).toBe("defined");
+    });
+
+    it("returns 'blocked' when BLOCKED marker exists (no REVIEW.md)", () => {
+      const { status } = setupEnrichedStep(mktmp(), "blocked-marker", 1, {
+        "BLOCKED": "",
+      });
+      expect(status.status()).toBe("blocked");
+    });
+  });
+
+  describe("taskSkills()", () => {
+    it("reads TASK.md frontmatter and returns skills object", () => {
+      const { status } = setupEnrichedStep(mktmp(), "with-skills", 1, {
+        "TASK.md": "---\nskills:\n  mandatory: [tdd, pio-git]\n  recommended:\n    - name: source-research\n      condition: when researching\n---\n# Task\n",
+      });
+      const skills = status.taskSkills();
+      expect(skills).not.toBeNull();
+      expect(skills?.mandatory).toEqual(["tdd", "pio-git"]);
+      expect(skills?.recommended).toHaveLength(1);
+    });
+
+    it("returns null when TASK.md is missing", () => {
+      const { status } = setupEnrichedStep(mktmp(), "no-task", 1);
+      expect(status.taskSkills()).toBeNull();
+    });
+
+    it("returns null when TASK.md has no skills frontmatter", () => {
+      const { status } = setupEnrichedStep(mktmp(), "no-skills", 1, {
+        "TASK.md": "---\n---\n# Task with no skills\n",
+      });
+      expect(status.taskSkills()).toBeNull();
+    });
+
+    it("returns null when TASK.md has no frontmatter", () => {
+      const { status } = setupEnrichedStep(mktmp(), "no-frontmatter", 1, {
+        "TASK.md": "# Task without frontmatter",
+      });
+      expect(status.taskSkills()).toBeNull();
+    });
+
+    it("returns skills with only mandatory (no recommended)", () => {
+      const { status } = setupEnrichedStep(mktmp(), "mandatory-only", 1, {
+        "TASK.md": "---\nskills:\n  mandatory: [tdd]\n---\n# Task\n",
+      });
+      const skills = status.taskSkills();
+      expect(skills).not.toBeNull();
+      expect(skills?.mandatory).toEqual(["tdd"]);
+      expect(skills?.recommended).toBeUndefined();
+    });
+  });
+
+  describe("getMetadata()", () => {
+    it("returns the metadata provided at construction", () => {
+      const { status } = setupEnrichedStep(mktmp(), "metadata", 1);
+      expect(status.getMetadata()).toEqual({ name: "test-step", complexity: "task" });
+    });
+
+    it("returns null when metadata is null at construction", () => {
+      const tmp = mktmp();
+      const goalDir = createGoalStructure(tmp, "null-meta");
+      const stepDir = createStepDir(goalDir, 1);
+      const status = createEnrichedStepStatus(
+        stepDir,
+        goalDir,
+        1,
+        "S01",
+        null,
+        evolvePlanContract,
+        reviewTaskContract,
+      );
+      expect(status.getMetadata()).toBeNull();
+    });
+  });
+
+  describe("hasTest()", () => {
+    it("returns true when TEST.md exists", () => {
+      const { status } = setupEnrichedStep(mktmp(), "has-test", 1, {
+        "TEST.md": "# Tests",
+      });
+      expect(status.hasTest()).toBe(true);
+    });
+
+    it("returns false when TEST.md does not exist", () => {
+      const { status } = setupEnrichedStep(mktmp(), "no-test", 1);
+      expect(status.hasTest()).toBe(false);
+    });
+  });
+
+  describe("SimpleStepStatus inheritance", () => {
+    it("hasTask() works (inherited from SimpleStepStatus)", () => {
+      const { status } = setupEnrichedStep(mktmp(), "inherited-task", 1, {
+        "TASK.md": "# Task",
+      });
+      expect(status.hasTask()).toBe(true);
+    });
+
+    it("hasSummary() works (inherited from SimpleStepStatus)", () => {
+      const { status } = setupEnrichedStep(mktmp(), "inherited-summary", 1, {
+        "SUMMARY.md": "# Summary",
+      });
+      expect(status.hasSummary()).toBe(true);
+    });
+
+    it("revisionNeeded() works (inherited from SimpleStepStatus)", () => {
+      const { status } = setupEnrichedStep(mktmp(), "inherited-revise", 1, {
+        "REVISE_PLAN_NEEDED": "",
+      });
+      expect(status.revisionNeeded()).toBe(true);
+    });
+
+    it("stepNumber and folderName are preserved", () => {
+      const { status } = setupEnrichedStep(mktmp(), "inherited-props", 5);
+      expect(status.stepNumber).toBe(5);
+      expect(status.folderName).toBe("S05");
+    });
+  });
+});
+

@@ -1,6 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { stepFolderName } from "../fs-utils";
+import { CapState } from "../capability-state";
+import { validateAndCoerce } from "../frontmatter";
+import type { CapabilityContract } from "../types";
 
 // ---------------------------------------------------------------------------
 // Goal completion check
@@ -112,6 +115,99 @@ export function createSimpleStepStatus(
       if (fs.existsSync(path.join(stepDir, "COMPLETED"))) return "implemented";
       if (fs.existsSync(path.join(stepDir, "TASK.md"))) return "defined";
       return "pending";
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// EnrichedStepStatus — extends SimpleStepStatus with schema-aware methods
+// ---------------------------------------------------------------------------
+
+/**
+ * Extends SimpleStepStatus with CapState-backed methods for schema-aware
+ * file access: REVIEW.md frontmatter parsing for status(), TASK.md frontmatter
+ * for taskSkills(), and TEST.md existence check.
+ *
+ * The status() method replicates GoalState's frontmatter-aware behavior:
+ * REVIEW.md frontmatter decision takes priority over marker files.
+ */
+export interface EnrichedStepStatus extends SimpleStepStatus {
+  /** Returns true when TEST.md exists in the step folder. */
+  hasTest(): boolean;
+  /**
+   * Returns step metadata from PLAN.md frontmatter steps array.
+   * Provided at construction time — not read from disk.
+   */
+  getMetadata(): Record<string, unknown> | null;
+  /**
+   * Reads TASK.md frontmatter and returns the skills field.
+   * Lazy-evaluated — reads fresh from disk on every call.
+   */
+  taskSkills(): Record<string, unknown> | null;
+}
+
+/**
+ * Create an EnrichedStepStatus that wraps SimpleStepStatus with CapState-backed
+ * schema-aware reads for status() (REVIEW.md), taskSkills() (TASK.md), and hasTest().
+ *
+ * @param stepDir - Absolute path to the step folder (e.g. `<goalDir>/S01`)
+ * @param goalDir - Absolute path to the goal workspace (for CapState path resolution)
+ * @param stepNumber - The step number (e.g. 1)
+ * @param folderName - Zero-padded folder name (e.g. "S01")
+ * @param metadata - Step metadata from PLAN.md frontmatter (or null)
+ * @param evolvePlanContract - Contract for reading TASK.md (evolve-plan outputs)
+ * @param reviewTaskContract - Contract for reading REVIEW.md (review-task outputs)
+ */
+export function createEnrichedStepStatus(
+  stepDir: string,
+  goalDir: string,
+  stepNumber: number,
+  folderName: string,
+  metadata: Record<string, unknown> | null,
+  evolvePlanContract: CapabilityContract,
+  reviewTaskContract: CapabilityContract,
+): EnrichedStepStatus {
+  const base = createSimpleStepStatus(stepDir, stepNumber, folderName);
+
+  return {
+    ...base,
+    hasTest: () => fs.existsSync(path.join(stepDir, "TEST.md")),
+    getMetadata: () => metadata,
+    taskSkills: () => {
+      const capState = new CapState(evolvePlanContract, goalDir, { stepNumber });
+      const data = capState.file<Record<string, unknown>>("S{stepNumber:02d}/TASK.md").read();
+      return data?.skills as Record<string, unknown> | null ?? null;
+    },
+    status: () => {
+      // Check REVIEW.md frontmatter first — the decision is the source of truth.
+      const capState = new CapState(reviewTaskContract, goalDir, { stepNumber });
+      const reviewFile = capState.file<Record<string, unknown>>("S{stepNumber:02d}/REVIEW.md");
+
+      if (reviewFile.exists()) {
+        const raw = reviewFile.read();
+        if (raw && typeof raw.decision === "string") {
+          // Validate against schema to ensure it's a valid decision value
+          const reviewSchema = reviewTaskContract.outputs.find(
+            (e): e is { file: string; schema?: import("typebox").TSchema } =>
+              "file" in e && !("files" in e),
+          )?.schema;
+
+          if (reviewSchema) {
+            const result = validateAndCoerce<Record<string, unknown>>(raw, reviewSchema);
+            if ("data" in result && result.data) {
+              if (result.data.decision === "APPROVED") return "approved";
+              if (result.data.decision === "REJECTED") return "rejected";
+            }
+          } else {
+            // No schema — trust the raw value
+            if (raw.decision === "APPROVED") return "approved";
+            if (raw.decision === "REJECTED") return "rejected";
+          }
+        }
+      }
+
+      // Fallback: marker-based status from SimpleStepStatus
+      return base.status();
     },
   };
 }

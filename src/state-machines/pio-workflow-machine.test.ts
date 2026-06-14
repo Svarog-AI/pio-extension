@@ -265,7 +265,7 @@ describe("dispatch — review→evolve→finalize chain", () => {
     // Act step 2: evolve-plan with COMPLETION_SUMMARY.md → finalize-goal
     const evolveResults = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(goalDir), { goalName: "feat", stepNumber: 4 });
 
-    // Assert step 2: routes to finalize-goal with all three params
+    // Assert step 2: routes to finalize-goal with goalName and goalDir
     expect(evolveResults).toHaveLength(1);
     expect(evolveResults[0]).toEqual({
       capability: "finalize-goal",
@@ -273,7 +273,6 @@ describe("dispatch — review→evolve→finalize chain", () => {
       params: {
         goalName: "feat",
         goalDir: path.join(tempDir, ".pio", "goals", "feat"),
-        workingDir: tempDir,
       },
     });
 
@@ -310,7 +309,6 @@ describe("dispatch — evolve-plan completion detection", () => {
       params: {
         goalName: "feat",
         goalDir: path.join(tempDir, ".pio", "goals", "feat"),
-        workingDir: tempDir,
       },
     });
 
@@ -327,7 +325,7 @@ describe("dispatch — evolve-plan completion detection", () => {
     expect(results[0].capability).toBe("finalize-goal");
     expect(results[0].params?.goalName).toBe("my-feature");
     expect(results[0].params?.goalDir).toBe(path.join(tempDir, ".pio", "goals", "my-feature"));
-    expect(results[0].params?.workingDir).toBe(tempDir);
+    expect(results[0].params?.workingDir).toBeUndefined();
 
     cwdSpy.mockRestore();
   });

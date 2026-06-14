@@ -85,7 +85,7 @@ function resolveEvolvePlanToFinalizeGoal(
     const goalDir = resolveGoalDir(cwd, goalName!);
     return {
       capability: "finalize-goal",
-      params: { goalName, goalDir, workingDir: cwd },
+      params: { goalName, goalDir },
     };
   }
 

@@ -54,32 +54,32 @@ describe("config", () => {
     expect(config.writeAllowlist).toHaveLength(7);
   });
 
-  it("writeAllowlist includes OVERVIEW.md", () => {
-    expect(config.writeAllowlist).toContain(".pio/PROJECT/OVERVIEW.md");
+  it("writeAllowlist includes OVERVIEW.md (absolute path)", () => {
+    expect(config.writeAllowlist.some((p: string) => p.endsWith(".pio/PROJECT/OVERVIEW.md"))).toBe(true);
   });
 
-  it("writeAllowlist includes DEVELOPMENT.md", () => {
-    expect(config.writeAllowlist).toContain(".pio/PROJECT/DEVELOPMENT.md");
+  it("writeAllowlist includes DEVELOPMENT.md (absolute path)", () => {
+    expect(config.writeAllowlist.some((p: string) => p.endsWith(".pio/PROJECT/DEVELOPMENT.md"))).toBe(true);
   });
 
-  it("writeAllowlist includes CONVENTIONS.md", () => {
-    expect(config.writeAllowlist).toContain(".pio/PROJECT/CONVENTIONS.md");
+  it("writeAllowlist includes CONVENTIONS.md (absolute path)", () => {
+    expect(config.writeAllowlist.some((p: string) => p.endsWith(".pio/PROJECT/CONVENTIONS.md"))).toBe(true);
   });
 
-  it("writeAllowlist includes GIT.md", () => {
-    expect(config.writeAllowlist).toContain(".pio/PROJECT/GIT.md");
+  it("writeAllowlist includes GIT.md (absolute path)", () => {
+    expect(config.writeAllowlist.some((p: string) => p.endsWith(".pio/PROJECT/GIT.md"))).toBe(true);
   });
 
-  it("writeAllowlist includes ARCHITECTURE.md", () => {
-    expect(config.writeAllowlist).toContain(".pio/PROJECT/ARCHITECTURE.md");
+  it("writeAllowlist includes ARCHITECTURE.md (absolute path)", () => {
+    expect(config.writeAllowlist.some((p: string) => p.endsWith(".pio/PROJECT/ARCHITECTURE.md"))).toBe(true);
   });
 
-  it("writeAllowlist includes DEPENDENCIES.md", () => {
-    expect(config.writeAllowlist).toContain(".pio/PROJECT/DEPENDENCIES.md");
+  it("writeAllowlist includes DEPENDENCIES.md (absolute path)", () => {
+    expect(config.writeAllowlist.some((p: string) => p.endsWith(".pio/PROJECT/DEPENDENCIES.md"))).toBe(true);
   });
 
-  it("writeAllowlist includes GLOSSARY.md", () => {
-    expect(config.writeAllowlist).toContain(".pio/PROJECT/GLOSSARY.md");
+  it("writeAllowlist includes GLOSSARY.md (absolute path)", () => {
+    expect(config.writeAllowlist.some((p: string) => p.endsWith(".pio/PROJECT/GLOSSARY.md"))).toBe(true);
   });
 
   it("validation is undefined (no file validation)", () => {

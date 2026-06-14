@@ -646,26 +646,25 @@ describe("resolveCapabilityConfig — postValidate/postExecute passthrough", () 
  * completed goal and verify resolveCapabilityConfig() handles it correctly.
  */
 describe("resolveCapabilityConfig — finalize-goal auto-transition integration", () => {
-  it("finalize-goal auto-transition params resolve workingDir to project root", async () => {
+  it("finalize-goal auto-transition params derive workingDir from goalName", async () => {
     // Arrange: simulate the params shape that resolveEvolvePlanToFinalizeGoal() returns
-    // for a completed goal: { goalName, goalDir, workingDir: <project root> }
+    // for a completed goal: { goalName, goalDir } (no workingDir)
     const cwd = "/tmp/auto-transition-proj";
     const params = {
       capability: "finalize-goal" as string,
       goalName: "my-feature",
       goalDir: path.join(cwd, ".pio", "goals", "my-feature"),
-      workingDir: cwd, // project root, not goal workspace
     };
 
     // Act
     const result = await resolveCapabilityConfig(cwd, params);
 
-    // Assert: workingDir is the project root (explicit override wins)
+    // Assert: workingDir is derived from goalName (goal directory)
     expect(result).toBeDefined();
-    expect(result!.workingDir).toBe(cwd);
+    expect(result!.workingDir).toBe(path.join(cwd, ".pio", "goals", "my-feature"));
     expect(result!.capability).toBe("finalize-goal");
-    // Static write allowlist is preserved
-    expect(result!.writeAllowlist).toContain(".pio/PROJECT/OVERVIEW.md");
+    // writeAllowlist uses absolute paths (path.resolve(__dirname, "../..") + .pio/PROJECT/*.md)
+    expect(result!.writeAllowlist?.some((p: string) => p.endsWith(".pio/PROJECT/OVERVIEW.md"))).toBe(true);
   });
 
   it("finalize-goal initial message includes goal name via auto-transition params", async () => {
@@ -675,7 +674,6 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
       capability: "finalize-goal" as string,
       goalName: "my-feature",
       goalDir: path.join(cwd, ".pio", "goals", "my-feature"),
-      workingDir: cwd,
     };
 
     // Act

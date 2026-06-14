@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
+import * as path from "node:path";
 
 import { CapState } from "../../capability-state";
 import { launchCapability } from "../../capability-session";
@@ -24,6 +25,8 @@ export const CONTRACT: CapabilityContract = {
 // CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------
 
+const repoRoot = path.resolve(__dirname, "../..");
+
 const capabilityConfig = {
   capability: "finalize-goal",
   contract: CONTRACT,
@@ -31,19 +34,20 @@ const capabilityConfig = {
     mandatory: ["pio-project-knowledge", "pio-git"],
   },
   writeAllowlist: [
-    ".pio/PROJECT/OVERVIEW.md",
-    ".pio/PROJECT/DEVELOPMENT.md",
-    ".pio/PROJECT/CONVENTIONS.md",
-    ".pio/PROJECT/GIT.md",
-    ".pio/PROJECT/ARCHITECTURE.md",
-    ".pio/PROJECT/DEPENDENCIES.md",
-    ".pio/PROJECT/GLOSSARY.md",
+    path.join(repoRoot, ".pio/PROJECT/OVERVIEW.md"),
+    path.join(repoRoot, ".pio/PROJECT/DEVELOPMENT.md"),
+    path.join(repoRoot, ".pio/PROJECT/CONVENTIONS.md"),
+    path.join(repoRoot, ".pio/PROJECT/GIT.md"),
+    path.join(repoRoot, ".pio/PROJECT/ARCHITECTURE.md"),
+    path.join(repoRoot, ".pio/PROJECT/DEPENDENCIES.md"),
+    path.join(repoRoot, ".pio/PROJECT/GLOSSARY.md"),
   ],
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
+  defaultInitialMessage: (_workingDir: string, params?: Record<string, unknown>) => {
     const goalDir = typeof params?.goalDir === "string" ? params.goalDir : "";
     const goalName = typeof params?.goalName === "string" ? params.goalName : "";
     const goalRef = goalName ? `"${goalName}"` : "goal workspace";
-    return `Finalize the completed ${goalRef} at ${goalDir}. Read accumulated decisions (DECISIONS.md from the highest-numbered step folder), PLAN.md, and per-step SUMMARY.md files. Evaluate each decision against the update rules from the pio-project-knowledge skill. Update the 7 PROJECT files under ${workingDir}/.pio/PROJECT/ where warranted. Produce a summary of all changes made.`;
+    const projectDir = path.join(process.cwd(), ".pio/PROJECT");
+    return `Finalize the completed ${goalRef} at ${goalDir}. Read accumulated decisions (DECISIONS.md from the highest-numbered step folder), PLAN.md, and per-step SUMMARY.md files. Evaluate each decision against the update rules from the pio-project-knowledge skill. Update the 7 PROJECT files under ${projectDir} where warranted. Produce a summary of all changes made.`;
   },
 } satisfies CapabilityPackageConfig;
 

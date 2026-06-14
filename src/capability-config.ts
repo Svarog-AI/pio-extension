@@ -1,5 +1,5 @@
-import type { CapabilityConfig, ConfigCallback, InputValidationSpec, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback, ValidationRule } from "./types";
-import type { CapabilityPackageConfig, FrontmatterSchemaDeclaration, CapabilitySkills } from "./capability-package";
+import type { CapabilityConfig, CapabilityContract, ConfigCallback, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback } from "./types";
+import type { CapabilityPackageConfig, CapabilitySkills } from "./capability-package";
 import {
   resolveGoalDir,
   deriveSessionName,
@@ -60,7 +60,7 @@ export function resolvePaths(
   paths: string[],
   params: Record<string, unknown>,
 ): string[] {
-  return paths.map((p) =>
+  const results = paths.map((p) =>
     p.replace(/\{(\w+)(?::([^}]+))?\}/g, (_match, key, formatSpec) => {
       const value = params[key];
       if (value === undefined || value === null) return `{${key}${formatSpec ? ":" + formatSpec : ""}}`;
@@ -75,6 +75,19 @@ export function resolvePaths(
       return String(value);
     }),
   );
+
+  // Fail fast: detect any remaining unresolved placeholders
+  const unresolved = results.find((r) => r.match(/\{\w+(?::[^}]+)?\}/));
+  if (unresolved !== undefined) {
+    const match = unresolved.match(/\{(\w+)(?::[^}]+)?\}/);
+    const placeholder = match?.[0] ?? "unknown";
+    const keyName = match?.[1] ?? "unknown";
+    throw new Error(
+      `Unresolved placeholder ${placeholder} in path. Ensure session params include key '${keyName}'.`,
+    );
+  }
+
+  return results;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,7 +142,6 @@ function buildCapabilityConfig(
   cap: string,
   prompt: string | undefined,
   workingDir: string,
-  validation: ValidationRule | undefined,
   readOnlyFiles: string[] | undefined,
   writeAllowlist: string[] | undefined,
   initialMessage: string | undefined,
@@ -140,14 +152,12 @@ function buildCapabilityConfig(
   postValidate: PostValidateCallback | undefined,
   postExecute: PostExecuteCallback | undefined,
   skills: CapabilitySkills | undefined,
-  frontmatterSchemas: FrontmatterSchemaDeclaration[] | undefined,
-  inputValidation: InputValidationSpec | undefined,
+  contract: CapabilityContract,
 ): CapabilityConfig {
   return {
     capability: cap,
     prompt,
     workingDir,
-    validation,
     readOnlyFiles,
     writeAllowlist,
     initialMessage,
@@ -158,8 +168,7 @@ function buildCapabilityConfig(
     postValidate,
     postExecute,
     skills,
-    frontmatterSchemas,
-    inputValidation,
+    contract,
   };
 }
 
@@ -174,16 +183,13 @@ function normalizePackageConfig(
 ): CapabilityConfig {
   const extracted = extractParams(cwd, params);
 
-  const validation = resolveField<ValidationRule>(pkg.validation, extracted.workingDir, params);
   const readOnlyFiles = resolveField<string[]>(pkg.readOnlyFiles, extracted.workingDir, params);
   const writeAllowlist = resolveField<string[]>(pkg.writeAllowlist, extracted.workingDir, params);
-  const inputValidation = resolveField<InputValidationSpec>(pkg.inputValidation, extracted.workingDir, params);
 
   return buildCapabilityConfig(
     cap,
     undefined, // new-style: prompts compiled from component files
     extracted.workingDir,
-    validation,
     readOnlyFiles,
     writeAllowlist,
     extracted.initialMessage ?? pkg.defaultInitialMessage(extracted.workingDir, params),
@@ -194,8 +200,7 @@ function normalizePackageConfig(
     pkg.postValidate,
     pkg.postExecute,
     pkg.skills,
-    pkg.frontmatterSchemas,
-    inputValidation,
+    pkg.contract,
   );
 }
 

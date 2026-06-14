@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { resolveCapabilityConfig } from "../capability-config";
+import { setDiscoveredContracts } from "../state-machines/utils";
 
 // Mock prompt-compiler and step-nudging so they don't interfere with integration tests
 vi.mock("../prompt-compiler", () => ({
@@ -102,6 +103,19 @@ describe("pio_mark_complete integration — review-task with real frontmatter", 
   beforeEach(async () => {
     vi.resetModules();
     tempCwd = createTempDir();
+
+    // Populate contract cache FIRST — before any module that uses getCapState is imported.
+    // This ensures the _discoveredContracts variable in utils.ts is set before
+    // pio-workflow-machine.ts captures its reference to getCapState.
+    const { CONTRACT: createPlanContract } = await import("./create-plan/config");
+    const { CONTRACT: evolvePlanContract } = await import("./evolve-plan/config");
+    const { CONTRACT: reviewTaskContract } = await import("./review-task/config");
+    const utilsMod = await import("../state-machines/utils");
+    utilsMod.setDiscoveredContracts({
+      "create-plan": createPlanContract,
+      "evolve-plan": evolvePlanContract,
+      "review-task": reviewTaskContract,
+    });
 
     // Import and explicitly register goalDrivenDevelopment before importing mark-complete.
     const { setupPioWorkflowMachine } = await import("../state-machines/pio-workflow-machine");

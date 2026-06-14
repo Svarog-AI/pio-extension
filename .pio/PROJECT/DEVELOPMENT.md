@@ -10,7 +10,7 @@
 ## Test Directory Convention
 
 Tests are **colocated** alongside source files using the `*.test.ts` naming convention:
-- `src/goal-state.ts` → `src/goal-state.test.ts`
+- `src/capability-state.ts` → `src/capability-state.test.ts`
 - `src/fs-utils.ts` → `src/fs-utils.test.ts`
 - `src/guards/validation.ts` → `src/guards/validation.test.ts`
 - `src/capabilities/evolve-plan/config.ts` → `src/capabilities/evolve-plan/config.test.ts`

@@ -13,6 +13,10 @@ import type { CapabilityPackageConfig } from "../../capability-package";
 
 const capabilityConfig = {
   capability: "project-context",
+  contract: {
+    inputs: [],
+    outputs: [],
+  },
   skills: {
     mandatory: ["pio-project-knowledge"],
     recommended: [

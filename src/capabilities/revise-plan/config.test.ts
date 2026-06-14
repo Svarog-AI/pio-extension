@@ -97,13 +97,11 @@ function createGoalTree(
 // ---------------------------------------------------------------------------
 
 describe("config structure", () => {
-  it("validation requires PLAN.md", () => {
-    const validation = config.validation;
-    expect(validation).toBeDefined();
-    // validation can be a function or static object
-    if (typeof validation === "object" && "files" in validation) {
-      expect(validation.files).toContain("PLAN.md");
-    }
+  it("contract outputs includes PLAN.md with schema", () => {
+    expect(config.contract.outputs.length).toBe(1);
+    const output = config.contract.outputs[0] as import("../../types").MarkdownFileSpec;
+    expect(output.file).toBe("PLAN.md");
+    expect(output.schema).toBeDefined();
   });
 
   it("prepareSession is a function", () => {
@@ -141,10 +139,10 @@ describe("config wiring consistency", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Validation — validateRevisePlan preconditions
+// validateRevisePlan — directory resolution
 // ---------------------------------------------------------------------------
 
-describe("validateRevisePlan — rejects invalid states", () => {
+describe("validateRevisePlan", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -153,31 +151,14 @@ describe("validateRevisePlan — rejects invalid states", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("rejects when goal workspace does not exist", async () => {
-    const result = await validateRevisePlan("nonexistent", tempDir);
+  it("resolves goal directory and returns ready", async () => {
+    const goalDir = path.join(tempDir, ".pio", "goals", "my-goal");
+    fs.mkdirSync(goalDir, { recursive: true });
 
-    expect(result.ready).toBe(false);
-    expect(result.error).toMatch(/does not exist/i);
-  });
+    const result = await validateRevisePlan("my-goal", tempDir);
 
-  it("rejects when GOAL.md is missing", async () => {
-    // Create goal dir with PLAN.md but no GOAL.md
-    createGoalTree(tempDir, "no-goal", { withPlan: true });
-
-    const result = await validateRevisePlan("no-goal", tempDir);
-
-    expect(result.ready).toBe(false);
-    expect(result.error).toMatch(/GOAL/i);
-  });
-
-  it("rejects when PLAN.md is missing", async () => {
-    // Create goal dir with GOAL.md but no PLAN.md
-    createGoalTree(tempDir, "no-plan", { withGoal: true });
-
-    const result = await validateRevisePlan("no-plan", tempDir);
-
-    expect(result.ready).toBe(false);
-    expect(result.error).toMatch(/PLAN/i);
+    expect(result.ready).toBe(true);
+    expect(result.goalDir).toBe(goalDir);
   });
 });
 
@@ -247,8 +228,8 @@ describe("prepareSession — archiving", () => {
     const archivedContent = fs.readFileSync(path.join(archiveDir, archiveFiles[0]), "utf-8");
     expect(archivedContent).toBe(planContent);
 
-    // Assert original PLAN.md is deleted
-    expect(fs.existsSync(path.join(goalDir, "PLAN.md"))).toBe(false);
+    // Assert original PLAN.md is preserved (copy-only behavior)
+    expect(fs.existsSync(path.join(goalDir, "PLAN.md"))).toBe(true);
   });
 
   it("creates PLAN_ARCHIVE/ directory if it does not exist", async () => {
@@ -490,8 +471,8 @@ describe("end-to-end lifecycle: prepareSession then cleanupIncompleteSteps", () 
     const archivedContent = fs.readFileSync(path.join(archiveDir, archiveFiles[0]), "utf-8");
     expect(archivedContent).toBe(planContent);
 
-    // Original PLAN.md is gone
-    expect(fs.existsSync(path.join(goalDir, "PLAN.md"))).toBe(false);
+    // Original PLAN.md is preserved (copy-only behavior)
+    expect(fs.existsSync(path.join(goalDir, "PLAN.md"))).toBe(true);
 
     // All step folders should still exist after prepareSession
     expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);

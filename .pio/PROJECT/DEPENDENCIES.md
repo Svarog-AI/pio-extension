@@ -31,7 +31,7 @@ index.ts (async) ──┬── setupSkills()          → skills auto-discover
                    ├── setupSessionGuard()    → guards/session-guard.ts
                    ├── setupStepNudging()     → guards/step-nudging.ts
                    ├── setupDirectTools()     → direct-tools.ts (init, delete-goal, list-goals, parent, create-issue, goal-from-issue)
-                   └── discoverCapabilities() → capability-discovery.ts (auto-discovers 9 directory packages + registers via registerCapability())
+                   └── discoverCapabilities() → capability-discovery.ts (auto-discovers 9 directory packages + registers via registerCapability()), followed by setDiscoveredContracts() for runtime contract caching
 
 Capability infrastructure:
   capability-package.ts  — CapabilityPackageConfig, WorkflowStep, FrontmatterSchemaDeclaration types + layout constants
@@ -43,10 +43,11 @@ Capability infrastructure:
 
 Shared modules:
   fs-utils.ts            — resolveGoalDir, stepFolderName, discoverNextStep, prepareGoal, issues helpers
-  types.ts               — CapabilityConfig, ValidationRule, PrepareSessionCallback, InputValidationSpec, PreValidateCallback
-  goal-state.ts          — createGoalState(), StepStatus, GoalState interface
+  types.ts               — CapabilityConfig, CapabilityContract, MarkdownFileSpec, PrepareSessionCallback, PreValidateCallback
+  capability-state.ts    — CapState class, FileState interface, createCapState factory (contract-backed lazy file access)
+  goal-state.ts          — DELETED (replaced by capability-state.ts)
   state-machines.ts      — StateMachine<C>, TransitionEdge<C>, TransitionResult, ResolverResult types + dispatch/getOutgoingEdges/registerMachine/unregisterMachine/getMachine/getRegisteredMachines/recordTransition with optional actualParams (leaf module, no internal imports)
-  state-machines/        — pio-workflow-machine.ts (goalDrivenDevelopment machine config, resolve functions)
+  state-machines/        — pio-workflow-machine.ts (goalDrivenDevelopment machine config, resolve functions using getCapState), utils.ts (setDiscoveredContracts/getCapState contract caching only)
   queues.ts              — enqueueTask, readPendingTask, writeLastTask
   model-config.ts        — resolveModelForCapability(), readTurnThreshold(). Reads ~/.pi/pio-config.yaml
 ```

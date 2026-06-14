@@ -7,6 +7,10 @@ import type { CapabilityPackageConfig } from "../../capability-package";
 
 const capabilityConfig = {
   capability: "test-skills-cap",
+  contract: {
+    inputs: [],
+    outputs: [],
+  },
   skills: {
     mandatory: ["tdd", "pio-git"],
     recommended: [{ name: "source-research", condition: "when researching external libraries" }],

@@ -4,21 +4,32 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { CapState } from "../../capability-state";
 import { launchCapability, setMergedSkills } from "../../capability-session";
-import { mergeCapabilitySkills } from "../../capability-utils";
-import { resolveGoalDir, stepFolderName } from "../../fs-utils";
+import { mergeCapabilitySkills, parseCommandArgs } from "../../capability-utils";
+import { stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
-import { resolveCapabilityConfig, resolvePaths } from "../../capability-config";
+import { resolveCapabilityConfig } from "../../capability-config";
+import { REVIEW_OUTPUT_SCHEMA } from "./schemas";
+import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
+import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { createGoalState } from "../../goal-state";
 import {
-  validateStepForReview,
-  validateAndFindReviewStep,
-  resolveReviewValidation,
+  validateReviewStep,
   resolveReviewReadOnlyFiles,
   resolveReviewWriteAllowlist,
   postValidateReview,
+  postExecuteReview,
 } from "./callbacks";
+
+// ---------------------------------------------------------------------------
+// Contract (single source of truth — imported by callbacks)
+// ---------------------------------------------------------------------------
+
+export const CONTRACT: CapabilityContract = {
+  inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }, { file: "S{stepNumber:02d}/COMPLETED" }, { file: "S{stepNumber:02d}/SUMMARY.md" }, { file: "S{stepNumber:02d}/TASK.md", schema: TASK_FRONTMATTER_SCHEMA }],
+  outputs: [{ file: "S{stepNumber:02d}/REVIEW.md", schema: REVIEW_OUTPUT_SCHEMA }],
+};
 
 // ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
@@ -26,26 +37,15 @@ import {
 
 const capabilityConfig = {
   capability: "review-task",
-  validation: resolveReviewValidation,
+  contract: CONTRACT,
   readOnlyFiles: resolveReviewReadOnlyFiles,
   writeAllowlist: resolveReviewWriteAllowlist,
   prepareSession: prepareReviewSession,
   postValidate: postValidateReview,
-  inputValidation: (_workingDir: string, params?: Record<string, unknown>) => {
-    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-    if (stepNumber == null) {
-      throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
-    }
-    return {
-      requiredFiles: resolvePaths(["GOAL.md", "PLAN.md", `S{stepNumber:02d}/COMPLETED`, `S{stepNumber:02d}/SUMMARY.md`], { stepNumber }),
-    };
-  },
+  postExecute: postExecuteReview,
   skills: {
     mandatory: ["tdd"],
   },
-  // NOTE: frontmatterSchemas omitted — REVIEW.md is step-relative (S{NN}/REVIEW.md)
-  // and the exit-gate resolves paths against workingDir (goal root).
-  // Validation is handled by the postValidate callback instead.
   defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
     const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
     if (stepNumber == null) {
@@ -75,9 +75,10 @@ function prepareReviewSession(workingDir: string, params?: Record<string, unknow
   fs.rmSync(path.join(stepDir, "REJECTED"), { force: true });
 
   // Read TASK.md skills and merge into capability config
-  const state = createGoalState(workingDir);
-  const step = state.steps().find(s => s.stepNumber === stepNumber);
-  const taskSkills = step?.taskSkills();
+  const capState = new CapState(CONTRACT, workingDir, { stepNumber });
+  const taskFile = capState.file<{ skills?: unknown }>("S{stepNumber:02d}/TASK.md");
+  const taskData = taskFile.read();
+  const taskSkills = taskData?.skills ?? null;
 
   const merged = mergeCapabilitySkills(capabilityConfig.skills, taskSkills);
   setMergedSkills(merged);
@@ -95,13 +96,11 @@ const reviewTaskTool = defineTool({
   promptSnippet: "Review code implementation for a plan step (approve/reject).",
   parameters: Type.Object({
     name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
-    stepNumber: Type.Optional(Type.Number({ description: "Explicit step number to review (optional — auto-finds most recently completed step)" })),
+    stepNumber: Type.Number({ description: "Step number to review" }),
   }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = params.stepNumber
-      ? await validateStepForReview(params.name, ctx.cwd, params.stepNumber)
-      : await validateAndFindReviewStep(params.name, ctx.cwd);
+    const result = await validateReviewStep(params.name, ctx.cwd, params.stepNumber);
 
     if (!result.ready) {
       return { content: [{ type: "text", text: result.error }], details: {} };
@@ -129,24 +128,18 @@ const reviewTaskTool = defineTool({
 // ---------------------------------------------------------------------------
 
 async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandContext) {
-  if (!args || !args.trim()) {
-    ctx.ui.notify("Usage: /pio-review-task <goal-name> [step-number]", "warning");
+  const parsed = parseCommandArgs(args);
+  if (!parsed) {
+    ctx.ui.notify("Usage: /pio-review-task <goal-name> <step-number>", "warning");
     return;
   }
 
-  const parts = args.trim().split(/\s+/);
-  const name = parts[0];
-  const explicitStep = parts[1] ? parseInt(parts[1], 10) : undefined;
-
-  // Validate explicit step number if provided
-  if (explicitStep !== undefined && (isNaN(explicitStep) || explicitStep < 1)) {
-    ctx.ui.notify(`Invalid step number: "${parts[1]}". Must be a positive integer.`, "error");
+  if (parsed.stepNumber === undefined) {
+    ctx.ui.notify("Step number is required. Usage: /pio-review-task <goal-name> <step-number>", "error");
     return;
   }
 
-  const result = explicitStep
-    ? await validateStepForReview(name, ctx.cwd, explicitStep)
-    : await validateAndFindReviewStep(name, ctx.cwd);
+  const result = await validateReviewStep(parsed.name, ctx.cwd, parsed.stepNumber);
 
   if (!result.ready) {
     ctx.ui.notify(result.error, "error");
@@ -157,13 +150,21 @@ async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandC
   // All ctx-dependent work must happen before this line.
   const folderName = stepFolderName(result.stepNumber);
 
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "review-task", goalName: name, stepNumber: result.stepNumber });
+  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "review-task", goalName: parsed.name, stepNumber: result.stepNumber });
   if (!config) {
     ctx.ui.notify("Failed to resolve review-task config.", "error");
     return;
   }
 
-  await launchCapability(ctx, config);
+  try {
+    await launchCapability(ctx, config);
+  } catch (err) {
+    ctx.ui.notify(
+      `Failed to start ${config.capability}: ${err instanceof Error ? err.message : String(err)}`,
+      "error",
+    );
+    return;
+  }
 }
 
 // ---------------------------------------------------------------------------

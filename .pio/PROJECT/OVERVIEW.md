@@ -17,7 +17,7 @@ Developed by Svarog AI. Licensed under MIT. Repository: `github.com:Svarog-AI/pi
 
 ## Repository Structure
 
-The `src/prompts/` directory was removed — prompts are now component files inside each capability directory package (`role.md`, `workflow.ts`, `guidelines.md`). Direct tools (init, delete-goal, list-goals, parent, create-issue, goal-from-issue) are consolidated in `src/direct-tools.ts`. The `src/frontmatter-schemas.ts` module was deleted — schemas now live in capability-local `schemas.ts` files.
+The `src/prompts/` directory was removed — prompts are now component files inside each capability directory package (`role.md`, `workflow.ts`, `guidelines.md`). Direct tools (init, delete-goal, list-goals, parent, create-issue, goal-from-issue) are consolidated in `src/direct-tools.ts`. The `src/frontmatter-schemas.ts` module was deleted — schemas now live in capability-local `schemas.ts` files. The `src/goal-state.ts` module was deleted — replaced by `src/capability-state.ts` (CapState, contract-backed lazy file access).
 
 ```
 pio-extension/
@@ -60,7 +60,8 @@ pio-extension/
 │   ├── capability-utils.ts    # Leaf utility: mergeCapabilitySkills()
 │   ├── prompt-compiler.ts     # compilePrompt() — assembles prompts from component files (role.md, workflow.ts, guidelines.md)
 │   ├── fs-utils.ts            # Filesystem helpers (resolveGoalDir, stepFolderName, prepareGoal)
-│   ├── goal-state.ts          # GoalState — lazy-evaluated filesystem view over goal workspace
+│   ├── capability-state.ts    # CapState — contract-backed lazy file access (replaces GoalState)
+│   ├── goal-state.ts          # DELETED — replaced by capability-state.ts
 │   ├── state-machines/        # Declarative state machine framework
 │   │   ├── pio-workflow-machine.ts  # pio workflow machine config (11 edges, resolve functions)
 │   ├── state-machines.ts      # Framework types (StateMachine<C>, TransitionEdge<C>) + dispatch API

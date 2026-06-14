@@ -2,10 +2,10 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { getSessionConfig } from "../capability-utils";
-import { validateOutputs, validateFrontmatter } from "./validation";
+import { validateOutputs } from "./validation";
 import { dispatch, getMachine, recordTransition } from "../state-machines";
-import { createGoalState } from "../goal-state";
 import { enqueueTask, writeLastTask } from "../queues";
 
 // ---------------------------------------------------------------------------
@@ -33,21 +33,11 @@ export const markCompleteTool = defineTool({
       return { content: [{ type: "text", text: "No directory is defined for this session. Something went wrong." }], details: {}, terminate: true };
     }
 
-    // 1. File-existence validation (generic, optional)
-    if (config.validation) {
-      const result = validateOutputs(config.validation, dir);
+    // 1. Output validation (existence + frontmatter schema — single call)
+    const outputsResult = validateOutputs(config.contract, dir, config.sessionParams);
 
-      if (!result.passed) {
-        return { content: [{ type: "text", text: `Validation failed. Missing files:\n- ${result.missing.join("\n- ")}\n\nProduce these files and call pio_mark_complete again.` }], details: {} };
-      }
-    }
-
-    // 1.5 Frontmatter schema validation (new)
-    if (config.frontmatterSchemas && config.frontmatterSchemas.length > 0) {
-      const fmResult = validateFrontmatter(config.frontmatterSchemas, dir);
-      if (!fmResult.success) {
-        return { content: [{ type: "text", text: `Frontmatter validation failed: ${fmResult.message}` }], details: {} };
-      }
+    if (!outputsResult.success) {
+      return { content: [{ type: "text", text: `Validation failed: ${outputsResult.message}\n\nProduce these files and call pio_mark_complete again.` }], details: {} };
     }
 
     // 2. PostValidate hook — can fail to keep agent in session
@@ -70,18 +60,14 @@ export const markCompleteTool = defineTool({
     // Use the completing session's params directly — they are authoritative.
     const sessionParams = config.sessionParams || {};
 
-    // GoalState is the single source of truth for goalName and stepNumber
-    const state = createGoalState(dir);
-    const goalName = state.goalName;
+    // Derive goalName from directory path
+    const goalName = path.basename(dir);
 
-    // Use explicit stepNumber from session params first (authoritative for the completing step).
-    // Fall back to state.currentStepNumber() only if not explicitly provided.
-    // This is critical: postValidate may create APPROVED/REJECTED markers that change
-    // currentStepNumber() before we read it (e.g., APPROVED for step 1 makes it return 2).
-    const explicitStepNumber = typeof sessionParams.stepNumber === "number"
+    // Use explicit stepNumber from session params — authoritative for the completing step.
+    // No disk scan fallback needed: stepNumber is always set in session params.
+    const stepNumber = typeof sessionParams.stepNumber === "number"
       ? sessionParams.stepNumber
       : undefined;
-    const stepNumber = explicitStepNumber ?? state.currentStepNumber();
 
     // Multi-machine dispatch: read stateMachineId from session params, look up machine explicitly.
     // Falls back to dispatch(undefined, ...) for first transitions or legacy sessions.
@@ -91,7 +77,7 @@ export const markCompleteTool = defineTool({
     const targetMachine = machineId ? getMachine(machineId) : undefined;
 
     const results = capability
-      ? dispatch(targetMachine, capability, state, { goalName, stepNumber, _sessionContext: sessionParams })
+      ? dispatch(targetMachine, capability, { baseDir: dir }, { goalName, stepNumber, _sessionContext: sessionParams })
       : [];
 
     if (capability && results.length === 1) {

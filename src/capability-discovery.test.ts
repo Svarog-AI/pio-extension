@@ -236,6 +236,7 @@ export default config;`
         dirPath: "/nonexistent/path",
         config: {
           capability: "missing-cap",
+          contract: { inputs: [], outputs: [] },
           defaultInitialMessage: () => "Hello",
         },
       });

@@ -1,16 +1,16 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
-import { createGoalState } from "../../goal-state";
-import { validateInputs } from "../../guards/validation";
+import { PLAN_FRONTMATTER_SCHEMA, type PlanFrontmatter } from "../create-plan/schemas";
+import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "../review-task/schemas";
+
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const GOAL_FILE = "GOAL.md";
-const PLAN_FILE = "PLAN.md";
 const PLAN_ARCHIVE_DIR = "PLAN_ARCHIVE";
 export const REVISE_PLAN_MARKER = "REVISE_PLAN_NEEDED";
 const STEP_FOLDER_RE = /^S(\d+)$/;
@@ -20,28 +20,14 @@ const STEP_FOLDER_RE = /^S(\d+)$/;
 // ---------------------------------------------------------------------------
 
 /**
- * Validate that the goal workspace exists, has GOAL.md, and has PLAN.md.
- * Returns { goalDir, ready } on success, or { goalDir, error } when not ready.
- * Does NOT use ctx so it can be called safely before newSession().
+ * Resolve the goal directory for revise-plan.
+ * Input validation is handled automatically by launchCapability().
  */
 export async function validateRevisePlan(
   name: string,
   cwd: string,
 ): Promise<{ goalDir: string; ready: boolean; error?: string }> {
   const goalDir = resolveGoalDir(cwd, name);
-
-  if (!fs.existsSync(goalDir)) {
-    return {
-      goalDir,
-      ready: false,
-      error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.`,
-    };
-  }
-
-  const fileCheck = validateInputs(goalDir, [GOAL_FILE, PLAN_FILE]);
-  if (!fileCheck.success) {
-    return { goalDir, ready: false, error: fileCheck.message! };
-  }
 
   return { goalDir, ready: true };
 }
@@ -60,7 +46,7 @@ export async function prepareSession(
   _params?: Record<string, unknown>,
 ): Promise<void> {
   // Archive current PLAN.md
-  const planPath = path.join(workingDir, PLAN_FILE);
+  const planPath = path.join(workingDir, "PLAN.md");
   if (fs.existsSync(planPath)) {
     const archiveDir = path.join(workingDir, PLAN_ARCHIVE_DIR);
     fs.mkdirSync(archiveDir, { recursive: true });
@@ -69,9 +55,8 @@ export async function prepareSession(
     const archiveFilename = `PLAN-${timestamp}.md`;
     const archivePath = path.join(archiveDir, archiveFilename);
 
-    // Copy-then-delete is safe: if delete fails, we still have both files
+    // Copy to archive — leave original PLAN.md in place for reference
     fs.copyFileSync(planPath, archivePath);
-    fs.unlinkSync(planPath);
   }
 }
 
@@ -126,13 +111,23 @@ export async function cleanupIncompleteSteps(
 // ---------------------------------------------------------------------------
 
 export function resolveReviseReadOnlyFiles(workingDir: string, _params?: Record<string, unknown>): string[] {
-  const state = createGoalState(workingDir);
   const readOnly: string[] = [];
 
-  // All remaining S{NN}/ folders (those with APPROVED markers) are read-only
-  for (const step of state.steps()) {
-    if (step.status() === "approved") {
-      readOnly.push(`${step.folderName}/*`);
+  // Read PLAN.md to get totalSteps
+  const planRaw = extractFrontmatter(path.join(workingDir, "PLAN.md"));
+  if (planRaw == null) return readOnly;
+
+  const planResult = validateAndCoerce<PlanFrontmatter>(planRaw, PLAN_FRONTMATTER_SCHEMA);
+  if ("error" in planResult) return readOnly;
+
+  const totalSteps = planResult.data.totalSteps;
+  for (let i = 1; i <= totalSteps; i++) {
+    const reviewPath = path.join(workingDir, stepFolderName(i), "REVIEW.md");
+    const reviewRaw = extractFrontmatter(reviewPath);
+    if (reviewRaw == null) continue;
+    const reviewResult = validateAndCoerce<ReviewOutputs>(reviewRaw, REVIEW_OUTPUT_SCHEMA);
+    if ("data" in reviewResult && reviewResult.data?.decision === "APPROVED") {
+      readOnly.push(`S${String(i).padStart(2, "0")}/*`);
     }
   }
 

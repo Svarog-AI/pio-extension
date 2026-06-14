@@ -2,39 +2,56 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
+import { CapState } from "../../capability-state";
 import { launchCapability } from "../../capability-session";
 import { resolveGoalDir } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
-import { createGoalState } from "../../goal-state";
+import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { validateInputs } from "../../guards/validation";
+
+// ---------------------------------------------------------------------------
+// Contract (single source of truth — imported by callbacks)
+// ---------------------------------------------------------------------------
+
+export const CONTRACT: CapabilityContract = {
+  inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }, { file: "COMPLETION_SUMMARY.md" }],
+  outputs: [],
+};
 
 // ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------
 
+// ESM-compatible __dirname for resolving repo root (finalize-goal/config.ts → repo root)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, "../..");
+
 const capabilityConfig = {
   capability: "finalize-goal",
-  inputValidation: { requiredFiles: ["GOAL.md", "PLAN.md"] },
+  contract: CONTRACT,
   skills: {
     mandatory: ["pio-project-knowledge", "pio-git"],
   },
   writeAllowlist: [
-    ".pio/PROJECT/OVERVIEW.md",
-    ".pio/PROJECT/DEVELOPMENT.md",
-    ".pio/PROJECT/CONVENTIONS.md",
-    ".pio/PROJECT/GIT.md",
-    ".pio/PROJECT/ARCHITECTURE.md",
-    ".pio/PROJECT/DEPENDENCIES.md",
-    ".pio/PROJECT/GLOSSARY.md",
+    path.join(repoRoot, ".pio/PROJECT/OVERVIEW.md"),
+    path.join(repoRoot, ".pio/PROJECT/DEVELOPMENT.md"),
+    path.join(repoRoot, ".pio/PROJECT/CONVENTIONS.md"),
+    path.join(repoRoot, ".pio/PROJECT/GIT.md"),
+    path.join(repoRoot, ".pio/PROJECT/ARCHITECTURE.md"),
+    path.join(repoRoot, ".pio/PROJECT/DEPENDENCIES.md"),
+    path.join(repoRoot, ".pio/PROJECT/GLOSSARY.md"),
   ],
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
+  defaultInitialMessage: (_workingDir: string, params?: Record<string, unknown>) => {
     const goalDir = typeof params?.goalDir === "string" ? params.goalDir : "";
     const goalName = typeof params?.goalName === "string" ? params.goalName : "";
     const goalRef = goalName ? `"${goalName}"` : "goal workspace";
-    return `Finalize the completed ${goalRef} at ${goalDir}. Read accumulated decisions (DECISIONS.md from the highest-numbered step folder), PLAN.md, and per-step SUMMARY.md files. Evaluate each decision against the update rules from the pio-project-knowledge skill. Update the 7 PROJECT files under ${workingDir}/.pio/PROJECT/ where warranted. Produce a summary of all changes made.`;
+    const projectDir = path.join(process.cwd(), ".pio/PROJECT");
+    return `Finalize the completed ${goalRef} at ${goalDir}. Read accumulated decisions (DECISIONS.md from the highest-numbered step folder), PLAN.md, and per-step SUMMARY.md files. Evaluate each decision against the update rules from the pio-project-knowledge skill. Update the 7 PROJECT files under ${projectDir} where warranted. Produce a summary of all changes made.`;
   },
 } satisfies CapabilityPackageConfig;
 
@@ -67,14 +84,9 @@ export async function validateFinalizeGoal(
     };
   }
 
-  const fileCheck = validateInputs(goalDir, ["GOAL.md", "PLAN.md"]);
-  if (!fileCheck.success) {
-    return { goalDir, ready: false, error: fileCheck.message! };
-  }
+  const capState = new CapState(CONTRACT, goalDir);
 
-  const state = createGoalState(goalDir);
-
-  if (!state.goalCompleted()) {
+  if (!capState.file("COMPLETION_SUMMARY.md").exists()) {
     return {
       goalDir,
       ready: false,
@@ -152,7 +164,15 @@ async function handleFinalizeGoal(args: string | undefined, ctx: ExtensionComman
     return;
   }
 
-  await launchCapability(ctx, config);
+  try {
+    await launchCapability(ctx, config);
+  } catch (err) {
+    ctx.ui.notify(
+      `Failed to start ${config.capability}: ${err instanceof Error ? err.message : String(err)}`,
+      "error",
+    );
+    return;
+  }
 }
 
 // ---------------------------------------------------------------------------

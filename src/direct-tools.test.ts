@@ -23,7 +23,6 @@ function cleanup(tempDir: string): void {
 const mockEnqueueTask = vi.hoisted(() => vi.fn());
 const mockRecordTransition = vi.hoisted(() => vi.fn());
 const mockDispatch = vi.hoisted(() => vi.fn());
-const mockCreateGoalState = vi.hoisted(() => vi.fn());
 
 vi.mock("./queues", () => ({
   enqueueTask: mockEnqueueTask,
@@ -43,11 +42,7 @@ vi.mock("./state-machines", () => ({
   goalDrivenDevelopment: { id: "goal-driven-development" },
 }));
 
-vi.mock("./goal-state", () => ({
-  createGoalState: mockCreateGoalState,
-  StepStatus: class {},
-  GoalState: class {},
-}));
+
 
 // ---------------------------------------------------------------------------
 // Helpers

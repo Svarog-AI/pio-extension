@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CapabilityConfig, CapabilitySkills } from "./types";
 import { getSessionConfig } from "./capability-utils";
+import { validateInputs } from "./guards/validation";
 import type { CompiledPromptSections } from "./capability-package";
 import { compilePrompt } from "./prompt-compiler";
 import { setupStepNudging } from "./guards/step-nudging";
@@ -56,6 +57,21 @@ let enrichedSessionParams: Record<string, unknown> | undefined;
 
 /** Write config into the new session's custom entry. Survives reload, not visible to LLM. */
 export async function launchCapability(ctx: ExtensionCommandContext, config: CapabilityConfig): Promise<void> {
+  // Validate inputs against the capability contract BEFORE launching.
+  if (config.contract && config.workingDir) {
+    const result = validateInputs(
+      config.workingDir,
+      config.contract,
+      config.sessionParams,
+    );
+
+    if (!result.success) {
+      throw new Error(
+        `Input validation failed for "${config.capability}": ${result.message || "missing required files"}`,
+      );
+    }
+  }
+
   const parentSession = ctx.sessionManager.getSessionFile();
 
   await ctx.newSession({

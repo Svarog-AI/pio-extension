@@ -2,14 +2,16 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
+import * as path from "node:path";
 
 import { launchCapability } from "../../capability-session";
 import { resolveGoalDir } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
+import { CapState } from "../../capability-state";
+import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
+import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { createGoalState } from "../../goal-state";
-import { validateInputs } from "../../guards/validation";
 import { type PlanFrontmatter, PLAN_FRONTMATTER_SCHEMA } from "./schemas";
 
 // ---------------------------------------------------------------------------
@@ -34,18 +36,28 @@ const STEP_HEADING_RE = /^### Step \d+:/gm;
  * import low-level frontmatter utilities directly.
  */
 export function postValidateCreatePlan(goalDir: string): { success: boolean; message?: string } {
-  // Step 1: Validate frontmatter via GoalState
-  const state = createGoalState(goalDir);
-  const result = state.planMetadata({ errors: true });
+  // Step 1: Validate frontmatter via CapState
+  const capState = new CapState(CONTRACT, goalDir);
+  const planFile = capState.file<PlanFrontmatter>("PLAN.md");
 
-  // Type assertion: when { errors: true }, result is always { data?: ...; error?: string }
-  const typedResult = result as { data?: PlanFrontmatter; error?: string };
-
-  if (typedResult.error) {
-    return { success: false, message: typedResult.error };
+  if (!planFile.exists()) {
+    return { success: false, message: "PLAN.md not found" };
+  }
+  const data = planFile.read();
+  if (data === null) {
+    // Get detailed error message via direct validation
+    const raw = extractFrontmatter(path.join(goalDir, "PLAN.md"));
+    if (raw === null) {
+      return { success: false, message: "PLAN.md does not contain valid YAML frontmatter" };
+    }
+    const result = validateAndCoerce<PlanFrontmatter>(raw, PLAN_FRONTMATTER_SCHEMA);
+    if ("error" in result) {
+      return { success: false, message: result.error };
+    }
+    return { success: false, message: "PLAN.md frontmatter validation failed" };
   }
 
-  const { totalSteps, steps } = typedResult.data!;
+  const { totalSteps, steps } = data;
 
   // Step 2: Validate steps array length matches totalSteps
   if (steps.length !== totalSteps) {
@@ -101,24 +113,30 @@ export function postValidateCreatePlan(goalDir: string): { success: boolean; mes
 }
 
 // ---------------------------------------------------------------------------
+// Contract (single source of truth — imported by callbacks)
+// ---------------------------------------------------------------------------
+
+export const CONTRACT: CapabilityContract = {
+  inputs: [{ file: "GOAL.md" }],
+  excludedFiles: ["PLAN.md"],
+  outputs: [{ file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
+};
+
+// ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------
 
 const capabilityConfig = {
   capability: "create-plan",
-  validation: { files: ["PLAN.md"] },
+  contract: CONTRACT,
   readOnlyFiles: ["GOAL.md"],
   writeAllowlist: ["PLAN.md"],
-  inputValidation: { requiredFiles: ["GOAL.md"], excludedFiles: ["PLAN.md"] },
   skills: {
     mandatory: ["pio-planning", "grill-me"],
     recommended: [
       { name: "source-research", condition: "when researching existing solutions or libraries" },
     ],
   },
-  frontmatterSchemas: [
-    { outputFile: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA },
-  ],
   defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
     const goalName = typeof params?.goalName === "string" ? params.goalName : undefined;
     return `Goal workspace is at ${workingDir}. GOAL.md exists. Create PLAN.md in this directory.`;
@@ -129,11 +147,8 @@ const capabilityConfig = {
 export default capabilityConfig;
 
 // ---------------------------------------------------------------------------
-// Function
+// Validation
 // ---------------------------------------------------------------------------
-
-const GOAL_FILE = "GOAL.md";
-const PLAN_FILE = "PLAN.md";
 
 /**
  * Validate that the goal workspace exists, has a GOAL.md, and does not yet have a PLAN.md.
@@ -145,11 +160,6 @@ async function validateGoal(name: string, cwd: string): Promise<{ goalDir: strin
 
   if (!fs.existsSync(goalDir)) {
     return { goalDir, ready: false, error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.` };
-  }
-
-  const fileCheck = validateInputs(goalDir, [GOAL_FILE], [PLAN_FILE]);
-  if (!fileCheck.success) {
-    return { goalDir, ready: false, error: fileCheck.message! };
   }
 
   return { goalDir, ready: true };
@@ -209,7 +219,15 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
     ctx.ui.notify("Failed to resolve create-plan config.", "error");
     return;
   }
-  await launchCapability(ctx, config);
+  try {
+    await launchCapability(ctx, config);
+  } catch (err) {
+    ctx.ui.notify(
+      `Failed to start ${config.capability}: ${err instanceof Error ? err.message : String(err)}`,
+      "error",
+    );
+    return;
+  }
 }
 
 // ---------------------------------------------------------------------------

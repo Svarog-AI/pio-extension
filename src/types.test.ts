@@ -1,4 +1,5 @@
-import type { CapabilitySkills, CapabilityConfig } from "./types";
+import { Type } from "typebox";
+import type { CapabilitySkills, CapabilityConfig, MarkdownFileSpec, OneOfGroup, OutputEntry, CapabilityContract } from "./types";
 
 // ---------------------------------------------------------------------------
 // CapabilitySkills — compile-time type verification
@@ -101,6 +102,7 @@ describe("CapabilityConfig — skills field", () => {
     // Arrange + Act
     const config: CapabilityConfig = {
       capability: "create-plan",
+      contract: { inputs: [], outputs: [] },
       skills: {
         mandatory: ["pio-planning", "grill-me"],
         recommended: [
@@ -119,6 +121,7 @@ describe("CapabilityConfig — skills field", () => {
     // Arrange + Act
     const config: CapabilityConfig = {
       capability: "create-goal",
+      contract: { inputs: [], outputs: [] },
     };
 
     // Assert
@@ -129,6 +132,7 @@ describe("CapabilityConfig — skills field", () => {
     // Arrange + Act
     const config: CapabilityConfig = {
       capability: "create-goal",
+      contract: { inputs: [], outputs: [] },
       skills: {
         recommended: [
           { name: "source-research", condition: "when researching external libraries" },
@@ -140,5 +144,68 @@ describe("CapabilityConfig — skills field", () => {
     expect(config.skills!.mandatory).toBeUndefined();
     expect(config.skills!.recommended).toHaveLength(1);
     expect(config.skills!.recommended![0].name).toBe("source-research");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unified contract types — integration test
+// ---------------------------------------------------------------------------
+// All four new types (MarkdownFileSpec, OneOfGroup, OutputEntry, CapabilityContract)
+// are exercised together in a single integration test. Structural correctness
+// is verified by the TypeScript compiler (npx tsc --noEmit).
+
+describe("unified contract types", () => {
+  it("all four types compose together with requiredWhen predicates and coexist with old config fields", () => {
+    // Arrange: build a realistic contract using all four types
+    const planSchema = Type.Object({ totalSteps: Type.Integer() });
+
+    const contract: CapabilityContract = {
+      inputs: [{ file: "PLAN.md" }],
+      excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
+      outputs: [
+        { file: "S{stepNumber:02d}/TASK.md", schema: planSchema },
+        {
+          file: "S{stepNumber:02d}/DECISIONS.md",
+          requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1,
+        },
+        {
+          files: [{ file: "APPROVED" }, { file: "REJECTED" }],
+        } satisfies OneOfGroup,
+      ],
+    };
+
+    // Wire contract into CapabilityConfig
+    const config: CapabilityConfig = {
+      capability: "evolve-plan",
+      contract,
+    };
+
+    // Assert: requiredWhen predicate behavior (the only runtime behavior in these types)
+    const decisions = contract.outputs[1] as MarkdownFileSpec;
+    expect(decisions.requiredWhen!({ stepNumber: 3 })).toBe(true);
+    expect(decisions.requiredWhen!({ stepNumber: 1 })).toBe(false);
+    expect(decisions.requiredWhen!()).toBe(false);
+
+    // Assert: OneOfGroup is accepted as OutputEntry
+    const oneOf = contract.outputs[2] as OneOfGroup;
+    expect(oneOf.files).toHaveLength(2);
+
+    // Assert: contract is set on CapabilityConfig
+    expect(config.contract).toBe(contract);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CapabilityConfig — contract field (mandatory)
+// ---------------------------------------------------------------------------
+
+describe("CapabilityConfig — contract field", () => {
+  it("contract field is mandatory — config must have contract", () => {
+    // contract is now required — this compiles only because contract is present
+    const config: CapabilityConfig = {
+      capability: "create-goal",
+      contract: { inputs: [], outputs: [] },
+    };
+    expect(config.contract).toBeDefined();
   });
 });

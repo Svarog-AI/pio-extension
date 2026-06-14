@@ -3,6 +3,9 @@ import * as jsyaml from "js-yaml";
 import * as Value from "typebox/value";
 import type { TSchema } from "typebox";
 
+// Maximum recursion depth for schema description (prevents runaway output on deeply-nested schemas).
+const MAX_DEPTH = 4;
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -123,3 +126,164 @@ export function validateAndCoerce<T extends Record<string, unknown>>(
   // Non-object schema — return raw as-is
   return { data: raw as T };
 }
+
+// ---------------------------------------------------------------------------
+// Schema description (human-readable frontmatter format)
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a TypeBox `TSchema` into a human-readable multi-line description of
+ * the expected frontmatter structure.
+ *
+ * Covers: required vs optional fields, field types, literal/union constraints,
+ * array item types, and nested objects with indentation.
+ *
+ * Depth is capped at `MAX_DEPTH` levels — deeper nesting shows `...`.
+ */
+export function formatSchemaDescription(schema: TSchema, depth: number = 0): string {
+  if (depth > MAX_DEPTH) {
+    return "  ...";
+  }
+
+  const node = schema as Record<string, unknown>;
+
+  // Handle object schemas — iterate properties
+  if (node.type === "object") {
+    const properties = node.properties as Record<string, unknown> | undefined;
+    const required = (node.required as string[] | undefined) ?? [];
+
+    if (!properties || Object.keys(properties).length === 0) {
+      return "";
+    }
+
+    const indent = "  ".repeat(depth + 1);
+    const lines: string[] = [];
+
+    for (const [key, value] of Object.entries(properties)) {
+      const isRequired = required.includes(key);
+      const marker = isRequired ? "(required)" : "(optional)";
+      const typeDesc = describeType(value as TSchema, depth + 1);
+      lines.push(`${indent}- ${key} ${marker}: ${typeDesc}`);
+    }
+
+    return lines.join("\n");
+  }
+
+  // Non-object top-level — describe the type directly
+  return describeType(schema, depth + 1);
+}
+
+/**
+ * Describe a single TypeBox type node as a short string.
+ * For objects and arrays with items, also appends nested field descriptions.
+ */
+function describeType(schema: TSchema, depth: number): string {
+  const node = schema as Record<string, unknown>;
+
+  // Union of literals (anyOf with all const values)
+  if ("anyOf" in node && Array.isArray(node.anyOf)) {
+    const options = node.anyOf as TSchema[];
+    const allLiterals = options.every(
+      (opt) => (opt as Record<string, unknown>).type === "string" && "const" in (opt as Record<string, unknown>),
+    );
+    if (allLiterals) {
+      const values = options
+        .map((opt) => `"${(opt as Record<string, unknown>).const}"`)
+        .join(" | ");
+      return `string (one of: ${values})`;
+    }
+    // Mixed union — fall back
+    return "union";
+  }
+
+  // Object
+  if (node.type === "object") {
+    const properties = node.properties as Record<string, unknown> | undefined;
+    const required = (node.required as string[] | undefined) ?? [];
+
+    if (!properties || Object.keys(properties).length === 0) {
+      return "object";
+    }
+
+    const indent = "  ".repeat(depth + 1);
+    const lines: string[] = ["object"];
+
+    if (depth < MAX_DEPTH) {
+      for (const [key, value] of Object.entries(properties)) {
+        const isRequired = required.includes(key);
+        const marker = isRequired ? "(required)" : "(optional)";
+        const typeDesc = describeType(value as TSchema, depth + 1);
+        lines.push(`${indent}- ${key} ${marker}: ${typeDesc}`);
+      }
+    } else {
+      lines.push(`${indent}...`);
+    }
+
+    return lines.join("\n");
+  }
+
+  // Array — recurse into items
+  if (node.type === "array" && "items" in node) {
+    const itemSchema = node.items as TSchema;
+    const itemNode = itemSchema as Record<string, unknown>;
+
+    // For arrays of objects, show `array<object>` on the line and nest fields below
+    if (itemNode.type === "object") {
+      const properties = itemNode.properties as Record<string, unknown> | undefined;
+      const required = (itemNode.required as string[] | undefined) ?? [];
+
+      if (properties && Object.keys(properties).length > 0 && depth < MAX_DEPTH) {
+        // Properties of array items are nested one level deeper than the array itself.
+        // The array is at depth+1 (child of parent property), so its item properties
+        // need depth+2 for the indent and depth+2 for recursive describeType calls.
+        const indent = "  ".repeat(depth + 2);
+        const lines: string[] = ["array<object>"];
+        for (const [key, value] of Object.entries(properties)) {
+          const isRequired = required.includes(key);
+          const marker = isRequired ? "(required)" : "(optional)";
+          const typeDesc = describeType(value as TSchema, depth + 2);
+          lines.push(`${indent}- ${key} ${marker}: ${typeDesc}`);
+        }
+        return lines.join("\n");
+      }
+    }
+
+    // Simple item type (string, number, etc.)
+    const itemType = describeType(itemSchema, depth);
+    return `array<${itemType}>`;
+  }
+
+  // String with const (literal)
+  if (node.type === "string" && "const" in node) {
+    return `string = "${node.const}"`;
+  }
+
+  // String with pattern
+  if (node.type === "string" && "pattern" in node) {
+    return `string (pattern: "${node.pattern}")`;
+  }
+
+  // Plain string
+  if (node.type === "string") {
+    return "string";
+  }
+
+  // Integer or number with constraints
+  if (node.type === "integer" || node.type === "number") {
+    const constraints: string[] = [];
+    if ("minimum" in node) constraints.push(`min: ${node.minimum}`);
+    if ("maximum" in node) constraints.push(`max: ${node.maximum}`);
+    const suffix = constraints.length > 0 ? ` (${constraints.join(", ")})` : "";
+    return `number${suffix}`;
+  }
+
+  // Boolean
+  if (node.type === "boolean") {
+    return "boolean";
+  }
+
+  // Unknown type
+  return `unknown (type: ${node.type ?? "null"})`;
+}
+
+

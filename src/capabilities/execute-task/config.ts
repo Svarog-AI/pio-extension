@@ -4,19 +4,26 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { CapState } from "../../capability-state";
 import { launchCapability, setMergedSkills } from "../../capability-session";
-import { mergeCapabilitySkills } from "../../capability-utils";
-import { resolveGoalDir, stepFolderName } from "../../fs-utils";
+import { mergeCapabilitySkills, parseCommandArgs } from "../../capability-utils";
+import { stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
-import { resolveCapabilityConfig, resolvePaths } from "../../capability-config";
+import { resolveCapabilityConfig } from "../../capability-config";
+import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
+import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { createGoalState } from "../../goal-state";
-import {
-  validateAndFindNextStep,
-  validateExplicitStep,
-  resolveExecuteValidation,
-  resolveExecuteReadOnlyFiles,
-} from "./callbacks";
+import { validateExecuteStep, resolveExecuteReadOnlyFiles } from "./callbacks";
+
+// ---------------------------------------------------------------------------
+// Contract (single source of truth — imported by callbacks)
+// ---------------------------------------------------------------------------
+
+export const CONTRACT: CapabilityContract = {
+  inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }, { file: "S{stepNumber:02d}/TASK.md", schema: TASK_FRONTMATTER_SCHEMA }],
+  excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
+  outputs: [{ file: "S{stepNumber:02d}/TEST.md" }, { file: "S{stepNumber:02d}/SUMMARY.md" }],
+};
 
 // ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
@@ -24,19 +31,9 @@ import {
 
 const capabilityConfig = {
   capability: "execute-task",
-  validation: resolveExecuteValidation,
+  contract: CONTRACT,
   readOnlyFiles: resolveExecuteReadOnlyFiles,
   prepareSession: prepareExecuteSession,
-  inputValidation: (_workingDir: string, params?: Record<string, unknown>) => {
-    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-    if (stepNumber == null) {
-      throw new Error("stepNumber is required for execute-task. Ensure the task was enqueued with a valid step number.");
-    }
-    return {
-      requiredFiles: resolvePaths(["GOAL.md", "PLAN.md", `S{stepNumber:02d}/TASK.md`], { stepNumber }),
-      excludedFiles: resolvePaths([`S{stepNumber:02d}/REVISE_PLAN_NEEDED`], { stepNumber }),
-    };
-  },
   skills: {
     mandatory: ["tdd", "pio-git"],
   },
@@ -72,9 +69,10 @@ function prepareExecuteSession(workingDir: string, params?: Record<string, unkno
   const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
   if (stepNumber == null) return;
 
-  const state = createGoalState(workingDir);
-  const step = state.steps().find(s => s.stepNumber === stepNumber);
-  const taskSkills = step?.taskSkills();
+  const capState = new CapState(CONTRACT, workingDir, { stepNumber });
+  const taskFile = capState.file<{ skills?: unknown }>("S{stepNumber:02d}/TASK.md");
+  const taskData = taskFile.read();
+  const taskSkills = taskData?.skills ?? null;
 
   const merged = mergeCapabilitySkills(capabilityConfig.skills, taskSkills);
   setMergedSkills(merged);
@@ -92,13 +90,11 @@ const executeTaskTool = defineTool({
   promptSnippet: "Execute a single plan step (test-first implementation).",
   parameters: Type.Object({
     name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
-    stepNumber: Type.Optional(Type.Number({ description: "Explicit step number to execute (optional — auto-finds next ready step)" })),
+    stepNumber: Type.Number({ description: "Step number to execute" }),
   }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = params.stepNumber
-      ? await validateExplicitStep(params.name, ctx.cwd, params.stepNumber)
-      : await validateAndFindNextStep(params.name, ctx.cwd);
+    const result = await validateExecuteStep(params.name, ctx.cwd, params.stepNumber);
 
     if (!result.ready) {
       return { content: [{ type: "text", text: result.error }], details: {} };
@@ -126,24 +122,18 @@ const executeTaskTool = defineTool({
 // ---------------------------------------------------------------------------
 
 async function handleExecuteTask(args: string | undefined, ctx: ExtensionCommandContext) {
-  if (!args || !args.trim()) {
-    ctx.ui.notify("Usage: /pio-execute-task <goal-name> [step-number]", "warning");
+  const parsed = parseCommandArgs(args);
+  if (!parsed) {
+    ctx.ui.notify("Usage: /pio-execute-task <goal-name> <step-number>", "warning");
     return;
   }
 
-  const parts = args.trim().split(/\s+/);
-  const name = parts[0];
-  const explicitStep = parts[1] ? parseInt(parts[1], 10) : undefined;
-
-  // Validate explicit step number if provided
-  if (explicitStep !== undefined && (isNaN(explicitStep) || explicitStep < 1)) {
-    ctx.ui.notify(`Invalid step number: "${parts[1]}". Must be a positive integer.`, "error");
+  if (parsed.stepNumber === undefined) {
+    ctx.ui.notify("Step number is required. Usage: /pio-execute-task <goal-name> <step-number>", "error");
     return;
   }
 
-  const result = explicitStep
-    ? await validateExplicitStep(name, ctx.cwd, explicitStep)
-    : await validateAndFindNextStep(name, ctx.cwd);
+  const result = await validateExecuteStep(parsed.name, ctx.cwd, parsed.stepNumber);
 
   if (!result.ready) {
     ctx.ui.notify(result.error, "error");
@@ -156,13 +146,21 @@ async function handleExecuteTask(args: string | undefined, ctx: ExtensionCommand
   const stepDir = path.join(result.goalDir, folderName);
   fs.mkdirSync(stepDir, { recursive: true });
 
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "execute-task", goalName: name, stepNumber: result.stepNumber });
+  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "execute-task", goalName: parsed.name, stepNumber: result.stepNumber });
   if (!config) {
     ctx.ui.notify("Failed to resolve execute-task config.", "error");
     return;
   }
 
-  await launchCapability(ctx, config);
+  try {
+    await launchCapability(ctx, config);
+  } catch (err) {
+    ctx.ui.notify(
+      `Failed to start ${config.capability}: ${err instanceof Error ? err.message : String(err)}`,
+      "error",
+    );
+    return;
+  }
 }
 
 // ---------------------------------------------------------------------------

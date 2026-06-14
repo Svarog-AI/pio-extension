@@ -1,18 +1,17 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { CapState } from "../../capability-state";
+import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
-import { createGoalState, type StepStatus } from "../../goal-state";
-import { resolvePaths } from "../../capability-config";
-import { validateInputs } from "../../guards/validation";
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
+import { CONTRACT } from "./config";
+
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const PLAN_FILE = "PLAN.md";
-const GOAL_FILE = "GOAL.md";
 const TASK_FILE = "TASK.md";
 const TEST_FILE = "TEST.md";
 const SUMMARY_FILE = "SUMMARY.md";
@@ -20,21 +19,8 @@ const REVIEW_FILE = "REVIEW.md";
 const DECISIONS_FILE = "DECISIONS.md";
 
 // ---------------------------------------------------------------------------
-// Validation callbacks (used by config.ts and resolveCapabilityConfig)
+// Config callbacks (used by config.ts and resolveCapabilityConfig)
 // ---------------------------------------------------------------------------
-
-/**
- * Callback used by the `validation` field in config.
- * Returns `{ files: string[] }` with REVIEW.md for the given step.
- */
-export function resolveReviewValidation(_dir: string, params?: Record<string, unknown>): { files: string[] } {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-  if (stepNumber == null) {
-    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
-  }
-  const folder = stepFolderName(stepNumber);
-  return { files: [`${folder}/${REVIEW_FILE}`] };
-}
 
 /**
  * Callback used by the `readOnlyFiles` field in config.
@@ -47,8 +33,8 @@ export function resolveReviewReadOnlyFiles(_dir: string, params?: Record<string,
   }
   const folder = stepFolderName(stepNumber);
   return [
-    GOAL_FILE,
-    PLAN_FILE,
+    "GOAL.md",
+    "PLAN.md",
     `${folder}/${TASK_FILE}`,
     `${folder}/${TEST_FILE}`,
     `${folder}/${SUMMARY_FILE}`,
@@ -74,8 +60,8 @@ export function resolveReviewWriteAllowlist(_dir: string, params?: Record<string
 // ---------------------------------------------------------------------------
 
 /**
- * Post-validate hook: reads REVIEW.md frontmatter, validates against schema,
- * and creates APPROVED/REJECTED markers via applyReviewDecision().
+ * Post-validate hook: reads REVIEW.md frontmatter and validates against schema.
+ * Does NOT create markers — that is the job of postExecuteReview().
  */
 export function postValidateReview(goalDir: string, params?: Record<string, unknown>): { success: boolean; message?: string } {
   const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
@@ -83,18 +69,59 @@ export function postValidateReview(goalDir: string, params?: Record<string, unkn
     throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
   }
 
-  // Single parsing path through GoalState — uses shared frontmatter module + schema internally
-  const state = createGoalState(goalDir);
-  const result = state.getReviewOutputs(stepNumber, { errors: true }) as { data?: ReviewOutputs; error?: string };
+  // Read REVIEW.md via CapState — uses CONTRACT.outputs schema for validation
+  const capState = new CapState(CONTRACT, goalDir, { stepNumber });
+  const reviewFile = capState.file<ReviewOutputs>("S{stepNumber:02d}/REVIEW.md");
 
-  // On failure: propagate the detailed error from GoalState
-  if (result.error) {
-    return { success: false, message: result.error };
+  if (!reviewFile.exists()) {
+    return { success: false, message: `REVIEW.md not found in S${String(stepNumber).padStart(2, "0")}/` };
+  }
+  const data = reviewFile.read();
+  if (data === null) {
+    // Get detailed error message via direct validation
+    const reviewPath = path.join(goalDir, stepFolderName(stepNumber), "REVIEW.md");
+    const raw = extractFrontmatter(reviewPath);
+    if (raw === null) {
+      return { success: false, message: `REVIEW.md does not contain valid YAML frontmatter for step ${stepNumber}` };
+    }
+    const result = validateAndCoerce<ReviewOutputs>(raw, REVIEW_OUTPUT_SCHEMA);
+    if ("error" in result) {
+      return { success: false, message: result.error };
+    }
+    return { success: false, message: `REVIEW.md frontmatter validation failed for step ${stepNumber}` };
   }
 
-  // On success: create markers (APPROVED/REJECTED) and return success
-  applyReviewDecision(goalDir, stepNumber, result.data!);
+  // Schema validation passed — do NOT create markers here (that's postExecute's job)
   return { success: true };
+}
+
+/**
+ * Post-execute hook: creates APPROVED/REJECTED markers via applyReviewDecision().
+ * Runs after transition routing + task enqueuing (step 4 in mark-complete.ts).
+ * Re-reads REVIEW.md from disk — both hooks read independently.
+ */
+export function postExecuteReview(goalDir: string, params?: Record<string, unknown>): void {
+  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
+  if (stepNumber == null) {
+    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
+  }
+
+  // Re-read REVIEW.md via CapState (reads fresh from disk on every call)
+  const capState = new CapState(CONTRACT, goalDir, { stepNumber });
+  const reviewFile = capState.file<ReviewOutputs>("S{stepNumber:02d}/REVIEW.md");
+
+  if (!reviewFile.exists()) {
+    console.warn(`pio: postExecuteReview — REVIEW.md not found in S${String(stepNumber).padStart(2, "0")}/`);
+    return;
+  }
+  const data = reviewFile.read();
+  if (data === null) {
+    console.warn(`pio: postExecuteReview could not parse REVIEW.md for step ${stepNumber}: frontmatter validation failed`);
+    return;
+  }
+
+  // Create markers (APPROVED/REJECTED) — irreversible side-effect
+  applyReviewDecision(goalDir, stepNumber, data);
 }
 
 // ---------------------------------------------------------------------------
@@ -136,34 +163,15 @@ export function applyReviewDecision(
   }
 }
 
-/**
- * Find the most recently completed step by scanning S01/, S02/, ... in descending order.
- * Returns the step number or undefined if no completed step found.
- */
-export function findMostRecentCompletedStep(goalDir: string): number | undefined {
-  const state = createGoalState(goalDir);
-  const allSteps = state.steps(); // sorted ascending by stepNumber
-
-  // Scan from highest to lowest for a reviewable step
-  for (let i = allSteps.length - 1; i >= 0; i--) {
-    const step = allSteps[i];
-    if (step.status() === "implemented" && step.hasSummary()) {
-      return step.stepNumber;
-    }
-  }
-
-  return undefined;
-}
-
 // ---------------------------------------------------------------------------
 // Pre-launch validation
 // ---------------------------------------------------------------------------
 
 /**
- * Validate that the goal workspace exists and the specified step is ready for review.
- * The step must have COMPLETED marker and SUMMARY.md (was executed successfully).
+ * Resolve the goal directory for review-task.
+ * Input validation is handled automatically by launchCapability().
  */
-export async function validateStepForReview(
+export async function validateReviewStep(
   name: string,
   cwd: string,
   stepNumber: number,
@@ -172,99 +180,6 @@ export async function validateStepForReview(
   | { goalDir: string; ready: false; error: string }
 > {
   const goalDir = resolveGoalDir(cwd, name);
-
-  if (!fs.existsSync(goalDir)) {
-    return {
-      goalDir,
-      ready: false,
-      error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.`,
-    };
-  }
-
-  // Validate required files from inputValidation contract
-  const requiredFiles = resolvePaths([GOAL_FILE, PLAN_FILE, `S{stepNumber:02d}/COMPLETED`, `S{stepNumber:02d}/SUMMARY.md`], { stepNumber });
-  const fileCheck = validateInputs(goalDir, requiredFiles);
-  if (!fileCheck.success) {
-    return { goalDir, ready: false, error: fileCheck.message! };
-  }
-
-  // Check step status (blocked/implemented)
-  const state = createGoalState(goalDir);
-  const folder = stepFolderName(stepNumber);
-  const step = state.steps().find(s => s.stepNumber === stepNumber);
-
-  if (!step) {
-    return {
-      goalDir,
-      ready: false,
-      error: `Step ${stepNumber} folder "${folder}/" does not exist. Run /pio-evolve-plan ${name} to generate specs first.`,
-    };
-  }
-
-  const status = step.status();
-
-  if (status === "blocked") {
-    return {
-      goalDir,
-      ready: false,
-      error: `Step ${stepNumber} is marked as BLOCKED. Resolve the blocking issue first.`,
-    };
-  }
-
-  // Not implemented yet (pending or defined, or never had COMPLETED)
-  if (status !== "implemented") {
-    return {
-      goalDir,
-      ready: false,
-      error: `Step ${stepNumber} is not yet completed. Run /pio-execute-task ${name} ${stepNumber} first.`,
-    };
-  }
-
-  return { goalDir, ready: true, stepNumber };
-}
-
-/**
- * Validate that the goal workspace exists and find the most recently completed step for review.
- */
-export async function validateAndFindReviewStep(
-  name: string,
-  cwd: string,
-): Promise<
-  | { goalDir: string; ready: true; stepNumber: number }
-  | { goalDir: string; ready: false; error: string }
-> {
-  const goalDir = resolveGoalDir(cwd, name);
-
-  if (!fs.existsSync(goalDir)) {
-    return {
-      goalDir,
-      ready: false,
-      error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.`,
-    };
-  }
-
-  // Validate required base files first (GOAL.md, PLAN.md)
-  const baseCheck = validateInputs(goalDir, [GOAL_FILE, PLAN_FILE]);
-  if (!baseCheck.success) {
-    return { goalDir, ready: false, error: baseCheck.message! };
-  }
-
-  // Find the most recently completed step
-  const stepNumber = findMostRecentCompletedStep(goalDir);
-  if (stepNumber === undefined) {
-    return {
-      goalDir,
-      ready: false,
-      error: `No completed steps found for goal "${name}". Run /pio-execute-task ${name} to complete a step first.`,
-    };
-  }
-
-  // Validate step-specific files from inputValidation contract
-  const stepFiles = resolvePaths([`S{stepNumber:02d}/COMPLETED`, `S{stepNumber:02d}/SUMMARY.md`], { stepNumber });
-  const fileCheck = validateInputs(goalDir, stepFiles);
-  if (!fileCheck.success) {
-    return { goalDir, ready: false, error: fileCheck.message! };
-  }
 
   return { goalDir, ready: true, stepNumber };
 }

@@ -11,46 +11,50 @@
 import type { TSchema } from "typebox";
 
 // ---------------------------------------------------------------------------
-// Frontmatter schema types
+// Capability contract types (unified input/output declarations)
 // ---------------------------------------------------------------------------
 
 /**
- * Declares an output document and the TypeBox schema its YAML frontmatter
- * must conform to. Defined here (types.ts) to avoid circular imports:
- * capability-package.ts imports from types.ts, so types.ts cannot import back.
- */
-export interface FrontmatterSchemaDeclaration {
-  /** Output file path relative to workingDir (e.g. "PLAN.md", "TASK.md") */
-  outputFile: string;
-  /** TypeBox schema the YAML frontmatter must conform to */
-  schema: TSchema;
-}
-
-// ---------------------------------------------------------------------------
-// Validation types
-// ---------------------------------------------------------------------------
-
-export interface ValidationRule {
-  /** Files that must exist after the capability completes. Paths are resolved relative to workingDir. */
-  files?: string[];
-}
-
-// ---------------------------------------------------------------------------
-// Input validation types
-// ---------------------------------------------------------------------------
-
-/**
- * Declarative input contract: which files must exist (or must not exist)
- * before a capability session can start.
+ * Describes a single markdown file in a capability contract.
  *
- * File paths can contain `{key}` placeholder tokens (e.g., `S{stepNumber}/TASK.md`)
- * that are resolved at runtime via `resolvePaths()` using session params.
+ * File paths can contain `{key}` and `{key:format}` placeholder tokens
+ * (e.g., `S{stepNumber:02d}/TASK.md`) resolved at runtime via `resolvePaths()`.
+ * When a `schema` is provided, the file's YAML frontmatter is validated
+ * against the TypeBox schema.
  */
-export interface InputValidationSpec {
-  /** Files that must exist before the session starts (relative to goalDir). Paths can contain `{key}` placeholder tokens (e.g., `S{stepNumber}/TASK.md`). */
-  requiredFiles: string[];
-  /** Files that must NOT exist before the session starts. Same placeholder syntax as requiredFiles. */
+export interface MarkdownFileSpec {
+  /** Relative file path with `{key}` / `{key:format}` placeholder support */
+  file: string;
+  /** Optional TypeBox schema for YAML frontmatter validation — plain existence check when absent */
+  schema?: TSchema;
+  /** Optional predicate to determine if this file is required. Receives session params. If absent, file is always required. */
+  requiredWhen?: (params?: Record<string, unknown>) => boolean;
+}
+
+/**
+ * A group where exactly one file must be present (e.g., APPROVED xor REJECTED).
+ */
+export interface OneOfGroup {
+  files: MarkdownFileSpec[];
+}
+
+/** An output entry: either a single file spec or a one-of group. */
+export type OutputEntry = MarkdownFileSpec | OneOfGroup;
+
+/**
+ * Unified capability contract: declares inputs, outputs, excluded files,
+ * and frontmatter schemas in a single object.
+ *
+ * Replaces the fragmented approach of separate `validation`, `frontmatterSchemas`,
+ * and `inputValidation` fields with one consolidated declaration.
+ */
+export interface CapabilityContract {
+  /** Files that must exist, with optional frontmatter schema validation */
+  inputs: MarkdownFileSpec[];
+  /** Files that must NOT exist */
   excludedFiles?: string[];
+  /** Required output files or one-of groups */
+  outputs: OutputEntry[];
 }
 
 // ---------------------------------------------------------------------------
@@ -75,8 +79,6 @@ export interface CapabilityConfig {
   initialMessage?: string;
   /** Base directory for resolving validation file paths (the goal workspace dir) */
   workingDir?: string;
-  /** Validation rules declared by this capability */
-  validation?: ValidationRule;
   /** Files that must not be modified during this session (relative to workingDir) */
   readOnlyFiles?: string[];
   /** Allowlist of files that may be written during this session. When present, takes precedence over readOnlyFiles. */
@@ -95,10 +97,8 @@ export interface CapabilityConfig {
   postExecute?: PostExecuteCallback;
   /** Capability-specific skill declarations — mandatory skills are force-injected, recommended skills are listed as instructions. */
   skills?: CapabilitySkills;
-  /** Declarative output document frontmatter schemas. Validated by the exit-gate via validateFrontmatter(). */
-  frontmatterSchemas?: FrontmatterSchemaDeclaration[];
-  /** Declarative input contract: files that must/must-not exist before the session starts. */
-  inputValidation?: InputValidationSpec;
+  /** Unified capability contract: consolidated inputs, outputs, excluded files, and frontmatter schemas. */
+  contract: CapabilityContract;
 }
 
 /** Callback signature for step-dependent config fields. */

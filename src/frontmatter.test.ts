@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Type } from "typebox";
-import { extractFrontmatter, validateAndCoerce } from "./frontmatter";
+import { extractFrontmatter, validateAndCoerce, formatSchemaDescription } from "./frontmatter";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -359,5 +359,212 @@ describe("validateAndCoerce", () => {
     expect(result.data).toBeUndefined();
     expect(result.error).toBeDefined();
     expect(result.error).toContain("flag");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatSchemaDescription
+// ---------------------------------------------------------------------------
+
+describe("formatSchemaDescription", () => {
+  it("describes object with required and optional fields", () => {
+    const schema = Type.Object({
+      name: Type.String(),
+      alias: Type.Optional(Type.String()),
+    });
+
+    const result = formatSchemaDescription(schema);
+
+    expect(result).toContain("- name (required): string");
+    expect(result).toContain("- alias (optional): string");
+  });
+
+  it("describes literal types with = format", () => {
+    const schema = Type.Object({
+      status: Type.Literal("complete"),
+    });
+
+    const result = formatSchemaDescription(schema);
+
+    expect(result).toContain('status (required): string = "complete"');
+  });
+
+  it("describes union of literals with one-of format", () => {
+    const schema = Type.Object({
+      decision: Type.Union([Type.Literal("APPROVED"), Type.Literal("REJECTED")]),
+    });
+
+    const result = formatSchemaDescription(schema);
+
+    expect(result).toContain('decision (required): string (one of: "APPROVED" | "REJECTED")');
+  });
+
+  it("describes array types with angle bracket notation", () => {
+    const schema = Type.Object({
+      tags: Type.Array(Type.String()),
+    });
+
+    const result = formatSchemaDescription(schema);
+
+    expect(result).toContain("tags (required): array<string>");
+  });
+
+  it("describes nested objects with proper indentation", () => {
+    const schema = Type.Object({
+      skills: Type.Optional(Type.Object({
+        mandatory: Type.Array(Type.String()),
+        recommended: Type.Optional(Type.Array(Type.Object({
+          name: Type.String(),
+          condition: Type.String(),
+        }))),
+      })),
+    });
+
+    const result = formatSchemaDescription(schema);
+
+    expect(result).toContain("- skills (optional): object");
+    expect(result).toContain("    - mandatory (required): array<string>");
+    expect(result).toContain("    - recommended (optional): array<object>");
+    // nested object inside array items
+    expect(result).toContain("        - name (required): string");
+    expect(result).toContain("        - condition (required): string");
+  });
+
+  it("describes integer types", () => {
+    const schema = Type.Object({
+      count: Type.Integer({ minimum: 0 }),
+    });
+
+    const result = formatSchemaDescription(schema);
+
+    expect(result).toContain("count (required): number");
+  });
+
+  it("describes boolean types", () => {
+    const schema = Type.Object({
+      enabled: Type.Boolean(),
+    });
+
+    const result = formatSchemaDescription(schema);
+
+    expect(result).toContain("enabled (required): boolean");
+  });
+
+  it("describes number types with constraints", () => {
+    const schema = Type.Object({
+      score: Type.Number({ minimum: 0, maximum: 100 }),
+    });
+
+    const result = formatSchemaDescription(schema);
+
+    expect(result).toContain("score (required): number");
+  });
+
+  it("describes string types with pattern constraint", () => {
+    const schema = Type.Object({
+      pattern: Type.String({ pattern: "^feat|fix" }),
+    });
+
+    const result = formatSchemaDescription(schema);
+
+    expect(result).toContain('pattern (required): string (pattern: "^feat|fix")');
+  });
+
+  it("handles unknown types gracefully", () => {
+    const schema = { type: "unknownType" } as any;
+
+    const result = formatSchemaDescription(schema);
+
+    expect(result).toContain("unknown");
+  });
+
+  it("handles empty object schema", () => {
+    const schema = Type.Object({});
+
+    const result = formatSchemaDescription(schema);
+
+    expect(result).toBe("");
+  });
+
+  it("respects depth limit and shows ... for deeply nested schemas", () => {
+    // Build a deeply nested schema (5 levels deep)
+    const schema = Type.Object({
+      level1: Type.Object({
+        level2: Type.Object({
+          level3: Type.Object({
+            level4: Type.Object({
+              level5: Type.String(),
+            }),
+          }),
+        }),
+      }),
+    });
+
+    const result = formatSchemaDescription(schema);
+
+    expect(result).toContain("...");
+  });
+
+  it("describes array of objects", () => {
+    const schema = Type.Object({
+      items: Type.Array(Type.Object({
+        id: Type.String(),
+        value: Type.Integer(),
+      })),
+    });
+
+    const result = formatSchemaDescription(schema);
+
+    expect(result).toContain("items (required): array<object>");
+    expect(result).toContain("    - id (required): string");
+    expect(result).toContain("    - value (required): number");
+  });
+
+  it("describes the COMPLETION_SUMMARY_SCHEMA example", () => {
+    const schema = Type.Object({
+      status: Type.Literal("complete"),
+      completedAt: Type.Optional(Type.String()),
+    });
+
+    const result = formatSchemaDescription(schema);
+
+    expect(result).toContain('status (required): string = "complete"');
+    expect(result).toContain("completedAt (optional): string");
+  });
+
+  it("error message for empty {} frontmatter includes schema description", () => {
+    const schema = Type.Object({
+      status: Type.Literal("complete"),
+      completedAt: Type.Optional(Type.String()),
+    });
+
+    // Empty {} frontmatter fails validation
+    const result = validateAndCoerce({}, schema);
+
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain("status");
+
+    // Schema description should show expected structure
+    const desc = formatSchemaDescription(schema);
+    expect(desc).toContain('status (required): string = "complete"');
+    expect(desc).toContain("completedAt (optional): string");
+  });
+
+  it("describes the REVIEW_OUTPUT_SCHEMA example", () => {
+    const schema = Type.Object({
+      decision: Type.Union([Type.Literal("APPROVED"), Type.Literal("REJECTED")]),
+      criticalIssues: Type.Integer({ minimum: 0 }),
+      highIssues: Type.Integer({ minimum: 0 }),
+      mediumIssues: Type.Integer({ minimum: 0 }),
+      lowIssues: Type.Integer({ minimum: 0 }),
+    });
+
+    const result = formatSchemaDescription(schema);
+
+    expect(result).toContain('decision (required): string (one of: "APPROVED" | "REJECTED")');
+    expect(result).toContain("criticalIssues (required): number");
+    expect(result).toContain("highIssues (required): number");
+    expect(result).toContain("mediumIssues (required): number");
+    expect(result).toContain("lowIssues (required): number");
   });
 });

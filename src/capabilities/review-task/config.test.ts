@@ -3,18 +3,17 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as Value from "typebox/value";
 import config from "./config";
-import { findMostRecentCompletedStep, applyReviewDecision, validateStepForReview, validateAndFindReviewStep } from "./callbacks";
-import { createGoalState } from "../../goal-state";
+import { applyReviewDecision, validateReviewStep, postExecuteReview } from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // Local test helper (moved from callbacks.ts — not used by production code)
 // ---------------------------------------------------------------------------
 
 function isStepReviewable(goalDir: string, stepNumber: number): boolean {
-  const state = createGoalState(goalDir);
-  const step = state.steps().find(s => s.stepNumber === stepNumber);
-  if (!step) return false;
-  return step.status() === "implemented" && step.hasSummary();
+  const folder = stepFolderName(stepNumber);
+  const stepDir = path.join(goalDir, folder);
+  if (fs.existsSync(path.join(stepDir, "BLOCKED"))) return false;
+  return fs.existsSync(path.join(stepDir, "COMPLETED")) && fs.existsSync(path.join(stepDir, "SUMMARY.md"));
 }
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
 import { stepFolderName } from "../../fs-utils";
@@ -352,108 +351,6 @@ describe("isStepReviewable(goalDir, stepNumber)", () => {
 
     // Assert
     expect(result).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// findMostRecentCompletedStep — reverse-scan discovery
-// ---------------------------------------------------------------------------
-
-describe("findMostRecentCompletedStep(goalDir)", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("no step folders → undefined", () => {
-    // Arrange: empty goal directory (no S01/, S02/, etc.)
-    const { goalDir } = createGoalTree(tempDir, "empty-goal");
-
-    // Act
-    const result = findMostRecentCompletedStep(goalDir);
-
-    // Assert
-    expect(result).toBeUndefined();
-  });
-
-  it("one completed step (S01) → 1", () => {
-    // Arrange: S01 with COMPLETED and SUMMARY.md
-    const { goalDir } = createGoalTree(tempDir, "single-complete", {
-      steps: [{ number: 1, files: ["COMPLETED", "SUMMARY.md"] }],
-    });
-
-    // Act
-    const result = findMostRecentCompletedStep(goalDir);
-
-    // Assert
-    expect(result).toBe(1);
-  });
-
-  it("multiple sequential completed steps → returns highest", () => {
-    // Arrange: S01 and S02 both reviewable
-    const { goalDir } = createGoalTree(tempDir, "multi-complete", {
-      steps: [
-        { number: 1, files: ["COMPLETED", "SUMMARY.md"] },
-        { number: 2, files: ["COMPLETED", "SUMMARY.md"] },
-      ],
-    });
-
-    // Act
-    const result = findMostRecentCompletedStep(goalDir);
-
-    // Assert
-    expect(result).toBe(2);
-  });
-
-  it("gap in middle — S01 complete, S02 not reviewable → returns 1", () => {
-    // Arrange: S01 reviewable, S02 exists but has only specs (no COMPLETED)
-    const { goalDir } = createGoalTree(tempDir, "gap-middle", {
-      steps: [
-        { number: 1, files: ["COMPLETED", "SUMMARY.md"] },
-        { number: 2, files: ["TASK.md", "TEST.md"] },
-      ],
-    });
-
-    // Act
-    const result = findMostRecentCompletedStep(goalDir);
-
-    // Assert
-    expect(result).toBe(1);
-  });
-
-  it("S01 blocked, S02 completed → returns 2", () => {
-    // Arrange: S01 has BLOCKED (not reviewable), S02 is reviewable
-    const { goalDir } = createGoalTree(tempDir, "blocked-s01", {
-      steps: [
-        { number: 1, files: ["COMPLETED", "SUMMARY.md", "BLOCKED"] },
-        { number: 2, files: ["COMPLETED", "SUMMARY.md"] },
-      ],
-    });
-
-    // Act
-    const result = findMostRecentCompletedStep(goalDir);
-
-    // Assert
-    expect(result).toBe(2);
-  });
-
-  it("S01 has specs but no COMPLETED, S02 reviewable → returns 2", () => {
-    // Arrange: S01 only has specs, S02 is reviewable
-    const { goalDir } = createGoalTree(tempDir, "specs-only-s01", {
-      steps: [
-        { number: 1, files: ["TASK.md", "TEST.md"] },
-        { number: 2, files: ["COMPLETED", "SUMMARY.md"] },
-      ],
-    });
-
-    // Act
-    const result = findMostRecentCompletedStep(goalDir);
-
-    // Assert
-    expect(result).toBe(2);
   });
 });
 
@@ -868,7 +765,7 @@ describe("review-task postValidate — valid frontmatter", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("valid APPROVED creates marker and returns success", () => {
+  it("valid APPROVED returns success without creating markers", () => {
     // Arrange: temp goal dir with S01/REVIEW.md containing valid APPROVED frontmatter
     const { goalDir, stepDir } = createGoalTree(tempDir, "pv-approved", { stepNumber: 1 });
     writeReviewMd(stepDir, {
@@ -882,13 +779,13 @@ describe("review-task postValidate — valid frontmatter", () => {
     // Act
     const result = config.postValidate!(goalDir, { stepNumber: 1 });
 
-    // Assert: returns success, S01/APPROVED exists, no S01/REJECTED
+    // Assert: returns success, NO markers created (that's postExecute's job)
     expect(result.success).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(false);
     expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
   });
 
-  it("valid REJECTED creates marker and deletes COMPLETED", () => {
+  it("valid REJECTED returns success without creating markers", () => {
     // Arrange: temp goal dir with S02/REVIEW.md (REJECTED) and S02/COMPLETED
     const { goalDir, stepDir } = createGoalTree(tempDir, "pv-rejected", { stepNumber: 2 });
     writeReviewMd(stepDir, {
@@ -903,10 +800,10 @@ describe("review-task postValidate — valid frontmatter", () => {
     // Act
     const result = config.postValidate!(goalDir, { stepNumber: 2 });
 
-    // Assert: returns success, S02/REJECTED exists, S02/COMPLETED removed
+    // Assert: returns success, NO markers created, COMPLETED still exists
     expect(result.success).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(false);
+    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
+    expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(true);
   });
 });
 
@@ -1013,10 +910,10 @@ describe("review-task postValidate — missing stepNumber", () => {
 });
 
 // ---------------------------------------------------------------------------
-// validateStepForReview — pre-launch validation
+// review-task postExecute — marker creation
 // ---------------------------------------------------------------------------
 
-describe("validateStepForReview — pre-launch validation", () => {
+describe("review-task postExecute — marker creation", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -1025,88 +922,82 @@ describe("validateStepForReview — pre-launch validation", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("returns ready: true when GOAL.md, PLAN.md, S01/COMPLETED, and S01/SUMMARY.md exist", async () => {
-    const { goalDir } = createGoalTree(tempDir, "reviewable-goal", {
-      steps: [{ number: 1, files: ["TASK.md", "COMPLETED", "SUMMARY.md"] }],
+  it("valid APPROVED creates APPROVED marker", () => {
+    // Arrange: temp goal dir with S01/REVIEW.md containing valid APPROVED frontmatter
+    const { goalDir, stepDir } = createGoalTree(tempDir, "pe-approved", { stepNumber: 1 });
+    writeReviewMd(stepDir, {
+      decision: "APPROVED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
     });
-    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n", "utf-8");
 
     // Act
-    const result = await validateStepForReview("reviewable-goal", tempDir, 1);
+    config.postExecute!(goalDir, { stepNumber: 1 });
 
-    // Assert
-    expect(result.ready).toBe(true);
-    if (result.ready) {
-      expect(result.stepNumber).toBe(1);
-    }
+    // Assert: S01/APPROVED exists, no S01/REJECTED
+    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
   });
 
-  it("returns error when GOAL.md is missing", async () => {
-    // Arrange: goal dir with PLAN.md but no GOAL.md
-    const goalDir = path.join(tempDir, ".pio", "goals", "no-goal");
-    fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n", "utf-8");
-    const s01Dir = path.join(goalDir, "S01");
-    fs.mkdirSync(s01Dir, { recursive: true });
-    fs.writeFileSync(path.join(s01Dir, "COMPLETED"), "", "utf-8");
-    fs.writeFileSync(path.join(s01Dir, "SUMMARY.md"), "# Summary\n", "utf-8");
+  it("valid REJECTED creates REJECTED marker and deletes COMPLETED", () => {
+    // Arrange: temp goal dir with S02/REVIEW.md (REJECTED) and S02/COMPLETED
+    const { goalDir, stepDir } = createGoalTree(tempDir, "pe-rejected", { stepNumber: 2 });
+    writeReviewMd(stepDir, {
+      decision: "REJECTED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    });
+    fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
 
     // Act
-    const result = await validateStepForReview("no-goal", tempDir, 1);
+    config.postExecute!(goalDir, { stepNumber: 2 });
 
-    // Assert
-    expect(result.ready).toBe(false);
-    if (!result.ready) {
-      expect(result.error).toMatch(/GOAL\.md/i);
-    }
+    // Assert: S02/REJECTED exists, S02/COMPLETED removed
+    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(false);
   });
 
-  it("returns error when S01/COMPLETED is missing", async () => {
-    // Arrange: goal dir with GOAL.md, PLAN.md, S01/SUMMARY.md but no S01/COMPLETED
-    const goalDir = path.join(tempDir, ".pio", "goals", "no-completed");
-    fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n", "utf-8");
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n", "utf-8");
-    const s01Dir = path.join(goalDir, "S01");
-    fs.mkdirSync(s01Dir, { recursive: true });
-    fs.writeFileSync(path.join(s01Dir, "SUMMARY.md"), "# Summary\n", "utf-8");
+  it("handles missing REVIEW.md gracefully (logs warning, no crash)", () => {
+    // Arrange: temp goal dir with no REVIEW.md
+    const { goalDir } = createGoalTree(tempDir, "pe-missing", { stepNumber: 3 });
 
-    // Act
-    const result = await validateStepForReview("no-completed", tempDir, 1);
-
-    // Assert
-    expect(result.ready).toBe(false);
-    if (!result.ready) {
-      expect(result.error).toMatch(/COMPLETED/i);
-    }
+    // Act & Assert: should not throw
+    expect(() => {
+      postExecuteReview(goalDir, { stepNumber: 3 });
+    }).not.toThrow();
   });
 
-  it("returns error when S01/SUMMARY.md is missing", async () => {
-    // Arrange: goal dir with GOAL.md, PLAN.md, S01/COMPLETED but no S01/SUMMARY.md
-    const goalDir = path.join(tempDir, ".pio", "goals", "no-summary");
-    fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n", "utf-8");
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n", "utf-8");
-    const s01Dir = path.join(goalDir, "S01");
-    fs.mkdirSync(s01Dir, { recursive: true });
-    fs.writeFileSync(path.join(s01Dir, "COMPLETED"), "", "utf-8");
+  it("handles invalid frontmatter gracefully (logs warning, no crash)", () => {
+    // Arrange: REVIEW.md with invalid frontmatter
+    const { goalDir, stepDir } = createGoalTree(tempDir, "pe-invalid", { stepNumber: 4 });
+    fs.writeFileSync(path.join(stepDir, "REVIEW.md"), "# Review\n\nNo frontmatter.", "utf-8");
 
-    // Act
-    const result = await validateStepForReview("no-summary", tempDir, 1);
+    // Act & Assert: should not throw
+    expect(() => {
+      postExecuteReview(goalDir, { stepNumber: 4 });
+    }).not.toThrow();
+  });
 
-    // Assert
-    expect(result.ready).toBe(false);
-    if (!result.ready) {
-      expect(result.error).toMatch(/SUMMARY\.md/i);
-    }
+  it("throws when stepNumber is missing", () => {
+    // Arrange
+    const { goalDir } = createGoalTree(tempDir, "pe-no-step");
+
+    // Act & Assert
+    expect(() => {
+      postExecuteReview(goalDir, {});
+    }).toThrow(/stepNumber/i);
   });
 });
 
 // ---------------------------------------------------------------------------
-// validateAndFindReviewStep — pre-launch validation
+// validateReviewStep — directory resolution
 // ---------------------------------------------------------------------------
 
-describe("validateAndFindReviewStep — pre-launch validation", () => {
+describe("validateReviewStep", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -1115,50 +1006,16 @@ describe("validateAndFindReviewStep — pre-launch validation", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("returns ready: true when GOAL.md, PLAN.md, S01/COMPLETED, and S01/SUMMARY.md exist", async () => {
-    const { goalDir } = createGoalTree(tempDir, "reviewable-goal", {
-      steps: [{ number: 1, files: ["TASK.md", "COMPLETED", "SUMMARY.md"] }],
-    });
-    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n", "utf-8");
+  it("resolves goal directory and returns ready with stepNumber", async () => {
+    const goalDir = path.join(tempDir, ".pio", "goals", "my-goal");
+    fs.mkdirSync(goalDir, { recursive: true });
 
-    // Act
-    const result = await validateAndFindReviewStep("reviewable-goal", tempDir);
+    const result = await validateReviewStep("my-goal", tempDir, 2);
 
-    // Assert
     expect(result.ready).toBe(true);
     if (result.ready) {
-      expect(result.stepNumber).toBe(1);
-    }
-  });
-
-  it("returns error when GOAL.md is missing", async () => {
-    // Arrange: goal dir with PLAN.md but no GOAL.md
-    const goalDir = path.join(tempDir, ".pio", "goals", "no-goal");
-    fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n", "utf-8");
-    const s01Dir = path.join(goalDir, "S01");
-    fs.mkdirSync(s01Dir, { recursive: true });
-    fs.writeFileSync(path.join(s01Dir, "COMPLETED"), "", "utf-8");
-    fs.writeFileSync(path.join(s01Dir, "SUMMARY.md"), "# Summary\n", "utf-8");
-
-    // Act
-    const result = await validateAndFindReviewStep("no-goal", tempDir);
-
-    // Assert
-    expect(result.ready).toBe(false);
-    if (!result.ready) {
-      expect(result.error).toMatch(/GOAL\.md/i);
-    }
-  });
-
-  it("returns error when goal workspace does not exist", async () => {
-    // Act
-    const result = await validateAndFindReviewStep("nonexistent", tempDir);
-
-    // Assert
-    expect(result.ready).toBe(false);
-    if (!result.ready) {
-      expect(result.error).toMatch(/does not exist/i);
+      expect(result.goalDir).toBe(goalDir);
+      expect(result.stepNumber).toBe(2);
     }
   });
 });

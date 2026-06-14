@@ -548,28 +548,16 @@ describe("create-plan tool execute — pre-launch validation", () => {
     expect(result.content[0].text).toMatch(/does not exist/i);
   });
 
-  it("returns error when GOAL.md is missing", async () => {
-    // Arrange: goal dir exists but no GOAL.md
-    const goalDir = path.join(tempDir, ".pio", "goals", "no-goal");
-    fs.mkdirSync(goalDir, { recursive: true });
-
-    const tool = getTool();
-    const result = await tool.execute("test-id", { name: "no-goal" }, undefined, undefined, makeCtx(tempDir));
-
-    expect(result.content[0].text).toMatch(/GOAL\.md/i);
-  });
-
-  it("returns error when PLAN.md already exists", async () => {
-    // Arrange: goal dir with GOAL.md and PLAN.md
-    const goalDir = path.join(tempDir, ".pio", "goals", "has-plan");
+  it("enqueues task when goal workspace exists", async () => {
+    // Arrange: goal dir with GOAL.md
+    const goalDir = path.join(tempDir, ".pio", "goals", "valid");
     fs.mkdirSync(goalDir, { recursive: true });
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan", "utf-8");
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { name: "has-plan" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-id", { name: "valid" }, undefined, undefined, makeCtx(tempDir));
 
-    expect(result.content[0].text).toMatch(/PLAN\.md|must not exist/i);
+    expect(result.content[0].text).toContain("queued");
   });
 
   it("enqueues task when GOAL.md exists and PLAN.md does not", async () => {

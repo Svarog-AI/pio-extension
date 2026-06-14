@@ -25,14 +25,14 @@ describe("resolveCapabilityConfig — happy path with static config", () => {
     expect(result!.capability).toBe("create-goal");
   });
 
-  it("resolves create-plan config with correct validation", async () => {
+  it("resolves create-plan config with correct contract outputs", async () => {
     const cwd = makeCwd();
     const params = { capability: "create-plan" as string, goalName: "my-feature" };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
     expect(result).toBeDefined();
-    expect(result!.validation?.files).toContain("PLAN.md");
+    expect(result!.contract.outputs).toContainEqual(expect.objectContaining({ file: "PLAN.md" }));
   });
 
   it("derives workingDir from goalName (goal-scoped)", async () => {
@@ -180,13 +180,14 @@ describe("resolveCapabilityConfig — initial message derivation", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveCapabilityConfig — step-dependent callback resolution", () => {
-  it("invokes evolve-plan validation callback with correct stepNumber", async () => {
+  it("invokes evolve-plan contract with correct outputs", async () => {
     const params = { capability: "evolve-plan" as string, goalName: "my-feature", stepNumber: 3 };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    expect(result!.validation?.files).toContain("S03/TASK.md");
-    expect(result!.validation?.files).not.toContain("S03/TEST.md");
+    expect(result!.contract.outputs).toContainEqual(expect.objectContaining({ file: "S{stepNumber:02d}/TASK.md" }));
+    const hasTest = result!.contract.outputs.some((e: any) => "file" in e && e.file.includes("TEST.md"));
+    expect(hasTest).toBe(false);
   });
 
   it("invokes evolve-plan writeAllowlist callback with correct stepNumber", async () => {
@@ -198,13 +199,13 @@ describe("resolveCapabilityConfig — step-dependent callback resolution", () =>
     expect(result!.writeAllowlist).not.toContain("S05/TEST.md");
   });
 
-  it("invokes execute-task validation callback (checks for TEST.md and SUMMARY.md)", async () => {
+  it("invokes execute-task contract with correct outputs", async () => {
     const params = { capability: "execute-task" as string, goalName: "my-feature", stepNumber: 2 };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    expect(result!.validation?.files).toContain("S02/TEST.md");
-    expect(result!.validation?.files).toContain("S02/SUMMARY.md");
+    expect(result!.contract.outputs).toContainEqual(expect.objectContaining({ file: "S{stepNumber:02d}/TEST.md" }));
+    expect(result!.contract.outputs).toContainEqual(expect.objectContaining({ file: "S{stepNumber:02d}/SUMMARY.md" }));
   });
 
   it("invokes execute-task readOnlyFiles callback", async () => {
@@ -273,12 +274,12 @@ describe("resolveCapabilityConfig — graceful error handling", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveCapabilityConfig — static config passthrough", () => {
-  it("passes through static validation (create-goal has files: [\"GOAL.md\"])", async () => {
+  it("passes through static contract outputs (create-goal has GOAL.md)", async () => {
     const params = { capability: "create-goal" as string, goalName: "my-feature" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    expect(JSON.stringify(result!.validation)).toBe(JSON.stringify({ files: ["GOAL.md"] }));
+    expect(result!.contract.outputs).toContainEqual(expect.objectContaining({ file: "GOAL.md" }));
   });
 
   it("passes through static writeAllowlist (create-goal has [\"GOAL.md\"])", async () => {
@@ -330,6 +331,7 @@ describe("CapabilityConfig.prepareSession", () => {
     // Arrange + Act: A CapabilityConfig without prepareSession should be valid
     const config: CapabilityConfig = {
       capability: "create-goal",
+      contract: { inputs: [], outputs: [] },
     };
 
     // Assert
@@ -343,6 +345,7 @@ describe("CapabilityConfig.prepareSession", () => {
     // Act
     const config: CapabilityConfig = {
       capability: "review-task",
+      contract: { inputs: [], outputs: [] },
       prepareSession: cb,
     };
 
@@ -552,6 +555,7 @@ describe("CapabilityConfig.postValidate and postExecute", () => {
     // Arrange + Act: A CapabilityConfig without postValidate/postExecute should be valid
     const config: CapabilityConfig = {
       capability: "create-goal",
+      contract: { inputs: [], outputs: [] },
     };
 
     // Assert
@@ -566,6 +570,7 @@ describe("CapabilityConfig.postValidate and postExecute", () => {
     // Act
     const config: CapabilityConfig = {
       capability: "review-task",
+      contract: { inputs: [], outputs: [] },
       postValidate: cb,
     };
 
@@ -580,6 +585,7 @@ describe("CapabilityConfig.postValidate and postExecute", () => {
     // Act
     const config: CapabilityConfig = {
       capability: "review-task",
+      contract: { inputs: [], outputs: [] },
       postExecute: cb,
     };
 
@@ -616,15 +622,16 @@ describe("resolveCapabilityConfig — postValidate/postExecute passthrough", () 
     expect(result!.postValidate).toBeUndefined();
   });
 
-  it("postExecute is undefined when the capability does not define it", async () => {
-    // Arrange: no capability defines postExecute yet
+  it("postExecute is defined when the capability defines it (review-task)", async () => {
+    // Arrange: review-task now defines postExecute (Step 6)
     const params = { capability: "review-task" as string, goalName: "my-feature", stepNumber: 1 };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
     // Assert
-    expect(result!.postExecute).toBeUndefined();
+    expect(result!.postExecute).toBeDefined();
+    expect(typeof result!.postExecute).toBe("function");
   });
 });
 
@@ -639,26 +646,25 @@ describe("resolveCapabilityConfig — postValidate/postExecute passthrough", () 
  * completed goal and verify resolveCapabilityConfig() handles it correctly.
  */
 describe("resolveCapabilityConfig — finalize-goal auto-transition integration", () => {
-  it("finalize-goal auto-transition params resolve workingDir to project root", async () => {
+  it("finalize-goal auto-transition params derive workingDir from goalName", async () => {
     // Arrange: simulate the params shape that resolveEvolvePlanToFinalizeGoal() returns
-    // for a completed goal: { goalName, goalDir, workingDir: <project root> }
+    // for a completed goal: { goalName, goalDir } (no workingDir)
     const cwd = "/tmp/auto-transition-proj";
     const params = {
       capability: "finalize-goal" as string,
       goalName: "my-feature",
       goalDir: path.join(cwd, ".pio", "goals", "my-feature"),
-      workingDir: cwd, // project root, not goal workspace
     };
 
     // Act
     const result = await resolveCapabilityConfig(cwd, params);
 
-    // Assert: workingDir is the project root (explicit override wins)
+    // Assert: workingDir is derived from goalName (goal directory)
     expect(result).toBeDefined();
-    expect(result!.workingDir).toBe(cwd);
+    expect(result!.workingDir).toBe(path.join(cwd, ".pio", "goals", "my-feature"));
     expect(result!.capability).toBe("finalize-goal");
-    // Static write allowlist is preserved
-    expect(result!.writeAllowlist).toContain(".pio/PROJECT/OVERVIEW.md");
+    // writeAllowlist uses absolute paths (path.resolve(__dirname, "../..") + .pio/PROJECT/*.md)
+    expect(result!.writeAllowlist?.some((p: string) => p.endsWith(".pio/PROJECT/OVERVIEW.md"))).toBe(true);
   });
 
   it("finalize-goal initial message includes goal name via auto-transition params", async () => {
@@ -668,7 +674,6 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
       capability: "finalize-goal" as string,
       goalName: "my-feature",
       goalDir: path.join(cwd, ".pio", "goals", "my-feature"),
-      workingDir: cwd,
     };
 
     // Act
@@ -707,9 +712,13 @@ describe("resolvePaths", () => {
     expect(result).toEqual(["src/a.md", "src/b.md"]);
   });
 
-  it("preserves unknown placeholder as-is", () => {
-    const result = resolvePaths(["{name}/file.md"], { otherKey: "value" });
-    expect(result).toEqual(["{name}/file.md"]);
+  it("throws when placeholder key is missing from params", () => {
+    expect(() => {
+      resolvePaths(["{name}/file.md"], { otherKey: "value" });
+    }).toThrow(/Unresolved placeholder \{name\}/);
+    expect(() => {
+      resolvePaths(["{name}/file.md"], { otherKey: "value" });
+    }).toThrow(/key 'name'/);
   });
 
   it("returns empty array for empty input", () => {
@@ -749,14 +758,41 @@ describe("resolvePaths", () => {
     expect(result).toEqual(["abc/file.md"]);
   });
 
-  it("preserves unknown placeholder with format specifier", () => {
-    const result = resolvePaths(["S{stepNumber:02d}/TASK.md"], { otherKey: "value" });
-    expect(result).toEqual(["S{stepNumber:02d}/TASK.md"]);
+  it("throws when placeholder key is missing (with format specifier)", () => {
+    expect(() => {
+      resolvePaths(["S{stepNumber:02d}/TASK.md"], { otherKey: "value" });
+    }).toThrow(/Unresolved placeholder \{stepNumber:02d\}/);
+    expect(() => {
+      resolvePaths(["S{stepNumber:02d}/TASK.md"], { otherKey: "value" });
+    }).toThrow(/key 'stepNumber'/);
   });
 
   it("mixes plain and formatted placeholders", () => {
     const result = resolvePaths(["{dir}/S{stepNumber:02d}/TASK.md"], { dir: "goals", stepNumber: 3 });
     expect(result).toEqual(["goals/S03/TASK.md"]);
+  });
+
+  it("throws descriptive error naming the missing key", () => {
+    expect(() => {
+      resolvePaths(["S{stepNumber:02d}/TASK.md"], {});
+    }).toThrow(/Unresolved placeholder \{stepNumber:02d\}/);
+    expect(() => {
+      resolvePaths(["S{stepNumber:02d}/TASK.md"], {});
+    }).toThrow(/key 'stepNumber'/);
+  });
+
+  it("throws when one of multiple paths has unresolved placeholder", () => {
+    expect(() => {
+      resolvePaths(["GOAL.md", "S{stepNumber:02d}/TASK.md"], {});
+    }).toThrow(/Unresolved placeholder \{stepNumber:02d\}/);
+  });
+
+  it("does not throw when all placeholders resolved across multiple paths", () => {
+    const result = resolvePaths(
+      ["GOAL.md", "S{stepNumber:02d}/TASK.md"],
+      { stepNumber: 3 },
+    );
+    expect(result).toEqual(["GOAL.md", "S03/TASK.md"]);
   });
 });
 
@@ -791,6 +827,7 @@ describe("resolveCapabilityConfig — skills passthrough", () => {
     // Arrange + Act: verify the CapabilityConfig type includes skills
     const config: CapabilityConfig = {
       capability: "test-cap",
+      contract: { inputs: [], outputs: [] },
       skills: {
         mandatory: ["pio-planning"],
         recommended: [{ name: "ask-user", condition: "when ambiguous" }],
@@ -805,6 +842,7 @@ describe("resolveCapabilityConfig — skills passthrough", () => {
   it("CapabilityConfig type accepts skills with only mandatory", () => {
     const config: CapabilityConfig = {
       capability: "test-cap",
+      contract: { inputs: [], outputs: [] },
       skills: { mandatory: ["pio-git"] },
     };
 
@@ -815,6 +853,7 @@ describe("resolveCapabilityConfig — skills passthrough", () => {
   it("CapabilityConfig type accepts skills with only recommended", () => {
     const config: CapabilityConfig = {
       capability: "test-cap",
+      contract: { inputs: [], outputs: [] },
       skills: { recommended: [{ name: "source-research", condition: "when researching" }] },
     };
 

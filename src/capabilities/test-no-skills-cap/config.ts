@@ -8,6 +8,10 @@ import type { CapabilityPackageConfig } from "../../capability-package";
 
 const capabilityConfig = {
   capability: "test-no-skills-cap",
+  contract: {
+    inputs: [],
+    outputs: [],
+  },
   defaultInitialMessage: () => "Test capability without skills",
 } satisfies CapabilityPackageConfig;
 

@@ -5,11 +5,29 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { launchCapability } from "../../capability-session";
+import { parseCommandArgs } from "../../capability-utils";
 import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
+import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { validateAndFindNextStep, resolveEvolveValidation, resolveEvolveWriteAllowlist } from "./callbacks";
+import { TASK_FRONTMATTER_SCHEMA, COMPLETION_SUMMARY_SCHEMA } from "./schemas";
+import { PLAN_FRONTMATTER_SCHEMA } from "../create-plan/schemas";
+import { validateEvolveStep, resolveEvolveWriteAllowlist } from "./callbacks";
+
+// ---------------------------------------------------------------------------
+// Contract (single source of truth — imported by callbacks)
+// ---------------------------------------------------------------------------
+
+export const CONTRACT: CapabilityContract = {
+  inputs: [{ file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
+  excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
+  outputs: [
+    { file: "S{stepNumber:02d}/TASK.md", schema: TASK_FRONTMATTER_SCHEMA },
+    { file: "S{stepNumber:02d}/DECISIONS.md", requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1 },
+    { file: "COMPLETION_SUMMARY.md", schema: COMPLETION_SUMMARY_SCHEMA, requiredWhen: () => false },
+  ],
+};
 
 // ---------------------------------------------------------------------------
 // CapabilityPackageConfig (single source of truth)
@@ -17,14 +35,11 @@ import { validateAndFindNextStep, resolveEvolveValidation, resolveEvolveWriteAll
 
 const capabilityConfig = {
   capability: "evolve-plan",
-  validation: resolveEvolveValidation,
+  contract: CONTRACT,
   writeAllowlist: resolveEvolveWriteAllowlist,
-  inputValidation: { requiredFiles: ["PLAN.md"] },
   skills: {
     mandatory: ["pio-planning", "grill-me"],
   },
-  // NOTE: frontmatterSchemas omitted — TASK.md is step-relative (S{NN}/TASK.md)
-  // and the exit-gate resolves paths against workingDir (goal root).
   defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
     const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
     if (stepNumber == null) {
@@ -49,10 +64,11 @@ const evolvePlanTool = defineTool({
   promptSnippet: "Generate TASK.md for the next plan step.",
   parameters: Type.Object({
     name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
+    stepNumber: Type.Number({ description: "Step number to evolve" }),
   }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = await validateAndFindNextStep(params.name, ctx.cwd);
+    const result = await validateEvolveStep(params.name, ctx.cwd, params.stepNumber);
 
     if (!result.ready) {
       return { content: [{ type: "text", text: result.error }], details: {} };
@@ -80,13 +96,18 @@ const evolvePlanTool = defineTool({
 // ---------------------------------------------------------------------------
 
 async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandContext) {
-  if (!args || !args.trim()) {
-    ctx.ui.notify("Usage: /pio-evolve-plan <goal-name>", "warning");
+  const parsed = parseCommandArgs(args);
+  if (!parsed) {
+    ctx.ui.notify("Usage: /pio-evolve-plan <goal-name> <step-number>", "warning");
     return;
   }
 
-  const name = args.trim();
-  const result = await validateAndFindNextStep(name, ctx.cwd);
+  if (parsed.stepNumber === undefined) {
+    ctx.ui.notify("Step number is required. Usage: /pio-evolve-plan <goal-name> <step-number>", "error");
+    return;
+  }
+
+  const result = await validateEvolveStep(parsed.name, ctx.cwd, parsed.stepNumber);
 
   if (!result.ready) {
     ctx.ui.notify(result.error, "error");
@@ -99,13 +120,21 @@ async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandC
   const stepDir = path.join(result.goalDir, folderName);
   fs.mkdirSync(stepDir, { recursive: true });
 
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "evolve-plan", goalName: name, stepNumber: result.stepNumber });
+  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "evolve-plan", goalName: parsed.name, stepNumber: result.stepNumber });
   if (!config) {
     ctx.ui.notify("Failed to resolve evolve-plan config.", "error");
     return;
   }
 
-  await launchCapability(ctx, config);
+  try {
+    await launchCapability(ctx, config);
+  } catch (err) {
+    ctx.ui.notify(
+      `Failed to start ${config.capability}: ${err instanceof Error ? err.message : String(err)}`,
+      "error",
+    );
+    return;
+  }
 }
 
 // ---------------------------------------------------------------------------

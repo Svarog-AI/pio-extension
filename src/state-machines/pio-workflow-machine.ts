@@ -1,13 +1,13 @@
-import * as path from "node:path";
 import type { StateMachine, ResolverResult } from "../state-machines";
 import { registerMachine } from "../state-machines";
-import type { GoalState } from "../goal-state";
-import { resolveGoalDir, stepFolderName } from "../fs-utils";
+import { resolveGoalDir, discoverNextStep } from "../fs-utils";
+import { getCapState } from "./utils";
+import type { ReviewOutputs } from "../capabilities/review-task/schemas";
 
 const MACHINE_ID = "goal-driven-development";
 
 // ---------------------------------------------------------------------------
-// Utility helpers (ported from state-machine.ts)
+// Utility helpers
 // ---------------------------------------------------------------------------
 
 /** Extract stepNumber from params if it's a valid number. */
@@ -26,32 +26,32 @@ function extractGoalName(params?: Record<string, unknown>): string | undefined {
 
 /** create-goal → create-plan: always fires, preserve params as-is. */
 function resolveCreateGoalToCreatePlan(
-  _state: GoalState,
+  _ctx: { baseDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult {
   return { capability: "create-plan", params };
 }
 
-/** create-plan → evolve-plan: always fires, preserve params as-is. */
+/** create-plan → evolve-plan: always fires, set stepNumber to 1 (first step). */
 function resolveCreatePlanToEvolvePlan(
-  _state: GoalState,
+  _ctx: { baseDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult {
-  return { capability: "evolve-plan", params };
+  const goalName = extractGoalName(params);
+  return { capability: "evolve-plan", params: { ...params, goalName, stepNumber: 1 } };
 }
 
 /** evolve-plan → revise-plan: fires when current step signals revision is needed. */
 function resolveEvolvePlanToRevisePlan(
-  state: GoalState,
+  ctx: { baseDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult | undefined {
   const explicitStepNumber = extractStepNumber(params);
   const goalName = extractGoalName(params);
 
   if (explicitStepNumber != null) {
-    const steps = state.steps();
-    const currentStep = steps.find((s) => s.stepNumber === explicitStepNumber);
-    if (currentStep && currentStep.revisionNeeded()) {
+    const evolveState = getCapState("evolve-plan", ctx.baseDir, { stepNumber: explicitStepNumber });
+    if (evolveState.file("S{stepNumber:02d}/REVISE_PLAN_NEEDED").exists()) {
       return {
         capability: "revise-plan",
         params: { goalName, revisionTriggerStep: explicitStepNumber },
@@ -62,100 +62,55 @@ function resolveEvolvePlanToRevisePlan(
   return undefined;
 }
 
-/** evolve-plan → create-goal (subgoal): fires when current step has complexity: "subgoal" (and revision is NOT needed). */
+/** evolve-plan → create-goal (subgoal): deprecated — always returns undefined. */
 function resolveEvolvePlanToCreateGoal(
-  state: GoalState,
-  params?: Record<string, unknown>,
+  _ctx: { baseDir: string },
+  _params?: Record<string, unknown>,
 ): ResolverResult | undefined {
-  const explicitStepNumber = extractStepNumber(params);
-  const goalName = extractGoalName(params);
-
-  if (explicitStepNumber != null && goalName) {
-    const steps = state.steps();
-    const currentStep = steps.find((s) => s.stepNumber === explicitStepNumber);
-    if (currentStep) {
-      // Guard: revision takes priority over subgoal spawning
-      if (currentStep.revisionNeeded()) {
-        return undefined;
-      }
-    } else {
-      return undefined;
-    }
-
-    const stepMetadata = currentStep.getMetadata();
-
-    if (stepMetadata && stepMetadata.complexity === "subgoal") {
-      const cwd = process.cwd();
-      const goalDir = resolveGoalDir(cwd, goalName);
-      const parentStepDir = path.join(goalDir, stepFolderName(explicitStepNumber));
-      const subgoalWorkingDir = resolveGoalDir(cwd, stepMetadata.name, parentStepDir);
-
-      const relativeTaskPath = path.relative(subgoalWorkingDir, path.join(parentStepDir, "TASK.md"));
-      const initialMessage = `This is a subgoal step. Read ${relativeTaskPath} from the parent goal for decomposition scope context.`;
-
-      return {
-        capability: "create-goal",
-        params: {
-          goalName: stepMetadata.name,
-          parentGoalName: goalName,
-          parentStepNumber: explicitStepNumber,
-          subgoalType: true,
-          workingDir: subgoalWorkingDir,
-          initialMessage,
-        },
-      };
-    }
-  }
-
+  // Subgoal support is deprecated. Keep the function for backward compatibility
+  // but it never fires.
   return undefined;
 }
 
 /** evolve-plan → finalize-goal: fires when all plan steps are complete. */
 function resolveEvolvePlanToFinalizeGoal(
-  state: GoalState,
+  ctx: { baseDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult | undefined {
   const goalName = extractGoalName(params);
 
-  if (state.goalCompleted()) {
+  const evolveState = getCapState("evolve-plan", ctx.baseDir);
+  if (evolveState.file("COMPLETION_SUMMARY.md").exists()) {
     const cwd = process.cwd();
     const goalDir = resolveGoalDir(cwd, goalName!);
     return {
       capability: "finalize-goal",
-      params: { goalName, goalDir, workingDir: cwd },
+      params: { goalName, goalDir },
     };
   }
 
   return undefined;
 }
 
-/** evolve-plan → execute-task: fallback — fires only when no higher-priority edge matched (no revision, no subgoal, goal not complete). */
+/** evolve-plan → execute-task: fallback — fires only when no higher-priority edge matched. */
 function resolveEvolvePlanToExecuteTask(
-  state: GoalState,
+  ctx: { baseDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult | undefined {
   const explicitStepNumber = extractStepNumber(params);
   const goalName = extractGoalName(params);
 
   // Guard: if all plan steps are complete, finalize-goal edge should have fired.
-  // Don't also fire execute-task.
-  if (state.goalCompleted()) {
+  const evolveState = getCapState("evolve-plan", ctx.baseDir);
+  if (evolveState.file("COMPLETION_SUMMARY.md").exists()) {
     return undefined;
   }
 
-  // Guard: if the current step signals revision or is a subgoal,
-  // those edges should have fired instead. Don't also fire execute-task.
+  // Guard: if the current step signals revision, that edge should have fired instead.
   if (explicitStepNumber != null) {
-    const steps = state.steps();
-    const currentStep = steps.find((s) => s.stepNumber === explicitStepNumber);
-    if (currentStep) {
-      if (currentStep.revisionNeeded()) {
-        return undefined;
-      }
-      const stepMetadata = currentStep.getMetadata();
-      if (stepMetadata && stepMetadata.complexity === "subgoal") {
-        return undefined;
-      }
+    const evolveWithStep = getCapState("evolve-plan", ctx.baseDir, { stepNumber: explicitStepNumber });
+    if (evolveWithStep.file("S{stepNumber:02d}/REVISE_PLAN_NEEDED").exists()) {
+      return undefined;
     }
   }
 
@@ -166,16 +121,16 @@ function resolveEvolvePlanToExecuteTask(
     };
   }
 
-  const stepNumber = state.currentStepNumber();
+  // No explicit stepNumber — wiring bug upstream, don't mask it.
   return {
     capability: "execute-task",
-    params: { goalName, stepNumber },
+    params: { goalName, stepNumber: undefined },
   };
 }
 
 /** execute-task → review-task: always fires, propagate goalName and stepNumber. */
 function resolveExecuteTaskToReviewTask(
-  state: GoalState,
+  _ctx: { baseDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult {
   const explicitStepNumber = extractStepNumber(params);
@@ -188,16 +143,16 @@ function resolveExecuteTaskToReviewTask(
     };
   }
 
-  const stepNumber = state.currentStepNumber();
+  // No explicit stepNumber — wiring bug upstream, don't mask it.
   return {
     capability: "review-task",
-    params: { goalName, stepNumber },
+    params: { goalName, stepNumber: undefined },
   };
 }
 
-/** review-task → evolve-plan: fires when step status is "approved". */
+/** review-task → evolve-plan: fires when step is approved (REVIEW.md decision === "APPROVED"). */
 function resolveReviewTaskToEvolvePlan(
-  state: GoalState,
+  ctx: { baseDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult | undefined {
   const stepNumber = extractStepNumber(params);
@@ -207,10 +162,10 @@ function resolveReviewTaskToEvolvePlan(
     return undefined;
   }
 
-  const steps = state.steps();
-  const step = steps.find((s) => s.stepNumber === stepNumber);
+  const reviewState = getCapState("review-task", ctx.baseDir, { stepNumber });
+  const reviewData = reviewState.file<ReviewOutputs>("S{stepNumber:02d}/REVIEW.md").read();
 
-  if (step && step.status() === "approved") {
+  if (reviewData?.decision === "APPROVED") {
     return {
       capability: "evolve-plan",
       params: { goalName, stepNumber: stepNumber + 1 },
@@ -222,7 +177,7 @@ function resolveReviewTaskToEvolvePlan(
 
 /** review-task → execute-task: fires when step is rejected (re-execute same step). */
 function resolveReviewTaskToExecuteTask(
-  state: GoalState,
+  ctx: { baseDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult | undefined {
   const stepNumber = extractStepNumber(params);
@@ -232,12 +187,12 @@ function resolveReviewTaskToExecuteTask(
     return { capability: "execute-task", params };
   }
 
-  const steps = state.steps();
-  const step = steps.find((s) => s.stepNumber === stepNumber);
+  const reviewState = getCapState("review-task", ctx.baseDir, { stepNumber });
+  const reviewData = reviewState.file<ReviewOutputs>("S{stepNumber:02d}/REVIEW.md").read();
 
   // Fire only when the step is rejected — re-execute the same step.
   // When approved, the evolve-plan edge fires instead (checked first in edges array).
-  if (step && step.status() === "rejected") {
+  if (reviewData?.decision === "REJECTED") {
     return {
       capability: "execute-task",
       params: { goalName, stepNumber },
@@ -247,24 +202,29 @@ function resolveReviewTaskToExecuteTask(
   return undefined;
 }
 
-/** revise-plan → evolve-plan: always fires, preserve goalName and revisionTriggerStep. */
+/** revise-plan → evolve-plan: always fires, discover next step number. */
 function resolveRevisePlanToEvolvePlan(
-  _state: GoalState,
+  ctx: { baseDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult {
   const goalName = extractGoalName(params);
   const revisionTriggerStep =
     typeof params?.revisionTriggerStep === "number" ? params.revisionTriggerStep : undefined;
 
+  // After plan revision: find the next incomplete step.
+  // revise-plan's postExecute deletes non-APPROVED step folders.
+  // discoverNextStep() returns N+1 where N is highest complete step (TASK.md + TEST.md), or 1 if none.
+  const nextStep = discoverNextStep(ctx.baseDir);
+
   return {
     capability: "evolve-plan",
-    params: { goalName, ...(revisionTriggerStep != null && { revisionTriggerStep }) },
+    params: { ...params, goalName, stepNumber: nextStep, ...(revisionTriggerStep != null && { revisionTriggerStep }) },
   };
 }
 
 /** finalize-goal → evolve-plan: fires only when parentGoalName exists (subgoal completion). */
 function resolveFinalizeGoalToEvolvePlan(
-  _state: GoalState,
+  _ctx: { baseDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult | undefined {
   const parentGoalName = typeof params?.parentGoalName === "string" ? params.parentGoalName : undefined;
@@ -287,7 +247,7 @@ function resolveFinalizeGoalToEvolvePlan(
 // State machine configuration
 // ---------------------------------------------------------------------------
 
-export const goalDrivenDevelopment: StateMachine<GoalState> = {
+export const goalDrivenDevelopment: StateMachine<{ baseDir: string }> = {
   id: MACHINE_ID,
   name: "Goal-Driven Development",
   description: "Default pio workflow state machine for goal-driven development",
@@ -317,4 +277,3 @@ export const goalDrivenDevelopment: StateMachine<GoalState> = {
 export function setupPioWorkflowMachine(): void {
   registerMachine(goalDrivenDevelopment);
 }
-

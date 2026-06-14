@@ -190,8 +190,7 @@ function describeType(schema: TSchema, depth: number): string {
       const values = options
         .map((opt) => `"${(opt as Record<string, unknown>).const}"`)
         .join(" | ");
-      const nested = describeUnionNested(options, depth);
-      return nested ? `string (one of: ${values})\n${nested}` : `string (one of: ${values})`;
+      return `string (one of: ${values})`;
     }
     // Mixed union — fall back
     return "union";
@@ -287,40 +286,4 @@ function describeType(schema: TSchema, depth: number): string {
   return `unknown (type: ${node.type ?? "null"})`;
 }
 
-/**
- * For unions where items are objects, describe nested fields.
- * Returns empty string if no nested descriptions needed.
- */
-function describeUnionNested(options: TSchema[], depth: number): string {
-  const objectOptions = options.filter(
-    (opt) => (opt as Record<string, unknown>).type === "object",
-  );
 
-  if (objectOptions.length === 0) {
-    return "";
-  }
-
-  if (depth >= MAX_DEPTH) {
-    return "  ...";
-  }
-
-  const indent = "  ".repeat(depth + 1);
-  const lines: string[] = [];
-
-  for (const opt of objectOptions) {
-    const node = opt as Record<string, unknown>;
-    const properties = node.properties as Record<string, unknown> | undefined;
-    const required = (node.required as string[] | undefined) ?? [];
-
-    if (!properties) continue;
-
-    for (const [key, value] of Object.entries(properties)) {
-      const isRequired = required.includes(key);
-      const marker = isRequired ? "(required)" : "(optional)";
-      const typeDesc = describeType(value as TSchema, depth + 1);
-      lines.push(`${indent}- ${key} ${marker}: ${typeDesc}`);
-    }
-  }
-
-  return lines.length > 0 ? lines.join("\n") : "";
-}

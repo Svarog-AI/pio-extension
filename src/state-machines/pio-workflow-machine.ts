@@ -11,7 +11,6 @@ import { CONTRACT as createPlanContract } from "../capabilities/create-plan/conf
 import { CONTRACT as evolvePlanContract } from "../capabilities/evolve-plan/config";
 import { CONTRACT as reviewTaskContract } from "../capabilities/review-task/config";
 import type { PlanFrontmatter, StepMetadata } from "../capabilities/create-plan/schemas";
-import type { TaskSkills } from "../capabilities/evolve-plan/schemas";
 import type { ReviewOutputs } from "../capabilities/review-task/schemas";
 
 const MACHINE_ID = "goal-driven-development";

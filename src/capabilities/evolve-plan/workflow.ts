@@ -98,7 +98,8 @@ If any dimension raises doubts, you **must research further or ask the user befo
 - \`skills.mandatory\` — array of skill names critical for step completion. These skills are force-injected into the prompt (full SKILL.md content delivered before the agent starts). Examples: \`pio-git\` for a migration step, \`tdd\` for any TDD step.
 - \`skills.recommended\` — array of \`{name, condition}\` pairs for situational skills loaded on demand. The \`condition\` field describes when the skill is relevant.
 - **Omit \`skills.recommended\` entirely** (do not write an empty array) when there are no recommended skills — matching the capability config convention.
-- Both \`skills.mandatory\` and \`skills.recommended\` are optional — a step with no special skill needs omits the \`skills\` block entirely, but always keeps the \`---\` delimiters.
+- **\`skills.mandatory\` is always present** — write \`mandatory: []\` (empty array) when no mandatory skills are needed. Never omit the \`mandatory\` key.
+- When no skills are needed at all, write the skills block with an empty mandatory array (e.g. \`skills:\n  mandatory: []\`). This ensures the frontmatter is never just empty — always include the \`skills\` block with at least \`mandatory: []\`.
 - **Frontmatter is authoritative for runtime behavior;** the body \`## Skills\` section is informational only. If both exist, runtime systems use frontmatter.
 
 Follow the TASK.md template with sections: Title, Context, What to Build, Code Components, Approach and Decisions, Skills, Dependencies, Files Affected, Acceptance Criteria, Risks and Edge Cases.`,

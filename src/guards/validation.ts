@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as Value from "typebox/value";
-import { extractFrontmatter } from "../frontmatter";
+import { extractFrontmatter, formatSchemaDescription } from "../frontmatter";
 import { getSessionConfig } from "../capability-utils";
 import { resolvePaths } from "../capability-config";
 import type { CapabilityContract, MarkdownFileSpec, OutputEntry, PostValidateCallback } from "../types";
@@ -87,7 +87,8 @@ export function validateOutputs(
             const field = e.instancePath ? e.instancePath.replace(/^\//, "") : "root";
             return `Field '${field}': ${e.message}`;
           }).join("; ");
-          issues.push(`Frontmatter validation failed for '${resolvedFile}': ${fieldErrors}`);
+          const schemaDesc = formatSchemaDescription(entry.schema);
+          issues.push(`Frontmatter validation failed for '${resolvedFile}': ${fieldErrors}\nExpected frontmatter structure:\n${schemaDesc}`);
         }
       }
     }
@@ -162,7 +163,8 @@ export function validateFrontmatter(
             return `Field '${field}': ${e.message}`;
           })
           .join("; ");
-        return { success: false, message: `Frontmatter validation failed for '${resolvedFile}': ${messages}` };
+        const schemaDesc = formatSchemaDescription(entry.schema);
+        return { success: false, message: `Frontmatter validation failed for '${resolvedFile}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}` };
       }
     }
 
@@ -218,7 +220,8 @@ export function validateInputs(
             const field = e.instancePath ? e.instancePath.replace(/^\//, "") : "root";
             return `Field '${field}': ${e.message}`;
           }).join("; ");
-          return { success: false, message: `Frontmatter validation failed for '${resolvedFile}': ${messages}` };
+          const schemaDesc = formatSchemaDescription(spec.schema);
+          return { success: false, message: `Frontmatter validation failed for '${resolvedFile}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}` };
         }
       }
     }

@@ -35,7 +35,7 @@ Consider adding a formatter (e.g., Prettier or Biome) to standardize code style 
 
 Each AI-driven capability is a directory package under `src/capabilities/<name>/`:
 
-- **`config.ts`** — default exports `CapabilityPackageConfig` (fields: `name`, `skills`, `validation`, `readOnlyFiles`, `writeAllowlist`, `prepareSession`, `postValidate`, `postExecute`, `frontmatterSchemas`, `inputValidation`, `preValidate`), named export `register(pi)` registers tool + command. No `CAPABILITY_CONFIG` or `setup<Name>` aliases (removed in backward-compat cleanup)
+- **`config.ts`** — default exports `CapabilityPackageConfig` (fields: `name`, `skills`, `contract` (mandatory), `readOnlyFiles`, `writeAllowlist`, `prepareSession`, `postValidate`, `postExecute`, `preValidate`). The `CONTRACT: CapabilityContract` is exported as a named constant and referenced by the config. Old fields (`validation`, `frontmatterSchemas`, `inputValidation`) were removed — contract replaces all three. Named export `register(pi)` registers tool + command.
 - **`role.md`** — Role description text
 - **`workflow.ts`** — default exports `WorkflowStep[]`. Each step may declare `skills: { mandatory?: string[], recommended?: ... }`
 - **`guidelines.md`** — Guidelines text

@@ -159,15 +159,23 @@ describe("dispatch — create-plan → evolve-plan", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("returns evolve-plan with params preserved", () => {
+  it("returns evolve-plan with stepNumber 1 (first step after plan creation)", () => {
     const results = dispatch(goalDrivenDevelopment, "create-plan", ctx(goalDir), { goalName: "my-feature" });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
       capability: "evolve-plan",
       stateMachineId: "goal-driven-development",
-      params: { goalName: "my-feature" },
+      params: { goalName: "my-feature", stepNumber: 1 },
     });
+  });
+
+  it("includes stepNumber 1 even when params is undefined", () => {
+    const results = dispatch(goalDrivenDevelopment, "create-plan", ctx(goalDir), undefined);
+
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("evolve-plan");
+    expect(results[0].params?.stepNumber).toBe(1);
   });
 });
 
@@ -690,11 +698,49 @@ describe("dispatch — revise-plan → evolve-plan", () => {
     expect(results[0].params?.goalName).toBe("my-feature");
   });
 
-  it("does not pass explicit stepNumber (let evolve-plan discover next step)", () => {
+  it("discovers next step number using discoverNextStep (returns 1 when no step folders exist)", () => {
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+
     const results = dispatch(goalDrivenDevelopment, "revise-plan", ctx(goalDir), { goalName: "feat" });
 
     expect(results).toHaveLength(1);
-    expect(results[0].params?.stepNumber).toBeUndefined();
+    expect(results[0].params?.stepNumber).toBe(1);
+
+    cwdSpy.mockRestore();
+  });
+
+  it("discovers next step number after some steps are complete (TASK.md + TEST.md present)", () => {
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+
+    // S01 has TASK.md + TEST.md (complete), S02 has only TASK.md (incomplete)
+    createGoalTree(tempDir, "feat", [
+      { number: 1, files: { "TASK.md": "# Task 1", "TEST.md": "# Tests 1" } },
+      { number: 2, files: { "TASK.md": "# Task 2" } },
+    ]);
+
+    const results = dispatch(goalDrivenDevelopment, "revise-plan", ctx(goalDir), { goalName: "feat" });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.stepNumber).toBe(2);
+
+    cwdSpy.mockRestore();
+  });
+
+  it("discovers next step number when all steps are complete", () => {
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
+
+    // Both S01 and S02 have TASK.md + TEST.md (both complete)
+    createGoalTree(tempDir, "feat", [
+      { number: 1, files: { "TASK.md": "# Task 1", "TEST.md": "# Tests 1" } },
+      { number: 2, files: { "TASK.md": "# Task 2", "TEST.md": "# Tests 2" } },
+    ]);
+
+    const results = dispatch(goalDrivenDevelopment, "revise-plan", ctx(goalDir), { goalName: "feat" });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.stepNumber).toBe(3);
+
+    cwdSpy.mockRestore();
   });
 
   it("preserves revisionTriggerStep if present in params", () => {

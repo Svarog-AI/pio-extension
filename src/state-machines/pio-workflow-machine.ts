@@ -1,6 +1,6 @@
 import type { StateMachine, ResolverResult } from "../state-machines";
 import { registerMachine } from "../state-machines";
-import { resolveGoalDir } from "../fs-utils";
+import { resolveGoalDir, discoverNextStep } from "../fs-utils";
 import { getCapState } from "./utils";
 import type { ReviewOutputs } from "../capabilities/review-task/schemas";
 
@@ -32,12 +32,13 @@ function resolveCreateGoalToCreatePlan(
   return { capability: "create-plan", params };
 }
 
-/** create-plan → evolve-plan: always fires, preserve params as-is. */
+/** create-plan → evolve-plan: always fires, set stepNumber to 1 (first step). */
 function resolveCreatePlanToEvolvePlan(
   _ctx: { baseDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult {
-  return { capability: "evolve-plan", params };
+  const goalName = extractGoalName(params);
+  return { capability: "evolve-plan", params: { ...params, goalName, stepNumber: 1 } };
 }
 
 /** evolve-plan → revise-plan: fires when current step signals revision is needed. */
@@ -201,18 +202,23 @@ function resolveReviewTaskToExecuteTask(
   return undefined;
 }
 
-/** revise-plan → evolve-plan: always fires, preserve goalName and revisionTriggerStep. */
+/** revise-plan → evolve-plan: always fires, discover next step number. */
 function resolveRevisePlanToEvolvePlan(
-  _ctx: { baseDir: string },
+  ctx: { baseDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult {
   const goalName = extractGoalName(params);
   const revisionTriggerStep =
     typeof params?.revisionTriggerStep === "number" ? params.revisionTriggerStep : undefined;
 
+  // After plan revision: find the next incomplete step.
+  // revise-plan's postExecute deletes non-APPROVED step folders.
+  // discoverNextStep() returns N+1 where N is highest complete step (TASK.md + TEST.md), or 1 if none.
+  const nextStep = discoverNextStep(ctx.baseDir);
+
   return {
     capability: "evolve-plan",
-    params: { goalName, ...(revisionTriggerStep != null && { revisionTriggerStep }) },
+    params: { ...params, goalName, stepNumber: nextStep, ...(revisionTriggerStep != null && { revisionTriggerStep }) },
   };
 }
 

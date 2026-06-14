@@ -125,7 +125,6 @@ const mockEnqueueTask = vi.hoisted(() => vi.fn());
 const mockWriteLastTask = vi.hoisted(() => vi.fn());
 const mockRecordTransition = vi.hoisted(() => vi.fn());
 const mockDispatch = vi.hoisted(() => vi.fn());
-const mockCreateGoalState = vi.hoisted(() => vi.fn());
 
 vi.mock("./queues", async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
@@ -150,14 +149,6 @@ vi.mock("./state-machines/pio-workflow-machine", async (importOriginal) => {
     ...actual,
     goalDrivenDevelopment: {},
     recordTransition: mockRecordTransition,
-  };
-});
-
-vi.mock("./goal-state", async (importOriginal) => {
-  const actual = await importOriginal() as Record<string, unknown>;
-  return {
-    ...actual,
-    createGoalState: mockCreateGoalState,
   };
 });
 
@@ -662,7 +653,6 @@ describe("pio_mark_complete — queue key propagation", () => {
     mockWriteLastTask.mockClear();
     mockRecordTransition.mockClear();
     mockDispatch.mockClear();
-    mockCreateGoalState.mockClear();
   });
 
   afterEach(() => {
@@ -710,12 +700,6 @@ describe("pio_mark_complete — queue key propagation", () => {
     const { tool } = await getMarkCompleteTool();
 
     // Arrange: subgoal completion — transition returns parent goal name
-    mockCreateGoalState.mockReturnValue({
-      goalName: "child",
-      currentStepNumber: () => 1,
-      steps: () => [],
-      goalCompleted: () => false,
-    });
     mockDispatch.mockReturnValue([
       { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "parent", stepNumber: 4 } },
     ]);
@@ -740,12 +724,6 @@ describe("pio_mark_complete — queue key propagation", () => {
     const { tool } = await getMarkCompleteTool();
 
     // Arrange: flat goal — transition returns same goal name
-    mockCreateGoalState.mockReturnValue({
-      goalName: "my-feature",
-      currentStepNumber: () => 1,
-      steps: () => [],
-      goalCompleted: () => false,
-    });
     mockDispatch.mockReturnValue([
       { capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "my-feature", stepNumber: 1 } },
     ]);
@@ -770,12 +748,6 @@ describe("pio_mark_complete — queue key propagation", () => {
     const { tool } = await getMarkCompleteTool();
 
     // Arrange: transition returns parent goal name
-    mockCreateGoalState.mockReturnValue({
-      goalName: "nested",
-      currentStepNumber: () => 1,
-      steps: () => [],
-      goalCompleted: () => false,
-    });
     mockDispatch.mockReturnValue([
       { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "parent", stepNumber: 4 } },
     ]);

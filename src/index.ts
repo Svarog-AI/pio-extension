@@ -24,6 +24,7 @@ import { setupPioWorkflowMachine } from "./state-machines/pio-workflow-machine";
 
 // Auto-discovery
 import { discoverCapabilities, registerCapability } from "./capability-discovery";
+import { setDiscoveredContracts } from "./state-machines/utils";
 
 // ESM-compatible __dirname for resolving skill directories bundled with this extension
 const __filename = fileURLToPath(import.meta.url);
@@ -86,4 +87,10 @@ export default async function (pi: ExtensionAPI) {
     }
     await registerCapability(pi, descriptor);
   }
+
+  // Cache contracts for runtime lookup by resolve functions (via getCapState)
+  const contracts = Object.fromEntries(
+    capabilities.map(d => [d.name, d.config.contract]),
+  );
+  setDiscoveredContracts(contracts);
 }

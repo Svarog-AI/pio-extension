@@ -2,10 +2,10 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { getSessionConfig } from "../capability-utils";
 import { validateOutputs } from "./validation";
 import { dispatch, getMachine, recordTransition } from "../state-machines";
-import { createGoalState } from "../goal-state";
 import { enqueueTask, writeLastTask } from "../queues";
 
 // ---------------------------------------------------------------------------
@@ -60,18 +60,14 @@ export const markCompleteTool = defineTool({
     // Use the completing session's params directly — they are authoritative.
     const sessionParams = config.sessionParams || {};
 
-    // GoalState is the single source of truth for goalName and stepNumber
-    const state = createGoalState(dir);
-    const goalName = state.goalName;
+    // Derive goalName from directory path
+    const goalName = path.basename(dir);
 
-    // Use explicit stepNumber from session params first (authoritative for the completing step).
-    // Fall back to state.currentStepNumber() only if not explicitly provided.
-    // This is critical: postValidate may create APPROVED/REJECTED markers that change
-    // currentStepNumber() before we read it (e.g., APPROVED for step 1 makes it return 2).
-    const explicitStepNumber = typeof sessionParams.stepNumber === "number"
+    // Use explicit stepNumber from session params — authoritative for the completing step.
+    // No disk scan fallback needed: stepNumber is always set in session params.
+    const stepNumber = typeof sessionParams.stepNumber === "number"
       ? sessionParams.stepNumber
       : undefined;
-    const stepNumber = explicitStepNumber ?? state.currentStepNumber();
 
     // Multi-machine dispatch: read stateMachineId from session params, look up machine explicitly.
     // Falls back to dispatch(undefined, ...) for first transitions or legacy sessions.
@@ -81,7 +77,7 @@ export const markCompleteTool = defineTool({
     const targetMachine = machineId ? getMachine(machineId) : undefined;
 
     const results = capability
-      ? dispatch(targetMachine, capability, state, { goalName, stepNumber, _sessionContext: sessionParams })
+      ? dispatch(targetMachine, capability, { baseDir: dir }, { goalName, stepNumber, _sessionContext: sessionParams })
       : [];
 
     if (capability && results.length === 1) {

@@ -20,11 +20,6 @@ function cleanup(tempDir: string): void {
 // ---------------------------------------------------------------------------
 
 const mockValidateOutputs = vi.hoisted(() => vi.fn());
-const mockCreateGoalState = vi.hoisted(() => vi.fn().mockReturnValue({
-  goalName: "test-goal",
-  steps: vi.fn().mockReturnValue([]),
-  currentStepNumber: vi.fn().mockReturnValue(1),
-}));
 const mockDispatch = vi.hoisted(() => vi.fn());
 const mockGetMachine = vi.hoisted(() => vi.fn());
 const mockRecordTransition = vi.hoisted(() => vi.fn());
@@ -33,10 +28,6 @@ const mockWriteLastTask = vi.hoisted(() => vi.fn());
 
 vi.mock("../guards/validation", () => ({
   validateOutputs: mockValidateOutputs,
-}));
-
-vi.mock("../goal-state", () => ({
-  createGoalState: mockCreateGoalState,
 }));
 
 vi.mock("../state-machines", () => ({
@@ -58,19 +49,18 @@ vi.mock("../queues", async (importOriginal) => ({
 
 describe("mark-complete (setupMarkComplete)", () => {
   let tempDir: string;
+  let goalDir: string;
   let registeredTool: { name: string; label: string; execute: Function } | undefined;
 
   beforeEach(async () => {
     vi.resetModules();
     tempDir = createTempDir();
+    // Create a goal directory so path.basename(dir) returns "test-goal"
+    goalDir = path.join(tempDir, ".pio", "goals", "test-goal");
+    fs.mkdirSync(goalDir, { recursive: true });
 
     // Clear mock call history and reset return values
     mockValidateOutputs.mockClear().mockReturnValue({ success: true });
-    mockCreateGoalState.mockClear().mockReturnValue({
-      goalName: "test-goal",
-      steps: vi.fn().mockReturnValue([]),
-      currentStepNumber: vi.fn().mockReturnValue(1),
-    });
     mockDispatch.mockClear();
     mockGetMachine.mockClear();
     mockRecordTransition.mockClear();
@@ -114,7 +104,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              workingDir: tempDir,
+              workingDir: goalDir,
               contract: { inputs: [], outputs: [{ file: "missing.md" }] },
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
             },
@@ -143,7 +133,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              workingDir: tempDir,
+              workingDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
@@ -155,7 +145,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     const result = await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
 
-    expect(postValidateMock).toHaveBeenCalledWith(tempDir, { goalName: "test-goal", stepNumber: 1 });
+    expect(postValidateMock).toHaveBeenCalledWith(goalDir, { goalName: "test-goal", stepNumber: 1 });
     expect(result.content[0].text).toContain("test error");
     expect(result.terminate).toBeFalsy();
   });
@@ -173,7 +163,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              workingDir: tempDir,
+              workingDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
@@ -206,7 +196,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              workingDir: tempDir,
+              workingDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
@@ -242,7 +232,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "review-task",
-              workingDir: tempDir,
+              workingDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
@@ -282,7 +272,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "finalize-goal",
-              workingDir: tempDir,
+              workingDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
@@ -330,7 +320,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              workingDir: tempDir,
+              workingDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               postExecute: postExecuteMock,
@@ -368,7 +358,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              workingDir: tempDir,
+              workingDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: vi.fn().mockReturnValue({ success: true }),
               postExecute: postExecuteMock,
@@ -405,7 +395,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              workingDir: tempDir,
+              workingDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: vi.fn().mockReturnValue({ success: true }),
               fileCleanup: [cleanupFilePath],
@@ -472,7 +462,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              workingDir: tempDir,
+              workingDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: vi.fn().mockReturnValue({ success: true }),
               sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development" },
@@ -509,7 +499,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              workingDir: tempDir,
+              workingDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: vi.fn().mockReturnValue({ success: true }),
               sessionParams: { goalName: "test-goal", stepNumber: 1 },
@@ -548,7 +538,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              workingDir: tempDir,
+              workingDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: vi.fn().mockReturnValue({ success: true }),
               sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "unknown-machine" },
@@ -586,7 +576,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              workingDir: tempDir,
+              workingDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: vi.fn().mockReturnValue({ success: true }),
               sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development" },
@@ -628,7 +618,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              workingDir: tempDir,
+              workingDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: vi.fn().mockReturnValue({ success: true }),
               sessionParams,

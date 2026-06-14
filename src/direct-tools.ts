@@ -11,7 +11,6 @@ import { launchCapability } from "./capability-session";
 import { resolveCapabilityConfig } from "./capability-config";
 import { dispatch } from "./state-machines";
 import { recordTransition } from "./state-machines";
-import { createGoalState } from "./goal-state";
 import { getSessionConfig } from "./capability-utils";
 
 // ---------------------------------------------------------------------------
@@ -537,12 +536,12 @@ async function handleTransition(_args: string | undefined, ctx: ExtensionCommand
     ? { goalName: config.sessionParams.goalName, stepNumber: config.sessionParams.stepNumber, _sessionContext: config.sessionParams }
     : { ...config.sessionParams };
 
-  // Build state: GoalState for goal workspaces, raw params otherwise
-  const state = isGoalWorkspace(config.workingDir)
-    ? createGoalState(config.workingDir!)
-    : (config.sessionParams as unknown as any);
+  // Build context: { baseDir } for goal workspaces, raw params otherwise
+  const context = isGoalWorkspace(config.workingDir)
+    ? { baseDir: config.workingDir! }
+    : (config.sessionParams as unknown as { baseDir?: string });
 
-  const results = dispatch(undefined, fromCapability, state, params);
+  const results = dispatch(undefined, fromCapability, context, params);
 
   if (results.length > 1) {
     const list = results.map((r, i) => `${i + 1}. ${r.capability}`).join("\n");

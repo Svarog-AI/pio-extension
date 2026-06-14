@@ -37,3 +37,20 @@ export const TASK_FRONTMATTER_SCHEMA = Type.Object({
 
 /** Derived type from the schema — no manual interface definition. */
 export type TaskFrontmatter = Static<typeof TASK_FRONTMATTER_SCHEMA>;
+
+// ---------------------------------------------------------------------------
+// Completion summary frontmatter schema and types
+// ---------------------------------------------------------------------------
+
+/**
+ * TypeBox schema defining the expected frontmatter fields for COMPLETION_SUMMARY.md.
+ * Written by evolve-plan when all plan steps have been specified.
+ */
+
+export const COMPLETION_SUMMARY_SCHEMA = Type.Object({
+  status: Type.Literal("complete"),
+  completedAt: Type.Optional(Type.String()),
+});
+
+/** Derived type. */
+export type CompletionSummaryFrontmatter = Static<typeof COMPLETION_SUMMARY_SCHEMA>;

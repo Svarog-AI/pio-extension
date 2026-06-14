@@ -46,9 +46,9 @@ export function validateOutputs(
   baseDir: string,
   params?: Record<string, unknown>,
 ): { success: boolean; message?: string } {
-  // If COMPLETED marker exists at baseDir, pass validation regardless of other expected files.
-  // This allows evolve-plan to write just COMPLETED (when all steps are done) and have pio_mark_complete succeed.
-  if (fs.existsSync(path.join(baseDir, "COMPLETED"))) {
+  // If COMPLETION_SUMMARY.md exists at baseDir, pass validation regardless of other expected files.
+  // This allows evolve-plan to write just COMPLETION_SUMMARY.md (when all steps are done) and have pio_mark_complete succeed.
+  if (fs.existsSync(path.join(baseDir, "COMPLETION_SUMMARY.md"))) {
     return { success: true };
   }
 

@@ -18,11 +18,11 @@ function cleanup(tempDir: string): void {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
 
-// Create a minimal goal directory tree with PLAN.md and optional COMPLETED marker.
+// Create a minimal goal directory tree with PLAN.md and optional COMPLETION_SUMMARY.md.
 function createGoalTree(
   tempDir: string,
   goalName: string,
-  options?: { withCompleted?: boolean; planContent?: string },
+  options?: { withCompletionSummary?: boolean; planContent?: string },
 ): string {
   const goalDir = path.join(tempDir, ".pio", "goals", goalName);
   fs.mkdirSync(goalDir, { recursive: true });
@@ -34,19 +34,19 @@ function createGoalTree(
     "utf-8",
   );
 
-  // Optionally create COMPLETED marker
-  if (options?.withCompleted) {
-    fs.writeFileSync(path.join(goalDir, "COMPLETED"), "", "utf-8");
+  // Optionally create COMPLETION_SUMMARY.md
+  if (options?.withCompletionSummary) {
+    fs.writeFileSync(path.join(goalDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete\n", "utf-8");
   }
 
   return goalDir;
 }
 
 // ---------------------------------------------------------------------------
-// validateOutputs — COMPLETED short-circuit at baseDir
+// validateOutputs — COMPLETION_SUMMARY.md short-circuit at baseDir
 // ---------------------------------------------------------------------------
 
-describe("validateOutputs with COMPLETED at baseDir", () => {
+describe("validateOutputs with COMPLETION_SUMMARY.md at baseDir", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -55,9 +55,9 @@ describe("validateOutputs with COMPLETED at baseDir", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("passes when COMPLETED exists, even if other expected files are missing", () => {
-    // Arrange: temp dir with COMPLETED file but no TASK.md/TEST.md
-    fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
+  it("passes when COMPLETION_SUMMARY.md exists, even if other expected files are missing", () => {
+    // Arrange: temp dir with COMPLETION_SUMMARY.md file but no TASK.md/TEST.md
+    fs.writeFileSync(path.join(tempDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete\n", "utf-8");
 
     const contract: CapabilityContract = {
       inputs: [],
@@ -71,13 +71,13 @@ describe("validateOutputs with COMPLETED at baseDir", () => {
     expect(result).toEqual({ success: true });
   });
 
-  it("passes when COMPLETED is the only expected file and it exists", () => {
-    // Arrange: temp dir with COMPLETED
-    fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
+  it("passes when COMPLETION_SUMMARY.md is the only expected file and it exists", () => {
+    // Arrange: temp dir with COMPLETION_SUMMARY.md
+    fs.writeFileSync(path.join(tempDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete\n", "utf-8");
 
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "COMPLETED" }],
+      outputs: [{ file: "COMPLETION_SUMMARY.md" }],
     };
 
     // Act
@@ -87,8 +87,8 @@ describe("validateOutputs with COMPLETED at baseDir", () => {
     expect(result).toEqual({ success: true });
   });
 
-  it("fails normally when COMPLETED does not exist and expected files are missing", () => {
-    // Arrange: temp dir with no COMPLETED, no TASK.md
+  it("fails normally when COMPLETION_SUMMARY.md does not exist and expected files are missing", () => {
+    // Arrange: temp dir with no COMPLETION_SUMMARY.md, no TASK.md
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [{ file: "TASK.md" }],
@@ -102,11 +102,11 @@ describe("validateOutputs with COMPLETED at baseDir", () => {
     expect(result.message).toContain("TASK.md");
   });
 
-  it("does not match COMPLETED in a subfolder", () => {
-    // Arrange: temp dir with S01/COMPLETED but no COMPLETED at root
+  it("does not match COMPLETION_SUMMARY.md in a subfolder", () => {
+    // Arrange: temp dir with S01/COMPLETION_SUMMARY.md but no COMPLETION_SUMMARY.md at root
     const s01Dir = path.join(tempDir, "S01");
     fs.mkdirSync(s01Dir, { recursive: true });
-    fs.writeFileSync(path.join(s01Dir, "COMPLETED"), "", "utf-8");
+    fs.writeFileSync(path.join(s01Dir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete\n", "utf-8");
 
     const contract: CapabilityContract = {
       inputs: [],
@@ -116,26 +116,26 @@ describe("validateOutputs with COMPLETED at baseDir", () => {
     // Act
     const result = validateOutputs(contract, tempDir);
 
-    // Assert: fails normally (short-circuit only for baseDir/COMPLETED, not subfolder)
+    // Assert: fails normally (short-circuit only for baseDir/COMPLETION_SUMMARY.md, not subfolder)
     expect(result.success).toBe(false);
     expect(result.message).toContain("S01/TASK.md");
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveEvolveWriteAllowlist — always includes COMPLETED
+// resolveEvolveWriteAllowlist — always includes COMPLETION_SUMMARY.md
 // ---------------------------------------------------------------------------
 
 describe("resolveEvolveWriteAllowlist", () => {
-  it("always includes COMPLETED alongside step-folder paths", async () => {
+  it("always includes COMPLETION_SUMMARY.md alongside step-folder paths", async () => {
     // Arrange: resolve evolve-plan config with stepNumber 2
     const params = { capability: "evolve-plan" as string, goalName: "my-feature", stepNumber: 2 };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: writeAllowlist contains COMPLETED, S02/TASK.md (no TEST.md)
-    expect(result!.writeAllowlist).toContain("COMPLETED");
+    // Assert: writeAllowlist contains COMPLETION_SUMMARY.md, S02/TASK.md (no TEST.md)
+    expect(result!.writeAllowlist).toContain("COMPLETION_SUMMARY.md");
     expect(result!.writeAllowlist).toContain("S02/TASK.md");
     expect(result!.writeAllowlist).not.toContain("S02/TEST.md");
   });
@@ -281,7 +281,7 @@ describe("resolveEvolveWriteAllowlist with DECISIONS_FILE", () => {
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
     // Assert: contains all expected files including DECISIONS.md and REVISE_PLAN_NEEDED (total length is 4, no TEST.md)
-    expect(result?.writeAllowlist).toContain("COMPLETED");
+    expect(result?.writeAllowlist).toContain("COMPLETION_SUMMARY.md");
     expect(result?.writeAllowlist).toContain("S02/TASK.md");
     expect(result?.writeAllowlist).not.toContain("S02/TEST.md");
     expect(result?.writeAllowlist).toContain("S02/DECISIONS.md");
@@ -300,7 +300,7 @@ function createGoalTreeWithFrontmatter(
   totalSteps: number,
   options?: {
     stepFolders?: Array<{ stepNumber: number; approved: boolean }>;
-    withCompleted?: boolean;
+    withCompletionSummary?: boolean;
   },
 ): string {
   const goalDir = path.join(tempDir, ".pio", "goals", goalName);
@@ -326,9 +326,9 @@ function createGoalTreeWithFrontmatter(
     }
   }
 
-  // Optionally create COMPLETED marker
-  if (options?.withCompleted) {
-    fs.writeFileSync(path.join(goalDir, "COMPLETED"), "", "utf-8");
+  // Optionally create COMPLETION_SUMMARY.md
+  if (options?.withCompletionSummary) {
+    fs.writeFileSync(path.join(goalDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete\n", "utf-8");
   }
 
   return goalDir;

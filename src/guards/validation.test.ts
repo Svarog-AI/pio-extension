@@ -131,14 +131,14 @@ describe("validateOutputs with CapabilityContract", () => {
     expect(result).toEqual({ success: true });
   });
 
-  it("COMPLETED marker bypass still works with contract", () => {
+  it("COMPLETION_SUMMARY.md bypass still works with contract", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [{ file: "PLAN.md" }, { file: "SUMMARY.md" }],
     };
 
-    // COMPLETED exists, but PLAN.md and SUMMARY.md are missing
-    fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
+    // COMPLETION_SUMMARY.md exists, but PLAN.md and SUMMARY.md are missing
+    fs.writeFileSync(path.join(tempDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete\n", "utf-8");
 
     const result = validateOutputs(contract, tempDir);
     expect(result).toEqual({ success: true });
@@ -1253,16 +1253,16 @@ describe("CONTRACT outputs integration — finalize-goal", () => {
   });
 });
 
-describe("CONTRACT outputs integration — COMPLETED marker bypass", () => {
+describe("CONTRACT outputs integration — COMPLETION_SUMMARY.md marker bypass", () => {
   let tempDir: string;
 
   beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
-  it("COMPLETED marker bypasses all output checks (evolve-plan with all outputs missing)", async () => {
+  it("COMPLETION_SUMMARY.md bypasses all output checks (evolve-plan with all outputs missing)", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
-    // COMPLETED exists, but S01/TASK.md is missing
-    fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
+    // COMPLETION_SUMMARY.md exists, but S01/TASK.md is missing
+    fs.writeFileSync(path.join(tempDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete\n", "utf-8");
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 1 });
     expect(result).toEqual({ success: true });
   });

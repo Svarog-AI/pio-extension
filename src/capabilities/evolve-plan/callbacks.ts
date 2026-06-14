@@ -27,7 +27,7 @@ export function resolveEvolveWriteAllowlist(_workingDir: string, params?: Record
     throw new Error("stepNumber is required for evolve-plan. Ensure the task was enqueued with a valid step number.");
   }
   const folder = stepFolderName(stepNumber);
-  const allowlist: string[] = ["COMPLETED", `${folder}/${TASK_FILE}`, `${folder}/${REVISE_PLAN_MARKER}`];
+  const allowlist: string[] = ["COMPLETION_SUMMARY.md", `${folder}/${TASK_FILE}`, `${folder}/${REVISE_PLAN_MARKER}`];
   if (stepNumber > 1) {
     allowlist.push(`${folder}/${DECISIONS_FILE}`);
   }

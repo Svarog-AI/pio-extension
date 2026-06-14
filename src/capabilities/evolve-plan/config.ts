@@ -11,7 +11,7 @@ import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { TASK_FRONTMATTER_SCHEMA } from "./schemas";
+import { TASK_FRONTMATTER_SCHEMA, COMPLETION_SUMMARY_SCHEMA } from "./schemas";
 import { PLAN_FRONTMATTER_SCHEMA } from "../create-plan/schemas";
 import { validateEvolveStep, resolveEvolveWriteAllowlist } from "./callbacks";
 
@@ -25,6 +25,7 @@ export const CONTRACT: CapabilityContract = {
   outputs: [
     { file: "S{stepNumber:02d}/TASK.md", schema: TASK_FRONTMATTER_SCHEMA },
     { file: "S{stepNumber:02d}/DECISIONS.md", requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1 },
+    { file: "COMPLETION_SUMMARY.md", schema: COMPLETION_SUMMARY_SCHEMA, requiredWhen: () => false },
   ],
 };
 

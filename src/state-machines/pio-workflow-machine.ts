@@ -415,11 +415,9 @@ export interface PioWorkflowContext {
  * Filesystem methods delegate to standalone functions from state-machines/utils.ts.
  *
  * @param baseDir - Absolute path to a goal workspace (e.g. `/repo/.pio/goals/my-feature`)
- * @param params - Optional session params for placeholder resolution
  */
 export function buildPioWorkflowContext(
   baseDir: string,
-  params?: Record<string, unknown>,
 ): PioWorkflowContext {
   const goalName = path.basename(baseDir);
 

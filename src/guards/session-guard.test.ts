@@ -1,5 +1,5 @@
 import type { ExtensionAPI, TurnEndEvent } from "@earendil-works/pi-coding-agent";
-import { isThinkingOnlyTurn, setupSessionGuard, __testSetActiveSession, __testSetMarkCompleteCalled, __testSetTurnCount } from "./session-guard";
+import { isThinkingOnlyTurn, setupSessionGuard, __testSetActiveSession, __testSetMarkCompleteCalled, __testSetTurnCount, __testSetWasAborted } from "./session-guard";
 
 // ---------------------------------------------------------------------------
 // Helpers — mock ExtensionAPI
@@ -852,6 +852,7 @@ describe("agent_end handler", () => {
   beforeEach(() => {
     __testSetActiveSession(false);
     __testSetMarkCompleteCalled(false);
+    __testSetWasAborted(false);
   });
 
   // "agent_end sends warning when markCompleteCalled is false and isActivePioSession is true"
@@ -918,6 +919,286 @@ describe("agent_end handler", () => {
 
     // Assert: sendUserMessage was NOT called
     expect(sendUserMessageCalls).toHaveLength(0);
+  });
+
+  // "agent_end does NOT send warning when ctx.signal.aborted is true (direct signal check)"
+  it("does NOT send warning when ctx.signal.aborted is true (direct signal check)", async () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetMarkCompleteCalled(false);
+    __testSetWasAborted(false);
+
+    setupSessionGuard(pi);
+
+    // Act: invoke the agent_end handler with aborted signal
+    const agentEndHandlers = handlers.get("agent_end");
+    const mockCtx = { signal: { aborted: true } } as any;
+    const event = { type: "agent_end" as const, messages: [] };
+    for (const handler of agentEndHandlers!) {
+      await handler(event, mockCtx);
+    }
+
+    // Assert: sendUserMessage was NOT called (abort detected via signal)
+    expect(sendUserMessageCalls).toHaveLength(0);
+  });
+
+  // "agent_end does NOT send warning when wasAborted flag is true (fallback flag check)"
+  it("does NOT send warning when wasAborted flag is true (fallback flag check)", async () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetMarkCompleteCalled(false);
+    __testSetWasAborted(true);
+
+    setupSessionGuard(pi);
+
+    // Act: invoke the agent_end handler with no signal (ctx.signal undefined)
+    const agentEndHandlers = handlers.get("agent_end");
+    const mockCtx = {} as any;
+    const event = { type: "agent_end" as const, messages: [] };
+    for (const handler of agentEndHandlers!) {
+      await handler(event, mockCtx);
+    }
+
+    // Assert: sendUserMessage was NOT called (abort detected via wasAborted flag)
+    expect(sendUserMessageCalls).toHaveLength(0);
+  });
+
+  // "agent_end DOES send warning when neither abort path is active (normal operation)"
+  it("DOES send warning when neither abort path is active (normal operation)", async () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetMarkCompleteCalled(false);
+    __testSetWasAborted(false);
+
+    setupSessionGuard(pi);
+
+    // Act: invoke the agent_end handler with no abort signal
+    const agentEndHandlers = handlers.get("agent_end");
+    const mockCtx = {} as any;
+    const event = { type: "agent_end" as const, messages: [] };
+    for (const handler of agentEndHandlers!) {
+      await handler(event, mockCtx);
+    }
+
+    // Assert: sendUserMessage WAS called (normal operation — warning sent)
+    expect(sendUserMessageCalls).toHaveLength(1);
+    expect(sendUserMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// turn_end handler — wasAborted tracking
+// ---------------------------------------------------------------------------
+
+describe("turn_end handler — wasAborted tracking", () => {
+  // Reset state before each test to ensure isolation
+  beforeEach(() => {
+    __testSetActiveSession(false);
+    __testSetMarkCompleteCalled(false);
+    __testSetTurnCount(0);
+    __testSetWasAborted(false);
+  });
+
+  // Helper: create a TurnEndEvent with assistant text content
+  function createTextEndEvent(turnIndex: number): TurnEndEvent {
+    return {
+      type: "turn_end",
+      turnIndex,
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "response" }],
+        api: "anthropic-messages" as any,
+        provider: { name: "test" } as any,
+        model: "test-model",
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        stopReason: "stop",
+        timestamp: Date.now(),
+      },
+      toolResults: [],
+    };
+  }
+
+  // "turn_end sets wasAborted to true when ctx.signal.aborted is true"
+  it("sets wasAborted to true when ctx.signal.aborted is true", () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetWasAborted(false);
+
+    setupSessionGuard(pi);
+
+    // Act: invoke turn_end with aborted signal
+    const turnEndHandlers = handlers.get("turn_end");
+    const mockCtx = { signal: { aborted: true } } as any;
+    for (const handler of turnEndHandlers!) {
+      handler(createTextEndEvent(0), mockCtx);
+    }
+
+    // Assert: wasAborted was set to true
+    expect(__testSetWasAborted()).toBe(true);
+  });
+
+  // "turn_end does NOT set wasAborted when ctx.signal is undefined"
+  it("does NOT set wasAborted when ctx.signal is undefined", () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetWasAborted(false);
+
+    setupSessionGuard(pi);
+
+    // Act: invoke turn_end without signal
+    const turnEndHandlers = handlers.get("turn_end");
+    const mockCtx = {} as any;
+    for (const handler of turnEndHandlers!) {
+      handler(createTextEndEvent(0), mockCtx);
+    }
+
+    // Assert: wasAborted remains false
+    expect(__testSetWasAborted()).toBe(false);
+  });
+
+  // "turn_end does NOT set wasAborted when ctx.signal.aborted is false"
+  it("does NOT set wasAborted when ctx.signal.aborted is false", () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetWasAborted(false);
+
+    setupSessionGuard(pi);
+
+    // Act: invoke turn_end with non-aborted signal
+    const turnEndHandlers = handlers.get("turn_end");
+    const mockCtx = { signal: { aborted: false } } as any;
+    for (const handler of turnEndHandlers!) {
+      handler(createTextEndEvent(0), mockCtx);
+    }
+
+    // Assert: wasAborted remains false
+    expect(__testSetWasAborted()).toBe(false);
+  });
+
+  // "turn_end does NOT set wasAborted when not in pio session"
+  it("does NOT set wasAborted when not in pio session", () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    __testSetActiveSession(false);
+    __testSetWasAborted(false);
+
+    setupSessionGuard(pi);
+
+    // Act: invoke turn_end with aborted signal but not in pio session
+    const turnEndHandlers = handlers.get("turn_end");
+    const mockCtx = { signal: { aborted: true } } as any;
+    for (const handler of turnEndHandlers!) {
+      handler(createTextEndEvent(0), mockCtx);
+    }
+
+    // Assert: wasAborted remains false (guard returned early)
+    expect(__testSetWasAborted()).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// before_agent_start handler — wasAborted reset
+// ---------------------------------------------------------------------------
+
+describe("before_agent_start handler — wasAborted reset", () => {
+  // Reset state before each test to ensure isolation
+  beforeEach(() => {
+    __testSetActiveSession(false);
+    __testSetMarkCompleteCalled(false);
+    __testSetTurnCount(0);
+    __testSetWasAborted(false);
+  });
+
+  // "before_agent_start resets wasAborted to false when isActivePioSession is true"
+  it("resets wasAborted to false when isActivePioSession is true", async () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetWasAborted(true);
+
+    setupSessionGuard(pi);
+
+    // Act: invoke before_agent_start
+    const beforeAgentStartHandlers = handlers.get("before_agent_start");
+    expect(beforeAgentStartHandlers).toBeDefined();
+    const mockCtx = {} as any;
+    for (const handler of beforeAgentStartHandlers!) {
+      await handler({ type: "before_agent_start" }, mockCtx);
+    }
+
+    // Assert: wasAborted was reset to false
+    expect(__testSetWasAborted()).toBe(false);
+  });
+
+  // "before_agent_start does NOT reset wasAborted when isActivePioSession is false"
+  it("does NOT reset wasAborted when isActivePioSession is false", async () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    __testSetActiveSession(false);
+    __testSetWasAborted(true);
+
+    setupSessionGuard(pi);
+
+    // Act: invoke before_agent_start
+    const beforeAgentStartHandlers = handlers.get("before_agent_start");
+    expect(beforeAgentStartHandlers).toBeDefined();
+    const mockCtx = {} as any;
+    for (const handler of beforeAgentStartHandlers!) {
+      await handler({ type: "before_agent_start" }, mockCtx);
+    }
+
+    // Assert: wasAborted remains true (guard returned early)
+    expect(__testSetWasAborted()).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// __testSetWasAborted — accessor
+// ---------------------------------------------------------------------------
+
+describe("__testSetWasAborted", () => {
+  // "__testSetWasAborted() returns false by default"
+  it("__testSetWasAborted() returns false by default", () => {
+    // Arrange
+    __testSetWasAborted(false);
+
+    // Act
+    const result = __testSetWasAborted();
+
+    // Assert
+    expect(result).toBe(false);
+  });
+
+  // "__testSetWasAborted(true) sets the flag, getter returns true"
+  it("__testSetWasAborted(true) sets the flag, getter returns true", () => {
+    // Arrange
+    __testSetWasAborted(false);
+
+    // Act
+    __testSetWasAborted(true);
+    const result = __testSetWasAborted();
+
+    // Assert
+    expect(result).toBe(true);
+  });
+
+  // "__testSetWasAborted(false) resets the flag, getter returns false"
+  it("__testSetWasAborted(false) resets the flag, getter returns false", () => {
+    // Arrange
+    __testSetWasAborted(true);
+
+    // Act
+    __testSetWasAborted(false);
+    const result = __testSetWasAborted();
+
+    // Assert
+    expect(result).toBe(false);
   });
 });
 

@@ -76,7 +76,7 @@ function prepareReviewSession(workingDir: string, params?: Record<string, unknow
 
   // Read TASK.md skills and merge into capability config
   const capState = new CapState(CONTRACT, workingDir, { stepNumber });
-  const taskFile = capState.file<{ skills?: unknown }>("S{stepNumber:02d}/TASK.md");
+  const taskFile = capState.input<{ skills?: unknown }>("task");
   const taskData = taskFile.read();
   const taskSkills = taskData?.skills ?? null;
 

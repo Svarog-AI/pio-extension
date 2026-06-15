@@ -70,7 +70,7 @@ function prepareExecuteSession(workingDir: string, params?: Record<string, unkno
   if (stepNumber == null) return;
 
   const capState = new CapState(CONTRACT, workingDir, { stepNumber });
-  const taskFile = capState.file<{ skills?: unknown }>("S{stepNumber:02d}/TASK.md");
+  const taskFile = capState.input<{ skills?: unknown }>("task");
   const taskData = taskFile.read();
   const taskSkills = taskData?.skills ?? null;
 

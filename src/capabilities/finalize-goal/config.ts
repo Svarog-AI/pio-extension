@@ -82,7 +82,7 @@ export async function validateFinalizeGoal(
 
   const capState = new CapState(CONTRACT, goalDir);
 
-  if (!capState.file("COMPLETION_SUMMARY.md").exists()) {
+  if (!capState.input("completion-summary").exists()) {
     return {
       goalDir,
       ready: false,

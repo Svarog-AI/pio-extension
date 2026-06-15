@@ -396,6 +396,65 @@ describe("turn_end — nudge message injection", () => {
 
     expect(sendMessageCalls).toHaveLength(0);
   });
+
+  it("does NOT inject nudge when ctx.signal.aborted is true", () => {
+    const { pi, handlers, sendMessageCalls } = createMockPi();
+
+    __testSetActiveSession(true);
+    __testSetCurrentWorkflowStep(1);
+    __testSetTotalWorkflowSteps(3);
+
+    setupStepNudging(pi);
+
+    const turnEndHandlers = handlers.get("turn_end");
+    const mockCtx = { signal: { aborted: true } } as any;
+    const event = { type: "turn_end", turnIndex: 0, message: {}, toolResults: [] };
+    for (const handler of turnEndHandlers!) {
+      handler(event, mockCtx);
+    }
+
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+
+  it("injects nudge when ctx.signal is undefined (normal operation)", () => {
+    const { pi, handlers, sendMessageCalls } = createMockPi();
+
+    __testSetActiveSession(true);
+    __testSetCurrentWorkflowStep(1);
+    __testSetTotalWorkflowSteps(3);
+
+    setupStepNudging(pi);
+
+    const turnEndHandlers = handlers.get("turn_end");
+    const mockCtx = { signal: undefined } as any;
+    const event = { type: "turn_end", turnIndex: 0, message: {}, toolResults: [] };
+    for (const handler of turnEndHandlers!) {
+      handler(event, mockCtx);
+    }
+
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].message).toHaveProperty("customType", "step-nudge");
+  });
+
+  it("injects nudge when ctx.signal.aborted is false", () => {
+    const { pi, handlers, sendMessageCalls } = createMockPi();
+
+    __testSetActiveSession(true);
+    __testSetCurrentWorkflowStep(1);
+    __testSetTotalWorkflowSteps(3);
+
+    setupStepNudging(pi);
+
+    const turnEndHandlers = handlers.get("turn_end");
+    const mockCtx = { signal: { aborted: false } } as any;
+    const event = { type: "turn_end", turnIndex: 0, message: {}, toolResults: [] };
+    for (const handler of turnEndHandlers!) {
+      handler(event, mockCtx);
+    }
+
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].message).toHaveProperty("customType", "step-nudge");
+  });
 });
 
 // ---------------------------------------------------------------------------

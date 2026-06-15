@@ -224,10 +224,11 @@ export function setupStepNudging(pi: ExtensionAPI) {
   });
 
   // 3. Inject nudge message at the end of each turn
-  pi.on("turn_end", async (_event, _ctx) => {
+  pi.on("turn_end", async (_event, ctx) => {
     // Guard: only active for capability sub-sessions with workflow steps defined
     if (!isActivePioSession) return;
     if (totalWorkflowSteps <= 0) return;
+    if (ctx.signal?.aborted) return;
 
     const message = generateNudgeMessage(currentWorkflowStep, totalWorkflowSteps, stepsList);
 

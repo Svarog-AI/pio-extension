@@ -1,4 +1,4 @@
-import type { AgentEndEvent, ExtensionAPI, ExtensionContext, TurnEndEvent } from "@earendil-works/pi-coding-agent";
+import type { AgentEndEvent, ExtensionAPI, TurnEndEvent } from "@earendil-works/pi-coding-agent";
 import { readTurnThreshold } from "../model-config";
 import { getSessionConfig } from "../capability-utils";
 
@@ -29,9 +29,6 @@ let markCompleteCalled = false;
 
 /** Turn counter for refinement-loop detection. Resets at before_agent_start and after each nudge. */
 let turnCount = 0;
-
-/** True when the most recent turn_end observed an aborted signal. Reset at before_agent_start. */
-let wasAborted = false;
 
 /**
  * Test-only accessor for the internal `isActivePioSession` flag.
@@ -72,18 +69,7 @@ export function __testSetTurnCount(value?: number): number {
   return turnCount;
 }
 
-/**
- * Test-only accessor for the internal `wasAborted` flag.
- *
- * @internal — Do not use in production code. Exists solely to allow unit tests
- * to read and manipulate abort-tracking state without mocking the full ExtensionAPI.
- */
-export function __testSetWasAborted(value?: boolean): boolean {
-  if (value !== undefined) {
-    wasAborted = value;
-  }
-  return wasAborted;
-}
+
 
 // ---------------------------------------------------------------------------
 // Pure detection logic — extracted for unit testing
@@ -164,12 +150,12 @@ export function setupSessionGuard(pi: ExtensionAPI) {
   });
 
   // 2. Detect dead turns at the end of each turn
-  pi.on("turn_end", async (event: TurnEndEvent, ctx: ExtensionContext) => {
+  pi.on("turn_end", async (event: TurnEndEvent, _ctx) => {
     // Guard: only run inside pio sub-sessions
     if (!isActivePioSession) return;
 
-    // Track abort state for downstream agent_end handler
-    if (ctx.signal?.aborted) { wasAborted = true; }
+    // Skip all processing on aborted turns — agent is shutting down
+    if ((event.message as { stopReason?: string }).stopReason === "aborted") return;
 
     // Turn-count tracking for refinement-loop detection
     // Increment on EVERY turn (not just thinking-only) — counts total session activity
@@ -206,15 +192,14 @@ export function setupSessionGuard(pi: ExtensionAPI) {
     if (!isActivePioSession) return;
     markCompleteCalled = false;
     turnCount = 0;
-    wasAborted = false;
   });
 
   // 5. Warn at session end if pio_mark_complete was never called
-  pi.on("agent_end", async (_event: AgentEndEvent, ctx: ExtensionContext) => {
+  pi.on("agent_end", async (event: AgentEndEvent, _ctx) => {
     if (!isActivePioSession) return;
     if (markCompleteCalled) return;
-    if (ctx.signal?.aborted) return;
-    if (wasAborted) return;
+    const lastMessage = event.messages[event.messages.length - 1] as { stopReason?: string } | undefined;
+    if (lastMessage?.stopReason === "aborted") return;
 
     pi.sendUserMessage(AGENT_END_WARNING, { deliverAs: "followUp" });
   });

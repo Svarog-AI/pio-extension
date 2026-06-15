@@ -425,7 +425,7 @@ describe("turn_end — nudge message injection", () => {
     expect(sendMessageCalls).toHaveLength(0);
   });
 
-  it("does NOT inject nudge when ctx.signal.aborted is true", () => {
+  it("does NOT inject nudge when event.message.stopReason is 'aborted'", () => {
     const { pi, handlers, sendMessageCalls } = createMockPi();
 
     __testSetActiveSession(true);
@@ -435,8 +435,8 @@ describe("turn_end — nudge message injection", () => {
     setupStepNudging(pi);
 
     const turnEndHandlers = handlers.get("turn_end");
-    const mockCtx = { signal: { aborted: true } } as any;
-    const event = { type: "turn_end", turnIndex: 0, message: {}, toolResults: [] };
+    const mockCtx = {} as any;
+    const event = { type: "turn_end", turnIndex: 0, message: { stopReason: "aborted" }, toolResults: [] };
     for (const handler of turnEndHandlers!) {
       handler(event, mockCtx);
     }
@@ -444,7 +444,7 @@ describe("turn_end — nudge message injection", () => {
     expect(sendMessageCalls).toHaveLength(0);
   });
 
-  it("injects nudge when ctx.signal is undefined (normal operation)", () => {
+  it("injects nudge when event.message.stopReason is undefined (normal operation)", () => {
     const { pi, handlers, sendMessageCalls } = createMockPi();
 
     __testSetActiveSession(true);
@@ -454,7 +454,7 @@ describe("turn_end — nudge message injection", () => {
     setupStepNudging(pi);
 
     const turnEndHandlers = handlers.get("turn_end");
-    const mockCtx = { signal: undefined } as any;
+    const mockCtx = {} as any;
     const event = { type: "turn_end", turnIndex: 0, message: {}, toolResults: [] };
     for (const handler of turnEndHandlers!) {
       handler(event, mockCtx);
@@ -464,7 +464,7 @@ describe("turn_end — nudge message injection", () => {
     expect(sendMessageCalls[0].message).toHaveProperty("customType", "step-nudge");
   });
 
-  it("injects nudge when ctx.signal.aborted is false", () => {
+  it("injects nudge when event.message.stopReason is 'stop' (normal completion)", () => {
     const { pi, handlers, sendMessageCalls } = createMockPi();
 
     __testSetActiveSession(true);
@@ -474,8 +474,8 @@ describe("turn_end — nudge message injection", () => {
     setupStepNudging(pi);
 
     const turnEndHandlers = handlers.get("turn_end");
-    const mockCtx = { signal: { aborted: false } } as any;
-    const event = { type: "turn_end", turnIndex: 0, message: {}, toolResults: [] };
+    const mockCtx = {} as any;
+    const event = { type: "turn_end", turnIndex: 0, message: { stopReason: "stop" }, toolResults: [] };
     for (const handler of turnEndHandlers!) {
       handler(event, mockCtx);
     }

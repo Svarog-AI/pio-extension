@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, TurnEndEvent } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { getSessionConfig } from "../capability-utils";
@@ -224,11 +224,11 @@ export function setupStepNudging(pi: ExtensionAPI) {
   });
 
   // 3. Inject nudge message at the end of each turn
-  pi.on("turn_end", async (_event, ctx) => {
+  pi.on("turn_end", async (event: TurnEndEvent, _ctx) => {
     // Guard: only active for capability sub-sessions with workflow steps defined
     if (!isActivePioSession) return;
     if (totalWorkflowSteps <= 0) return;
-    if (ctx.signal?.aborted) return;
+    if ((event.message as { stopReason?: string }).stopReason === "aborted") return;
 
     const message = generateNudgeMessage(currentWorkflowStep, totalWorkflowSteps, stepsList);
 

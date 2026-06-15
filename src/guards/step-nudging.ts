@@ -96,16 +96,16 @@ export function generateNudgeMessage(
 
   if (isLastStep) {
     if (stepTitle) {
-      return `--- WORKFLOW STEP CONTROL ---\nYou are on the final step '${stepTitle}' (${total} of ${total}). When you have completed all work, call \`pio_mark_complete\` to validate your outputs and finish the session.`;
+      return `--- WORKFLOW STEP CONTROL ---\nYou are on the final step '${stepTitle}' (${total} of ${total}). If you need clarification, call \`ask_user\`. Otherwise, when you have completed all work, call \`pio_mark_complete\` to validate your outputs and finish the session.`;
     }
-    return `--- WORKFLOW STEP CONTROL ---\nYou are on the final workflow step (${total} of ${total}). When you have completed all work, call \`pio_mark_complete\` to validate your outputs and finish the session.`;
+    return `--- WORKFLOW STEP CONTROL ---\nYou are on the final workflow step (${total} of ${total}). If you need clarification, call \`ask_user\`. Otherwise, when you have completed all work, call \`pio_mark_complete\` to validate your outputs and finish the session.`;
   }
 
   if (stepTitle) {
-    return `--- WORKFLOW STEP CONTROL ---\nYou are currently on '${stepTitle}' (workflow step ${current} of ${total}). When you have completed this step, call the \`workflow-step-finish\` tool to move to the next workflow step. If not ready yet, keep working — no action needed to stay on this step.`;
+    return `--- WORKFLOW STEP CONTROL ---\nYou are currently on '${stepTitle}' (workflow step ${current} of ${total}). When you have completed this step, call the \`workflow-step-finish\` tool to move to the next workflow step. If not ready yet, keep working — no action needed to stay on this step. Or call \`ask_user\` if you need clarification before finishing.`;
   }
 
-  return `--- WORKFLOW STEP CONTROL ---\nYou are currently on workflow step ${current} of ${total}. When you have completed this step, call the \`workflow-step-finish\` tool to move to the next workflow step. If not ready yet, keep working — no action needed to stay on this step.`;
+  return `--- WORKFLOW STEP CONTROL ---\nYou are currently on workflow step ${current} of ${total}. When you have completed this step, call the \`workflow-step-finish\` tool to move to the next workflow step. If not ready yet, keep working — no action needed to stay on this step. Or call \`ask_user\` if you need clarification before finishing.`;
 }
 
 // ---------------------------------------------------------------------------

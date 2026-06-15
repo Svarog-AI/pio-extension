@@ -96,6 +96,7 @@ describe("generateNudgeMessage", () => {
     expect(result).toContain("Understand the goal");
     expect(result).toContain("workflow step 1 of 2");
     expect(result).toContain("workflow-step-finish");
+    expect(result).toContain("ask_user");
   });
 
   it("generates nudge without title when stepsList is empty", () => {
@@ -104,6 +105,7 @@ describe("generateNudgeMessage", () => {
     expect(result).toContain("--- WORKFLOW STEP CONTROL ---");
     expect(result).toContain("workflow step 1 of 3");
     expect(result).not.toContain("workflow step '");
+    expect(result).toContain("ask_user");
   });
 
   it("generates final step nudge with title", () => {
@@ -117,6 +119,7 @@ describe("generateNudgeMessage", () => {
     expect(result).toContain("Finalize");
     expect(result).toContain("final step");
     expect(result).toContain("pio_mark_complete");
+    expect(result).toContain("ask_user");
   });
 
   it("generates final step nudge without title", () => {
@@ -126,6 +129,7 @@ describe("generateNudgeMessage", () => {
     expect(result).toContain("final workflow step");
     expect(result).toContain("3 of 3");
     expect(result).toContain("pio_mark_complete");
+    expect(result).toContain("ask_user");
   });
 
   it("falls back to no-title format when index is out of range", () => {

@@ -65,10 +65,14 @@ class FileStateImpl<T> implements FileState<T> {
  * The contract declares which files exist and their schemas.
  * CapState provides lazy I/O via `FileState` wrappers — reads from disk on each call.
  *
+ * API:
+ * - `input(name)` — access a file declared in `contract.inputs` by name
+ * - `output(name)` — access a file declared in `contract.outputs` by name
+ * - `undeclared(path)` — access marker files not in any contract (e.g. "APPROVED", "BLOCKED")
+ *
  * Import constraints: does NOT import from capabilities schemas, fs-utils, or goal-state.
  */
 export class CapState {
-  private fileSpecs: Map<string, { schema?: TSchema }>;
   private inputNames: Map<string, { file: string; schema?: TSchema }>;
   private outputNames: Map<string, { file: string; schema?: TSchema }>;
 
@@ -78,30 +82,8 @@ export class CapState {
     private params?: Record<string, unknown>,
   ) {
     const maps = this.buildAllMaps();
-    this.fileSpecs = maps.fileSpecs;
     this.inputNames = maps.inputNames;
     this.outputNames = maps.outputNames;
-  }
-
-  /**
-   * Return a `FileState<T>` for the given file name.
-   *
-   * If the name matches a contract-declared file (after resolving placeholders),
-   * the returned FileState includes the schema from that entry.
-   * If not matched (e.g. marker files like "APPROVED"), returns a FileState without schema.
-   */
-  file<T>(name: string): FileState<T> {
-    const resolvedName = this.params
-      ? resolvePaths([name], this.params)[0]
-      : name;
-    const spec = this.fileSpecs.get(resolvedName);
-
-    if (spec) {
-      return new FileStateImpl<T>(path.join(this.baseDir, resolvedName), spec.schema);
-    }
-
-    // Undeclared file — no schema validation
-    return new FileStateImpl<T>(path.join(this.baseDir, resolvedName));
   }
 
   /**
@@ -147,79 +129,56 @@ export class CapState {
   }
 
   /**
-   * Build all lookup maps in a single pass: fileSpecs (path→schema),
-   * inputNames (name→{file,schema}), outputNames (name→{file,schema}).
+   * Build lookup maps for named accessors: inputNames (name→{file,schema}),
+   * outputNames (name→{file,schema}).
    * Enforces unique names across inputs and outputs — throws on collision.
    */
   private buildAllMaps(): {
-    fileSpecs: Map<string, { schema?: TSchema }>;
     inputNames: Map<string, { file: string; schema?: TSchema }>;
     outputNames: Map<string, { file: string; schema?: TSchema }>;
   } {
-    const fileSpecs = new Map<string, { schema?: TSchema }>();
     const inputNames = new Map<string, { file: string; schema?: TSchema }>();
     const outputNames = new Map<string, { file: string; schema?: TSchema }>();
     const allNames = new Set<string>();
 
     // Process inputs
     for (const entry of this.contract.inputs) {
-      if (entry.name) {
+      if (allNames.has(entry.name)) {
+        throw new Error(
+          `Duplicate file name '${entry.name}' in contract. Names must be unique across inputs and outputs.`,
+        );
+      }
+      allNames.add(entry.name);
+      inputNames.set(entry.name, { file: entry.file, schema: entry.schema });
+    }
+
+    // Process outputs (handle OneOfGroup)
+    for (const entry of this.contract.outputs) {
+      if (this.isMarkdownFileSpec(entry)) {
         if (allNames.has(entry.name)) {
           throw new Error(
             `Duplicate file name '${entry.name}' in contract. Names must be unique across inputs and outputs.`,
           );
         }
         allNames.add(entry.name);
-        inputNames.set(entry.name, { file: entry.file, schema: entry.schema });
-      }
-
-      const resolvedPath = this.params
-        ? resolvePaths([entry.file], this.params)[0]
-        : entry.file;
-      fileSpecs.set(resolvedPath, { schema: entry.schema });
-    }
-
-    // Process outputs (handle OneOfGroup)
-    for (const entry of this.contract.outputs) {
-      if (this.isMarkdownFileSpec(entry)) {
-        if (entry.name) {
-          if (allNames.has(entry.name)) {
-            throw new Error(
-              `Duplicate file name '${entry.name}' in contract. Names must be unique across inputs and outputs.`,
-            );
-          }
-          allNames.add(entry.name);
-          outputNames.set(entry.name, { file: entry.file, schema: entry.schema });
-        }
-
-        const resolvedPath = this.params
-          ? resolvePaths([entry.file], this.params)[0]
-          : entry.file;
-        fileSpecs.set(resolvedPath, { schema: entry.schema });
+        outputNames.set(entry.name, { file: entry.file, schema: entry.schema });
       } else if ("files" in entry && Array.isArray(entry.files)) {
         // OneOfGroup — recurse into files
         for (const fileEntry of entry.files) {
           if (this.isMarkdownFileSpec(fileEntry)) {
-            if (fileEntry.name) {
-              if (allNames.has(fileEntry.name)) {
-                throw new Error(
-                  `Duplicate file name '${fileEntry.name}' in contract. Names must be unique across inputs and outputs.`,
-                );
-              }
-              allNames.add(fileEntry.name);
-              outputNames.set(fileEntry.name, { file: fileEntry.file, schema: fileEntry.schema });
+            if (allNames.has(fileEntry.name)) {
+              throw new Error(
+                `Duplicate file name '${fileEntry.name}' in contract. Names must be unique across inputs and outputs.`,
+              );
             }
-
-            const resolvedPath = this.params
-              ? resolvePaths([fileEntry.file], this.params)[0]
-              : fileEntry.file;
-            fileSpecs.set(resolvedPath, { schema: fileEntry.schema });
+            allNames.add(fileEntry.name);
+            outputNames.set(fileEntry.name, { file: fileEntry.file, schema: fileEntry.schema });
           }
         }
       }
     }
 
-    return { fileSpecs, inputNames, outputNames };
+    return { inputNames, outputNames };
   }
 
   /** Type guard: MarkdownFileSpec vs OneOfGroup. */

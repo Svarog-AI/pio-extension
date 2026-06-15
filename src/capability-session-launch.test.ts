@@ -30,7 +30,7 @@ function makeConfig(overrides: Partial<import("./types").CapabilityConfig> = {})
   return {
     capability: "test-capability",
     workingDir: "/tmp/test-goal",
-    contract: { inputs: [{ file: "GOAL.md" }], outputs: [] },
+    contract: { inputs: [{ name: "goal", file: "GOAL.md" }], outputs: [] },
     sessionParams: { goalName: "test-goal" },
     ...overrides,
   };
@@ -142,7 +142,7 @@ describe("launchCapability — input validation", () => {
     const config = makeConfig({
       capability: "evolve-plan",
       contract: {
-        inputs: [{ file: "PLAN.md" }, { file: "S{stepNumber:02d}/TASK.md" }],
+        inputs: [{ name: "plan", file: "PLAN.md" }, { name: "task", file: "S{stepNumber:02d}/TASK.md" }],
         outputs: [],
       },
       sessionParams: { goalName: "test-goal", stepNumber: 3 },
@@ -169,7 +169,7 @@ describe("launchCapability — input validation", () => {
     const config = makeConfig({
       capability: "evolve-plan",
       contract: {
-        inputs: [{ file: "PLAN.md" }, { file: "S{stepNumber:02d}/TASK.md" }],
+        inputs: [{ name: "plan", file: "PLAN.md" }, { name: "task", file: "S{stepNumber:02d}/TASK.md" }],
         outputs: [],
       },
       // stepNumber is missing from sessionParams!
@@ -193,7 +193,7 @@ describe("launchCapability — input validation", () => {
     const launchCapability = await getLaunchCapability();
     const config = makeConfig({
       capability: "create-goal",
-      contract: { inputs: [], outputs: [{ file: "GOAL.md" }] },
+      contract: { inputs: [], outputs: [{ name: "goal", file: "GOAL.md" }] },
     });
 
     mockValidateInputs.mockReturnValue({ success: true });

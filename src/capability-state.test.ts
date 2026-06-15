@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createCapState, type FileState } from "./capability-state";
-import type { CapabilityContract } from "./types";
+import type { CapabilityContract, MarkdownFileSpec } from "./types";
 import { Type } from "typebox";
 
 // ---------------------------------------------------------------------------
@@ -20,15 +20,16 @@ function cleanup(tempDir: string): void {
 
 /** Minimal contract for testing (no schemas). */
 const minimalContract: CapabilityContract = {
-  inputs: [{ file: "GOAL.md" }],
-  outputs: [{ file: "PLAN.md" }],
+  inputs: [{ name: "goal", file: "GOAL.md" }],
+  outputs: [{ name: "plan", file: "PLAN.md" }],
 };
 
 /** Contract with a schema (uses create-plan schemas). */
 const contractWithSchema: CapabilityContract = {
-  inputs: [{ file: "GOAL.md" }],
+  inputs: [{ name: "goal", file: "GOAL.md" }],
   outputs: [
     {
+      name: "plan",
       file: "PLAN.md",
       schema: Type.Object({
         totalSteps: Type.Integer({ minimum: 1 }),
@@ -39,15 +40,16 @@ const contractWithSchema: CapabilityContract = {
 
 /** Contract with placeholder paths (no schema — used for existence checks). */
 const contractWithPlaceholders: CapabilityContract = {
-  inputs: [{ file: "PLAN.md" }],
-  outputs: [{ file: "S{stepNumber:02d}/TASK.md" }],
+  inputs: [{ name: "plan", file: "PLAN.md" }],
+  outputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
 };
 
 /** Contract with placeholder paths AND a schema on the placeholder entry. */
 const contractWithPlaceholderSchema: CapabilityContract = {
-  inputs: [{ file: "PLAN.md" }],
+  inputs: [{ name: "plan", file: "PLAN.md" }],
   outputs: [
     {
+      name: "task",
       file: "S{stepNumber:02d}/TASK.md",
       schema: Type.Object({
         stepName: Type.String(),
@@ -78,20 +80,21 @@ describe("createCapState — tracer bullet", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("returns a CapState instance with file() method", () => {
+  it("returns a CapState instance with input() and output() methods", () => {
     const capState = createCapState(minimalContract, tempDir);
-    expect(typeof capState.file).toBe("function");
+    expect(typeof capState.input).toBe("function");
+    expect(typeof capState.output).toBe("function");
   });
 
   it("exists() returns true for existing files", () => {
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "# Goal", "utf-8");
     const capState = createCapState(minimalContract, tempDir);
-    expect(capState.file("GOAL.md").exists()).toBe(true);
+    expect(capState.input("goal").exists()).toBe(true);
   });
 
   it("exists() returns false for missing files", () => {
     const capState = createCapState(minimalContract, tempDir);
-    expect(capState.file("GOAL.md").exists()).toBe(false);
+    expect(capState.input("goal").exists()).toBe(false);
   });
 });
 
@@ -110,20 +113,20 @@ describe("FileState.read() — without schema", () => {
 
   it("returns null for non-existent files", () => {
     const capState = createCapState(minimalContract, tempDir);
-    expect(capState.file("GOAL.md").read()).toBe(null);
+    expect(capState.input("goal").read()).toBe(null);
   });
 
   it("returns raw frontmatter for files without schema", () => {
     writeWithFrontmatter(tempDir, "GOAL.md", { title: "Test Goal", version: 1 });
     const capState = createCapState(minimalContract, tempDir);
-    const data = capState.file<{ title: string; version: number }>("GOAL.md").read();
+    const data = capState.input<{ title: string; version: number }>("goal").read();
     expect(data).toEqual({ title: "Test Goal", version: 1 });
   });
 
   it("returns null for files with no YAML frontmatter", () => {
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "# Just a heading, no frontmatter", "utf-8");
     const capState = createCapState(minimalContract, tempDir);
-    expect(capState.file("GOAL.md").read()).toBe(null);
+    expect(capState.input("goal").read()).toBe(null);
   });
 });
 
@@ -143,26 +146,26 @@ describe("FileState.read() — with schema validation", () => {
   it("returns validated/coerced data when frontmatter is valid", () => {
     writeWithFrontmatter(tempDir, "PLAN.md", { totalSteps: 3 });
     const capState = createCapState(contractWithSchema, tempDir);
-    const data = capState.file<{ totalSteps: number }>("PLAN.md").read();
+    const data = capState.output<{ totalSteps: number }>("plan").read();
     expect(data).toEqual({ totalSteps: 3 });
   });
 
   it("returns null when frontmatter is missing required fields", () => {
     writeWithFrontmatter(tempDir, "PLAN.md", { otherField: "value" });
     const capState = createCapState(contractWithSchema, tempDir);
-    expect(capState.file("PLAN.md").read()).toBe(null);
+    expect(capState.output("plan").read()).toBe(null);
   });
 
   it("returns null when frontmatter fails type constraints", () => {
     writeWithFrontmatter(tempDir, "PLAN.md", { totalSteps: "not a number" });
     const capState = createCapState(contractWithSchema, tempDir);
-    expect(capState.file("PLAN.md").read()).toBe(null);
+    expect(capState.output("plan").read()).toBe(null);
   });
 
   it("returns null when frontmatter fails minimum constraint", () => {
     writeWithFrontmatter(tempDir, "PLAN.md", { totalSteps: 0 });
     const capState = createCapState(contractWithSchema, tempDir);
-    expect(capState.file("PLAN.md").read()).toBe(null);
+    expect(capState.output("plan").read()).toBe(null);
   });
 });
 
@@ -181,7 +184,7 @@ describe("FileState.exists() — no caching", () => {
 
   it("reflects file creation between calls", () => {
     const capState = createCapState(minimalContract, tempDir);
-    const fileState = capState.file("GOAL.md");
+    const fileState = capState.input("goal");
 
     expect(fileState.exists()).toBe(false);
 
@@ -208,13 +211,13 @@ describe("Undeclared files (marker files)", () => {
   it("exists() works for undeclared files", () => {
     fs.writeFileSync(path.join(tempDir, "APPROVED"), "", "utf-8");
     const capState = createCapState(minimalContract, tempDir);
-    expect(capState.file("APPROVED").exists()).toBe(true);
+    expect(capState.undeclared("APPROVED").exists()).toBe(true);
   });
 
   it("read() returns null for marker files with no frontmatter", () => {
     fs.writeFileSync(path.join(tempDir, "APPROVED"), "", "utf-8");
     const capState = createCapState(minimalContract, tempDir);
-    expect(capState.file("APPROVED").read()).toBe(null);
+    expect(capState.undeclared("APPROVED").read()).toBe(null);
   });
 });
 
@@ -238,7 +241,7 @@ describe("Placeholder resolution", () => {
     fs.mkdirSync(path.dirname(taskPath), { recursive: true });
     fs.writeFileSync(taskPath, "# Task", "utf-8");
 
-    expect(capState.file("S03/TASK.md").exists()).toBe(true);
+    expect(capState.output("task").exists()).toBe(true);
   });
 
   it("matches resolved contract entries with placeholder query", () => {
@@ -247,7 +250,7 @@ describe("Placeholder resolution", () => {
     fs.mkdirSync(path.dirname(taskPath), { recursive: true });
     writeWithFrontmatter(tempDir, "S05/TASK.md", { title: "Task 5" });
 
-    expect(capState.file("S05/TASK.md").exists()).toBe(true);
+    expect(capState.output("task").exists()).toBe(true);
   });
 
   it("validates against schema on placeholder entry — proving resolution + schema matching", () => {
@@ -259,22 +262,13 @@ describe("Placeholder resolution", () => {
 
     // Valid frontmatter — should pass schema validation
     writeWithFrontmatter(tempDir, "S03/TASK.md", { stepName: "Build feature" });
-    const validData = capState.file<{ stepName: string }>("S03/TASK.md").read();
+    const validData = capState.output<{ stepName: string }>("task").read();
     expect(validData).toEqual({ stepName: "Build feature" });
 
     // Missing required field — should fail schema validation and return null
     writeWithFrontmatter(tempDir, "S03/TASK.md", { otherField: "value" });
-    const invalidData = capState.file("S03/TASK.md").read();
+    const invalidData = capState.output("task").read();
     expect(invalidData).toBe(null);
-  });
-
-  it("resolves placeholder at query time — consumer passes unresolved template", () => {
-    // Consumer passes the template string directly; params resolve it in file()
-    const capState = createCapState(contractWithPlaceholderSchema, tempDir, { stepNumber: 7 });
-    writeWithFrontmatter(tempDir, "S07/TASK.md", { stepName: "Query-time resolution" });
-
-    const data = capState.file<{ stepName: string }>("S{stepNumber:02d}/TASK.md").read();
-    expect(data).toEqual({ stepName: "Query-time resolution" });
   });
 });
 
@@ -291,16 +285,16 @@ describe("Contract inputs and outputs both indexed", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("file() matches against contract.inputs entries", () => {
+  it("input() matches against contract.inputs entries", () => {
     writeWithFrontmatter(tempDir, "GOAL.md", { title: "Goal" });
     const capState = createCapState(minimalContract, tempDir);
-    expect(capState.file("GOAL.md").exists()).toBe(true);
+    expect(capState.input("goal").exists()).toBe(true);
   });
 
-  it("file() matches against contract.outputs entries", () => {
+  it("output() matches against contract.outputs entries", () => {
     writeWithFrontmatter(tempDir, "PLAN.md", { totalSteps: 2 });
     const capState = createCapState(contractWithSchema, tempDir);
-    const data = capState.file<{ totalSteps: number }>("PLAN.md").read();
+    const data = capState.output<{ totalSteps: number }>("plan").read();
     expect(data).toEqual({ totalSteps: 2 });
   });
 });
@@ -320,8 +314,9 @@ describe("createCapState factory", () => {
 
   it("returns a CapState instance identical to new CapState()", () => {
     const capState = createCapState(minimalContract, tempDir);
-    expect(typeof capState.file).toBe("function");
-    expect(capState.file("GOAL.md").exists()).toBe(false);
+    expect(typeof capState.input).toBe("function");
+    expect(typeof capState.output).toBe("function");
+    expect(capState.input("goal").exists()).toBe(false);
   });
 });
 
@@ -390,14 +385,6 @@ describe("input(name) — lookup by name in contract.inputs", () => {
     expect(() => capState.input("nonexistent")).toThrow("Input 'nonexistent' not found in contract");
   });
 
-  it("throws when name is not set on the input entry", () => {
-    const contract: CapabilityContract = {
-      inputs: [{ file: "GOAL.md" }], // no name
-      outputs: [],
-    };
-    const capState = createCapState(contract, tempDir);
-    expect(() => capState.input("goal")).toThrow("Input 'goal' not found in contract");
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -485,14 +472,6 @@ describe("output(name) — lookup by name in contract.outputs", () => {
     expect(() => capState.output("nonexistent")).toThrow("Output 'nonexistent' not found in contract");
   });
 
-  it("throws when name is not set on the output entry", () => {
-    const contract: CapabilityContract = {
-      inputs: [],
-      outputs: [{ file: "PLAN.md" }], // no name
-    };
-    const capState = createCapState(contract, tempDir);
-    expect(() => capState.output("plan")).toThrow("Output 'plan' not found in contract");
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -604,13 +583,19 @@ describe("Duplicate name detection", () => {
     };
     expect(() => createCapState(contract, tempDir)).not.toThrow();
   });
+});
 
-  it("allows entries without names (name is optional in this step)", () => {
-    const contract: CapabilityContract = {
-      inputs: [{ file: "GOAL.md" }], // no name
-      outputs: [{ file: "PLAN.md" }], // no name
-    };
-    expect(() => createCapState(contract, tempDir)).not.toThrow();
+// ---------------------------------------------------------------------------
+// name field enforcement
+// ---------------------------------------------------------------------------
+
+describe("name field enforcement", () => {
+  it("all contract entries must have name fields (verified by TypeScript)", () => {
+    // This compiles only because MarkdownFileSpec.name is required.
+    // If any entry omitted name, npx tsc --noEmit would fail.
+    const spec: MarkdownFileSpec = { name: "test", file: "TEST.md" };
+    expect(spec.name).toBe("test");
+    expect(spec.file).toBe("TEST.md");
   });
 });
 
@@ -633,14 +618,14 @@ describe("Concrete test — real create-plan CONTRACT", () => {
 
     // GOAL.md is an input without schema
     writeWithFrontmatter(tempDir, "GOAL.md", { title: "Test Goal" });
-    expect(capState.file("GOAL.md").exists()).toBe(true);
+    expect(capState.input("goal").exists()).toBe(true);
 
     // PLAN.md is an output with PLAN_FRONTMATTER_SCHEMA
     const stepsYaml = "  - name: step-one\n    complexity: task";
     const planContent = `---\ntotalSteps: 1\nsteps:\n${stepsYaml}\n---\n# Plan\n\n### Step 1: Step description`;
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), planContent, "utf-8");
 
-    const data = capState.file("PLAN.md").read();
+    const data = capState.output("plan").read();
     expect(data).not.toBe(null);
     expect((data as any).totalSteps).toBe(1);
     expect((data as any).steps).toEqual([{ name: "step-one", complexity: "task" }]);

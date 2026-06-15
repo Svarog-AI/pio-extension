@@ -57,6 +57,7 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 - **Programmatic verification preferred:** Acceptance criteria should be verifiable via `npm run check`, file existence checks, or similar automated means.
 - **Plan revision:** `REVISE_PLAN_NEEDED` marker inside an `S{NN}/` folder signals that the plan requires restructuring. `evolve-plan` auto-detects this marker and routes to `revise-plan` via the state machine.
 - **Plan archive:** Archived plans live in `PLAN_ARCHIVE/` inside the goal workspace, with timestamped filenames (e.g., `PLAN-{YYYYMMDDTHHMMSSZ}.md`). The `revise-plan` agent reads these for context when writing a fresh plan.
+- **ask_user inline display mode:** When calling `ask_user` inside a pio sub-session, always pass `{ displayMode: "inline" }` so that questions appear with surrounding context visible rather than as an overlay. Example: `ask_user({ question: "...", displayMode: "inline" })`. The ask_user skill already documents this option — pio agents should use it by default in sub-sessions.
 
 ## Sub-session mechanics
 

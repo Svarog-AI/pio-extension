@@ -1,5 +1,26 @@
+import { vi, beforeEach } from "vitest";
 import type { ExtensionAPI, TurnEndEvent } from "@earendil-works/pi-coding-agent";
 import { isThinkingOnlyTurn, setupSessionGuard, __testSetActiveSession, __testSetMarkCompleteCalled, __testSetTurnCount } from "./session-guard";
+
+// Mock resolveCapabilityConfig so getSessionConfig() returns a full config with live functions
+const mockResolveCapabilityConfig = vi.hoisted(() => vi.fn());
+
+vi.mock("../capability-config", () => ({
+  resolveCapabilityConfig: mockResolveCapabilityConfig,
+}));
+
+beforeEach(() => {
+  mockResolveCapabilityConfig.mockClear();
+  mockResolveCapabilityConfig.mockImplementation((_cwd, params) => {
+    const cap = typeof params?.capability === "string" ? params.capability : "unknown";
+    return {
+      capability: cap,
+      workingDir: params?.workingDir ?? "/test/.pio/goals/test",
+      sessionParams: params ?? {},
+      contract: { inputs: [], outputs: [] },
+    };
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Helpers — mock ExtensionAPI
@@ -156,13 +177,13 @@ describe("isThinkingOnlyTurn", () => {
 
 describe("setupSessionGuard", () => {
   // "registers resources_discover handler"
-  it("registers resources_discover handler", () => {
+  it("registers resources_discover handler", async () => {
     // Arrange: mock getEntries to return pio-config
     const { pi, handlers } = createMockPi();
 
     const mockSessionManager = {
       getEntries(): MockEntry[] {
-        return [{ type: "custom", customType: "pio-config", data: {} }];
+        return [{ type: "custom", customType: "pio-config", data: { capability: "create-goal", sessionParams: {} } }];
       },
     };
 
@@ -175,9 +196,9 @@ describe("setupSessionGuard", () => {
     expect(discoverHandlers!.length).toBeGreaterThan(0);
 
     // Invoke the handler with mock context
-    const mockCtx = { sessionManager: mockSessionManager } as any;
+    const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
-      handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
+      await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
     }
 
     // Assert: flag should now be true
@@ -185,7 +206,7 @@ describe("setupSessionGuard", () => {
   });
 
   // "resources_discover sets flag false when no pio-config"
-  it("resources_discover sets flag false when no pio-config", () => {
+  it("resources_discover sets flag false when no pio-config", async () => {
     // Arrange: mock getEntries to return empty array
     const { pi, handlers } = createMockPi();
 
@@ -202,9 +223,9 @@ describe("setupSessionGuard", () => {
     const discoverHandlers = handlers.get("resources_discover");
     expect(discoverHandlers).toBeDefined();
 
-    const mockCtx = { sessionManager: mockSessionManager } as any;
+    const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
-      handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
+      await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
     }
 
     // Assert: flag should be false
@@ -918,6 +939,157 @@ describe("agent_end handler", () => {
 
     // Assert: sendUserMessage was NOT called
     expect(sendUserMessageCalls).toHaveLength(0);
+  });
+
+  // "agent_end does NOT send warning when last message has stopReason 'aborted'"
+  it("does NOT send warning when last message has stopReason 'aborted'", async () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetMarkCompleteCalled(false);
+
+    setupSessionGuard(pi);
+
+    // Act: invoke the agent_end handler with last message having stopReason: "aborted"
+    const agentEndHandlers = handlers.get("agent_end");
+    const mockCtx = {} as any;
+    const event = { type: "agent_end" as const, messages: [{ stopReason: "aborted" }] };
+    for (const handler of agentEndHandlers!) {
+      await handler(event, mockCtx);
+    }
+
+    // Assert: sendUserMessage was NOT called (abort detected via stopReason)
+    expect(sendUserMessageCalls).toHaveLength(0);
+  });
+
+  // "agent_end DOES send warning when last message has no stopReason"
+  it("DOES send warning when last message has no stopReason", async () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetMarkCompleteCalled(false);
+
+    setupSessionGuard(pi);
+
+    // Act: invoke the agent_end handler with last message having no stopReason
+    const agentEndHandlers = handlers.get("agent_end");
+    const mockCtx = {} as any;
+    const event = { type: "agent_end" as const, messages: [{}] };
+    for (const handler of agentEndHandlers!) {
+      await handler(event, mockCtx);
+    }
+
+    // Assert: sendUserMessage WAS called (normal operation — warning sent)
+    expect(sendUserMessageCalls).toHaveLength(1);
+    expect(sendUserMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
+  });
+
+  // "agent_end DOES send warning when last message has stopReason 'stop'"
+  it("DOES send warning when last message has stopReason 'stop'", async () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetMarkCompleteCalled(false);
+
+    setupSessionGuard(pi);
+
+    // Act: invoke the agent_end handler with last message having stopReason: "stop"
+    const agentEndHandlers = handlers.get("agent_end");
+    const mockCtx = {} as any;
+    const event = { type: "agent_end" as const, messages: [{ stopReason: "stop" }] };
+    for (const handler of agentEndHandlers!) {
+      await handler(event, mockCtx);
+    }
+
+    // Assert: sendUserMessage WAS called (normal operation — warning sent)
+    expect(sendUserMessageCalls).toHaveLength(1);
+    expect(sendUserMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// turn_end handler — abort detection via stopReason
+// ---------------------------------------------------------------------------
+
+describe("turn_end handler — abort detection via stopReason", () => {
+  // Reset state before each test to ensure isolation
+  beforeEach(() => {
+    __testSetActiveSession(false);
+    __testSetMarkCompleteCalled(false);
+    __testSetTurnCount(0);
+  });
+
+  // "turn_end returns early on stopReason 'aborted' (turnCount not incremented, no messages sent)"
+  it("returns early on stopReason 'aborted' (turnCount not incremented, no messages sent)", () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetTurnCount(0);
+
+    setupSessionGuard(pi);
+
+    // Act: invoke turn_end with thinking-only content and stopReason: "aborted"
+    const turnEndHandlers = handlers.get("turn_end");
+    const mockCtx = {} as any;
+    const event: TurnEndEvent = {
+      type: "turn_end",
+      turnIndex: 0,
+      message: {
+        role: "assistant",
+        content: [{ type: "thinking", thinking: "reasoning..." }],
+        api: "anthropic-messages" as any,
+        provider: { name: "test" } as any,
+        model: "test-model",
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        stopReason: "aborted",
+        timestamp: Date.now(),
+      },
+      toolResults: [],
+    };
+    for (const handler of turnEndHandlers!) {
+      handler(event, mockCtx);
+    }
+
+    // Assert: handler returned early — turnCount not incremented, no messages sent
+    expect(__testSetTurnCount()).toBe(0);
+    expect(sendUserMessageCalls).toHaveLength(0);
+  });
+
+  // "turn_end processes normally when stopReason is not 'aborted' (turnCount increments, thinking-only detection works)"
+  it("processes normally when stopReason is not 'aborted' (turnCount increments, thinking-only detection works)", () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetTurnCount(0);
+
+    setupSessionGuard(pi);
+
+    // Act: invoke turn_end with thinking-only content and stopReason: "stop"
+    const turnEndHandlers = handlers.get("turn_end");
+    const mockCtx = {} as any;
+    const event: TurnEndEvent = {
+      type: "turn_end",
+      turnIndex: 0,
+      message: {
+        role: "assistant",
+        content: [{ type: "thinking", thinking: "reasoning..." }],
+        api: "anthropic-messages" as any,
+        provider: { name: "test" } as any,
+        model: "test-model",
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        stopReason: "stop",
+        timestamp: Date.now(),
+      },
+      toolResults: [],
+    };
+    for (const handler of turnEndHandlers!) {
+      handler(event, mockCtx);
+    }
+
+    // Assert: turnCount incremented, recovery prompt sent
+    expect(__testSetTurnCount()).toBe(1);
+    expect(sendUserMessageCalls).toHaveLength(1);
+    expect(sendUserMessageCalls[0].options).toEqual({ deliverAs: "steer" });
   });
 });
 

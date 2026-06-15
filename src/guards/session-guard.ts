@@ -69,6 +69,8 @@ export function __testSetTurnCount(value?: number): number {
   return turnCount;
 }
 
+
+
 // ---------------------------------------------------------------------------
 // Pure detection logic — extracted for unit testing
 // ---------------------------------------------------------------------------
@@ -121,10 +123,10 @@ function getAssistantContent(event: TurnEndEvent): readonly ContentBlock[] | und
 // ---------------------------------------------------------------------------
 
 /** Recovery prompt sent to nudge the agent when it produces only thinking. */
-const RECOVERY_PROMPT = "Your last response contained only thinking blocks. Please provide a visible response or take an action.";
+const RECOVERY_PROMPT = "Your last response contained only thinking blocks. If you need clarification to proceed, call \`ask_user\`. Otherwise, provide a visible response or take an action.";
 
 /** Warning sent when a pio sub-session ends without calling pio_mark_complete. */
-const AGENT_END_WARNING = "This session ended without calling pio_mark_complete. Output files were not validated against expected outputs, and next task in the workflow may not be scheduled.";
+const AGENT_END_WARNING = "This session ended without calling pio_mark_complete. If you need clarification before completing work, call \`ask_user\`. Otherwise, output files were not validated against expected outputs, and next task in the workflow may not be scheduled.";
 
 /**
  * Register session guard handlers.
@@ -143,21 +145,24 @@ export function setupSessionGuard(pi: ExtensionAPI) {
 
   // 1. Detect pio sub-sessions at startup
   pi.on("resources_discover", async (_event, ctx) => {
-    const config = getSessionConfig(ctx);
+    const config = await getSessionConfig(ctx);
     isActivePioSession = !!config;
   });
 
   // 2. Detect dead turns at the end of each turn
-  pi.on("turn_end", async (event: TurnEndEvent) => {
+  pi.on("turn_end", async (event: TurnEndEvent, _ctx) => {
     // Guard: only run inside pio sub-sessions
     if (!isActivePioSession) return;
+
+    // Skip all processing on aborted turns — agent is shutting down
+    if ((event.message as { stopReason?: string }).stopReason === "aborted") return;
 
     // Turn-count tracking for refinement-loop detection
     // Increment on EVERY turn (not just thinking-only) — counts total session activity
     turnCount++;
     if (turnCount >= turnThreshold) {
       pi.sendUserMessage(
-        `Are you in a loop? If not, continue.`,
+        `Are you in a loop? If you need clarification to proceed, call \`ask_user\`. Otherwise, continue.`,
         { deliverAs: "steer" },
       );
       turnCount = 0;
@@ -190,9 +195,11 @@ export function setupSessionGuard(pi: ExtensionAPI) {
   });
 
   // 5. Warn at session end if pio_mark_complete was never called
-  pi.on("agent_end", async (_event: AgentEndEvent, _ctx) => {
+  pi.on("agent_end", async (event: AgentEndEvent, _ctx) => {
     if (!isActivePioSession) return;
     if (markCompleteCalled) return;
+    const lastMessage = event.messages[event.messages.length - 1] as { stopReason?: string } | undefined;
+    if (lastMessage?.stopReason === "aborted") return;
 
     pi.sendUserMessage(AGENT_END_WARNING, { deliverAs: "followUp" });
   });

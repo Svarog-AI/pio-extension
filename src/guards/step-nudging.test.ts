@@ -1,3 +1,4 @@
+import { vi, beforeEach } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   setupStepNudging,
@@ -8,6 +9,28 @@ import {
   __testSetTotalWorkflowSteps,
   __testSetStepsList,
 } from "./step-nudging";
+
+// Mock resolveCapabilityConfig so getSessionConfig() returns a full config with live functions
+const mockResolveCapabilityConfig = vi.hoisted(() => vi.fn());
+
+vi.mock("../capability-config", () => ({
+  resolveCapabilityConfig: mockResolveCapabilityConfig,
+}));
+
+// Default mock: return a minimal valid config
+beforeEach(() => {
+  mockResolveCapabilityConfig.mockClear();
+  mockResolveCapabilityConfig.mockImplementation((_cwd, params) => {
+    const cap = typeof params?.capability === "string" ? params.capability : "unknown";
+    // resolveCapabilityConfig stores the full params object as sessionParams
+    return {
+      capability: cap,
+      workingDir: params?.workingDir ?? "/test/.pio/goals/test",
+      sessionParams: params ?? {},
+      contract: { inputs: [], outputs: [] },
+    };
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Helpers — mock ExtensionAPI
@@ -96,6 +119,7 @@ describe("generateNudgeMessage", () => {
     expect(result).toContain("Understand the goal");
     expect(result).toContain("workflow step 1 of 2");
     expect(result).toContain("workflow-step-finish");
+    expect(result).toContain("ask_user");
   });
 
   it("generates nudge without title when stepsList is empty", () => {
@@ -104,6 +128,7 @@ describe("generateNudgeMessage", () => {
     expect(result).toContain("--- WORKFLOW STEP CONTROL ---");
     expect(result).toContain("workflow step 1 of 3");
     expect(result).not.toContain("workflow step '");
+    expect(result).toContain("ask_user");
   });
 
   it("generates final step nudge with title", () => {
@@ -117,6 +142,7 @@ describe("generateNudgeMessage", () => {
     expect(result).toContain("Finalize");
     expect(result).toContain("final step");
     expect(result).toContain("pio_mark_complete");
+    expect(result).toContain("ask_user");
   });
 
   it("generates final step nudge without title", () => {
@@ -126,6 +152,7 @@ describe("generateNudgeMessage", () => {
     expect(result).toContain("final workflow step");
     expect(result).toContain("3 of 3");
     expect(result).toContain("pio_mark_complete");
+    expect(result).toContain("ask_user");
   });
 
   it("falls back to no-title format when index is out of range", () => {
@@ -200,14 +227,14 @@ describe("resources_discover — session detection and state initialization", ()
 
     const mockSessionManager = {
       getEntries(): MockEntry[] {
-        return [{ type: "custom", customType: "pio-config", data: {} }];
+        return [{ type: "custom", customType: "pio-config", data: { capability: "create-goal", sessionParams: {} } }];
       },
     };
 
     setupStepNudging(pi);
 
     const discoverHandlers = handlers.get("resources_discover");
-    const mockCtx = { sessionManager: mockSessionManager } as any;
+    const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
       await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
     }
@@ -227,7 +254,7 @@ describe("resources_discover — session detection and state initialization", ()
     setupStepNudging(pi);
 
     const discoverHandlers = handlers.get("resources_discover");
-    const mockCtx = { sessionManager: mockSessionManager } as any;
+    const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
       await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
     }
@@ -245,6 +272,7 @@ describe("resources_discover — session detection and state initialization", ()
             type: "custom",
             customType: "pio-config",
             data: {
+              capability: "execute-task",
               sessionParams: { totalWorkflowSteps: 5 },
             },
           },
@@ -255,7 +283,7 @@ describe("resources_discover — session detection and state initialization", ()
     setupStepNudging(pi);
 
     const discoverHandlers = handlers.get("resources_discover");
-    const mockCtx = { sessionManager: mockSessionManager } as any;
+    const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
       await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
     }
@@ -273,7 +301,7 @@ describe("resources_discover — session detection and state initialization", ()
           {
             type: "custom",
             customType: "pio-config",
-            data: { sessionParams: {} },
+            data: { capability: "execute-task", sessionParams: {} },
           },
         ];
       },
@@ -282,7 +310,7 @@ describe("resources_discover — session detection and state initialization", ()
     setupStepNudging(pi);
 
     const discoverHandlers = handlers.get("resources_discover");
-    const mockCtx = { sessionManager: mockSessionManager } as any;
+    const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
       await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
     }
@@ -396,6 +424,65 @@ describe("turn_end — nudge message injection", () => {
 
     expect(sendMessageCalls).toHaveLength(0);
   });
+
+  it("does NOT inject nudge when event.message.stopReason is 'aborted'", () => {
+    const { pi, handlers, sendMessageCalls } = createMockPi();
+
+    __testSetActiveSession(true);
+    __testSetCurrentWorkflowStep(1);
+    __testSetTotalWorkflowSteps(3);
+
+    setupStepNudging(pi);
+
+    const turnEndHandlers = handlers.get("turn_end");
+    const mockCtx = {} as any;
+    const event = { type: "turn_end", turnIndex: 0, message: { stopReason: "aborted" }, toolResults: [] };
+    for (const handler of turnEndHandlers!) {
+      handler(event, mockCtx);
+    }
+
+    expect(sendMessageCalls).toHaveLength(0);
+  });
+
+  it("injects nudge when event.message.stopReason is undefined (normal operation)", () => {
+    const { pi, handlers, sendMessageCalls } = createMockPi();
+
+    __testSetActiveSession(true);
+    __testSetCurrentWorkflowStep(1);
+    __testSetTotalWorkflowSteps(3);
+
+    setupStepNudging(pi);
+
+    const turnEndHandlers = handlers.get("turn_end");
+    const mockCtx = {} as any;
+    const event = { type: "turn_end", turnIndex: 0, message: {}, toolResults: [] };
+    for (const handler of turnEndHandlers!) {
+      handler(event, mockCtx);
+    }
+
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].message).toHaveProperty("customType", "step-nudge");
+  });
+
+  it("injects nudge when event.message.stopReason is 'stop' (normal completion)", () => {
+    const { pi, handlers, sendMessageCalls } = createMockPi();
+
+    __testSetActiveSession(true);
+    __testSetCurrentWorkflowStep(1);
+    __testSetTotalWorkflowSteps(3);
+
+    setupStepNudging(pi);
+
+    const turnEndHandlers = handlers.get("turn_end");
+    const mockCtx = {} as any;
+    const event = { type: "turn_end", turnIndex: 0, message: { stopReason: "stop" }, toolResults: [] };
+    for (const handler of turnEndHandlers!) {
+      handler(event, mockCtx);
+    }
+
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].message).toHaveProperty("customType", "step-nudge");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -432,7 +519,7 @@ describe("workflow-step-finish tool — behavior", () => {
     const text = getText(result);
 
     expect(__testSetCurrentWorkflowStep()).toBe(2);
-    expect(text).toBe("Workflow step finished. Moving to workflow step 2 of 5. Continue with this step.");
+    expect(text).toBe("Workflow step finished. Moving to workflow step 2 of 5. If you need clarification before starting, call `ask_user`. Otherwise, continue with this step.");
   });
 
   it("increments step counter and returns next step message with title", async () => {
@@ -449,7 +536,7 @@ describe("workflow-step-finish tool — behavior", () => {
     const text = getText(result);
 
     expect(__testSetCurrentWorkflowStep()).toBe(2);
-    expect(text).toBe("Workflow step finished. Moving to 'Research context' (workflow step 2 of 3). Continue with this step.");
+    expect(text).toBe("Workflow step finished. Moving to 'Research context' (workflow step 2 of 3). If you need clarification before starting, call `ask_user`. Otherwise, continue with this step.");
   });
 
   it("clamps step counter and returns last step message", async () => {
@@ -463,7 +550,7 @@ describe("workflow-step-finish tool — behavior", () => {
     const text = getText(result);
 
     expect(__testSetCurrentWorkflowStep()).toBe(5);
-    expect(text).toBe("All workflow steps completed. You are on the final workflow step (5 of 5). Consider your work done and call pio_mark_complete if all outputs are ready.");
+    expect(text).toBe("All workflow steps completed. You are on the final workflow step (5 of 5). If you need clarification, call `ask_user`. Otherwise, consider your work done and call pio_mark_complete if all outputs are ready.");
   });
 
   it("stays at last step when already at max (clamp on second call)", async () => {

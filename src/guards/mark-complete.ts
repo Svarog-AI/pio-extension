@@ -20,7 +20,7 @@ export const markCompleteTool = defineTool({
   parameters: Type.Object({}),
 
   async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-    const config = getSessionConfig(ctx);
+    const config = await getSessionConfig(ctx);
 
     // No config — not a capability session, always pass
     if (!config) {

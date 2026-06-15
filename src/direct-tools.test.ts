@@ -42,6 +42,12 @@ vi.mock("./state-machines", () => ({
   goalDrivenDevelopment: { id: "goal-driven-development" },
 }));
 
+const mockResolveCapabilityConfigDirect = vi.hoisted(() => vi.fn());
+
+vi.mock("./capability-config", () => ({
+  resolveCapabilityConfig: mockResolveCapabilityConfigDirect,
+}));
+
 
 
 // ---------------------------------------------------------------------------
@@ -96,6 +102,19 @@ describe("pio_transition tool", () => {
     cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempCwd);
     mockEnqueueTask.mockClear();
     mockRecordTransition.mockClear();
+    mockResolveCapabilityConfigDirect.mockClear();
+    mockResolveCapabilityConfigDirect.mockImplementation((_cwd, params) => {
+      const cap = typeof params?.capability === "string" ? params.capability : "unknown";
+      // getSessionConfig passes { capability, ...sessionParams } to resolveCapabilityConfig
+      // sessionParams may contain workingDir override for tests
+      const { capability: _cap, workingDir, ...rest } = params ?? {};
+      return {
+        capability: cap,
+        workingDir: workingDir ?? "/test/.pio/goals/test",
+        sessionParams: rest,
+        contract: { inputs: [], outputs: [] },
+      };
+    });
 
     // Import fresh to get the real tool definition
     const { setupDirectTools } = await import("./direct-tools");
@@ -137,8 +156,7 @@ describe("pio_transition tool", () => {
   it("enqueues task with correct queue key derived from goalName", async () => {
     const mockCtx = makeMockCtx({
       capability: "execute-task",
-      workingDir: "/repo/.pio/goals/my-feature",
-      sessionParams: { goalName: "my-feature", stepNumber: 1 },
+      sessionParams: { goalName: "my-feature", stepNumber: 1, workingDir: "/repo/.pio/goals/my-feature" },
     });
 
     await transitionTool!.execute(
@@ -162,8 +180,7 @@ describe("pio_transition tool", () => {
   it("falls back to capability name as queue key when goalName is absent", async () => {
     const mockCtx = makeMockCtx({
       capability: "some-capability",
-      workingDir: "/some/other/dir",
-      sessionParams: {},
+      sessionParams: { workingDir: "/some/other/dir" },
     });
 
     await transitionTool!.execute(
@@ -186,8 +203,7 @@ describe("pio_transition tool", () => {
   it("merges user-provided params on top of session params", async () => {
     const mockCtx = makeMockCtx({
       capability: "execute-task",
-      workingDir: "/repo/.pio/goals/my-feature",
-      sessionParams: { goalName: "my-feature", stepNumber: 1, existing: "value" },
+      sessionParams: { goalName: "my-feature", stepNumber: 1, existing: "value", workingDir: "/repo/.pio/goals/my-feature" },
     });
 
     await transitionTool!.execute(
@@ -217,8 +233,7 @@ describe("pio_transition tool", () => {
     // Goal workspace — should call recordTransition
     const mockCtxGoal = makeMockCtx({
       capability: "execute-task",
-      workingDir: "/repo/.pio/goals/my-feature",
-      sessionParams: { goalName: "my-feature" },
+      sessionParams: { goalName: "my-feature", workingDir: "/repo/.pio/goals/my-feature" },
     });
 
     await transitionTool!.execute(
@@ -235,8 +250,7 @@ describe("pio_transition tool", () => {
     // Non-goal workspace — should NOT call recordTransition
     const mockCtxNonGoal = makeMockCtx({
       capability: "execute-task",
-      workingDir: "/some/random/dir",
-      sessionParams: {},
+      sessionParams: { workingDir: "/some/random/dir" },
     });
 
     await transitionTool!.execute(
@@ -253,8 +267,7 @@ describe("pio_transition tool", () => {
   it("uses stateMachineId from session params when available", async () => {
     const mockCtx = makeMockCtx({
       capability: "execute-task",
-      workingDir: "/repo/.pio/goals/my-feature",
-      sessionParams: { goalName: "my-feature", stateMachineId: "custom-machine" },
+      sessionParams: { goalName: "my-feature", stateMachineId: "custom-machine", workingDir: "/repo/.pio/goals/my-feature" },
     });
 
     await transitionTool!.execute(
@@ -279,8 +292,7 @@ describe("pio_transition tool", () => {
   it("returns success message with next-task hint", async () => {
     const mockCtx = makeMockCtx({
       capability: "execute-task",
-      workingDir: "/repo/.pio/goals/my-feature",
-      sessionParams: { goalName: "my-feature" },
+      sessionParams: { goalName: "my-feature", workingDir: "/repo/.pio/goals/my-feature" },
     });
 
     const result = await transitionTool!.execute(
@@ -345,8 +357,7 @@ describe("/pio-transition command", () => {
 
     const mockCtx = makeMockCtx({
       capability: "create-goal",
-      workingDir: "/repo/.pio/goals/my-feature",
-      sessionParams: { goalName: "my-feature" },
+      sessionParams: { goalName: "my-feature", workingDir: "/repo/.pio/goals/my-feature" },
     });
     const notifySpy = vi.spyOn((mockCtx as any).ui, "notify");
 
@@ -370,8 +381,7 @@ describe("/pio-transition command", () => {
 
     const mockCtx = makeMockCtx({
       capability: "evolve-plan",
-      workingDir: "/repo/.pio/goals/my-feature",
-      sessionParams: { goalName: "my-feature", stepNumber: 1 },
+      sessionParams: { goalName: "my-feature", stepNumber: 1, workingDir: "/repo/.pio/goals/my-feature" },
     });
     const notifySpy = vi.spyOn((mockCtx as any).ui, "notify");
 

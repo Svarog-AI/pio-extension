@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, TurnEndEvent } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { getSessionConfig } from "../capability-utils";
@@ -96,16 +96,16 @@ export function generateNudgeMessage(
 
   if (isLastStep) {
     if (stepTitle) {
-      return `--- WORKFLOW STEP CONTROL ---\nYou are on the final step '${stepTitle}' (${total} of ${total}). When you have completed all work, call \`pio_mark_complete\` to validate your outputs and finish the session.`;
+      return `--- WORKFLOW STEP CONTROL ---\nYou are on the final step '${stepTitle}' (${total} of ${total}). If you need clarification, call \`ask_user\`. Otherwise, when you have completed all work, call \`pio_mark_complete\` to validate your outputs and finish the session.`;
     }
-    return `--- WORKFLOW STEP CONTROL ---\nYou are on the final workflow step (${total} of ${total}). When you have completed all work, call \`pio_mark_complete\` to validate your outputs and finish the session.`;
+    return `--- WORKFLOW STEP CONTROL ---\nYou are on the final workflow step (${total} of ${total}). If you need clarification, call \`ask_user\`. Otherwise, when you have completed all work, call \`pio_mark_complete\` to validate your outputs and finish the session.`;
   }
 
   if (stepTitle) {
-    return `--- WORKFLOW STEP CONTROL ---\nYou are currently on '${stepTitle}' (workflow step ${current} of ${total}). When you have completed this step, call the \`workflow-step-finish\` tool to move to the next workflow step. If not ready yet, keep working — no action needed to stay on this step.`;
+    return `--- WORKFLOW STEP CONTROL ---\nYou are currently on '${stepTitle}' (workflow step ${current} of ${total}). When you have completed this step, call the \`workflow-step-finish\` tool to move to the next workflow step. If not ready yet, keep working — no action needed to stay on this step. Or call \`ask_user\` if you need clarification before finishing.`;
   }
 
-  return `--- WORKFLOW STEP CONTROL ---\nYou are currently on workflow step ${current} of ${total}. When you have completed this step, call the \`workflow-step-finish\` tool to move to the next workflow step. If not ready yet, keep working — no action needed to stay on this step.`;
+  return `--- WORKFLOW STEP CONTROL ---\nYou are currently on workflow step ${current} of ${total}. When you have completed this step, call the \`workflow-step-finish\` tool to move to the next workflow step. If not ready yet, keep working — no action needed to stay on this step. Or call \`ask_user\` if you need clarification before finishing.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +142,7 @@ export const workflowStepFinishTool = defineTool({
         content: [
           {
             type: "text",
-            text: `All workflow steps completed. You are on the final workflow step (${totalWorkflowSteps} of ${totalWorkflowSteps}). Consider your work done and call pio_mark_complete if all outputs are ready.`,
+            text: `All workflow steps completed. You are on the final workflow step (${totalWorkflowSteps} of ${totalWorkflowSteps}). If you need clarification, call \`ask_user\`. Otherwise, consider your work done and call pio_mark_complete if all outputs are ready.`,
           },
         ],
         details: {},
@@ -154,7 +154,7 @@ export const workflowStepFinishTool = defineTool({
         content: [
           {
             type: "text",
-            text: `Workflow step finished. Moving to '${stepTitle}' (workflow step ${currentWorkflowStep} of ${totalWorkflowSteps}). Continue with this step.`,
+            text: `Workflow step finished. Moving to '${stepTitle}' (workflow step ${currentWorkflowStep} of ${totalWorkflowSteps}). If you need clarification before starting, call \`ask_user\`. Otherwise, continue with this step.`,
           },
         ],
         details: {},
@@ -165,7 +165,7 @@ export const workflowStepFinishTool = defineTool({
       content: [
         {
           type: "text",
-          text: `Workflow step finished. Moving to workflow step ${currentWorkflowStep} of ${totalWorkflowSteps}. Continue with this step.`,
+          text: `Workflow step finished. Moving to workflow step ${currentWorkflowStep} of ${totalWorkflowSteps}. If you need clarification before starting, call \`ask_user\`. Otherwise, continue with this step.`,
         },
       ],
       details: {},
@@ -192,7 +192,7 @@ export function setupStepNudging(pi: ExtensionAPI) {
 
   // 2. Detect capability sub-sessions and initialize state
   pi.on("resources_discover", async (_event, ctx) => {
-    const config = getSessionConfig(ctx);
+    const config = await getSessionConfig(ctx);
 
     if (config) {
       isActivePioSession = true;
@@ -224,10 +224,11 @@ export function setupStepNudging(pi: ExtensionAPI) {
   });
 
   // 3. Inject nudge message at the end of each turn
-  pi.on("turn_end", async (_event, _ctx) => {
+  pi.on("turn_end", async (event: TurnEndEvent, _ctx) => {
     // Guard: only active for capability sub-sessions with workflow steps defined
     if (!isActivePioSession) return;
     if (totalWorkflowSteps <= 0) return;
+    if ((event.message as { stopReason?: string }).stopReason === "aborted") return;
 
     const message = generateNudgeMessage(currentWorkflowStep, totalWorkflowSteps, stepsList);
 

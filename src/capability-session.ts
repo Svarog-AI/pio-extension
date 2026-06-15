@@ -77,7 +77,13 @@ export async function launchCapability(ctx: ExtensionCommandContext, config: Cap
   await ctx.newSession({
     parentSession,
     setup: async (newSm) => {
-      newSm.appendCustomEntry("pio-config", config);
+      // Store lightweight metadata — functions (requiredWhen, postValidate, etc.) are
+      // stripped by JSON.stringify. getSessionConfig() reconstructs the full config
+      // via dynamic import of the capability module.
+      newSm.appendCustomEntry("pio-config", {
+        capability: config.capability,
+        sessionParams: config.sessionParams,
+      });
     },
     withSession: async (_newCtx) => {
       // Kick off the agent with the initial task (visible as user message)
@@ -175,7 +181,7 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
     // Reset compiled sections to prevent stale state from previous sessions
     compiledSections = undefined;
 
-    const config = getSessionConfig(ctx);
+    const config = await getSessionConfig(ctx);
     if (!config) return;
 
     // Capture capability name for model resolution in before_agent_start

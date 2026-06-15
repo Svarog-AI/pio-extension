@@ -48,7 +48,11 @@ The `capability-session.ts` module (renamed from `session-capability.ts`) orches
 
 ### State Management — CapState + Contract Caching
 
-- **`CapState`** (`capability-state.ts`) provides contract-backed lazy file access. Wraps a `CapabilityContract` with a base directory and params — `.file<T>(name)` returns a `FileState<T>` with `exists()` and `read()`. Replaces the old `GoalState` (deleted). Resolves `{placeholder}` tokens in file paths via `resolvePaths()`.
+- **`CapState`** (`capability-state.ts`) provides contract-backed lazy file access. Wraps a `CapabilityContract` with a base directory and params. Three accessors:
+  - **`.input<T>(name)`** — looks up by `name` in `contract.inputs`, resolves placeholders, validates against schema
+  - **`.output<T>(name)`** — looks up by `name` in `contract.outputs` (including inside OneOfGroup entries)
+  - **`.undeclared(path)`** — for marker files not in any contract (no placeholder resolution, no schema validation)
+  Every `MarkdownFileSpec` requires a `name: string`. Duplicate names across inputs/outputs within a single contract throw at construction. Replaces the old `GoalState` (deleted).
 - **Contract caching at startup:** `index.ts` calls `setDiscoveredContracts()` after `discoverCapabilities()` to build a name-to-contract map. `getCapState(capabilityName, baseDir, params?)` (in `state-machines/utils.ts`) provides synchronous lookup for resolve functions — no dynamic imports needed at runtime.
 - **Resolve function pattern:** All resolve functions in `pio-workflow-machine.ts` accept minimal `{ baseDir: string }` context and call `getCapState()` with capability names to perform file reads. No intermediate context object (PioWorkflowContext removed). No cross-capability schema imports from capabilities — framework code imports capability CONTRACTs directly.
 

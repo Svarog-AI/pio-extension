@@ -36,6 +36,7 @@ Consider adding a formatter (e.g., Prettier or Biome) to standardize code style 
 Each AI-driven capability is a directory package under `src/capabilities/<name>/`:
 
 - **`config.ts`** — default exports `CapabilityPackageConfig` (fields: `name`, `skills`, `contract` (mandatory), `readOnlyFiles`, `writeAllowlist`, `prepareSession`, `postValidate`, `postExecute`, `preValidate`). The `CONTRACT: CapabilityContract` is exported as a named constant and referenced by the config. Old fields (`validation`, `frontmatterSchemas`, `inputValidation`) were removed — contract replaces all three. Named export `register(pi)` registers tool + command.
+- **`MarkdownFileSpec.name` is required** — Every entry in `contract.inputs[]` and `contract.outputs[]` must declare a `name: string` (kebab-case, e.g., `"completion-summary"`). Names must be unique across both inputs and outputs within a single contract; CapState construction throws on collisions. Files are accessed via named accessors — `capState.input(name)`, `capState.output(name)` — not by path.
 - **`role.md`** — Role description text
 - **`workflow.ts`** — default exports `WorkflowStep[]`. Each step may declare `skills: { mandatory?: string[], recommended?: ... }`
 - **`guidelines.md`** — Guidelines text

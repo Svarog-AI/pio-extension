@@ -3,8 +3,6 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { CapState } from "../../capability-state";
 import { launchCapability } from "../../capability-session";
 import { resolveGoalDir } from "../../fs-utils";
@@ -26,26 +24,24 @@ export const CONTRACT: CapabilityContract = {
 // CapabilityPackageConfig (single source of truth)
 // ---------------------------------------------------------------------------
 
-// ESM-compatible __dirname for resolving repo root (finalize-goal/config.ts → repo root)
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "../..");
-
 const capabilityConfig = {
   capability: "finalize-goal",
   contract: CONTRACT,
   skills: {
     mandatory: ["pio-project-knowledge", "pio-git"],
   },
-  writeAllowlist: [
-    path.join(repoRoot, ".pio/PROJECT/OVERVIEW.md"),
-    path.join(repoRoot, ".pio/PROJECT/DEVELOPMENT.md"),
-    path.join(repoRoot, ".pio/PROJECT/CONVENTIONS.md"),
-    path.join(repoRoot, ".pio/PROJECT/GIT.md"),
-    path.join(repoRoot, ".pio/PROJECT/ARCHITECTURE.md"),
-    path.join(repoRoot, ".pio/PROJECT/DEPENDENCIES.md"),
-    path.join(repoRoot, ".pio/PROJECT/GLOSSARY.md"),
-  ],
+  writeAllowlist: (_workingDir: string, _params?: Record<string, unknown>) => {
+    const projectDir = path.join(process.cwd(), ".pio", "PROJECT");
+    return [
+      path.join(projectDir, "OVERVIEW.md"),
+      path.join(projectDir, "DEVELOPMENT.md"),
+      path.join(projectDir, "CONVENTIONS.md"),
+      path.join(projectDir, "GIT.md"),
+      path.join(projectDir, "ARCHITECTURE.md"),
+      path.join(projectDir, "DEPENDENCIES.md"),
+      path.join(projectDir, "GLOSSARY.md"),
+    ];
+  },
   defaultInitialMessage: (_workingDir: string, params?: Record<string, unknown>) => {
     const goalDir = typeof params?.goalDir === "string" ? params.goalDir : "";
     const goalName = typeof params?.goalName === "string" ? params.goalName : "";

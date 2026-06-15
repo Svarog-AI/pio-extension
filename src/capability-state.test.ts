@@ -326,6 +326,295 @@ describe("createCapState factory", () => {
 });
 
 // ---------------------------------------------------------------------------
+// input(name) — lookup by name in contract.inputs
+// ---------------------------------------------------------------------------
+
+describe("input(name) — lookup by name in contract.inputs", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("tracer bullet — returns FileState for named input", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "goal", file: "GOAL.md" }],
+      outputs: [],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "GOAL.md", { title: "Test Goal" });
+    expect(capState.input("goal").exists()).toBe(true);
+  });
+
+  it("resolves placeholders in the file path using session params", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
+      outputs: [],
+    };
+    const capState = createCapState(contract, tempDir, { stepNumber: 3 });
+    const taskPath = path.join(tempDir, "S03", "TASK.md");
+    fs.mkdirSync(path.dirname(taskPath), { recursive: true });
+    fs.writeFileSync(taskPath, "# Task", "utf-8");
+    expect(capState.input("task").exists()).toBe(true);
+  });
+
+  it("validates frontmatter against the schema from the named entry", () => {
+    const contract: CapabilityContract = {
+      inputs: [
+        {
+          name: "plan",
+          file: "PLAN.md",
+          schema: Type.Object({
+            totalSteps: Type.Integer({ minimum: 1 }),
+          }),
+        },
+      ],
+      outputs: [],
+    };
+    const capState = createCapState(contract, tempDir);
+
+    // Valid frontmatter
+    writeWithFrontmatter(tempDir, "PLAN.md", { totalSteps: 3 });
+    const validData = capState.input<{ totalSteps: number }>("plan").read();
+    expect(validData).toEqual({ totalSteps: 3 });
+
+    // Invalid frontmatter — missing required field
+    writeWithFrontmatter(tempDir, "PLAN.md", { otherField: "value" });
+    expect(capState.input("plan").read()).toBe(null);
+  });
+
+  it("throws when the given name is not found in inputs", () => {
+    const capState = createCapState(minimalContract, tempDir);
+    expect(() => capState.input("nonexistent")).toThrow("Input 'nonexistent' not found in contract");
+  });
+
+  it("throws when name is not set on the input entry", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ file: "GOAL.md" }], // no name
+      outputs: [],
+    };
+    const capState = createCapState(contract, tempDir);
+    expect(() => capState.input("goal")).toThrow("Input 'goal' not found in contract");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// output(name) — lookup by name in contract.outputs
+// ---------------------------------------------------------------------------
+
+describe("output(name) — lookup by name in contract.outputs", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns FileState for named output", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "plan", file: "PLAN.md" }],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "PLAN.md", { totalSteps: 2 });
+    expect(capState.output("plan").exists()).toBe(true);
+  });
+
+  it("resolves placeholders in the file path using session params", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
+    };
+    const capState = createCapState(contract, tempDir, { stepNumber: 5 });
+    const taskPath = path.join(tempDir, "S05", "TASK.md");
+    fs.mkdirSync(path.dirname(taskPath), { recursive: true });
+    fs.writeFileSync(taskPath, "# Task", "utf-8");
+    expect(capState.output("task").exists()).toBe(true);
+  });
+
+  it("validates frontmatter against the schema from the named entry", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        {
+          name: "plan",
+          file: "PLAN.md",
+          schema: Type.Object({
+            totalSteps: Type.Integer({ minimum: 1 }),
+          }),
+        },
+      ],
+    };
+    const capState = createCapState(contract, tempDir);
+
+    writeWithFrontmatter(tempDir, "PLAN.md", { totalSteps: 4 });
+    const validData = capState.output<{ totalSteps: number }>("plan").read();
+    expect(validData).toEqual({ totalSteps: 4 });
+
+    writeWithFrontmatter(tempDir, "PLAN.md", { totalSteps: 0 });
+    expect(capState.output("plan").read()).toBe(null);
+  });
+
+  it("finds named files inside OneOfGroup entries", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        {
+          files: [
+            { name: "approved", file: "APPROVED" },
+            { name: "rejected", file: "REJECTED" },
+          ],
+        },
+      ],
+    };
+    const capState = createCapState(contract, tempDir);
+    fs.writeFileSync(path.join(tempDir, "APPROVED"), "", "utf-8");
+    expect(capState.output("approved").exists()).toBe(true);
+    expect(capState.output("rejected").exists()).toBe(false);
+  });
+
+  it("throws when the given name is not found in outputs", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "plan", file: "PLAN.md" }],
+    };
+    const capState = createCapState(contract, tempDir);
+    expect(() => capState.output("nonexistent")).toThrow("Output 'nonexistent' not found in contract");
+  });
+
+  it("throws when name is not set on the output entry", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ file: "PLAN.md" }], // no name
+    };
+    const capState = createCapState(contract, tempDir);
+    expect(() => capState.output("plan")).toThrow("Output 'plan' not found in contract");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// undeclared(path) — marker files not in any contract
+// ---------------------------------------------------------------------------
+
+describe("undeclared(path) — marker files not in any contract", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns FileState with no schema for marker files", () => {
+    const capState = createCapState(minimalContract, tempDir);
+    fs.writeFileSync(path.join(tempDir, "APPROVED"), "", "utf-8");
+    expect(capState.undeclared("APPROVED").exists()).toBe(true);
+  });
+
+  it("works with subdirectory paths", () => {
+    const capState = createCapState(minimalContract, tempDir);
+    const markerPath = path.join(tempDir, "S03", "REVISE_PLAN_NEEDED");
+    fs.mkdirSync(path.dirname(markerPath), { recursive: true });
+    fs.writeFileSync(markerPath, "", "utf-8");
+    expect(capState.undeclared("S03/REVISE_PLAN_NEEDED").exists()).toBe(true);
+  });
+
+  it("returns false for non-existent marker files", () => {
+    const capState = createCapState(minimalContract, tempDir);
+    expect(capState.undeclared("BLOCKED").exists()).toBe(false);
+  });
+
+  it("read() returns null for marker files with no frontmatter", () => {
+    const capState = createCapState(minimalContract, tempDir);
+    fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
+    expect(capState.undeclared("COMPLETED").read()).toBe(null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Duplicate name detection
+// ---------------------------------------------------------------------------
+
+describe("Duplicate name detection", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("throws when the same name appears in both inputs and outputs", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "plan", file: "GOAL.md" }],
+      outputs: [{ name: "plan", file: "PLAN.md" }],
+    };
+    expect(() => createCapState(contract, tempDir)).toThrow(
+      "Duplicate file name 'plan' in contract. Names must be unique across inputs and outputs.",
+    );
+  });
+
+  it("throws when the same name appears twice in inputs", () => {
+    const contract: CapabilityContract = {
+      inputs: [
+        { name: "plan", file: "PLAN.md" },
+        { name: "plan", file: "PLAN2.md" },
+      ],
+      outputs: [],
+    };
+    expect(() => createCapState(contract, tempDir)).toThrow(
+      "Duplicate file name 'plan' in contract. Names must be unique across inputs and outputs.",
+    );
+  });
+
+  it("throws when the same name appears twice in outputs", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "plan", file: "PLAN.md" },
+        { name: "plan", file: "PLAN2.md" },
+      ],
+    };
+    expect(() => createCapState(contract, tempDir)).toThrow(
+      "Duplicate file name 'plan' in contract. Names must be unique across inputs and outputs.",
+    );
+  });
+
+  it("throws when the same name appears in a OneOfGroup and inputs", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "approved", file: "APPROVED" }],
+      outputs: [
+        {
+          files: [{ name: "approved", file: "REJECTED" }],
+        },
+      ],
+    };
+    expect(() => createCapState(contract, tempDir)).toThrow(
+      "Duplicate file name 'approved' in contract. Names must be unique across inputs and outputs.",
+    );
+  });
+
+  it("does not throw when names are unique across inputs and outputs", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "goal", file: "GOAL.md" }],
+      outputs: [{ name: "plan", file: "PLAN.md" }],
+    };
+    expect(() => createCapState(contract, tempDir)).not.toThrow();
+  });
+
+  it("allows entries without names (name is optional in this step)", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ file: "GOAL.md" }], // no name
+      outputs: [{ file: "PLAN.md" }], // no name
+    };
+    expect(() => createCapState(contract, tempDir)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Concrete test — real create-plan CONTRACT
 // ---------------------------------------------------------------------------
 

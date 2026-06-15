@@ -50,40 +50,48 @@ function createGoalTree(
 // ---------------------------------------------------------------------------
 
 describe("config", () => {
+  function getAllowlist(): string[] {
+    return (config.writeAllowlist as Function)("/dummy", {});
+  }
+
+  it("writeAllowlist is a callback function", () => {
+    expect(typeof config.writeAllowlist).toBe("function");
+  });
+
   it("writeAllowlist contains exactly 7 file paths", () => {
-    expect(config.writeAllowlist).toHaveLength(7);
+    expect(getAllowlist()).toHaveLength(7);
   });
 
   it("writeAllowlist includes OVERVIEW.md (absolute path)", () => {
-    expect(config.writeAllowlist.some((p: string) => p.endsWith(".pio/PROJECT/OVERVIEW.md"))).toBe(true);
+    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/OVERVIEW.md"))).toBe(true);
   });
 
   it("writeAllowlist includes DEVELOPMENT.md (absolute path)", () => {
-    expect(config.writeAllowlist.some((p: string) => p.endsWith(".pio/PROJECT/DEVELOPMENT.md"))).toBe(true);
+    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/DEVELOPMENT.md"))).toBe(true);
   });
 
   it("writeAllowlist includes CONVENTIONS.md (absolute path)", () => {
-    expect(config.writeAllowlist.some((p: string) => p.endsWith(".pio/PROJECT/CONVENTIONS.md"))).toBe(true);
+    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/CONVENTIONS.md"))).toBe(true);
   });
 
   it("writeAllowlist includes GIT.md (absolute path)", () => {
-    expect(config.writeAllowlist.some((p: string) => p.endsWith(".pio/PROJECT/GIT.md"))).toBe(true);
+    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/GIT.md"))).toBe(true);
   });
 
   it("writeAllowlist includes ARCHITECTURE.md (absolute path)", () => {
-    expect(config.writeAllowlist.some((p: string) => p.endsWith(".pio/PROJECT/ARCHITECTURE.md"))).toBe(true);
+    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/ARCHITECTURE.md"))).toBe(true);
   });
 
   it("writeAllowlist includes DEPENDENCIES.md (absolute path)", () => {
-    expect(config.writeAllowlist.some((p: string) => p.endsWith(".pio/PROJECT/DEPENDENCIES.md"))).toBe(true);
+    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/DEPENDENCIES.md"))).toBe(true);
   });
 
   it("writeAllowlist includes GLOSSARY.md (absolute path)", () => {
-    expect(config.writeAllowlist.some((p: string) => p.endsWith(".pio/PROJECT/GLOSSARY.md"))).toBe(true);
+    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/GLOSSARY.md"))).toBe(true);
   });
 
-  it("writeAllowlist paths are all absolute (ESM __dirname resolves correctly)", () => {
-    for (const p of config.writeAllowlist) {
+  it("writeAllowlist paths are all absolute (resolved from process.cwd())", () => {
+    for (const p of getAllowlist()) {
       expect(path.isAbsolute(p)).toBe(true);
     }
   });

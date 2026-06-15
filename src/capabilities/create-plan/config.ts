@@ -38,7 +38,7 @@ const STEP_HEADING_RE = /^### Step \d+:/gm;
 export function postValidateCreatePlan(goalDir: string): { success: boolean; message?: string } {
   // Step 1: Validate frontmatter via CapState
   const capState = new CapState(CONTRACT, goalDir);
-  const planFile = capState.file<PlanFrontmatter>("PLAN.md");
+  const planFile = capState.output<PlanFrontmatter>("plan");
 
   if (!planFile.exists()) {
     return { success: false, message: "PLAN.md not found" };
@@ -117,9 +117,9 @@ export function postValidateCreatePlan(goalDir: string): { success: boolean; mes
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ file: "GOAL.md" }],
+  inputs: [{ name: "goal", file: "GOAL.md" }],
   excludedFiles: ["PLAN.md"],
-  outputs: [{ file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
+  outputs: [{ name: "plan", file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
 };
 
 // ---------------------------------------------------------------------------

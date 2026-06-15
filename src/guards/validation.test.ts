@@ -36,7 +36,7 @@ describe("validateOutputs with CapabilityContract", () => {
 
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "PLAN.md" }, { file: "SUMMARY.md" }],
+      outputs: [{ name: "plan", file: "PLAN.md" }, { name: "summary", file: "SUMMARY.md" }],
     };
 
     const result = validateOutputs(contract, tempDir);
@@ -48,7 +48,7 @@ describe("validateOutputs with CapabilityContract", () => {
 
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "PLAN.md" }, { file: "SUMMARY.md" }],
+      outputs: [{ name: "plan", file: "PLAN.md" }, { name: "summary", file: "SUMMARY.md" }],
     };
 
     const result = validateOutputs(contract, tempDir);
@@ -70,8 +70,8 @@ describe("validateOutputs with CapabilityContract", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        { file: "PLAN.md" },
-        { file: "DECISIONS.md", requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1 },
+        { name: "plan", file: "PLAN.md" },
+        { name: "decisions", file: "DECISIONS.md", requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1 },
       ],
     };
 
@@ -86,8 +86,8 @@ describe("validateOutputs with CapabilityContract", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        { file: "PLAN.md" },
-        { file: "DECISIONS.md", requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1 },
+        { name: "plan", file: "PLAN.md" },
+        { name: "decisions", file: "DECISIONS.md", requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1 },
       ],
     };
 
@@ -103,8 +103,8 @@ describe("validateOutputs with CapabilityContract", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        { file: "PLAN.md" },
-        { file: "DECISIONS.md", requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1 },
+        { name: "plan", file: "PLAN.md" },
+        { name: "decisions", file: "DECISIONS.md", requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1 },
       ],
     };
 
@@ -119,8 +119,8 @@ describe("validateOutputs with CapabilityContract", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        { file: "PLAN.md" },
-        { files: [{ file: "APPROVED" }, { file: "REJECTED" }] }, // OneOfGroup
+        { name: "plan", file: "PLAN.md" },
+        { files: [{ name: "approved", file: "APPROVED" }, { name: "rejected", file: "REJECTED" }] }, // OneOfGroup
       ],
     };
 
@@ -134,7 +134,7 @@ describe("validateOutputs with CapabilityContract", () => {
   it("COMPLETION_SUMMARY.md bypass still works with contract", () => {
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "PLAN.md" }, { file: "SUMMARY.md" }],
+      outputs: [{ name: "plan", file: "PLAN.md" }, { name: "summary", file: "SUMMARY.md" }],
     };
 
     // COMPLETION_SUMMARY.md exists, but PLAN.md and SUMMARY.md are missing
@@ -150,7 +150,7 @@ describe("validateOutputs with CapabilityContract", () => {
 
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "S{stepNumber:02d}/TASK.md" }],
+      outputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
     };
 
     const result = validateOutputs(contract, tempDir, { stepNumber: 3 });
@@ -160,7 +160,7 @@ describe("validateOutputs with CapabilityContract", () => {
   it("placeholder resolution — file missing with resolved path", () => {
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "S{stepNumber:02d}/TASK.md" }],
+      outputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
     };
 
     const result = validateOutputs(contract, tempDir, { stepNumber: 3 });
@@ -176,7 +176,7 @@ describe("validateOutputs with CapabilityContract", () => {
     const schema = Type.Object({ totalSteps: Type.Integer({ minimum: 1 }) });
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "PLAN.md", schema }],
+      outputs: [{ name: "plan", file: "PLAN.md", schema }],
     };
 
     fs.writeFileSync(
@@ -197,7 +197,7 @@ totalSteps: 3
     const schema = Type.Object({ totalSteps: Type.Integer({ minimum: 1 }) });
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "PLAN.md", schema }],
+      outputs: [{ name: "plan", file: "PLAN.md", schema }],
     };
 
     fs.writeFileSync(
@@ -220,7 +220,7 @@ totalSteps: -5
     const schema = Type.Object({ totalSteps: Type.Integer() });
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "PLAN.md", schema }],
+      outputs: [{ name: "plan", file: "PLAN.md", schema }],
     };
 
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "# Plan\n\nNo frontmatter.", "utf-8");
@@ -234,7 +234,7 @@ totalSteps: -5
   it("output entry without schema → skip frontmatter validation (existence only)", () => {
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "PLAN.md" }], // no schema
+      outputs: [{ name: "plan", file: "PLAN.md" }], // no schema
     };
 
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "just plain text", "utf-8");
@@ -248,8 +248,8 @@ totalSteps: -5
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        { file: "PLAN.md", schema },
-        { file: "SUMMARY.md" },
+        { name: "plan", file: "PLAN.md", schema },
+        { name: "summary", file: "SUMMARY.md" },
       ],
     };
 
@@ -275,7 +275,7 @@ totalSteps: -5
     const schema = Type.Object({ decision: Type.String() });
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "S{stepNumber:02d}/REVIEW.md", schema }],
+      outputs: [{ name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema }],
     };
 
     fs.mkdirSync(path.join(tempDir, "S02"), { recursive: true });
@@ -311,7 +311,7 @@ describe("validateFrontmatter with CapabilityContract", () => {
     const schema = Type.Object({ totalSteps: Type.Integer({ minimum: 1 }) });
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "PLAN.md", schema }],
+      outputs: [{ name: "plan", file: "PLAN.md", schema }],
     };
 
     fs.writeFileSync(
@@ -332,7 +332,7 @@ totalSteps: 3
     const schema = Type.Object({ totalSteps: Type.Integer({ minimum: 1 }) });
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "PLAN.md", schema }],
+      outputs: [{ name: "plan", file: "PLAN.md", schema }],
     };
 
     fs.writeFileSync(
@@ -352,7 +352,7 @@ totalSteps: 3
   it("outputs without schema — skipped (no frontmatter validation)", () => {
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "PLAN.md" }], // no schema
+      outputs: [{ name: "plan", file: "PLAN.md" }], // no schema
     };
 
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "just plain text", "utf-8");
@@ -376,8 +376,8 @@ totalSteps: 3
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        { file: "PLAN.md", schema },
-        { file: "SUMMARY.md" }, // no schema — skip
+        { name: "plan", file: "PLAN.md", schema },
+        { name: "summary", file: "SUMMARY.md" }, // no schema — skip
       ],
     };
 
@@ -415,7 +415,7 @@ describe("validateInputs with CapabilityContract", () => {
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
 
     const contract: CapabilityContract = {
-      inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }],
+      inputs: [{ name: "goal", file: "GOAL.md" }, { name: "plan", file: "PLAN.md" }],
       outputs: [],
     };
 
@@ -427,7 +427,7 @@ describe("validateInputs with CapabilityContract", () => {
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
 
     const contract: CapabilityContract = {
-      inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }],
+      inputs: [{ name: "goal", file: "GOAL.md" }, { name: "plan", file: "PLAN.md" }],
       outputs: [],
     };
 
@@ -441,7 +441,7 @@ describe("validateInputs with CapabilityContract", () => {
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
 
     const contract: CapabilityContract = {
-      inputs: [{ file: "GOAL.md" }],
+      inputs: [{ name: "goal", file: "GOAL.md" }],
       excludedFiles: ["PLAN.md"],
       outputs: [],
     };
@@ -456,7 +456,7 @@ describe("validateInputs with CapabilityContract", () => {
     fs.writeFileSync(path.join(tempDir, "S02", "TASK.md"), "content", "utf-8");
 
     const contract: CapabilityContract = {
-      inputs: [{ file: "S{stepNumber:02d}/TASK.md" }],
+      inputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
       outputs: [],
     };
 
@@ -466,7 +466,7 @@ describe("validateInputs with CapabilityContract", () => {
 
   it("placeholder resolution — missing resolved file → failure", () => {
     const contract: CapabilityContract = {
-      inputs: [{ file: "S{stepNumber:02d}/TASK.md" }],
+      inputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
       outputs: [],
     };
 
@@ -481,7 +481,7 @@ describe("validateInputs with CapabilityContract", () => {
     fs.writeFileSync(path.join(tempDir, "S01", "REVISE_PLAN_NEEDED"), "", "utf-8");
 
     const contract: CapabilityContract = {
-      inputs: [{ file: "GOAL.md" }],
+      inputs: [{ name: "goal", file: "GOAL.md" }],
       excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
       outputs: [],
     };
@@ -503,7 +503,7 @@ describe("validateInputs with CapabilityContract", () => {
 
   it("unresolved placeholder in input path → failure with descriptive message", () => {
     const contract: CapabilityContract = {
-      inputs: [{ file: "S{stepNumber:02d}/TASK.md" }],
+      inputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
       outputs: [],
     };
 
@@ -533,7 +533,7 @@ describe("validateInputs with CapabilityContract", () => {
   it("valid input frontmatter → success", () => {
     const schema = Type.Object({ totalSteps: Type.Integer({ minimum: 1 }) });
     const contract: CapabilityContract = {
-      inputs: [{ file: "PLAN.md", schema }],
+      inputs: [{ name: "plan", file: "PLAN.md", schema }],
       outputs: [],
     };
 
@@ -554,7 +554,7 @@ totalSteps: 3
   it("invalid input frontmatter (schema mismatch) → failure with field errors", () => {
     const schema = Type.Object({ totalSteps: Type.Integer({ minimum: 1 }) });
     const contract: CapabilityContract = {
-      inputs: [{ file: "PLAN.md", schema }],
+      inputs: [{ name: "plan", file: "PLAN.md", schema }],
       outputs: [],
     };
 
@@ -577,7 +577,7 @@ totalSteps: -5
   it("missing frontmatter (no YAML delimiters) on input with schema → failure", () => {
     const schema = Type.Object({ totalSteps: Type.Integer() });
     const contract: CapabilityContract = {
-      inputs: [{ file: "PLAN.md", schema }],
+      inputs: [{ name: "plan", file: "PLAN.md", schema }],
       outputs: [],
     };
 
@@ -591,7 +591,7 @@ totalSteps: -5
 
   it("input entry without schema → skip frontmatter validation (existence only)", () => {
     const contract: CapabilityContract = {
-      inputs: [{ file: "PLAN.md" }], // no schema
+      inputs: [{ name: "plan", file: "PLAN.md" }], // no schema
       outputs: [],
     };
 
@@ -604,7 +604,7 @@ totalSteps: -5
   it("placeholder resolution works with frontmatter validation", () => {
     const schema = Type.Object({ skills: Type.Array(Type.String()) });
     const contract: CapabilityContract = {
-      inputs: [{ file: "S{stepNumber:02d}/TASK.md", schema }],
+      inputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md", schema }],
       outputs: [],
     };
 
@@ -627,7 +627,7 @@ skills:
   it("placeholder resolution — invalid frontmatter in resolved path → failure", () => {
     const schema = Type.Object({ skills: Type.Array(Type.String()) });
     const contract: CapabilityContract = {
-      inputs: [{ file: "S{stepNumber:02d}/TASK.md", schema }],
+      inputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md", schema }],
       outputs: [],
     };
 
@@ -675,7 +675,7 @@ describe("createFrontmatterValidator with CapabilityContract", () => {
     const schema = Type.Object({ name: Type.String() });
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "output.md", schema }],
+      outputs: [{ name: "output", file: "output.md", schema }],
     };
     const validator = createFrontmatterValidator(contract);
 
@@ -697,7 +697,7 @@ content
     const schema = Type.Object({ name: Type.String() });
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "missing.md", schema }],
+      outputs: [{ name: "missing", file: "missing.md", schema }],
     };
     const validator = createFrontmatterValidator(contract);
 
@@ -1281,7 +1281,7 @@ describe("validateOutputs — unresolved placeholder handling", () => {
   it("returns failed result when placeholder key is missing from params (no crash)", () => {
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "S{stepNumber:02d}/TASK.md" }],
+      outputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
     };
 
     // stepNumber is missing — resolvePaths would throw without try/catch
@@ -1293,7 +1293,7 @@ describe("validateOutputs — unresolved placeholder handling", () => {
   it("returns failed result when placeholder key is missing (no params at all)", () => {
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "S{stepNumber:02d}/TASK.md" }],
+      outputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
     };
 
     const result = validateOutputs(contract, tempDir);
@@ -1307,7 +1307,7 @@ describe("validateOutputs — unresolved placeholder handling", () => {
 
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "S{stepNumber:02d}/TASK.md" }],
+      outputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
     };
 
     const result = validateOutputs(contract, tempDir, { stepNumber: 3 });
@@ -1329,7 +1329,7 @@ describe("validateFrontmatter — unresolved placeholder handling", () => {
     const schema = Type.Object({ totalSteps: Type.Integer() });
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "S{stepNumber:02d}/REVIEW.md", schema }],
+      outputs: [{ name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema }],
     };
 
     // stepNumber is missing — resolvePaths would throw without try/catch
@@ -1342,7 +1342,7 @@ describe("validateFrontmatter — unresolved placeholder handling", () => {
     const schema = Type.Object({ totalSteps: Type.Integer() });
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "S{stepNumber:02d}/REVIEW.md", schema }],
+      outputs: [{ name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema }],
     };
 
     const result = validateFrontmatter(contract, tempDir);
@@ -1354,7 +1354,7 @@ describe("validateFrontmatter — unresolved placeholder handling", () => {
     const schema = Type.Object({ decision: Type.String() });
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "S{stepNumber:02d}/REVIEW.md", schema }],
+      outputs: [{ name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema }],
     };
 
     fs.mkdirSync(path.join(tempDir, "S02"), { recursive: true });

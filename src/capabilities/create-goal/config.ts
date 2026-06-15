@@ -15,7 +15,7 @@ import type { CapabilityPackageConfig } from "../../capability-package";
 
 export const CONTRACT: CapabilityContract = {
   inputs: [],
-  outputs: [{ file: "GOAL.md" }],
+  outputs: [{ name: "goal", file: "GOAL.md" }],
 };
 
 // ---------------------------------------------------------------------------

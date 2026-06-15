@@ -160,16 +160,17 @@ describe("unified contract types", () => {
     const planSchema = Type.Object({ totalSteps: Type.Integer() });
 
     const contract: CapabilityContract = {
-      inputs: [{ file: "PLAN.md" }],
+      inputs: [{ name: "plan", file: "PLAN.md" }],
       excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
       outputs: [
-        { file: "S{stepNumber:02d}/TASK.md", schema: planSchema },
+        { name: "task", file: "S{stepNumber:02d}/TASK.md", schema: planSchema },
         {
+          name: "decisions",
           file: "S{stepNumber:02d}/DECISIONS.md",
           requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1,
         },
         {
-          files: [{ file: "APPROVED" }, { file: "REJECTED" }],
+          files: [{ name: "approved", file: "APPROVED" }, { name: "rejected", file: "REJECTED" }],
         } satisfies OneOfGroup,
       ],
     };

@@ -61,7 +61,7 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at baseDir", () => {
 
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "TASK.md" }, { file: "TEST.md" }],
+      outputs: [{ name: "task", file: "TASK.md" }, { name: "test", file: "TEST.md" }],
     };
 
     // Act
@@ -77,7 +77,7 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at baseDir", () => {
 
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "COMPLETION_SUMMARY.md" }],
+      outputs: [{ name: "completion-summary", file: "COMPLETION_SUMMARY.md" }],
     };
 
     // Act
@@ -91,7 +91,7 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at baseDir", () => {
     // Arrange: temp dir with no COMPLETION_SUMMARY.md, no TASK.md
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "TASK.md" }],
+      outputs: [{ name: "task", file: "TASK.md" }],
     };
 
     // Act
@@ -110,7 +110,7 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at baseDir", () => {
 
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ file: "S01/TASK.md" }],
+      outputs: [{ name: "task", file: "S01/TASK.md" }],
     };
 
     // Act

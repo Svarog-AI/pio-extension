@@ -23,6 +23,8 @@ import type { TSchema } from "typebox";
  * against the TypeBox schema.
  */
 export interface MarkdownFileSpec {
+  /** Short unique identifier for named accessor lookup (e.g. "task", "review", "plan"). Required — used by input()/output() accessors. */
+  name: string;
   /** Relative file path with `{key}` / `{key:format}` placeholder support */
   file: string;
   /** Optional TypeBox schema for YAML frontmatter validation — plain existence check when absent */

@@ -71,7 +71,7 @@ export function postValidateReview(goalDir: string, params?: Record<string, unkn
 
   // Read REVIEW.md via CapState — uses CONTRACT.outputs schema for validation
   const capState = new CapState(CONTRACT, goalDir, { stepNumber });
-  const reviewFile = capState.file<ReviewOutputs>("S{stepNumber:02d}/REVIEW.md");
+  const reviewFile = capState.output<ReviewOutputs>("review");
 
   if (!reviewFile.exists()) {
     return { success: false, message: `REVIEW.md not found in S${String(stepNumber).padStart(2, "0")}/` };
@@ -108,7 +108,7 @@ export function postExecuteReview(goalDir: string, params?: Record<string, unkno
 
   // Re-read REVIEW.md via CapState (reads fresh from disk on every call)
   const capState = new CapState(CONTRACT, goalDir, { stepNumber });
-  const reviewFile = capState.file<ReviewOutputs>("S{stepNumber:02d}/REVIEW.md");
+  const reviewFile = capState.output<ReviewOutputs>("review");
 
   if (!reviewFile.exists()) {
     console.warn(`pio: postExecuteReview — REVIEW.md not found in S${String(stepNumber).padStart(2, "0")}/`);

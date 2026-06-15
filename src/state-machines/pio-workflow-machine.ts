@@ -1,6 +1,6 @@
 import type { StateMachine, ResolverResult } from "../state-machines";
 import { registerMachine } from "../state-machines";
-import { resolveGoalDir, discoverNextStep } from "../fs-utils";
+import { resolveGoalDir, discoverNextStep, stepFolderName } from "../fs-utils";
 import { getCapState } from "./utils";
 import type { ReviewOutputs } from "../capabilities/review-task/schemas";
 
@@ -51,7 +51,8 @@ function resolveEvolvePlanToRevisePlan(
 
   if (explicitStepNumber != null) {
     const evolveState = getCapState("evolve-plan", ctx.baseDir, { stepNumber: explicitStepNumber });
-    if (evolveState.file("S{stepNumber:02d}/REVISE_PLAN_NEEDED").exists()) {
+    const revisePlanPath = stepFolderName(explicitStepNumber) + "/REVISE_PLAN_NEEDED";
+    if (evolveState.undeclared(revisePlanPath).exists()) {
       return {
         capability: "revise-plan",
         params: { goalName, revisionTriggerStep: explicitStepNumber },
@@ -80,7 +81,7 @@ function resolveEvolvePlanToFinalizeGoal(
   const goalName = extractGoalName(params);
 
   const evolveState = getCapState("evolve-plan", ctx.baseDir);
-  if (evolveState.file("COMPLETION_SUMMARY.md").exists()) {
+  if (evolveState.output("completion-summary").exists()) {
     const cwd = process.cwd();
     const goalDir = resolveGoalDir(cwd, goalName!);
     return {
@@ -102,14 +103,15 @@ function resolveEvolvePlanToExecuteTask(
 
   // Guard: if all plan steps are complete, finalize-goal edge should have fired.
   const evolveState = getCapState("evolve-plan", ctx.baseDir);
-  if (evolveState.file("COMPLETION_SUMMARY.md").exists()) {
+  if (evolveState.output("completion-summary").exists()) {
     return undefined;
   }
 
   // Guard: if the current step signals revision, that edge should have fired instead.
   if (explicitStepNumber != null) {
     const evolveWithStep = getCapState("evolve-plan", ctx.baseDir, { stepNumber: explicitStepNumber });
-    if (evolveWithStep.file("S{stepNumber:02d}/REVISE_PLAN_NEEDED").exists()) {
+    const revisePlanPath = stepFolderName(explicitStepNumber) + "/REVISE_PLAN_NEEDED";
+    if (evolveWithStep.undeclared(revisePlanPath).exists()) {
       return undefined;
     }
   }
@@ -163,7 +165,7 @@ function resolveReviewTaskToEvolvePlan(
   }
 
   const reviewState = getCapState("review-task", ctx.baseDir, { stepNumber });
-  const reviewData = reviewState.file<ReviewOutputs>("S{stepNumber:02d}/REVIEW.md").read();
+  const reviewData = reviewState.output<ReviewOutputs>("review").read();
 
   if (reviewData?.decision === "APPROVED") {
     return {
@@ -188,7 +190,7 @@ function resolveReviewTaskToExecuteTask(
   }
 
   const reviewState = getCapState("review-task", ctx.baseDir, { stepNumber });
-  const reviewData = reviewState.file<ReviewOutputs>("S{stepNumber:02d}/REVIEW.md").read();
+  const reviewData = reviewState.output<ReviewOutputs>("review").read();
 
   // Fire only when the step is rejected — re-execute the same step.
   // When approved, the evolve-plan edge fires instead (checked first in edges array).

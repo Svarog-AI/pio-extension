@@ -480,7 +480,7 @@ const transitionTool = defineTool({
   }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const config = getSessionConfig(ctx as unknown as ExtensionCommandContext);
+    const config = await getSessionConfig(ctx as unknown as ExtensionCommandContext);
     if (!config) {
       return { content: [{ type: "text", text: "Not inside a capability session. Cannot determine transition context." }], details: {} };
     }
@@ -524,7 +524,7 @@ const transitionTool = defineTool({
 // ---------------------------------------------------------------------------
 
 async function handleTransition(_args: string | undefined, ctx: ExtensionCommandContext) {
-  const config = getSessionConfig(ctx);
+  const config = await getSessionConfig(ctx);
 
   if (!config?.capability) {
     ctx.ui.notify("Not inside a capability session. Cannot determine transition context.", "info");

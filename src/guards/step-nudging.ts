@@ -192,7 +192,7 @@ export function setupStepNudging(pi: ExtensionAPI) {
 
   // 2. Detect capability sub-sessions and initialize state
   pi.on("resources_discover", async (_event, ctx) => {
-    const config = getSessionConfig(ctx);
+    const config = await getSessionConfig(ctx);
 
     if (config) {
       isActivePioSession = true;

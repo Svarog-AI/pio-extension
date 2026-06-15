@@ -153,6 +153,16 @@ vi.mock("./state-machines/pio-workflow-machine", async (importOriginal) => {
 });
 
 // ---------------------------------------------------------------------------
+// Top-level mock for capability-config (used by getSessionConfig in resources_discover)
+// ---------------------------------------------------------------------------
+
+const mockResolveCapabilityConfigForSession = vi.hoisted(() => vi.fn());
+
+vi.mock("./capability-config", () => ({
+  resolveCapabilityConfig: mockResolveCapabilityConfigForSession,
+}));
+
+// ---------------------------------------------------------------------------
 // getSessionGoalName tests
 // These test the real implementation logic by mocking getSessionParams()
 // ---------------------------------------------------------------------------
@@ -226,6 +236,12 @@ describe("handleNextTask — goal resolution order", () => {
     enqueueTaskFile(tempDir, "other-goal");
     enqueueTaskFile(tempDir, "session-goal");
     sessionCapabilityMock.getSessionParams.mockReturnValue({ goalName: "other-goal" });
+    mockResolveCapabilityConfigForSession.mockResolvedValue({
+      capability: "create-plan",
+      workingDir: tempDir,
+      sessionParams: { goalName: "other-goal" },
+      contract: { inputs: [], outputs: [] },
+    });
 
     const ctx = makeCtx();
 
@@ -246,6 +262,12 @@ describe("handleNextTask — goal resolution order", () => {
     // Arrange: exactly one pending goal, no session context (no goalName)
     enqueueTaskFile(tempDir, "only-goal");
     sessionCapabilityMock.getSessionParams.mockReturnValue(undefined);
+    mockResolveCapabilityConfigForSession.mockResolvedValue({
+      capability: "create-plan",
+      workingDir: tempDir,
+      sessionParams: { goalName: "only-goal" },
+      contract: { inputs: [], outputs: [] },
+    });
 
     const ctx = makeCtx();
 
@@ -302,6 +324,20 @@ describe("model resolution — setupSessionInfrastructure and before_agent_start
     vi.resetModules();
     tempHomeDir = createTempDir();
     process.env.PIO_CONFIG_TEST_HOME = tempHomeDir;
+    mockResolveCapabilityConfigForSession.mockClear();
+    mockResolveCapabilityConfigForSession.mockImplementation((_cwd, params) => {
+      const cap = typeof params?.capability === "string" ? params.capability : "unknown";
+      // getSessionConfig passes { capability, ...sessionParams } to resolveCapabilityConfig.
+      // Tests may put skills/other fields in sessionParams for the mock to pick up.
+      const { capability: _cap, ...rest } = params ?? {};
+      return {
+        capability: cap,
+        workingDir: rest.workingDir ?? "/test/.pio/goals/test",
+        sessionParams: rest,
+        contract: { inputs: [], outputs: [] },
+        skills: rest.skills ?? undefined,
+      };
+    });
   });
 
   afterEach(() => {
@@ -352,11 +388,12 @@ describe("model resolution — setupSessionInfrastructure and before_agent_start
                   customType: "pio-config",
                   data: {
                     capability: capabilityName,
-                    prompt: "create-goal.md",
+                    sessionParams: {},
                   },
                 },
               ],
             },
+            cwd: process.cwd(),
           },
         );
       },
@@ -570,7 +607,7 @@ describe("model resolution — backwards compatibility", () => {
         {
           sessionManager: {
             getEntries: () => [
-              { type: "custom", customType: "pio-config", data: { capability: "create-goal" } },
+              { type: "custom", customType: "pio-config", data: { capability: "create-goal", sessionParams: {} } },
             ],
           },
         },
@@ -990,8 +1027,7 @@ describe("skill injection — before_agent_start integration", () => {
                 customType: "pio-config",
                 data: {
                   capability: "test-cap",
-                  prompt: "create-goal.md",
-                  skills: { mandatory: ["test-skill"] },
+                  sessionParams: { skills: { mandatory: ["test-skill"] } },
                 },
               },
             ],
@@ -1120,8 +1156,7 @@ describe("skill injection — before_agent_start integration", () => {
                 customType: "pio-config",
                 data: {
                   capability: "test-cap",
-                  prompt: "create-goal.md",
-                  skills: { mandatory: ["cached-skill"] },
+                  sessionParams: { skills: { mandatory: ["cached-skill"] } },
                 },
               },
             ],
@@ -1259,8 +1294,7 @@ describe("resources_discover — skill loading uses buildSkillLoadingSection", (
                 customType: "pio-config",
                 data: {
                   capability: "test-cap",
-                  prompt: "create-goal.md",
-                  skills: { mandatory: ["dynamic-skill"] },
+                  sessionParams: { skills: { mandatory: ["dynamic-skill"] } },
                 },
               },
             ],
@@ -1338,7 +1372,7 @@ describe("prompt compiler integration — resources_discover", () => {
             {
               type: "custom",
               customType: "pio-config",
-              data: { capability: "test-cap", skills: { mandatory: ["tdd"] } },
+              data: { capability: "test-cap", sessionParams: { skills: { mandatory: ["tdd"] } } },
             },
           ],
         },
@@ -1385,7 +1419,7 @@ describe("prompt compiler integration — resources_discover", () => {
               {
                 type: "custom",
                 customType: "pio-config",
-                data: { capability: "broken-cap" },
+                data: { capability: "broken-cap", sessionParams: {} },
               },
             ],
           },
@@ -1461,7 +1495,7 @@ describe("workflow steps population — enrichedSessionParams", () => {
             {
               type: "custom",
               customType: "pio-config",
-              data: { capability: "test-cap" },
+              data: { capability: "test-cap", sessionParams: {} },
             },
           ],
         },
@@ -1570,7 +1604,7 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
             {
               type: "custom",
               customType: "pio-config",
-              data: { capability: "test-cap" },
+              data: { capability: "test-cap", sessionParams: {} },
             },
           ],
         },
@@ -1636,7 +1670,7 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
             {
               type: "custom",
               customType: "pio-config",
-              data: { capability: "test-cap" },
+              data: { capability: "test-cap", sessionParams: {} },
             },
           ],
         },

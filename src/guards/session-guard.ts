@@ -159,7 +159,7 @@ export function setupSessionGuard(pi: ExtensionAPI) {
 
   // 1. Detect pio sub-sessions at startup
   pi.on("resources_discover", async (_event, ctx) => {
-    const config = getSessionConfig(ctx);
+    const config = await getSessionConfig(ctx);
     isActivePioSession = !!config;
   });
 

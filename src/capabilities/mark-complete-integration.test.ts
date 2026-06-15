@@ -11,8 +11,8 @@ vi.mock("../prompt-compiler", () => ({
   compilePrompt: vi.fn().mockResolvedValue({
     role: "## Role\n\nTest role.",
     workflow: "## Workflow\n\n1. Test step",
-    guidelines: undefined,
-    mergedSkills: {},
+    guidelines: "## Guidelines\n\nTest guidelines.",
+    mergedSkills: { mandatory: ["pio", "ask-user"] },
   }),
 }));
 
@@ -74,18 +74,24 @@ function setupGoalWorkspace(tempCwd: string, reviewContent: string): { goalDir: 
 
 /**
  * Create a mock context with the given config data.
+ * getSessionConfig() now stores only { capability, sessionParams } in the entry
+ * and reconstructs the full config via resolveCapabilityConfig().
  */
-function makeMockCtx(configData: Record<string, unknown>) {
+function makeMockCtx(configData: Record<string, unknown>, cwd: string) {
   return {
     sessionManager: {
       getEntries: () => [
         {
           type: "custom" as const,
           customType: "pio-config" as const,
-          data: configData,
+          data: {
+            capability: configData.capability,
+            sessionParams: configData.sessionParams,
+          },
         },
       ],
     },
+    cwd,
   };
 }
 
@@ -162,7 +168,7 @@ APPROVED
       stepNumber: 1,
     });
 
-    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>);
+    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
 
     // Act
     const result = await getRegisteredTool()!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
@@ -206,7 +212,7 @@ REJECTED
       stepNumber: 1,
     });
 
-    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>);
+    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
 
     // Act
     const result = await getRegisteredTool()!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
@@ -247,7 +253,7 @@ Missing decision field.
       stepNumber: 1,
     });
 
-    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>);
+    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
 
     // Act
     const result = await getRegisteredTool()!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
@@ -287,7 +293,7 @@ Invalid decision value.
       stepNumber: 1,
     });
 
-    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>);
+    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
 
     // Act
     const result = await getRegisteredTool()!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
@@ -316,7 +322,7 @@ Invalid decision value.
       stepNumber: 1,
     });
 
-    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>);
+    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
 
     // Act
     const result = await getRegisteredTool()!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
@@ -346,7 +352,7 @@ Invalid decision value.
       stepNumber: 1,
     });
 
-    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>);
+    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
 
     // Act
     const result = await getRegisteredTool()!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);

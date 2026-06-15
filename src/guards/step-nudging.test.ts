@@ -1,3 +1,4 @@
+import { vi, beforeEach } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   setupStepNudging,
@@ -8,6 +9,28 @@ import {
   __testSetTotalWorkflowSteps,
   __testSetStepsList,
 } from "./step-nudging";
+
+// Mock resolveCapabilityConfig so getSessionConfig() returns a full config with live functions
+const mockResolveCapabilityConfig = vi.hoisted(() => vi.fn());
+
+vi.mock("../capability-config", () => ({
+  resolveCapabilityConfig: mockResolveCapabilityConfig,
+}));
+
+// Default mock: return a minimal valid config
+beforeEach(() => {
+  mockResolveCapabilityConfig.mockClear();
+  mockResolveCapabilityConfig.mockImplementation((_cwd, params) => {
+    const cap = typeof params?.capability === "string" ? params.capability : "unknown";
+    // resolveCapabilityConfig stores the full params object as sessionParams
+    return {
+      capability: cap,
+      workingDir: params?.workingDir ?? "/test/.pio/goals/test",
+      sessionParams: params ?? {},
+      contract: { inputs: [], outputs: [] },
+    };
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Helpers — mock ExtensionAPI
@@ -204,14 +227,14 @@ describe("resources_discover — session detection and state initialization", ()
 
     const mockSessionManager = {
       getEntries(): MockEntry[] {
-        return [{ type: "custom", customType: "pio-config", data: {} }];
+        return [{ type: "custom", customType: "pio-config", data: { capability: "create-goal", sessionParams: {} } }];
       },
     };
 
     setupStepNudging(pi);
 
     const discoverHandlers = handlers.get("resources_discover");
-    const mockCtx = { sessionManager: mockSessionManager } as any;
+    const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
       await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
     }
@@ -231,7 +254,7 @@ describe("resources_discover — session detection and state initialization", ()
     setupStepNudging(pi);
 
     const discoverHandlers = handlers.get("resources_discover");
-    const mockCtx = { sessionManager: mockSessionManager } as any;
+    const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
       await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
     }
@@ -249,6 +272,7 @@ describe("resources_discover — session detection and state initialization", ()
             type: "custom",
             customType: "pio-config",
             data: {
+              capability: "execute-task",
               sessionParams: { totalWorkflowSteps: 5 },
             },
           },
@@ -259,7 +283,7 @@ describe("resources_discover — session detection and state initialization", ()
     setupStepNudging(pi);
 
     const discoverHandlers = handlers.get("resources_discover");
-    const mockCtx = { sessionManager: mockSessionManager } as any;
+    const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
       await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
     }
@@ -277,7 +301,7 @@ describe("resources_discover — session detection and state initialization", ()
           {
             type: "custom",
             customType: "pio-config",
-            data: { sessionParams: {} },
+            data: { capability: "execute-task", sessionParams: {} },
           },
         ];
       },
@@ -286,7 +310,7 @@ describe("resources_discover — session detection and state initialization", ()
     setupStepNudging(pi);
 
     const discoverHandlers = handlers.get("resources_discover");
-    const mockCtx = { sessionManager: mockSessionManager } as any;
+    const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
       await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
     }

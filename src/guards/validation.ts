@@ -266,7 +266,7 @@ export function createFrontmatterValidator(
 export function setupValidation(pi: ExtensionAPI) {
   // 1. Read validation config on session discovery; reset counters
   pi.on("resources_discover", async (_event, ctx) => {
-    const config = getSessionConfig(ctx);
+    const config = await getSessionConfig(ctx);
     if (!config) return;
     workingDir = config.workingDir;
 

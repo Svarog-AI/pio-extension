@@ -1,5 +1,26 @@
+import { vi, beforeEach } from "vitest";
 import type { ExtensionAPI, TurnEndEvent } from "@earendil-works/pi-coding-agent";
 import { isThinkingOnlyTurn, setupSessionGuard, __testSetActiveSession, __testSetMarkCompleteCalled, __testSetTurnCount, __testSetWasAborted } from "./session-guard";
+
+// Mock resolveCapabilityConfig so getSessionConfig() returns a full config with live functions
+const mockResolveCapabilityConfig = vi.hoisted(() => vi.fn());
+
+vi.mock("../capability-config", () => ({
+  resolveCapabilityConfig: mockResolveCapabilityConfig,
+}));
+
+beforeEach(() => {
+  mockResolveCapabilityConfig.mockClear();
+  mockResolveCapabilityConfig.mockImplementation((_cwd, params) => {
+    const cap = typeof params?.capability === "string" ? params.capability : "unknown";
+    return {
+      capability: cap,
+      workingDir: params?.workingDir ?? "/test/.pio/goals/test",
+      sessionParams: params ?? {},
+      contract: { inputs: [], outputs: [] },
+    };
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Helpers — mock ExtensionAPI
@@ -156,13 +177,13 @@ describe("isThinkingOnlyTurn", () => {
 
 describe("setupSessionGuard", () => {
   // "registers resources_discover handler"
-  it("registers resources_discover handler", () => {
+  it("registers resources_discover handler", async () => {
     // Arrange: mock getEntries to return pio-config
     const { pi, handlers } = createMockPi();
 
     const mockSessionManager = {
       getEntries(): MockEntry[] {
-        return [{ type: "custom", customType: "pio-config", data: {} }];
+        return [{ type: "custom", customType: "pio-config", data: { capability: "create-goal", sessionParams: {} } }];
       },
     };
 
@@ -175,9 +196,9 @@ describe("setupSessionGuard", () => {
     expect(discoverHandlers!.length).toBeGreaterThan(0);
 
     // Invoke the handler with mock context
-    const mockCtx = { sessionManager: mockSessionManager } as any;
+    const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
-      handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
+      await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
     }
 
     // Assert: flag should now be true
@@ -185,7 +206,7 @@ describe("setupSessionGuard", () => {
   });
 
   // "resources_discover sets flag false when no pio-config"
-  it("resources_discover sets flag false when no pio-config", () => {
+  it("resources_discover sets flag false when no pio-config", async () => {
     // Arrange: mock getEntries to return empty array
     const { pi, handlers } = createMockPi();
 
@@ -202,9 +223,9 @@ describe("setupSessionGuard", () => {
     const discoverHandlers = handlers.get("resources_discover");
     expect(discoverHandlers).toBeDefined();
 
-    const mockCtx = { sessionManager: mockSessionManager } as any;
+    const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
-      handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
+      await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
     }
 
     // Assert: flag should be false

@@ -1,9 +1,17 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { CapabilityConfig, CapabilitySkills } from "./types";
+import { resolveCapabilityConfig } from "./capability-config";
 
 /**
- * Read the `pio-config` custom entry from the current session.
- * Returns the capability config data or null when not inside a capability sub-session.
+ * Read the `pio-config` custom entry from the current session and reconstruct
+ * the full capability config via dynamic import.
+ *
+ * The custom entry stores only `{ capability, sessionParams }` — JavaScript
+ * functions (`requiredWhen`, `postValidate`, `postExecute`, `prepareSession`)
+ * are stripped by `JSON.stringify` during serialization. This function
+ * re-imports the capability module to restore live function references.
+ *
+ * Returns the reconstructed config or null when not inside a capability sub-session.
  *
  * Shared utility — replaces the repeated inline pattern of
  * `getEntries() → find pio-config → cast to CapabilityConfig`.
@@ -11,11 +19,24 @@ import type { CapabilityConfig, CapabilitySkills } from "./types";
  * Accepts `ExtensionContext` (base type) so it works in both event handlers
  * and command handlers.
  */
-export function getSessionConfig(ctx: ExtensionContext): CapabilityConfig | null {
+export async function getSessionConfig(ctx: ExtensionContext): Promise<CapabilityConfig | null> {
   const entries = ctx.sessionManager.getEntries();
   const entry = entries.find((e) => e.type === "custom" && e.customType === "pio-config");
   if (!entry || entry.type !== "custom") return null;
-  return entry.data as CapabilityConfig;
+
+  const data = entry.data as { capability?: string; sessionParams?: Record<string, unknown> };
+  if (!data.capability) return null;
+
+  try {
+    const resolved = await resolveCapabilityConfig(ctx.cwd, {
+      capability: data.capability,
+      ...data.sessionParams,
+    });
+    return resolved ?? null;
+  } catch (err) {
+    console.warn(`pio: failed to reconstruct config for capability "${data.capability}": ${err}`);
+    return null;
+  }
 }
 
 /**

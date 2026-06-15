@@ -137,10 +137,10 @@ function getAssistantContent(event: TurnEndEvent): readonly ContentBlock[] | und
 // ---------------------------------------------------------------------------
 
 /** Recovery prompt sent to nudge the agent when it produces only thinking. */
-const RECOVERY_PROMPT = "Your last response contained only thinking blocks. Please provide a visible response or take an action.";
+const RECOVERY_PROMPT = "Your last response contained only thinking blocks. If you need clarification to proceed, call \`ask_user\`. Otherwise, provide a visible response or take an action.";
 
 /** Warning sent when a pio sub-session ends without calling pio_mark_complete. */
-const AGENT_END_WARNING = "This session ended without calling pio_mark_complete. Output files were not validated against expected outputs, and next task in the workflow may not be scheduled.";
+const AGENT_END_WARNING = "This session ended without calling pio_mark_complete. If you need clarification before completing work, call \`ask_user\`. Otherwise, output files were not validated against expected outputs, and next task in the workflow may not be scheduled.";
 
 /**
  * Register session guard handlers.
@@ -176,7 +176,7 @@ export function setupSessionGuard(pi: ExtensionAPI) {
     turnCount++;
     if (turnCount >= turnThreshold) {
       pi.sendUserMessage(
-        `Are you in a loop? If not, continue.`,
+        `Are you in a loop? If you need clarification to proceed, call \`ask_user\`. Otherwise, continue.`,
         { deliverAs: "steer" },
       );
       turnCount = 0;

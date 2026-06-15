@@ -519,7 +519,7 @@ describe("workflow-step-finish tool — behavior", () => {
     const text = getText(result);
 
     expect(__testSetCurrentWorkflowStep()).toBe(2);
-    expect(text).toBe("Workflow step finished. Moving to workflow step 2 of 5. Continue with this step.");
+    expect(text).toBe("Workflow step finished. Moving to workflow step 2 of 5. If you need clarification before starting, call `ask_user`. Otherwise, continue with this step.");
   });
 
   it("increments step counter and returns next step message with title", async () => {
@@ -536,7 +536,7 @@ describe("workflow-step-finish tool — behavior", () => {
     const text = getText(result);
 
     expect(__testSetCurrentWorkflowStep()).toBe(2);
-    expect(text).toBe("Workflow step finished. Moving to 'Research context' (workflow step 2 of 3). Continue with this step.");
+    expect(text).toBe("Workflow step finished. Moving to 'Research context' (workflow step 2 of 3). If you need clarification before starting, call `ask_user`. Otherwise, continue with this step.");
   });
 
   it("clamps step counter and returns last step message", async () => {
@@ -550,7 +550,7 @@ describe("workflow-step-finish tool — behavior", () => {
     const text = getText(result);
 
     expect(__testSetCurrentWorkflowStep()).toBe(5);
-    expect(text).toBe("All workflow steps completed. You are on the final workflow step (5 of 5). Consider your work done and call pio_mark_complete if all outputs are ready.");
+    expect(text).toBe("All workflow steps completed. You are on the final workflow step (5 of 5). If you need clarification, call `ask_user`. Otherwise, consider your work done and call pio_mark_complete if all outputs are ready.");
   });
 
   it("stays at last step when already at max (clamp on second call)", async () => {

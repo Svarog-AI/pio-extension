@@ -142,7 +142,7 @@ export const workflowStepFinishTool = defineTool({
         content: [
           {
             type: "text",
-            text: `All workflow steps completed. You are on the final workflow step (${totalWorkflowSteps} of ${totalWorkflowSteps}). Consider your work done and call pio_mark_complete if all outputs are ready.`,
+            text: `All workflow steps completed. You are on the final workflow step (${totalWorkflowSteps} of ${totalWorkflowSteps}). If you need clarification, call \`ask_user\`. Otherwise, consider your work done and call pio_mark_complete if all outputs are ready.`,
           },
         ],
         details: {},
@@ -154,7 +154,7 @@ export const workflowStepFinishTool = defineTool({
         content: [
           {
             type: "text",
-            text: `Workflow step finished. Moving to '${stepTitle}' (workflow step ${currentWorkflowStep} of ${totalWorkflowSteps}). Continue with this step.`,
+            text: `Workflow step finished. Moving to '${stepTitle}' (workflow step ${currentWorkflowStep} of ${totalWorkflowSteps}). If you need clarification before starting, call \`ask_user\`. Otherwise, continue with this step.`,
           },
         ],
         details: {},
@@ -165,7 +165,7 @@ export const workflowStepFinishTool = defineTool({
       content: [
         {
           type: "text",
-          text: `Workflow step finished. Moving to workflow step ${currentWorkflowStep} of ${totalWorkflowSteps}. Continue with this step.`,
+          text: `Workflow step finished. Moving to workflow step ${currentWorkflowStep} of ${totalWorkflowSteps}. If you need clarification before starting, call \`ask_user\`. Otherwise, continue with this step.`,
         },
       ],
       details: {},

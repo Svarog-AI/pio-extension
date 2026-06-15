@@ -104,11 +104,12 @@ Mandatory skills are force-injected (content read from disk, frontmatter strippe
 7. **Automated input validation:** `launchCapability()` performs contract-based input validation automatically — eliminated redundant `validateInputs()` calls from ~8 call sites across capability callbacks and config files
 8. **Input frontmatter validation:** `validateInputs()` validates frontmatter schemas when declared on input entries (e.g., evolve-plan imports PLAN.md with `PLAN_FRONTMATTER_SCHEMA`). Output validation (`validateOutputs()`) also validates frontmatter — standalone `validateFrontmatter()` preserved as export but called only internally.
 8. **Declarative state machines:** Transition resolution uses the generic `StateMachine<C>` framework (`state-machines.ts`) — edges with `resolve` functions replace imperative `switch` statements. Machine registry backed by `_machinesById` Map with O(1) lookup via `getMachine(id)`. Machines register explicitly via named setup functions from `index.ts`. Mark-complete dispatches against the correct machine by reading `stateMachineId` from session params (multi-machine aware). Fallback to `dispatch(undefined, ...)` for backward compatibility. 
-9. **Step nudging:** `workflow-step-finish` tool + `turn_end` nudge injection guides agents through multi-step workflows. State tracked in `step-nudging.ts`, injected via `pi.sendMessage({ deliverAs: "steer" })`
-10. **Prompt compilation:** `compilePrompt()` reads component files (`role.md`, `workflow.ts`, `guidelines.md`) and assembles the final prompt — replaces monolithic `.md` prompts (old `src/prompts/` directory removed)
-11. **Dynamic capability loading:** `resolveCapabilityConfig()` uses dynamic imports to load capability modules at runtime
-12. **Callback-based config:** Validation rules and file protections can be static arrays or callbacks `(workingDir, params) => T` for step-dependent configuration
-13. **No transpilation:** Runs as raw TypeScript ESM via pi's runtime — `tsconfig.json` is for type checking only
+9. **Step nudging:** `workflow-step-finish` tool + `turn_end` nudge injection guides agents through multi-step workflows. State tracked in `step-nudging.ts`, injected via `pi.sendMessage({ deliverAs: "steer" })`. The `turn_end` handler checks `event.message.stopReason === "aborted"` to skip nudges when the user cancels (Esc/Ctrl+C) — `stopReason` on message objects is the authoritative source, set by the agent loop.
+10. **Abort detection in session guards:** Both `step-nudging.ts` (`turn_end`) and `session-guard.ts` (`turn_end` + `agent_end`) detect user aborts via `stopReason` on event messages instead of `ctx.signal?.aborted` (unreliable — `activeRun` is cleared before events fire). The `turn_end` handler in `session-guard.ts` returns early on abort to skip turn counting and recovery prompts; `agent_end` checks the last message's `stopReason` to suppress completion warnings.
+11. **Prompt compilation:** `compilePrompt()` reads component files (`role.md`, `workflow.ts`, `guidelines.md`) and assembles the final prompt — replaces monolithic `.md` prompts (old `src/prompts/` directory removed)
+12. **Dynamic capability loading:** `resolveCapabilityConfig()` uses dynamic imports to load capability modules at runtime
+13. **Callback-based config:** Validation rules and file protections can be static arrays or callbacks `(workingDir, params) => T` for step-dependent configuration
+14. **No transpilation:** Runs as raw TypeScript ESM via pi's runtime — `tsconfig.json` is for type checking only
 
 ## Service Integrations
 
@@ -137,7 +138,7 @@ Optional `~/.pi/pio-config.yaml` allows per-capability model overrides. Resoluti
 
 Jira operations are handled entirely through the `pio-jira` skill (`src/skills/pio-jira/`) — no TypeScript capability code exists for Jira. Agents invoke the Atlassian CLI (`acli`) via `bash` tool calls, guided by protocol instructions in SKILL.md and REFERENCE.md.
 
-**Config file:** `.pio/jira-config.yaml` (optional) — stores `site`, `projectKey`, and `defaultType`. Created by `src/skills/pio-jira/scripts/setup-config.sh` (POSIX shell, invoked via `bash` tool). Triggered before any Jira operation when config is missing.
+**Config file:** `.pio/jira-config.yaml` (optional) — stores `site`, `projectKey`, and `defaultType`. Created by `src/skills/pio-jira/scripts/setup-config.sh` (POSIX shell, invoked via `bash` tool). Triggered before any Jira operation when the config is missing.
 
 **Workflow:** Jira ticket → pull to local issue (`pio_create_issue`) → create goal from issue (`pio_goal_from_issue`) → full pio lifecycle.
 

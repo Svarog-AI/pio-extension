@@ -40,14 +40,6 @@ export async function getSessionConfig(ctx: ExtensionContext): Promise<Capabilit
 }
 
 /**
- * Merge base capability skills with additional skills.
- * Pure utility — operates on typed objects, never accesses the filesystem.
- *
- * Mandatory skills: concatenated with Set-based deduplication (preserves order, first-seen wins).
- * Recommended skills: concatenated with Map-based first-seen-wins dedup by `name`.
- * Returns a new object — never mutates inputs.
- */
-/**
  * Parse a command argument string into parts.
  * Returns [name, stepNumber] or [name, undefined] if step number is missing.
  */
@@ -60,6 +52,14 @@ export function parseCommandArgs(args: string | undefined): { name: string; step
   return { name, stepNumber: (stepNumber !== undefined && !isNaN(stepNumber) && stepNumber >= 1) ? stepNumber : undefined };
 }
 
+/**
+ * Merge base capability skills with additional skills.
+ * Pure utility — operates on typed objects, never accesses the filesystem.
+ *
+ * Mandatory skills: concatenated with Set-based deduplication (preserves order, first-seen wins).
+ * Recommended skills: concatenated with Map-based first-seen-wins dedup by `name`.
+ * Returns a new object — never mutates inputs.
+ */
 export function mergeCapabilitySkills(
   base: CapabilitySkills | undefined,
   additional: CapabilitySkills | null | undefined,

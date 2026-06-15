@@ -49,8 +49,8 @@ describe("config", () => {
 
   it("contract inputs requires GOAL.md and PLAN.md", () => {
     expect(config.contract.inputs).toEqual([
-      { file: "GOAL.md" },
-      { file: "PLAN.md" },
+      { name: "goal", file: "GOAL.md" },
+      { name: "plan", file: "PLAN.md" },
     ]);
   });
 });

@@ -20,9 +20,9 @@ import { validateExecuteStep, resolveExecuteReadOnlyFiles } from "./callbacks";
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }, { file: "S{stepNumber:02d}/TASK.md", schema: TASK_FRONTMATTER_SCHEMA }],
+  inputs: [{ name: "goal", file: "GOAL.md" }, { name: "plan", file: "PLAN.md" }, { name: "task", file: "S{stepNumber:02d}/TASK.md", schema: TASK_FRONTMATTER_SCHEMA }],
   excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
-  outputs: [{ file: "S{stepNumber:02d}/TEST.md" }, { file: "S{stepNumber:02d}/SUMMARY.md" }],
+  outputs: [{ name: "test", file: "S{stepNumber:02d}/TEST.md" }, { name: "summary", file: "S{stepNumber:02d}/SUMMARY.md" }],
 };
 
 // ---------------------------------------------------------------------------

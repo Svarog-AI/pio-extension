@@ -117,9 +117,9 @@ export function postValidateCreatePlan(goalDir: string): { success: boolean; mes
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ file: "GOAL.md" }],
+  inputs: [{ name: "goal", file: "GOAL.md" }],
   excludedFiles: ["PLAN.md"],
-  outputs: [{ file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
+  outputs: [{ name: "plan", file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
 };
 
 // ---------------------------------------------------------------------------

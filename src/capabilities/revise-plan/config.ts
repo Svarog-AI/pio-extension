@@ -15,8 +15,8 @@ import { validateRevisePlan, prepareSession, cleanupIncompleteSteps, resolveRevi
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ file: "GOAL.md" }, { file: "PLAN.md" }],
-  outputs: [{ file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
+  inputs: [{ name: "goal", file: "GOAL.md" }, { name: "existing-plan", file: "PLAN.md" }],
+  outputs: [{ name: "plan", file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
 };
 
 // ---------------------------------------------------------------------------

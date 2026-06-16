@@ -78,7 +78,7 @@ export function resolvePaths(
   );
 
   // Fail fast: detect any remaining unresolved placeholders
-  const unresolved = results.find((r) => PLACEHOLDER_RE.test(r));
+  const unresolved = results.find((r) => r.match(/\{\w+(?::[^}]+)?\}/));
   if (unresolved !== undefined) {
     const match = unresolved.match(/\{(\w+)(?::[^}]+)?\}/);
     const placeholder = match?.[0] ?? "unknown";
@@ -89,22 +89,6 @@ export function resolvePaths(
   }
 
   return results;
-}
-
-// ---------------------------------------------------------------------------
-// Placeholder detection
-// ---------------------------------------------------------------------------
-
-/** Regex matching {key} or {key:format} placeholder tokens. */
-const PLACEHOLDER_RE = /\{\w+(?::[^}]+)?\}/;
-
-/**
- * Return true if the string contains one or more placeholder tokens.
- *
- * Reuses the same pattern as resolvePaths() so detection and resolution stay in sync.
- */
-export function hasPlaceholders(path: string): boolean {
-  return PLACEHOLDER_RE.test(path);
 }
 
 // ---------------------------------------------------------------------------
@@ -132,11 +116,10 @@ export function resolveContractPath(
   workspacePrefix?: string,
   params?: Record<string, unknown>,
 ): string {
-  // 1. Placeholder resolution — resolve when placeholders are present
-  let resolved = contractPath;
-  if (hasPlaceholders(resolved)) {
-    resolved = resolvePaths([resolved], params ?? {})[0];
-  }
+  // 1. Placeholder resolution — always run through resolvePaths
+  // Paths without placeholders pass through unchanged; paths with placeholders
+  // throw if keys are missing (consistent with resolvePaths existing behavior).
+  let resolved = resolvePaths([contractPath], params ?? {})[0];
 
   // 2. Root-level path: leading / means skip prefix, join directly with workingDir
   if (resolved.startsWith("/")) {

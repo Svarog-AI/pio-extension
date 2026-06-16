@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import type { PrepareSessionCallback, PostValidateCallback, PostExecuteCallback, CapabilityConfig, CapabilitySkills } from "./types";
-import { resolveCapabilityConfig, resolvePaths, resolveContractPath, hasPlaceholders } from "./capability-config";
+import { resolveCapabilityConfig, resolvePaths, resolveContractPath } from "./capability-config";
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -793,28 +793,6 @@ describe("resolvePaths", () => {
       { stepNumber: 3 },
     );
     expect(result).toEqual(["GOAL.md", "S03/TASK.md"]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// hasPlaceholders — placeholder detection helper
-// ---------------------------------------------------------------------------
-
-describe("hasPlaceholders", () => {
-  it("returns true for {key} placeholder", () => {
-    expect(hasPlaceholders("{name}/file.md")).toBe(true);
-  });
-
-  it("returns true for {key:format} placeholder", () => {
-    expect(hasPlaceholders("S{stepNumber:02d}/TASK.md")).toBe(true);
-  });
-
-  it("returns false for plain path", () => {
-    expect(hasPlaceholders("GOAL.md")).toBe(false);
-  });
-
-  it("returns false for path with braces that are not placeholders", () => {
-    expect(hasPlaceholders("some-dir/file.md")).toBe(false);
   });
 });
 

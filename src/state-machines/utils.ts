@@ -26,8 +26,9 @@ export function getCapState(
   capability: string,
   baseDir: string,
   params?: Record<string, unknown>,
+  workspacePrefix?: string,
 ): CapState {
   const contract = _discoveredContracts?.[capability];
   if (!contract) throw new Error(`No contract found for "${capability}"`);
-  return new CapState(contract, baseDir, params);
+  return new CapState(contract, baseDir, params, workspacePrefix);
 }

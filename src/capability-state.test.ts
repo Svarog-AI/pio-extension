@@ -600,6 +600,110 @@ describe("name field enforcement", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Workspace prefix integration
+// ---------------------------------------------------------------------------
+
+describe("CapState — workspace prefix integration", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  // --- Constructor and factory ---
+
+  it("createCapState accepts 4th workspacePrefix parameter", () => {
+    const capState = createCapState(minimalContract, tempDir, undefined, "goals/my-feature");
+    expect(typeof capState.input).toBe("function");
+    expect(typeof capState.output).toBe("function");
+  });
+
+  it("backward compatible — 3 arguments (no prefix) works", () => {
+    const capState = createCapState(minimalContract, tempDir);
+    writeWithFrontmatter(tempDir, "GOAL.md", { title: "Goal" });
+    expect(capState.input("goal").exists()).toBe(true);
+  });
+
+  // --- Prefixed input() resolution ---
+
+  it("input() with prefix resolves through baseDir + prefix + contractPath", () => {
+    // Create file at goals/my-feature/GOAL.md
+    writeWithFrontmatter(tempDir, "goals/my-feature/GOAL.md", { title: "Goal" });
+    const capState = createCapState(minimalContract, tempDir, undefined, "goals/my-feature");
+    expect(capState.input("goal").exists()).toBe(true);
+  });
+
+  it("input() with prefix resolves to correct path (not baseDir + file)", () => {
+    // File exists at baseDir/GOAL.md but should NOT be found with prefix
+    writeWithFrontmatter(tempDir, "GOAL.md", { title: "Wrong" });
+    const capState = createCapState(minimalContract, tempDir, undefined, "goals/my-feature");
+    expect(capState.input("goal").exists()).toBe(false);
+  });
+
+  // --- Prefixed output() resolution ---
+
+  it("output() with prefix resolves through baseDir + prefix + contractPath", () => {
+    writeWithFrontmatter(tempDir, "goals/my-feature/PLAN.md", { totalSteps: 2 });
+    const capState = createCapState(minimalContract, tempDir, undefined, "goals/my-feature");
+    expect(capState.output("plan").exists()).toBe(true);
+  });
+
+  // --- Root-level paths (leading /) bypass prefix ---
+
+  it("root-level path (leading /) bypasses workspace prefix", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "overview", file: "/PROJECT/OVERVIEW.md" }],
+      outputs: [],
+    };
+    // File at baseDir/PROJECT/OVERVIEW.md (not under prefix)
+    writeWithFrontmatter(tempDir, "PROJECT/OVERVIEW.md", { title: "Project" });
+    const capState = createCapState(contract, tempDir, undefined, "goals/my-feature");
+    expect(capState.input("overview").exists()).toBe(true);
+  });
+
+  // --- Placeholder resolution with prefix ---
+
+  it("placeholder resolution works with prefix", () => {
+    // S{stepNumber:02d}/TASK.md with stepNumber=3 and prefix "goals/g"
+    // should resolve to goals/g/S03/TASK.md
+    writeWithFrontmatter(tempDir, "goals/g/S03/TASK.md", { stepName: "Build" });
+    const capState = createCapState(
+      contractWithPlaceholderSchema,
+      tempDir,
+      { stepNumber: 3 },
+      "goals/g",
+    );
+    expect(capState.output("task").exists()).toBe(true);
+  });
+
+  // --- Undeclared with prefix ---
+
+  it("undeclared() with prefix resolves through baseDir + prefix + path", () => {
+    const markerPath = path.join(tempDir, "goals/my-feature", "S01", "COMPLETED");
+    fs.mkdirSync(path.dirname(markerPath), { recursive: true });
+    fs.writeFileSync(markerPath, "", "utf-8");
+    const capState = createCapState(minimalContract, tempDir, undefined, "goals/my-feature");
+    expect(capState.undeclared("S01/COMPLETED").exists()).toBe(true);
+  });
+
+  it("undeclared() without prefix resolves as baseDir + path (backward compatible)", () => {
+    fs.writeFileSync(path.join(tempDir, "APPROVED"), "", "utf-8");
+    const capState = createCapState(minimalContract, tempDir);
+    expect(capState.undeclared("APPROVED").exists()).toBe(true);
+  });
+
+  // --- Empty string prefix equals no prefix ---
+
+  it("empty string prefix behaves like no prefix", () => {
+    writeWithFrontmatter(tempDir, "GOAL.md", { title: "Goal" });
+    const capState = createCapState(minimalContract, tempDir, undefined, "");
+    expect(capState.input("goal").exists()).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Concrete test — real create-plan CONTRACT
 // ---------------------------------------------------------------------------
 

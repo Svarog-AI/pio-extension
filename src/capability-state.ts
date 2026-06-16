@@ -3,7 +3,7 @@ import * as path from "node:path";
 import type { TSchema } from "typebox";
 import type { CapabilityContract, MarkdownFileSpec, OutputEntry } from "./types";
 import { extractFrontmatter, validateAndCoerce } from "./frontmatter";
-import { resolvePaths } from "./capability-config";
+import { resolveContractPath } from "./capability-config";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -80,6 +80,7 @@ export class CapState {
     private contract: CapabilityContract,
     private baseDir: string,
     private params?: Record<string, unknown>,
+    private workspacePrefix?: string,
   ) {
     const maps = this.buildAllMaps();
     this.inputNames = maps.inputNames;
@@ -96,10 +97,8 @@ export class CapState {
     if (!entry) {
       throw new Error(`Input '${name}' not found in contract`);
     }
-    const resolvedPath = this.params
-      ? resolvePaths([entry.file], this.params)[0]
-      : entry.file;
-    return new FileStateImpl<T>(path.join(this.baseDir, resolvedPath), entry.schema);
+    const fullPath = resolveContractPath(entry.file, this.baseDir, this.workspacePrefix, this.params);
+    return new FileStateImpl<T>(fullPath, entry.schema);
   }
 
   /**
@@ -113,10 +112,8 @@ export class CapState {
     if (!entry) {
       throw new Error(`Output '${name}' not found in contract`);
     }
-    const resolvedPath = this.params
-      ? resolvePaths([entry.file], this.params)[0]
-      : entry.file;
-    return new FileStateImpl<T>(path.join(this.baseDir, resolvedPath), entry.schema);
+    const fullPath = resolveContractPath(entry.file, this.baseDir, this.workspacePrefix, this.params);
+    return new FileStateImpl<T>(fullPath, entry.schema);
   }
 
   /**
@@ -125,7 +122,8 @@ export class CapState {
    * Returns a FileState with no schema validation.
    */
   undeclared(filePath: string): FileState<unknown> {
-    return new FileStateImpl<unknown>(path.join(this.baseDir, filePath));
+    const fullPath = resolveContractPath(filePath, this.baseDir, this.workspacePrefix);
+    return new FileStateImpl<unknown>(fullPath);
   }
 
   /**
@@ -201,6 +199,7 @@ export function createCapState(
   contract: CapabilityContract,
   baseDir: string,
   params?: Record<string, unknown>,
+  workspacePrefix?: string,
 ): CapState {
-  return new CapState(contract, baseDir, params);
+  return new CapState(contract, baseDir, params, workspacePrefix);
 }

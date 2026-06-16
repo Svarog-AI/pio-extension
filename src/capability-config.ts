@@ -1,4 +1,4 @@
-import * as path from "node:path";
+import { join } from "node:path";
 import type { CapabilityConfig, CapabilityContract, ConfigCallback, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback } from "./types";
 import type { CapabilityPackageConfig, CapabilitySkills } from "./capability-package";
 import {
@@ -124,16 +124,16 @@ export function resolveContractPath(
 
   // 2. Root-level path: leading / means skip prefix, join directly with workingDir
   if (resolved.startsWith("/")) {
-    return path.join(workingDir, resolved.slice(1));
+    return join(workingDir, resolved.slice(1));
   }
 
   // 3. Prefixed path: workingDir + workspacePrefix + contractPath
   if (workspacePrefix) {
-    return path.join(workingDir, workspacePrefix, resolved);
+    return join(workingDir, workspacePrefix, resolved);
   }
 
   // 4. No prefix: workingDir + contractPath
-  return path.join(workingDir, resolved);
+  return join(workingDir, resolved);
 }
 
 // ---------------------------------------------------------------------------

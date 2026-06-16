@@ -137,10 +137,7 @@ const capabilityConfig = {
       { name: "source-research", condition: "when researching existing solutions or libraries" },
     ],
   },
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
-    const goalName = typeof params?.goalName === "string" ? params.goalName : undefined;
-    return `Goal workspace is at ${workingDir}. GOAL.md exists. Create PLAN.md in this directory.`;
-  },
+  defaultInitialMessage: () => "Ready.",
   postValidate: postValidateCreatePlan,
 } satisfies CapabilityPackageConfig;
 

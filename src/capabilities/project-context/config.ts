@@ -32,8 +32,7 @@ const capabilityConfig = {
     ".pio/PROJECT/DEPENDENCIES.md",
     ".pio/PROJECT/GLOSSARY.md",
   ],
-  defaultInitialMessage: (workingDir: string) =>
-    `Please explore this project and produce the multi-file project context under ${workingDir}/.pio/PROJECT/ (OVERVIEW.md, DEVELOPMENT.md, CONVENTIONS.md, GIT.md, ARCHITECTURE.md, DEPENDENCIES.md, GLOSSARY.md).`,
+  defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;

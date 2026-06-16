@@ -46,14 +46,7 @@ const capabilityConfig = {
   skills: {
     mandatory: ["tdd"],
   },
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
-    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-    if (stepNumber == null) {
-      return "Error: stepNumber is required for review-task. The task was not enqueued with a valid step number.";
-    }
-    const folderName = stepFolderName(stepNumber);
-    return `Goal workspace is at ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md, TEST.md, and SUMMARY.md inside the \`${folderName}/\` directory. Review the implementation, write REVIEW.md, and decide whether to approve or reject.`;
-  },
+  defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;

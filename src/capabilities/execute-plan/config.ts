@@ -29,9 +29,7 @@ const capabilityConfig = {
   skills: {
     mandatory: ["tdd", "pio-git"],
   },
-  defaultInitialMessage: (workingDir: string, _params?: Record<string, unknown>) => {
-    return `Goal workspace is at ${workingDir}. GOAL.md and PLAN.md exist. Implement all steps from PLAN.md in this session.`;
-  },
+  defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;

@@ -40,14 +40,7 @@ const capabilityConfig = {
   skills: {
     mandatory: ["pio-planning", "grill-me"],
   },
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
-    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-    if (stepNumber == null) {
-      throw new Error("stepNumber is required for evolve-plan. Ensure the task was enqueued with a valid step number.");
-    }
-    const folderName = stepFolderName(stepNumber);
-    return `Goal workspace is at ${workingDir}. PLAN.md exists. You are responsible for **Step ${stepNumber}**. Generate TASK.md inside the \`${folderName}/\` directory.`;
-  },
+  defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;

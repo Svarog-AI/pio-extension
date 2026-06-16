@@ -32,13 +32,7 @@ const capabilityConfig = {
       { name: "source-research", condition: "when researching existing solutions or libraries" },
     ],
   },
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
-    const goalName = typeof params?.goalName === "string" ? params.goalName : undefined;
-    if (goalName) {
-      return `Goal workspace created: ${goalName}\n\nWrite GOAL.md in this workspace.`;
-    }
-    return `Created goal workspace at ${workingDir}`;
-  },
+  defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;

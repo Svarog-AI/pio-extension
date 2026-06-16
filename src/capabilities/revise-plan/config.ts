@@ -34,13 +34,7 @@ const capabilityConfig = {
       { name: "source-research", condition: "when researching existing solutions or libraries" },
     ],
   },
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
-    const triggerStep = typeof params?.revisionTriggerStep === "number"
-      ? ` Revision was triggered from Step ${params.revisionTriggerStep}. Read its TASK.md, DECISIONS.md, and REVISE_PLAN_NEEDED files to understand why revision was needed.`
-      : "";
-
-    return `Goal workspace is at ${workingDir}. The current plan has been archived to PLAN_ARCHIVE/. Incomplete step folders are preserved for inspection during this session and will be cleaned up after completion.${triggerStep} Read the archived plans and completed step folders, then write a fresh PLAN.md continuing from the last completed step.`;
-  },
+  defaultInitialMessage: () => "Ready.",
   prepareSession,
   postExecute: cleanupIncompleteSteps,
 } satisfies CapabilityPackageConfig;

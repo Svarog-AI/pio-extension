@@ -1,10 +1,7 @@
 import { join } from "node:path";
 import type { CapabilityConfig, CapabilityContract, ConfigCallback, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback } from "./types";
 import type { CapabilityPackageConfig, CapabilitySkills } from "./capability-package";
-import {
-  resolveGoalDir,
-  deriveSessionName,
-} from "./fs-utils";
+import { deriveSessionName } from "./fs-utils";
 
 /**
  * Resolve a step-dependent config field: if it's a callback, invoke it;
@@ -162,11 +159,11 @@ function extractParams(
     typeof params?.workingDir === "string" && params.workingDir
       ? params.workingDir
       : "";
+  // Default workingDir is always <cwd>/.pio/ — no goal-scoped derivation.
+  // Variable path resolution is handled by workspacePrefix (injected by state machines).
   const workingDir = explicitWorkingDir
     ? explicitWorkingDir
-    : goalName
-      ? resolveGoalDir(cwd, goalName)
-      : cwd;
+    : join(cwd, ".pio");
 
   return {
     goalName,

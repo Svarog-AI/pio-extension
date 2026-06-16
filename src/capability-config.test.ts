@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import type { PrepareSessionCallback, PostValidateCallback, PostExecuteCallback, CapabilityConfig, CapabilitySkills } from "./types";
-import { resolveCapabilityConfig, resolvePaths } from "./capability-config";
+import { resolveCapabilityConfig, resolvePaths, resolveContractPath } from "./capability-config";
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -793,6 +793,80 @@ describe("resolvePaths", () => {
       { stepNumber: 3 },
     );
     expect(result).toEqual(["GOAL.md", "S03/TASK.md"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveContractPath — workspace prefix resolution layer
+// ---------------------------------------------------------------------------
+
+describe("resolveContractPath", () => {
+  const workingDir = "/proj/.pio";
+
+  it("resolves prefixed path — joins workingDir + prefix + contractPath", () => {
+    const result = resolveContractPath("GOAL.md", workingDir, "goals/my-feature");
+    expect(result).toBe("/proj/.pio/goals/my-feature/GOAL.md");
+  });
+
+  it("resolves root-level path — leading / strips prefix and joins with workingDir", () => {
+    const result = resolveContractPath("/PROJECT/OVERVIEW.md", workingDir, "goals/my-feature");
+    expect(result).toBe("/proj/.pio/PROJECT/OVERVIEW.md");
+  });
+
+  it("resolves path without prefix — joins workingDir + contractPath", () => {
+    const result = resolveContractPath("GOAL.md", workingDir, undefined);
+    expect(result).toBe("/proj/.pio/GOAL.md");
+  });
+
+  it("treats empty prefix same as no prefix", () => {
+    const withEmpty = resolveContractPath("GOAL.md", workingDir, "");
+    const withUndefined = resolveContractPath("GOAL.md", workingDir, undefined);
+    expect(withEmpty).toBe(withUndefined);
+    expect(withEmpty).toBe("/proj/.pio/GOAL.md");
+  });
+
+  it("resolves placeholders then applies prefix", () => {
+    const result = resolveContractPath(
+      "S{stepNumber:02d}/TASK.md",
+      workingDir,
+      "goals/my-feature",
+      { stepNumber: 3 },
+    );
+    expect(result).toBe("/proj/.pio/goals/my-feature/S03/TASK.md");
+  });
+
+  it("resolves root-level path without prefix", () => {
+    const result = resolveContractPath("/PROJECT/OVERVIEW.md", workingDir, undefined);
+    expect(result).toBe("/proj/.pio/PROJECT/OVERVIEW.md");
+  });
+
+  it("resolves nested workspace prefix correctly", () => {
+    const result = resolveContractPath(
+      "GOAL.md",
+      workingDir,
+      "goals/parent/S03/subgoals/nested",
+    );
+    expect(result).toBe("/proj/.pio/goals/parent/S03/subgoals/nested/GOAL.md");
+  });
+
+  it("skips placeholder resolution when params is undefined", () => {
+    const result = resolveContractPath(
+      "S{stepNumber:02d}/TASK.md",
+      workingDir,
+      "goals/my-feature",
+    );
+    expect(result).toBe("/proj/.pio/goals/my-feature/S{stepNumber:02d}/TASK.md");
+  });
+
+  it("propagates resolvePaths error for unresolved placeholders", () => {
+    expect(() =>
+      resolveContractPath(
+        "S{stepNumber:02d}/TASK.md",
+        workingDir,
+        "goals/my-feature",
+        { otherKey: "value" },
+      ),
+    ).toThrow(/Unresolved placeholder/);
   });
 });
 

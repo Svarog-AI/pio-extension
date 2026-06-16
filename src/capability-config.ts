@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import type { CapabilityConfig, CapabilityContract, ConfigCallback, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback } from "./types";
 import type { CapabilityPackageConfig, CapabilitySkills } from "./capability-package";
 import {
@@ -88,6 +89,51 @@ export function resolvePaths(
   }
 
   return results;
+}
+
+// ---------------------------------------------------------------------------
+// Workspace prefix resolution layer
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve a contract file path through the workspace prefix layer.
+ *
+ * Resolution order:
+ * 1. Placeholder resolution via resolvePaths() (if params provided)
+ * 2. Root-level paths (/...) join directly with workingDir
+ * 3. Prefixed paths join workingDir + workspacePrefix + contractPath
+ * 4. Unprefixed paths join workingDir + contractPath
+ *
+ * @param contractPath - Path from capability contract (may contain {key} placeholders)
+ * @param workingDir - Fixed .pio/ root directory
+ * @param workspacePrefix - Optional prefix string (e.g., "goals/my-feature")
+ * @param params - Optional session params for placeholder resolution
+ * @returns Fully resolved filesystem path
+ */
+export function resolveContractPath(
+  contractPath: string,
+  workingDir: string,
+  workspacePrefix?: string,
+  params?: Record<string, unknown>,
+): string {
+  // 1. Placeholder resolution (if params provided)
+  let resolved = contractPath;
+  if (params) {
+    resolved = resolvePaths([contractPath], params)[0];
+  }
+
+  // 2. Root-level path: leading / means skip prefix, join directly with workingDir
+  if (resolved.startsWith("/")) {
+    return path.join(workingDir, resolved.slice(1));
+  }
+
+  // 3. Prefixed path: workingDir + workspacePrefix + contractPath
+  if (workspacePrefix) {
+    return path.join(workingDir, workspacePrefix, resolved);
+  }
+
+  // 4. No prefix: workingDir + contractPath
+  return path.join(workingDir, resolved);
 }
 
 // ---------------------------------------------------------------------------

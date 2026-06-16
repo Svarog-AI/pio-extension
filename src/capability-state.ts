@@ -1,5 +1,4 @@
 import * as fs from "node:fs";
-import * as path from "node:path";
 import type { TSchema } from "typebox";
 import type { CapabilityContract, MarkdownFileSpec, OutputEntry } from "./types";
 import { extractFrontmatter, validateAndCoerce } from "./frontmatter";

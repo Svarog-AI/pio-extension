@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createCapState, type FileState } from "./capability-state";
+import { getCapState, setDiscoveredContracts } from "./state-machines/utils";
 import type { CapabilityContract, MarkdownFileSpec } from "./types";
 import { Type } from "typebox";
 
@@ -79,12 +80,6 @@ describe("createCapState — tracer bullet", () => {
   });
 
   afterEach(() => cleanup(tempDir));
-
-  it("returns a CapState instance with input() and output() methods", () => {
-    const capState = createCapState(minimalContract, tempDir);
-    expect(typeof capState.input).toBe("function");
-    expect(typeof capState.output).toBe("function");
-  });
 
   it("exists() returns true for existing files", () => {
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "# Goal", "utf-8");
@@ -312,11 +307,12 @@ describe("createCapState factory", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("returns a CapState instance identical to new CapState()", () => {
+  it("factory produces instance that resolves files identically to direct constructor", () => {
+    writeWithFrontmatter(tempDir, "GOAL.md", { title: "Goal" });
     const capState = createCapState(minimalContract, tempDir);
-    expect(typeof capState.input).toBe("function");
-    expect(typeof capState.output).toBe("function");
-    expect(capState.input("goal").exists()).toBe(false);
+    expect(capState.input("goal").exists()).toBe(true);
+    const data = capState.input<{ title: string }>("goal").read();
+    expect(data).toEqual({ title: "Goal" });
   });
 });
 
@@ -614,10 +610,16 @@ describe("CapState — workspace prefix integration", () => {
 
   // --- Constructor and factory ---
 
-  it("createCapState accepts 4th workspacePrefix parameter", () => {
+  it("createCapState with prefix resolves input() through prefixed path", () => {
+    writeWithFrontmatter(tempDir, "goals/my-feature/GOAL.md", { title: "Goal" });
     const capState = createCapState(minimalContract, tempDir, undefined, "goals/my-feature");
-    expect(typeof capState.input).toBe("function");
-    expect(typeof capState.output).toBe("function");
+    expect(capState.input("goal").exists()).toBe(true);
+  });
+
+  it("createCapState with prefix resolves output() through prefixed path", () => {
+    writeWithFrontmatter(tempDir, "goals/my-feature/PLAN.md", { totalSteps: 2 });
+    const capState = createCapState(minimalContract, tempDir, undefined, "goals/my-feature");
+    expect(capState.output("plan").exists()).toBe(true);
   });
 
   it("backward compatible — 3 arguments (no prefix) works", () => {
@@ -700,6 +702,50 @@ describe("CapState — workspace prefix integration", () => {
     writeWithFrontmatter(tempDir, "GOAL.md", { title: "Goal" });
     const capState = createCapState(minimalContract, tempDir, undefined, "");
     expect(capState.input("goal").exists()).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getCapState helper (src/state-machines/utils.ts)
+// ---------------------------------------------------------------------------
+
+describe("getCapState helper", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+    // Populate the contract cache for getCapState lookups
+    setDiscoveredContracts({ "test-cap": minimalContract });
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("accepts 4th workspacePrefix parameter and resolves prefixed paths", () => {
+    writeWithFrontmatter(tempDir, "goals/my-feature/GOAL.md", { title: "Goal" });
+    const capState = getCapState("test-cap", tempDir, undefined, "goals/my-feature");
+    expect(capState.input("goal").exists()).toBe(true);
+  });
+
+  it("accepts 4th workspacePrefix parameter and resolves prefixed outputs", () => {
+    writeWithFrontmatter(tempDir, "goals/my-feature/PLAN.md", { totalSteps: 2 });
+    const capState = getCapState("test-cap", tempDir, undefined, "goals/my-feature");
+    expect(capState.output("plan").exists()).toBe(true);
+  });
+
+  it("3-arg call (no prefix) works — backward compatible", () => {
+    writeWithFrontmatter(tempDir, "GOAL.md", { title: "Goal" });
+    const capState = getCapState("test-cap", tempDir);
+    expect(capState.input("goal").exists()).toBe(true);
+  });
+
+  it("3-arg call resolves undeclared files without prefix", () => {
+    fs.writeFileSync(path.join(tempDir, "APPROVED"), "", "utf-8");
+    const capState = getCapState("test-cap", tempDir);
+    expect(capState.undeclared("APPROVED").exists()).toBe(true);
+  });
+
+  it("throws when capability is not found in cache", () => {
+    expect(() => getCapState("unknown-cap", tempDir)).toThrow('No contract found for "unknown-cap"');
   });
 });
 

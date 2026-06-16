@@ -78,7 +78,7 @@ export function resolvePaths(
   );
 
   // Fail fast: detect any remaining unresolved placeholders
-  const unresolved = results.find((r) => r.match(/\{\w+(?::[^}]+)?\}/));
+  const unresolved = results.find((r) => PLACEHOLDER_RE.test(r));
   if (unresolved !== undefined) {
     const match = unresolved.match(/\{(\w+)(?::[^}]+)?\}/);
     const placeholder = match?.[0] ?? "unknown";

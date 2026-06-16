@@ -92,6 +92,22 @@ export function resolvePaths(
 }
 
 // ---------------------------------------------------------------------------
+// Placeholder detection
+// ---------------------------------------------------------------------------
+
+/** Regex matching {key} or {key:format} placeholder tokens. */
+const PLACEHOLDER_RE = /\{\w+(?::[^}]+)?\}/;
+
+/**
+ * Return true if the string contains one or more placeholder tokens.
+ *
+ * Reuses the same pattern as resolvePaths() so detection and resolution stay in sync.
+ */
+export function hasPlaceholders(path: string): boolean {
+  return PLACEHOLDER_RE.test(path);
+}
+
+// ---------------------------------------------------------------------------
 // Workspace prefix resolution layer
 // ---------------------------------------------------------------------------
 
@@ -116,10 +132,10 @@ export function resolveContractPath(
   workspacePrefix?: string,
   params?: Record<string, unknown>,
 ): string {
-  // 1. Placeholder resolution (if params provided)
+  // 1. Placeholder resolution — resolve when placeholders are present
   let resolved = contractPath;
-  if (params) {
-    resolved = resolvePaths([contractPath], params)[0];
+  if (hasPlaceholders(resolved)) {
+    resolved = resolvePaths([resolved], params ?? {})[0];
   }
 
   // 2. Root-level path: leading / means skip prefix, join directly with workingDir

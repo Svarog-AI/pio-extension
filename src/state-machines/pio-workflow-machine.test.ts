@@ -133,17 +133,12 @@ describe("dispatch — create-goal → create-plan", () => {
     });
   });
 
-  it("returns create-plan when params is undefined", () => {
+  it("returns empty array when params is undefined (goalName missing — throws)", () => {
     const results = dispatch(goalDrivenDevelopment, "create-goal", ctx(tempDir), undefined);
 
-    expect(results).toHaveLength(1);
-    expect(results[0]).toEqual({
-      capability: "create-plan",
-      stateMachineId: "goal-driven-development",
-      initialMessage: "Create an implementation plan based on GOAL.md.",
-      sessionName: "create-plan",
-      params: undefined,
-    });
+    // resolveCreateGoalToCreatePlan throws when goalName is missing.
+    // dispatch() catches the error and logs a warning; no transitions fire.
+    expect(results).toHaveLength(0);
   });
 });
 
@@ -176,14 +171,12 @@ describe("dispatch — create-plan → evolve-plan", () => {
     });
   });
 
-  it("includes stepNumber 1 even when params is undefined", () => {
+  it("returns empty array when params is undefined (goalName missing — throws)", () => {
     const results = dispatch(goalDrivenDevelopment, "create-plan", ctx(tempDir), undefined);
 
-    expect(results).toHaveLength(1);
-    expect(results[0].capability).toBe("evolve-plan");
-    expect(results[0].params?.stepNumber).toBe(1);
-    expect((results[0] as any).initialMessage).toBe("Generate the specification for Step 1.");
-    expect((results[0] as any).sessionName).toBe("evolve-plan s1");
+    // resolveCreatePlanToEvolvePlan throws when goalName is missing.
+    // dispatch() catches the error and logs a warning; no transitions fire.
+    expect(results).toHaveLength(0);
   });
 });
 
@@ -216,13 +209,12 @@ describe("dispatch — evolve-plan → execute-task", () => {
     });
   });
 
-  it("returns execute-task with stepNumber undefined when stepNumber is missing from params", () => {
+  it("returns empty array when stepNumber is missing from params (throws — wiring error)", () => {
     const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { goalName: "feat" });
 
-    expect(results).toHaveLength(1);
-    expect(results[0].capability).toBe("execute-task");
-    expect(results[0].params?.stepNumber).toBeUndefined();
-    expect(results[0].params?.workspacePrefix).toBe("goals/feat");
+    // resolveEvolvePlanToExecuteTask throws when stepNumber is missing.
+    // dispatch() catches the error and logs a warning; no transitions fire.
+    expect(results).toHaveLength(0);
   });
 
   it("prefers explicit stepNumber from params", () => {
@@ -341,11 +333,11 @@ describe("dispatch — evolve-plan completion detection", () => {
   });
 
   it("routes to execute-task when COMPLETION_SUMMARY.md does not exist", () => {
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { goalName: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { goalName: "feat", stepNumber: 1 });
 
     expect(results).toHaveLength(1);
     expect(results[0].capability).toBe("execute-task");
-    expect(results[0].params?.stepNumber).toBeUndefined();
+    expect(results[0].params?.stepNumber).toBe(1);
   });
 
   it("routes to execute-task with explicit stepNumber when not completed", () => {
@@ -391,13 +383,12 @@ describe("dispatch — execute-task → review-task", () => {
     });
   });
 
-  it("returns review-task with stepNumber undefined when stepNumber is missing from params", () => {
+  it("returns empty array when stepNumber is missing from params (throws — wiring error)", () => {
     const results = dispatch(goalDrivenDevelopment, "execute-task", ctx(tempDir), { goalName: "feat" });
 
-    expect(results).toHaveLength(1);
-    expect(results[0].capability).toBe("review-task");
-    expect(results[0].params?.stepNumber).toBeUndefined();
-    expect(results[0].params?.workspacePrefix).toBe("goals/feat");
+    // resolveExecuteTaskToReviewTask throws when stepNumber is missing.
+    // dispatch() catches the error and logs a warning; no transitions fire.
+    expect(results).toHaveLength(0);
   });
 
   it("prefers explicit stepNumber from params", () => {
@@ -453,19 +444,13 @@ describe("dispatch — review-task approval", () => {
     expect(results[0].params?.workspacePrefix).toBe("goals/feat");
   });
 
-  it("falls back to execute-task when stepNumber is missing from params", () => {
+  it("returns empty array when stepNumber is missing from params (throws — wiring error)", () => {
     const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir), { goalName: "feat" });
 
-    // resolveReviewTaskToEvolvePlan returns undefined (stepNumber null).
-    // resolveReviewTaskToExecuteTask handles null stepNumber and returns execute-task.
-    expect(results).toHaveLength(1);
-    expect(results[0]).toEqual({
-      capability: "execute-task",
-      stateMachineId: "goal-driven-development",
-      initialMessage: `Re-implement the step for goal "feat".`,
-      sessionName: "feat execute-task",
-      params: { goalName: "feat", workspacePrefix: "goals/feat" },
-    });
+    // Both resolveReviewTaskToEvolvePlan and resolveReviewTaskToExecuteTask
+    // throw when stepNumber is missing — it's a wiring error upstream.
+    // dispatch() catches the errors and logs warnings; no transitions fire.
+    expect(results).toHaveLength(0);
   });
 });
 
@@ -684,12 +669,12 @@ describe("dispatch — evolve-plan → revise-plan", () => {
     expect(results[0].capability).toBe("finalize-goal");
   });
 
-  it("falls through to execute-task when stepNumber is missing from params", () => {
+  it("returns empty array when stepNumber is missing from params (throws — wiring error)", () => {
     const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { goalName: "feat" });
 
-    expect(results).toHaveLength(1);
-    expect(results[0].capability).toBe("execute-task");
-    expect(results[0].params?.stepNumber).toBeUndefined();
+    // resolveEvolvePlanToExecuteTask throws when stepNumber is missing.
+    // dispatch() catches the error and logs a warning; no transitions fire.
+    expect(results).toHaveLength(0);
   });
 });
 

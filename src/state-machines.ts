@@ -36,8 +36,17 @@ export interface TransitionResult {
  * The `stateMachineId` field is deliberately omitted — `dispatch()` guarantees it
  * by setting `stateMachineId: m.id` on every result. This makes it impossible for
  * a resolver to set an incorrect or missing ID.
+ *
+ * The `initialMessage` field is required — every resolve function must provide a
+ * context-rich kickoff message so downstream sessions get meaningful prompts without
+ * relying on capability defaults.
  */
-export type ResolverResult = Omit<TransitionResult, "stateMachineId">;
+export type ResolverResult = Omit<TransitionResult, "stateMachineId"> & {
+  /** Kickoff message for the next session. Enforced at compile-time — every resolve function must provide one. */
+  initialMessage: string;
+  /** Human-readable session identifier (e.g. "my-feature execute-task s3"). */
+  sessionName: string;
+};
 
 /**
  * A single directed edge in the state machine graph.

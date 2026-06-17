@@ -129,7 +129,7 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at baseDir", () => {
 describe("resolveEvolveWriteAllowlist", () => {
   it("always includes COMPLETION_SUMMARY.md alongside step-folder paths", async () => {
     // Arrange: resolve evolve-plan config with stepNumber 2
-    const params = { capability: "evolve-plan" as string, goalName: "my-feature", stepNumber: 2 };
+    const params = { capability: "evolve-plan" as string, goalName: "my-feature", stepNumber: 2, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -148,7 +148,7 @@ describe("resolveEvolveWriteAllowlist", () => {
 describe("resolveEvolveWriteAllowlist with REVISE_PLAN_NEEDED", () => {
   it("includes S01/REVISE_PLAN_NEEDED in write allowlist for stepNumber=1", async () => {
     // Arrange: resolve evolve-plan config with stepNumber 1
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -159,7 +159,7 @@ describe("resolveEvolveWriteAllowlist with REVISE_PLAN_NEEDED", () => {
 
   it("includes S03/REVISE_PLAN_NEEDED in write allowlist for stepNumber=3", async () => {
     // Arrange: resolve evolve-plan config with stepNumber 3
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 3 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 3, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -170,7 +170,7 @@ describe("resolveEvolveWriteAllowlist with REVISE_PLAN_NEEDED", () => {
 
   it("marker path uses correct step folder naming (zero-padded)", async () => {
     // Arrange: resolve evolve-plan config with stepNumber 12
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 12 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 12, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -189,7 +189,7 @@ describe("resolveEvolveWriteAllowlist with REVISE_PLAN_NEEDED", () => {
 describe("REVISE_PLAN_NEEDED marker filename consistency", () => {
   it("marker filename in evolve-plan writeAllowlist matches revise-plan constant", async () => {
     // Arrange: resolve evolve-plan config for step 2
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -213,7 +213,7 @@ describe("REVISE_PLAN_NEEDED marker filename consistency", () => {
 describe("contract.outputs with DECISIONS_FILE requiredWhen", () => {
   it("excludes DECISIONS.md for stepNumber=1", async () => {
     // Arrange: step 1 should produce only TASK.md
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -228,7 +228,7 @@ describe("contract.outputs with DECISIONS_FILE requiredWhen", () => {
 
   it("includes DECISIONS.md for stepNumber=2", async () => {
     // Arrange: step 2 should include DECISIONS.md alongside TASK.md
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -243,7 +243,7 @@ describe("contract.outputs with DECISIONS_FILE requiredWhen", () => {
 
   it("includes DECISIONS.md for stepNumber=3", async () => {
     // Arrange: step 3+ should also include DECISIONS.md
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 3 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 3, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -264,7 +264,7 @@ describe("contract.outputs with DECISIONS_FILE requiredWhen", () => {
 describe("resolveEvolveWriteAllowlist with DECISIONS_FILE", () => {
   it("excludes DECISIONS.md from write allowlist for stepNumber=1", async () => {
     // Arrange: step 1 should not include DECISIONS.md in the write allowlist
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -275,7 +275,7 @@ describe("resolveEvolveWriteAllowlist with DECISIONS_FILE", () => {
 
   it("includes DECISIONS.md in write allowlist for stepNumber=2", async () => {
     // Arrange: step 2 should include DECISIONS.md alongside existing entries
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);

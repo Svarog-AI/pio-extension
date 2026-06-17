@@ -102,7 +102,7 @@ async function handleExecutePlan(args: string | undefined, ctx: ExtensionCommand
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "execute-plan", goalName: name });
+  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "execute-plan", goalName: name, sessionName: `${name} execute-plan` });
   if (!config) {
     ctx.ui.notify("Failed to resolve execute-plan config.", "error");
     return;

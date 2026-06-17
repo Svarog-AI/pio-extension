@@ -9,7 +9,7 @@ import { validateInputs } from "./guards/validation";
 import type { CompiledPromptSections } from "./capability-package";
 import { compilePrompt } from "./prompt-compiler";
 import { setupStepNudging } from "./guards/step-nudging";
-import { discoverNextStep } from "./fs-utils";
+
 import { resolveModelForCapability } from "./model-config";
 
 // ESM-compatible __dirname for resolving capability package directories
@@ -192,20 +192,7 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
       pi.setSessionName(config.sessionName);
     }
 
-    // Enrich session params with stepNumber for goal workspaces.
-    // Preserve explicit stepNumber if already present; auto-discover only when missing/invalid.
-    const rawParams = config.sessionParams || {};
-    const existingStepNumber = typeof rawParams.stepNumber === "number" ? rawParams.stepNumber : undefined;
-
-    enrichedSessionParams = { ...rawParams };
-
-    if (existingStepNumber == null && config.workingDir) {
-      // Only auto-discover for goal workspaces (path contains /goals/)
-      if (config.workingDir.includes("/goals/")) {
-        const discovered = discoverNextStep(config.workingDir);
-        enrichedSessionParams.stepNumber = discovered;
-      }
-    }
+    enrichedSessionParams = config.sessionParams ? { ...config.sessionParams } : {};
 
     // Run prepareSession hook (lifecycle: prepare → work → markComplete → validateState).
     // Hook runs after enrichedSessionParams is populated, so it has access to stepNumber.
@@ -335,8 +322,7 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
 // ---------------------------------------------------------------------------
 
 /**
- * Return a copy of the enriched session params.
- * Includes auto-discovered stepNumber for goal workspaces.
+ * Return a copy of the session params (no framework enrichment).
  */
 export function getSessionParams(): Record<string, unknown> | undefined {
   if (enrichedSessionParams === undefined) return undefined;

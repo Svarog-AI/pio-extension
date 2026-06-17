@@ -127,17 +127,11 @@ describe("getSessionConfig", () => {
     );
   });
 
-  it("returns null when resolveCapabilityConfig throws", async () => {
-    const warnSpy = vi.spyOn(console, "warn");
-    warnSpy.mockImplementation(() => {});
+  it("propagates error when resolveCapabilityConfig throws", async () => {
     mockResolveCapabilityConfig.mockRejectedValue(new Error("module not found"));
 
     const ctx = makeMockCtx({ capability: "missing-cap" });
-    const result = await getSessionConfig(ctx);
-
-    expect(result).toBeNull();
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("failed to reconstruct config"));
-    warnSpy.mockRestore();
+    await expect(getSessionConfig(ctx)).rejects.toThrow("module not found");
   });
 
   it("returns null when resolveCapabilityConfig returns undefined", async () => {

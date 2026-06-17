@@ -197,7 +197,7 @@ describe("stepFolderName", () => {
 describe("resolveExecuteReadOnlyFiles", () => {
   it("returns TASK.md only, not TEST.md", async () => {
     // Arrange: resolve execute-task config with stepNumber 1
-    const params = { capability: "execute-task" as string, goalName: "test-goal", stepNumber: 1 };
+    const params = { capability: "execute-task" as string, goalName: "test-goal", stepNumber: 1, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);

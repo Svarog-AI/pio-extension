@@ -1,7 +1,6 @@
 import { join } from "node:path";
 import type { CapabilityConfig, CapabilityContract, ConfigCallback, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback } from "./types";
 import type { CapabilityPackageConfig, CapabilitySkills } from "./capability-package";
-import { deriveSessionName } from "./fs-utils";
 
 /**
  * Resolve a step-dependent config field: if it's a callback, invoke it;
@@ -132,48 +131,7 @@ export function resolveContractPath(
   return join(workingDir, resolved);
 }
 
-// ---------------------------------------------------------------------------
-// Shared parameter extraction and config assembly
-// ---------------------------------------------------------------------------
 
-/**
- * Parameters extracted from session params shared by both normalize functions.
- */
-interface ExtractedParams {
-  goalName: string;
-  workingDir: string;
-  stepNumber: number | undefined;
-  initialMessage: string | undefined;
-  fileCleanup: string[] | undefined;
-}
-
-/**
- * Extract shared parameters from session params and cwd.
- */
-function extractParams(
-  cwd: string,
-  params?: Record<string, unknown>,
-): ExtractedParams {
-  const goalName = typeof params?.goalName === "string" ? params.goalName : "";
-  const explicitWorkingDir =
-    typeof params?.workingDir === "string" && params.workingDir
-      ? params.workingDir
-      : "";
-  // Default workingDir is always <cwd>/.pio/ — no goal-scoped derivation.
-  // Variable path resolution is handled by workspacePrefix (injected by state machines).
-  const workingDir = explicitWorkingDir
-    ? explicitWorkingDir
-    : join(cwd, ".pio");
-
-  return {
-    goalName,
-    workingDir,
-    stepNumber: typeof params?.stepNumber === "number" ? params.stepNumber : undefined,
-    initialMessage:
-      typeof params?.initialMessage === "string" ? params.initialMessage : undefined,
-    fileCleanup: Array.isArray(params?.fileCleanup) ? params.fileCleanup : undefined,
-  };
-}
 
 /**
  * Assemble a CapabilityConfig from pre-resolved field values.
@@ -187,7 +145,6 @@ function buildCapabilityConfig(
   readOnlyFiles: string[] | undefined,
   writeAllowlist: string[] | undefined,
   initialMessage: string | undefined,
-  fileCleanup: string[] | undefined,
   sessionParams: Record<string, unknown> | undefined,
   sessionName: string,
   prepareSession: PrepareSessionCallback | undefined,
@@ -203,7 +160,6 @@ function buildCapabilityConfig(
     readOnlyFiles,
     writeAllowlist,
     initialMessage,
-    fileCleanup,
     sessionParams,
     sessionName,
     prepareSession,
@@ -223,21 +179,38 @@ function normalizePackageConfig(
   cwd: string,
   params?: Record<string, unknown>,
 ): CapabilityConfig {
-  const extracted = extractParams(cwd, params);
+  // Inline workingDir resolution — fallback to .pio/ root
+  const workingDir =
+    typeof params?.workingDir === "string" && params.workingDir
+      ? params.workingDir
+      : join(cwd, ".pio");
 
-  const readOnlyFiles = resolveField<string[]>(pkg.readOnlyFiles, extracted.workingDir, params);
-  const writeAllowlist = resolveField<string[]>(pkg.writeAllowlist, extracted.workingDir, params);
+  // Mandatory: sessionName — read from params, throw if missing
+  const sessionName = typeof params?.sessionName === "string" ? params.sessionName : "";
+  if (!sessionName) {
+    throw new Error(`Capability "${cap}" requires a session name. Provide params.sessionName.`);
+  }
+
+  // Mandatory: initialMessage — read from params, fallback to defaultInitialMessage, throw if both missing
+  const initialMsg =
+    (typeof params?.initialMessage === "string" ? params.initialMessage : undefined)
+    ?? pkg.defaultInitialMessage(workingDir, params);
+  if (!initialMsg) {
+    throw new Error(`Capability "${cap}" requires an initial message. Provide params.initialMessage or define defaultInitialMessage.`);
+  }
+
+  const readOnlyFiles = resolveField<string[]>(pkg.readOnlyFiles, workingDir, params);
+  const writeAllowlist = resolveField<string[]>(pkg.writeAllowlist, workingDir, params);
 
   return buildCapabilityConfig(
     cap,
     undefined, // new-style: prompts compiled from component files
-    extracted.workingDir,
+    workingDir,
     readOnlyFiles,
     writeAllowlist,
-    extracted.initialMessage ?? pkg.defaultInitialMessage(extracted.workingDir, params),
-    extracted.fileCleanup,
+    initialMsg,
     params,
-    deriveSessionName(extracted.goalName, cap, extracted.stepNumber),
+    sessionName,
     pkg.prepareSession,
     pkg.postValidate,
     pkg.postExecute,
@@ -259,16 +232,17 @@ export async function resolveCapabilityConfig(
   const cap = typeof params?.capability === "string" ? params.capability : null;
   if (!cap) return undefined;
 
+  let mod;
   try {
-    const mod = await import(`./capabilities/${cap}/config`);
-    if (mod.default) {
-      return normalizePackageConfig(cap, mod.default as CapabilityPackageConfig, cwd, params);
-    }
+    mod = await import(`./capabilities/${cap}/config`);
   } catch (err) {
     console.warn(`pio: could not load capability "${cap}": ${err}`);
     return undefined;
   }
 
-  console.warn(`pio: no default export found for capability "${cap}"`);
-  return undefined;
+  if (!mod?.default) {
+    console.warn(`pio: no default export found for capability "${cap}"`);
+    return undefined;
+  }
+  return normalizePackageConfig(cap, mod.default as CapabilityPackageConfig, cwd, params);
 }

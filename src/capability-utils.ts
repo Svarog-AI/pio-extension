@@ -27,16 +27,11 @@ export async function getSessionConfig(ctx: ExtensionContext): Promise<Capabilit
   const data = entry.data as { capability?: string; sessionParams?: Record<string, unknown> };
   if (!data.capability) return null;
 
-  try {
-    const resolved = await resolveCapabilityConfig(ctx.cwd, {
-      capability: data.capability,
-      ...data.sessionParams,
-    });
-    return resolved ?? null;
-  } catch (err) {
-    console.warn(`pio: failed to reconstruct config for capability "${data.capability}": ${err}`);
-    return null;
-  }
+  const resolved = await resolveCapabilityConfig(ctx.cwd, {
+    capability: data.capability,
+    ...data.sessionParams,
+  });
+  return resolved ?? null;
 }
 
 /**

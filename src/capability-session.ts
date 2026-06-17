@@ -322,7 +322,8 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
 // ---------------------------------------------------------------------------
 
 /**
- * Return a copy of the session params (no framework enrichment).
+ * Return a copy of the session params, programmatically enriched 
+ * with derived values.
  */
 export function getSessionParams(): Record<string, unknown> | undefined {
   if (enrichedSessionParams === undefined) return undefined;

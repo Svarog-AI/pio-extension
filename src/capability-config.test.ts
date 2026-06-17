@@ -1,6 +1,8 @@
+import * as fs from "node:fs";
 import * as path from "node:path";
 import type { PrepareSessionCallback, PostValidateCallback, PostExecuteCallback, CapabilityConfig, CapabilitySkills } from "./types";
 import { resolveCapabilityConfig, resolvePaths, resolveContractPath } from "./capability-config";
+import { enqueueTask, readPendingTask } from "./queues";
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -918,6 +920,148 @@ describe("resolveContractPath", () => {
         { otherKey: "value" },
       ),
     ).toThrow(/Unresolved placeholder/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration — custom initial message passthrough
+// ---------------------------------------------------------------------------
+
+/**
+ * These tests verify the end-to-end passthrough of custom initialMessage
+ * through the queue mechanism: enqueue → JSON round-trip → resolve → config.
+ * This ensures the mechanism works before Step 6 starts injecting custom
+ * messages in every pio-workflow transition.
+ */
+describe("custom initial message passthrough", () => {
+  const cwd = "/tmp/pio-msg-passthrough";
+  const queueKey = "test-msg-passthrough";
+
+  afterEach(() => {
+    // Clean up queue file after each test
+    const queueFilePath = path.join(cwd, ".pio", "session-queue", `task-${queueKey}.json`);
+    try {
+      fs.unlinkSync(queueFilePath);
+    } catch {
+      // ignore — file may not exist
+    }
+  });
+
+  it("custom initialMessage survives JSON round-trip: enqueue → readPendingTask → resolveCapabilityConfig", async () => {
+    // Arrange: enqueue a task with a custom initialMessage
+    const customMessage = "Build the widget factory with 42 conveyor belts";
+    enqueueTask(cwd, queueKey, {
+      capability: "create-goal",
+      params: { goalName: "widget-factory", initialMessage: customMessage },
+    });
+
+    // Act: read it back and resolve config
+    const task = readPendingTask(cwd, queueKey);
+    const config = await resolveCapabilityConfig(cwd, { ...task!.params, capability: task!.capability, sessionName: "test" });
+
+    // Assert: config.initialMessage is the custom message, not the default "Ready."
+    expect(config).toBeDefined();
+    expect(config!.initialMessage).toBe(customMessage);
+    expect(config!.initialMessage).not.toBe("Ready.");
+  });
+
+  it("fallback chain: when no params.initialMessage, defaultInitialMessage is used", async () => {
+    // Arrange: enqueue a task without initialMessage (relies on defaultInitialMessage)
+    enqueueTask(cwd, queueKey, {
+      capability: "create-plan",
+      params: { goalName: "my-feature" },
+    });
+
+    // Act: read it back and resolve config
+    const task = readPendingTask(cwd, queueKey);
+    const config = await resolveCapabilityConfig(cwd, { ...task!.params, capability: task!.capability, sessionName: "test" });
+
+    // Assert: config.initialMessage is the default ("Ready.")
+    expect(config).toBeDefined();
+    expect(config!.initialMessage).toBe("Ready.");
+  });
+
+  it("throw: when neither params.initialMessage nor defaultInitialMessage provides a value", async () => {
+    // Arrange: test-no-initial-message has defaultInitialMessage returning ""
+    enqueueTask(cwd, queueKey, {
+      capability: "test-no-initial-message",
+      params: {},
+    });
+
+    // Act + Assert: resolving config should throw
+    const task = readPendingTask(cwd, queueKey);
+    await expect(
+      resolveCapabilityConfig(cwd, { ...task!.params, capability: task!.capability, sessionName: "test" }),
+    ).rejects.toThrow(/requires an initial message/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration — all real capabilities define defaultInitialMessage
+// ---------------------------------------------------------------------------
+
+describe("all real capabilities define defaultInitialMessage", () => {
+  it("create-goal defaultInitialMessage returns a non-empty string", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", { capability: "create-goal" as string, sessionName: "test" });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
+  });
+
+  it("create-plan defaultInitialMessage returns a non-empty string", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", { capability: "create-plan" as string, sessionName: "test" });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
+  });
+
+  it("evolve-plan defaultInitialMessage returns a non-empty string", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", { capability: "evolve-plan" as string, stepNumber: 1, sessionName: "test" });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
+  });
+
+  it("execute-task defaultInitialMessage returns a non-empty string with .pio/ workingDir", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", { capability: "execute-task" as string, stepNumber: 1, sessionName: "test" });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
+    // With fixed workingDir (.pio/), the message should reference .pio/ not a goal dir
+    expect(config!.initialMessage).toContain(".pio");
+  });
+
+  it("review-task defaultInitialMessage returns a non-empty string", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", { capability: "review-task" as string, stepNumber: 1, sessionName: "test" });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
+  });
+
+  it("revise-plan defaultInitialMessage returns a non-empty string", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", { capability: "revise-plan" as string, sessionName: "test" });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
+  });
+
+  it("execute-plan defaultInitialMessage returns a non-empty string", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", { capability: "execute-plan" as string, sessionName: "test" });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
+  });
+
+  it("finalize-goal defaultInitialMessage returns a non-empty string with goalDir param", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", {
+      capability: "finalize-goal" as string,
+      goalName: "my-feature",
+      goalDir: "/tmp/proj/.pio/goals/my-feature",
+      sessionName: "test",
+    });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
+    // finalize-goal uses goalDir from params, should include goal name
+    expect(config!.initialMessage).toContain("my-feature");
+  });
+
+  it("project-context defaultInitialMessage returns a non-empty string", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", { capability: "project-context" as string, sessionName: "test" });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
   });
 });
 

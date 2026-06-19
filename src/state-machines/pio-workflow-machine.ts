@@ -99,10 +99,8 @@ function resolveEvolvePlanToRevisePlan(
   ctx: { baseDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult | undefined {
+  const goalName = requireGoalName("resolveEvolvePlanToRevisePlan", params);
   const explicitStepNumber = extractStepNumber(params);
-  const goalName = extractGoalName(params);
-
-  if (!goalName) return undefined;
 
   const prefix = workspacePrefix(goalName);
 

@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { getSessionConfig } from "../capability-utils";
 import { validateOutputs } from "./validation";
 import { dispatch, getMachine, recordTransition } from "../state-machines";
-import { enqueueTask, writeLastTask } from "../queues";
+import { enqueueTask } from "../queues";
 
 // ---------------------------------------------------------------------------
 // pio_mark_complete tool — orchestrates the full capability exit lifecycle
@@ -33,8 +33,32 @@ export const markCompleteTool = defineTool({
       return { content: [{ type: "text", text: "No directory is defined for this session. Something went wrong." }], details: {}, terminate: true };
     }
 
+    // Use the completing session's params directly — they are authoritative.
+    const sessionParams = config.sessionParams || {};
+
+    // Read queueKey from session params (set by the state machine)
+    const queueKey = typeof sessionParams.queueKey === "string"
+      ? sessionParams.queueKey
+      : undefined;
+    if (!queueKey) {
+      throw new Error(
+        `mark-complete: queueKey missing from session params — ensure enqueue provides it`,
+      );
+    }
+
+    // Read workspace prefix from session params (set by the state machine)
+    const workspacePrefix = typeof sessionParams.workspacePrefix === "string"
+      ? sessionParams.workspacePrefix
+      : undefined;
+
+    // Derive workspace directory from prefix
+    const workspaceDir = workspacePrefix
+      ? path.join(dir, workspacePrefix)
+      : dir;
+
     // 1. Output validation (existence + frontmatter schema — single call)
-    const outputsResult = validateOutputs(config.contract, dir, config.sessionParams);
+    // validateOutputs reads workspacePrefix from sessionParams itself
+    const outputsResult = validateOutputs(config.contract, dir, sessionParams);
 
     if (!outputsResult.success) {
       return { content: [{ type: "text", text: `Validation failed: ${outputsResult.message}\n\nProduce these files and call pio_mark_complete again.` }], details: {} };
@@ -43,7 +67,7 @@ export const markCompleteTool = defineTool({
     // 2. PostValidate hook — can fail to keep agent in session
     if (config.postValidate) {
       try {
-        const postValidateResult = config.postValidate(dir, config.sessionParams);
+        const postValidateResult = config.postValidate(workspaceDir, sessionParams);
         if (!postValidateResult.success) {
           return { content: [{ type: "text", text: postValidateResult.message || "Post-validation failed." }], details: {} };
         }
@@ -57,14 +81,7 @@ export const markCompleteTool = defineTool({
     // 3. Transition routing + task enqueuing
     const capability = config.capability;
 
-    // Use the completing session's params directly — they are authoritative.
-    const sessionParams = config.sessionParams || {};
-
-    // Derive goalName from directory path
-    const goalName = path.basename(dir);
-
     // Use explicit stepNumber from session params — authoritative for the completing step.
-    // No disk scan fallback needed: stepNumber is always set in session params.
     const stepNumber = typeof sessionParams.stepNumber === "number"
       ? sessionParams.stepNumber
       : undefined;
@@ -77,7 +94,7 @@ export const markCompleteTool = defineTool({
     const targetMachine = machineId ? getMachine(machineId) : undefined;
 
     const results = capability
-      ? dispatch(targetMachine, capability, { baseDir: dir }, { goalName, stepNumber, _sessionContext: sessionParams })
+      ? dispatch(targetMachine, capability, { baseDir: dir }, sessionParams)
       : [];
 
     if (capability && results.length === 1) {
@@ -86,43 +103,34 @@ export const markCompleteTool = defineTool({
         // Use adjusted params from the transition (may contain incremented stepNumber)
         const adjustedParams = nextTask.params || {};
 
-        // After spreading adjusted params and _sessionContext, explicitly set stepNumber last
+        // After spreading adjusted params, explicitly set stepNumber last
         // to guarantee it appears at top level (cannot be shadowed by nested _sessionContext).
         const finalStepNumber = typeof adjustedParams.stepNumber === "number"
           ? adjustedParams.stepNumber
           : stepNumber;
 
-        // For subgoals completing via finalize-goal, resolveFinalizeGoalToEvolvePlan sets
-        // goalName to parentGoalName in returned params. Use this as the queue key
-        // to restore the parent workflow slot. For flat goals, this equals state.goalName.
-        const queueGoalName = typeof adjustedParams.goalName === "string"
-          ? adjustedParams.goalName
-          : goalName;
-
         // Enriched params: same object passed to both enqueueTask and recordTransition
         // so transitions.json accurately reflects what was actually dispatched.
         const enrichedParams = {
-          goalName,
           ...adjustedParams,
           _sessionContext: sessionParams,
           ...(finalStepNumber != null ? { stepNumber: finalStepNumber } : {}),
           stateMachineId: nextTask.stateMachineId,
         };
 
-        enqueueTask(process.cwd(), queueGoalName, {
+        // Queue key for scheduling: use adjustedParams.queueKey if set (e.g. subgoal → parent),
+        // otherwise fall back to completing session's own key.
+        const nextQueueKey = typeof adjustedParams.queueKey === "string"
+          ? adjustedParams.queueKey
+          : queueKey;
+
+        enqueueTask(process.cwd(), nextQueueKey, {
           capability: nextTask.capability,
           params: enrichedParams,
         });
 
         // Record transition audit entry with enriched params
-        recordTransition(dir, capability, nextTask, enrichedParams);
-
-        // Record the completed task in the goal directory
-        // dir IS the goal directory (config.workingDir) — no need to resolve it again
-        writeLastTask(dir, {
-          capability,
-          params: { goalName, ...(stepNumber != null ? { stepNumber } : {}), _sessionContext: sessionParams },
-        });
+        recordTransition(workspaceDir, capability, nextTask, enrichedParams);
 
         notification = `\n\nNext task enqueued: ${nextTask.capability}. Use \`/pio-next-task\` to start the sub-session.`;
       } catch (err) {
@@ -136,7 +144,7 @@ export const markCompleteTool = defineTool({
     // 4. PostExecute hook — runs after transitions, errors are non-fatal
     if (config.postExecute) {
       try {
-        const postExecuteResult = config.postExecute(dir, config.sessionParams);
+        const postExecuteResult = config.postExecute(workspaceDir, sessionParams);
         if (postExecuteResult instanceof Promise) {
           await postExecuteResult;
         }

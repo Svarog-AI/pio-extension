@@ -166,6 +166,9 @@ APPROVED
       capability: "review-task",
       goalName: "test-goal",
       stepNumber: 1,
+      sessionName: "test-goal review-task s1",
+      workspacePrefix: "goals/test-goal",
+      queueKey: "test-goal",
     });
 
     const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
@@ -210,6 +213,9 @@ REJECTED
       capability: "review-task",
       goalName: "test-goal",
       stepNumber: 1,
+      sessionName: "test-goal review-task s1",
+      workspacePrefix: "goals/test-goal",
+      queueKey: "test-goal",
     });
 
     const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
@@ -251,6 +257,9 @@ Missing decision field.
       capability: "review-task",
       goalName: "test-goal",
       stepNumber: 1,
+      sessionName: "test-goal review-task s1",
+      workspacePrefix: "goals/test-goal",
+      queueKey: "test-goal",
     });
 
     const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
@@ -291,6 +300,9 @@ Invalid decision value.
       capability: "review-task",
       goalName: "test-goal",
       stepNumber: 1,
+      sessionName: "test-goal review-task s1",
+      workspacePrefix: "goals/test-goal",
+      queueKey: "test-goal",
     });
 
     const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
@@ -320,6 +332,9 @@ Invalid decision value.
       capability: "review-task",
       goalName: "test-goal",
       stepNumber: 1,
+      sessionName: "test-goal review-task s1",
+      workspacePrefix: "goals/test-goal",
+      queueKey: "test-goal",
     });
 
     const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
@@ -350,6 +365,9 @@ Invalid decision value.
       capability: "execute-task",
       goalName: "test-goal",
       stepNumber: 1,
+      sessionName: "test-goal execute-task s1",
+      workspacePrefix: "goals/test-goal",
+      queueKey: "test-goal",
     });
 
     const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);

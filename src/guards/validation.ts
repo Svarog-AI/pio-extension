@@ -4,7 +4,7 @@ import * as path from "node:path";
 import * as Value from "typebox/value";
 import { extractFrontmatter, formatSchemaDescription } from "../frontmatter";
 import { getSessionConfig } from "../capability-utils";
-import { resolvePaths } from "../capability-config";
+import { resolvePaths, resolveContractPath } from "../capability-config";
 import type { CapabilityContract, MarkdownFileSpec, OutputEntry, PostValidateCallback } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -14,7 +14,7 @@ import type { CapabilityContract, MarkdownFileSpec, OutputEntry, PostValidateCal
 let readOnlyFilePaths: string[] = [];
 let writeAllowlistPaths: string[] = [];
 
-/** Session working directory — the goal workspace dir (e.g. `/repo/.pio/goals/my-feature`). */
+/** Session working directory — base directory for resolving validation file paths. */
 let workingDir: string | undefined;
 
 /** True after we've already warned once and let the switch through. */
@@ -39,7 +39,8 @@ function isMarkdownFileSpec(entry: OutputEntry): entry is MarkdownFileSpec {
  * Check that all declared output files exist on disk and validate frontmatter
  * against declared schemas. Collects all issues into a single message string.
  *
- * Paths are resolved relative to `baseDir` via `path.join(baseDir, file)`.
+ * Paths are resolved through `resolveContractPath()` which handles workspace
+ * prefix injection and placeholder resolution.
  */
 export function validateOutputs(
   contract: CapabilityContract,
@@ -51,6 +52,10 @@ export function validateOutputs(
   if (fs.existsSync(path.join(baseDir, "COMPLETION_SUMMARY.md"))) {
     return { success: true };
   }
+
+  const workspacePrefix = typeof params?.workspacePrefix === "string"
+    ? params.workspacePrefix
+    : undefined;
 
   try {
     const issues: string[] = [];
@@ -66,11 +71,13 @@ export function validateOutputs(
         continue;
       }
 
-      // Resolve placeholder tokens in file path
+      // Resolve placeholder tokens first for error messages
       const resolvedPaths = resolvePaths([entry.file], params || {});
       const resolvedFile = resolvedPaths[0];
 
-      const fullPath = path.join(baseDir, resolvedFile);
+      // Use resolveContractPath for prefix-aware resolution
+      const fullPath = resolveContractPath(entry.file, baseDir, workspacePrefix, params);
+
       if (!fs.existsSync(fullPath)) {
         issues.push(`Output file '${resolvedFile}' is missing`);
         continue;
@@ -124,7 +131,9 @@ export function validateFrontmatter(
   workingDir: string,
   params?: Record<string, unknown>,
 ): { success: boolean; message?: string } {
-  const resolvedParams = params || {};
+  const workspacePrefix = typeof params?.workspacePrefix === "string"
+    ? params.workspacePrefix
+    : undefined;
 
   try {
     for (const entry of contract.outputs) {
@@ -137,11 +146,12 @@ export function validateFrontmatter(
         continue;
       }
 
-      // Resolve placeholder tokens in file path
-      const resolvedPaths = resolvePaths([entry.file], resolvedParams);
+      // Resolve placeholder tokens first for error messages
+      const resolvedPaths = resolvePaths([entry.file], params || {});
       const resolvedFile = resolvedPaths[0];
 
-      const filePath = path.join(workingDir, resolvedFile);
+      // Use resolveContractPath for prefix-aware resolution
+      const filePath = resolveContractPath(entry.file, workingDir, workspacePrefix, params);
 
       // Check file exists
       if (!fs.existsSync(filePath)) {
@@ -181,12 +191,12 @@ export function validateFrontmatter(
  * contract.excludedFiles[] (fail-fast on first existing). Returns success only
  * when all checks pass.
  *
- * Paths are resolved via resolvePaths() using the provided params for
- * placeholder substitution.
+ * Paths are resolved through `resolveContractPath()` which handles workspace
+ * prefix injection and placeholder resolution.
  *
  * @param baseDir - Base directory for resolving relative paths
  * @param contract - CapabilityContract with inputs and excludedFiles
- * @param params - Session params for placeholder resolution
+ * @param params - Session params for placeholder resolution (must include workspacePrefix if used)
  * @returns Success result or failure with descriptive message
  */
 export function validateInputs(
@@ -194,14 +204,18 @@ export function validateInputs(
   contract: CapabilityContract,
   params?: Record<string, unknown>,
 ): { success: boolean; message?: string } {
-  const resolvedParams = params || {};
+  const workspacePrefix = typeof params?.workspacePrefix === "string"
+    ? params.workspacePrefix
+    : undefined;
 
   try {
     // Check required inputs
     for (const spec of contract.inputs) {
-      const resolvedPaths = resolvePaths([spec.file], resolvedParams);
+      // Resolve placeholder tokens first for error messages
+      const resolvedPaths = resolvePaths([spec.file], params || {});
       const resolvedFile = resolvedPaths[0];
-      const fullPath = path.join(baseDir, resolvedFile);
+
+      const fullPath = resolveContractPath(spec.file, baseDir, workspacePrefix, params);
 
       if (!fs.existsSync(fullPath)) {
         return { success: false, message: `Required file missing: ${resolvedFile}` };
@@ -229,9 +243,11 @@ export function validateInputs(
     // Check excluded files
     if (contract.excludedFiles) {
       for (const file of contract.excludedFiles) {
-        const resolvedPaths = resolvePaths([file], resolvedParams);
+        const resolvedPaths = resolvePaths([file], params || {});
         const resolvedFile = resolvedPaths[0];
-        if (fs.existsSync(path.join(baseDir, resolvedFile))) {
+
+        const fullPath = resolveContractPath(file, baseDir, workspacePrefix, params);
+        if (fs.existsSync(fullPath)) {
           return { success: false, message: `File must not exist: ${resolvedFile}` };
         }
       }
@@ -256,7 +272,7 @@ export function validateInputs(
 export function createFrontmatterValidator(
   contract: CapabilityContract,
 ): PostValidateCallback {
-  return (goalDir, params) => validateFrontmatter(contract, goalDir, params);
+  return (workspaceDir, params) => validateFrontmatter(contract, workspaceDir, params);
 }
 
 // ---------------------------------------------------------------------------
@@ -270,16 +286,24 @@ export function setupValidation(pi: ExtensionAPI) {
     if (!config) return;
     workingDir = config.workingDir;
 
-    // Resolve read-only file paths to absolute paths
+    const workspacePrefix = typeof config.sessionParams?.workspacePrefix === "string"
+      ? config.sessionParams.workspacePrefix
+      : undefined;
+
+    // Resolve read-only file paths through prefix layer
     if (config.readOnlyFiles && config.workingDir) {
-      readOnlyFilePaths = config.readOnlyFiles.map((f) => path.resolve(config.workingDir!, f));
+      readOnlyFilePaths = config.readOnlyFiles.map((f) =>
+        path.resolve(resolveContractPath(f, workingDir!, workspacePrefix, config.sessionParams))
+      );
     } else {
       readOnlyFilePaths = [];
     }
 
-    // Resolve write-allowlist paths to absolute paths
+    // Resolve write-allowlist paths through prefix layer
     if (config.writeAllowlist && config.workingDir) {
-      writeAllowlistPaths = config.writeAllowlist.map((f) => path.resolve(config.workingDir!, f));
+      writeAllowlistPaths = config.writeAllowlist.map((f) =>
+        path.resolve(resolveContractPath(f, workingDir!, workspacePrefix, config.sessionParams))
+      );
     } else {
       writeAllowlistPaths = [];
     }
@@ -343,12 +367,10 @@ export function setupValidation(pi: ExtensionAPI) {
           continue;
         }
 
-        // Permit if the path is inside the session's own workingDir (goal workspace)
-        if (workingDir && (tp.startsWith(workingDir + path.sep) || tp === workingDir)) {
-          continue;
-        }
-
-        // Block writes to .pio/ areas outside the session's goal workspace
+        // Block writes to .pio/ areas outside the session's write allowlist.
+        // With workingDir = .pio/, the old "permit writes inside workingDir" check
+        // would permit writing anywhere under .pio/. The auto-derived allowlist
+        // from resolved contract output paths handles the actual protection.
         return { block: true, reason: `Writing to .pio/ files is not allowed. These files are managed by the pio workflow and should not be modified directly from this session.` };
       }
     }

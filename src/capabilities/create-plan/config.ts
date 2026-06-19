@@ -35,9 +35,9 @@ const STEP_HEADING_RE = /^### Step \d+:/gm;
  * Delegates frontmatter validation to GoalState.planMetadata() — does not
  * import low-level frontmatter utilities directly.
  */
-export function postValidateCreatePlan(goalDir: string): { success: boolean; message?: string } {
+export function postValidateCreatePlan(workspaceDir: string): { success: boolean; message?: string } {
   // Step 1: Validate frontmatter via CapState
-  const capState = new CapState(CONTRACT, goalDir);
+  const capState = new CapState(CONTRACT, workspaceDir);
   const planFile = capState.output<PlanFrontmatter>("plan");
 
   if (!planFile.exists()) {
@@ -46,7 +46,7 @@ export function postValidateCreatePlan(goalDir: string): { success: boolean; mes
   const data = planFile.read();
   if (data === null) {
     // Get detailed error message via direct validation
-    const raw = extractFrontmatter(path.join(goalDir, "PLAN.md"));
+    const raw = extractFrontmatter(path.join(workspaceDir, "PLAN.md"));
     if (raw === null) {
       return { success: false, message: "PLAN.md does not contain valid YAML frontmatter" };
     }
@@ -79,7 +79,7 @@ export function postValidateCreatePlan(goalDir: string): { success: boolean; mes
   }
 
   // Step 4: Count actual ## Step N: headings in PLAN.md
-  const planPath = `${goalDir}/PLAN.md`;
+  const planPath = `${workspaceDir}/PLAN.md`;
   const planContent = fs.readFileSync(planPath, "utf-8");
   const headingMatches = planContent.match(STEP_HEADING_RE);
   const headingCount = headingMatches ? headingMatches.length : 0;

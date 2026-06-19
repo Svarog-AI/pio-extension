@@ -738,14 +738,14 @@ describe("pio_mark_complete — queue key propagation", () => {
 
     // Arrange: subgoal completion — transition returns parent goal name
     mockDispatch.mockReturnValue([
-      { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "parent", stepNumber: 4 } },
+      { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "parent", stepNumber: 4, queueKey: "parent" } },
     ]);
 
     const ctx = makeToolContext({
       capability: "finalize-goal",
       workingDir: path.join(tempDir, ".pio", "goals", "child"),
       contract: { inputs: [], outputs: [] },
-      sessionParams: { goalName: "child" },
+      sessionParams: { goalName: "child", queueKey: "child" },
     });
 
     // Act
@@ -762,14 +762,14 @@ describe("pio_mark_complete — queue key propagation", () => {
 
     // Arrange: flat goal — transition returns same goal name
     mockDispatch.mockReturnValue([
-      { capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "my-feature", stepNumber: 1 } },
+      { capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "my-feature", stepNumber: 1, queueKey: "my-feature" } },
     ]);
 
     const ctx = makeToolContext({
       capability: "execute-task",
       workingDir: path.join(tempDir, ".pio", "goals", "my-feature"),
       contract: { inputs: [], outputs: [] },
-      sessionParams: { goalName: "my-feature" },
+      sessionParams: { goalName: "my-feature", queueKey: "my-feature" },
     });
 
     // Act
@@ -786,14 +786,14 @@ describe("pio_mark_complete — queue key propagation", () => {
 
     // Arrange: transition returns parent goal name
     mockDispatch.mockReturnValue([
-      { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "parent", stepNumber: 4 } },
+      { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "parent", stepNumber: 4, queueKey: "parent" } },
     ]);
 
     const ctx = makeToolContext({
       capability: "finalize-goal",
       workingDir: path.join(tempDir, ".pio", "goals", "nested"),
       contract: { inputs: [], outputs: [] },
-      sessionParams: { goalName: "nested", parentGoalName: "parent", parentStepNumber: 3 },
+      sessionParams: { goalName: "nested", parentGoalName: "parent", parentStepNumber: 3, queueKey: "nested" },
     });
 
     // Act

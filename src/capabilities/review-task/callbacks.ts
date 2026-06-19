@@ -63,14 +63,14 @@ export function resolveReviewWriteAllowlist(_dir: string, params?: Record<string
  * Post-validate hook: reads REVIEW.md frontmatter and validates against schema.
  * Does NOT create markers — that is the job of postExecuteReview().
  */
-export function postValidateReview(goalDir: string, params?: Record<string, unknown>): { success: boolean; message?: string } {
+export function postValidateReview(workspaceDir: string, params?: Record<string, unknown>): { success: boolean; message?: string } {
   const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
   if (stepNumber == null) {
     throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
   }
 
   // Read REVIEW.md via CapState — uses CONTRACT.outputs schema for validation
-  const capState = new CapState(CONTRACT, goalDir, { stepNumber });
+  const capState = new CapState(CONTRACT, workspaceDir, { stepNumber });
   const reviewFile = capState.output<ReviewOutputs>("review");
 
   if (!reviewFile.exists()) {
@@ -79,7 +79,7 @@ export function postValidateReview(goalDir: string, params?: Record<string, unkn
   const data = reviewFile.read();
   if (data === null) {
     // Get detailed error message via direct validation
-    const reviewPath = path.join(goalDir, stepFolderName(stepNumber), "REVIEW.md");
+    const reviewPath = path.join(workspaceDir, stepFolderName(stepNumber), "REVIEW.md");
     const raw = extractFrontmatter(reviewPath);
     if (raw === null) {
       return { success: false, message: `REVIEW.md does not contain valid YAML frontmatter for step ${stepNumber}` };
@@ -100,14 +100,14 @@ export function postValidateReview(goalDir: string, params?: Record<string, unkn
  * Runs after transition routing + task enqueuing (step 4 in mark-complete.ts).
  * Re-reads REVIEW.md from disk — both hooks read independently.
  */
-export function postExecuteReview(goalDir: string, params?: Record<string, unknown>): void {
+export function postExecuteReview(workspaceDir: string, params?: Record<string, unknown>): void {
   const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
   if (stepNumber == null) {
     throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
   }
 
   // Re-read REVIEW.md via CapState (reads fresh from disk on every call)
-  const capState = new CapState(CONTRACT, goalDir, { stepNumber });
+  const capState = new CapState(CONTRACT, workspaceDir, { stepNumber });
   const reviewFile = capState.output<ReviewOutputs>("review");
 
   if (!reviewFile.exists()) {
@@ -121,7 +121,7 @@ export function postExecuteReview(goalDir: string, params?: Record<string, unkno
   }
 
   // Create markers (APPROVED/REJECTED) — irreversible side-effect
-  applyReviewDecision(goalDir, stepNumber, data);
+  applyReviewDecision(workspaceDir, stepNumber, data);
 }
 
 // ---------------------------------------------------------------------------
@@ -133,17 +133,17 @@ export function postExecuteReview(goalDir: string, params?: Record<string, unkno
  * APPROVED: creates empty S{NN}/APPROVED, leaves COMPLETED intact.
  * REJECTED: creates empty S{NN}/REJECTED, deletes S{NN}/COMPLETED.
  *
- * @param goalDir - Absolute path to the goal workspace
+ * @param workspaceDir - Absolute path to the workspace directory
  * @param stepNumber - Step number (zero-padded automatically)
  * @param outputs - Validated review outputs (TypeScript guarantees correct types)
  */
 export function applyReviewDecision(
-  goalDir: string,
+  workspaceDir: string,
   stepNumber: number,
   outputs: ReviewOutputs,
 ): void {
   const folder = stepFolderName(stepNumber);
-  const stepDir = path.join(goalDir, folder);
+  const stepDir = path.join(workspaceDir, folder);
 
   // Ensure the step directory exists (should already exist with REVIEW.md, but be safe)
   fs.mkdirSync(stepDir, { recursive: true });

@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { launchCapability, getSessionGoalName } from "../capability-session";
-import { queueDir, readPendingTask, listPendingGoals, type SessionQueueTask } from "../queues";
+import { queueDir, readPendingTask, listPendingTasks, type SessionQueueTask } from "../queues";
 import { resolveCapabilityConfig } from "../capability-config";
 
 // ---------------------------------------------------------------------------
@@ -41,16 +41,16 @@ export async function handleNextTask(args: string | undefined, ctx: ExtensionCom
     return;
   }
 
-  // Case 3: no arg, no session goalName — scan all pending goals and auto-launch if exactly one
-  const pendingGoals = listPendingGoals(ctx.cwd);
+  // Case 3: no arg, no session goalName — scan all pending tasks and auto-launch if exactly one
+  const pendingTasks = listPendingTasks(ctx.cwd);
 
-  if (pendingGoals.length === 0) {
+  if (pendingTasks.length === 0) {
     ctx.ui.notify("No tasks queued.", "info");
     return;
   }
 
-  if (pendingGoals.length === 1) {
-    const goalName = pendingGoals[0];
+  if (pendingTasks.length === 1) {
+    const goalName = pendingTasks[0];
     const task = readPendingTask(ctx.cwd, goalName);
     if (!task) {
       ctx.ui.notify(`No pending task for goal "${goalName}".`, "info");
@@ -62,7 +62,7 @@ export async function handleNextTask(args: string | undefined, ctx: ExtensionCom
   }
 
   // Multiple goals pending — notify user to specify which one
-  const list = pendingGoals.map((g) => `  - ${g}`).join("\n");
+  const list = pendingTasks.map((g) => `  - ${g}`).join("\n");
   ctx.ui.notify(`Multiple goals have pending tasks. Specify a goal:\n/pio-next-task <goal-name>\n\nPending: \n${list}`, "info");
 }
 

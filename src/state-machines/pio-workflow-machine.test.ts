@@ -129,7 +129,7 @@ describe("dispatch — create-goal → create-plan", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Create an implementation plan for goal "my-feature" based on GOAL.md.`,
       sessionName: "my-feature create-plan",
-      params: { goalName: "my-feature", workspacePrefix: "goals/my-feature" },
+      params: { goalName: "my-feature", workspacePrefix: "goals/my-feature", queueKey: "my-feature" },
     });
   });
 
@@ -167,7 +167,7 @@ describe("dispatch — create-plan → evolve-plan", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Generate the specification for Step 1 of goal "my-feature".`,
       sessionName: "my-feature evolve-plan s1",
-      params: { goalName: "my-feature", stepNumber: 1, workspacePrefix: "goals/my-feature" },
+      params: { goalName: "my-feature", stepNumber: 1, workspacePrefix: "goals/my-feature", queueKey: "my-feature" },
     });
   });
 
@@ -205,7 +205,7 @@ describe("dispatch — evolve-plan → execute-task", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Implement Step 3 of goal "feat" using the specification in TASK.md.`,
       sessionName: "feat execute-task s3",
-      params: { goalName: "feat", stepNumber: 3, workspacePrefix: "goals/feat" },
+      params: { goalName: "feat", stepNumber: 3, workspacePrefix: "goals/feat", queueKey: "feat" },
     });
   });
 
@@ -226,7 +226,7 @@ describe("dispatch — evolve-plan → execute-task", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Implement Step 2 of goal "feat" using the specification in TASK.md.`,
       sessionName: "feat execute-task s2",
-      params: { goalName: "feat", stepNumber: 2, workspacePrefix: "goals/feat" },
+      params: { goalName: "feat", stepNumber: 2, workspacePrefix: "goals/feat", queueKey: "feat" },
     });
   });
 });
@@ -261,7 +261,7 @@ describe("dispatch — review→evolve→finalize chain", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Step 3 approved. Generate the specification for Step 4 of goal "feat".`,
       sessionName: "feat evolve-plan s4",
-      params: { goalName: "feat", stepNumber: 4, workspacePrefix: "goals/feat" },
+      params: { goalName: "feat", stepNumber: 4, workspacePrefix: "goals/feat", queueKey: "feat" },
     });
 
     // Arrange step 2: goal is complete (COMPLETION_SUMMARY.md exists)
@@ -280,6 +280,7 @@ describe("dispatch — review→evolve→finalize chain", () => {
       params: {
         goalName: "feat",
         workspacePrefix: "goals/feat",
+        queueKey: "feat",
       },
     });
   });
@@ -315,6 +316,7 @@ describe("dispatch — evolve-plan completion detection", () => {
       params: {
         goalName: "feat",
         workspacePrefix: "goals/feat",
+        queueKey: "feat",
       },
     });
   });
@@ -328,6 +330,7 @@ describe("dispatch — evolve-plan completion detection", () => {
     expect(results[0].capability).toBe("finalize-goal");
     expect(results[0].params?.goalName).toBe("feat");
     expect(results[0].params?.workspacePrefix).toBe("goals/feat");
+    expect(results[0].params?.queueKey).toBe("feat");
     expect(results[0].params?.goalDir).toBeUndefined();
     expect(results[0].params?.workingDir).toBeUndefined();
   });
@@ -349,7 +352,7 @@ describe("dispatch — evolve-plan completion detection", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Implement Step 2 of goal "feat" using the specification in TASK.md.`,
       sessionName: "feat execute-task s2",
-      params: { goalName: "feat", stepNumber: 2, workspacePrefix: "goals/feat" },
+      params: { goalName: "feat", stepNumber: 2, workspacePrefix: "goals/feat", queueKey: "feat" },
     });
   });
 });
@@ -379,7 +382,7 @@ describe("dispatch — execute-task → review-task", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Review the implementation of Step 5 for goal "feat".`,
       sessionName: "feat review-task s5",
-      params: { goalName: "feat", stepNumber: 5, workspacePrefix: "goals/feat" },
+      params: { goalName: "feat", stepNumber: 5, workspacePrefix: "goals/feat", queueKey: "feat" },
     });
   });
 
@@ -400,7 +403,7 @@ describe("dispatch — execute-task → review-task", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Review the implementation of Step 5 for goal "feat".`,
       sessionName: "feat review-task s5",
-      params: { goalName: "feat", stepNumber: 5, workspacePrefix: "goals/feat" },
+      params: { goalName: "feat", stepNumber: 5, workspacePrefix: "goals/feat", queueKey: "feat" },
     });
   });
 });
@@ -431,7 +434,7 @@ describe("dispatch — review-task approval", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Step 3 approved. Generate the specification for Step 4 of goal "feat".`,
       sessionName: "feat evolve-plan s4",
-      params: { goalName: "feat", stepNumber: 4, workspacePrefix: "goals/feat" },
+      params: { goalName: "feat", stepNumber: 4, workspacePrefix: "goals/feat", queueKey: "feat" },
     });
   });
 
@@ -480,7 +483,7 @@ describe("dispatch — review-task rejection", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Step 3 rejected. Re-implement using the feedback in REVIEW.md.`,
       sessionName: "feat execute-task s3",
-      params: { goalName: "feat", stepNumber: 3, workspacePrefix: "goals/feat" },
+      params: { goalName: "feat", stepNumber: 3, workspacePrefix: "goals/feat", queueKey: "feat" },
     });
   });
 
@@ -603,7 +606,7 @@ describe("TransitionResult shape consistency", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Implement Step 1 of goal "feat" using the specification in TASK.md.`,
       sessionName: "feat execute-task s1",
-      params: { goalName: "feat", stepNumber: 1, workspacePrefix: "goals/feat" },
+      params: { goalName: "feat", stepNumber: 1, workspacePrefix: "goals/feat", queueKey: "feat" },
     });
   });
 });
@@ -779,7 +782,7 @@ describe("recordTransition isolation", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Create an implementation plan for goal "test" based on GOAL.md.`,
       sessionName: "test create-plan",
-      params: { goalName: "test", workspacePrefix: "goals/test" },
+      params: { goalName: "test", workspacePrefix: "goals/test", queueKey: "test" },
     });
   });
 });

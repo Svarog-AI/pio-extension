@@ -72,17 +72,17 @@ export async function prepareSession(
  * since the revision agent may have written a new PLAN.md with a different step list.
  */
 export async function cleanupIncompleteSteps(
-  goalDir: string,
+  workspaceDir: string,
   params?: Record<string, unknown>,
 ): Promise<void> {
   // Scan disk for S{NN}/ folders
-  const entries = fs.readdirSync(goalDir, { withFileTypes: true });
+  const entries = fs.readdirSync(workspaceDir, { withFileTypes: true });
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     if (!STEP_FOLDER_RE.test(entry.name)) continue;
 
-    const stepDir = path.join(goalDir, entry.name);
+    const stepDir = path.join(workspaceDir, entry.name);
     const approvedPath = path.join(stepDir, "APPROVED");
 
     if (!fs.existsSync(approvedPath)) {
@@ -98,7 +98,7 @@ export async function cleanupIncompleteSteps(
 
   if (revisionTriggerStep != null) {
     const folderName = stepFolderName(revisionTriggerStep);
-    const markerPath = path.join(goalDir, folderName, REVISE_PLAN_MARKER);
+    const markerPath = path.join(workspaceDir, folderName, REVISE_PLAN_MARKER);
     // Use force: true to handle case where folder was already deleted
     if (fs.existsSync(markerPath)) {
       fs.unlinkSync(markerPath);

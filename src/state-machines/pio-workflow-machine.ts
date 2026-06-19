@@ -70,7 +70,7 @@ function resolveCreateGoalToCreatePlan(
     capability: "create-plan",
     initialMessage: `Create an implementation plan for goal "${goalName}" based on GOAL.md.`,
     sessionName: sessionName(goalName, "create-plan"),
-    params: { ...params, workspacePrefix: workspacePrefix(goalName) },
+    params: { ...params, workspacePrefix: workspacePrefix(goalName), queueKey: goalName },
   };
 }
 
@@ -90,6 +90,7 @@ function resolveCreatePlanToEvolvePlan(
       goalName,
       stepNumber: 1,
       workspacePrefix: workspacePrefix(goalName),
+      queueKey: goalName,
     },
   };
 }
@@ -112,7 +113,7 @@ function resolveEvolvePlanToRevisePlan(
         capability: "revise-plan",
         initialMessage: `Revise the plan for goal "${goalName}". Revision triggered at Step ${explicitStepNumber}.`,
         sessionName: sessionName(goalName, "revise-plan"),
-        params: { goalName, revisionTriggerStep: explicitStepNumber, workspacePrefix: prefix },
+        params: { goalName, revisionTriggerStep: explicitStepNumber, workspacePrefix: prefix, queueKey: goalName },
       };
     }
   }
@@ -145,7 +146,7 @@ function resolveEvolvePlanToFinalizeGoal(
       capability: "finalize-goal",
       initialMessage: `Finalize goal "${goalName}" — all steps are complete. Update .pio/PROJECT/ documentation with accumulated decisions.`,
       sessionName: sessionName(goalName, "finalize-goal"),
-      params: { goalName, workspacePrefix: prefix },
+      params: { goalName, workspacePrefix: prefix, queueKey: goalName },
     };
   }
 
@@ -179,7 +180,7 @@ function resolveEvolvePlanToExecuteTask(
     capability: "execute-task",
     initialMessage: `Implement Step ${stepNumber} of goal "${goalName}" using the specification in TASK.md.`,
     sessionName: sessionName(goalName, "execute-task", stepNumber),
-    params: { goalName, stepNumber, workspacePrefix: prefix },
+    params: { goalName, stepNumber, workspacePrefix: prefix, queueKey: goalName },
   };
 }
 
@@ -195,7 +196,7 @@ function resolveExecuteTaskToReviewTask(
     capability: "review-task",
     initialMessage: `Review the implementation of Step ${stepNumber} for goal "${goalName}".`,
     sessionName: sessionName(goalName, "review-task", stepNumber),
-    params: { goalName, stepNumber, workspacePrefix: workspacePrefix(goalName) },
+    params: { goalName, stepNumber, workspacePrefix: workspacePrefix(goalName), queueKey: goalName },
   };
 }
 
@@ -217,7 +218,7 @@ function resolveReviewTaskToEvolvePlan(
       capability: "evolve-plan",
       initialMessage: `Step ${stepNumber} approved. Generate the specification for Step ${nextStep} of goal "${goalName}".`,
       sessionName: sessionName(goalName, "evolve-plan", nextStep),
-      params: { goalName, stepNumber: nextStep, workspacePrefix: prefix },
+      params: { goalName, stepNumber: nextStep, workspacePrefix: prefix, queueKey: goalName },
     };
   }
 
@@ -241,7 +242,7 @@ function resolveReviewTaskToExecuteTask(
       capability: "execute-task",
       initialMessage: `Step ${stepNumber} rejected. Re-implement using the feedback in REVIEW.md.`,
       sessionName: sessionName(goalName, "execute-task", stepNumber),
-      params: { goalName, stepNumber, workspacePrefix: prefix },
+      params: { goalName, stepNumber, workspacePrefix: prefix, queueKey: goalName },
     };
   }
 
@@ -267,7 +268,7 @@ function resolveRevisePlanToEvolvePlan(
     capability: "evolve-plan",
     initialMessage: `Generate the specification for Step ${nextStep} of goal "${goalName}" after plan revision.`,
     sessionName: sessionName(goalName, "evolve-plan", nextStep),
-    params: { ...params, goalName, stepNumber: nextStep, workspacePrefix: prefix, ...(revisionTriggerStep != null && { revisionTriggerStep }) },
+    params: { ...params, goalName, stepNumber: nextStep, workspacePrefix: prefix, queueKey: goalName, ...(revisionTriggerStep != null && { revisionTriggerStep }) },
   };
 }
 
@@ -290,6 +291,7 @@ function resolveFinalizeGoalToEvolvePlan(
         goalName: parentGoalName,
         stepNumber: nextStep,
         workspacePrefix: prefix,
+        queueKey: parentGoalName,
       },
     };
   }

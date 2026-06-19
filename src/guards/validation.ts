@@ -4,7 +4,7 @@ import * as path from "node:path";
 import * as Value from "typebox/value";
 import { extractFrontmatter, formatSchemaDescription } from "../frontmatter";
 import { getSessionConfig } from "../capability-utils";
-import { resolvePaths, resolveContractPath } from "../capability-config";
+import { resolveContractPath } from "../capability-config";
 import type { CapabilityContract, MarkdownFileSpec, OutputEntry, PostValidateCallback } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -71,15 +71,11 @@ export function validateOutputs(
         continue;
       }
 
-      // Resolve placeholder tokens first for error messages
-      const resolvedPaths = resolvePaths([entry.file], params || {});
-      const resolvedFile = resolvedPaths[0];
-
-      // Use resolveContractPath for prefix-aware resolution
+      // Use resolveContractPath for prefix-aware resolution (handles placeholders internally)
       const fullPath = resolveContractPath(entry.file, baseDir, workspacePrefix, params);
 
       if (!fs.existsSync(fullPath)) {
-        issues.push(`Output file '${resolvedFile}' is missing`);
+        issues.push(`Output file '${entry.file}' is missing`);
         continue;
       }
 
@@ -87,7 +83,7 @@ export function validateOutputs(
       if (entry.schema) {
         const raw = extractFrontmatter(fullPath);
         if (raw === null) {
-          issues.push(`Output file '${resolvedFile}' has no valid YAML frontmatter`);
+          issues.push(`Output file '${entry.file}' has no valid YAML frontmatter`);
         } else if (!Value.Check(entry.schema, raw)) {
           const errors = [...Value.Errors(entry.schema, raw)];
           const fieldErrors = errors.map((e) => {
@@ -95,7 +91,7 @@ export function validateOutputs(
             return `Field '${field}': ${e.message}`;
           }).join("; ");
           const schemaDesc = formatSchemaDescription(entry.schema);
-          issues.push(`Frontmatter validation failed for '${resolvedFile}': ${fieldErrors}\nExpected frontmatter structure:\n${schemaDesc}`);
+          issues.push(`Frontmatter validation failed for '${entry.file}': ${fieldErrors}\nExpected frontmatter structure:\n${schemaDesc}`);
         }
       }
     }
@@ -146,22 +142,18 @@ export function validateFrontmatter(
         continue;
       }
 
-      // Resolve placeholder tokens first for error messages
-      const resolvedPaths = resolvePaths([entry.file], params || {});
-      const resolvedFile = resolvedPaths[0];
-
-      // Use resolveContractPath for prefix-aware resolution
+      // Use resolveContractPath for prefix-aware resolution (handles placeholders internally)
       const filePath = resolveContractPath(entry.file, workingDir, workspacePrefix, params);
 
       // Check file exists
       if (!fs.existsSync(filePath)) {
-        return { success: false, message: `Output file '${resolvedFile}' does not exist` };
+        return { success: false, message: `Output file '${entry.file}' does not exist` };
       }
 
       // Parse frontmatter
       const raw = extractFrontmatter(filePath);
       if (raw === null) {
-        return { success: false, message: `Output file '${resolvedFile}' has no valid YAML frontmatter` };
+        return { success: false, message: `Output file '${entry.file}' has no valid YAML frontmatter` };
       }
 
       // Validate against schema
@@ -174,7 +166,7 @@ export function validateFrontmatter(
           })
           .join("; ");
         const schemaDesc = formatSchemaDescription(entry.schema);
-        return { success: false, message: `Frontmatter validation failed for '${resolvedFile}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}` };
+        return { success: false, message: `Frontmatter validation failed for '${entry.file}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}` };
       }
     }
 
@@ -211,21 +203,17 @@ export function validateInputs(
   try {
     // Check required inputs
     for (const spec of contract.inputs) {
-      // Resolve placeholder tokens first for error messages
-      const resolvedPaths = resolvePaths([spec.file], params || {});
-      const resolvedFile = resolvedPaths[0];
-
       const fullPath = resolveContractPath(spec.file, baseDir, workspacePrefix, params);
 
       if (!fs.existsSync(fullPath)) {
-        return { success: false, message: `Required file missing: ${resolvedFile}` };
+        return { success: false, message: `Required file missing: ${spec.file}` };
       }
 
       // Frontmatter validation when schema is declared on the input entry
       if (spec.schema) {
         const raw = extractFrontmatter(fullPath);
         if (raw === null) {
-          return { success: false, message: `Input file '${resolvedFile}' has no valid YAML frontmatter` };
+          return { success: false, message: `Input file '${spec.file}' has no valid YAML frontmatter` };
         }
 
         if (!Value.Check(spec.schema, raw)) {
@@ -235,7 +223,7 @@ export function validateInputs(
             return `Field '${field}': ${e.message}`;
           }).join("; ");
           const schemaDesc = formatSchemaDescription(spec.schema);
-          return { success: false, message: `Frontmatter validation failed for '${resolvedFile}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}` };
+          return { success: false, message: `Frontmatter validation failed for '${spec.file}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}` };
         }
       }
     }
@@ -243,12 +231,9 @@ export function validateInputs(
     // Check excluded files
     if (contract.excludedFiles) {
       for (const file of contract.excludedFiles) {
-        const resolvedPaths = resolvePaths([file], params || {});
-        const resolvedFile = resolvedPaths[0];
-
         const fullPath = resolveContractPath(file, baseDir, workspacePrefix, params);
         if (fs.existsSync(fullPath)) {
-          return { success: false, message: `File must not exist: ${resolvedFile}` };
+          return { success: false, message: `File must not exist: ${file}` };
         }
       }
     }

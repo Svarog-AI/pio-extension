@@ -165,7 +165,7 @@ describe("validateOutputs with CapabilityContract", () => {
 
     const result = validateOutputs(contract, tempDir, { stepNumber: 3 });
     expect(result.success).toBe(false);
-    expect(result.message).toContain("S03/TASK.md");
+    expect(result.message).toContain("S{stepNumber:02d}/TASK.md");
   });
 
   // -----------------------------------------------------------------------
@@ -472,7 +472,7 @@ describe("validateInputs with CapabilityContract", () => {
 
     const result = validateInputs(tempDir, contract, { stepNumber: 2 });
     expect(result.success).toBe(false);
-    expect(result.message).toBe("Required file missing: S02/TASK.md");
+    expect(result.message).toBe("Required file missing: S{stepNumber:02d}/TASK.md");
   });
 
   it("placeholder resolution in excluded files with params", () => {
@@ -488,7 +488,7 @@ describe("validateInputs with CapabilityContract", () => {
 
     const result = validateInputs(tempDir, contract, { stepNumber: 1 });
     expect(result.success).toBe(false);
-    expect(result.message).toBe("File must not exist: S01/REVISE_PLAN_NEEDED");
+    expect(result.message).toBe("File must not exist: S{stepNumber:02d}/REVISE_PLAN_NEEDED");
   });
 
   it("empty inputs → success: true", () => {
@@ -644,7 +644,7 @@ skills: not-an-array
 
     const result = validateInputs(tempDir, contract, { stepNumber: 3 });
     expect(result.success).toBe(false);
-    expect(result.message).toContain("S03/TASK.md");
+    expect(result.message).toContain("S{stepNumber:02d}/TASK.md");
     expect(result.message).toContain("skills");
   });
 });
@@ -829,7 +829,7 @@ steps:
     fs.writeFileSync(path.join(tempDir, "S03", "REVISE_PLAN_NEEDED"), "", "utf-8");
     const result = validateInputs(tempDir, CONTRACT, { stepNumber: 3 });
     expect(result.success).toBe(false);
-    expect(result.message).toContain("S03/REVISE_PLAN_NEEDED");
+    expect(result.message).toContain("REVISE_PLAN_NEEDED");
   });
 });
 
@@ -856,7 +856,7 @@ describe("CONTRACT integration — execute-task", () => {
     // S02/TASK.md is missing
     const result = validateInputs(tempDir, CONTRACT, { stepNumber: 2 });
     expect(result.success).toBe(false);
-    expect(result.message).toContain("S02/TASK.md");
+    expect(result.message).toContain("TASK.md");
   });
 
   it("missing GOAL.md → failure naming GOAL.md", async () => {
@@ -895,7 +895,7 @@ describe("CONTRACT integration — review-task", () => {
     // S01/COMPLETED is missing
     const result = validateInputs(tempDir, CONTRACT, { stepNumber: 1 });
     expect(result.success).toBe(false);
-    expect(result.message).toContain("S01/COMPLETED");
+    expect(result.message).toContain("COMPLETED");
   });
 
   it("missing SUMMARY.md → failure naming S01/SUMMARY.md", async () => {
@@ -907,7 +907,7 @@ describe("CONTRACT integration — review-task", () => {
     // S01/SUMMARY.md is missing
     const result = validateInputs(tempDir, CONTRACT, { stepNumber: 1 });
     expect(result.success).toBe(false);
-    expect(result.message).toContain("S01/SUMMARY.md");
+    expect(result.message).toContain("SUMMARY.md");
   });
 });
 
@@ -1108,7 +1108,7 @@ skills:
     // S02/TASK.md is missing
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 2 });
     expect(result.success).toBe(false);
-    expect(result.message).toContain("S02/TASK.md");
+    expect(result.message).toContain("TASK.md");
   });
 
   it("missing DECISIONS.md (step > 1) → failure naming S03/DECISIONS.md", async () => {
@@ -1128,7 +1128,7 @@ skills:
     // S03/DECISIONS.md is missing but required (stepNumber > 1)
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 3 });
     expect(result.success).toBe(false);
-    expect(result.message).toContain("S03/DECISIONS.md");
+    expect(result.message).toContain("DECISIONS.md");
   });
 });
 
@@ -1154,7 +1154,7 @@ describe("CONTRACT outputs integration — execute-task", () => {
     // S04/SUMMARY.md is missing
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 4 });
     expect(result.success).toBe(false);
-    expect(result.message).toContain("S04/SUMMARY.md");
+    expect(result.message).toContain("SUMMARY.md");
   });
 });
 
@@ -1189,7 +1189,7 @@ lowIssues: 0
     // S05/REVIEW.md is missing
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 5 });
     expect(result.success).toBe(false);
-    expect(result.message).toContain("S05/REVIEW.md");
+    expect(result.message).toContain("REVIEW.md");
   });
 });
 

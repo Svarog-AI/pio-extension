@@ -495,6 +495,109 @@ describe("mark-complete (setupMarkComplete)", () => {
     expect(result.terminate).toBe(true);
   });
 
+  it("throws when queueKey is missing from session params", async () => {
+    mockValidateOutputs.mockReturnValue({ success: true });
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "execute-task",
+      workingDir: goalDir,
+      contract: { inputs: [], outputs: [] },
+      // sessionParams intentionally lacks queueKey
+      sessionParams: { goalName: "test-goal", stepNumber: 1 },
+      postValidate: vi.fn().mockReturnValue({ success: true }),
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              // sessionParams intentionally lacks queueKey
+              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+            },
+          },
+        ],
+      },
+    };
+
+    // Act & Assert: should throw with the specific error message
+    await expect(
+      registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx),
+    ).rejects.toThrow("mark-complete: queueKey missing from session params — ensure enqueue provides it");
+
+    // dispatch should NOT have been called (throw happens before transitions)
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(mockEnqueueTask).not.toHaveBeenCalled();
+  });
+
+  it("throws when queueKey is an empty string", async () => {
+    mockValidateOutputs.mockReturnValue({ success: true });
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "execute-task",
+      workingDir: goalDir,
+      contract: { inputs: [], outputs: [] },
+      sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "" },
+      postValidate: vi.fn().mockReturnValue({ success: true }),
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "" },
+            },
+          },
+        ],
+      },
+    };
+
+    // Act & Assert: empty string is not a valid queueKey
+    await expect(
+      registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx),
+    ).rejects.toThrow("mark-complete: queueKey missing from session params — ensure enqueue provides it");
+  });
+
+  it("throws when queueKey is not a string type", async () => {
+    mockValidateOutputs.mockReturnValue({ success: true });
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "execute-task",
+      workingDir: goalDir,
+      contract: { inputs: [], outputs: [] },
+      sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: 123 },
+      postValidate: vi.fn().mockReturnValue({ success: true }),
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: 123 },
+            },
+          },
+        ],
+      },
+    };
+
+    // Act & Assert: non-string queueKey is rejected
+    await expect(
+      registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx),
+    ).rejects.toThrow("mark-complete: queueKey missing from session params — ensure enqueue provides it");
+  });
+
+
   it("dispatches with explicit machine when stateMachineId is in session params", async () => {
     mockValidateOutputs.mockReturnValue({ success: true });
     mockGetMachine.mockReturnValue({ id: "goal-driven-development" });

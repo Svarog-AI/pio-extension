@@ -122,7 +122,6 @@ vi.mock("./guards/step-nudging", () => ({
 // ---------------------------------------------------------------------------
 
 const mockEnqueueTask = vi.hoisted(() => vi.fn());
-const mockWriteLastTask = vi.hoisted(() => vi.fn());
 const mockRecordTransition = vi.hoisted(() => vi.fn());
 const mockDispatch = vi.hoisted(() => vi.fn());
 
@@ -131,7 +130,6 @@ vi.mock("./queues", async (importOriginal) => {
   return {
     ...actual,
     enqueueTask: mockEnqueueTask,
-    writeLastTask: mockWriteLastTask,
   };
 });
 
@@ -687,7 +685,6 @@ describe("pio_mark_complete — queue key propagation", () => {
     vi.resetModules();
     tempDir = createTempDir();
     mockEnqueueTask.mockClear();
-    mockWriteLastTask.mockClear();
     mockRecordTransition.mockClear();
     mockDispatch.mockClear();
   });

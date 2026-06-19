@@ -26,10 +26,8 @@ const mockDispatch = vi.hoisted(() => vi.fn());
 
 vi.mock("./queues", () => ({
   enqueueTask: mockEnqueueTask,
-  writeLastTask: vi.fn(),
   readPendingTask: vi.fn(),
-  listPendingGoals: vi.fn(),
-  deriveQueueKey: vi.fn(),
+  listPendingTasks: vi.fn(),
   queueDir: vi.fn().mockReturnValue("/mock/queue"),
 }));
 

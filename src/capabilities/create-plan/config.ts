@@ -5,9 +5,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { launchCapability } from "../../capability-session";
-import { resolveGoalDir } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
+import { validateInputs } from "../../guards/validation";
 import { CapState } from "../../capability-state";
 import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
 import type { CapabilityContract } from "../../types";
@@ -152,14 +152,13 @@ export default capabilityConfig;
  * Returns { goalDir, ready } — call launchCapability separately.
  * Does NOT use ctx so it can be called safely before newSession().
  */
-async function validateGoal(name: string, cwd: string): Promise<{ goalDir: string; ready: boolean; error?: string }> {
-  const goalDir = resolveGoalDir(cwd, name);
-
-  if (!fs.existsSync(goalDir)) {
-    return { goalDir, ready: false, error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.` };
+async function validateGoal(name: string, cwd: string): Promise<{ ready: boolean; error?: string }> {
+  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix: `goals/${name}` });
+  if (!result.success) {
+    return { ready: false, error: result.message ?? `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.` };
   }
 
-  return { goalDir, ready: true };
+  return { ready: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -185,7 +184,6 @@ const createPlanTool = defineTool({
     enqueueTask(ctx.cwd, params.name, {
       capability: "create-plan",
       params: {
-        goalName: params.name,
         workspacePrefix: `goals/${params.name}`,
         sessionName: `${params.name} create-plan`,
         queueKey: params.name,
@@ -219,7 +217,6 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
   // All ctx-dependent work must happen before this line.
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "create-plan",
-    goalName: name,
     workspacePrefix: `goals/${name}`,
     sessionName: `${name} create-plan`,
     queueKey: name,

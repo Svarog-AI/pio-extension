@@ -413,7 +413,6 @@ const goalFromIssueTool = defineTool({
     enqueueTask(ctx.cwd, goalName, {
       capability: "create-goal",
       params: {
-        goalName,
         workspacePrefix: `goals/${goalName}`,
         sessionName: `${goalName} create-goal`,
         queueKey: goalName,
@@ -449,7 +448,6 @@ async function handleGoalFromIssue(args: string | undefined, ctx: ExtensionComma
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "create-goal",
-    goalName,
     workspacePrefix: `goals/${goalName}`,
     sessionName: `${goalName} create-goal`,
     queueKey: goalName,
@@ -499,9 +497,9 @@ const transitionTool = defineTool({
     // Merge params: session params first, user overrides on top
     const mergedParams = { ...config.sessionParams, ...params.params };
 
-    // Derive queue key from goalName if present
-    const queueKey = typeof config.sessionParams?.goalName === "string"
-      ? config.sessionParams.goalName
+    // Derive queue key from queueKey if present (pio-workflow convention), fall back to capability name
+    const queueKey = typeof config.sessionParams?.queueKey === "string"
+      ? config.sessionParams.queueKey
       : config.capability;
 
     enqueueTask(process.cwd(), queueKey!, {
@@ -538,8 +536,8 @@ async function handleTransition(_args: string | undefined, ctx: ExtensionCommand
   }
 
   const fromCapability = config.capability;
-  const params = typeof config.sessionParams?.goalName === "string"
-    ? { goalName: config.sessionParams.goalName, stepNumber: config.sessionParams.stepNumber, _sessionContext: config.sessionParams }
+  const params = typeof config.sessionParams?.queueKey === "string"
+    ? { queueKey: config.sessionParams.queueKey, stepNumber: config.sessionParams.stepNumber, _sessionContext: config.sessionParams }
     : { ...config.sessionParams };
 
   // Build context: { baseDir } for goal workspaces, raw params otherwise

@@ -65,7 +65,6 @@ const revisePlanTool = defineTool({
     enqueueTask(ctx.cwd, params.name, {
       capability: "revise-plan",
       params: {
-        goalName: params.name,
         workspacePrefix: `goals/${params.name}`,
         sessionName: `${params.name} revise-plan`,
         queueKey: params.name,
@@ -107,7 +106,6 @@ async function handleRevisePlan(args: string | undefined, ctx: ExtensionCommandC
   // All ctx-dependent work must happen before this line.
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "revise-plan",
-    goalName: name,
     workspacePrefix: `goals/${name}`,
     sessionName: `${name} revise-plan`,
     queueKey: name,

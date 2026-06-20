@@ -674,7 +674,7 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
     expect(projectOutputs.some((o: any) => o.file === "/PROJECT/OVERVIEW.md")).toBe(true);
   });
 
-  it("finalize-goal initial message is goal-agnostic (defaultInitialMessage)", async () => {
+  it("finalize-goal initial message is non-empty (defaultInitialMessage)", async () => {
     // Arrange: same params shape as resolveEvolvePlanToFinalizeGoal() for a completed goal
     const cwd = "/tmp/auto-transition-proj";
     const params = {
@@ -687,7 +687,7 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
     // Act
     const result = await resolveCapabilityConfig(cwd, params);
 
-    // Assert: capability is goal-agnostic — initialMessage comes from defaultInitialMessage
+    // Assert: initialMessage is non-empty — comes from defaultInitialMessage callback
     // (pio-workflow state machine can override via explicit initialMessage param)
     expect(result).toBeDefined();
     expect(result!.initialMessage).toBeDefined();
@@ -1051,7 +1051,7 @@ describe("all real capabilities define defaultInitialMessage", () => {
     expect(config!.initialMessage!.length).toBeGreaterThan(0);
   });
 
-  it("finalize-goal defaultInitialMessage returns a non-empty string (goal-agnostic)", async () => {
+  it("finalize-goal defaultInitialMessage returns a non-empty string", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "finalize-goal" as string,
       goalName: "my-feature",
@@ -1059,7 +1059,7 @@ describe("all real capabilities define defaultInitialMessage", () => {
     });
     expect(config!.initialMessage).toBeDefined();
     expect(config!.initialMessage!.length).toBeGreaterThan(0);
-    // finalize-goal is goal-agnostic — defaultInitialMessage does not reference goal names
+    // defaultInitialMessage returns a minimal message
   });
 
   it("project-context defaultInitialMessage returns a non-empty string", async () => {

@@ -2,9 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
-import { resolveGoalDir, stepFolderName } from "../../fs-utils";
+import { stepFolderName } from "../../fs-utils";
+import { validateInputs } from "../../guards/validation";
 import { PLAN_FRONTMATTER_SCHEMA, type PlanFrontmatter } from "../create-plan/schemas";
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "../review-task/schemas";
+import { CONTRACT } from "./config";
 
 
 // ---------------------------------------------------------------------------
@@ -26,10 +28,13 @@ const STEP_FOLDER_RE = /^S(\d+)$/;
 export async function validateRevisePlan(
   name: string,
   cwd: string,
-): Promise<{ goalDir: string; ready: boolean; error?: string }> {
-  const goalDir = resolveGoalDir(cwd, name);
+): Promise<{ ready: boolean; error?: string }> {
+  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix: `goals/${name}` });
+  if (!result.success) {
+    return { ready: false, error: result.message ?? `Goal workspace "${name}" does not exist.` };
+  }
 
-  return { goalDir, ready: true };
+  return { ready: true };
 }
 
 // ---------------------------------------------------------------------------

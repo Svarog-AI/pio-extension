@@ -546,7 +546,7 @@ describe("create-plan tool execute — pre-launch validation", () => {
     const tool = getTool();
     const result = await tool.execute("test-id", { name: "nonexistent" }, undefined, undefined, makeCtx(tempDir));
 
-    expect(result.content[0].text).toMatch(/does not exist/i);
+    expect(result.content[0].text).toMatch(/missing|does not exist/i);
   });
 
   it("enqueues task when goal workspace exists", async () => {
@@ -586,7 +586,6 @@ describe("create-plan tool execute — pre-launch validation", () => {
     const task = readPendingTask(tempDir, "my-feature");
     expect(task).toBeDefined();
     expect(task!.capability).toBe("create-plan");
-    expect(task!.params).toHaveProperty("goalName", "my-feature");
     expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature");
     expect(task!.params).toHaveProperty("sessionName", "my-feature create-plan");
     expect(task!.params).toHaveProperty("queueKey", "my-feature");

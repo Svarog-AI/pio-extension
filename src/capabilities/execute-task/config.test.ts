@@ -275,12 +275,16 @@ describe("validateExecuteStep", () => {
   it("resolves goal directory and returns ready with stepNumber", async () => {
     const goalDir = path.join(tempDir, ".pio", "goals", "my-goal");
     fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal");
+    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "---\ntotalSteps: 3\nsteps:\n  - name: test\n    complexity: task\n---\n# Plan");
+    const stepDir = path.join(goalDir, "S03");
+    fs.mkdirSync(stepDir, { recursive: true });
+    fs.writeFileSync(path.join(stepDir, "TASK.md"), "---\nskills:\n  mandatory: []\n---\n# Task");
 
     const result = await validateExecuteStep("my-goal", tempDir, 3);
 
     expect(result.ready).toBe(true);
     if (result.ready) {
-      expect(result.goalDir).toBe(goalDir);
       expect(result.stepNumber).toBe(3);
     }
   });
@@ -352,7 +356,6 @@ describe("executeTaskTool.execute", () => {
     const task = readPendingTask(tempDir, "my-feature");
     expect(task).toBeDefined();
     expect(task!.capability).toBe("execute-task");
-    expect(task!.params).toHaveProperty("goalName", "my-feature");
     expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature");
     expect(task!.params).toHaveProperty("sessionName");
     expect(task!.params!.sessionName).toContain("execute-task");

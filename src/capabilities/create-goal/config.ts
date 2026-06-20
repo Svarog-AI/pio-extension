@@ -61,7 +61,6 @@ const createGoalTool = defineTool({
     enqueueTask(ctx.cwd, params.name, {
       capability: "create-goal",
       params: {
-        goalName: params.name,
         workspacePrefix: `goals/${params.name}`,
         sessionName: `${params.name} create-goal`,
         queueKey: params.name,
@@ -95,7 +94,6 @@ async function handleCreateGoal(args: string | undefined, ctx: ExtensionCommandC
   // All ctx-dependent work must happen before this line.
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "create-goal",
-    goalName: name,
     workspacePrefix: `goals/${name}`,
     sessionName: `${name} create-goal`,
     queueKey: name,

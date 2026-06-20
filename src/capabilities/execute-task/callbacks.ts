@@ -1,4 +1,7 @@
-import { resolveGoalDir, stepFolderName } from "../../fs-utils";
+import { stepFolderName } from "../../fs-utils";
+import { validateInputs } from "../../guards/validation";
+import * as path from "node:path";
+import { CONTRACT } from "./config";
 
 
 // ---------------------------------------------------------------------------
@@ -31,10 +34,13 @@ export async function validateExecuteStep(
   cwd: string,
   stepNumber: number,
 ): Promise<
-  | { goalDir: string; ready: true; stepNumber: number }
-  | { goalDir: string; ready: false; error: string }
+  | { ready: true; stepNumber: number }
+  | { ready: false; error: string }
 > {
-  const goalDir = resolveGoalDir(cwd, name);
+  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix: `goals/${name}`, stepNumber });
+  if (!result.success) {
+    return { ready: false, error: result.message ?? `Step ${stepNumber} validation failed for goal "${name}".` };
+  }
 
-  return { goalDir, ready: true, stepNumber };
+  return { ready: true, stepNumber };
 }

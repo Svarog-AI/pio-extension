@@ -3,7 +3,8 @@ import * as path from "node:path";
 
 import { CapState } from "../../capability-state";
 import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
-import { resolveGoalDir, stepFolderName } from "../../fs-utils";
+import { stepFolderName } from "../../fs-utils";
+import { validateInputs } from "../../guards/validation";
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
 import { CONTRACT } from "./config";
 
@@ -176,10 +177,13 @@ export async function validateReviewStep(
   cwd: string,
   stepNumber: number,
 ): Promise<
-  | { goalDir: string; ready: true; stepNumber: number }
-  | { goalDir: string; ready: false; error: string }
+  | { ready: true; stepNumber: number }
+  | { ready: false; error: string }
 > {
-  const goalDir = resolveGoalDir(cwd, name);
+  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix: `goals/${name}`, stepNumber });
+  if (!result.success) {
+    return { ready: false, error: result.message ?? `Step ${stepNumber} validation failed for goal "${name}".` };
+  }
 
-  return { goalDir, ready: true, stepNumber };
+  return { ready: true, stepNumber };
 }

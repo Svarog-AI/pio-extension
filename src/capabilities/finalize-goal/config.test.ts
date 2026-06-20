@@ -180,7 +180,7 @@ describe("validateFinalizeGoal", () => {
     // Assert
     expect(result.ready).toBe(false);
     if (!result.ready) {
-      expect(result.error).toMatch(/not exist|does not exist|create/i);
+      expect(result.error).toMatch(/missing|does not exist|create/i);
     }
   });
 
@@ -194,7 +194,7 @@ describe("validateFinalizeGoal", () => {
     // Assert
     expect(result.ready).toBe(false);
     if (!result.ready) {
-      expect(result.error).toMatch(/not.*complete|finish/i);
+      expect(result.error).toMatch(/missing|COMPLETION_SUMMARY/i);
     }
   });
 });
@@ -263,7 +263,6 @@ describe("finalizeGoalTool.execute", () => {
     const task = readPendingTask(tempDir, "my-goal");
     expect(task).toBeDefined();
     expect(task!.capability).toBe("finalize-goal");
-    expect(task!.params).toHaveProperty("goalName", "my-goal");
     expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-goal");
     expect(task!.params).toHaveProperty("sessionName", "my-goal finalize-goal");
     expect(task!.params).toHaveProperty("queueKey", "my-goal");
@@ -280,7 +279,7 @@ describe("finalizeGoalTool.execute", () => {
 
     // Assert: error message mentions goal doesn't exist
     const text = result.content[0].text;
-    expect(text).toMatch(/not exist|does not exist/i);
+    expect(text).toMatch(/missing|does not exist/i);
 
     // Assert: no task was enqueued
     const task = readPendingTask(tempDir, "nonexistent");
@@ -296,9 +295,9 @@ describe("finalizeGoalTool.execute", () => {
     // Act
     const result = await tool.execute("test-call-id", { name: "incomplete" }, undefined, undefined, makeCtx(tempDir));
 
-    // Assert: error message mentions not complete
+    // Assert: error message mentions missing file
     const text = result.content[0].text;
-    expect(text).toMatch(/not.*complete|finish/i);
+    expect(text).toMatch(/missing|COMPLETION_SUMMARY/i);
 
     // Assert: no task was enqueued
     const task = readPendingTask(tempDir, "incomplete");
@@ -393,7 +392,7 @@ describe("handleFinalizeGoal", () => {
     await handler("nonexistent-goal", ctx);
 
     // Assert
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/not exist|does not exist/i), "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/missing|does not exist/i), "error");
   });
 
   it("shows error when goal is not complete", async () => {
@@ -407,6 +406,6 @@ describe("handleFinalizeGoal", () => {
     await handler("incomplete", ctx);
 
     // Assert
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/not.*complete|finish/i), "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/missing|COMPLETION_SUMMARY/i), "error");
   });
 });

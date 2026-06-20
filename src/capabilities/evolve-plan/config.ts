@@ -1,12 +1,9 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import * as fs from "node:fs";
-import * as path from "node:path";
 
 import { launchCapability } from "../../capability-session";
 import { parseCommandArgs } from "../../capability-utils";
-import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityContract } from "../../types";
@@ -70,7 +67,6 @@ const evolvePlanTool = defineTool({
     enqueueTask(ctx.cwd, params.name, {
       capability: "evolve-plan",
       params: {
-        goalName: params.name,
         workspacePrefix: `goals/${params.name}`,
         sessionName: `${params.name} evolve-plan s${result.stepNumber}`,
         queueKey: params.name,
@@ -116,13 +112,8 @@ async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandC
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  const folderName = stepFolderName(result.stepNumber);
-  const stepDir = path.join(result.goalDir, folderName);
-  fs.mkdirSync(stepDir, { recursive: true });
-
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "evolve-plan",
-    goalName: parsed.name,
     workspacePrefix: `goals/${parsed.name}`,
     sessionName: `${parsed.name} evolve-plan s${result.stepNumber}`,
     queueKey: parsed.name,

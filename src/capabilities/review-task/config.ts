@@ -102,7 +102,6 @@ const reviewTaskTool = defineTool({
     enqueueTask(ctx.cwd, params.name, {
       capability: "review-task",
       params: {
-        goalName: params.name,
         workspacePrefix: `goals/${params.name}`,
         sessionName: `${params.name} review-task s${result.stepNumber}`,
         queueKey: params.name,
@@ -150,7 +149,6 @@ async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandC
   // All ctx-dependent work must happen before this line.
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "review-task",
-    goalName: parsed.name,
     workspacePrefix: `goals/${parsed.name}`,
     sessionName: `${parsed.name} review-task s${result.stepNumber}`,
     queueKey: parsed.name,

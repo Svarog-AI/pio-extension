@@ -151,7 +151,7 @@ describe("execute-plan tool execute — pre-launch validation", () => {
     const tool = getTool();
     const result = await tool.execute("test-id", { name: "nonexistent" }, undefined, undefined, makeCtx(tempDir));
 
-    expect(result.content[0].text).toMatch(/does not exist/i);
+    expect(result.content[0].text).toMatch(/missing|does not exist/i);
   });
 
   it("enqueues task when goal workspace exists", async () => {
@@ -173,7 +173,6 @@ describe("execute-plan tool execute — pre-launch validation", () => {
     const task = readPendingTask(tempDir, "my-feature");
     expect(task).toBeDefined();
     expect(task!.capability).toBe("execute-plan");
-    expect(task!.params).toHaveProperty("goalName", "my-feature");
     expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature");
     expect(task!.params).toHaveProperty("sessionName", "my-feature execute-plan");
     expect(task!.params).toHaveProperty("queueKey", "my-feature");
@@ -250,7 +249,7 @@ describe("handleExecutePlan", () => {
 
     await handler("nonexistent", ctx);
 
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/does not exist/i), "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/missing|does not exist/i), "error");
   });
 
   it("shows error when GOAL.md is missing", async () => {

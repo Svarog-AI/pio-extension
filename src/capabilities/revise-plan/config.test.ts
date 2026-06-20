@@ -156,11 +156,12 @@ describe("validateRevisePlan", () => {
   it("resolves goal directory and returns ready", async () => {
     const goalDir = path.join(tempDir, ".pio", "goals", "my-goal");
     fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal");
+    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "---\ntotalSteps: 1\nsteps:\n  - name: test\n    complexity: task\n---\n# Plan");
 
     const result = await validateRevisePlan("my-goal", tempDir);
 
     expect(result.ready).toBe(true);
-    expect(result.goalDir).toBe(goalDir);
   });
 });
 
@@ -697,7 +698,6 @@ describe("revisePlanTool.execute", () => {
     const task = readPendingTask(tempDir, "my-feature");
     expect(task).toBeDefined();
     expect(task!.capability).toBe("revise-plan");
-    expect(task!.params).toHaveProperty("goalName", "my-feature");
     expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature");
     expect(task!.params).toHaveProperty("sessionName");
     expect(task!.params!.sessionName).toContain("revise-plan");

@@ -48,6 +48,14 @@ export function parseCommandArgs(args: string | undefined): { name: string; step
 }
 
 /**
+ * Derive goalName from params on demand (queueKey IS the goal name for pio-workflow).
+ * Returns undefined for non-goal sessions.
+ */
+export function getGoalName(params?: Record<string, unknown>): string | undefined {
+  return typeof params?.queueKey === "string" ? params.queueKey : undefined;
+}
+
+/**
  * Merge base capability skills with additional skills.
  * Pure utility — operates on typed objects, never accesses the filesystem.
  *

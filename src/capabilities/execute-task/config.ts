@@ -103,12 +103,11 @@ const executeTaskTool = defineTool({
     enqueueTask(ctx.cwd, params.name, {
       capability: "execute-task",
       params: {
-        goalName: params.name,
         workspacePrefix: `goals/${params.name}`,
         sessionName: `${params.name} execute-task s${result.stepNumber}`,
         queueKey: params.name,
         stepNumber: result.stepNumber,
-        initialMessage: `Goal workspace is at ${result.goalDir}. You are responsible for **Step ${result.stepNumber}**. Read TASK.md inside the step folder and resolve the task.`,
+        initialMessage: `Working directory is goals/${params.name}. You are responsible for **Step ${result.stepNumber}**. Read TASK.md inside the step folder and resolve the task.`,
       },
     });
 
@@ -149,18 +148,13 @@ async function handleExecuteTask(args: string | undefined, ctx: ExtensionCommand
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  const folderName = stepFolderName(result.stepNumber);
-  const stepDir = path.join(result.goalDir, folderName);
-  fs.mkdirSync(stepDir, { recursive: true });
-
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "execute-task",
-    goalName: parsed.name,
     workspacePrefix: `goals/${parsed.name}`,
     sessionName: `${parsed.name} execute-task s${result.stepNumber}`,
     queueKey: parsed.name,
     stepNumber: result.stepNumber,
-    initialMessage: `Goal workspace is at ${result.goalDir}. You are responsible for **Step ${result.stepNumber}**. Read TASK.md inside the step folder and resolve the task.`,
+    initialMessage: `Working directory is goals/${parsed.name}. You are responsible for **Step ${result.stepNumber}**. Read TASK.md inside the step folder and resolve the task.`,
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve execute-task config.", "error");

@@ -16,16 +16,12 @@ function extractStepNumber(params?: Record<string, unknown>): number | undefined
   return typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
 }
 
-/** Extract goalName from params if it's a string. */
-function extractGoalName(params?: Record<string, unknown>): string | undefined {
-  return typeof params?.goalName === "string" ? params.goalName : undefined;
-}
-
-/** Require goalName from params — throw if missing (wiring error). */
+/** Require goalName from params — derive from queueKey (pio-workflow convention).
+ * Throw if missing (wiring error). */
 function requireGoalName(resolver: string, params?: Record<string, unknown>): string {
-  const goalName = extractGoalName(params);
+  const goalName = typeof params?.queueKey === "string" ? params.queueKey : undefined;
   if (!goalName) {
-    throw new Error(`${resolver}: goalName missing from session params — wiring error upstream`);
+    throw new Error(`${resolver}: queueKey missing from session params — wiring error upstream`);
   }
   return goalName;
 }
@@ -87,7 +83,6 @@ function resolveCreatePlanToEvolvePlan(
     sessionName: sessionName(goalName, "evolve-plan", 1),
     params: {
       ...params,
-      goalName,
       stepNumber: 1,
       workspacePrefix: workspacePrefix(goalName),
       queueKey: goalName,
@@ -113,7 +108,7 @@ function resolveEvolvePlanToRevisePlan(
         capability: "revise-plan",
         initialMessage: `Revise the plan for goal "${goalName}". Revision triggered at Step ${explicitStepNumber}.`,
         sessionName: sessionName(goalName, "revise-plan"),
-        params: { goalName, revisionTriggerStep: explicitStepNumber, workspacePrefix: prefix, queueKey: goalName },
+        params: { revisionTriggerStep: explicitStepNumber, workspacePrefix: prefix, queueKey: goalName },
       };
     }
   }
@@ -146,7 +141,7 @@ function resolveEvolvePlanToFinalizeGoal(
       capability: "finalize-goal",
       initialMessage: `Finalize goal "${goalName}" — all steps are complete. Update .pio/PROJECT/ documentation with accumulated decisions.`,
       sessionName: sessionName(goalName, "finalize-goal"),
-      params: { goalName, workspacePrefix: prefix, queueKey: goalName },
+      params: { workspacePrefix: prefix, queueKey: goalName },
     };
   }
 
@@ -180,11 +175,11 @@ function resolveEvolvePlanToExecuteTask(
     capability: "execute-task",
     initialMessage: `Implement Step ${stepNumber} of goal "${goalName}" using the specification in TASK.md.`,
     sessionName: sessionName(goalName, "execute-task", stepNumber),
-    params: { goalName, stepNumber, workspacePrefix: prefix, queueKey: goalName },
+    params: { stepNumber, workspacePrefix: prefix, queueKey: goalName },
   };
 }
 
-/** execute-task → review-task: always fires, propagate goalName and stepNumber. */
+/** execute-task → review-task: always fires, propagate stepNumber. */
 function resolveExecuteTaskToReviewTask(
   _ctx: { baseDir: string },
   params?: Record<string, unknown>,
@@ -196,7 +191,7 @@ function resolveExecuteTaskToReviewTask(
     capability: "review-task",
     initialMessage: `Review the implementation of Step ${stepNumber} for goal "${goalName}".`,
     sessionName: sessionName(goalName, "review-task", stepNumber),
-    params: { goalName, stepNumber, workspacePrefix: workspacePrefix(goalName), queueKey: goalName },
+    params: { stepNumber, workspacePrefix: workspacePrefix(goalName), queueKey: goalName },
   };
 }
 
@@ -218,7 +213,7 @@ function resolveReviewTaskToEvolvePlan(
       capability: "evolve-plan",
       initialMessage: `Step ${stepNumber} approved. Generate the specification for Step ${nextStep} of goal "${goalName}".`,
       sessionName: sessionName(goalName, "evolve-plan", nextStep),
-      params: { goalName, stepNumber: nextStep, workspacePrefix: prefix, queueKey: goalName },
+      params: { stepNumber: nextStep, workspacePrefix: prefix, queueKey: goalName },
     };
   }
 
@@ -242,7 +237,7 @@ function resolveReviewTaskToExecuteTask(
       capability: "execute-task",
       initialMessage: `Step ${stepNumber} rejected. Re-implement using the feedback in REVIEW.md.`,
       sessionName: sessionName(goalName, "execute-task", stepNumber),
-      params: { goalName, stepNumber, workspacePrefix: prefix, queueKey: goalName },
+      params: { stepNumber, workspacePrefix: prefix, queueKey: goalName },
     };
   }
 
@@ -268,7 +263,7 @@ function resolveRevisePlanToEvolvePlan(
     capability: "evolve-plan",
     initialMessage: `Generate the specification for Step ${nextStep} of goal "${goalName}" after plan revision.`,
     sessionName: sessionName(goalName, "evolve-plan", nextStep),
-    params: { ...params, goalName, stepNumber: nextStep, workspacePrefix: prefix, queueKey: goalName, ...(revisionTriggerStep != null && { revisionTriggerStep }) },
+    params: { ...params, stepNumber: nextStep, workspacePrefix: prefix, queueKey: goalName, ...(revisionTriggerStep != null && { revisionTriggerStep }) },
   };
 }
 
@@ -288,7 +283,6 @@ function resolveFinalizeGoalToEvolvePlan(
       initialMessage: `Subgoal completed. Generate the specification for Step ${nextStep} of parent goal "${parentGoalName}".`,
       sessionName: sessionName(parentGoalName, "evolve-plan", nextStep),
       params: {
-        goalName: parentGoalName,
         stepNumber: nextStep,
         workspacePrefix: prefix,
         queueKey: parentGoalName,

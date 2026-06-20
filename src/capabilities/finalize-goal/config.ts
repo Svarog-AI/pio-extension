@@ -1,12 +1,12 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import * as fs from "node:fs";
 import { CapState } from "../../capability-state";
 import { launchCapability } from "../../capability-session";
-import { resolveGoalDir } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
+import { validateInputs } from "../../guards/validation";
+import * as path from "node:path";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 
@@ -49,37 +49,22 @@ export default capabilityConfig;
 /**
  * Validate that the goal workspace exists and the COMPLETED marker is present.
  *
- * Returns { goalDir, ready: true } on success, or { goalDir, ready: false, error } when not ready.
+ * Returns { ready: true } on success, or { ready: false, error } when not ready.
  * Does NOT use ctx so it can be called safely before newSession().
  */
 export async function validateFinalizeGoal(
   name: string,
   cwd: string,
 ): Promise<
-  | { goalDir: string; ready: true }
-  | { goalDir: string; ready: false; error: string }
+  | { ready: true }
+  | { ready: false; error: string }
 > {
-  const goalDir = resolveGoalDir(cwd, name);
-
-  if (!fs.existsSync(goalDir)) {
-    return {
-      goalDir,
-      ready: false,
-      error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.`,
-    };
+  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix: `goals/${name}` });
+  if (!result.success) {
+    return { ready: false, error: result.message ?? `Goal workspace "${name}" does not exist.` };
   }
 
-  const capState = new CapState(CONTRACT, goalDir);
-
-  if (!capState.input("completion-summary").exists()) {
-    return {
-      goalDir,
-      ready: false,
-      error: `Goal "${name}" is not yet complete. Wait for all steps to finish before finalizing.`,
-    };
-  }
-
-  return { goalDir, ready: true };
+  return { ready: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +91,6 @@ const finalizeGoalTool = defineTool({
     enqueueTask(ctx.cwd, params.name, {
       capability: "finalize-goal",
       params: {
-        goalName: params.name,
         workspacePrefix: `goals/${params.name}`,
         sessionName: `${params.name} finalize-goal`,
         queueKey: params.name,
@@ -148,7 +132,6 @@ async function handleFinalizeGoal(args: string | undefined, ctx: ExtensionComman
   // All ctx-dependent work must happen before this line.
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "finalize-goal",
-    goalName: name,
     workspacePrefix: `goals/${name}`,
     sessionName: `${name} finalize-goal`,
     queueKey: name,

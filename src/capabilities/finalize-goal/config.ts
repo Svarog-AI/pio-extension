@@ -37,12 +37,7 @@ const capabilityConfig = {
   skills: {
     mandatory: ["pio-project-knowledge", "pio-git"],
   },
-  defaultInitialMessage: (_workingDir: string, params?: Record<string, unknown>) => {
-    const goalName = typeof params?.goalName === "string" ? params.goalName : "";
-    return goalName
-      ? `Finalize goal "${goalName}" — update .pio/PROJECT/ documentation with accumulated decisions.`
-      : "Ready.";
-  },
+  defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;

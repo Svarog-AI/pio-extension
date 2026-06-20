@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import config, { register } from "./config";
+import { readPendingTask } from "../../queues";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -160,6 +161,23 @@ describe("execute-plan tool execute — pre-launch validation", () => {
     const result = await tool.execute("test-id", { name: "valid" }, undefined, undefined, makeCtx(tempDir));
 
     expect(result.content[0].text).toContain("queued");
+  });
+
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, initialMessage)", async () => {
+    createGoalTree(tempDir, "my-feature", { withGoal: true, withPlan: true });
+
+    const tool = getTool();
+    await tool.execute("test-id", { name: "my-feature" }, undefined, undefined, makeCtx(tempDir));
+
+    // Assert: task was enqueued with correct params
+    const task = readPendingTask(tempDir, "my-feature");
+    expect(task).toBeDefined();
+    expect(task!.capability).toBe("execute-plan");
+    expect(task!.params).toHaveProperty("goalName", "my-feature");
+    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature");
+    expect(task!.params).toHaveProperty("sessionName", "my-feature execute-plan");
+    expect(task!.params).toHaveProperty("queueKey", "my-feature");
+    expect(task!.params).toHaveProperty("initialMessage");
   });
 });
 

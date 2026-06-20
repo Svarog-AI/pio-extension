@@ -1368,3 +1368,85 @@ describe("validateFrontmatter — unresolved placeholder handling", () => {
     expect(result).toEqual({ success: true });
   });
 });
+
+// ---------------------------------------------------------------------------
+// COMPLETION_SUMMARY.md bypass with workspacePrefix
+// ---------------------------------------------------------------------------
+
+describe("validateOutputs — COMPLETION_SUMMARY.md bypass with workspacePrefix", () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = createTempDir(); });
+  afterEach(() => cleanup(tempDir));
+
+  it("COMPLETION_SUMMARY.md bypass works with workspacePrefix set", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
+    };
+
+    // When workspacePrefix is set, COMPLETION_SUMMARY.md resolves through the prefix
+    // (baseDir + workspacePrefix + "/COMPLETION_SUMMARY.md")
+    const goalDir = path.join(tempDir, "goals", "test-goal");
+    fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete\n", "utf-8");
+
+    // workspacePrefix is set — bypass should still work
+    const result = validateOutputs(contract, tempDir, { stepNumber: 1, workspacePrefix: "goals/test-goal" });
+    expect(result).toEqual({ success: true });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Auto-derivation of writeAllowlist from contract outputs (setupValidation)
+// ---------------------------------------------------------------------------
+
+describe("setupValidation — auto-derived writeAllowlist from contract outputs", () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = createTempDir(); });
+  afterEach(() => cleanup(tempDir));
+
+  it("contract output paths are resolved through resolveContractPath with workspacePrefix", async () => {
+    // This tests the resources_discover handler logic indirectly via validateOutputs
+    // which uses the same resolveContractPath() mechanism
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "task", file: "S{stepNumber:02d}/TASK.md" },
+        { name: "summary", file: "S{stepNumber:02d}/SUMMARY.md" },
+      ],
+    };
+
+    // Create files in prefixed location
+    const goalDir = path.join(tempDir, "goals", "my-goal");
+    fs.mkdirSync(path.join(goalDir, "S01"), { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "S01", "TASK.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(goalDir, "S01", "SUMMARY.md"), "content", "utf-8");
+
+    // With workspacePrefix, paths resolve under goals/my-goal/
+    const result = validateOutputs(contract, tempDir, { stepNumber: 1, workspacePrefix: "goals/my-goal" });
+    expect(result).toEqual({ success: true });
+  });
+
+  it("root-level contract paths resolve directly from workingDir (bypass prefix)", async () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "overview", file: "/PROJECT/OVERVIEW.md", requiredWhen: () => false },
+        { name: "task", file: "TASK.md" },
+      ],
+    };
+
+    // /PROJECT/OVERVIEW.md resolves directly from baseDir (no prefix)
+    fs.mkdirSync(path.join(tempDir, "PROJECT"), { recursive: true });
+    fs.writeFileSync(path.join(tempDir, "PROJECT", "OVERVIEW.md"), "content", "utf-8");
+    // TASK.md resolves through prefix
+    const goalDir = path.join(tempDir, "goals", "my-goal");
+    fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "TASK.md"), "content", "utf-8");
+
+    const result = validateOutputs(contract, tempDir, { workspacePrefix: "goals/my-goal" });
+    expect(result).toEqual({ success: true });
+  });
+});

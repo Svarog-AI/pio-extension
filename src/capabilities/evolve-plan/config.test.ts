@@ -1,9 +1,12 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { vi } from "vitest";
 import { validateOutputs } from "../../guards/validation";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { validateEvolveStep } from "./callbacks";
+import { register } from "./config";
+import { readPendingTask } from "../../queues";
 import type { CapabilityContract, MarkdownFileSpec } from "../../types";
 
 // ---------------------------------------------------------------------------
@@ -358,5 +361,104 @@ describe("validateEvolveStep", () => {
       expect(result.goalDir).toBe(goalDir);
       expect(result.stepNumber).toBe(3);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tool execute — pio_evolve_plan
+// ---------------------------------------------------------------------------
+
+describe("evolvePlanTool.execute", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  function getTool() {
+    const registeredTools: Array<any> = [];
+    const mockPi = {
+      registerTool: vi.fn((tool: any) => registeredTools.push(tool)),
+      registerCommand: vi.fn(),
+    };
+    register(mockPi as any);
+    return registeredTools[0];
+  }
+
+  function makeCtx(cwd: string) {
+    return {
+      cwd,
+      ui: { notify: vi.fn() },
+      hasUI: false,
+      sessionManager: { getSessionFile: vi.fn(() => ""), getEntries: vi.fn(() => []) },
+      modelRegistry: {},
+      model: undefined,
+      isIdle: vi.fn(() => true),
+      signal: undefined,
+      abort: vi.fn(),
+      hasPendingMessages: vi.fn(() => false),
+      shutdown: vi.fn(),
+      getContextUsage: vi.fn(),
+      compact: vi.fn(),
+      getSystemPrompt: vi.fn(() => ""),
+    };
+  }
+
+  it("returns error when PLAN.md is missing", async () => {
+    // Arrange: goal dir exists but no PLAN.md
+    const goalDir = path.join(tempDir, ".pio", "goals", "no-plan");
+    fs.mkdirSync(goalDir, { recursive: true });
+
+    const tool = getTool();
+    const result = await tool.execute("test-id", { name: "no-plan", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
+
+    expect(result.content[0].text).toMatch(/PLAN/i);
+  });
+
+  it("enqueues task when PLAN.md exists", async () => {
+    createGoalTreeWithFrontmatter(tempDir, "my-feature", 3);
+
+    const tool = getTool();
+    const result = await tool.execute("test-id", { name: "my-feature", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
+
+    expect(result.content[0].text).toContain("queued");
+  });
+
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, stepNumber, initialMessage)", async () => {
+    createGoalTreeWithFrontmatter(tempDir, "my-feature", 3);
+
+    const tool = getTool();
+    await tool.execute("test-id", { name: "my-feature", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
+
+    const task = readPendingTask(tempDir, "my-feature");
+    expect(task).toBeDefined();
+    expect(task!.capability).toBe("evolve-plan");
+    expect(task!.params).toHaveProperty("goalName", "my-feature");
+    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature");
+    expect(task!.params).toHaveProperty("sessionName");
+    expect(task!.params!.sessionName).toContain("evolve-plan");
+    expect(task!.params).toHaveProperty("queueKey", "my-feature");
+    expect(task!.params).toHaveProperty("stepNumber");
+    expect(task!.params).toHaveProperty("initialMessage");
+  });
+
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, stepNumber, initialMessage)", async () => {
+    createGoalTreeWithFrontmatter(tempDir, "my-feature", 3);
+
+    const tool = getTool();
+    await tool.execute("test-id", { name: "my-feature", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
+
+    const task = readPendingTask(tempDir, "my-feature");
+    expect(task).toBeDefined();
+    expect(task!.capability).toBe("evolve-plan");
+    expect(task!.params).toHaveProperty("goalName", "my-feature");
+    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature");
+    expect(task!.params).toHaveProperty("sessionName");
+    expect(task!.params!.sessionName).toContain("evolve-plan");
+    expect(task!.params).toHaveProperty("queueKey", "my-feature");
+    expect(task!.params).toHaveProperty("stepNumber");
+    expect(task!.params).toHaveProperty("initialMessage");
   });
 });

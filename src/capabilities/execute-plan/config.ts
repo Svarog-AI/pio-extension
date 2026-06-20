@@ -114,6 +114,7 @@ async function handleExecutePlan(args: string | undefined, ctx: ExtensionCommand
     sessionName: `${name} execute-plan`,
     workspacePrefix: `goals/${name}`,
     queueKey: name,
+    initialMessage: `Execute all steps from the plan for goal "${name}".`,
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve execute-plan config.", "error");

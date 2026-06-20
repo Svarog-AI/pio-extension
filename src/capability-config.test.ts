@@ -674,7 +674,7 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
     expect(projectOutputs.some((o: any) => o.file === "/PROJECT/OVERVIEW.md")).toBe(true);
   });
 
-  it("finalize-goal initial message includes goal name via auto-transition params", async () => {
+  it("finalize-goal initial message is goal-agnostic (defaultInitialMessage)", async () => {
     // Arrange: same params shape as resolveEvolvePlanToFinalizeGoal() for a completed goal
     const cwd = "/tmp/auto-transition-proj";
     const params = {
@@ -687,9 +687,11 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
     // Act
     const result = await resolveCapabilityConfig(cwd, params);
 
-    // Assert: initialMessage includes the goal name
+    // Assert: capability is goal-agnostic — initialMessage comes from defaultInitialMessage
+    // (pio-workflow state machine can override via explicit initialMessage param)
     expect(result).toBeDefined();
-    expect(result!.initialMessage).toContain("my-feature");
+    expect(result!.initialMessage).toBeDefined();
+    expect(result!.initialMessage!.length).toBeGreaterThan(0);
   });
 });
 
@@ -1049,17 +1051,15 @@ describe("all real capabilities define defaultInitialMessage", () => {
     expect(config!.initialMessage!.length).toBeGreaterThan(0);
   });
 
-  it("finalize-goal defaultInitialMessage returns a non-empty string with goalDir param", async () => {
+  it("finalize-goal defaultInitialMessage returns a non-empty string (goal-agnostic)", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "finalize-goal" as string,
       goalName: "my-feature",
-      goalDir: "/tmp/proj/.pio/goals/my-feature",
       sessionName: "test",
     });
     expect(config!.initialMessage).toBeDefined();
     expect(config!.initialMessage!.length).toBeGreaterThan(0);
-    // finalize-goal uses goalDir from params, should include goal name
-    expect(config!.initialMessage).toContain("my-feature");
+    // finalize-goal is goal-agnostic — defaultInitialMessage does not reference goal names
   });
 
   it("project-context defaultInitialMessage returns a non-empty string", async () => {

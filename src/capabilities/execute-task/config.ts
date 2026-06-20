@@ -55,7 +55,7 @@ const capabilityConfig = {
       // If filesystem read fails, fall through to the normal message
     }
 
-    return `${prefix}Goal workspace is at ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md inside the \`${folderName}/\` directory and resolve the task.`;
+    return `${prefix}Working directory is ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md inside the \`${folderName}/\` directory and resolve the task.`;
   },
 } satisfies CapabilityPackageConfig;
 

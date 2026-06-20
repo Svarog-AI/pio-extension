@@ -413,3 +413,138 @@ describe("/pio-transition command", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tests — goalFromIssueTool.execute
+// ---------------------------------------------------------------------------
+
+describe("goalFromIssueTool.execute", () => {
+  let tempCwd: string;
+  let cwdSpy: ReturnType<typeof vi.spyOn>;
+  let goalFromIssueTool: { execute: Function } | undefined;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    tempCwd = createTempDir();
+    cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempCwd);
+    mockEnqueueTask.mockClear();
+    mockRecordTransition.mockClear();
+    mockResolveCapabilityConfigDirect.mockClear();
+
+    // Import fresh to get the real tool definition
+    const { setupDirectTools } = await import("./direct-tools");
+
+    // Capture the registered tool
+    const registeredTools: { name: string; execute: Function }[] = [];
+    const mockPi = {
+      registerTool: (t: { name: string; execute: Function }) => {
+        registeredTools.push({ name: t.name, execute: t.execute });
+      },
+      registerCommand: vi.fn(),
+      on: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+    setupDirectTools(mockPi as any);
+
+    goalFromIssueTool = registeredTools.find((t) => t.name === "pio_goal_from_issue");
+  });
+
+  afterEach(() => {
+    cwdSpy?.mockRestore();
+    cleanup(tempCwd);
+  });
+
+  it("returns error when issue does not exist", async () => {
+    const mockCtx = makeMockCtxNoConfig();
+    (mockCtx as any).cwd = tempCwd;
+
+    const result = await goalFromIssueTool!.execute(
+      "test-id",
+      { issuePath: "nonexistent-issue" },
+      new AbortController().signal,
+      () => {},
+      mockCtx,
+    );
+
+    expect(result.content[0].text).toContain("not found");
+  });
+
+  it("returns error when goal workspace already exists", async () => {
+    // Arrange: create issue file and goal workspace
+    const issuesDir = path.join(tempCwd, ".pio", "issues");
+    fs.mkdirSync(issuesDir, { recursive: true });
+    fs.writeFileSync(path.join(issuesDir, "my-issue.md"), "# My Issue\n\nDescription", "utf-8");
+
+    // Create goal workspace (collision)
+    const goalsDir = path.join(tempCwd, ".pio", "goals", "my-issue");
+    fs.mkdirSync(goalsDir, { recursive: true });
+
+    const mockCtx = makeMockCtxNoConfig();
+    (mockCtx as any).cwd = tempCwd;
+
+    const result = await goalFromIssueTool!.execute(
+      "test-id",
+      { issuePath: "my-issue.md" },
+      new AbortController().signal,
+      () => {},
+      mockCtx,
+    );
+
+    expect(result.content[0].text).toMatch(/already exists/i);
+  });
+
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, initialMessage)", async () => {
+    // Arrange: create issue file
+    const issuesDir = path.join(tempCwd, ".pio", "issues");
+    fs.mkdirSync(issuesDir, { recursive: true });
+    fs.writeFileSync(path.join(issuesDir, "fix-bug.md"), "# Fix Bug\n\nFix a bug", "utf-8");
+
+    const mockCtx = makeMockCtxNoConfig();
+    (mockCtx as any).cwd = tempCwd;
+
+    await goalFromIssueTool!.execute(
+      "test-id",
+      { issuePath: "fix-bug.md" },
+      new AbortController().signal,
+      () => {},
+      mockCtx,
+    );
+
+    expect(mockEnqueueTask).toHaveBeenCalledWith(
+      tempCwd,
+      "fix-bug",
+      expect.objectContaining({
+        capability: "create-goal",
+        params: expect.objectContaining({
+          goalName: "fix-bug",
+          workspacePrefix: "goals/fix-bug",
+          sessionName: "fix-bug create-goal",
+          queueKey: "fix-bug",
+          initialMessage: expect.stringContaining("fix-bug"),
+        }),
+      }),
+    );
+  });
+
+  it("includes fileCleanup in enqueued params", async () => {
+    // Arrange: create issue file
+    const issuesDir = path.join(tempCwd, ".pio", "issues");
+    fs.mkdirSync(issuesDir, { recursive: true });
+    const issuePath = path.join(issuesDir, "some-issue.md");
+    fs.writeFileSync(issuePath, "# Some Issue\n\nDescription", "utf-8");
+
+    const mockCtx = makeMockCtxNoConfig();
+    (mockCtx as any).cwd = tempCwd;
+
+    await goalFromIssueTool!.execute(
+      "test-id",
+      { issuePath: "some-issue.md" },
+      new AbortController().signal,
+      () => {},
+      mockCtx,
+    );
+
+    const call = mockEnqueueTask.mock.calls[0];
+    expect(call[2].params.fileCleanup).toContain(issuePath);
+  });
+});

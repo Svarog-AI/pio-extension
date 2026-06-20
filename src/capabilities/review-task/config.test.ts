@@ -2,8 +2,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as Value from "typebox/value";
-import config from "./config";
+import { vi } from "vitest";
+import config, { register } from "./config";
 import { applyReviewDecision, validateReviewStep, postExecuteReview } from "./callbacks";
+import { readPendingTask } from "../../queues";
 
 // ---------------------------------------------------------------------------
 // Local test helper (moved from callbacks.ts — not used by production code)
@@ -1017,5 +1019,84 @@ describe("validateReviewStep", () => {
       expect(result.goalDir).toBe(goalDir);
       expect(result.stepNumber).toBe(2);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tool execute — pio_review_task
+// ---------------------------------------------------------------------------
+
+describe("reviewTaskTool.execute", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  function getTool() {
+    const registeredTools: Array<any> = [];
+    const mockPi = {
+      registerTool: vi.fn((tool: any) => registeredTools.push(tool)),
+      registerCommand: vi.fn(),
+    };
+    register(mockPi as any);
+    return registeredTools[0];
+  }
+
+  function makeCtx(cwd: string) {
+    return {
+      cwd,
+      ui: { notify: vi.fn() },
+      hasUI: false,
+      sessionManager: { getSessionFile: vi.fn(() => ""), getEntries: vi.fn(() => []) },
+      modelRegistry: {},
+      model: undefined,
+      isIdle: vi.fn(() => true),
+      signal: undefined,
+      abort: vi.fn(),
+      hasPendingMessages: vi.fn(() => false),
+      shutdown: vi.fn(),
+      getContextUsage: vi.fn(),
+      compact: vi.fn(),
+      getSystemPrompt: vi.fn(() => ""),
+    };
+  }
+
+  it("returns error when COMPLETED marker is missing", async () => {
+    // Arrange: goal dir exists with GOAL.md but no COMPLETED in S01
+    const { goalDir, stepDir } = createGoalTree(tempDir, "no-completed", { stepNumber: 1 });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
+    fs.writeFileSync(path.join(stepDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
+    // Don't create COMPLETED
+
+    const tool = getTool();
+    const result = await tool.execute("test-id", { name: "no-completed", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
+
+    expect(result.content[0].text).toMatch(/COMPLETED|not.*ready|not.*complete/i);
+  });
+
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, stepNumber, initialMessage)", async () => {
+    // Arrange: goal dir with COMPLETED and SUMMARY.md in S01
+    const { goalDir, stepDir } = createGoalTree(tempDir, "my-feature", { stepNumber: 1 });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
+    fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
+    fs.writeFileSync(path.join(stepDir, "SUMMARY.md"), "# Summary", "utf-8");
+    fs.writeFileSync(path.join(stepDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
+
+    const tool = getTool();
+    await tool.execute("test-id", { name: "my-feature", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
+
+    const task = readPendingTask(tempDir, "my-feature");
+    expect(task).toBeDefined();
+    expect(task!.capability).toBe("review-task");
+    expect(task!.params).toHaveProperty("goalName", "my-feature");
+    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature");
+    expect(task!.params).toHaveProperty("sessionName");
+    expect(task!.params!.sessionName).toContain("review-task");
+    expect(task!.params).toHaveProperty("queueKey", "my-feature");
+    expect(task!.params).toHaveProperty("stepNumber");
+    expect(task!.params).toHaveProperty("initialMessage");
   });
 });

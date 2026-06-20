@@ -148,9 +148,7 @@ async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandC
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  const folderName = stepFolderName(result.stepNumber);
-
-const config = await resolveCapabilityConfig(ctx.cwd, {
+  const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "review-task",
     goalName: parsed.name,
     workspacePrefix: `goals/${parsed.name}`,

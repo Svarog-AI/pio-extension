@@ -101,7 +101,14 @@ const reviewTaskTool = defineTool({
 
     enqueueTask(ctx.cwd, params.name, {
       capability: "review-task",
-      params: { goalName: params.name, stepNumber: result.stepNumber },
+      params: {
+        goalName: params.name,
+        workspacePrefix: `goals/${params.name}`,
+        sessionName: `${params.name} review-task s${result.stepNumber}`,
+        queueKey: params.name,
+        stepNumber: result.stepNumber,
+        initialMessage: `Review the implementation of Step ${result.stepNumber} of goal "${params.name}".`,
+      },
     });
 
     return {
@@ -143,7 +150,15 @@ async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandC
   // All ctx-dependent work must happen before this line.
   const folderName = stepFolderName(result.stepNumber);
 
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "review-task", goalName: parsed.name, stepNumber: result.stepNumber });
+const config = await resolveCapabilityConfig(ctx.cwd, {
+    capability: "review-task",
+    goalName: parsed.name,
+    workspacePrefix: `goals/${parsed.name}`,
+    sessionName: `${parsed.name} review-task s${result.stepNumber}`,
+    queueKey: parsed.name,
+    stepNumber: result.stepNumber,
+    initialMessage: `Review the implementation of Step ${result.stepNumber} of goal "${parsed.name}".`,
+  });
   if (!config) {
     ctx.ui.notify("Failed to resolve review-task config.", "error");
     return;

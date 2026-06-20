@@ -69,7 +69,14 @@ const evolvePlanTool = defineTool({
 
     enqueueTask(ctx.cwd, params.name, {
       capability: "evolve-plan",
-      params: { goalName: params.name, stepNumber: result.stepNumber },
+      params: {
+        goalName: params.name,
+        workspacePrefix: `goals/${params.name}`,
+        sessionName: `${params.name} evolve-plan s${result.stepNumber}`,
+        queueKey: params.name,
+        stepNumber: result.stepNumber,
+        initialMessage: `Generate TASK.md for Step ${result.stepNumber} of goal "${params.name}".`,
+      },
     });
 
     return {
@@ -113,7 +120,15 @@ async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandC
   const stepDir = path.join(result.goalDir, folderName);
   fs.mkdirSync(stepDir, { recursive: true });
 
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "evolve-plan", goalName: parsed.name, stepNumber: result.stepNumber });
+  const config = await resolveCapabilityConfig(ctx.cwd, {
+    capability: "evolve-plan",
+    goalName: parsed.name,
+    workspacePrefix: `goals/${parsed.name}`,
+    sessionName: `${parsed.name} evolve-plan s${result.stepNumber}`,
+    queueKey: parsed.name,
+    stepNumber: result.stepNumber,
+    initialMessage: `Generate TASK.md for Step ${result.stepNumber} of goal "${parsed.name}".`,
+  });
   if (!config) {
     ctx.ui.notify("Failed to resolve evolve-plan config.", "error");
     return;

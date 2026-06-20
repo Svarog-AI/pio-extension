@@ -414,6 +414,9 @@ const goalFromIssueTool = defineTool({
       capability: "create-goal",
       params: {
         goalName,
+        workspacePrefix: `goals/${goalName}`,
+        sessionName: `${goalName} create-goal`,
+        queueKey: goalName,
         initialMessage: `The following issue has been selected for this goal. Use its content as starting context:\n\nIssue file: ${validation.issuePath}`,
         fileCleanup: [validation.issuePath!],
       },
@@ -447,6 +450,9 @@ async function handleGoalFromIssue(args: string | undefined, ctx: ExtensionComma
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "create-goal",
     goalName,
+    workspacePrefix: `goals/${goalName}`,
+    sessionName: `${goalName} create-goal`,
+    queueKey: goalName,
     initialMessage: `The following issue has been selected for this goal. Use its content as starting context:\n\nIssue file: ${validation.issuePath}`,
     fileCleanup: [validation.issuePath!],
   });

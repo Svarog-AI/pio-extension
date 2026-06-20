@@ -155,9 +155,16 @@ vi.mock("./state-machines/pio-workflow-machine", async (importOriginal) => {
 // ---------------------------------------------------------------------------
 
 const mockResolveCapabilityConfigForSession = vi.hoisted(() => vi.fn());
+const mockResolveContractPath = vi.hoisted(() => {
+  const { join } = require("node:path");
+  return (contractPath: string, workingDir: string, _prefix?: string, _params?: Record<string, unknown>): string => {
+    return join(workingDir, contractPath.startsWith("/") ? contractPath.slice(1) : contractPath);
+  };
+});
 
 vi.mock("./capability-config", () => ({
   resolveCapabilityConfig: mockResolveCapabilityConfigForSession,
+  resolveContractPath: mockResolveContractPath,
 }));
 
 // ---------------------------------------------------------------------------

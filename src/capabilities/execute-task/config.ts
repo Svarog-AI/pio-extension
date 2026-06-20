@@ -102,7 +102,14 @@ const executeTaskTool = defineTool({
 
     enqueueTask(ctx.cwd, params.name, {
       capability: "execute-task",
-      params: { goalName: params.name, stepNumber: result.stepNumber },
+      params: {
+        goalName: params.name,
+        workspacePrefix: `goals/${params.name}`,
+        sessionName: `${params.name} execute-task s${result.stepNumber}`,
+        queueKey: params.name,
+        stepNumber: result.stepNumber,
+        initialMessage: `Goal workspace is at ${result.goalDir}. You are responsible for **Step ${result.stepNumber}**. Read TASK.md inside the step folder and resolve the task.`,
+      },
     });
 
     return {
@@ -146,7 +153,15 @@ async function handleExecuteTask(args: string | undefined, ctx: ExtensionCommand
   const stepDir = path.join(result.goalDir, folderName);
   fs.mkdirSync(stepDir, { recursive: true });
 
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "execute-task", goalName: parsed.name, stepNumber: result.stepNumber });
+  const config = await resolveCapabilityConfig(ctx.cwd, {
+    capability: "execute-task",
+    goalName: parsed.name,
+    workspacePrefix: `goals/${parsed.name}`,
+    sessionName: `${parsed.name} execute-task s${result.stepNumber}`,
+    queueKey: parsed.name,
+    stepNumber: result.stepNumber,
+    initialMessage: `Goal workspace is at ${result.goalDir}. You are responsible for **Step ${result.stepNumber}**. Read TASK.md inside the step folder and resolve the task.`,
+  });
   if (!config) {
     ctx.ui.notify("Failed to resolve execute-task config.", "error");
     return;

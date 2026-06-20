@@ -47,15 +47,15 @@ export function validateOutputs(
   baseDir: string,
   params?: Record<string, unknown>,
 ): { success: boolean; message?: string } {
-  // If COMPLETION_SUMMARY.md exists at baseDir, pass validation regardless of other expected files.
-  // This allows evolve-plan to write just COMPLETION_SUMMARY.md (when all steps are done) and have pio_mark_complete succeed.
-  if (fs.existsSync(path.join(baseDir, "COMPLETION_SUMMARY.md"))) {
-    return { success: true };
-  }
-
   const workspacePrefix = typeof params?.workspacePrefix === "string"
     ? params.workspacePrefix
     : undefined;
+
+  // If COMPLETION_SUMMARY.md exists (resolved through prefix layer), pass validation regardless of other expected files.
+  // This allows evolve-plan to write just COMPLETION_SUMMARY.md (when all steps are done) and have pio_mark_complete succeed.
+  if (fs.existsSync(resolveContractPath("COMPLETION_SUMMARY.md", baseDir, workspacePrefix, params))) {
+    return { success: true };
+  }
 
   try {
     const issues: string[] = [];
@@ -284,14 +284,29 @@ export function setupValidation(pi: ExtensionAPI) {
       readOnlyFilePaths = [];
     }
 
-    // Resolve write-allowlist paths through prefix layer
+    // Start with explicit writeAllowlist from config
+    let baseAllowlist: string[] = [];
     if (config.writeAllowlist && config.workingDir) {
-      writeAllowlistPaths = config.writeAllowlist.map((f) =>
+      baseAllowlist = config.writeAllowlist.map((f) =>
         path.resolve(resolveContractPath(f, workingDir!, workspacePrefix, config.sessionParams))
       );
-    } else {
-      writeAllowlistPaths = [];
     }
+
+    // Auto-derive from contract outputs — "zero manual configuration per capability"
+    // Root-level paths (/PROJECT/...) resolve directly from workingDir; prefixed paths
+    // resolve through workspacePrefix. Merge with explicit allowlist via Set dedup.
+    const contractOutputPaths: string[] = [];
+    if (config.contract?.outputs && workingDir) {
+      for (const entry of config.contract.outputs) {
+        if (isMarkdownFileSpec(entry)) {
+          contractOutputPaths.push(path.resolve(resolveContractPath(
+            entry.file, workingDir, workspacePrefix, config.sessionParams
+          )));
+        }
+      }
+    }
+
+    writeAllowlistPaths = [...new Set([...baseAllowlist, ...contractOutputPaths])];
 
     warnedOnce = false;
     warningsThisSession = 0;

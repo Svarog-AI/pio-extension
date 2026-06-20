@@ -64,7 +64,13 @@ const revisePlanTool = defineTool({
 
     enqueueTask(ctx.cwd, params.name, {
       capability: "revise-plan",
-      params: { goalName: params.name },
+      params: {
+        goalName: params.name,
+        workspacePrefix: `goals/${params.name}`,
+        sessionName: `${params.name} revise-plan`,
+        queueKey: params.name,
+        initialMessage: `Archive the current plan and write a fresh plan for goal "${params.name}".`,
+      },
     });
 
     return {
@@ -99,7 +105,14 @@ async function handleRevisePlan(args: string | undefined, ctx: ExtensionCommandC
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "revise-plan", goalName: name });
+  const config = await resolveCapabilityConfig(ctx.cwd, {
+    capability: "revise-plan",
+    goalName: name,
+    workspacePrefix: `goals/${name}`,
+    sessionName: `${name} revise-plan`,
+    queueKey: name,
+    initialMessage: `Archive the current plan and write a fresh plan for goal "${name}".`,
+  });
   if (!config) {
     ctx.ui.notify("Failed to resolve revise-plan config.", "error");
     return;

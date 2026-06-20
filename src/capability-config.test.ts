@@ -666,8 +666,12 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
     expect(result).toBeDefined();
     expect(result!.workingDir).toBe(path.join(cwd, ".pio"));
     expect(result!.capability).toBe("finalize-goal");
-    // writeAllowlist uses absolute paths (path.resolve(__dirname, "../..") + .pio/PROJECT/*.md)
-    expect(result!.writeAllowlist?.some((p: string) => p.endsWith(".pio/PROJECT/OVERVIEW.md"))).toBe(true);
+    // writeAllowlist is no longer explicit — auto-derived from CONTRACT.outputs by validation guard
+    expect(result!.writeAllowlist).toBeUndefined();
+    // CONTRACT.outputs declares PROJECT files with root-level paths
+    const projectOutputs = result!.contract.outputs.filter((o: any) => "file" in o && o.file.startsWith("/PROJECT/"));
+    expect(projectOutputs).toHaveLength(7);
+    expect(projectOutputs.some((o: any) => o.file === "/PROJECT/OVERVIEW.md")).toBe(true);
   });
 
   it("finalize-goal initial message includes goal name via auto-transition params", async () => {

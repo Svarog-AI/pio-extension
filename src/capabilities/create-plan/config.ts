@@ -184,7 +184,13 @@ const createPlanTool = defineTool({
 
     enqueueTask(ctx.cwd, params.name, {
       capability: "create-plan",
-      params: { goalName: params.name },
+      params: {
+        goalName: params.name,
+        workspacePrefix: `goals/${params.name}`,
+        sessionName: `${params.name} create-plan`,
+        queueKey: params.name,
+        initialMessage: `Create an implementation plan for goal "${params.name}".`,
+      },
     });
 
     return { content: [{ type: "text", text: `Task queued for goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.` }], details: {} };
@@ -211,7 +217,14 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "create-plan", goalName: name });
+  const config = await resolveCapabilityConfig(ctx.cwd, {
+    capability: "create-plan",
+    goalName: name,
+    workspacePrefix: `goals/${name}`,
+    sessionName: `${name} create-plan`,
+    queueKey: name,
+    initialMessage: `Create an implementation plan for goal "${name}".`,
+  });
   if (!config) {
     ctx.ui.notify("Failed to resolve create-plan config.", "error");
     return;

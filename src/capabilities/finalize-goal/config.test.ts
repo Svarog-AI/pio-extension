@@ -50,49 +50,40 @@ function createGoalTree(
 // ---------------------------------------------------------------------------
 
 describe("config", () => {
-  function getAllowlist(): string[] {
-    return (config.writeAllowlist as Function)("/dummy", {});
-  }
-
-  it("writeAllowlist is a callback function", () => {
-    expect(typeof config.writeAllowlist).toBe("function");
+  it("writeAllowlist is absent (auto-derived from CONTRACT.outputs)", () => {
+    expect("writeAllowlist" in config).toBe(false);
   });
 
-  it("writeAllowlist contains exactly 7 file paths", () => {
-    expect(getAllowlist()).toHaveLength(7);
+  it("CONTRACT.outputs declares 7 PROJECT files with root-level paths", () => {
+    expect(config.contract.outputs).toHaveLength(7);
+    const expectedFiles = [
+      "/PROJECT/OVERVIEW.md",
+      "/PROJECT/DEVELOPMENT.md",
+      "/PROJECT/CONVENTIONS.md",
+      "/PROJECT/GIT.md",
+      "/PROJECT/ARCHITECTURE.md",
+      "/PROJECT/DEPENDENCIES.md",
+      "/PROJECT/GLOSSARY.md",
+    ];
+    const outputFiles = config.contract.outputs.map((o: any) => o.file);
+    for (const f of expectedFiles) {
+      expect(outputFiles).toContain(f);
+    }
   });
 
-  it("writeAllowlist includes OVERVIEW.md (absolute path)", () => {
-    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/OVERVIEW.md"))).toBe(true);
+  it("CONTRACT.outputs are all root-level paths (leading /)", () => {
+    for (const entry of config.contract.outputs) {
+      if ("file" in entry) {
+        expect(entry.file.startsWith("/")).toBe(true);
+      }
+    }
   });
 
-  it("writeAllowlist includes DEVELOPMENT.md (absolute path)", () => {
-    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/DEVELOPMENT.md"))).toBe(true);
-  });
-
-  it("writeAllowlist includes CONVENTIONS.md (absolute path)", () => {
-    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/CONVENTIONS.md"))).toBe(true);
-  });
-
-  it("writeAllowlist includes GIT.md (absolute path)", () => {
-    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/GIT.md"))).toBe(true);
-  });
-
-  it("writeAllowlist includes ARCHITECTURE.md (absolute path)", () => {
-    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/ARCHITECTURE.md"))).toBe(true);
-  });
-
-  it("writeAllowlist includes DEPENDENCIES.md (absolute path)", () => {
-    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/DEPENDENCIES.md"))).toBe(true);
-  });
-
-  it("writeAllowlist includes GLOSSARY.md (absolute path)", () => {
-    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/GLOSSARY.md"))).toBe(true);
-  });
-
-  it("writeAllowlist paths are all absolute (resolved from process.cwd())", () => {
-    for (const p of getAllowlist()) {
-      expect(path.isAbsolute(p)).toBe(true);
+  it("CONTRACT.outputs have requiredWhen returning false (optional outputs)", () => {
+    for (const entry of config.contract.outputs) {
+      if ("requiredWhen" in entry && entry.requiredWhen) {
+        expect(entry.requiredWhen()).toBe(false);
+      }
     }
   });
 
@@ -255,7 +246,7 @@ describe("finalizeGoalTool.execute", () => {
     };
   }
 
-  it("enqueues task with goalDir (not goalName) when goal is complete", async () => {
+  it("enqueues task with workspacePrefix and other params when goal is complete", async () => {
     // Arrange: create completed goal
     createGoalTree(tempDir, "my-goal", { withPlan: true, withCompletionSummary: true });
 
@@ -268,12 +259,16 @@ describe("finalizeGoalTool.execute", () => {
     const text = result.content[0].text;
     expect(text).toContain("queued");
 
-    // Assert: task was enqueued with correct params (goalDir, NOT goalName)
+    // Assert: task was enqueued with correct params
     const task = readPendingTask(tempDir, "my-goal");
     expect(task).toBeDefined();
     expect(task!.capability).toBe("finalize-goal");
-    expect(task!.params).toHaveProperty("goalDir");
-    expect(task!.params).not.toHaveProperty("goalName");
+    expect(task!.params).toHaveProperty("goalName", "my-goal");
+    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-goal");
+    expect(task!.params).toHaveProperty("sessionName", "my-goal finalize-goal");
+    expect(task!.params).toHaveProperty("queueKey", "my-goal");
+    expect(task!.params).toHaveProperty("initialMessage");
+    expect(task!.params).not.toHaveProperty("goalDir");
   });
 
   it("returns error when goal does not exist", async () => {

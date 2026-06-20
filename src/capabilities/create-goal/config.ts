@@ -60,7 +60,13 @@ const createGoalTool = defineTool({
 
     enqueueTask(ctx.cwd, params.name, {
       capability: "create-goal",
-      params: { goalName: params.name, initialMessage: typeof params.initialMessage === "string" ? params.initialMessage : undefined },
+      params: {
+        goalName: params.name,
+        workspacePrefix: `goals/${params.name}`,
+        sessionName: `${params.name} create-goal`,
+        queueKey: params.name,
+        initialMessage: typeof params.initialMessage === "string" ? params.initialMessage : undefined,
+      },
     });
 
     return { content: [{ type: "text", text: `Goal workspace created at ${goalDir}. Task queued. Use \`/pio-next-task\` to start the sub-session.` }], details: {} };
@@ -87,7 +93,13 @@ async function handleCreateGoal(args: string | undefined, ctx: ExtensionCommandC
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "create-goal", goalName: name });
+  const config = await resolveCapabilityConfig(ctx.cwd, {
+    capability: "create-goal",
+    goalName: name,
+    workspacePrefix: `goals/${name}`,
+    sessionName: `${name} create-goal`,
+    queueKey: name,
+  });
   if (!config) {
     ctx.ui.notify("Failed to resolve create-goal config.", "error");
     return;

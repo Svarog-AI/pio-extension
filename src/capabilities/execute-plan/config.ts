@@ -75,7 +75,13 @@ const executePlanTool = defineTool({
 
     enqueueTask(ctx.cwd, params.name, {
       capability: "execute-plan",
-      params: { goalName: params.name },
+      params: {
+        goalName: params.name,
+        workspacePrefix: `goals/${params.name}`,
+        sessionName: `${params.name} execute-plan`,
+        queueKey: params.name,
+        initialMessage: `Execute all steps from the plan for goal "${params.name}".`,
+      },
     });
 
     return { content: [{ type: "text", text: `Task queued for goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.` }], details: {} };

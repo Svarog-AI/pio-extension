@@ -51,7 +51,7 @@ const projectContextTool = defineTool({
   async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
     enqueueTask(ctx.cwd, "project-context", {
       capability: "project-context",
-      params: {},
+      params: { sessionName: "project-context" },
     });
 
     return { content: [{ type: "text", text: `Task queued for project-context. Use \'/pio-next-task\' to start the sub-session.` }], details: {} };
@@ -63,7 +63,10 @@ const projectContextTool = defineTool({
 // ---------------------------------------------------------------------------
 
 async function handleProjectContext(_args: string | undefined, ctx: ExtensionCommandContext) {
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "project-context" });
+  const config = await resolveCapabilityConfig(ctx.cwd, {
+    capability: "project-context",
+    sessionName: "project-context",
+  });
   if (!config) {
     ctx.ui.notify("Failed to resolve project-context config.", "error");
     return;

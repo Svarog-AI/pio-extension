@@ -2,7 +2,6 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import { CapState } from "../../capability-state";
 import { launchCapability } from "../../capability-session";
 import { resolveGoalDir } from "../../fs-utils";
@@ -17,7 +16,15 @@ import type { CapabilityPackageConfig } from "../../capability-package";
 
 export const CONTRACT: CapabilityContract = {
   inputs: [{ name: "goal", file: "GOAL.md" }, { name: "plan", file: "PLAN.md" }, { name: "completion-summary", file: "COMPLETION_SUMMARY.md" }],
-  outputs: [],
+  outputs: [
+    { name: "overview", file: "/PROJECT/OVERVIEW.md", requiredWhen: () => false },
+    { name: "development", file: "/PROJECT/DEVELOPMENT.md", requiredWhen: () => false },
+    { name: "conventions", file: "/PROJECT/CONVENTIONS.md", requiredWhen: () => false },
+    { name: "git", file: "/PROJECT/GIT.md", requiredWhen: () => false },
+    { name: "architecture", file: "/PROJECT/ARCHITECTURE.md", requiredWhen: () => false },
+    { name: "dependencies", file: "/PROJECT/DEPENDENCIES.md", requiredWhen: () => false },
+    { name: "glossary", file: "/PROJECT/GLOSSARY.md", requiredWhen: () => false },
+  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -30,24 +37,11 @@ const capabilityConfig = {
   skills: {
     mandatory: ["pio-project-knowledge", "pio-git"],
   },
-  writeAllowlist: (_workingDir: string, _params?: Record<string, unknown>) => {
-    const projectDir = path.join(process.cwd(), ".pio", "PROJECT");
-    return [
-      path.join(projectDir, "OVERVIEW.md"),
-      path.join(projectDir, "DEVELOPMENT.md"),
-      path.join(projectDir, "CONVENTIONS.md"),
-      path.join(projectDir, "GIT.md"),
-      path.join(projectDir, "ARCHITECTURE.md"),
-      path.join(projectDir, "DEPENDENCIES.md"),
-      path.join(projectDir, "GLOSSARY.md"),
-    ];
-  },
   defaultInitialMessage: (_workingDir: string, params?: Record<string, unknown>) => {
-    const goalDir = typeof params?.goalDir === "string" ? params.goalDir : "";
     const goalName = typeof params?.goalName === "string" ? params.goalName : "";
-    const goalRef = goalName ? `"${goalName}"` : "goal workspace";
-    const projectDir = path.join(process.cwd(), ".pio/PROJECT");
-    return `Finalize the completed ${goalRef} at ${goalDir}. Read accumulated decisions (DECISIONS.md from the highest-numbered step folder), PLAN.md, and per-step SUMMARY.md files. Evaluate each decision against the update rules from the pio-project-knowledge skill. Update the 7 PROJECT files under ${projectDir} where warranted. Produce a summary of all changes made.`;
+    return goalName
+      ? `Finalize goal "${goalName}" — update .pio/PROJECT/ documentation with accumulated decisions.`
+      : "Ready.";
   },
 } satisfies CapabilityPackageConfig;
 
@@ -116,7 +110,13 @@ const finalizeGoalTool = defineTool({
 
     enqueueTask(ctx.cwd, params.name, {
       capability: "finalize-goal",
-      params: { goalDir: result.goalDir },
+      params: {
+        goalName: params.name,
+        workspacePrefix: `goals/${params.name}`,
+        sessionName: `${params.name} finalize-goal`,
+        queueKey: params.name,
+        initialMessage: `Finalize goal "${params.name}" — update .pio/PROJECT/ documentation.`,
+      },
     });
 
     return {
@@ -153,7 +153,11 @@ async function handleFinalizeGoal(args: string | undefined, ctx: ExtensionComman
   // All ctx-dependent work must happen before this line.
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "finalize-goal",
-    goalDir: result.goalDir,
+    goalName: name,
+    workspacePrefix: `goals/${name}`,
+    sessionName: `${name} finalize-goal`,
+    queueKey: name,
+    initialMessage: `Finalize goal "${name}" — update .pio/PROJECT/ documentation.`,
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve finalize-goal config.", "error");

@@ -7,16 +7,6 @@ import config, { register } from "./config";
 import { applyReviewDecision, postExecuteReview } from "./callbacks";
 import { readPendingTask } from "../../queues";
 
-// ---------------------------------------------------------------------------
-// Local test helper (moved from callbacks.ts — not used by production code)
-// ---------------------------------------------------------------------------
-
-function isStepReviewable(goalDir: string, stepNumber: number): boolean {
-  const folder = stepFolderName(stepNumber);
-  const stepDir = path.join(goalDir, folder);
-  if (fs.existsSync(path.join(stepDir, "BLOCKED"))) return false;
-  return fs.existsSync(path.join(stepDir, "COMPLETED")) && fs.existsSync(path.join(stepDir, "SUMMARY.md"));
-}
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
 import { stepFolderName } from "../../fs-utils";
 
@@ -227,83 +217,6 @@ describe("config.prepareSession", () => {
     }).not.toThrow();
   });
 
-});
-
-// ---------------------------------------------------------------------------
-// isStepReviewable — review-readiness gate
-// ---------------------------------------------------------------------------
-
-describe("isStepReviewable(goalDir, stepNumber)", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("COMPLETED + SUMMARY.md, no BLOCKED → true", () => {
-    // Arrange: S01 with COMPLETED and SUMMARY.md, no BLOCKED
-    const { goalDir } = createGoalTree(tempDir, "reviewable-goal", {
-      steps: [{ number: 1, files: ["COMPLETED", "SUMMARY.md"] }],
-    });
-
-    // Act
-    const result = isStepReviewable(goalDir, 1);
-
-    // Assert
-    expect(result).toBe(true);
-  });
-
-  it("missing COMPLETED → false", () => {
-    // Arrange: S01 with only SUMMARY.md (no COMPLETED marker)
-    const { goalDir } = createGoalTree(tempDir, "no-completed-goal", {
-      steps: [{ number: 1, files: ["SUMMARY.md"] }],
-    });
-
-    // Act
-    const result = isStepReviewable(goalDir, 1);
-
-    // Assert
-    expect(result).toBe(false);
-  });
-
-  it("missing SUMMARY.md → false", () => {
-    // Arrange: S01 with only COMPLETED (no SUMMARY.md)
-    const { goalDir } = createGoalTree(tempDir, "no-summary-goal", {
-      steps: [{ number: 1, files: ["COMPLETED"] }],
-    });
-
-    // Act
-    const result = isStepReviewable(goalDir, 1);
-
-    // Assert
-    expect(result).toBe(false);
-  });
-
-  it("has BLOCKED → false even with COMPLETED + SUMMARY.md", () => {
-    // Arrange: S01 with COMPLETED, SUMMARY.md, and BLOCKED
-    const { goalDir } = createGoalTree(tempDir, "blocked-review-goal", {
-      steps: [{ number: 1, files: ["COMPLETED", "SUMMARY.md", "BLOCKED"] }],
-    });
-
-    // Act
-    const result = isStepReviewable(goalDir, 1);
-
-    // Assert
-    expect(result).toBe(false);
-  });
-
-  it("folder does not exist → false", () => {
-    // Arrange: goal dir exists but no S01/ subdirectory
-    const { goalDir } = createGoalTree(tempDir, "empty-review-goal");
-
-    // Act
-    const result = isStepReviewable(goalDir, 1);
-
-    // Assert
-    expect(result).toBe(false);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -886,12 +799,6 @@ describe("review-task postExecute — marker creation", () => {
   });
 
 });
-
-// ---------------------------------------------------------------------------
-// validateReviewStep — directory resolution
-// ---------------------------------------------------------------------------
-
-
 
 // ---------------------------------------------------------------------------
 // Tool execute — pio_review_task

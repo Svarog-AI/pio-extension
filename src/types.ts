@@ -79,7 +79,7 @@ export interface CapabilityConfig {
   prompt?: string;
   /** Kickoff prompt sent as a user message to trigger the agent */
   initialMessage?: string;
-  /** Base directory for resolving validation file paths */
+  /** Resolved workspace directory — includes workspacePrefix from normalization. Base directory for resolving validation file paths. */
   workingDir?: string;
   /** Files that must not be modified during this session (relative to workingDir) */
   readOnlyFiles?: string[];
@@ -103,11 +103,13 @@ export interface CapabilityConfig {
   contract: CapabilityContract;
 }
 
-/** Callback signature for step-dependent config fields. */
-export type ConfigCallback<T> = (workingDir: string, params?: Record<string, unknown>) => T;
+/** Callback signature for step-dependent config fields.
+ * @param workspaceDir - Resolved workspace directory (already includes workspacePrefix from normalization). */
+export type ConfigCallback<T> = (workspaceDir: string, params?: Record<string, unknown>) => T;
 
-/** Lifecycle hook that runs before the agent starts (e.g., stale-state cleanup). */
-export type PrepareSessionCallback = (workingDir: string, params?: Record<string, unknown>) => void | Promise<void>;
+/** Lifecycle hook that runs before the agent starts (e.g., stale-state cleanup).
+ * @param workspaceDir - Resolved workspace directory (already includes workspacePrefix from normalization). */
+export type PrepareSessionCallback = (workspaceDir: string, params?: Record<string, unknown>) => void | Promise<void>;
 
 /** Lifecycle hook that runs after file-existence validation passes but before transition routing. Can fail to keep the agent in the session to fix issues. */
 export type PostValidateCallback = (workspaceDir: string, params?: Record<string, unknown>) => { success: boolean; message?: string };

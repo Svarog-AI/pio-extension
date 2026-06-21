@@ -2,7 +2,6 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import { getSessionConfig } from "../capability-utils";
 import { validateOutputs } from "./validation";
 import { dispatch, getMachine, recordTransition } from "../state-machines";
@@ -46,18 +45,12 @@ export const markCompleteTool = defineTool({
       );
     }
 
-    // Read workspace prefix from session params (set by the state machine)
-    const workspacePrefix = typeof sessionParams.workspacePrefix === "string"
-      ? sessionParams.workspacePrefix
-      : undefined;
-
-    // Derive workspace directory from prefix
-    const workspaceDir = workspacePrefix
-      ? path.join(dir, workspacePrefix)
-      : dir;
+    // config.workingDir is already the resolved directory (includes workspacePrefix).
+    // After Step 9 normalization, workspacePrefix is stripped from sessionParams.
+    // Use `dir` (= config.workingDir) everywhere — it's the resolved workspace directory.
 
     // 1. Output validation (existence + frontmatter schema — single call)
-    // validateOutputs reads workspacePrefix from sessionParams itself
+    // validateOutputs falls back to joining baseDir + contractPath when workspacePrefix is absent
     const outputsResult = validateOutputs(config.contract, dir, sessionParams);
 
     if (!outputsResult.success) {
@@ -67,7 +60,7 @@ export const markCompleteTool = defineTool({
     // 2. PostValidate hook — can fail to keep agent in session
     if (config.postValidate) {
       try {
-        const postValidateResult = config.postValidate(workspaceDir, sessionParams);
+        const postValidateResult = config.postValidate(dir, sessionParams);
         if (!postValidateResult.success) {
           return { content: [{ type: "text", text: postValidateResult.message || "Post-validation failed." }], details: {} };
         }
@@ -130,7 +123,7 @@ export const markCompleteTool = defineTool({
         });
 
         // Record transition audit entry with enriched params
-        recordTransition(workspaceDir, capability, nextTask, enrichedParams);
+        recordTransition(dir, capability, nextTask, enrichedParams);
 
         notification = `\n\nNext task enqueued: ${nextTask.capability}. Use \`/pio-next-task\` to start the sub-session.`;
       } catch (err) {
@@ -144,7 +137,7 @@ export const markCompleteTool = defineTool({
     // 4. PostExecute hook — runs after transitions, errors are non-fatal
     if (config.postExecute) {
       try {
-        const postExecuteResult = config.postExecute(workspaceDir, sessionParams);
+        const postExecuteResult = config.postExecute(dir, sessionParams);
         if (postExecuteResult instanceof Promise) {
           await postExecuteResult;
         }

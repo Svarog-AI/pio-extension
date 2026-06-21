@@ -57,6 +57,95 @@ describe("resolveCapabilityConfig — happy path with static config", () => {
 });
 
 // ---------------------------------------------------------------------------
+// resolveCapabilityConfig — workspacePrefix resolution (Step 9)
+// ---------------------------------------------------------------------------
+
+describe("resolveCapabilityConfig — workspacePrefix resolution", () => {
+  it("computes workingDir from workspacePrefix: .pio/ + goals/my-feature", async () => {
+    const cwd = "/tmp/test-proj";
+    const params = {
+      capability: "create-plan" as string,
+      sessionName: "test",
+      workspacePrefix: "goals/my-feature",
+    };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.workingDir).toBe(path.join(cwd, ".pio", "goals", "my-feature"));
+  });
+
+  it("strips workspacePrefix from sessionParams after normalization", async () => {
+    const cwd = "/tmp/test-proj";
+    const params = {
+      capability: "create-plan" as string,
+      sessionName: "test",
+      workspacePrefix: "goals/my-feature",
+      customField: "value",
+    };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.sessionParams?.workspacePrefix).toBeUndefined();
+    expect(result!.sessionParams?.customField).toBe("value");
+  });
+
+  it("without workspacePrefix, workingDir is just .pio/ (backward compatible)", async () => {
+    const cwd = "/tmp/test-proj";
+    const params = { capability: "create-goal" as string, sessionName: "test" };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.workingDir).toBe(path.join(cwd, ".pio"));
+    expect(result!.sessionParams?.workspacePrefix).toBeUndefined();
+  });
+
+  it("nested workspacePrefix resolves correctly", async () => {
+    const cwd = "/tmp/test-proj";
+    const params = {
+      capability: "create-plan" as string,
+      sessionName: "test",
+      workspacePrefix: "goals/parent/S03/subgoals/nested",
+    };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.workingDir).toBe(path.join(cwd, ".pio", "goals", "parent", "S03", "subgoals", "nested"));
+  });
+
+  it("explicit workingDir is still used as base before prefix resolution", async () => {
+    const cwd = "/tmp/test-proj";
+    const params = {
+      capability: "create-plan" as string,
+      sessionName: "test",
+      workingDir: "/explicit/path",
+      workspacePrefix: "goals/my-feature",
+    };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.workingDir).toBe(path.join("/explicit/path", "goals", "my-feature"));
+  });
+
+  it("callbacks receive resolved directory (goal-level) not raw .pio/", async () => {
+    const cwd = "/tmp/test-proj";
+    const params = {
+      capability: "execute-task" as string,
+      sessionName: "test",
+      stepNumber: 1,
+      workspacePrefix: "goals/my-feature",
+    };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    // readOnlyFiles callback should have been called with resolved dir
+    // and should produce paths like "S01/TASK.md" (capability decides path shape)
+    expect(result!.readOnlyFiles).toContain("S01/TASK.md");
+    // workingDir is the resolved directory
+    expect(result!.workingDir).toBe(path.join(cwd, ".pio", "goals", "my-feature"));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // resolveCapabilityConfig — explicit workingDir override
 // ---------------------------------------------------------------------------
 

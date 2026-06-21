@@ -24,11 +24,14 @@ export async function getSessionConfig(ctx: ExtensionContext): Promise<Capabilit
   const entry = entries.find((e) => e.type === "custom" && e.customType === "pio-config");
   if (!entry || entry.type !== "custom") return null;
 
-  const data = entry.data as { capability?: string; sessionParams?: Record<string, unknown> };
+  const data = entry.data as { capability?: string; workingDir?: string; sessionParams?: Record<string, unknown> };
   if (!data.capability) return null;
 
+  // Pass stored workingDir (resolved directory from normalization) so reconstruction
+  // produces the same resolved workingDir even when workspacePrefix was stripped from sessionParams.
   const resolved = await resolveCapabilityConfig(ctx.cwd, {
     capability: data.capability,
+    workingDir: data.workingDir,
     ...data.sessionParams,
   });
   return resolved ?? null;

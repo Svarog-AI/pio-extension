@@ -82,6 +82,7 @@ export async function launchCapability(ctx: ExtensionCommandContext, config: Cap
       // via dynamic import of the capability module.
       newSm.appendCustomEntry("pio-config", {
         capability: config.capability,
+        workingDir: config.workingDir,
         sessionParams: config.sessionParams,
       });
     },

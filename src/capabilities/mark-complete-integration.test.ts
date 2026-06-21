@@ -86,6 +86,7 @@ function makeMockCtx(configData: Record<string, unknown>, cwd: string) {
           customType: "pio-config" as const,
           data: {
             capability: configData.capability,
+            workingDir: configData.workingDir,
             sessionParams: configData.sessionParams,
           },
         },

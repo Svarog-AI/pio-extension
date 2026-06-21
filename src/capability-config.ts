@@ -185,7 +185,15 @@ function normalizePackageConfig(
       ? params.workingDir
       : join(cwd, ".pio");
 
-  // Mandatory: sessionName — read from params, throw if missing
+  // Resolve workspace directory from prefix — single source of truth
+  const wsPrefix = typeof params?.workspacePrefix === "string" ? params.workspacePrefix : undefined;
+  const workspaceDir = wsPrefix ? join(workingDir, wsPrefix) : workingDir;
+
+  // Strip prefix from params so downstream code doesn't double-apply
+  // resolveContractPath falls back to joining baseDir + contractPath when workspacePrefix is undefined
+  const resolvedParams = wsPrefix ? { ...params, workspacePrefix: undefined } : params;
+
+  // Mandatory: sessionName — read from original params (before stripping)
   const sessionName = typeof params?.sessionName === "string" ? params.sessionName : "";
   if (!sessionName) {
     throw new Error(`Capability "${cap}" requires a session name. Provide params.sessionName.`);
@@ -194,22 +202,22 @@ function normalizePackageConfig(
   // Mandatory: initialMessage — read from params, fallback to defaultInitialMessage, throw if both missing
   const initialMsg =
     (typeof params?.initialMessage === "string" ? params.initialMessage : undefined)
-    ?? pkg.defaultInitialMessage(workingDir, params);
+    ?? pkg.defaultInitialMessage(workspaceDir, resolvedParams);
   if (!initialMsg) {
     throw new Error(`Capability "${cap}" requires an initial message. Provide params.initialMessage or define defaultInitialMessage.`);
   }
 
-  const readOnlyFiles = resolveField<string[]>(pkg.readOnlyFiles, workingDir, params);
-  const writeAllowlist = resolveField<string[]>(pkg.writeAllowlist, workingDir, params);
+  const readOnlyFiles = resolveField<string[]>(pkg.readOnlyFiles, workspaceDir, resolvedParams);
+  const writeAllowlist = resolveField<string[]>(pkg.writeAllowlist, workspaceDir, resolvedParams);
 
   return buildCapabilityConfig(
     cap,
     undefined, // new-style: prompts compiled from component files
-    workingDir,
+    workspaceDir,
     readOnlyFiles,
     writeAllowlist,
     initialMsg,
-    params,
+    resolvedParams,
     sessionName,
     pkg.prepareSession,
     pkg.postValidate,

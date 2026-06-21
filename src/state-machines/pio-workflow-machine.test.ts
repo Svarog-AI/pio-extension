@@ -91,9 +91,11 @@ function writeRevisePlanNeeded(goalDir: string, stepNumber: number): void {
   fs.writeFileSync(path.join(stepDir, "REVISE_PLAN_NEEDED"), "", "utf-8");
 }
 
-/** Context object for dispatch calls — baseDir is the .pio/ root (not the goal directory). */
-function ctx(tempDir: string): { baseDir: string } {
-  return { baseDir: path.join(tempDir, ".pio") };
+/** Context object for dispatch calls — baseDir is the resolved goal directory.
+ * After Step 9, mark-complete passes config.workingDir (resolved directory) to dispatch.
+ * This is the directory where getCapState resolves files relative to — no workspacePrefix needed. */
+function ctx(tempDir: string, goalName: string): { baseDir: string } {
+  return { baseDir: path.join(tempDir, ".pio", "goals", goalName) };
 }
 
 // ---------------------------------------------------------------------------
@@ -121,7 +123,7 @@ describe("dispatch — create-goal → create-plan", () => {
   afterEach(() => cleanup(tempDir));
 
   it("returns create-plan with params preserved", () => {
-    const results = dispatch(goalDrivenDevelopment, "create-goal", ctx(tempDir), { queueKey: "my-feature" });
+    const results = dispatch(goalDrivenDevelopment, "create-goal", ctx(tempDir, "my-feature"), { queueKey: "my-feature" });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
@@ -134,7 +136,7 @@ describe("dispatch — create-goal → create-plan", () => {
   });
 
   it("returns empty array when params is undefined (queueKey missing — throws)", () => {
-    const results = dispatch(goalDrivenDevelopment, "create-goal", ctx(tempDir), undefined);
+    const results = dispatch(goalDrivenDevelopment, "create-goal", ctx(tempDir, "my-feature"), undefined);
 
     // resolveCreateGoalToCreatePlan throws when queueKey is missing.
     // dispatch() catches the error and logs a warning; no transitions fire.
@@ -159,7 +161,7 @@ describe("dispatch — create-plan → evolve-plan", () => {
   afterEach(() => cleanup(tempDir));
 
   it("returns evolve-plan with stepNumber 1 (first step after plan creation)", () => {
-    const results = dispatch(goalDrivenDevelopment, "create-plan", ctx(tempDir), { queueKey: "my-feature" });
+    const results = dispatch(goalDrivenDevelopment, "create-plan", ctx(tempDir, "my-feature"), { queueKey: "my-feature" });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
@@ -172,7 +174,7 @@ describe("dispatch — create-plan → evolve-plan", () => {
   });
 
   it("returns empty array when params is undefined (queueKey missing — throws)", () => {
-    const results = dispatch(goalDrivenDevelopment, "create-plan", ctx(tempDir), undefined);
+    const results = dispatch(goalDrivenDevelopment, "create-plan", ctx(tempDir, "my-feature"), undefined);
 
     // resolveCreatePlanToEvolvePlan throws when queueKey is missing.
     // dispatch() catches the error and logs a warning; no transitions fire.
@@ -197,7 +199,7 @@ describe("dispatch — evolve-plan → execute-task", () => {
   afterEach(() => cleanup(tempDir));
 
   it("returns execute-task with goalName and stepNumber propagated when present", () => {
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 3 });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
@@ -210,7 +212,7 @@ describe("dispatch — evolve-plan → execute-task", () => {
   });
 
   it("returns empty array when stepNumber is missing from params (throws — wiring error)", () => {
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "feat"), { queueKey: "feat" });
 
     // resolveEvolvePlanToExecuteTask throws when stepNumber is missing.
     // dispatch() catches the error and logs a warning; no transitions fire.
@@ -218,7 +220,7 @@ describe("dispatch — evolve-plan → execute-task", () => {
   });
 
   it("prefers explicit stepNumber from params", () => {
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "feat", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 2 });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
@@ -252,7 +254,7 @@ describe("dispatch — review→evolve→finalize chain", () => {
     writeReview(goalDir, 3, "APPROVED");
 
     // Act step 1: review-task approval → evolve-plan with incremented stepNumber
-    const reviewResults = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir), { queueKey: "feat", stepNumber: 3 });
+    const reviewResults = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 3 });
 
     // Assert step 1: routes to evolve-plan with stepNumber 4
     expect(reviewResults).toHaveLength(1);
@@ -268,7 +270,7 @@ describe("dispatch — review→evolve→finalize chain", () => {
     writeCompletionSummary(goalDir);
 
     // Act step 2: evolve-plan with COMPLETION_SUMMARY.md → finalize-goal
-    const evolveResults = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "feat", stepNumber: 4 });
+    const evolveResults = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 4 });
 
     // Assert step 2: routes to finalize-goal with workspacePrefix (no goalDir)
     expect(evolveResults).toHaveLength(1);
@@ -304,7 +306,7 @@ describe("dispatch — evolve-plan completion detection", () => {
   it("routes to finalize-goal when COMPLETION_SUMMARY.md exists", () => {
     writeCompletionSummary(goalDir);
 
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "feat"), { queueKey: "feat" });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
@@ -322,7 +324,7 @@ describe("dispatch — evolve-plan completion detection", () => {
   it("propagates queueKey in finalize-goal params", () => {
     writeCompletionSummary(goalDir);
 
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "feat", stepNumber: 5 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 5 });
 
     expect(results).toHaveLength(1);
     expect(results[0].capability).toBe("finalize-goal");
@@ -333,7 +335,7 @@ describe("dispatch — evolve-plan completion detection", () => {
   });
 
   it("routes to execute-task when COMPLETION_SUMMARY.md does not exist", () => {
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "feat", stepNumber: 1 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 1 });
 
     expect(results).toHaveLength(1);
     expect(results[0].capability).toBe("execute-task");
@@ -341,7 +343,7 @@ describe("dispatch — evolve-plan completion detection", () => {
   });
 
   it("routes to execute-task with explicit stepNumber when not completed", () => {
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "feat", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 2 });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
@@ -371,7 +373,7 @@ describe("dispatch — execute-task → review-task", () => {
   afterEach(() => cleanup(tempDir));
 
   it("returns review-task with goalName and stepNumber propagated when present", () => {
-    const results = dispatch(goalDrivenDevelopment, "execute-task", ctx(tempDir), { queueKey: "feat", stepNumber: 5 });
+    const results = dispatch(goalDrivenDevelopment, "execute-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 5 });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
@@ -384,7 +386,7 @@ describe("dispatch — execute-task → review-task", () => {
   });
 
   it("returns empty array when stepNumber is missing from params (throws — wiring error)", () => {
-    const results = dispatch(goalDrivenDevelopment, "execute-task", ctx(tempDir), { queueKey: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "execute-task", ctx(tempDir, "feat"), { queueKey: "feat" });
 
     // resolveExecuteTaskToReviewTask throws when stepNumber is missing.
     // dispatch() catches the error and logs a warning; no transitions fire.
@@ -392,7 +394,7 @@ describe("dispatch — execute-task → review-task", () => {
   });
 
   it("prefers explicit stepNumber from params", () => {
-    const results = dispatch(goalDrivenDevelopment, "execute-task", ctx(tempDir), { queueKey: "feat", stepNumber: 5 });
+    const results = dispatch(goalDrivenDevelopment, "execute-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 5 });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
@@ -423,7 +425,7 @@ describe("dispatch — review-task approval", () => {
   afterEach(() => cleanup(tempDir));
 
   it("routes to evolve-plan with incremented stepNumber when REVIEW.md decision is APPROVED", () => {
-    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir), { queueKey: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 3 });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
@@ -436,7 +438,7 @@ describe("dispatch — review-task approval", () => {
   });
 
   it("preserves queueKey while incrementing stepNumber", () => {
-    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir), { queueKey: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 3 });
 
     expect(results).toHaveLength(1);
     expect(results[0].params?.queueKey).toBe("feat");
@@ -445,7 +447,7 @@ describe("dispatch — review-task approval", () => {
   });
 
   it("returns empty array when stepNumber is missing from params (throws — wiring error)", () => {
-    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir), { queueKey: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir, "feat"), { queueKey: "feat" });
 
     // Both resolveReviewTaskToEvolvePlan and resolveReviewTaskToExecuteTask
     // throw when stepNumber is missing — it's a wiring error upstream.
@@ -472,7 +474,7 @@ describe("dispatch — review-task rejection", () => {
   afterEach(() => cleanup(tempDir));
 
   it("routes to execute-task with same stepNumber when REVIEW.md decision is REJECTED", () => {
-    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir), { queueKey: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 3 });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
@@ -487,7 +489,7 @@ describe("dispatch — review-task rejection", () => {
   it("preserves queueKey and same stepNumber when rejected", () => {
     writeReview(goalDir, 2, "REJECTED");
 
-    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir), { queueKey: "feat", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 2 });
 
     expect(results).toHaveLength(1);
     expect(results[0].params?.queueKey).toBe("feat");
@@ -514,7 +516,7 @@ describe("dispatch — review-task fallback (no matching edge)", () => {
 
   it("returns empty array when REVIEW.md does not exist", () => {
     // No REVIEW.md written — both edges return undefined
-    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir), { queueKey: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 3 });
 
     expect(results).toHaveLength(0);
   });
@@ -524,7 +526,7 @@ describe("dispatch — review-task fallback (no matching edge)", () => {
     fs.mkdirSync(folderDir, { recursive: true });
     fs.writeFileSync(path.join(folderDir, "REVIEW.md"), "# No frontmatter\n", "utf-8");
 
-    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir), { queueKey: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 3 });
 
     expect(results).toHaveLength(0);
   });
@@ -547,19 +549,19 @@ describe("dispatch — unknown capability", () => {
   afterEach(() => cleanup(tempDir));
 
   it("returns empty array for unknown string", () => {
-    const results = dispatch(goalDrivenDevelopment, "nonexistent", ctx(tempDir), {});
+    const results = dispatch(goalDrivenDevelopment, "nonexistent", ctx(tempDir, "feat"), {});
 
     expect(results).toHaveLength(0);
   });
 
   it("returns empty array for empty string", () => {
-    const results = dispatch(goalDrivenDevelopment, "", ctx(tempDir), {});
+    const results = dispatch(goalDrivenDevelopment, "", ctx(tempDir, "feat"), {});
 
     expect(results).toHaveLength(0);
   });
 
   it("returns empty array for finalize-goal with no parentGoalName", () => {
-    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir), { queueKey: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir, "feat"), { queueKey: "feat" });
 
     expect(results).toHaveLength(0);
   });
@@ -582,7 +584,7 @@ describe("TransitionResult shape consistency", () => {
   afterEach(() => cleanup(tempDir));
 
   it("results include stateMachineId, params, and initialMessage", () => {
-    const results = dispatch(goalDrivenDevelopment, "create-goal", ctx(tempDir), { queueKey: "test" });
+    const results = dispatch(goalDrivenDevelopment, "create-goal", ctx(tempDir, "feat"), { queueKey: "test" });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toBeDefined();
@@ -595,7 +597,7 @@ describe("TransitionResult shape consistency", () => {
   });
 
   it("edge resolve functions return TransitionResult directly (not double-wrapped)", () => {
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "feat", stepNumber: 1 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 1 });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
@@ -627,7 +629,7 @@ describe("dispatch — evolve-plan → revise-plan", () => {
   it("routes to revise-plan when REVISE_PLAN_NEEDED marker exists", () => {
     writeRevisePlanNeeded(goalDir, 4);
 
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "feat", stepNumber: 4 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 4 });
 
     expect(results).toHaveLength(1);
     expect(results[0].capability).toBe("revise-plan");
@@ -638,7 +640,7 @@ describe("dispatch — evolve-plan → revise-plan", () => {
   it("includes revisionTriggerStep set to current step number", () => {
     writeRevisePlanNeeded(goalDir, 4);
 
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "feat", stepNumber: 4 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 4 });
 
     expect(results).toHaveLength(1);
     expect(results[0].params?.revisionTriggerStep).toBe(4);
@@ -647,14 +649,14 @@ describe("dispatch — evolve-plan → revise-plan", () => {
   it("preserves queueKey in revise-plan params", () => {
     writeRevisePlanNeeded(goalDir, 4);
 
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "my-feature", stepNumber: 4 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "feat"), { queueKey: "my-feature", stepNumber: 4 });
 
     expect(results).toHaveLength(1);
     expect(results[0].params?.queueKey).toBe("my-feature");
   });
 
   it("falls through to execute-task when REVISE_PLAN_NEEDED does not exist", () => {
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "feat", stepNumber: 4 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 4 });
 
     expect(results).toHaveLength(1);
     expect(results[0].capability).toBe("execute-task");
@@ -663,14 +665,14 @@ describe("dispatch — evolve-plan → revise-plan", () => {
   it("falls through to finalize-goal when COMPLETION_SUMMARY.md exists and no revision needed", () => {
     writeCompletionSummary(goalDir);
 
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "feat", stepNumber: 4 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 4 });
 
     expect(results).toHaveLength(1);
     expect(results[0].capability).toBe("finalize-goal");
   });
 
   it("returns empty array when stepNumber is missing from params (throws — wiring error)", () => {
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "feat"), { queueKey: "feat" });
 
     // resolveEvolvePlanToExecuteTask throws when stepNumber is missing.
     // dispatch() catches the error and logs a warning; no transitions fire.
@@ -695,7 +697,7 @@ describe("dispatch — revise-plan → evolve-plan", () => {
   afterEach(() => cleanup(tempDir));
 
   it("routes to evolve-plan after revise-plan completes", () => {
-    const results = dispatch(goalDrivenDevelopment, "revise-plan", ctx(tempDir), { queueKey: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "revise-plan", ctx(tempDir, "feat"), { queueKey: "feat" });
 
     expect(results).toHaveLength(1);
     expect(results[0].capability).toBe("evolve-plan");
@@ -703,14 +705,14 @@ describe("dispatch — revise-plan → evolve-plan", () => {
   });
 
   it("preserves queueKey in evolve-plan params", () => {
-    const results = dispatch(goalDrivenDevelopment, "revise-plan", ctx(tempDir), { queueKey: "my-feature" });
+    const results = dispatch(goalDrivenDevelopment, "revise-plan", ctx(tempDir, "feat"), { queueKey: "my-feature" });
 
     expect(results).toHaveLength(1);
     expect(results[0].params?.queueKey).toBe("my-feature");
   });
 
   it("discovers next step number using discoverNextStep (returns 1 when no step folders exist)", () => {
-    const results = dispatch(goalDrivenDevelopment, "revise-plan", ctx(tempDir), { queueKey: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "revise-plan", ctx(tempDir, "feat"), { queueKey: "feat" });
 
     expect(results).toHaveLength(1);
     expect(results[0].params?.stepNumber).toBe(1);
@@ -723,7 +725,7 @@ describe("dispatch — revise-plan → evolve-plan", () => {
       { number: 2, files: { "TASK.md": "# Task 2" } },
     ]);
 
-    const results = dispatch(goalDrivenDevelopment, "revise-plan", ctx(tempDir), { queueKey: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "revise-plan", ctx(tempDir, "feat"), { queueKey: "feat" });
 
     expect(results).toHaveLength(1);
     expect(results[0].params?.stepNumber).toBe(2);
@@ -736,14 +738,14 @@ describe("dispatch — revise-plan → evolve-plan", () => {
       { number: 2, files: { "TASK.md": "# Task 2", "TEST.md": "# Tests 2" } },
     ]);
 
-    const results = dispatch(goalDrivenDevelopment, "revise-plan", ctx(tempDir), { queueKey: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "revise-plan", ctx(tempDir, "feat"), { queueKey: "feat" });
 
     expect(results).toHaveLength(1);
     expect(results[0].params?.stepNumber).toBe(3);
   });
 
   it("preserves revisionTriggerStep if present in params", () => {
-    const results = dispatch(goalDrivenDevelopment, "revise-plan", ctx(tempDir), { queueKey: "feat", revisionTriggerStep: 4 });
+    const results = dispatch(goalDrivenDevelopment, "revise-plan", ctx(tempDir, "feat"), { queueKey: "feat", revisionTriggerStep: 4 });
 
     expect(results).toHaveLength(1);
     expect(results[0].params?.revisionTriggerStep).toBe(4);
@@ -771,7 +773,7 @@ describe("recordTransition isolation", () => {
     recordTransition(goalDir, "test-cap", { capability: "next", stateMachineId: "goal-driven-development" });
 
     // Verify dispatch still works correctly
-    const results = dispatch(goalDrivenDevelopment, "create-goal", ctx(tempDir), { queueKey: "test" });
+    const results = dispatch(goalDrivenDevelopment, "create-goal", ctx(tempDir, "test"), { queueKey: "test" });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
@@ -804,7 +806,7 @@ describe("dispatch — evolve-plan → create-goal (subgoal — deprecated)", ()
   afterEach(() => cleanup(tempDir));
 
   it("returns undefined for subgoal step (deprecated — always no-op)", () => {
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "parent", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "parent"), { queueKey: "parent", stepNumber: 2 });
 
     // resolveEvolvePlanToCreateGoal always returns undefined now.
     // resolveEvolvePlanToExecuteTask should fire as fallback.
@@ -830,7 +832,7 @@ describe("dispatch — finalize-goal completion propagation", () => {
   afterEach(() => cleanup(tempDir));
 
   it("routes to evolve-plan for parent with stepNumber: parentStepNumber + 1", () => {
-    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir), {
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir, "nested"), {
       queueKey: "nested",
       parentGoalName: "parent",
       parentStepNumber: 3,
@@ -844,7 +846,7 @@ describe("dispatch — finalize-goal completion propagation", () => {
   });
 
   it("uses parentGoalName as the queueKey in returned params", () => {
-    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir), {
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir, "nested"), {
       queueKey: "child-goal",
       parentGoalName: "my-parent",
       parentStepNumber: 5,
@@ -855,7 +857,7 @@ describe("dispatch — finalize-goal completion propagation", () => {
   });
 
   it("does NOT include parentGoalName or parentStepNumber in returned params", () => {
-    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir), {
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir, "nested"), {
       queueKey: "child",
       parentGoalName: "parent",
       parentStepNumber: 3,
@@ -867,7 +869,7 @@ describe("dispatch — finalize-goal completion propagation", () => {
   });
 
   it("does NOT include subgoalType in returned params", () => {
-    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir), {
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir, "nested"), {
       queueKey: "child",
       parentGoalName: "parent",
       parentStepNumber: 3,
@@ -879,13 +881,13 @@ describe("dispatch — finalize-goal completion propagation", () => {
   });
 
   it("returns empty array when no parentGoalName (top-level goal)", () => {
-    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir), { queueKey: "my-feature" });
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir, "nested"), { queueKey: "my-feature" });
 
     expect(results).toHaveLength(0);
   });
 
   it("returns empty array when parentGoalName is not a string (type guard)", () => {
-    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir), {
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir, "nested"), {
       queueKey: "child",
       parentGoalName: 123,
       parentStepNumber: 3,
@@ -912,7 +914,7 @@ describe("dispatch — subgoal lifecycle", () => {
   afterEach(() => cleanup(tempDir));
 
   it("create-goal → create-plan (existing behavior, no change)", () => {
-    const results = dispatch(goalDrivenDevelopment, "create-goal", ctx(tempDir), {
+    const results = dispatch(goalDrivenDevelopment, "create-goal", ctx(tempDir, "parent"), {
       queueKey: "nested-feature",
       parentGoalName: "parent",
       parentStepNumber: 2,
@@ -926,7 +928,7 @@ describe("dispatch — subgoal lifecycle", () => {
   });
 
   it("finalize-goal with parent context → evolve-plan for parent with incremented step number", () => {
-    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir), {
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir, "parent"), {
       queueKey: "nested-feature",
       parentGoalName: "parent",
       parentStepNumber: 2,
@@ -960,13 +962,13 @@ describe("dispatch — backward compatibility", () => {
   afterEach(() => cleanup(tempDir));
 
   it("finalize-goal without parentGoalName still returns empty array", () => {
-    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir), { queueKey: "my-feature" });
+    const results = dispatch(goalDrivenDevelopment, "finalize-goal", ctx(tempDir, "feat"), { queueKey: "my-feature" });
 
     expect(results).toHaveLength(0);
   });
 
   it("evolve-plan with explicit stepNumber still routes to execute-task when no subgoal metadata present", () => {
-    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir), { queueKey: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "evolve-plan", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 3 });
 
     expect(results).toHaveLength(1);
     expect(results[0].capability).toBe("execute-task");

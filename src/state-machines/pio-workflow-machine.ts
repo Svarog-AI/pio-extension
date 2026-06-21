@@ -101,7 +101,8 @@ function resolveEvolvePlanToRevisePlan(
   const prefix = workspacePrefix(goalName);
 
   if (explicitStepNumber != null) {
-    const evolveState = getCapState("evolve-plan", ctx.baseDir, { stepNumber: explicitStepNumber }, prefix);
+    // ctx.baseDir is already the resolved directory — no additional prefix needed
+    const evolveState = getCapState("evolve-plan", ctx.baseDir, { stepNumber: explicitStepNumber });
     const revisePlanPath = stepFolderName(explicitStepNumber) + "/REVISE_PLAN_NEEDED";
     if (evolveState.undeclared(revisePlanPath).exists()) {
       return {
@@ -134,7 +135,8 @@ function resolveEvolvePlanToFinalizeGoal(
   const goalName = requireGoalName("resolveEvolvePlanToFinalizeGoal", params);
 
   const prefix = workspacePrefix(goalName);
-  const evolveState = getCapState("evolve-plan", ctx.baseDir, {}, prefix);
+  // ctx.baseDir is already the resolved directory — no additional prefix needed
+  const evolveState = getCapState("evolve-plan", ctx.baseDir, {});
 
   if (evolveState.output("completion-summary").exists()) {
     return {
@@ -159,13 +161,14 @@ function resolveEvolvePlanToExecuteTask(
   const prefix = workspacePrefix(goalName);
 
   // Guard: if all plan steps are complete, finalize-goal edge should have fired.
-  const evolveState = getCapState("evolve-plan", ctx.baseDir, {}, prefix);
+  // ctx.baseDir is already the resolved directory — no additional prefix needed
+  const evolveState = getCapState("evolve-plan", ctx.baseDir, {});
   if (evolveState.output("completion-summary").exists()) {
     return undefined;
   }
 
   // Guard: if the current step signals revision, that edge should have fired instead.
-  const evolveWithStep = getCapState("evolve-plan", ctx.baseDir, { stepNumber }, prefix);
+  const evolveWithStep = getCapState("evolve-plan", ctx.baseDir, { stepNumber });
   const revisePlanPath = stepFolderName(stepNumber) + "/REVISE_PLAN_NEEDED";
   if (evolveWithStep.undeclared(revisePlanPath).exists()) {
     return undefined;
@@ -204,7 +207,8 @@ function resolveReviewTaskToEvolvePlan(
   const stepNumber = requireStepNumber("resolveReviewTaskToEvolvePlan", params);
 
   const prefix = workspacePrefix(goalName);
-  const reviewState = getCapState("review-task", ctx.baseDir, { stepNumber }, prefix);
+  // ctx.baseDir is already the resolved directory — no additional prefix needed
+  const reviewState = getCapState("review-task", ctx.baseDir, { stepNumber });
   const reviewData = reviewState.output<ReviewOutputs>("review").read();
 
   if (reviewData?.decision === "APPROVED") {
@@ -229,7 +233,8 @@ function resolveReviewTaskToExecuteTask(
   const stepNumber = requireStepNumber("resolveReviewTaskToExecuteTask", params);
 
   const prefix = workspacePrefix(goalName);
-  const reviewState = getCapState("review-task", ctx.baseDir, { stepNumber }, prefix);
+  // ctx.baseDir is already the resolved directory — no additional prefix needed
+  const reviewState = getCapState("review-task", ctx.baseDir, { stepNumber });
   const reviewData = reviewState.output<ReviewOutputs>("review").read();
 
   if (reviewData?.decision === "REJECTED") {
@@ -252,12 +257,12 @@ function resolveRevisePlanToEvolvePlan(
   const goalName = requireGoalName("resolveRevisePlanToEvolvePlan", params);
 
   const prefix = workspacePrefix(goalName);
-  const goalDir = goalDirFromPrefix(ctx.baseDir, prefix);
+  // ctx.baseDir is already the resolved goal directory — no prefix needed
   const revisionTriggerStep = typeof params?.revisionTriggerStep === "number" ? params.revisionTriggerStep : undefined;
 
   // discoverNextStep still needed — revise-plan deletes non-APPROVED step folders via postExecute,
   // so the next step number can only be determined by scanning the filesystem.
-  const nextStep = discoverNextStep(goalDir);
+  const nextStep = discoverNextStep(ctx.baseDir);
 
   return {
     capability: "evolve-plan",

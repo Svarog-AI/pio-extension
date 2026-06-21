@@ -924,29 +924,6 @@ describe("CONTRACT integration — revise-plan", () => {
   });
 });
 
-describe("CONTRACT integration — execute-plan", () => {
-  let tempDir: string;
-
-  beforeEach(() => { tempDir = createTempDir(); });
-  afterEach(() => cleanup(tempDir));
-
-  it("all inputs present → success", async () => {
-    const { CONTRACT } = await import("../capabilities/execute-plan/config");
-    fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
-    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
-    const result = validateInputs(tempDir, CONTRACT);
-    expect(result).toEqual({ success: true });
-  });
-
-  it("missing PLAN.md → failure naming PLAN.md", async () => {
-    const { CONTRACT } = await import("../capabilities/execute-plan/config");
-    fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
-    const result = validateInputs(tempDir, CONTRACT);
-    expect(result.success).toBe(false);
-    expect(result.message).toContain("PLAN.md");
-  });
-});
-
 describe("CONTRACT integration — finalize-goal", () => {
   let tempDir: string;
 
@@ -1205,19 +1182,6 @@ steps:
     const result = validateOutputs(CONTRACT, tempDir);
     expect(result.success).toBe(false);
     expect(result.message).toContain("PLAN.md");
-  });
-});
-
-describe("CONTRACT outputs integration — execute-plan", () => {
-  let tempDir: string;
-
-  beforeEach(() => { tempDir = createTempDir(); });
-  afterEach(() => cleanup(tempDir));
-
-  it("empty outputs → success: true", async () => {
-    const { CONTRACT } = await import("../capabilities/execute-plan/config");
-    const result = validateOutputs(CONTRACT, tempDir);
-    expect(result).toEqual({ success: true });
   });
 });
 

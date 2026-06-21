@@ -21,8 +21,6 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 
 **Plan revision:** During specification, `evolve-plan` can divert to `revise-plan` when the `REVISE_PLAN_NEEDED` marker is present (decisions make future steps impossible, require changes to completed implementations, or need additional steps). `revise-plan` archives the current `PLAN.md`, deletes incomplete step folders, and writes a fresh plan. After revision, control returns to `evolve-plan`.
 
-**Alternative:** `execute-plan` runs all plan steps in a single session (no evolve/execute/review loop). Requires both `GOAL.md` and `PLAN.md`.
-
 **Nested subgoals:** When a plan step has `complexity: "subgoal"` in the PLAN.md frontmatter `steps` array, `evolve-plan` spawns a child goal workspace at `S{NN}/subgoals/<name>/` instead of producing TASK.md. The subgoal runs through the full pio lifecycle recursively: `create-goal` → `create-plan` → `evolve-plan` → `execute-task` → `review-task` → `finalize-goal`. Recursive nesting is supported — each level adds `subgoals/<name>/` to the path. After the subgoal's `finalize-goal`, completion propagates back to the parent's `evolve-plan` for the next step. The subgoal's `COMPLETED` marker is the authoritative signal — subgoal completion equals parent step completion.
 
 ## Command reference
@@ -37,7 +35,6 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 | `/pio-execute-task --workspace-prefix <prefix>` | `pio_execute_task` | Queue task execution (TDD) | `--workspace-prefix` (optional `--session-name`, `--initial-message`) | `<workspace>/COMPLETED` or `BLOCKED`, `SUMMARY.md` |
 | `/pio-review-task --workspace-prefix <prefix>` | `pio_review_task` | Queue step review, approve or reject | `--workspace-prefix` (optional `--session-name`, `--initial-message`) | `<workspace>/REVIEW.md`, optionally `APPROVED` |
 | `/pio-revise-plan --workspace-prefix <prefix>` | `pio_revise_plan` | Archive plan and queue fresh planning session | `--workspace-prefix` (optional `--session-name`, `--initial-message`) | `<workspace>/PLAN.md` (rewritten) |
-| `/pio-execute-plan --workspace-prefix <prefix>` | — (command only) | Execute all plan steps in one session | `--workspace-prefix` | All code changes from PLAN.md |
 | `/pio-project-context` | `pio_create_project_context` | Analyze project, produce 7-file project context | none | `.pio/PROJECT/` (7 files) |
 | `/pio-create-issue <slug> <title>` | `pio_create_issue` | Create a new issue as a markdown file under `.pio/issues/` | `slug`, `title`, optional `description`, `category`, `context` | `.pio/issues/<slug>.md` |
 | `/pio-goal-from-issue <issue>` | `pio_goal_from_issue` | Convert an existing issue into a structured goal workspace | `issuePath` | Queues create-goal session |

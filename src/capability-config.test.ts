@@ -1141,12 +1141,6 @@ describe("all real capabilities define defaultInitialMessage", () => {
     expect(config!.initialMessage!.length).toBeGreaterThan(0);
   });
 
-  it("execute-plan defaultInitialMessage returns a non-empty string", async () => {
-    const config = await resolveCapabilityConfig("/tmp/proj", { capability: "execute-plan" as string, sessionName: "test" });
-    expect(config!.initialMessage).toBeDefined();
-    expect(config!.initialMessage!.length).toBeGreaterThan(0);
-  });
-
   it("finalize-goal defaultInitialMessage returns a non-empty string", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "finalize-goal" as string,

@@ -1,5 +1,0 @@
-- **Stay within plan scope.** Implement only what PLAN.md describes. Do not refactor unrelated code, fix style issues, or add "while you're at it" improvements. Those belong in separate goals.
-- **Reference real files.** Every file path in your changes should correspond to a file you actually read or confirmed exists. Don't guess paths.
-- **Follow existing patterns.** When adding new code (e.g., a capability module), follow the conventions established by similar existing code in the project. Study those files before writing.
-- **No unplanned work.** If you discover a bug, missing feature, or improvement that is not part of PLAN.md, do not fix it. Note it if relevant, but stay on scope.
-- **Verify as you go.** Don't wait until the end to check acceptance criteria. Verify each step before moving to the next one.

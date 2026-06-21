@@ -815,7 +815,7 @@ describe("mark-complete (setupMarkComplete)", () => {
     const enrichedParams = callArgs[3];
     expect(enrichedParams).toHaveProperty("stateMachineId", "goal-driven-development");
     expect(enrichedParams).toHaveProperty("stepNumber", 2); // from adjustedParams
-    expect(enrichedParams).toHaveProperty("_sessionContext", sessionParams);
+
 
     // Verify the same enriched params were passed to enqueueTask
     const enqueueCall = mockEnqueueTask.mock.calls[0];

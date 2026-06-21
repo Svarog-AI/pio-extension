@@ -96,7 +96,6 @@ export const markCompleteTool = defineTool({
         // so transitions.json accurately reflects what was actually dispatched.
         const enrichedParams = {
           ...adjustedParams,
-          _sessionContext: sessionParams,
           stateMachineId: nextTask.stateMachineId,
         };
 

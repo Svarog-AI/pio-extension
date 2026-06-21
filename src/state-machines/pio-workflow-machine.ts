@@ -61,11 +61,19 @@ function resolveCreateGoalToCreatePlan(
 ): ResolverResult {
   const goalName = requireGoalName("resolveCreateGoalToCreatePlan", params);
 
+  const parentGoalName = typeof params?.parentGoalName === "string" ? params.parentGoalName : undefined;
+  const parentStepNumber = typeof params?.parentStepNumber === "number" ? params.parentStepNumber : undefined;
+
   return {
     capability: "create-plan",
     initialMessage: `Create an implementation plan for goal "${goalName}" based on GOAL.md.`,
     sessionName: sessionName(goalName, "create-plan"),
-    params: { ...params, workspacePrefix: workspacePrefix(goalName), queueKey: goalName },
+    params: {
+      workspacePrefix: workspacePrefix(goalName),
+      queueKey: goalName,
+      ...(parentGoalName != null && { parentGoalName }),
+      ...(parentStepNumber != null && { parentStepNumber }),
+    },
   };
 }
 
@@ -81,7 +89,6 @@ function resolveCreatePlanToEvolvePlan(
     initialMessage: `Generate the specification for Step 1 of goal "${goalName}".`,
     sessionName: sessionName(goalName, "evolve-plan", 1),
     params: {
-      ...params,
       stepNumber: 1,
       workspacePrefix: workspacePrefix(goalName),
       queueKey: goalName,
@@ -267,7 +274,12 @@ function resolveRevisePlanToEvolvePlan(
     capability: "evolve-plan",
     initialMessage: `Generate the specification for Step ${nextStep} of goal "${goalName}" after plan revision.`,
     sessionName: sessionName(goalName, "evolve-plan", nextStep),
-    params: { ...params, stepNumber: nextStep, workspacePrefix: prefix, queueKey: goalName, ...(revisionTriggerStep != null && { revisionTriggerStep }) },
+    params: {
+      stepNumber: nextStep,
+      workspacePrefix: prefix,
+      queueKey: goalName,
+      ...(revisionTriggerStep != null && { revisionTriggerStep }),
+    },
   };
 }
 

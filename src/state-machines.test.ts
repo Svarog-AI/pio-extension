@@ -700,7 +700,6 @@ describe("recordTransition — actualParams", () => {
     const actualParams = {
       stepNumber: 1,
       stateMachineId: "goal-driven-development",
-      _sessionContext: { goalName: "test-goal" },
       goalName: "test-goal",
     };
     recordTransition(tempDir, "create-plan", result, actualParams);
@@ -712,7 +711,7 @@ describe("recordTransition — actualParams", () => {
     // The recorded params should be actualParams, not toResult.params
     expect(entries[0].params).toEqual(actualParams);
     expect(entries[0].params.stateMachineId).toBe("goal-driven-development");
-    expect(entries[0].params._sessionContext).toEqual({ goalName: "test-goal" });
+
   });
 
   it("falls back to toResult.params when actualParams is omitted", () => {

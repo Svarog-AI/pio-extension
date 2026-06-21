@@ -73,7 +73,7 @@ describe("mark-complete (setupMarkComplete)", () => {
     mockResolveCapabilityConfigMC.mockImplementation((_cwd, params) => {
       const cap = typeof params?.capability === "string" ? params.capability : "unknown";
       // getSessionConfig passes { capability, workingDir, ...sessionParams } to resolveCapabilityConfig.
-      // After Step 9, workingDir is the resolved directory (includes workspacePrefix).
+      // workingDir is the resolved directory (includes workspacePrefix).
       // Tests put extra fields in sessionParams for the mock to pick up.
       const { capability: _cap, workingDir, contract, postValidate, postExecute, fileCleanup, prepareSession, ...sessionParams } = params ?? {};
       return {

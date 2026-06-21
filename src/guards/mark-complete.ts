@@ -46,7 +46,7 @@ export const markCompleteTool = defineTool({
     }
 
     // config.workingDir is already the resolved directory (includes workspacePrefix).
-    // After Step 9 normalization, workspacePrefix is stripped from sessionParams.
+    // workspacePrefix is stripped from sessionParams during normalization.
     // Use `dir` (= config.workingDir) everywhere — it's the resolved workspace directory.
 
     // 1. Output validation (existence + frontmatter schema — single call)

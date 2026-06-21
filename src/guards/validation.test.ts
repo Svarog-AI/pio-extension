@@ -1450,3 +1450,130 @@ describe("setupValidation — auto-derived writeAllowlist from contract outputs"
     expect(result).toEqual({ success: true });
   });
 });
+
+// ---------------------------------------------------------------------------
+// validateOutputs — stripped workspacePrefix (no duplication)
+// After normalization, workspacePrefix is stripped from sessionParams.
+// validateOutputs falls back to joining baseDir + contractPath — correct
+// because baseDir is already the resolved directory.
+// ---------------------------------------------------------------------------
+
+describe("validateOutputs — stripped workspacePrefix (no duplication)", () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = createTempDir(); });
+  afterEach(() => cleanup(tempDir));
+
+  it("resolves step-specific paths with goal-level baseDir when workspacePrefix is absent", () => {
+    // Simulate the post-normalization scenario: baseDir is already the resolved
+    // goal directory, and workspacePrefix is stripped from params.
+    const goalDir = path.join(tempDir, ".pio", "goals", "my-feature");
+    fs.mkdirSync(path.join(goalDir, "S03"), { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "S03", "TASK.md"), "content", "utf-8");
+
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
+    };
+
+    // workspacePrefix is absent (stripped) — resolveContractPath falls back to baseDir + contractPath
+    const result = validateOutputs(contract, goalDir, { stepNumber: 3 });
+    expect(result).toEqual({ success: true });
+  });
+
+  it("fails with correct path when workspacePrefix is absent and file is missing", () => {
+    const goalDir = path.join(tempDir, ".pio", "goals", "my-feature");
+    fs.mkdirSync(goalDir, { recursive: true });
+
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
+    };
+
+    // workspacePrefix absent — resolves to goalDir + S03/TASK.md (which doesn't exist)
+    const result = validateOutputs(contract, goalDir, { stepNumber: 3 });
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("S{stepNumber:02d}/TASK.md");
+  });
+
+  it("resolves multiple outputs with goal-level baseDir when workspacePrefix is absent", () => {
+    const goalDir = path.join(tempDir, ".pio", "goals", "my-feature");
+    fs.mkdirSync(path.join(goalDir, "S01"), { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "S01", "TASK.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(goalDir, "S01", "SUMMARY.md"), "content", "utf-8");
+
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "task", file: "S{stepNumber:02d}/TASK.md" },
+        { name: "summary", file: "S{stepNumber:02d}/SUMMARY.md" },
+      ],
+    };
+
+    const result = validateOutputs(contract, goalDir, { stepNumber: 1 });
+    expect(result).toEqual({ success: true });
+  });
+
+  it("no path duplication: baseDir already includes prefix, no double-join", () => {
+    // If path duplication occurred, the resolved path would be:
+    // .pio/goals/my-feature/goals/my-feature/S01/TASK.md (WRONG)
+    // Instead it should be:
+    // .pio/goals/my-feature/S01/TASK.md (CORRECT)
+    const goalDir = path.join(tempDir, ".pio", "goals", "my-feature");
+    fs.mkdirSync(path.join(goalDir, "S01"), { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "S01", "TASK.md"), "content", "utf-8");
+
+    // Intentionally do NOT create the double-joined path
+    // (if duplication occurred, this test would fail)
+    const noDupDir = path.join(goalDir, "goals", "my-feature", "S01");
+    expect(fs.existsSync(noDupDir)).toBe(false);
+
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
+    };
+
+    const result = validateOutputs(contract, goalDir, { stepNumber: 1 });
+    expect(result).toEqual({ success: true });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateInputs — stripped workspacePrefix (no duplication)
+// ---------------------------------------------------------------------------
+
+describe("validateInputs — stripped workspacePrefix (no duplication)", () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = createTempDir(); });
+  afterEach(() => cleanup(tempDir));
+
+  it("resolves input paths with goal-level baseDir when workspacePrefix is absent", () => {
+    const goalDir = path.join(tempDir, ".pio", "goals", "my-feature");
+    fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "content", "utf-8");
+
+    const contract: CapabilityContract = {
+      inputs: [{ name: "goal", file: "GOAL.md" }, { name: "plan", file: "PLAN.md" }],
+      outputs: [],
+    };
+
+    const result = validateInputs(goalDir, contract);
+    expect(result).toEqual({ success: true });
+  });
+
+  it("resolves placeholder input paths with goal-level baseDir when workspacePrefix is absent", () => {
+    const goalDir = path.join(tempDir, ".pio", "goals", "my-feature");
+    fs.mkdirSync(path.join(goalDir, "S02"), { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "S02", "TASK.md"), "content", "utf-8");
+
+    const contract: CapabilityContract = {
+      inputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
+      outputs: [],
+    };
+
+    const result = validateInputs(goalDir, contract, { stepNumber: 2 });
+    expect(result).toEqual({ success: true });
+  });
+});

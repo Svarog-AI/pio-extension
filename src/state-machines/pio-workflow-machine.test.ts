@@ -92,7 +92,7 @@ function writeRevisePlanNeeded(goalDir: string, stepNumber: number): void {
 }
 
 /** Context object for dispatch calls — baseDir is the resolved goal directory.
- * After Step 9, mark-complete passes config.workingDir (resolved directory) to dispatch.
+ * mark-complete passes config.workingDir (resolved directory) to dispatch.
  * This is the directory where getCapState resolves files relative to — no workspacePrefix needed. */
 function ctx(tempDir: string, goalName: string): { baseDir: string } {
   return { baseDir: path.join(tempDir, ".pio", "goals", goalName) };

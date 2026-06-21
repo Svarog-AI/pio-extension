@@ -1,4 +1,3 @@
-import * as path from "node:path";
 import type { StateMachine, ResolverResult } from "../state-machines";
 import { registerMachine } from "../state-machines";
 import { discoverNextStep, stepFolderName } from "../fs-utils";
@@ -38,11 +37,6 @@ function requireStepNumber(resolver: string, params?: Record<string, unknown>): 
 /** Construct the workspace prefix for a goal. */
 function workspacePrefix(goalName: string): string {
   return "goals/" + goalName;
-}
-
-/** Resolve the goal directory from baseDir + workspace prefix. */
-function goalDirFromPrefix(baseDir: string, prefix: string): string {
-  return path.join(baseDir, prefix);
 }
 
 /** Derive a human-readable session name from goal name, capability, and optional step number. */

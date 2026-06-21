@@ -57,7 +57,7 @@ describe("resolveCapabilityConfig — happy path with static config", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolveCapabilityConfig — workspacePrefix resolution (Step 9)
+// resolveCapabilityConfig — workspacePrefix resolution
 // ---------------------------------------------------------------------------
 
 describe("resolveCapabilityConfig — workspacePrefix resolution", () => {

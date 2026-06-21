@@ -5,9 +5,15 @@ import * as path from "node:path";
 // Session task slot utilities
 // ---------------------------------------------------------------------------
 
-/** Minimal task descriptor written to `.pio/session-queue/task-{queueKey}.json` as JSON. */
+/** Minimal task descriptor written to `.pio/session-queue/task-{queueKey}.json` as JSON.
+
+    Enqueued params always include `sessionName`, `initialMessage`, `stateMachineId`;
+    may also include `workspacePrefix`, `queueKey`, and other state-machine-specific fields.
+    Propagated by mark-complete from the resolver's TransitionResult.
+ */
 export interface SessionQueueTask {
   capability: string;
+  /** Enqueued params — always includes `sessionName`, `initialMessage`, `stateMachineId`; may also include `workspacePrefix`, `queueKey`, and other state-machine-specific fields. Propagated by mark-complete from the resolver's TransitionResult. */
   params?: Record<string, unknown>;
 }
 

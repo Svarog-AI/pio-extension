@@ -596,7 +596,7 @@ describe("recordTransition — file creation", () => {
   });
 
   it("creates transitions.json with a single-entry JSON array", () => {
-    const result: TransitionResult = { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { stepNumber: 2 } };
+    const result: TransitionResult = { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { stepNumber: 2 }, sessionName: "test", initialMessage: "msg" };
     recordTransition(tempDir, "create-plan", result);
 
     const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
@@ -611,7 +611,7 @@ describe("recordTransition — file creation", () => {
   });
 
   it("entry contains ISO timestamp", () => {
-    const result: TransitionResult = { capability: "execute-task", stateMachineId: "goal-driven-development" };
+    const result: TransitionResult = { capability: "execute-task", stateMachineId: "goal-driven-development", sessionName: "test", initialMessage: "msg" };
     recordTransition(tempDir, "evolve-plan", result);
 
     const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
@@ -638,8 +638,8 @@ describe("recordTransition — append to existing", () => {
   });
 
   it("second call appends to the existing JSON array", () => {
-    recordTransition(tempDir, "create-goal", { capability: "create-plan", stateMachineId: "goal-driven-development" });
-    recordTransition(tempDir, "create-plan", { capability: "evolve-plan", stateMachineId: "goal-driven-development" });
+    recordTransition(tempDir, "create-goal", { capability: "create-plan", stateMachineId: "goal-driven-development", sessionName: "test", initialMessage: "msg" });
+    recordTransition(tempDir, "create-plan", { capability: "evolve-plan", stateMachineId: "goal-driven-development", sessionName: "test", initialMessage: "msg" });
 
     const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
     const entries = JSON.parse(content);
@@ -651,7 +651,7 @@ describe("recordTransition — append to existing", () => {
 
   it("subsequent calls continue appending (entry count matches call count)", () => {
     for (let i = 0; i < 5; i++) {
-      recordTransition(tempDir, "capability", { capability: "next", stateMachineId: "goal-driven-development" });
+      recordTransition(tempDir, "capability", { capability: "next", stateMachineId: "goal-driven-development", sessionName: "test", initialMessage: "msg" });
     }
 
     const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
@@ -671,7 +671,7 @@ describe("recordTransition — error handling", () => {
     const unwritablePath = "/nonexistent/path/that/cannot/be/created/transitions.json";
 
     expect(() => {
-      recordTransition(unwritablePath, "test-cap", { capability: "next", stateMachineId: "goal-driven-development" });
+      recordTransition(unwritablePath, "test-cap", { capability: "next", stateMachineId: "goal-driven-development", sessionName: "test", initialMessage: "msg" });
     }).not.toThrow();
   });
 });
@@ -696,6 +696,8 @@ describe("recordTransition — actualParams", () => {
       capability: "evolve-plan",
       stateMachineId: "goal-driven-development",
       params: { stepNumber: 1 },
+      sessionName: "test",
+      initialMessage: "msg",
     };
     const actualParams = {
       stepNumber: 1,
@@ -719,6 +721,8 @@ describe("recordTransition — actualParams", () => {
       capability: "execute-task",
       stateMachineId: "goal-driven-development",
       params: { stepNumber: 5, goalName: "my-goal" },
+      sessionName: "test",
+      initialMessage: "msg",
     };
     // Call with only 3 arguments — no actualParams
     recordTransition(tempDir, "evolve-plan", result);
@@ -751,7 +755,7 @@ describe("recordTransition — malformed file recovery", () => {
     // Write malformed JSON
     fs.writeFileSync(join(tempDir, "transitions.json"), "not valid json");
 
-    recordTransition(tempDir, "test-cap", { capability: "next", stateMachineId: "test" });
+    recordTransition(tempDir, "test-cap", { capability: "next", stateMachineId: "test", sessionName: "test", initialMessage: "msg" });
 
     const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
     const entries = JSON.parse(content);
@@ -765,7 +769,7 @@ describe("recordTransition — malformed file recovery", () => {
     // Write valid JSON but not an array
     fs.writeFileSync(join(tempDir, "transitions.json"), JSON.stringify({ key: "value" }));
 
-    recordTransition(tempDir, "test-cap", { capability: "next", stateMachineId: "test" });
+    recordTransition(tempDir, "test-cap", { capability: "next", stateMachineId: "test", sessionName: "test", initialMessage: "msg" });
 
     const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
     const entries = JSON.parse(content);

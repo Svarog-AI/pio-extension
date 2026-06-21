@@ -784,7 +784,7 @@ describe("recordTransition isolation", () => {
 
   it("calling recordTransition does not affect subsequent dispatch calls", () => {
     // Call recordTransition (real I/O)
-    recordTransition(goalDir, "test-cap", { capability: "next", stateMachineId: "goal-driven-development" });
+    recordTransition(goalDir, "test-cap", { capability: "next", stateMachineId: "goal-driven-development", sessionName: "test", initialMessage: "msg" });
 
     // Verify dispatch still works correctly
     const results = dispatch(goalDrivenDevelopment, "create-goal", ctx(tempDir, "test"), { queueKey: "test" });

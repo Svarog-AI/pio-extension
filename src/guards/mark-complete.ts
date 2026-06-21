@@ -94,9 +94,12 @@ export const markCompleteTool = defineTool({
 
         // Enriched params: same object passed to both enqueueTask and recordTransition
         // so transitions.json accurately reflects what was actually dispatched.
+        // sessionName and initialMessage are required on TransitionResult — propagate unconditionally.
         const enrichedParams = {
           ...adjustedParams,
           stateMachineId: nextTask.stateMachineId,
+          sessionName: nextTask.sessionName,
+          initialMessage: nextTask.initialMessage,
         };
 
         // Queue key for scheduling: use adjustedParams.queueKey if set (e.g. subgoal → parent),
@@ -119,7 +122,7 @@ export const markCompleteTool = defineTool({
       }
     } else if (capability && results.length > 1) {
       const capabilities = results.map((r) => r.capability).join(", ");
-      notification = `\n\nMultiple transitions available: ${capabilities}. Use \`/pio-transition\` to select one.`;
+      notification = `\n\nMultiple transitions available: ${capabilities}. Transition is not supported at the moment and will be reimplemented. Transition manually via tool call.`;
     }
 
     // 4. PostExecute hook — runs after transitions, errors are non-fatal

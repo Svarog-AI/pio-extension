@@ -38,20 +38,20 @@ export function resolveEvolveWriteAllowlist(_workingDir: string, params?: Record
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the goal directory for evolve-plan.
+ * Validate inputs for evolve-plan.
  * Input validation is handled automatically by launchCapability().
  */
 export async function validateEvolveStep(
-  name: string,
+  workspacePrefix: string,
   cwd: string,
   stepNumber: number,
 ): Promise<
   | { ready: true; stepNumber: number }
   | { ready: false; error: string }
 > {
-  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix: `goals/${name}`, stepNumber });
+  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix, stepNumber });
   if (!result.success) {
-    return { ready: false, error: result.message ?? `Step ${stepNumber} validation failed for goal "${name}".` };
+    return { ready: false, error: result.message ?? `Step ${stepNumber} validation failed for workspace "${workspacePrefix}".` };
   }
 
   return { ready: true, stepNumber };

@@ -850,7 +850,7 @@ describe("reviewTaskTool.execute", () => {
     // Don't create COMPLETED
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { name: "no-completed", workspacePrefix: "goals/no-completed/S01" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-id", { workspacePrefix: "goals/no-completed/S01" }, undefined, undefined, makeCtx(tempDir));
 
     // Tool enqueues successfully — validation happens at /pio-next-task launch time
     expect(result.content[0].text).toContain("Review queued");
@@ -865,15 +865,15 @@ describe("reviewTaskTool.execute", () => {
     fs.writeFileSync(path.join(stepDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
 
     const tool = getTool();
-    await tool.execute("test-id", { name: "my-feature", workspacePrefix: "goals/my-feature/S01" }, undefined, undefined, makeCtx(tempDir));
+    await tool.execute("test-id", { workspacePrefix: "goals/my-feature/S01" }, undefined, undefined, makeCtx(tempDir));
 
-    const task = readPendingTask(tempDir, "my-feature");
+    const task = readPendingTask(tempDir, "S01");
     expect(task).toBeDefined();
     expect(task!.capability).toBe("review-task");
     expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature/S01");
     expect(task!.params).toHaveProperty("sessionName");
     expect(task!.params!.sessionName).toContain("review-task");
-    expect(task!.params).toHaveProperty("queueKey", "my-feature");
+    expect(task!.params).toHaveProperty("queueKey", "S01");
     expect(task!.params).toHaveProperty("initialMessage");
   });
 });

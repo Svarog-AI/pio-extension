@@ -7,6 +7,7 @@ import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { validateInputs } from "../../guards/validation";
 import * as path from "node:path";
+import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 
@@ -47,21 +48,21 @@ export default capabilityConfig;
 // ---------------------------------------------------------------------------
 
 /**
- * Validate that the goal workspace exists and the COMPLETED marker is present.
+ * Validate that the workspace exists and the COMPLETED marker is present.
  *
  * Returns { ready: true } on success, or { ready: false, error } when not ready.
  * Does NOT use ctx so it can be called safely before newSession().
  */
 export async function validateFinalizeGoal(
-  name: string,
+  workspacePrefix: string,
   cwd: string,
 ): Promise<
   | { ready: true }
   | { ready: false; error: string }
 > {
-  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix: `goals/${name}` });
+  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix });
   if (!result.success) {
-    return { ready: false, error: result.message ?? `Goal workspace "${name}" does not exist.` };
+    return { ready: false, error: result.message ?? `Workspace "${workspacePrefix}" does not have the required inputs.` };
   }
 
   return { ready: true };
@@ -75,26 +76,25 @@ const finalizeGoalTool = defineTool({
   name: "pio_finalize_goal",
   label: "Pio Finalize Goal",
   description:
-    "Finalize a completed goal by updating .pio/PROJECT/ documentation based on accumulated decisions. Use this tool directly — no bash commands or manual file creation needed. The user can run `/pio-next-task` to start the sub-session.",
-  promptSnippet: "Finalize a completed goal and update project documentation.",
-  parameters: Type.Object({
-    name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
-  }),
+    "Finalize a completed workspace by updating .pio/PROJECT/ documentation based on accumulated decisions. Use this tool directly — no bash commands or manual file creation needed. The user can run `/pio-next-task` to start the sub-session.",
+  promptSnippet: "Finalize a completed workspace and update project documentation.",
+  parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = await validateFinalizeGoal(params.name, ctx.cwd);
+    const result = await validateFinalizeGoal(params.workspacePrefix, ctx.cwd);
 
     if (!result.ready) {
       return { content: [{ type: "text", text: result.error }], details: {} };
     }
 
-    enqueueTask(ctx.cwd, params.name, {
+    const queueKey = deriveQueueKey(params.workspacePrefix);
+    enqueueTask(ctx.cwd, queueKey, {
       capability: "finalize-goal",
       params: {
-        workspacePrefix: `goals/${params.name}`,
-        sessionName: `${params.name} finalize-goal`,
-        queueKey: params.name,
-        initialMessage: `Finalize goal "${params.name}" — update .pio/PROJECT/ documentation.`,
+        workspacePrefix: params.workspacePrefix,
+        sessionName: params.sessionName ?? `${queueKey} finalize-goal`,
+        queueKey,
+        initialMessage: params.initialMessage ?? `Finalize workspace "${params.workspacePrefix}" — update .pio/PROJECT/ documentation.`,
       },
     });
 
@@ -102,7 +102,7 @@ const finalizeGoalTool = defineTool({
       content: [
         {
           type: "text",
-          text: `Task queued for goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.`,
+          text: `Task queued for workspace "${params.workspacePrefix}". Use \`/pio-next-task\` to start the sub-session.`,
         },
       ],
       details: {},
@@ -116,12 +116,23 @@ const finalizeGoalTool = defineTool({
 
 async function handleFinalizeGoal(args: string | undefined, ctx: ExtensionCommandContext) {
   if (!args || !args.trim()) {
-    ctx.ui.notify("Usage: /pio-finalize-goal <goal-name>", "warning");
+    ctx.ui.notify("Usage: /pio-finalize-goal --workspace-prefix <prefix>", "warning");
     return;
   }
 
-  const name = args.trim();
-  const result = await validateFinalizeGoal(name, ctx.cwd);
+  const tokens = args.trim().split(/\s+/);
+  let workspacePrefix: string | undefined;
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === "--workspace-prefix" && tokens[i + 1]) {
+      workspacePrefix = tokens[++i];
+    }
+  }
+  if (!workspacePrefix) {
+    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-finalize-goal --workspace-prefix <prefix>", "error");
+    return;
+  }
+
+  const result = await validateFinalizeGoal(workspacePrefix, ctx.cwd);
 
   if (!result.ready) {
     ctx.ui.notify(result.error, "error");
@@ -130,12 +141,13 @@ async function handleFinalizeGoal(args: string | undefined, ctx: ExtensionComman
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
+  const queueKey = deriveQueueKey(workspacePrefix);
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "finalize-goal",
-    workspacePrefix: `goals/${name}`,
-    sessionName: `${name} finalize-goal`,
-    queueKey: name,
-    initialMessage: `Finalize goal "${name}" — update .pio/PROJECT/ documentation.`,
+    workspacePrefix,
+    sessionName: `${queueKey} finalize-goal`,
+    queueKey,
+    initialMessage: `Finalize workspace "${workspacePrefix}" — update .pio/PROJECT/ documentation.`,
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve finalize-goal config.", "error");
@@ -160,9 +172,7 @@ async function handleFinalizeGoal(args: string | undefined, ctx: ExtensionComman
 export function register(pi: ExtensionAPI) {
   pi.registerTool(finalizeGoalTool);
   pi.registerCommand("pio-finalize-goal", {
-    description: "Update .pio/PROJECT/ documentation based on completed goal decisions",
+    description: "Update .pio/PROJECT/ documentation based on completed workspace decisions",
     handler: handleFinalizeGoal,
   });
 }
-
-

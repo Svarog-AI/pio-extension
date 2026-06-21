@@ -153,13 +153,13 @@ describe("validateRevisePlan", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("resolves goal directory and returns ready", async () => {
+  it("resolves workspace and returns ready", async () => {
     const goalDir = path.join(tempDir, ".pio", "goals", "my-goal");
     fs.mkdirSync(goalDir, { recursive: true });
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal");
     fs.writeFileSync(path.join(goalDir, "PLAN.md"), "---\ntotalSteps: 1\nsteps:\n  - name: test\n    complexity: task\n---\n# Plan");
 
-    const result = await validateRevisePlan("my-goal", tempDir);
+    const result = await validateRevisePlan("goals/my-goal", tempDir);
 
     expect(result.ready).toBe(true);
   });
@@ -177,7 +177,7 @@ describe("validateRevisePlan — accepts valid states", () => {
   it("succeeds when GOAL.md and PLAN.md exist (no steps required)", async () => {
     createGoalTree(tempDir, "valid-goal", { withGoal: true, withPlan: true });
 
-    const result = await validateRevisePlan("valid-goal", tempDir);
+    const result = await validateRevisePlan("goals/valid-goal", tempDir);
 
     expect(result.ready).toBe(true);
   });
@@ -189,7 +189,7 @@ describe("validateRevisePlan — accepts valid states", () => {
       stepFolders: [{ stepNumber: 1, approved: true }],
     });
 
-    const result = await validateRevisePlan("valid-with-steps", tempDir);
+    const result = await validateRevisePlan("goals/valid-with-steps", tempDir);
 
     expect(result.ready).toBe(true);
   });
@@ -684,7 +684,7 @@ describe("revisePlanTool.execute", () => {
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { name: "no-plan" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-id", { workspacePrefix: "goals/no-plan" }, undefined, undefined, makeCtx(tempDir));
 
     expect(result.content[0].text).toMatch(/PLAN/i);
   });
@@ -693,7 +693,7 @@ describe("revisePlanTool.execute", () => {
     createGoalTree(tempDir, "my-feature", { withGoal: true, withPlan: true });
 
     const tool = getTool();
-    await tool.execute("test-id", { name: "my-feature" }, undefined, undefined, makeCtx(tempDir));
+    await tool.execute("test-id", { workspacePrefix: "goals/my-feature" }, undefined, undefined, makeCtx(tempDir));
 
     const task = readPendingTask(tempDir, "my-feature");
     expect(task).toBeDefined();

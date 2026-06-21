@@ -350,12 +350,12 @@ describe("validateEvolveStep", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("resolves goal directory and returns ready with stepNumber", async () => {
+  it("resolves workspace and returns ready with stepNumber", async () => {
     const goalDir = path.join(tempDir, ".pio", "goals", "my-goal");
     fs.mkdirSync(goalDir, { recursive: true });
     fs.writeFileSync(path.join(goalDir, "PLAN.md"), "---\ntotalSteps: 3\nsteps:\n  - name: test\n    complexity: task\n---\n# Plan");
 
-    const result = await validateEvolveStep("my-goal", tempDir, 3);
+    const result = await validateEvolveStep("goals/my-goal", tempDir, 3);
 
     expect(result.ready).toBe(true);
     if (result.ready) {
@@ -412,7 +412,7 @@ describe("evolvePlanTool.execute", () => {
     fs.mkdirSync(goalDir, { recursive: true });
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { name: "no-plan", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-id", { workspacePrefix: "goals/no-plan", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
 
     expect(result.content[0].text).toMatch(/PLAN/i);
   });
@@ -421,7 +421,7 @@ describe("evolvePlanTool.execute", () => {
     createGoalTreeWithFrontmatter(tempDir, "my-feature", 3);
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { name: "my-feature", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-id", { workspacePrefix: "goals/my-feature", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
 
     expect(result.content[0].text).toContain("queued");
   });
@@ -430,7 +430,7 @@ describe("evolvePlanTool.execute", () => {
     createGoalTreeWithFrontmatter(tempDir, "my-feature", 3);
 
     const tool = getTool();
-    await tool.execute("test-id", { name: "my-feature", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
+    await tool.execute("test-id", { workspacePrefix: "goals/my-feature", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
 
     const task = readPendingTask(tempDir, "my-feature");
     expect(task).toBeDefined();

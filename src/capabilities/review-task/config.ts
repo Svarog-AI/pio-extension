@@ -6,7 +6,7 @@ import * as path from "node:path";
 
 import { CapState } from "../../capability-state";
 import { launchCapability, setMergedSkills } from "../../capability-session";
-import { mergeCapabilitySkills } from "../../capability-utils";
+import { mergeCapabilitySkills, BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { REVIEW_OUTPUT_SCHEMA } from "./schemas";
@@ -82,22 +82,18 @@ const reviewTaskTool = defineTool({
   description:
     "Review the implementation of a plan step. Reads TASK.md, TEST.md, SUMMARY.md and implementation files. Writes REVIEW.md with categorized issues and approves or rejects. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Review code implementation for a plan step (approve/reject).",
-  parameters: Type.Object({
-    name: Type.String({ description: "Workspace name (used as queue key)" }),
-    workspacePrefix: Type.String({ description: "Workspace prefix for path resolution, e.g. 'goals/my-feature/S03'" }),
-    sessionName: Type.Optional(Type.String({ description: "Human-readable session name" })),
-    initialMessage: Type.Optional(Type.String({ description: "Custom kickoff message for the session" })),
-  }),
+  parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const sessionName = params.sessionName ?? `${params.name} review-task`;
+    const queueKey = deriveQueueKey(params.workspacePrefix);
+    const sessionName = params.sessionName ?? `${queueKey} review-task`;
     const initialMessage = params.initialMessage ?? "Ready.";
-    enqueueTask(ctx.cwd, params.name, {
+    enqueueTask(ctx.cwd, queueKey, {
       capability: "review-task",
       params: {
         workspacePrefix: params.workspacePrefix,
         sessionName,
-        queueKey: params.name,
+        queueKey,
         initialMessage,
       },
     });
@@ -106,7 +102,7 @@ const reviewTaskTool = defineTool({
       content: [
         {
           type: "text",
-          text: `Review queued for workspace "${params.name}". Use \`/pio-next-task\` to start the sub-session.`,
+          text: `Review queued for workspace "${params.workspacePrefix}". Use \`/pio-next-task\` to start the sub-session.`,
         },
       ],
       details: {},
@@ -119,32 +115,31 @@ const reviewTaskTool = defineTool({
 // ---------------------------------------------------------------------------
 
 async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandContext) {
-  // Parse args locally: <name> --workspace-prefix <prefix>
   if (!args || args.trim().length === 0) {
-    ctx.ui.notify("Usage: /pio-review-task <name> --workspace-prefix <prefix>", "warning");
+    ctx.ui.notify("Usage: /pio-review-task --workspace-prefix <prefix>", "warning");
     return;
   }
   const tokens = args.trim().split(/\s+/);
-  const name = tokens[0];
   let workspacePrefix: string | undefined;
-  for (let i = 1; i < tokens.length; i++) {
+  for (let i = 0; i < tokens.length; i++) {
     if (tokens[i] === "--workspace-prefix" && tokens[i + 1]) {
       workspacePrefix = tokens[++i];
     }
   }
   if (!workspacePrefix) {
-    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-review-task <name> --workspace-prefix <prefix>", "error");
+    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-review-task --workspace-prefix <prefix>", "error");
     return;
   }
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
+  const queueKey = deriveQueueKey(workspacePrefix);
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "review-task",
     workspacePrefix,
-    sessionName: `${name} review-task`,
-    queueKey: name,
-    initialMessage: `Review the implementation of workspace "${name}".`,
+    sessionName: `${queueKey} review-task`,
+    queueKey,
+    initialMessage: `Review the implementation of workspace "${workspacePrefix}".`,
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve review-task config.", "error");
@@ -174,5 +169,3 @@ export function register(pi: ExtensionAPI) {
     handler: handleReviewTask,
   });
 }
-
-

@@ -10,6 +10,7 @@ import { resolveCapabilityConfig } from "../../capability-config";
 import { validateInputs } from "../../guards/validation";
 import { CapState } from "../../capability-state";
 import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
+import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { type PlanFrontmatter, PLAN_FRONTMATTER_SCHEMA } from "./schemas";
@@ -148,14 +149,14 @@ export default capabilityConfig;
 // ---------------------------------------------------------------------------
 
 /**
- * Validate that the goal workspace exists, has a GOAL.md, and does not yet have a PLAN.md.
- * Returns { goalDir, ready } — call launchCapability separately.
+ * Validate that the workspace exists, has a GOAL.md, and does not yet have a PLAN.md.
+ * Returns { ready: boolean, error?: string }.
  * Does NOT use ctx so it can be called safely before newSession().
  */
-async function validateGoal(name: string, cwd: string): Promise<{ ready: boolean; error?: string }> {
-  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix: `goals/${name}` });
+async function validateGoal(workspacePrefix: string, cwd: string): Promise<{ ready: boolean; error?: string }> {
+  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix });
   if (!result.success) {
-    return { ready: false, error: result.message ?? `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.` };
+    return { ready: false, error: result.message ?? `Workspace "${workspacePrefix}" does not have the required inputs.` };
   }
 
   return { ready: true };
@@ -168,30 +169,29 @@ async function validateGoal(name: string, cwd: string): Promise<{ ready: boolean
 const createPlanTool = defineTool({
   name: "pio_create_plan",
   label: "Pio Create Plan",
-  description: "Create a detailed implementation plan (PLAN.md) for an existing goal. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
-  promptSnippet: "Create an implementation plan (PLAN.md) for an existing goal.",
-  parameters: Type.Object({
-    name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
-  }),
+  description: "Create a detailed implementation plan (PLAN.md) for an existing workspace. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
+  promptSnippet: "Create an implementation plan (PLAN.md) for an existing workspace.",
+  parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = await validateGoal(params.name, ctx.cwd);
+    const result = await validateGoal(params.workspacePrefix, ctx.cwd);
 
     if (!result.ready) {
       return { content: [{ type: "text", text: result.error! }], details: {} };
     }
 
-    enqueueTask(ctx.cwd, params.name, {
+    const queueKey = deriveQueueKey(params.workspacePrefix);
+    enqueueTask(ctx.cwd, queueKey, {
       capability: "create-plan",
       params: {
-        workspacePrefix: `goals/${params.name}`,
-        sessionName: `${params.name} create-plan`,
-        queueKey: params.name,
-        initialMessage: `Create an implementation plan for goal "${params.name}".`,
+        workspacePrefix: params.workspacePrefix,
+        sessionName: params.sessionName ?? `${queueKey} create-plan`,
+        queueKey,
+        initialMessage: params.initialMessage ?? `Create an implementation plan for workspace "${params.workspacePrefix}".`,
       },
     });
 
-    return { content: [{ type: "text", text: `Task queued for goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.` }], details: {} };
+    return { content: [{ type: "text", text: `Task queued for workspace "${params.workspacePrefix}". Use \`/pio-next-task\` to start the sub-session.` }], details: {} };
   },
 });
 
@@ -201,12 +201,23 @@ const createPlanTool = defineTool({
 
 async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandContext) {
   if (!args || !args.trim()) {
-    ctx.ui.notify("Usage: /pio-create-plan <goal-name>", "warning");
+    ctx.ui.notify("Usage: /pio-create-plan --workspace-prefix <prefix>", "warning");
     return;
   }
 
-  const name = args.trim();
-  const result = await validateGoal(name, ctx.cwd);
+  const tokens = args.trim().split(/\s+/);
+  let workspacePrefix: string | undefined;
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === "--workspace-prefix" && tokens[i + 1]) {
+      workspacePrefix = tokens[++i];
+    }
+  }
+  if (!workspacePrefix) {
+    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-create-plan --workspace-prefix <prefix>", "error");
+    return;
+  }
+
+  const result = await validateGoal(workspacePrefix, ctx.cwd);
 
   if (!result.ready) {
     ctx.ui.notify(result.error!, "error");
@@ -215,12 +226,13 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
+  const queueKey = deriveQueueKey(workspacePrefix);
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "create-plan",
-    workspacePrefix: `goals/${name}`,
-    sessionName: `${name} create-plan`,
-    queueKey: name,
-    initialMessage: `Create an implementation plan for goal "${name}".`,
+    workspacePrefix,
+    sessionName: `${queueKey} create-plan`,
+    queueKey,
+    initialMessage: `Create an implementation plan for workspace "${workspacePrefix}".`,
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve create-plan config.", "error");
@@ -244,9 +256,7 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
 export function register(pi: ExtensionAPI) {
   pi.registerTool(createPlanTool);
   pi.registerCommand("pio-create-plan", {
-    description: "Create an implementation plan for a goal and launch a create-plan session",
+    description: "Create an implementation plan for a workspace and launch a create-plan session",
     handler: handleCreatePlan,
   });
 }
-
-

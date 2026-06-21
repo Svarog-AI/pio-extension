@@ -22,16 +22,16 @@ const STEP_FOLDER_RE = /^S(\d+)$/;
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the goal directory for revise-plan.
+ * Validate inputs for revise-plan.
  * Input validation is handled automatically by launchCapability().
  */
 export async function validateRevisePlan(
-  name: string,
+  workspacePrefix: string,
   cwd: string,
 ): Promise<{ ready: boolean; error?: string }> {
-  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix: `goals/${name}` });
+  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix });
   if (!result.success) {
-    return { ready: false, error: result.message ?? `Goal workspace "${name}" does not exist.` };
+    return { ready: false, error: result.message ?? `Workspace "${workspacePrefix}" does not have the required inputs.` };
   }
 
   return { ready: true };

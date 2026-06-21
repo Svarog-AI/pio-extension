@@ -161,21 +161,21 @@ describe("validateFinalizeGoal", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("returns ready: true when goal dir exists and COMPLETED marker is present", async () => {
+  it("returns ready: true when workspace exists and COMPLETED marker is present", async () => {
     // Arrange: create goal dir with PLAN.md and COMPLETED
     createGoalTree(tempDir, "completed-goal", { withPlan: true, withCompletionSummary: true });
 
     // Act
-    const result = await validateFinalizeGoal("completed-goal", tempDir);
+    const result = await validateFinalizeGoal("goals/completed-goal", tempDir);
 
     // Assert
     expect(result.ready).toBe(true);
   });
 
-  it("returns error when goal directory does not exist", async () => {
+  it("returns error when workspace does not exist", async () => {
     // Arrange: no goal dir created
     // Act
-    const result = await validateFinalizeGoal("nonexistent-goal", tempDir);
+    const result = await validateFinalizeGoal("goals/nonexistent-goal", tempDir);
 
     // Assert
     expect(result.ready).toBe(false);
@@ -189,7 +189,7 @@ describe("validateFinalizeGoal", () => {
     createGoalTree(tempDir, "incomplete-goal", { withPlan: true, withCompletionSummary: false });
 
     // Act
-    const result = await validateFinalizeGoal("incomplete-goal", tempDir);
+    const result = await validateFinalizeGoal("goals/incomplete-goal", tempDir);
 
     // Assert
     expect(result.ready).toBe(false);
@@ -253,7 +253,7 @@ describe("finalizeGoalTool.execute", () => {
     const tool = getTool();
 
     // Act: call execute
-    const result = await tool.execute("test-call-id", { name: "my-goal" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-call-id", { workspacePrefix: "goals/my-goal" }, undefined, undefined, makeCtx(tempDir));
 
     // Assert: result is success message
     const text = result.content[0].text;
@@ -270,12 +270,12 @@ describe("finalizeGoalTool.execute", () => {
     expect(task!.params).not.toHaveProperty("goalDir");
   });
 
-  it("returns error when goal does not exist", async () => {
+  it("returns error when workspace does not exist", async () => {
     // Arrange: no goal created
     const tool = getTool();
 
     // Act
-    const result = await tool.execute("test-call-id", { name: "nonexistent" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-call-id", { workspacePrefix: "goals/nonexistent" }, undefined, undefined, makeCtx(tempDir));
 
     // Assert: error message mentions goal doesn't exist
     const text = result.content[0].text;
@@ -293,7 +293,7 @@ describe("finalizeGoalTool.execute", () => {
     const tool = getTool();
 
     // Act
-    const result = await tool.execute("test-call-id", { name: "incomplete" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-call-id", { workspacePrefix: "goals/incomplete" }, undefined, undefined, makeCtx(tempDir));
 
     // Assert: error message mentions missing file
     const text = result.content[0].text;
@@ -383,13 +383,13 @@ describe("handleFinalizeGoal", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/usage|Usage/i), "warning");
   });
 
-  it("shows error when goal does not exist", async () => {
+  it("shows error when workspace does not exist", async () => {
     // Arrange
     const handler = getHandler();
     const ctx = makeCtx(tempDir);
 
     // Act
-    await handler("nonexistent-goal", ctx);
+    await handler("--workspace-prefix goals/nonexistent-goal", ctx);
 
     // Assert
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/missing|does not exist/i), "error");
@@ -403,7 +403,7 @@ describe("handleFinalizeGoal", () => {
     const ctx = makeCtx(tempDir);
 
     // Act
-    await handler("incomplete", ctx);
+    await handler("--workspace-prefix goals/incomplete", ctx);
 
     // Assert
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/missing|COMPLETION_SUMMARY/i), "error");

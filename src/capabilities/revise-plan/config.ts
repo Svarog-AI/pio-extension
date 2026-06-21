@@ -6,6 +6,7 @@ import { launchCapability } from "../../capability-session";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { PLAN_FRONTMATTER_SCHEMA } from "../create-plan/schemas";
+import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { validateRevisePlan, prepareSession, cleanupIncompleteSteps, resolveReviseReadOnlyFiles, resolveReviseWriteAllowlist } from "./callbacks";
@@ -51,24 +52,23 @@ const revisePlanTool = defineTool({
   description:
     "Archive the current PLAN.md, clean up incomplete step folders, and queue a planning session to write a fresh plan for remaining work. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Archive current plan and queue a fresh planning session.",
-  parameters: Type.Object({
-    name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
-  }),
+  parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = await validateRevisePlan(params.name, ctx.cwd);
+    const result = await validateRevisePlan(params.workspacePrefix, ctx.cwd);
 
     if (!result.ready) {
       return { content: [{ type: "text", text: result.error! }], details: {} };
     }
 
-    enqueueTask(ctx.cwd, params.name, {
+    const queueKey = deriveQueueKey(params.workspacePrefix);
+    enqueueTask(ctx.cwd, queueKey, {
       capability: "revise-plan",
       params: {
-        workspacePrefix: `goals/${params.name}`,
-        sessionName: `${params.name} revise-plan`,
-        queueKey: params.name,
-        initialMessage: `Archive the current plan and write a fresh plan for goal "${params.name}".`,
+        workspacePrefix: params.workspacePrefix,
+        sessionName: params.sessionName ?? `${queueKey} revise-plan`,
+        queueKey,
+        initialMessage: params.initialMessage ?? `Archive the current plan and write a fresh plan for workspace "${params.workspacePrefix}".`,
       },
     });
 
@@ -76,7 +76,7 @@ const revisePlanTool = defineTool({
       content: [
         {
           type: "text",
-          text: `Task queued for goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.`,
+          text: `Task queued for workspace "${params.workspacePrefix}". Use \`/pio-next-task\` to start the sub-session.`,
         },
       ],
       details: {},
@@ -90,12 +90,23 @@ const revisePlanTool = defineTool({
 
 async function handleRevisePlan(args: string | undefined, ctx: ExtensionCommandContext) {
   if (!args || !args.trim()) {
-    ctx.ui.notify("Usage: /pio-revise-plan <goal-name>", "warning");
+    ctx.ui.notify("Usage: /pio-revise-plan --workspace-prefix <prefix>", "warning");
     return;
   }
 
-  const name = args.trim();
-  const result = await validateRevisePlan(name, ctx.cwd);
+  const tokens = args.trim().split(/\s+/);
+  let workspacePrefix: string | undefined;
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === "--workspace-prefix" && tokens[i + 1]) {
+      workspacePrefix = tokens[++i];
+    }
+  }
+  if (!workspacePrefix) {
+    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-revise-plan --workspace-prefix <prefix>", "error");
+    return;
+  }
+
+  const result = await validateRevisePlan(workspacePrefix, ctx.cwd);
 
   if (!result.ready) {
     ctx.ui.notify(result.error!, "error");
@@ -104,12 +115,13 @@ async function handleRevisePlan(args: string | undefined, ctx: ExtensionCommandC
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
+  const queueKey = deriveQueueKey(workspacePrefix);
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "revise-plan",
-    workspacePrefix: `goals/${name}`,
-    sessionName: `${name} revise-plan`,
-    queueKey: name,
-    initialMessage: `Archive the current plan and write a fresh plan for goal "${name}".`,
+    workspacePrefix,
+    sessionName: `${queueKey} revise-plan`,
+    queueKey,
+    initialMessage: `Archive the current plan and write a fresh plan for workspace "${workspacePrefix}".`,
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve revise-plan config.", "error");
@@ -138,5 +150,3 @@ export function register(pi: ExtensionAPI) {
     handler: handleRevisePlan,
   });
 }
-
-

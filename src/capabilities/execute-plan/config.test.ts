@@ -142,23 +142,23 @@ describe("execute-plan tool execute — pre-launch validation", () => {
     createGoalTree(tempDir, "valid", { withGoal: true, withPlan: true });
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { name: "valid" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-id", { workspacePrefix: "goals/valid" }, undefined, undefined, makeCtx(tempDir));
 
     expect(result.content[0].text).toContain("queued");
   });
 
-  it("returns error when goal workspace does not exist", async () => {
+  it("returns error when workspace does not exist", async () => {
     const tool = getTool();
-    const result = await tool.execute("test-id", { name: "nonexistent" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-id", { workspacePrefix: "goals/nonexistent" }, undefined, undefined, makeCtx(tempDir));
 
     expect(result.content[0].text).toMatch(/missing|does not exist/i);
   });
 
-  it("enqueues task when goal workspace exists", async () => {
+  it("enqueues task when workspace exists", async () => {
     createGoalTree(tempDir, "valid", { withGoal: true, withPlan: true });
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { name: "valid" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-id", { workspacePrefix: "goals/valid" }, undefined, undefined, makeCtx(tempDir));
 
     expect(result.content[0].text).toContain("queued");
   });
@@ -167,7 +167,7 @@ describe("execute-plan tool execute — pre-launch validation", () => {
     createGoalTree(tempDir, "my-feature", { withGoal: true, withPlan: true });
 
     const tool = getTool();
-    await tool.execute("test-id", { name: "my-feature" }, undefined, undefined, makeCtx(tempDir));
+    await tool.execute("test-id", { workspacePrefix: "goals/my-feature" }, undefined, undefined, makeCtx(tempDir));
 
     // Assert: task was enqueued with correct params
     const task = readPendingTask(tempDir, "my-feature");
@@ -243,11 +243,11 @@ describe("handleExecutePlan", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/usage|Usage/i), "warning");
   });
 
-  it("shows error when goal workspace does not exist", async () => {
+  it("shows error when workspace does not exist", async () => {
     const handler = getHandler();
     const ctx = makeCtx(tempDir);
 
-    await handler("nonexistent", ctx);
+    await handler("--workspace-prefix goals/nonexistent", ctx);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/missing|does not exist/i), "error");
   });
@@ -258,7 +258,7 @@ describe("handleExecutePlan", () => {
     const handler = getHandler();
     const ctx = makeCtx(tempDir);
 
-    await handler("no-goal", ctx);
+    await handler("--workspace-prefix goals/no-goal", ctx);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/GOAL\.md/i), "error");
   });
@@ -269,7 +269,7 @@ describe("handleExecutePlan", () => {
     const handler = getHandler();
     const ctx = makeCtx(tempDir);
 
-    await handler("no-plan", ctx);
+    await handler("--workspace-prefix goals/no-plan", ctx);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/PLAN\.md/i), "error");
   });

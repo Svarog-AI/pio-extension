@@ -1,6 +1,6 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getSessionConfig, parseCommandArgs } from "./capability-utils";
+import { getSessionConfig, BASE_TOOL_PARAMS, deriveQueueKey } from "./capability-utils";
 
 // Mock resolveCapabilityConfig to control dynamic import behavior
 const mockResolveCapabilityConfig = vi.hoisted(() => vi.fn());
@@ -22,47 +22,39 @@ function makeMockCtx(configData?: Record<string, unknown>): ExtensionContext {
   } as unknown as ExtensionContext;
 }
 
-describe("parseCommandArgs", () => {
-  it("parses valid goal name and step number", () => {
-    const result = parseCommandArgs("my-goal 3");
-    expect(result).toEqual({ name: "my-goal", stepNumber: 3 });
+describe("BASE_TOOL_PARAMS", () => {
+  it("exports workspacePrefix as required string", () => {
+    expect(BASE_TOOL_PARAMS.workspacePrefix).toBeDefined();
   });
 
-  it("parses goal name without step number", () => {
-    const result = parseCommandArgs("my-goal");
-    expect(result).toEqual({ name: "my-goal", stepNumber: undefined });
+  it("exports sessionName as optional string", () => {
+    expect(BASE_TOOL_PARAMS.sessionName).toBeDefined();
   });
 
-  it("returns null for empty string", () => {
-    expect(parseCommandArgs("")).toBeNull();
+  it("exports initialMessage as optional string", () => {
+    expect(BASE_TOOL_PARAMS.initialMessage).toBeDefined();
+  });
+});
+
+describe("deriveQueueKey", () => {
+  it("extracts last segment from simple prefix", () => {
+    expect(deriveQueueKey("goals/my-feature")).toBe("my-feature");
   });
 
-  it("returns null for undefined", () => {
-    expect(parseCommandArgs(undefined)).toBeNull();
+  it("extracts last segment from nested prefix", () => {
+    expect(deriveQueueKey("goals/my-feature/S03")).toBe("S03");
   });
 
-  it("returns null for whitespace-only string", () => {
-    expect(parseCommandArgs("   ")).toBeNull();
+  it("extracts last segment from deeply nested prefix", () => {
+    expect(deriveQueueKey("goals/parent/S03/subgoals/nested")).toBe("nested");
   });
 
-  it("rejects non-numeric step number", () => {
-    const result = parseCommandArgs("my-goal abc");
-    expect(result).toEqual({ name: "my-goal", stepNumber: undefined });
+  it("returns empty string for empty prefix", () => {
+    expect(deriveQueueKey("")).toBe("");
   });
 
-  it("rejects step number zero", () => {
-    const result = parseCommandArgs("my-goal 0");
-    expect(result).toEqual({ name: "my-goal", stepNumber: undefined });
-  });
-
-  it("rejects negative step number", () => {
-    const result = parseCommandArgs("my-goal -1");
-    expect(result).toEqual({ name: "my-goal", stepNumber: undefined });
-  });
-
-  it("handles extra whitespace between args", () => {
-    const result = parseCommandArgs("my-goal   5");
-    expect(result).toEqual({ name: "my-goal", stepNumber: 5 });
+  it("returns the segment for single-segment prefix", () => {
+    expect(deriveQueueKey("research")).toBe("research");
   });
 });
 

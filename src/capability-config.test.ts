@@ -425,6 +425,7 @@ describe("CapabilityConfig.prepareSession", () => {
     const config: CapabilityConfig = {
       capability: "create-goal",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
     };
 
     // Assert
@@ -439,6 +440,7 @@ describe("CapabilityConfig.prepareSession", () => {
     const config: CapabilityConfig = {
       capability: "review-task",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
       prepareSession: cb,
     };
 
@@ -649,6 +651,7 @@ describe("CapabilityConfig.postValidate and postExecute", () => {
     const config: CapabilityConfig = {
       capability: "create-goal",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
     };
 
     // Assert
@@ -664,6 +667,7 @@ describe("CapabilityConfig.postValidate and postExecute", () => {
     const config: CapabilityConfig = {
       capability: "review-task",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
       postValidate: cb,
     };
 
@@ -679,6 +683,7 @@ describe("CapabilityConfig.postValidate and postExecute", () => {
     const config: CapabilityConfig = {
       capability: "review-task",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
       postExecute: cb,
     };
 
@@ -1192,6 +1197,7 @@ describe("resolveCapabilityConfig — skills passthrough", () => {
     const config: CapabilityConfig = {
       capability: "test-cap",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
       skills: {
         mandatory: ["pio-planning"],
         recommended: [{ name: "ask-user", condition: "when ambiguous" }],
@@ -1207,6 +1213,7 @@ describe("resolveCapabilityConfig — skills passthrough", () => {
     const config: CapabilityConfig = {
       capability: "test-cap",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
       skills: { mandatory: ["pio-git"] },
     };
 
@@ -1218,6 +1225,7 @@ describe("resolveCapabilityConfig — skills passthrough", () => {
     const config: CapabilityConfig = {
       capability: "test-cap",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
       skills: { recommended: [{ name: "source-research", condition: "when researching" }] },
     };
 

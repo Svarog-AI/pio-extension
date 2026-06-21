@@ -103,6 +103,7 @@ describe("CapabilityConfig — skills field", () => {
     const config: CapabilityConfig = {
       capability: "create-plan",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
       skills: {
         mandatory: ["pio-planning", "grill-me"],
         recommended: [
@@ -122,6 +123,7 @@ describe("CapabilityConfig — skills field", () => {
     const config: CapabilityConfig = {
       capability: "create-goal",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
     };
 
     // Assert
@@ -133,6 +135,7 @@ describe("CapabilityConfig — skills field", () => {
     const config: CapabilityConfig = {
       capability: "create-goal",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
       skills: {
         recommended: [
           { name: "source-research", condition: "when researching external libraries" },
@@ -179,6 +182,7 @@ describe("unified contract types", () => {
     const config: CapabilityConfig = {
       capability: "evolve-plan",
       contract,
+      allowProjectWrites: false,
     };
 
     // Assert: requiredWhen predicate behavior (the only runtime behavior in these types)
@@ -206,6 +210,7 @@ describe("CapabilityConfig — contract field", () => {
     const config: CapabilityConfig = {
       capability: "create-goal",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
     };
     expect(config.contract).toBeDefined();
   });

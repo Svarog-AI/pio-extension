@@ -32,6 +32,7 @@ function makeConfig(overrides: Partial<import("./types").CapabilityConfig> = {})
     workingDir: "/tmp/test-goal",
     contract: { inputs: [{ name: "goal", file: "GOAL.md" }], outputs: [] },
     sessionParams: { goalName: "test-goal" },
+    allowProjectWrites: false,
     ...overrides,
   };
 }

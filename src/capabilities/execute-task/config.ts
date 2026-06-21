@@ -33,6 +33,7 @@ const capabilityConfig = {
   contract: CONTRACT,
   readOnlyFiles: resolveExecuteReadOnlyFiles,
   prepareSession: prepareExecuteSession,
+  allowProjectWrites: true,
   skills: {
     mandatory: ["tdd", "pio-git"],
   },

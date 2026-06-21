@@ -152,6 +152,7 @@ function buildCapabilityConfig(
   postExecute: PostExecuteCallback | undefined,
   skills: CapabilitySkills | undefined,
   contract: CapabilityContract,
+  allowProjectWrites: boolean,
 ): CapabilityConfig {
   return {
     capability: cap,
@@ -167,6 +168,7 @@ function buildCapabilityConfig(
     postExecute,
     skills,
     contract,
+    allowProjectWrites,
   };
 }
 
@@ -209,6 +211,7 @@ function normalizePackageConfig(
 
   const readOnlyFiles = resolveField<string[]>(pkg.readOnlyFiles, workspaceDir, resolvedParams);
   const writeAllowlist = resolveField<string[]>(pkg.writeAllowlist, workspaceDir, resolvedParams);
+  const allowProjectWrites = pkg.allowProjectWrites ?? false;
 
   return buildCapabilityConfig(
     cap,
@@ -224,6 +227,7 @@ function normalizePackageConfig(
     pkg.postExecute,
     pkg.skills,
     pkg.contract,
+    allowProjectWrites,
   );
 }
 

@@ -101,6 +101,8 @@ export interface CapabilityConfig {
   skills?: CapabilitySkills;
   /** Unified capability contract: consolidated inputs, outputs, excluded files, and frontmatter schemas. */
   contract: CapabilityContract;
+  /** When true, permits writing to project files outside `.pio/`. */
+  allowProjectWrites: boolean;
 }
 
 /** Callback signature for step-dependent config fields.

@@ -13,6 +13,7 @@ import type { CapabilityContract, MarkdownFileSpec, OutputEntry, PostValidateCal
 
 let readOnlyFilePaths: string[] = [];
 let writeAllowlistPaths: string[] = [];
+let allowProjectWrites: boolean = false;
 
 /** Session working directory — base directory for resolving validation file paths. */
 let workingDir: string | undefined;
@@ -308,6 +309,8 @@ export function setupValidation(pi: ExtensionAPI) {
 
     writeAllowlistPaths = [...new Set([...baseAllowlist, ...contractOutputPaths])];
 
+    allowProjectWrites = config.allowProjectWrites ?? false;
+
     warnedOnce = false;
     warningsThisSession = 0;
   });
@@ -339,101 +342,66 @@ export function setupValidation(pi: ExtensionAPI) {
   //   return { cancel: true };
   // });
 
-  // 5. File protection: default-deny for .pio/ writes + write-allowlist + read-only blocklist
+  // 5. File protection: unified write check + read-only blocklist fallback
   pi.on("tool_call", async (event) => {
     const input = event.input as Record<string, unknown> | undefined;
 
-    // --- Default-deny: block all writes to .pio/ unless explicitly allowed ---
-    // Collect all target file paths from write tools
-    let pioWriteTargets: string[] = [];
+    // Collect all target file paths from write tools (done once)
+    let targetPaths: string[] = [];
 
     if (event.toolName === "write" && typeof input?.path === "string") {
-      pioWriteTargets = [path.resolve(input.path)];
+      targetPaths = [path.resolve(input.path)];
     } else if (event.toolName === "edit" && typeof input?.path === "string") {
-      pioWriteTargets = [path.resolve(input.path)];
+      targetPaths = [path.resolve(input.path)];
     } else if (event.toolName === "vscode_apply_workspace_edit" && Array.isArray(input?.edits)) {
       for (const edit of input.edits as Array<Record<string, unknown>>) {
         if (typeof edit.filePath === "string") {
-          pioWriteTargets.push(path.resolve(edit.filePath));
+          targetPaths.push(path.resolve(edit.filePath));
         }
       }
     }
 
-    // Check if any target is inside a .pio/ directory
-    for (const tp of pioWriteTargets) {
-      if (tp.includes("/.pio/")) {
-        // Permit if the path is in the session's write-allowlist
-        if (writeAllowlistPaths.includes(tp)) {
-          continue;
-        }
+    // No write targets — pass through
+    if (targetPaths.length === 0) return;
 
-        // Block writes to .pio/ areas outside the session's write allowlist.
-        // With workingDir = .pio/, the old "permit writes inside workingDir" check
-        // would permit writing anywhere under .pio/. The auto-derived allowlist
-        // from resolved contract output paths handles the actual protection.
-        return { block: true, reason: `Writing to .pio/ files is not allowed. These files are managed by the pio workflow and should not be modified directly from this session.` };
-      }
+    // Unified write check — single pass over all targets
+    for (const tp of targetPaths) {
+      // Allowed: contract output files (auto-derived allowlist)
+      if (writeAllowlistPaths.includes(tp)) continue;
+
+      // Allowed: project files when capability has allowProjectWrites
+      if (allowProjectWrites && !tp.includes("/.pio/")) continue;
+
+      // Allowed: /tmp/ writes (temporary scratch files)
+      if (tp.startsWith("/tmp/")) continue;
+
+      // Block everything else — always list what IS allowed to guide the agent
+      return { block: true, reason: buildAllowanceMessage(writeAllowlistPaths, allowProjectWrites) };
     }
 
-    // --- Write-allowlist check (takes precedence over blocklist) ---
-    if (writeAllowlistPaths.length > 0) {
-      // Collect all target file paths from this tool call
-      let targetPaths: string[] = [];
-
-      if (event.toolName === "write" && typeof input?.path === "string") {
-        targetPaths = [path.resolve(input.path)];
-      } else if (event.toolName === "edit" && typeof input?.path === "string") {
-        targetPaths = [path.resolve(input.path)];
-      } else if (event.toolName === "vscode_apply_workspace_edit" && Array.isArray(input?.edits)) {
-        for (const edit of input.edits as Array<Record<string, unknown>>) {
-          if (typeof edit.filePath === "string") {
-            targetPaths.push(path.resolve(edit.filePath));
-          }
-        }
-      }
-
-      // Block any write tool targeting a file NOT in the allowlist
-      if (targetPaths.length > 0) {
-        for (const tp of targetPaths) {
-          if (!writeAllowlistPaths.includes(tp)) {
-            return { block: true, reason: `Writing is restricted during this session. Allowed write targets: ${writeAllowlistPaths.join(", ")}. You attempted to write to a file outside this list.` };
-          }
-        }
-      }
-
-      // Allowlist check passed — no need to check blocklist (allowlist takes precedence)
-      return;
-    }
-
-    // --- Read-only blocklist check (only if no allowlist is configured) ---
-    if (readOnlyFilePaths.length === 0) return; // no read-only files configured
-
-    // Check `write` tool — input.path
-    if (event.toolName === "write" && typeof input?.path === "string") {
-      const targetPath = path.resolve(input.path);
-      if (readOnlyFilePaths.includes(targetPath)) {
-        return { block: true, reason: `${input.path} is read-only during this session. If you need changes to ${input.path}, flag them to the user and do not modify it.` };
-      }
-    }
-
-    // Check `edit` tool — input.path
-    if (event.toolName === "edit" && typeof input?.path === "string") {
-      const targetPath = path.resolve(input.path);
-      if (readOnlyFilePaths.includes(targetPath)) {
-        return { block: true, reason: `${input.path} is read-only during this session. If you need changes to ${input.path}, flag them to the user and do not modify it.` };
-      }
-    }
-
-    // Check `vscode_apply_workspace_edit` tool — input.edits[].filePath
-    if (event.toolName === "vscode_apply_workspace_edit" && Array.isArray(input?.edits)) {
-      for (const edit of input.edits as Array<Record<string, unknown>>) {
-        if (typeof edit.filePath === "string") {
-          const targetPath = path.resolve(edit.filePath);
-          if (readOnlyFilePaths.includes(targetPath)) {
-            return { block: true, reason: `${edit.filePath} is read-only during this session. If you need changes to ${edit.filePath}, flag them to the user and do not modify it.` };
-          }
+    // Read-only blocklist — final fallback (blocks writes to explicitly read-only files)
+    if (readOnlyFilePaths.length > 0) {
+      for (const tp of targetPaths) {
+        if (readOnlyFilePaths.includes(tp)) {
+          return { block: true, reason: `${tp} is read-only during this session. If you need changes to this file, flag them to the user and do not modify it.` };
         }
       }
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Helper — build helpful error message listing all permitted write categories
+// ---------------------------------------------------------------------------
+
+function buildAllowanceMessage(allowlist: string[], hasProjectWrites: boolean): string {
+  const parts: string[] = [];
+  if (allowlist.length > 0) {
+    parts.push(`contract output files: ${allowlist.join(", ")}`);
+  }
+  if (hasProjectWrites) {
+    parts.push("project source files outside .pio/");
+  }
+  parts.push("temporary files in /tmp/");
+  return `Writing is restricted during this session. Allowed write targets: ${parts.join("; ")}.`;
 }

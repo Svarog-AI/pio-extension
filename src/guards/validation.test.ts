@@ -1532,7 +1532,6 @@ describe("validateInputs — stripped workspacePrefix (no duplication)", () => {
 // Mock resolveCapabilityConfig so getSessionConfig() returns a full config
 // vi.mock replaces ALL exports — we must also re-export resolveContractPath
 const mockResolveCapabilityConfig2 = vi.hoisted(() => vi.fn());
-const realCapabilityConfig = vi.hoisted(() => vi.fn());
 
 vi.mock("../capability-config", async (importOriginal) => {
   const original = await importOriginal<typeof import("../capability-config")>();

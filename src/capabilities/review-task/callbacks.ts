@@ -48,17 +48,12 @@ export function resolveReviewWriteAllowlist(_dir: string, _params?: Record<strin
  * Does NOT create markers — that is the job of postExecuteReview().
  */
 export function postValidateReview(workspaceDir: string, params?: Record<string, unknown>): { success: boolean; message?: string } {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-  if (stepNumber == null) {
-    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
-  }
-
   // Read REVIEW.md via CapState — uses CONTRACT.outputs schema for validation
   const capState = new CapState(CONTRACT, workspaceDir, params);
   const reviewFile = capState.output<ReviewOutputs>("review");
 
   if (!reviewFile.exists()) {
-    return { success: false, message: `REVIEW.md not found in S${String(stepNumber).padStart(2, "0")}/` };
+    return { success: false, message: "REVIEW.md not found" };
   }
   const data = reviewFile.read();
   if (data === null) {
@@ -66,13 +61,13 @@ export function postValidateReview(workspaceDir: string, params?: Record<string,
     const reviewPath = path.join(workspaceDir, REVIEW_FILE);
     const raw = extractFrontmatter(reviewPath);
     if (raw === null) {
-      return { success: false, message: `REVIEW.md does not contain valid YAML frontmatter for step ${stepNumber}` };
+      return { success: false, message: "REVIEW.md does not contain valid YAML frontmatter" };
     }
     const result = validateAndCoerce<ReviewOutputs>(raw, REVIEW_OUTPUT_SCHEMA);
     if ("error" in result) {
       return { success: false, message: result.error };
     }
-    return { success: false, message: `REVIEW.md frontmatter validation failed for step ${stepNumber}` };
+    return { success: false, message: "REVIEW.md frontmatter validation failed" };
   }
 
   // Schema validation passed — do NOT create markers here (that's postExecute's job)
@@ -85,27 +80,22 @@ export function postValidateReview(workspaceDir: string, params?: Record<string,
  * Re-reads REVIEW.md from disk — both hooks read independently.
  */
 export function postExecuteReview(workspaceDir: string, params?: Record<string, unknown>): void {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-  if (stepNumber == null) {
-    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
-  }
-
   // Re-read REVIEW.md via CapState (reads fresh from disk on every call)
   const capState = new CapState(CONTRACT, workspaceDir, params);
   const reviewFile = capState.output<ReviewOutputs>("review");
 
   if (!reviewFile.exists()) {
-    console.warn(`pio: postExecuteReview — REVIEW.md not found in S${String(stepNumber).padStart(2, "0")}/`);
+    console.warn("pio: postExecuteReview — REVIEW.md not found");
     return;
   }
   const data = reviewFile.read();
   if (data === null) {
-    console.warn(`pio: postExecuteReview could not parse REVIEW.md for step ${stepNumber}: frontmatter validation failed`);
+    console.warn("pio: postExecuteReview could not parse REVIEW.md: frontmatter validation failed");
     return;
   }
 
   // Create markers (APPROVED/REJECTED) — irreversible side-effect
-  applyReviewDecision(workspaceDir, stepNumber, data);
+  applyReviewDecision(workspaceDir, data);
 }
 
 // ---------------------------------------------------------------------------
@@ -114,16 +104,14 @@ export function postExecuteReview(workspaceDir: string, params?: Record<string, 
 
 /**
  * Create marker files based on the review decision.
- * APPROVED: creates empty S{NN}/APPROVED, leaves COMPLETED intact.
- * REJECTED: creates empty S{NN}/REJECTED, deletes S{NN}/COMPLETED.
+ * APPROVED: creates empty APPROVED, leaves COMPLETED intact.
+ * REJECTED: creates empty REJECTED, deletes COMPLETED.
  *
  * @param workspaceDir - Absolute path to the workspace directory (already the step directory)
- * @param stepNumber - Step number (kept for error messages only)
  * @param outputs - Validated review outputs (TypeScript guarantees correct types)
  */
 export function applyReviewDecision(
   workspaceDir: string,
-  stepNumber: number,
   outputs: ReviewOutputs,
 ): void {
   // workspaceDir is already the resolved step directory — no stepFolderName needed

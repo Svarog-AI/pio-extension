@@ -6,8 +6,7 @@ import * as path from "node:path";
 
 import { CapState } from "../../capability-state";
 import { launchCapability, setMergedSkills } from "../../capability-session";
-import { mergeCapabilitySkills, parseCommandArgs } from "../../capability-utils";
-import { stepFolderName } from "../../fs-utils";
+import { mergeCapabilitySkills } from "../../capability-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { REVIEW_OUTPUT_SCHEMA } from "./schemas";
@@ -59,11 +58,6 @@ export default capabilityConfig;
 // ---------------------------------------------------------------------------
 
 function prepareReviewSession(workingDir: string, params?: Record<string, unknown>): void {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-  if (stepNumber == null) {
-    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
-  }
-
   // workingDir is already the resolved step directory (from Step 9) — no prefix needed
   fs.rmSync(path.join(workingDir, "APPROVED"), { force: true });
   fs.rmSync(path.join(workingDir, "REJECTED"), { force: true });
@@ -89,20 +83,22 @@ const reviewTaskTool = defineTool({
     "Review the implementation of a plan step. Reads TASK.md, TEST.md, SUMMARY.md and implementation files. Writes REVIEW.md with categorized issues and approves or rejects. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Review code implementation for a plan step (approve/reject).",
   parameters: Type.Object({
-    name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
-    stepNumber: Type.Number({ description: "Step number to review" }),
+    name: Type.String({ description: "Workspace name (used as queue key)" }),
+    workspacePrefix: Type.String({ description: "Workspace prefix for path resolution, e.g. 'goals/my-feature/S03'" }),
+    sessionName: Type.Optional(Type.String({ description: "Human-readable session name" })),
+    initialMessage: Type.Optional(Type.String({ description: "Custom kickoff message for the session" })),
   }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const stepNumber = params.stepNumber;
+    const sessionName = params.sessionName ?? `${params.name} review-task`;
+    const initialMessage = params.initialMessage ?? "Ready.";
     enqueueTask(ctx.cwd, params.name, {
       capability: "review-task",
       params: {
-        workspacePrefix: `goals/${params.name}/${stepFolderName(stepNumber)}`,
-        sessionName: `${params.name} review-task s${stepNumber}`,
+        workspacePrefix: params.workspacePrefix,
+        sessionName,
         queueKey: params.name,
-        stepNumber,
-        initialMessage: `Review the implementation of Step ${stepNumber} of goal "${params.name}".`,
+        initialMessage,
       },
     });
 
@@ -110,7 +106,7 @@ const reviewTaskTool = defineTool({
       content: [
         {
           type: "text",
-          text: `Review queued for Step ${stepNumber} of goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.`,
+          text: `Review queued for workspace "${params.name}". Use \`/pio-next-task\` to start the sub-session.`,
         },
       ],
       details: {},
@@ -123,14 +119,21 @@ const reviewTaskTool = defineTool({
 // ---------------------------------------------------------------------------
 
 async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandContext) {
-  const parsed = parseCommandArgs(args);
-  if (!parsed) {
-    ctx.ui.notify("Usage: /pio-review-task <goal-name> <step-number>", "warning");
+  // Parse args locally: <name> --workspace-prefix <prefix>
+  if (!args || args.trim().length === 0) {
+    ctx.ui.notify("Usage: /pio-review-task <name> --workspace-prefix <prefix>", "warning");
     return;
   }
-
-  if (parsed.stepNumber === undefined) {
-    ctx.ui.notify("Step number is required. Usage: /pio-review-task <goal-name> <step-number>", "error");
+  const tokens = args.trim().split(/\s+/);
+  const name = tokens[0];
+  let workspacePrefix: string | undefined;
+  for (let i = 1; i < tokens.length; i++) {
+    if (tokens[i] === "--workspace-prefix" && tokens[i + 1]) {
+      workspacePrefix = tokens[++i];
+    }
+  }
+  if (!workspacePrefix) {
+    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-review-task <name> --workspace-prefix <prefix>", "error");
     return;
   }
 
@@ -138,11 +141,10 @@ async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandC
   // All ctx-dependent work must happen before this line.
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "review-task",
-    workspacePrefix: `goals/${parsed.name}/${stepFolderName(parsed.stepNumber)}`,
-    sessionName: `${parsed.name} review-task s${parsed.stepNumber}`,
-    queueKey: parsed.name,
-    stepNumber: parsed.stepNumber,
-    initialMessage: `Review the implementation of Step ${parsed.stepNumber} of goal "${parsed.name}".`,
+    workspacePrefix,
+    sessionName: `${name} review-task`,
+    queueKey: name,
+    initialMessage: `Review the implementation of workspace "${name}".`,
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve review-task config.", "error");

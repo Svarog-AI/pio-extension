@@ -6,8 +6,7 @@ import * as path from "node:path";
 
 import { CapState } from "../../capability-state";
 import { launchCapability, setMergedSkills } from "../../capability-session";
-import { mergeCapabilitySkills, parseCommandArgs } from "../../capability-utils";
-import { stepFolderName } from "../../fs-utils";
+import { mergeCapabilitySkills } from "../../capability-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
@@ -37,25 +36,18 @@ const capabilityConfig = {
   skills: {
     mandatory: ["tdd", "pio-git"],
   },
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
-    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-    if (stepNumber == null) {
-      return "Error: stepNumber is required for execute-task. The task was not enqueued with a valid step number.";
-    }
-    const folderName = stepFolderName(stepNumber);
-
-    // Check if this is a re-execution after review rejection
+  defaultInitialMessage: (workspaceDir: string, _params?: Record<string, unknown>) => {
+    // workspaceDir is already the resolved step directory (from Step 9).
+    // Check for REJECTED marker at workspace root — no folder construction needed.
     let prefix = "";
     try {
-      const rejectedPath = path.join(workingDir, folderName, "REJECTED");
-      if (fs.existsSync(rejectedPath)) {
-        prefix = `This step was previously rejected. Read \`${folderName}/REVIEW.md\` for detailed review feedback before implementing. Address all critical and high-priority issues identified in the review.\n\n`;
+      if (fs.existsSync(path.join(workspaceDir, "REJECTED"))) {
+        prefix = "This step was previously rejected. Read `REVIEW.md` for detailed review feedback before implementing. Address all critical and high-priority issues identified in the review.\n\n";
       }
     } catch {
       // If filesystem read fails, fall through to the normal message
     }
-
-    return `${prefix}Working directory is ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md inside the \`${folderName}/\` directory and resolve the task.`;
+    return `${prefix}Working directory is ${workspaceDir}. Read TASK.md and resolve the task.`;
   },
 } satisfies CapabilityPackageConfig;
 
@@ -66,10 +58,8 @@ export default capabilityConfig;
 // ---------------------------------------------------------------------------
 
 function prepareExecuteSession(workingDir: string, params?: Record<string, unknown>): void {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-  if (stepNumber == null) return;
-
-  const capState = new CapState(CONTRACT, workingDir, { stepNumber });
+  // CONTRACT uses plain "TASK.md" — no placeholders need resolving
+  const capState = new CapState(CONTRACT, workingDir, params);
   const taskFile = capState.input<{ skills?: unknown }>("task");
   const taskData = taskFile.read();
   const taskSkills = taskData?.skills ?? null;
@@ -89,20 +79,22 @@ const executeTaskTool = defineTool({
     "Execute a single plan step using an iterative TDD workflow. Reads TASK.md, applies tracer-bullet development via the tdd skill, and produces implementation with post-hoc TEST.md. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Execute a single plan step (test-first implementation).",
   parameters: Type.Object({
-    name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
-    stepNumber: Type.Number({ description: "Step number to execute" }),
+    name: Type.String({ description: "Workspace name (used as queue key)" }),
+    workspacePrefix: Type.String({ description: "Workspace prefix for path resolution, e.g. 'goals/my-feature/S03'" }),
+    sessionName: Type.Optional(Type.String({ description: "Human-readable session name" })),
+    initialMessage: Type.Optional(Type.String({ description: "Custom kickoff message for the session" })),
   }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const stepNumber = params.stepNumber;
+    const sessionName = params.sessionName ?? `${params.name} execute-task`;
+    const initialMessage = params.initialMessage ?? "Ready.";
     enqueueTask(ctx.cwd, params.name, {
       capability: "execute-task",
       params: {
-        workspacePrefix: `goals/${params.name}/${stepFolderName(stepNumber)}`,
-        sessionName: `${params.name} execute-task s${stepNumber}`,
+        workspacePrefix: params.workspacePrefix,
+        sessionName,
         queueKey: params.name,
-        stepNumber,
-        initialMessage: `Working directory is goals/${params.name}. You are responsible for **Step ${stepNumber}**. Read TASK.md inside the step folder and resolve the task.`,
+        initialMessage,
       },
     });
 
@@ -110,7 +102,7 @@ const executeTaskTool = defineTool({
       content: [
         {
           type: "text",
-          text: `Task queued for Step ${stepNumber} of goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.`,
+          text: `Task queued for workspace "${params.name}". Use \`/pio-next-task\` to start the sub-session.`,
         },
       ],
       details: {},
@@ -123,14 +115,21 @@ const executeTaskTool = defineTool({
 // ---------------------------------------------------------------------------
 
 async function handleExecuteTask(args: string | undefined, ctx: ExtensionCommandContext) {
-  const parsed = parseCommandArgs(args);
-  if (!parsed) {
-    ctx.ui.notify("Usage: /pio-execute-task <goal-name> <step-number>", "warning");
+  // Parse args locally: <name> --workspace-prefix <prefix>
+  if (!args || args.trim().length === 0) {
+    ctx.ui.notify("Usage: /pio-execute-task <name> --workspace-prefix <prefix>", "warning");
     return;
   }
-
-  if (parsed.stepNumber === undefined) {
-    ctx.ui.notify("Step number is required. Usage: /pio-execute-task <goal-name> <step-number>", "error");
+  const tokens = args.trim().split(/\s+/);
+  const name = tokens[0];
+  let workspacePrefix: string | undefined;
+  for (let i = 1; i < tokens.length; i++) {
+    if (tokens[i] === "--workspace-prefix" && tokens[i + 1]) {
+      workspacePrefix = tokens[++i];
+    }
+  }
+  if (!workspacePrefix) {
+    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-execute-task <name> --workspace-prefix <prefix>", "error");
     return;
   }
 
@@ -138,11 +137,10 @@ async function handleExecuteTask(args: string | undefined, ctx: ExtensionCommand
   // All ctx-dependent work must happen before this line.
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "execute-task",
-    workspacePrefix: `goals/${parsed.name}/${stepFolderName(parsed.stepNumber)}`,
-    sessionName: `${parsed.name} execute-task s${parsed.stepNumber}`,
-    queueKey: parsed.name,
-    stepNumber: parsed.stepNumber,
-    initialMessage: `Working directory is goals/${parsed.name}. You are responsible for **Step ${parsed.stepNumber}**. Read TASK.md inside the step folder and resolve the task.`,
+    workspacePrefix,
+    sessionName: `${name} execute-task`,
+    queueKey: name,
+    initialMessage: `Working directory is ${workspacePrefix}. Read TASK.md and resolve the task.`,
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve execute-task config.", "error");

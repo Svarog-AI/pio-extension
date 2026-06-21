@@ -227,15 +227,6 @@ describe("config.prepareSession", () => {
     }).not.toThrow();
   });
 
-  it("throws when stepNumber is missing from params", () => {
-    // Arrange
-    const { stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
-
-    // Act & Assert
-    expect(() => {
-      (config.prepareSession!)(stepDir, {});
-    }).toThrow(/stepNumber/i);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -440,7 +431,7 @@ describe("applyReviewDecision", () => {
     };
 
     // Act: workspaceDir is already the resolved step directory
-    applyReviewDecision(stepDir, 1, outputs);
+    applyReviewDecision(stepDir, outputs);
 
     // Assert
     expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
@@ -462,7 +453,7 @@ describe("applyReviewDecision", () => {
     };
 
     // Act
-    applyReviewDecision(stepDir, 1, outputs);
+    applyReviewDecision(stepDir, outputs);
 
     // Assert
     expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(true);
@@ -483,7 +474,7 @@ describe("applyReviewDecision", () => {
 
     // Act — should not throw even though workspaceDir doesn't exist
     expect(() => {
-      applyReviewDecision(workspaceDir, 3, outputs);
+      applyReviewDecision(workspaceDir, outputs);
     }).not.toThrow();
 
     // Assert
@@ -514,8 +505,8 @@ describe("applyReviewDecision", () => {
     };
 
     // Act: apply APPROVED first, then REJECTED
-    applyReviewDecision(stepDir, 1, approved);
-    applyReviewDecision(stepDir, 1, rejected);
+    applyReviewDecision(stepDir, approved);
+    applyReviewDecision(stepDir, rejected);
 
     // Assert: only REJECTED exists, no stale APPROVED
     expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(true);
@@ -543,8 +534,8 @@ describe("applyReviewDecision", () => {
     };
 
     // Act: apply REJECTED first, then APPROVED
-    applyReviewDecision(stepDir, 1, rejected);
-    applyReviewDecision(stepDir, 1, approved);
+    applyReviewDecision(stepDir, rejected);
+    applyReviewDecision(stepDir, approved);
 
     // Assert: only APPROVED exists, no stale REJECTED
     expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
@@ -565,8 +556,8 @@ describe("applyReviewDecision", () => {
 
     // Act: call twice with APPROVED — should not throw
     expect(() => {
-      applyReviewDecision(stepDir, 1, approved);
-      applyReviewDecision(stepDir, 1, approved);
+      applyReviewDecision(stepDir, approved);
+      applyReviewDecision(stepDir, approved);
     }).not.toThrow();
 
     // Assert: APPROVED exists exactly once
@@ -589,7 +580,7 @@ describe("applyReviewDecision", () => {
     };
 
     // Act: apply APPROVED — should clean up both, then write APPROVED
-    applyReviewDecision(stepDir, 1, approved);
+    applyReviewDecision(stepDir, approved);
 
     // Assert: only APPROVED exists
     expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
@@ -822,30 +813,6 @@ describe("review-task postValidate — missing or invalid frontmatter", () => {
 });
 
 // ---------------------------------------------------------------------------
-// review-task postValidate — missing stepNumber
-// ---------------------------------------------------------------------------
-
-describe("review-task postValidate — missing stepNumber", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("throws when stepNumber is missing", () => {
-    // Arrange: call with empty params {}
-    const { stepDir } = createGoalTree(tempDir, "pv-no-step", { stepNumber: 1 });
-
-    // Act & Assert: throws an error mentioning "stepNumber"
-    expect(() => {
-      config.postValidate!(stepDir, {});
-    }).toThrow(/stepNumber/i);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // review-task postExecute — marker creation
 // ---------------------------------------------------------------------------
 
@@ -918,15 +885,6 @@ describe("review-task postExecute — marker creation", () => {
     }).not.toThrow();
   });
 
-  it("throws when stepNumber is missing", () => {
-    // Arrange
-    const { stepDir } = createGoalTree(tempDir, "pe-no-step", { stepNumber: 1 });
-
-    // Act & Assert
-    expect(() => {
-      postExecuteReview(stepDir, {});
-    }).toThrow(/stepNumber/i);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -985,13 +943,13 @@ describe("reviewTaskTool.execute", () => {
     // Don't create COMPLETED
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { name: "no-completed", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-id", { name: "no-completed", workspacePrefix: "goals/no-completed/S01" }, undefined, undefined, makeCtx(tempDir));
 
     // Tool enqueues successfully — validation happens at /pio-next-task launch time
     expect(result.content[0].text).toContain("Review queued");
   });
 
-  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, stepNumber, initialMessage)", async () => {
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, initialMessage)", async () => {
     // Arrange: goal dir with COMPLETED and SUMMARY.md in S01
     const { goalDir, stepDir } = createGoalTree(tempDir, "my-feature", { stepNumber: 1 });
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
@@ -1000,7 +958,7 @@ describe("reviewTaskTool.execute", () => {
     fs.writeFileSync(path.join(stepDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
 
     const tool = getTool();
-    await tool.execute("test-id", { name: "my-feature", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
+    await tool.execute("test-id", { name: "my-feature", workspacePrefix: "goals/my-feature/S01" }, undefined, undefined, makeCtx(tempDir));
 
     const task = readPendingTask(tempDir, "my-feature");
     expect(task).toBeDefined();
@@ -1009,7 +967,6 @@ describe("reviewTaskTool.execute", () => {
     expect(task!.params).toHaveProperty("sessionName");
     expect(task!.params!.sessionName).toContain("review-task");
     expect(task!.params).toHaveProperty("queueKey", "my-feature");
-    expect(task!.params).toHaveProperty("stepNumber");
     expect(task!.params).toHaveProperty("initialMessage");
   });
 });

@@ -39,6 +39,11 @@ function workspacePrefix(goalName: string): string {
   return "goals/" + goalName;
 }
 
+/** Construct the workspace prefix for a step within a goal (includes step folder). */
+function stepWorkspacePrefix(goalName: string, stepNumber: number): string {
+  return `${workspacePrefix(goalName)}/${stepFolderName(stepNumber)}`;
+}
+
 /** Derive a human-readable session name from goal name, capability, and optional step number. */
 function sessionName(goalName: string, capability: string, stepNumber?: number): string {
   const base = `${goalName} ${capability}`;
@@ -172,7 +177,7 @@ function resolveEvolvePlanToExecuteTask(
     capability: "execute-task",
     initialMessage: `Implement Step ${stepNumber} of goal "${goalName}" using the specification in TASK.md.`,
     sessionName: sessionName(goalName, "execute-task", stepNumber),
-    params: { stepNumber, workspacePrefix: prefix, queueKey: goalName },
+    params: { stepNumber, workspacePrefix: stepWorkspacePrefix(goalName, stepNumber), queueKey: goalName },
   };
 }
 
@@ -188,7 +193,7 @@ function resolveExecuteTaskToReviewTask(
     capability: "review-task",
     initialMessage: `Review the implementation of Step ${stepNumber} for goal "${goalName}".`,
     sessionName: sessionName(goalName, "review-task", stepNumber),
-    params: { stepNumber, workspacePrefix: workspacePrefix(goalName), queueKey: goalName },
+    params: { stepNumber, workspacePrefix: stepWorkspacePrefix(goalName, stepNumber), queueKey: goalName },
   };
 }
 
@@ -236,7 +241,7 @@ function resolveReviewTaskToExecuteTask(
       capability: "execute-task",
       initialMessage: `Step ${stepNumber} rejected. Re-implement using the feedback in REVIEW.md.`,
       sessionName: sessionName(goalName, "execute-task", stepNumber),
-      params: { stepNumber, workspacePrefix: prefix, queueKey: goalName },
+      params: { stepNumber, workspacePrefix: stepWorkspacePrefix(goalName, stepNumber), queueKey: goalName },
     };
   }
 

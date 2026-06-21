@@ -13,16 +13,16 @@ import { resolveCapabilityConfig } from "../../capability-config";
 import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { validateExecuteStep, resolveExecuteReadOnlyFiles } from "./callbacks";
+import { resolveExecuteReadOnlyFiles } from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // Contract (single source of truth — imported by callbacks)
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ name: "goal", file: "GOAL.md" }, { name: "plan", file: "PLAN.md" }, { name: "task", file: "S{stepNumber:02d}/TASK.md", schema: TASK_FRONTMATTER_SCHEMA }],
-  excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
-  outputs: [{ name: "test", file: "S{stepNumber:02d}/TEST.md" }, { name: "summary", file: "S{stepNumber:02d}/SUMMARY.md" }],
+  inputs: [{ name: "task", file: "TASK.md", schema: TASK_FRONTMATTER_SCHEMA }],
+  excludedFiles: ["REVISE_PLAN_NEEDED"],
+  outputs: [{ name: "test", file: "TEST.md" }, { name: "summary", file: "SUMMARY.md" }],
 };
 
 // ---------------------------------------------------------------------------
@@ -94,20 +94,15 @@ const executeTaskTool = defineTool({
   }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = await validateExecuteStep(params.name, ctx.cwd, params.stepNumber);
-
-    if (!result.ready) {
-      return { content: [{ type: "text", text: result.error }], details: {} };
-    }
-
+    const stepNumber = params.stepNumber;
     enqueueTask(ctx.cwd, params.name, {
       capability: "execute-task",
       params: {
-        workspacePrefix: `goals/${params.name}`,
-        sessionName: `${params.name} execute-task s${result.stepNumber}`,
+        workspacePrefix: `goals/${params.name}/${stepFolderName(stepNumber)}`,
+        sessionName: `${params.name} execute-task s${stepNumber}`,
         queueKey: params.name,
-        stepNumber: result.stepNumber,
-        initialMessage: `Working directory is goals/${params.name}. You are responsible for **Step ${result.stepNumber}**. Read TASK.md inside the step folder and resolve the task.`,
+        stepNumber,
+        initialMessage: `Working directory is goals/${params.name}. You are responsible for **Step ${stepNumber}**. Read TASK.md inside the step folder and resolve the task.`,
       },
     });
 
@@ -115,7 +110,7 @@ const executeTaskTool = defineTool({
       content: [
         {
           type: "text",
-          text: `Task queued for Step ${result.stepNumber} of goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.`,
+          text: `Task queued for Step ${stepNumber} of goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.`,
         },
       ],
       details: {},
@@ -139,22 +134,15 @@ async function handleExecuteTask(args: string | undefined, ctx: ExtensionCommand
     return;
   }
 
-  const result = await validateExecuteStep(parsed.name, ctx.cwd, parsed.stepNumber);
-
-  if (!result.ready) {
-    ctx.ui.notify(result.error, "error");
-    return;
-  }
-
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "execute-task",
-    workspacePrefix: `goals/${parsed.name}`,
-    sessionName: `${parsed.name} execute-task s${result.stepNumber}`,
+    workspacePrefix: `goals/${parsed.name}/${stepFolderName(parsed.stepNumber)}`,
+    sessionName: `${parsed.name} execute-task s${parsed.stepNumber}`,
     queueKey: parsed.name,
-    stepNumber: result.stepNumber,
-    initialMessage: `Working directory is goals/${parsed.name}. You are responsible for **Step ${result.stepNumber}**. Read TASK.md inside the step folder and resolve the task.`,
+    stepNumber: parsed.stepNumber,
+    initialMessage: `Working directory is goals/${parsed.name}. You are responsible for **Step ${parsed.stepNumber}**. Read TASK.md inside the step folder and resolve the task.`,
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve execute-task config.", "error");

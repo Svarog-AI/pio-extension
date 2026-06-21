@@ -15,7 +15,6 @@ import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import {
-  validateReviewStep,
   resolveReviewReadOnlyFiles,
   resolveReviewWriteAllowlist,
   postValidateReview,
@@ -27,8 +26,12 @@ import {
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ name: "goal", file: "GOAL.md" }, { name: "plan", file: "PLAN.md" }, { name: "completed", file: "S{stepNumber:02d}/COMPLETED" }, { name: "summary", file: "S{stepNumber:02d}/SUMMARY.md" }, { name: "task", file: "S{stepNumber:02d}/TASK.md", schema: TASK_FRONTMATTER_SCHEMA }],
-  outputs: [{ name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema: REVIEW_OUTPUT_SCHEMA }],
+  inputs: [
+    { name: "completed", file: "COMPLETED" },
+    { name: "summary", file: "SUMMARY.md" },
+    { name: "task", file: "TASK.md", schema: TASK_FRONTMATTER_SCHEMA },
+  ],
+  outputs: [{ name: "review", file: "REVIEW.md", schema: REVIEW_OUTPUT_SCHEMA }],
 };
 
 // ---------------------------------------------------------------------------
@@ -60,15 +63,13 @@ function prepareReviewSession(workingDir: string, params?: Record<string, unknow
   if (stepNumber == null) {
     throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
   }
-  const folder = stepFolderName(stepNumber);
-  const stepDir = path.join(workingDir, folder);
 
-  // Delete stale markers from previous review attempts; force:true skips missing files.
-  fs.rmSync(path.join(stepDir, "APPROVED"), { force: true });
-  fs.rmSync(path.join(stepDir, "REJECTED"), { force: true });
+  // workingDir is already the resolved step directory (from Step 9) — no prefix needed
+  fs.rmSync(path.join(workingDir, "APPROVED"), { force: true });
+  fs.rmSync(path.join(workingDir, "REJECTED"), { force: true });
 
   // Read TASK.md skills and merge into capability config
-  const capState = new CapState(CONTRACT, workingDir, { stepNumber });
+  const capState = new CapState(CONTRACT, workingDir, params);
   const taskFile = capState.input<{ skills?: unknown }>("task");
   const taskData = taskFile.read();
   const taskSkills = taskData?.skills ?? null;
@@ -93,20 +94,15 @@ const reviewTaskTool = defineTool({
   }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = await validateReviewStep(params.name, ctx.cwd, params.stepNumber);
-
-    if (!result.ready) {
-      return { content: [{ type: "text", text: result.error }], details: {} };
-    }
-
+    const stepNumber = params.stepNumber;
     enqueueTask(ctx.cwd, params.name, {
       capability: "review-task",
       params: {
-        workspacePrefix: `goals/${params.name}`,
-        sessionName: `${params.name} review-task s${result.stepNumber}`,
+        workspacePrefix: `goals/${params.name}/${stepFolderName(stepNumber)}`,
+        sessionName: `${params.name} review-task s${stepNumber}`,
         queueKey: params.name,
-        stepNumber: result.stepNumber,
-        initialMessage: `Review the implementation of Step ${result.stepNumber} of goal "${params.name}".`,
+        stepNumber,
+        initialMessage: `Review the implementation of Step ${stepNumber} of goal "${params.name}".`,
       },
     });
 
@@ -114,7 +110,7 @@ const reviewTaskTool = defineTool({
       content: [
         {
           type: "text",
-          text: `Review queued for Step ${result.stepNumber} of goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.`,
+          text: `Review queued for Step ${stepNumber} of goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.`,
         },
       ],
       details: {},
@@ -138,22 +134,15 @@ async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandC
     return;
   }
 
-  const result = await validateReviewStep(parsed.name, ctx.cwd, parsed.stepNumber);
-
-  if (!result.ready) {
-    ctx.ui.notify(result.error, "error");
-    return;
-  }
-
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "review-task",
-    workspacePrefix: `goals/${parsed.name}`,
-    sessionName: `${parsed.name} review-task s${result.stepNumber}`,
+    workspacePrefix: `goals/${parsed.name}/${stepFolderName(parsed.stepNumber)}`,
+    sessionName: `${parsed.name} review-task s${parsed.stepNumber}`,
     queueKey: parsed.name,
-    stepNumber: result.stepNumber,
-    initialMessage: `Review the implementation of Step ${result.stepNumber} of goal "${parsed.name}".`,
+    stepNumber: parsed.stepNumber,
+    initialMessage: `Review the implementation of Step ${parsed.stepNumber} of goal "${parsed.name}".`,
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve review-task config.", "error");

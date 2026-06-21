@@ -227,9 +227,9 @@ describe("pio_transition tool", () => {
     );
   });
 
-  it("calls recordTransition only when in a goal workspace", async () => {
-    // Goal workspace — should call recordTransition
-    const mockCtxGoal = makeMockCtx({
+  it("calls recordTransition only when session has a queueKey", async () => {
+    // Tracked session (has queueKey) — should call recordTransition
+    const mockCtxTracked = makeMockCtx({
       capability: "execute-task",
       sessionParams: { queueKey: "my-feature", workingDir: "/repo/.pio/goals/my-feature" },
     });
@@ -239,14 +239,14 @@ describe("pio_transition tool", () => {
       { capability: "review-task" },
       new AbortController().signal,
       () => {},
-      mockCtxGoal,
+      mockCtxTracked,
     );
 
     expect(mockRecordTransition).toHaveBeenCalledTimes(1);
     mockRecordTransition.mockClear();
 
-    // Non-goal workspace — should NOT call recordTransition
-    const mockCtxNonGoal = makeMockCtx({
+    // Untracked session (no queueKey) — should NOT call recordTransition
+    const mockCtxUntracked = makeMockCtx({
       capability: "execute-task",
       sessionParams: { workingDir: "/some/random/dir" },
     });
@@ -256,7 +256,7 @@ describe("pio_transition tool", () => {
       { capability: "review-task" },
       new AbortController().signal,
       () => {},
-      mockCtxNonGoal,
+      mockCtxUntracked,
     );
 
     expect(mockRecordTransition).not.toHaveBeenCalled();

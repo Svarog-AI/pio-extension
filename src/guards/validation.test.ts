@@ -839,32 +839,20 @@ describe("CONTRACT integration — execute-task", () => {
   beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
-  it("all inputs present → success", async () => {
+  it("all inputs present → success (plain file names)", async () => {
     const { CONTRACT } = await import("../capabilities/execute-task/config");
-    fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
-    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
-    fs.mkdirSync(path.join(tempDir, "S02"), { recursive: true });
-    fs.writeFileSync(path.join(tempDir, "S02", "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
+    // CONTRACT uses plain file names — files resolve directly in baseDir
+    fs.writeFileSync(path.join(tempDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
     const result = validateInputs(tempDir, CONTRACT, { stepNumber: 2 });
     expect(result).toEqual({ success: true });
   });
 
-  it("missing TASK.md → failure naming S02/TASK.md", async () => {
+  it("missing TASK.md → failure naming TASK.md", async () => {
     const { CONTRACT } = await import("../capabilities/execute-task/config");
-    fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
-    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
-    // S02/TASK.md is missing
+    // TASK.md is missing
     const result = validateInputs(tempDir, CONTRACT, { stepNumber: 2 });
     expect(result.success).toBe(false);
     expect(result.message).toContain("TASK.md");
-  });
-
-  it("missing GOAL.md → failure naming GOAL.md", async () => {
-    const { CONTRACT } = await import("../capabilities/execute-task/config");
-    // GOAL.md is missing — checked first (fail-fast)
-    const result = validateInputs(tempDir, CONTRACT, { stepNumber: 2 });
-    expect(result.success).toBe(false);
-    expect(result.message).toContain("GOAL.md");
   });
 });
 
@@ -874,37 +862,31 @@ describe("CONTRACT integration — review-task", () => {
   beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
-  it("all inputs present → success", async () => {
+  it("all inputs present → success (plain file names)", async () => {
     const { CONTRACT } = await import("../capabilities/review-task/config");
-    fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
-    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
-    fs.mkdirSync(path.join(tempDir, "S01"), { recursive: true });
-    fs.writeFileSync(path.join(tempDir, "S01", "COMPLETED"), "", "utf-8");
-    fs.writeFileSync(path.join(tempDir, "S01", "SUMMARY.md"), "content", "utf-8");
-    fs.writeFileSync(path.join(tempDir, "S01", "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
+    // CONTRACT uses plain file names — files resolve directly in baseDir
+    fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "SUMMARY.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
     const result = validateInputs(tempDir, CONTRACT, { stepNumber: 1 });
     expect(result).toEqual({ success: true });
   });
 
-  it("missing COMPLETED → failure naming S01/COMPLETED", async () => {
+  it("missing COMPLETED → failure naming COMPLETED", async () => {
     const { CONTRACT } = await import("../capabilities/review-task/config");
-    fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
-    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
-    fs.mkdirSync(path.join(tempDir, "S01"), { recursive: true });
-    fs.writeFileSync(path.join(tempDir, "S01", "SUMMARY.md"), "content", "utf-8");
-    // S01/COMPLETED is missing
+    fs.writeFileSync(path.join(tempDir, "SUMMARY.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
+    // COMPLETED is missing
     const result = validateInputs(tempDir, CONTRACT, { stepNumber: 1 });
     expect(result.success).toBe(false);
     expect(result.message).toContain("COMPLETED");
   });
 
-  it("missing SUMMARY.md → failure naming S01/SUMMARY.md", async () => {
+  it("missing SUMMARY.md → failure naming SUMMARY.md", async () => {
     const { CONTRACT } = await import("../capabilities/review-task/config");
-    fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
-    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
-    fs.mkdirSync(path.join(tempDir, "S01"), { recursive: true });
-    fs.writeFileSync(path.join(tempDir, "S01", "COMPLETED"), "", "utf-8");
-    // S01/SUMMARY.md is missing
+    fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
+    // SUMMARY.md is missing
     const result = validateInputs(tempDir, CONTRACT, { stepNumber: 1 });
     expect(result.success).toBe(false);
     expect(result.message).toContain("SUMMARY.md");
@@ -1138,20 +1120,19 @@ describe("CONTRACT outputs integration — execute-task", () => {
   beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
-  it("all outputs present → success: true", async () => {
+  it("all outputs present → success: true (plain file names)", async () => {
     const { CONTRACT } = await import("../capabilities/execute-task/config");
-    fs.mkdirSync(path.join(tempDir, "S04"), { recursive: true });
-    fs.writeFileSync(path.join(tempDir, "S04", "TEST.md"), "content", "utf-8");
-    fs.writeFileSync(path.join(tempDir, "S04", "SUMMARY.md"), "content", "utf-8");
+    // CONTRACT uses plain file names — files resolve directly in baseDir
+    fs.writeFileSync(path.join(tempDir, "TEST.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "SUMMARY.md"), "content", "utf-8");
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 4 });
     expect(result).toEqual({ success: true });
   });
 
-  it("missing SUMMARY.md → failure naming S04/SUMMARY.md", async () => {
+  it("missing SUMMARY.md → failure naming SUMMARY.md", async () => {
     const { CONTRACT } = await import("../capabilities/execute-task/config");
-    fs.mkdirSync(path.join(tempDir, "S04"), { recursive: true });
-    fs.writeFileSync(path.join(tempDir, "S04", "TEST.md"), "content", "utf-8");
-    // S04/SUMMARY.md is missing
+    fs.writeFileSync(path.join(tempDir, "TEST.md"), "content", "utf-8");
+    // SUMMARY.md is missing
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 4 });
     expect(result.success).toBe(false);
     expect(result.message).toContain("SUMMARY.md");
@@ -1164,11 +1145,11 @@ describe("CONTRACT outputs integration — review-task", () => {
   beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
-  it("all outputs present → success: true", async () => {
+  it("all outputs present → success: true (plain file names)", async () => {
     const { CONTRACT } = await import("../capabilities/review-task/config");
-    fs.mkdirSync(path.join(tempDir, "S05"), { recursive: true });
+    // CONTRACT uses plain file names — files resolve directly in baseDir
     fs.writeFileSync(
-      path.join(tempDir, "S05", "REVIEW.md"),
+      path.join(tempDir, "REVIEW.md"),
       `---
 decision: APPROVED
 criticalIssues: 0

@@ -2,7 +2,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { vi } from "vitest";
-import { validateExecuteStep } from "./callbacks";
 import config, { register } from "./config";
 import { stepFolderName } from "../../fs-utils";
 import { resolveCapabilityConfig } from "../../capability-config";
@@ -204,9 +203,9 @@ describe("resolveExecuteReadOnlyFiles", () => {
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: read-only files contain only TASK.md
-    expect(result?.readOnlyFiles).toEqual(["S01/TASK.md"]);
-    expect(result?.readOnlyFiles).not.toContain("S01/TEST.md");
+    // Assert: read-only files contain only TASK.md (plain name — workspacePrefix handles step folder)
+    expect(result?.readOnlyFiles).toEqual(["TASK.md"]);
+    expect(result?.readOnlyFiles).not.toContain("TEST.md");
   });
 });
 
@@ -263,32 +262,7 @@ describe("execute-task defaultInitialMessage", () => {
 // validateExecuteStep — directory resolution
 // ---------------------------------------------------------------------------
 
-describe("validateExecuteStep", () => {
-  let tempDir: string;
 
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("resolves goal directory and returns ready with stepNumber", async () => {
-    const goalDir = path.join(tempDir, ".pio", "goals", "my-goal");
-    fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal");
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "---\ntotalSteps: 3\nsteps:\n  - name: test\n    complexity: task\n---\n# Plan");
-    const stepDir = path.join(goalDir, "S03");
-    fs.mkdirSync(stepDir, { recursive: true });
-    fs.writeFileSync(path.join(stepDir, "TASK.md"), "---\nskills:\n  mandatory: []\n---\n# Task");
-
-    const result = await validateExecuteStep("my-goal", tempDir, 3);
-
-    expect(result.ready).toBe(true);
-    if (result.ready) {
-      expect(result.stepNumber).toBe(3);
-    }
-  });
-});
 
 // ---------------------------------------------------------------------------
 // Tool execute — pio_execute_task
@@ -332,8 +306,8 @@ describe("executeTaskTool.execute", () => {
     };
   }
 
-  it("returns error when TASK.md is missing", async () => {
-    // Arrange: goal dir exists with GOAL.md but no TASK.md in S01
+  it("enqueues task even when TASK.md is missing (validation moves to launch time)", async () => {
+    // Arrange: goal dir exists but no TASK.md in S01
     const { goalDir, stepDir } = createGoalTree(tempDir, "no-task", { stepNumber: 1 });
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
     // Don't create TASK.md
@@ -341,7 +315,8 @@ describe("executeTaskTool.execute", () => {
     const tool = getTool();
     const result = await tool.execute("test-id", { name: "no-task", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
 
-    expect(result.content[0].text).toMatch(/TASK/i);
+    // Tool enqueues successfully — validation happens at /pio-next-task launch time
+    expect(result.content[0].text).toContain("Task queued");
   });
 
   it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, stepNumber, initialMessage)", async () => {
@@ -356,7 +331,7 @@ describe("executeTaskTool.execute", () => {
     const task = readPendingTask(tempDir, "my-feature");
     expect(task).toBeDefined();
     expect(task!.capability).toBe("execute-task");
-    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature");
+    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature/S01");
     expect(task!.params).toHaveProperty("sessionName");
     expect(task!.params!.sessionName).toContain("execute-task");
     expect(task!.params).toHaveProperty("queueKey", "my-feature");

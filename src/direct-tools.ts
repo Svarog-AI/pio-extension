@@ -465,11 +465,6 @@ async function handleGoalFromIssue(args: string | undefined, ctx: ExtensionComma
 // Helpers (shared by tool and command)
 // ---------------------------------------------------------------------------
 
-/** Check if a working directory path looks like a goal workspace. */
-export function isGoalWorkspace(workingDir?: string): boolean {
-  return !!workingDir && workingDir.includes("/.pio/goals/");
-}
-
 // ---------------------------------------------------------------------------
 // pio_transition tool
 // ---------------------------------------------------------------------------
@@ -507,8 +502,8 @@ const transitionTool = defineTool({
       params: mergedParams,
     });
 
-    // Record audit only for goal workspaces
-    if (isGoalWorkspace(config.workingDir)) {
+    // Record audit for tracked sessions (those with a queueKey)
+    if (typeof config.sessionParams?.queueKey === "string") {
       recordTransition(
         config.workingDir!,
         config.capability!,
@@ -540,8 +535,8 @@ async function handleTransition(_args: string | undefined, ctx: ExtensionCommand
     ? { queueKey: config.sessionParams.queueKey, stepNumber: config.sessionParams.stepNumber, _sessionContext: config.sessionParams }
     : { ...config.sessionParams };
 
-  // Build context: { baseDir } for goal workspaces, raw params otherwise
-  const context = isGoalWorkspace(config.workingDir)
+  // Build context: { baseDir } for tracked sessions (with queueKey), raw params otherwise
+  const context = typeof config.sessionParams?.queueKey === "string"
     ? { baseDir: config.workingDir! }
     : (config.sessionParams as unknown as { baseDir?: string });
 

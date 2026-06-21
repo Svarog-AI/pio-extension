@@ -64,10 +64,10 @@ vi.mock(
     return {
       ...actual,
       getSessionParams: sessionCapabilityMock.getSessionParams,
-      // Derive from getSessionParams — always tests the real type-guard logic
+      // Derive from getSessionParams — always tests the real type-guard logic (queueKey instead of goalName)
       getSessionGoalName: () => {
         const params = sessionCapabilityMock.getSessionParams();
-        return typeof params?.goalName === "string" ? params.goalName : undefined;
+        return typeof params?.queueKey === "string" ? params.queueKey : undefined;
       },
       launchCapability: sessionCapabilityMock.launchCapability,
     };
@@ -177,22 +177,22 @@ describe("getSessionGoalName", () => {
     vi.clearAllMocks();
   });
 
-  it('given { goalName: "my-feature" }, returns "my-feature"', () => {
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ goalName: "my-feature" });
+  it('given { queueKey: "my-feature" }, returns "my-feature"', () => {
+    sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: "my-feature" });
     expect(getSessionGoalName()).toBe("my-feature");
   });
 
-  it("given { goalName: 123 }, returns undefined (non-string rejected)", () => {
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ goalName: 123 });
+  it("given { queueKey: 123 }, returns undefined (non-string rejected)", () => {
+    sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: 123 });
     expect(getSessionGoalName()).toBeUndefined();
   });
 
-  it("given { goalName: null }, returns undefined (null rejected)", () => {
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ goalName: null });
+  it("given { queueKey: null }, returns undefined (null rejected)", () => {
+    sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: null });
     expect(getSessionGoalName()).toBeUndefined();
   });
 
-  it('given { otherKey: "value" }, returns undefined (no goalName key)', () => {
+  it('given { otherKey: "value" }, returns undefined (no queueKey key)', () => {
     sessionCapabilityMock.getSessionParams.mockReturnValue({ otherKey: "value" });
     expect(getSessionGoalName()).toBeUndefined();
   });
@@ -237,10 +237,10 @@ describe("handleNextTask — goal resolution order", () => {
   }
 
   it("passes session goalName to launchAndCleanup when no explicit arg", async () => {
-    // Arrange: two goals pending, session has goalName = "other-goal"
+    // Arrange: two goals pending, session has queueKey = "other-goal"
     enqueueTaskFile(tempDir, "other-goal");
     enqueueTaskFile(tempDir, "session-goal");
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ goalName: "other-goal" });
+    sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: "other-goal" });
     mockResolveCapabilityConfigForSession.mockResolvedValue({
       capability: "create-plan",
       workingDir: tempDir,
@@ -264,7 +264,7 @@ describe("handleNextTask — goal resolution order", () => {
   });
 
   it("falls through to scan when getSessionGoalName returns undefined", async () => {
-    // Arrange: exactly one pending goal, no session context (no goalName)
+    // Arrange: exactly one pending goal, no session context (no queueKey)
     enqueueTaskFile(tempDir, "only-goal");
     sessionCapabilityMock.getSessionParams.mockReturnValue(undefined);
     mockResolveCapabilityConfigForSession.mockResolvedValue({
@@ -287,7 +287,7 @@ describe("handleNextTask — goal resolution order", () => {
     // Arrange: two goals pending, session says "session-goal" but user specifies "explicit-goal"
     enqueueTaskFile(tempDir, "explicit-goal");
     enqueueTaskFile(tempDir, "session-goal");
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ goalName: "session-goal" });
+    sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: "session-goal" });
 
     const ctx = makeCtx();
 
@@ -301,7 +301,7 @@ describe("handleNextTask — goal resolution order", () => {
 
   it("shows notification when session goalName has no pending task", async () => {
     // Arrange: no queue files at all, session says "empty-goal"
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ goalName: "empty-goal" });
+    sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: "empty-goal" });
 
     const ctx = makeCtx();
 

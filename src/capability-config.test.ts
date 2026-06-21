@@ -137,9 +137,8 @@ describe("resolveCapabilityConfig — workspacePrefix resolution", () => {
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    // readOnlyFiles callback should have been called with resolved dir
-    // and should produce paths like "S01/TASK.md" (capability decides path shape)
-    expect(result!.readOnlyFiles).toContain("S01/TASK.md");
+    // After Step 10, readOnlyFiles returns plain "TASK.md" (workspacePrefix handles step folder)
+    expect(result!.readOnlyFiles).toContain("TASK.md");
     // workingDir is the resolved directory
     expect(result!.workingDir).toBe(path.join(cwd, ".pio", "goals", "my-feature"));
   });
@@ -290,31 +289,34 @@ describe("resolveCapabilityConfig — step-dependent callback resolution", () =>
     expect(result!.writeAllowlist).not.toContain("S05/TEST.md");
   });
 
-  it("invokes execute-task contract with correct outputs", async () => {
+  it("invokes execute-task contract with correct outputs (plain file names)", async () => {
     const params = { capability: "execute-task" as string, goalName: "my-feature", stepNumber: 2, sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    expect(result!.contract.outputs).toContainEqual(expect.objectContaining({ file: "S{stepNumber:02d}/TEST.md" }));
-    expect(result!.contract.outputs).toContainEqual(expect.objectContaining({ file: "S{stepNumber:02d}/SUMMARY.md" }));
+    // After Step 10, CONTRACT uses plain file names (workspacePrefix handles step folder)
+    expect(result!.contract.outputs).toContainEqual(expect.objectContaining({ file: "TEST.md" }));
+    expect(result!.contract.outputs).toContainEqual(expect.objectContaining({ file: "SUMMARY.md" }));
   });
 
-  it("invokes execute-task readOnlyFiles callback", async () => {
+  it("invokes execute-task readOnlyFiles callback (plain file names)", async () => {
     const params = { capability: "execute-task" as string, goalName: "my-feature", stepNumber: 1, sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    expect(result!.readOnlyFiles).toContain("S01/TASK.md");
-    expect(result!.readOnlyFiles).not.toContain("S01/TEST.md");
+    // After Step 10, readOnlyFiles returns plain "TASK.md"
+    expect(result!.readOnlyFiles).toContain("TASK.md");
+    expect(result!.readOnlyFiles).not.toContain("TEST.md");
   });
 
-  it("invokes review-task writeAllowlist callback (REVIEW.md only)", async () => {
+  it("invokes review-task writeAllowlist callback (plain REVIEW.md)", async () => {
     const params = { capability: "review-task" as string, goalName: "my-feature", stepNumber: 4, sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    expect(result!.writeAllowlist).toContain("S04/REVIEW.md");
-    expect(result!.writeAllowlist).not.toContain("S04/APPROVED");
+    // After Step 10, writeAllowlist returns plain "REVIEW.md"
+    expect(result!.writeAllowlist).toContain("REVIEW.md");
+    expect(result!.writeAllowlist).not.toContain("APPROVED");
     expect(result!.writeAllowlist).toHaveLength(1);
   });
 });

@@ -3,8 +3,6 @@ import * as path from "node:path";
 
 import { CapState } from "../../capability-state";
 import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
-import { stepFolderName } from "../../fs-utils";
-import { validateInputs } from "../../guards/validation";
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
 import { CONTRACT } from "./config";
 
@@ -26,34 +24,19 @@ const DECISIONS_FILE = "DECISIONS.md";
 /**
  * Callback used by the `readOnlyFiles` field in config.
  * Returns array of read-only files for the given step.
+ * workspacePrefix already includes the step folder — plain names resolve correctly.
  */
-export function resolveReviewReadOnlyFiles(_dir: string, params?: Record<string, unknown>): string[] {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-  if (stepNumber == null) {
-    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
-  }
-  const folder = stepFolderName(stepNumber);
-  return [
-    "GOAL.md",
-    "PLAN.md",
-    `${folder}/${TASK_FILE}`,
-    `${folder}/${TEST_FILE}`,
-    `${folder}/${SUMMARY_FILE}`,
-    `${folder}/${DECISIONS_FILE}`,
-  ];
+export function resolveReviewReadOnlyFiles(_dir: string, _params?: Record<string, unknown>): string[] {
+  return [TASK_FILE, TEST_FILE, SUMMARY_FILE, DECISIONS_FILE];
 }
 
 /**
  * Callback used by the `writeAllowlist` field in config.
  * Returns array of writable files for the given step.
+ * workspacePrefix already includes the step folder — plain name resolves correctly.
  */
-export function resolveReviewWriteAllowlist(_dir: string, params?: Record<string, unknown>): string[] {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-  if (stepNumber == null) {
-    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
-  }
-  const folder = stepFolderName(stepNumber);
-  return [`${folder}/${REVIEW_FILE}`];
+export function resolveReviewWriteAllowlist(_dir: string, _params?: Record<string, unknown>): string[] {
+  return [REVIEW_FILE];
 }
 
 // ---------------------------------------------------------------------------
@@ -71,7 +54,7 @@ export function postValidateReview(workspaceDir: string, params?: Record<string,
   }
 
   // Read REVIEW.md via CapState — uses CONTRACT.outputs schema for validation
-  const capState = new CapState(CONTRACT, workspaceDir, { stepNumber });
+  const capState = new CapState(CONTRACT, workspaceDir, params);
   const reviewFile = capState.output<ReviewOutputs>("review");
 
   if (!reviewFile.exists()) {
@@ -80,7 +63,7 @@ export function postValidateReview(workspaceDir: string, params?: Record<string,
   const data = reviewFile.read();
   if (data === null) {
     // Get detailed error message via direct validation
-    const reviewPath = path.join(workspaceDir, stepFolderName(stepNumber), "REVIEW.md");
+    const reviewPath = path.join(workspaceDir, REVIEW_FILE);
     const raw = extractFrontmatter(reviewPath);
     if (raw === null) {
       return { success: false, message: `REVIEW.md does not contain valid YAML frontmatter for step ${stepNumber}` };
@@ -108,7 +91,7 @@ export function postExecuteReview(workspaceDir: string, params?: Record<string, 
   }
 
   // Re-read REVIEW.md via CapState (reads fresh from disk on every call)
-  const capState = new CapState(CONTRACT, workspaceDir, { stepNumber });
+  const capState = new CapState(CONTRACT, workspaceDir, params);
   const reviewFile = capState.output<ReviewOutputs>("review");
 
   if (!reviewFile.exists()) {
@@ -134,8 +117,8 @@ export function postExecuteReview(workspaceDir: string, params?: Record<string, 
  * APPROVED: creates empty S{NN}/APPROVED, leaves COMPLETED intact.
  * REJECTED: creates empty S{NN}/REJECTED, deletes S{NN}/COMPLETED.
  *
- * @param workspaceDir - Absolute path to the workspace directory
- * @param stepNumber - Step number (zero-padded automatically)
+ * @param workspaceDir - Absolute path to the workspace directory (already the step directory)
+ * @param stepNumber - Step number (kept for error messages only)
  * @param outputs - Validated review outputs (TypeScript guarantees correct types)
  */
 export function applyReviewDecision(
@@ -143,47 +126,20 @@ export function applyReviewDecision(
   stepNumber: number,
   outputs: ReviewOutputs,
 ): void {
-  const folder = stepFolderName(stepNumber);
-  const stepDir = path.join(workspaceDir, folder);
-
-  // Ensure the step directory exists (should already exist with REVIEW.md, but be safe)
-  fs.mkdirSync(stepDir, { recursive: true });
+  // workspaceDir is already the resolved step directory — no stepFolderName needed
+  fs.mkdirSync(workspaceDir, { recursive: true });
 
   // Remove stale markers from previous review attempts; force:true skips missing files.
   // This makes the function idempotent — safe to call multiple times with different decisions.
-  fs.rmSync(path.join(stepDir, "APPROVED"), { force: true });
-  fs.rmSync(path.join(stepDir, "REJECTED"), { force: true });
+  fs.rmSync(path.join(workspaceDir, "APPROVED"), { force: true });
+  fs.rmSync(path.join(workspaceDir, "REJECTED"), { force: true });
 
   if (outputs.decision === "APPROVED") {
-    fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
+    fs.writeFileSync(path.join(workspaceDir, "APPROVED"), "", "utf-8");
   } else {
     // REJECTED
-    fs.writeFileSync(path.join(stepDir, "REJECTED"), "", "utf-8");
+    fs.writeFileSync(path.join(workspaceDir, "REJECTED"), "", "utf-8");
     // Delete COMPLETED so execute-task permits re-execution
-    fs.rmSync(path.join(stepDir, "COMPLETED"), { force: true });
+    fs.rmSync(path.join(workspaceDir, "COMPLETED"), { force: true });
   }
-}
-
-// ---------------------------------------------------------------------------
-// Pre-launch validation
-// ---------------------------------------------------------------------------
-
-/**
- * Resolve the goal directory for review-task.
- * Input validation is handled automatically by launchCapability().
- */
-export async function validateReviewStep(
-  name: string,
-  cwd: string,
-  stepNumber: number,
-): Promise<
-  | { ready: true; stepNumber: number }
-  | { ready: false; error: string }
-> {
-  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix: `goals/${name}`, stepNumber });
-  if (!result.success) {
-    return { ready: false, error: result.message ?? `Step ${stepNumber} validation failed for goal "${name}".` };
-  }
-
-  return { ready: true, stepNumber };
 }

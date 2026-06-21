@@ -207,7 +207,7 @@ describe("dispatch — evolve-plan → execute-task", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Implement Step 3 of goal "feat" using the specification in TASK.md.`,
       sessionName: "feat execute-task s3",
-      params: { stepNumber: 3, workspacePrefix: "goals/feat", queueKey: "feat" },
+      params: { stepNumber: 3, workspacePrefix: "goals/feat/S03", queueKey: "feat" },
     });
   });
 
@@ -228,7 +228,7 @@ describe("dispatch — evolve-plan → execute-task", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Implement Step 2 of goal "feat" using the specification in TASK.md.`,
       sessionName: "feat execute-task s2",
-      params: { stepNumber: 2, workspacePrefix: "goals/feat", queueKey: "feat" },
+      params: { stepNumber: 2, workspacePrefix: "goals/feat/S02", queueKey: "feat" },
     });
   });
 });
@@ -254,7 +254,9 @@ describe("dispatch — review→evolve→finalize chain", () => {
     writeReview(goalDir, 3, "APPROVED");
 
     // Act step 1: review-task approval → evolve-plan with incremented stepNumber
-    const reviewResults = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 3 });
+    // review-task workspacePrefix includes step folder — baseDir is the resolved step directory
+    const reviewStepDir = path.join(tempDir, ".pio", "goals", "feat", "S03");
+    const reviewResults = dispatch(goalDrivenDevelopment, "review-task", { baseDir: reviewStepDir }, { queueKey: "feat", stepNumber: 3 });
 
     // Assert step 1: routes to evolve-plan with stepNumber 4
     expect(reviewResults).toHaveLength(1);
@@ -351,7 +353,7 @@ describe("dispatch — evolve-plan completion detection", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Implement Step 2 of goal "feat" using the specification in TASK.md.`,
       sessionName: "feat execute-task s2",
-      params: { stepNumber: 2, workspacePrefix: "goals/feat", queueKey: "feat" },
+      params: { stepNumber: 2, workspacePrefix: "goals/feat/S02", queueKey: "feat" },
     });
   });
 });
@@ -381,7 +383,7 @@ describe("dispatch — execute-task → review-task", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Review the implementation of Step 5 for goal "feat".`,
       sessionName: "feat review-task s5",
-      params: { stepNumber: 5, workspacePrefix: "goals/feat", queueKey: "feat" },
+      params: { stepNumber: 5, workspacePrefix: "goals/feat/S05", queueKey: "feat" },
     });
   });
 
@@ -402,7 +404,7 @@ describe("dispatch — execute-task → review-task", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Review the implementation of Step 5 for goal "feat".`,
       sessionName: "feat review-task s5",
-      params: { stepNumber: 5, workspacePrefix: "goals/feat", queueKey: "feat" },
+      params: { stepNumber: 5, workspacePrefix: "goals/feat/S05", queueKey: "feat" },
     });
   });
 });
@@ -424,8 +426,13 @@ describe("dispatch — review-task approval", () => {
 
   afterEach(() => cleanup(tempDir));
 
+  // review-task workspacePrefix includes step folder — baseDir is the resolved step directory
+  function stepCtx(stepNumber: number): { baseDir: string } {
+    return { baseDir: path.join(tempDir, ".pio", "goals", "feat", `S${String(stepNumber).padStart(2, "0")}`) };
+  }
+
   it("routes to evolve-plan with incremented stepNumber when REVIEW.md decision is APPROVED", () => {
-    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", stepCtx(3), { queueKey: "feat", stepNumber: 3 });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
@@ -438,7 +445,7 @@ describe("dispatch — review-task approval", () => {
   });
 
   it("preserves queueKey while incrementing stepNumber", () => {
-    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", stepCtx(3), { queueKey: "feat", stepNumber: 3 });
 
     expect(results).toHaveLength(1);
     expect(results[0].params?.queueKey).toBe("feat");
@@ -447,7 +454,7 @@ describe("dispatch — review-task approval", () => {
   });
 
   it("returns empty array when stepNumber is missing from params (throws — wiring error)", () => {
-    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir, "feat"), { queueKey: "feat" });
+    const results = dispatch(goalDrivenDevelopment, "review-task", stepCtx(3), { queueKey: "feat" });
 
     // Both resolveReviewTaskToEvolvePlan and resolveReviewTaskToExecuteTask
     // throw when stepNumber is missing — it's a wiring error upstream.
@@ -473,8 +480,13 @@ describe("dispatch — review-task rejection", () => {
 
   afterEach(() => cleanup(tempDir));
 
+  // review-task workspacePrefix includes step folder — baseDir is the resolved step directory
+  function stepCtx(stepNumber: number): { baseDir: string } {
+    return { baseDir: path.join(tempDir, ".pio", "goals", "feat", `S${String(stepNumber).padStart(2, "0")}`) };
+  }
+
   it("routes to execute-task with same stepNumber when REVIEW.md decision is REJECTED", () => {
-    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", stepCtx(3), { queueKey: "feat", stepNumber: 3 });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
@@ -482,19 +494,19 @@ describe("dispatch — review-task rejection", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Step 3 rejected. Re-implement using the feedback in REVIEW.md.`,
       sessionName: "feat execute-task s3",
-      params: { stepNumber: 3, workspacePrefix: "goals/feat", queueKey: "feat" },
+      params: { stepNumber: 3, workspacePrefix: "goals/feat/S03", queueKey: "feat" },
     });
   });
 
   it("preserves queueKey and same stepNumber when rejected", () => {
     writeReview(goalDir, 2, "REJECTED");
 
-    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 2 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", stepCtx(2), { queueKey: "feat", stepNumber: 2 });
 
     expect(results).toHaveLength(1);
     expect(results[0].params?.queueKey).toBe("feat");
     expect(results[0].params?.stepNumber).toBe(2);
-    expect(results[0].params?.workspacePrefix).toBe("goals/feat");
+    expect(results[0].params?.workspacePrefix).toBe("goals/feat/S02");
   });
 });
 
@@ -516,7 +528,8 @@ describe("dispatch — review-task fallback (no matching edge)", () => {
 
   it("returns empty array when REVIEW.md does not exist", () => {
     // No REVIEW.md written — both edges return undefined
-    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 3 });
+    const reviewStepDir = path.join(tempDir, ".pio", "goals", "feat", "S03");
+    const results = dispatch(goalDrivenDevelopment, "review-task", { baseDir: reviewStepDir }, { queueKey: "feat", stepNumber: 3 });
 
     expect(results).toHaveLength(0);
   });
@@ -526,7 +539,8 @@ describe("dispatch — review-task fallback (no matching edge)", () => {
     fs.mkdirSync(folderDir, { recursive: true });
     fs.writeFileSync(path.join(folderDir, "REVIEW.md"), "# No frontmatter\n", "utf-8");
 
-    const results = dispatch(goalDrivenDevelopment, "review-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 3 });
+    const reviewStepDir = path.join(tempDir, ".pio", "goals", "feat", "S03");
+    const results = dispatch(goalDrivenDevelopment, "review-task", { baseDir: reviewStepDir }, { queueKey: "feat", stepNumber: 3 });
 
     expect(results).toHaveLength(0);
   });
@@ -605,7 +619,7 @@ describe("TransitionResult shape consistency", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Implement Step 1 of goal "feat" using the specification in TASK.md.`,
       sessionName: "feat execute-task s1",
-      params: { stepNumber: 1, workspacePrefix: "goals/feat", queueKey: "feat" },
+      params: { stepNumber: 1, workspacePrefix: "goals/feat/S01", queueKey: "feat" },
     });
   });
 });
@@ -973,6 +987,6 @@ describe("dispatch — backward compatibility", () => {
     expect(results).toHaveLength(1);
     expect(results[0].capability).toBe("execute-task");
     expect(results[0].params?.stepNumber).toBe(3);
-    expect(results[0].params?.workspacePrefix).toBe("goals/feat");
+    expect(results[0].params?.workspacePrefix).toBe("goals/feat/S03");
   });
 });

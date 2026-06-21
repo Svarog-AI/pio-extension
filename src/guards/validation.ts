@@ -18,6 +18,9 @@ let allowProjectWrites: boolean = false;
 /** Session working directory — base directory for resolving validation file paths. */
 let workingDir: string | undefined;
 
+/** Project root directory — boundary for allowProjectWrites. */
+let projectRoot: string | undefined;
+
 /** True after we've already warned once and let the switch through. */
 let warnedOnce = false;
 
@@ -26,6 +29,28 @@ let warningsThisSession = 0;
 
 /** Hard limit on total exit-gate warnings per session. */
 const MAX_WARNINGS = 3;
+
+// ---------------------------------------------------------------------------
+// Test accessors
+// ---------------------------------------------------------------------------
+
+/**
+ * Test-only accessor for the internal file protection state.
+ *
+ * @internal — Do not use in production code. Exists solely to allow unit tests
+ * to read and manipulate validation state without mocking the full ExtensionAPI.
+ */
+export function __testSetFileProtectionState(state?: {
+  allowProjectWrites?: boolean;
+  projectRoot?: string | undefined;
+  writeAllowlistPaths?: string[];
+  readOnlyFilePaths?: string[];
+}) {
+  if (state?.allowProjectWrites !== undefined) allowProjectWrites = state.allowProjectWrites;
+  if (state?.projectRoot !== undefined) projectRoot = state.projectRoot;
+  if (state?.writeAllowlistPaths !== undefined) writeAllowlistPaths = state.writeAllowlistPaths;
+  if (state?.readOnlyFilePaths !== undefined) readOnlyFilePaths = state.readOnlyFilePaths;
+}
 
 // ---------------------------------------------------------------------------
 // Core validation engine
@@ -311,6 +336,9 @@ export function setupValidation(pi: ExtensionAPI) {
 
     allowProjectWrites = config.allowProjectWrites ?? false;
 
+    // Project root boundary for allowProjectWrites — constrains writes to project workspace
+    projectRoot = path.resolve(ctx.cwd ?? process.cwd());
+
     warnedOnce = false;
     warningsThisSession = 0;
   });
@@ -369,8 +397,8 @@ export function setupValidation(pi: ExtensionAPI) {
       // Allowed: contract output files (auto-derived allowlist)
       if (writeAllowlistPaths.includes(tp)) continue;
 
-      // Allowed: project files when capability has allowProjectWrites
-      if (allowProjectWrites && !tp.includes("/.pio/")) continue;
+      // Allowed: project files when capability has allowProjectWrites (scoped to project root)
+      if (allowProjectWrites && !tp.includes("/.pio/") && projectRoot && tp.startsWith(projectRoot + "/")) continue;
 
       // Allowed: /tmp/ writes (temporary scratch files)
       if (tp.startsWith("/tmp/")) continue;

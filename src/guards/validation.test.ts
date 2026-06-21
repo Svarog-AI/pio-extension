@@ -1,9 +1,11 @@
+import { vi, beforeEach } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Type } from "typebox";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { CapabilityContract } from "../types";
-import { validateOutputs, setupValidation, validateFrontmatter, createFrontmatterValidator, validateInputs } from "./validation";
+import { validateOutputs, setupValidation, validateFrontmatter, createFrontmatterValidator, validateInputs, __testSetFileProtectionState } from "./validation";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -1522,3 +1524,233 @@ describe("validateInputs — stripped workspacePrefix (no duplication)", () => {
     expect(result).toEqual({ success: true });
   });
 });
+
+// ---------------------------------------------------------------------------
+// tool_call handler — allowProjectWrites boundary check
+// ---------------------------------------------------------------------------
+
+// Mock resolveCapabilityConfig so getSessionConfig() returns a full config
+// vi.mock replaces ALL exports — we must also re-export resolveContractPath
+const mockResolveCapabilityConfig2 = vi.hoisted(() => vi.fn());
+const realCapabilityConfig = vi.hoisted(() => vi.fn());
+
+vi.mock("../capability-config", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../capability-config")>();
+  return {
+    ...original,
+    resolveCapabilityConfig: mockResolveCapabilityConfig2,
+  };
+});
+
+beforeEach(() => {
+  mockResolveCapabilityConfig2.mockClear();
+});
+
+describe("tool_call handler — allowProjectWrites boundary", () => {
+  const projectRoot = "/home/user/my-project";
+
+  beforeEach(() => {
+    // Reset state before each test
+    __testSetFileProtectionState({
+      allowProjectWrites: false,
+      projectRoot: undefined,
+      writeAllowlistPaths: [],
+      readOnlyFilePaths: [],
+    });
+  });
+
+  function getHandler(): (...args: unknown[]) => unknown {
+    const { pi, handlers } = createMockPiForToolCall();
+    setupValidation(pi);
+    const toolCallHandlers = handlers.get("tool_call");
+    expect(toolCallHandlers).toBeDefined();
+    return toolCallHandlers![0];
+  }
+
+  it("allows writes within project root when allowProjectWrites is true", async () => {
+    __testSetFileProtectionState({
+      allowProjectWrites: true,
+      projectRoot,
+      writeAllowlistPaths: [],
+      readOnlyFilePaths: [],
+    });
+
+    const event = {
+      toolName: "write",
+      input: { path: "/home/user/my-project/src/index.ts" },
+    };
+
+    const handler = getHandler();
+    const result = await handler(event);
+    expect(result).toBeUndefined();
+  });
+
+  it("blocks writes outside project root even when allowProjectWrites is true", async () => {
+    __testSetFileProtectionState({
+      allowProjectWrites: true,
+      projectRoot,
+      writeAllowlistPaths: [],
+      readOnlyFilePaths: [],
+    });
+
+    const event = {
+      toolName: "write",
+      input: { path: "/home/user/data.txt" },
+    };
+
+    const handler = getHandler();
+    const result = await handler(event);
+    expect(result).toBeDefined();
+    expect((result as any).block).toBe(true);
+  });
+
+  it("blocks writes to /etc/ even when allowProjectWrites is true", async () => {
+    __testSetFileProtectionState({
+      allowProjectWrites: true,
+      projectRoot,
+      writeAllowlistPaths: [],
+      readOnlyFilePaths: [],
+    });
+
+    const event = {
+      toolName: "write",
+      input: { path: "/etc/passwd" },
+    };
+
+    const handler = getHandler();
+    const result = await handler(event);
+    expect(result).toBeDefined();
+    expect((result as any).block).toBe(true);
+  });
+
+  it("blocks all project writes when allowProjectWrites is false", async () => {
+    __testSetFileProtectionState({
+      allowProjectWrites: false,
+      projectRoot,
+      writeAllowlistPaths: [],
+      readOnlyFilePaths: [],
+    });
+
+    const event = {
+      toolName: "write",
+      input: { path: "/home/user/my-project/src/index.ts" },
+    };
+
+    const handler = getHandler();
+    const result = await handler(event);
+    expect(result).toBeDefined();
+    expect((result as any).block).toBe(true);
+  });
+
+  it("blocks writes to .pio/ paths even when allowProjectWrites is true", async () => {
+    __testSetFileProtectionState({
+      allowProjectWrites: true,
+      projectRoot,
+      writeAllowlistPaths: [],
+      readOnlyFilePaths: [],
+    });
+
+    const event = {
+      toolName: "write",
+      input: { path: "/home/user/my-project/.pio/goals/test/GOAL.md" },
+    };
+
+    const handler = getHandler();
+    const result = await handler(event);
+    expect(result).toBeDefined();
+    expect((result as any).block).toBe(true);
+  });
+
+  it("allows writes to contract output files on allowlist", async () => {
+    const contractPath = "/home/user/my-project/.pio/goals/test/S01/TASK.md";
+    __testSetFileProtectionState({
+      allowProjectWrites: true,
+      projectRoot,
+      writeAllowlistPaths: [contractPath],
+      readOnlyFilePaths: [],
+    });
+
+    const event = {
+      toolName: "write",
+      input: { path: contractPath },
+    };
+
+    const handler = getHandler();
+    const result = await handler(event);
+    expect(result).toBeUndefined();
+  });
+
+  it("allows /tmp/ writes regardless of allowProjectWrites", async () => {
+    __testSetFileProtectionState({
+      allowProjectWrites: false,
+      projectRoot,
+      writeAllowlistPaths: [],
+      readOnlyFilePaths: [],
+    });
+
+    const event = {
+      toolName: "write",
+      input: { path: "/tmp/scratch.txt" },
+    };
+
+    const handler = getHandler();
+    const result = await handler(event);
+    expect(result).toBeUndefined();
+  });
+
+  it("blocks writes to sibling project when allowProjectWrites is true", async () => {
+    __testSetFileProtectionState({
+      allowProjectWrites: true,
+      projectRoot,
+      writeAllowlistPaths: [],
+      readOnlyFilePaths: [],
+    });
+
+    const event = {
+      toolName: "write",
+      input: { path: "/home/user/other-project/src/index.ts" },
+    };
+
+    const handler = getHandler();
+    const result = await handler(event);
+    expect(result).toBeDefined();
+    expect((result as any).block).toBe(true);
+  });
+
+  it("allows writes at project root subdirectory boundary", async () => {
+    __testSetFileProtectionState({
+      allowProjectWrites: true,
+      projectRoot,
+      writeAllowlistPaths: [],
+      readOnlyFilePaths: [],
+    });
+
+    const event = {
+      toolName: "write",
+      input: { path: "/home/user/my-project/package.json" },
+    };
+
+    const handler = getHandler();
+    const result = await handler(event);
+    expect(result).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helpers for tool_call handler tests
+// ---------------------------------------------------------------------------
+
+function createMockPiForToolCall(): {
+  pi: any;
+  handlers: Map<string, Array<(...args: unknown[]) => unknown>>;
+} {
+  const handlers = new Map<string, Array<(...args: unknown[]) => unknown>>();
+
+  const pi = {
+    on(event: string, handler: (...args: unknown[]) => unknown): void {
+      handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+    },
+  } as unknown as ExtensionAPI;
+
+  return { pi, handlers };
+}

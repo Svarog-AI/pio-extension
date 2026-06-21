@@ -34,8 +34,8 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 | `/pio-delete-goal <name>` | `pio_delete_goal` | Remove a goal workspace directory | `name` | — |
 | `/pio-create-plan <name>` | `pio_create_plan` | Launch Planning Agent to produce PLAN.md from GOAL.md | `name` | `.pio/goals/<name>/PLAN.md` |
 | `/pio-evolve-plan <name>` | `pio_evolve_plan` | Find next incomplete step, launch Specification Writer (or spawn subgoal for composite steps) | `name` | `.pio/goals/<name>/S{NN}/TASK.md` (or subgoal at `S{NN}/subgoals/<name>/`) |
-| `/pio-execute-task <name> [step]` | `pio_execute_task` | Implement one plan step (TDD) | `name`, optional `stepNumber` | `.pio/goals/<name>/S{NN}/COMPLETED` or `BLOCKED`, `SUMMARY.md` |
-| `/pio-review-task <name> [step]` | `pio_review_task` | Review completed step, approve or reject | `name`, optional `stepNumber` | `.pio/goals/<name>/S{NN}/REVIEW.md`, optionally `APPROVED` |
+| `/pio-execute-task <name> --workspace-prefix <prefix>` | `pio_execute_task` | Implement a plan step (TDD) | `name`, `--workspace-prefix` | Resolved workspace directory: `COMPLETED` or `BLOCKED`, `SUMMARY.md` |
+| `/pio-review-task <name> --workspace-prefix <prefix>` | `pio_review_task` | Review a completed step, approve or reject | `name`, `--workspace-prefix` | Resolved workspace directory: `REVIEW.md`, optionally `APPROVED` |
 | `/pio-revise-plan <name>` | `pio_revise_plan` | Archive current PLAN.md, delete incomplete steps, launch fresh planning session | `name` | `.pio/goals/<name>/PLAN.md` (rewritten) |
 | `/pio-execute-plan <name>` | — (command only) | Execute all plan steps in one session | `name` | All code changes from PLAN.md |
 | `/pio-project-context` | `pio_create_project_context` | Analyze project, produce 7-file project context | none | `.pio/PROJECT/` (7 files) |
@@ -64,7 +64,7 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 - **`launchCapability()`** (in `session-capability.ts`) creates sub-sessions with a custom `pio-config` entry containing: capability name, working directory, validation rules, file protections, session parameters, and an optional initial message.
 - **Context injection order:** On `before_agent_start`, `.pio/PROJECT/OVERVIEW.md` is loaded first (cached module-level), then the capability-specific prompt from `src/prompts/`. Both are concatenated as a custom conversation message — this preserves pi's default system prompt while layering role-specific instructions on top.
 - **One-shot validation with cap:** The exit-gate blocks only the *first* attempted switch when validation fails (tracked by `warnedOnce`). A hard cap of 3 warnings per session (`MAX_WARNINGS`) prevents infinite blocking loops. The gate resets on each `turn_start`.
-- **Per-goal task slots:** Each goal gets its own queue file at `.pio/session-queue/task-{goalName}.json`. One pending task per goal — enqueueing overwrites any existing task for that goal. No timestamps or FIFO ordering needed.
+- **Generalized task queue:** `enqueueTask(cwd, queueKey, task)` accepts arbitrary string keys. Each state machine instance gets its own queue slot at `.pio/session-queue/task-{queueKey}.json`. Pio-workflow uses goal-scoped keys; other state machines use their own naming convention. One pending task per key — enqueueing overwrites.
 - **`launchCapability` consumes context:** After calling it, the command context is stale. All pre-launch work (validation, filesystem setup) must happen before the call.
 
 ## Agent Usage Guidelines
@@ -74,4 +74,5 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 - **Call tools directly:** Use `pio_create_goal`, `pio_create_plan`, `pio_evolve_plan`, etc. instead of trying to set up workspace files yourself with bash or the write tool.
 - **No manual file creation in `.pio/`:** Never use `bash` (`date`, `ls`, `mkdir`) or the `write` tool to create files under `.pio/` when a pio tool exists for that purpose. The tools manage the directory structure automatically.
 - **No bash workarounds:** Commands like `date +%Y%m%d_%H%M%S` or `ls .pio/issues/` are unnecessary. Use the appropriate pio tool directly.
+- **No manual step selection via execute/review commands:** `/pio-execute-task` and `/pio-review-task` require `--workspace-prefix` (not a step number). Use `/pio-next-task` for step-aware auto-advance or rely on mark-complete to automatically enqueue the next workflow step. For manual step specification, use `pio_evolve_plan` which handles step discovery.
 - **Never auto-start queued tasks:** After calling a `pio_*` tool that queues work, report completion and wait for the user to run `/pio-next-task`. Do not attempt to execute `/pio-next-task` or any variant of it programmatically — it is an interactive TUI command for human use only.

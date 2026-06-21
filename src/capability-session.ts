@@ -336,21 +336,4 @@ export function getEnrichedSessionParamsForTesting(): Record<string, unknown> | 
   return enrichedSessionParams;
 }
 
-/**
- * Return the canonical stepNumber from enriched session params.
- * Returns a number when working in a goal workspace, or undefined otherwise.
- */
-export function getStepNumber(): number | undefined {
-  if (enrichedSessionParams === undefined) return undefined;
-  const n = enrichedSessionParams.stepNumber;
-  return typeof n === "number" ? n : undefined;
-}
 
-/**
- * Return the goal name from enriched session params (derived from `queueKey`).
- * Returns a string when inside a capability sub-session with a known queue key, or undefined otherwise.
- */
-export function getSessionGoalName(): string | undefined {
-  const params = getSessionParams();
-  return typeof params?.queueKey === "string" ? params.queueKey : undefined;
-}

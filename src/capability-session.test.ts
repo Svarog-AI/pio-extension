@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { vi, beforeEach, afterEach, describe, it, expect } from "vitest";
-import { getSessionGoalName, resolveProjectContextPath } from "./capability-session";
+import { resolveProjectContextPath } from "./capability-session";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -49,7 +49,7 @@ function makeSkill(name: string, filePath: string, baseDir: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Top-level mock for capability-session (used by getSessionGoalName tests)
+// Top-level mock for capability-session (used by handleNextTask tests)
 // ---------------------------------------------------------------------------
 
 const sessionCapabilityMock = vi.hoisted(() => ({
@@ -64,11 +64,6 @@ vi.mock(
     return {
       ...actual,
       getSessionParams: sessionCapabilityMock.getSessionParams,
-      // Derive from getSessionParams — always tests the real type-guard logic (queueKey instead of goalName)
-      getSessionGoalName: () => {
-        const params = sessionCapabilityMock.getSessionParams();
-        return typeof params?.queueKey === "string" ? params.queueKey : undefined;
-      },
       launchCapability: sessionCapabilityMock.launchCapability,
     };
   },
@@ -168,50 +163,9 @@ vi.mock("./capability-config", () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// getSessionGoalName tests
-// These test the real implementation logic by mocking getSessionParams()
-// ---------------------------------------------------------------------------
-
-describe("getSessionGoalName", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('given { queueKey: "my-feature" }, returns "my-feature"', () => {
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: "my-feature" });
-    expect(getSessionGoalName()).toBe("my-feature");
-  });
-
-  it("given { queueKey: 123 }, returns undefined (non-string rejected)", () => {
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: 123 });
-    expect(getSessionGoalName()).toBeUndefined();
-  });
-
-  it("given { queueKey: null }, returns undefined (null rejected)", () => {
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: null });
-    expect(getSessionGoalName()).toBeUndefined();
-  });
-
-  it('given { otherKey: "value" }, returns undefined (no queueKey key)', () => {
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ otherKey: "value" });
-    expect(getSessionGoalName()).toBeUndefined();
-  });
-
-  it("given undefined, returns undefined (no session config)", () => {
-    sessionCapabilityMock.getSessionParams.mockReturnValue(undefined);
-    expect(getSessionGoalName()).toBeUndefined();
-  });
-
-  it("given {}, returns undefined (empty params)", () => {
-    sessionCapabilityMock.getSessionParams.mockReturnValue({});
-    expect(getSessionGoalName()).toBeUndefined();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// handleNextTask — goal resolution order tests
+// handleNextTask — queue key resolution order tests
 // These test the command flow by configuring getSessionParams() to control
-// what getSessionGoalName() returns (the real type-guard logic is always exercised)
+// what queue key next-task.ts reads directly from session params
 // ---------------------------------------------------------------------------
 
 describe("handleNextTask — goal resolution order", () => {
@@ -236,7 +190,7 @@ describe("handleNextTask — goal resolution order", () => {
     return { cwd: tempDir, ui: { notify: vi.fn() } };
   }
 
-  it("passes session goalName to launchAndCleanup when no explicit arg", async () => {
+  it("passes session queueKey to launchAndCleanup when no explicit arg", async () => {
     // Arrange: two goals pending, session has queueKey = "other-goal"
     enqueueTaskFile(tempDir, "other-goal");
     enqueueTaskFile(tempDir, "session-goal");
@@ -263,7 +217,7 @@ describe("handleNextTask — goal resolution order", () => {
     expect(fs.existsSync(path.join(tempDir, ".pio", "session-queue", "task-session-goal.json"))).toBe(true);
   });
 
-  it("falls through to scan when getSessionGoalName returns undefined", async () => {
+  it("falls through to scan when session has no queueKey", async () => {
     // Arrange: exactly one pending goal, no session context (no queueKey)
     enqueueTaskFile(tempDir, "only-goal");
     sessionCapabilityMock.getSessionParams.mockReturnValue(undefined);
@@ -283,7 +237,7 @@ describe("handleNextTask — goal resolution order", () => {
     expect(sessionCapabilityMock.launchCapability).toHaveBeenCalled();
   });
 
-  it("explicit arg takes priority over session goalName", async () => {
+  it("explicit arg takes priority over session queueKey", async () => {
     // Arrange: two goals pending, session says "session-goal" but user specifies "explicit-goal"
     enqueueTaskFile(tempDir, "explicit-goal");
     enqueueTaskFile(tempDir, "session-goal");
@@ -299,7 +253,7 @@ describe("handleNextTask — goal resolution order", () => {
     expect(fs.existsSync(path.join(tempDir, ".pio", "session-queue", "task-session-goal.json"))).toBe(true);
   });
 
-  it("shows notification when session goalName has no pending task", async () => {
+  it("shows notification when session queueKey has no pending task", async () => {
     // Arrange: no queue files at all, session says "empty-goal"
     sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: "empty-goal" });
 

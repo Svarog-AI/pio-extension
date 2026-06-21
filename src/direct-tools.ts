@@ -531,9 +531,8 @@ async function handleTransition(_args: string | undefined, ctx: ExtensionCommand
   }
 
   const fromCapability = config.capability;
-  const params = typeof config.sessionParams?.queueKey === "string"
-    ? { queueKey: config.sessionParams.queueKey, stepNumber: config.sessionParams.stepNumber, _sessionContext: config.sessionParams }
-    : { ...config.sessionParams };
+  // Pass sessionParams directly — resolve functions extract what they need
+  const params = config.sessionParams ? { ...config.sessionParams } : {};
 
   // Build context: { baseDir } for tracked sessions (with queueKey), raw params otherwise
   const context = typeof config.sessionParams?.queueKey === "string"

@@ -74,11 +74,6 @@ export const markCompleteTool = defineTool({
     // 3. Transition routing + task enqueuing
     const capability = config.capability;
 
-    // Use explicit stepNumber from session params — authoritative for the completing step.
-    const stepNumber = typeof sessionParams.stepNumber === "number"
-      ? sessionParams.stepNumber
-      : undefined;
-
     // Multi-machine dispatch: read stateMachineId from session params, look up machine explicitly.
     // Falls back to dispatch(undefined, ...) for first transitions or legacy sessions.
     const machineId = typeof sessionParams.stateMachineId === "string"
@@ -93,21 +88,15 @@ export const markCompleteTool = defineTool({
     if (capability && results.length === 1) {
       const nextTask = results[0];
       try {
-        // Use adjusted params from the transition (may contain incremented stepNumber)
+        // adjustedParams from resolve functions already contain the correct values
+        // (stepNumber, queueKey, etc.) — pass through as-is
         const adjustedParams = nextTask.params || {};
-
-        // After spreading adjusted params, explicitly set stepNumber last
-        // to guarantee it appears at top level (cannot be shadowed by nested _sessionContext).
-        const finalStepNumber = typeof adjustedParams.stepNumber === "number"
-          ? adjustedParams.stepNumber
-          : stepNumber;
 
         // Enriched params: same object passed to both enqueueTask and recordTransition
         // so transitions.json accurately reflects what was actually dispatched.
         const enrichedParams = {
           ...adjustedParams,
           _sessionContext: sessionParams,
-          ...(finalStepNumber != null ? { stepNumber: finalStepNumber } : {}),
           stateMachineId: nextTask.stateMachineId,
         };
 

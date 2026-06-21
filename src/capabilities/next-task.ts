@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { launchCapability, getSessionGoalName } from "../capability-session";
+import { launchCapability, getSessionParams } from "../capability-session";
 import { queueDir, readPendingTask, listPendingTasks, type SessionQueueTask } from "../queues";
 import { resolveCapabilityConfig } from "../capability-config";
 
@@ -27,17 +27,18 @@ export async function handleNextTask(args: string | undefined, ctx: ExtensionCom
     return;
   }
 
-  // Case 2: no arg, but session has goalName from pio-config — use it as queue key
-  const sessionGoalName = getSessionGoalName();
-  if (sessionGoalName) {
-    const task = readPendingTask(ctx.cwd, sessionGoalName);
+  // Case 2: no arg, but session has queueKey from pio-config — use it directly
+  const params = getSessionParams();
+  const queueKey = typeof params?.queueKey === "string" ? params.queueKey : undefined;
+  if (queueKey) {
+    const task = readPendingTask(ctx.cwd, queueKey);
 
     if (!task) {
-      ctx.ui.notify(`No pending task for "${sessionGoalName}".`, "info");
+      ctx.ui.notify(`No pending task for "${queueKey}".`, "info");
       return;
     }
 
-    await launchAndCleanup(ctx, dir, sessionGoalName, task);
+    await launchAndCleanup(ctx, dir, queueKey, task);
     return;
   }
 

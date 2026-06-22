@@ -58,9 +58,9 @@ export default capabilityConfig;
 // prepareSession — read TASK.md skills and merge into capability config
 // ---------------------------------------------------------------------------
 
-function prepareExecuteSession(workingDir: string, params?: Record<string, unknown>): void {
+function prepareExecuteSession(workspaceDir: string, params?: Record<string, unknown>): void {
   // CONTRACT uses plain "TASK.md" — no placeholders need resolving
-  const capState = new CapState(CONTRACT, workingDir, params);
+  const capState = new CapState(CONTRACT, workspaceDir, params);
   const taskFile = capState.input<{ skills?: unknown }>("task");
   const taskData = taskFile.read();
   const taskSkills = taskData?.skills ?? null;

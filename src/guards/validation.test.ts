@@ -1376,7 +1376,7 @@ describe("setupValidation — auto-derived writeAllowlist from contract outputs"
     expect(result).toEqual({ success: true });
   });
 
-  it("root-level contract paths resolve directly from workingDir (bypass prefix)", async () => {
+  it("root-level contract paths resolve directly from workspaceDir (bypass prefix)", async () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [

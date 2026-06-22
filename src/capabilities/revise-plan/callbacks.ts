@@ -47,13 +47,13 @@ export async function validateRevisePlan(
  * so the Plan Revision Agent can inspect trigger step content.
  */
 export async function prepareSession(
-  workingDir: string,
+  workspaceDir: string,
   _params?: Record<string, unknown>,
 ): Promise<void> {
   // Archive current PLAN.md
-  const planPath = path.join(workingDir, "PLAN.md");
+  const planPath = path.join(workspaceDir, "PLAN.md");
   if (fs.existsSync(planPath)) {
-    const archiveDir = path.join(workingDir, PLAN_ARCHIVE_DIR);
+    const archiveDir = path.join(workspaceDir, PLAN_ARCHIVE_DIR);
     fs.mkdirSync(archiveDir, { recursive: true });
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "");
@@ -115,11 +115,11 @@ export async function cleanupIncompleteSteps(
 // Config callbacks (used by config.ts and resolveCapabilityConfig)
 // ---------------------------------------------------------------------------
 
-export function resolveReviseReadOnlyFiles(workingDir: string, _params?: Record<string, unknown>): string[] {
+export function resolveReviseReadOnlyFiles(workspaceDir: string, _params?: Record<string, unknown>): string[] {
   const readOnly: string[] = [];
 
   // Read PLAN.md to get totalSteps
-  const planRaw = extractFrontmatter(path.join(workingDir, "PLAN.md"));
+  const planRaw = extractFrontmatter(path.join(workspaceDir, "PLAN.md"));
   if (planRaw == null) return readOnly;
 
   const planResult = validateAndCoerce<PlanFrontmatter>(planRaw, PLAN_FRONTMATTER_SCHEMA);
@@ -127,7 +127,7 @@ export function resolveReviseReadOnlyFiles(workingDir: string, _params?: Record<
 
   const totalSteps = planResult.data.totalSteps;
   for (let i = 1; i <= totalSteps; i++) {
-    const reviewPath = path.join(workingDir, stepFolderName(i), "REVIEW.md");
+    const reviewPath = path.join(workspaceDir, stepFolderName(i), "REVIEW.md");
     const reviewRaw = extractFrontmatter(reviewPath);
     if (reviewRaw == null) continue;
     const reviewResult = validateAndCoerce<ReviewOutputs>(reviewRaw, REVIEW_OUTPUT_SCHEMA);
@@ -139,6 +139,6 @@ export function resolveReviseReadOnlyFiles(workingDir: string, _params?: Record<
   return readOnly;
 }
 
-export function resolveReviseWriteAllowlist(_workingDir: string, _params?: Record<string, unknown>): string[] {
+export function resolveReviseWriteAllowlist(_workspaceDir: string, _params?: Record<string, unknown>): string[] {
   return ["PLAN.md"];
 }

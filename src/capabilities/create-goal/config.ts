@@ -55,7 +55,7 @@ const createGoalTool = defineTool({
     const sessionName = params.sessionName ?? `${queueKey} create-goal`;
     const initialMessage = typeof params.initialMessage === "string" ? params.initialMessage : undefined;
 
-    // Resolve workspace directory: workingDir is .pio/, prefix tells us where within it
+    // Resolve workspace directory: workspaceDir is .pio/, prefix tells us where within it
     const workspaceDir = path.join(ctx.cwd, ".pio", params.workspacePrefix);
     if (fs.existsSync(workspaceDir) && fs.readdirSync(workspaceDir).length > 0) {
       return { content: [{ type: "text", text: `Workspace at "${params.workspacePrefix}" is not empty.` }], details: {} };

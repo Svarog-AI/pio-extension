@@ -72,13 +72,13 @@ describe("mark-complete (setupMarkComplete)", () => {
     mockResolveCapabilityConfigMC.mockClear();
     mockResolveCapabilityConfigMC.mockImplementation((_cwd, params) => {
       const cap = typeof params?.capability === "string" ? params.capability : "unknown";
-      // getSessionConfig passes { capability, workingDir, ...sessionParams } to resolveCapabilityConfig.
-      // workingDir is the resolved directory (includes workspacePrefix).
+      // getSessionConfig passes { capability, workspaceDir, ...sessionParams } to resolveCapabilityConfig.
+      // workspaceDir is the resolved directory (includes workspacePrefix).
       // Tests put extra fields in sessionParams for the mock to pick up.
-      const { capability: _cap, workingDir, contract, postValidate, postExecute, fileCleanup, prepareSession, ...sessionParams } = params ?? {};
+      const { capability: _cap, workspaceDir, contract, postValidate, postExecute, fileCleanup, prepareSession, ...sessionParams } = params ?? {};
       return {
         capability: cap,
-        workingDir: workingDir ?? goalDir,
+        workspaceDir: workspaceDir ?? goalDir,
         sessionParams,
         contract: contract ?? { inputs: [], outputs: [] },
         prepareSession,
@@ -125,7 +125,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              workingDir: goalDir,
+              workspaceDir: goalDir,
               contract: { inputs: [], outputs: [{ file: "missing.md" }] },
               sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
             },
@@ -148,7 +148,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
       postValidate: postValidateMock,
@@ -183,7 +183,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
       postValidate: postValidateMock,
@@ -227,7 +227,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              workingDir: goalDir,
+              workspaceDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
@@ -262,7 +262,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "review-task",
-              workingDir: goalDir,
+              workspaceDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
@@ -302,7 +302,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "finalize-goal",
-              workingDir: goalDir,
+              workspaceDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
               sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
@@ -343,7 +343,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
       postValidate: postValidateMock,
@@ -386,7 +386,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
       postValidate: vi.fn().mockReturnValue({ success: true }),
@@ -428,7 +428,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
       postValidate: vi.fn().mockReturnValue({ success: true }),
@@ -468,10 +468,10 @@ describe("mark-complete (setupMarkComplete)", () => {
     expect(result.terminate).toBe(true);
   });
 
-  it("missing workingDir passes with terminate true", async () => {
+  it("missing workspaceDir passes with terminate true", async () => {
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      // workingDir is missing
+      // workspaceDir is missing
       contract: { inputs: [], outputs: [] },
       sessionParams: {},
     });
@@ -502,7 +502,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
       // sessionParams intentionally lacks queueKey
       sessionParams: { goalName: "test-goal", stepNumber: 1 },
@@ -540,7 +540,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "" },
       postValidate: vi.fn().mockReturnValue({ success: true }),
@@ -572,7 +572,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: 123 },
       postValidate: vi.fn().mockReturnValue({ success: true }),
@@ -609,7 +609,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development", queueKey: "test-goal" },
       postValidate: vi.fn().mockReturnValue({ success: true }),
@@ -651,7 +651,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
       postValidate: vi.fn().mockReturnValue({ success: true }),
@@ -694,7 +694,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "unknown-machine", queueKey: "test-goal" },
       postValidate: vi.fn().mockReturnValue({ success: true }),
@@ -737,7 +737,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development", queueKey: "test-goal" },
       postValidate: vi.fn().mockReturnValue({ success: true }),
@@ -784,7 +784,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
       sessionParams,
       postValidate: vi.fn().mockReturnValue({ success: true }),
@@ -832,7 +832,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development", queueKey: "test-goal" },
       postValidate: vi.fn().mockReturnValue({ success: true }),
@@ -877,7 +877,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development", queueKey: "test-goal" },
       postValidate: vi.fn().mockReturnValue({ success: true }),

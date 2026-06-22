@@ -10,6 +10,6 @@ import { CONTRACT } from "./config";
  * Returns array of read-only files for the given step.
  * workspacePrefix already includes the step folder — plain name resolves correctly.
  */
-export function resolveExecuteReadOnlyFiles(_workingDir: string, _params?: Record<string, unknown>): string[] {
+export function resolveExecuteReadOnlyFiles(_workspaceDir: string, _params?: Record<string, unknown>): string[] {
   return ["TASK.md"];
 }

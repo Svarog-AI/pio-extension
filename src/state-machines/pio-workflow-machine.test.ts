@@ -92,10 +92,10 @@ function writeRevisePlanNeeded(goalDir: string, stepNumber: number): void {
 }
 
 /** Context object for dispatch calls — baseDir is the resolved goal directory.
- * mark-complete passes config.workingDir (resolved directory) to dispatch.
+ * mark-complete passes config.workspaceDir (resolved directory) to dispatch.
  * This is the directory where getCapState resolves files relative to — no workspacePrefix needed. */
-function ctx(tempDir: string, goalName: string): { baseDir: string } {
-  return { baseDir: path.join(tempDir, ".pio", "goals", goalName) };
+function ctx(tempDir: string, goalName: string): { workspaceDir: string } {
+  return { workspaceDir: path.join(tempDir, ".pio", "goals", goalName) };
 }
 
 // ---------------------------------------------------------------------------
@@ -256,7 +256,7 @@ describe("dispatch — review→evolve→finalize chain", () => {
     // Act step 1: review-task approval → evolve-plan with incremented stepNumber
     // review-task workspacePrefix includes step folder — baseDir is the resolved step directory
     const reviewStepDir = path.join(tempDir, ".pio", "goals", "feat", "S03");
-    const reviewResults = dispatch(goalDrivenDevelopment, "review-task", { baseDir: reviewStepDir }, { queueKey: "feat", stepNumber: 3 });
+    const reviewResults = dispatch(goalDrivenDevelopment, "review-task", { workspaceDir: reviewStepDir }, { queueKey: "feat", stepNumber: 3 });
 
     // Assert step 1: routes to evolve-plan with stepNumber 4
     expect(reviewResults).toHaveLength(1);
@@ -333,7 +333,7 @@ describe("dispatch — evolve-plan completion detection", () => {
     expect(results[0].params?.workspacePrefix).toBe("goals/feat");
     expect(results[0].params?.queueKey).toBe("feat");
     expect(results[0].params?.goalDir).toBeUndefined();
-    expect(results[0].params?.workingDir).toBeUndefined();
+    expect(results[0].params?.baseDir).toBeUndefined();
   });
 
   it("routes to execute-task when COMPLETION_SUMMARY.md does not exist", () => {
@@ -427,8 +427,8 @@ describe("dispatch — review-task approval", () => {
   afterEach(() => cleanup(tempDir));
 
   // review-task workspacePrefix includes step folder — baseDir is the resolved step directory
-  function stepCtx(stepNumber: number): { baseDir: string } {
-    return { baseDir: path.join(tempDir, ".pio", "goals", "feat", `S${String(stepNumber).padStart(2, "0")}`) };
+  function stepCtx(stepNumber: number): { workspaceDir: string } {
+    return { workspaceDir: path.join(tempDir, ".pio", "goals", "feat", `S${String(stepNumber).padStart(2, "0")}`) };
   }
 
   it("routes to evolve-plan with incremented stepNumber when REVIEW.md decision is APPROVED", () => {
@@ -481,8 +481,8 @@ describe("dispatch — review-task rejection", () => {
   afterEach(() => cleanup(tempDir));
 
   // review-task workspacePrefix includes step folder — baseDir is the resolved step directory
-  function stepCtx(stepNumber: number): { baseDir: string } {
-    return { baseDir: path.join(tempDir, ".pio", "goals", "feat", `S${String(stepNumber).padStart(2, "0")}`) };
+  function stepCtx(stepNumber: number): { workspaceDir: string } {
+    return { workspaceDir: path.join(tempDir, ".pio", "goals", "feat", `S${String(stepNumber).padStart(2, "0")}`) };
   }
 
   it("routes to execute-task with same stepNumber when REVIEW.md decision is REJECTED", () => {
@@ -529,7 +529,7 @@ describe("dispatch — review-task fallback (no matching edge)", () => {
   it("returns empty array when REVIEW.md does not exist", () => {
     // No REVIEW.md written — both edges return undefined
     const reviewStepDir = path.join(tempDir, ".pio", "goals", "feat", "S03");
-    const results = dispatch(goalDrivenDevelopment, "review-task", { baseDir: reviewStepDir }, { queueKey: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", { workspaceDir: reviewStepDir }, { queueKey: "feat", stepNumber: 3 });
 
     expect(results).toHaveLength(0);
   });
@@ -540,7 +540,7 @@ describe("dispatch — review-task fallback (no matching edge)", () => {
     fs.writeFileSync(path.join(folderDir, "REVIEW.md"), "# No frontmatter\n", "utf-8");
 
     const reviewStepDir = path.join(tempDir, ".pio", "goals", "feat", "S03");
-    const results = dispatch(goalDrivenDevelopment, "review-task", { baseDir: reviewStepDir }, { queueKey: "feat", stepNumber: 3 });
+    const results = dispatch(goalDrivenDevelopment, "review-task", { workspaceDir: reviewStepDir }, { queueKey: "feat", stepNumber: 3 });
 
     expect(results).toHaveLength(0);
   });

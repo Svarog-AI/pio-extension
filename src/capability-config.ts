@@ -8,11 +8,11 @@ import type { CapabilityPackageConfig, CapabilitySkills } from "./capability-pac
  */
 function resolveField<T>(
   value: T | ConfigCallback<T> | undefined,
-  workingDir: string,
+  workspaceDir: string,
   params?: Record<string, unknown>,
 ): T | undefined {
   if (typeof value === "function") {
-    return (value as ConfigCallback<T>)(workingDir, params);
+    return (value as ConfigCallback<T>)(workspaceDir, params);
   }
   return value;
 }
@@ -96,19 +96,19 @@ export function resolvePaths(
  *
  * Resolution order:
  * 1. Placeholder resolution via resolvePaths() (if params provided)
- * 2. Root-level paths (/...) join directly with workingDir
- * 3. Prefixed paths join workingDir + workspacePrefix + contractPath
- * 4. Unprefixed paths join workingDir + contractPath
+ * 2. Root-level paths (/...) join directly with baseDir
+ * 3. Prefixed paths join baseDir + workspacePrefix + contractPath
+ * 4. Unprefixed paths join baseDir + contractPath
  *
  * @param contractPath - Path from capability contract (may contain {key} placeholders)
- * @param workingDir - Fixed .pio/ root directory
+ * @param baseDir - Base directory for path resolution
  * @param workspacePrefix - Optional prefix string (e.g., "goals/my-feature")
  * @param params - Optional session params for placeholder resolution
  * @returns Fully resolved filesystem path
  */
 export function resolveContractPath(
   contractPath: string,
-  workingDir: string,
+  baseDir: string,
   workspacePrefix?: string,
   params?: Record<string, unknown>,
 ): string {
@@ -117,18 +117,18 @@ export function resolveContractPath(
   // throw if keys are missing (consistent with resolvePaths existing behavior).
   let resolved = resolvePaths([contractPath], params ?? {})[0];
 
-  // 2. Root-level path: leading / means skip prefix, join directly with workingDir
+  // 2. Root-level path: leading / means skip prefix, join directly with baseDir
   if (resolved.startsWith("/")) {
-    return join(workingDir, resolved.slice(1));
+    return join(baseDir, resolved.slice(1));
   }
 
-  // 3. Prefixed path: workingDir + workspacePrefix + contractPath
+  // 3. Prefixed path: baseDir + workspacePrefix + contractPath
   if (workspacePrefix) {
-    return join(workingDir, workspacePrefix, resolved);
+    return join(baseDir, workspacePrefix, resolved);
   }
 
-  // 4. No prefix: workingDir + contractPath
-  return join(workingDir, resolved);
+  // 4. No prefix: baseDir + contractPath
+  return join(baseDir, resolved);
 }
 
 
@@ -141,7 +141,7 @@ export function resolveContractPath(
 function buildCapabilityConfig(
   cap: string,
   prompt: string | undefined,
-  workingDir: string,
+  workspaceDir: string,
   readOnlyFiles: string[] | undefined,
   writeAllowlist: string[] | undefined,
   initialMessage: string | undefined,
@@ -157,7 +157,7 @@ function buildCapabilityConfig(
   return {
     capability: cap,
     prompt,
-    workingDir,
+    workspaceDir,
     readOnlyFiles,
     writeAllowlist,
     initialMessage,
@@ -181,15 +181,15 @@ function normalizePackageConfig(
   cwd: string,
   params?: Record<string, unknown>,
 ): CapabilityConfig {
-  // Inline workingDir resolution — fallback to .pio/ root
-  const workingDir =
-    typeof params?.workingDir === "string" && params.workingDir
-      ? params.workingDir
+  // Inline baseDir resolution — fallback to .pio/ root
+  const baseDir =
+    typeof params?.baseDir === "string" && params.baseDir
+      ? params.baseDir
       : join(cwd, ".pio");
 
   // Resolve workspace directory from prefix — single source of truth
   const wsPrefix = typeof params?.workspacePrefix === "string" ? params.workspacePrefix : undefined;
-  const workspaceDir = wsPrefix ? join(workingDir, wsPrefix) : workingDir;
+  const workspaceDir = wsPrefix ? join(baseDir, wsPrefix) : baseDir;
 
   // Strip prefix from params so downstream code doesn't double-apply
   // resolveContractPath falls back to joining baseDir + contractPath when workspacePrefix is undefined

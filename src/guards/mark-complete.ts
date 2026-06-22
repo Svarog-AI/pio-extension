@@ -25,9 +25,9 @@ export const markCompleteTool = defineTool({
     if (!config) {
       return { content: [{ type: "text", text: "No validation rules configured for this session." }], details: {}, terminate: true };
     }
-    const dir = config.workingDir;
+    const dir = config.workspaceDir;
 
-    // No workingDir — can't do anything meaningful, pass and terminate
+    // No workspaceDir — can't do anything meaningful, pass and terminate
     if (!dir) {
       return { content: [{ type: "text", text: "No directory is defined for this session. Something went wrong." }], details: {}, terminate: true };
     }
@@ -45,9 +45,9 @@ export const markCompleteTool = defineTool({
       );
     }
 
-    // config.workingDir is already the resolved directory (includes workspacePrefix).
+    // config.workspaceDir is already the resolved directory (includes workspacePrefix).
     // workspacePrefix is stripped from sessionParams during normalization.
-    // Use `dir` (= config.workingDir) everywhere — it's the resolved workspace directory.
+    // Use `dir` (= config.workspaceDir) everywhere — it's the resolved workspace directory.
 
     // 1. Output validation (existence + frontmatter schema — single call)
     // validateOutputs falls back to joining baseDir + contractPath when workspacePrefix is absent
@@ -82,7 +82,7 @@ export const markCompleteTool = defineTool({
     const targetMachine = machineId ? getMachine(machineId) : undefined;
 
     const results = capability
-      ? dispatch(targetMachine, capability, { baseDir: dir }, sessionParams)
+      ? dispatch(targetMachine, capability, { workspaceDir: dir }, sessionParams)
       : [];
 
     if (capability && results.length === 1) {

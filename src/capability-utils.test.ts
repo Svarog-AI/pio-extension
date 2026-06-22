@@ -80,7 +80,7 @@ describe("getSessionConfig", () => {
   it("returns CapabilityConfig when pio-config entry exists", async () => {
     const expectedConfig = {
       capability: "create-plan",
-      workingDir: "/repo/.pio/goals/test-goal",
+      workspaceDir: "/repo/.pio/goals/test-goal",
       sessionParams: { goalName: "test-goal" },
       contract: { inputs: [], outputs: [] },
     };
@@ -95,14 +95,14 @@ describe("getSessionConfig", () => {
 
     expect(result).not.toBeNull();
     expect(result!.capability).toBe("create-plan");
-    expect(result!.workingDir).toBe("/repo/.pio/goals/test-goal");
+    expect(result!.workspaceDir).toBe("/repo/.pio/goals/test-goal");
     expect(result!.sessionParams).toEqual({ goalName: "test-goal" });
   });
 
   it("calls resolveCapabilityConfig with correct args", async () => {
     mockResolveCapabilityConfig.mockResolvedValue({
       capability: "evolve-plan",
-      workingDir: "/test/.pio/goals/my-goal",
+      workspaceDir: "/test/.pio/goals/my-goal",
       sessionParams: { goalName: "my-goal", stepNumber: 2 },
       contract: { inputs: [], outputs: [] },
     });
@@ -139,7 +139,7 @@ describe("getSessionConfig", () => {
     const requiredWhenFn = () => false;
     mockResolveCapabilityConfig.mockResolvedValue({
       capability: "evolve-plan",
-      workingDir: "/test/.pio/goals/test-goal",
+      workspaceDir: "/test/.pio/goals/test-goal",
       sessionParams: { goalName: "test-goal", stepNumber: 1 },
       contract: {
         inputs: [],

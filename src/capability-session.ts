@@ -58,9 +58,9 @@ let enrichedSessionParams: Record<string, unknown> | undefined;
 /** Write config into the new session's custom entry. Survives reload, not visible to LLM. */
 export async function launchCapability(ctx: ExtensionCommandContext, config: CapabilityConfig): Promise<void> {
   // Validate inputs against the capability contract BEFORE launching.
-  if (config.contract && config.workingDir) {
+  if (config.contract && config.workspaceDir) {
     const result = validateInputs(
-      config.workingDir,
+      config.workspaceDir,
       config.contract,
       config.sessionParams,
     );
@@ -82,7 +82,7 @@ export async function launchCapability(ctx: ExtensionCommandContext, config: Cap
       // via dynamic import of the capability module.
       newSm.appendCustomEntry("pio-config", {
         capability: config.capability,
-        workingDir: config.workingDir,
+        workspaceDir: config.workspaceDir,
         sessionParams: config.sessionParams,
       });
     },
@@ -198,9 +198,9 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
     // Run prepareSession hook (lifecycle: prepare → work → markComplete → validateState).
     // Hook runs after enrichedSessionParams is populated, so it has access to stepNumber.
     // Errors are caught and logged — they do not crash the session startup.
-    if (config.prepareSession && config.workingDir) {
+    if (config.prepareSession && config.workspaceDir) {
       try {
-        await config.prepareSession(config.workingDir!, enrichedSessionParams);
+        await config.prepareSession(config.workspaceDir!, enrichedSessionParams);
       } catch (err) {
         console.warn(`pio: prepareSession failed for capability "${config.capability}": ${err}`);
       }

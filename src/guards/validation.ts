@@ -15,8 +15,8 @@ let readOnlyFilePaths: string[] = [];
 let writeAllowlistPaths: string[] = [];
 let allowProjectWrites: boolean = false;
 
-/** Session working directory — base directory for resolving validation file paths. */
-let workingDir: string | undefined;
+/** Session workspace directory — resolved directory for resolving validation file paths. */
+let workspaceDir: string | undefined;
 
 /** Project root directory — boundary for allowProjectWrites. */
 let projectRoot: string | undefined;
@@ -150,7 +150,7 @@ export function validateOutputs(
  */
 export function validateFrontmatter(
   contract: CapabilityContract,
-  workingDir: string,
+  workspaceDir: string,
   params?: Record<string, unknown>,
 ): { success: boolean; message?: string } {
   const workspacePrefix = typeof params?.workspacePrefix === "string"
@@ -169,7 +169,7 @@ export function validateFrontmatter(
       }
 
       // Use resolveContractPath for prefix-aware resolution (handles placeholders internally)
-      const filePath = resolveContractPath(entry.file, workingDir, workspacePrefix, params);
+      const filePath = resolveContractPath(entry.file, workspaceDir, workspacePrefix, params);
 
       // Check file exists
       if (!fs.existsSync(filePath)) {
@@ -295,16 +295,16 @@ export function setupValidation(pi: ExtensionAPI) {
   pi.on("resources_discover", async (_event, ctx) => {
     const config = await getSessionConfig(ctx);
     if (!config) return;
-    workingDir = config.workingDir;
+    workspaceDir = config.workspaceDir;
 
     const workspacePrefix = typeof config.sessionParams?.workspacePrefix === "string"
       ? config.sessionParams.workspacePrefix
       : undefined;
 
     // Resolve read-only file paths through prefix layer
-    if (config.readOnlyFiles && config.workingDir) {
+    if (config.readOnlyFiles && config.workspaceDir) {
       readOnlyFilePaths = config.readOnlyFiles.map((f) =>
-        path.resolve(resolveContractPath(f, workingDir!, workspacePrefix, config.sessionParams))
+        path.resolve(resolveContractPath(f, workspaceDir!, workspacePrefix, config.sessionParams))
       );
     } else {
       readOnlyFilePaths = [];
@@ -312,21 +312,21 @@ export function setupValidation(pi: ExtensionAPI) {
 
     // Start with explicit writeAllowlist from config
     let baseAllowlist: string[] = [];
-    if (config.writeAllowlist && config.workingDir) {
+    if (config.writeAllowlist && config.workspaceDir) {
       baseAllowlist = config.writeAllowlist.map((f) =>
-        path.resolve(resolveContractPath(f, workingDir!, workspacePrefix, config.sessionParams))
+        path.resolve(resolveContractPath(f, workspaceDir!, workspacePrefix, config.sessionParams))
       );
     }
 
     // Auto-derive from contract outputs — "zero manual configuration per capability"
-    // Root-level paths (/PROJECT/...) resolve directly from workingDir; prefixed paths
+    // Root-level paths (/PROJECT/...) resolve directly from workspaceDir; prefixed paths
     // resolve through workspacePrefix. Merge with explicit allowlist via Set dedup.
     const contractOutputPaths: string[] = [];
-    if (config.contract?.outputs && workingDir) {
+    if (config.contract?.outputs && workspaceDir) {
       for (const entry of config.contract.outputs) {
         if (isMarkdownFileSpec(entry)) {
           contractOutputPaths.push(path.resolve(resolveContractPath(
-            entry.file, workingDir, workspacePrefix, config.sessionParams
+            entry.file, workspaceDir, workspacePrefix, config.sessionParams
           )));
         }
       }

@@ -152,8 +152,8 @@ vi.mock("./state-machines/pio-workflow-machine", async (importOriginal) => {
 const mockResolveCapabilityConfigForSession = vi.hoisted(() => vi.fn());
 const mockResolveContractPath = vi.hoisted(() => {
   const { join } = require("node:path");
-  return (contractPath: string, workingDir: string, _prefix?: string, _params?: Record<string, unknown>): string => {
-    return join(workingDir, contractPath.startsWith("/") ? contractPath.slice(1) : contractPath);
+  return (contractPath: string, baseDir: string, _prefix?: string, _params?: Record<string, unknown>): string => {
+    return join(baseDir, contractPath.startsWith("/") ? contractPath.slice(1) : contractPath);
   };
 });
 
@@ -197,7 +197,7 @@ describe("handleNextTask — goal resolution order", () => {
     sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: "other-goal" });
     mockResolveCapabilityConfigForSession.mockResolvedValue({
       capability: "create-plan",
-      workingDir: tempDir,
+      workspaceDir: tempDir,
       sessionParams: { goalName: "other-goal" },
       contract: { inputs: [], outputs: [] },
     });
@@ -223,7 +223,7 @@ describe("handleNextTask — goal resolution order", () => {
     sessionCapabilityMock.getSessionParams.mockReturnValue(undefined);
     mockResolveCapabilityConfigForSession.mockResolvedValue({
       capability: "create-plan",
-      workingDir: tempDir,
+      workspaceDir: tempDir,
       sessionParams: { goalName: "only-goal" },
       contract: { inputs: [], outputs: [] },
     });
@@ -291,7 +291,7 @@ describe("model resolution — setupSessionInfrastructure and before_agent_start
       const { capability: _cap, ...rest } = params ?? {};
       return {
         capability: cap,
-        workingDir: rest.workingDir ?? "/test/.pio/goals/test",
+        workspaceDir: rest.workspaceDir ?? "/test/.pio/goals/test",
         sessionParams: rest,
         contract: { inputs: [], outputs: [] },
         skills: rest.skills ?? undefined,
@@ -701,7 +701,7 @@ describe("pio_mark_complete — queue key propagation", () => {
 
     const ctx = makeToolContext({
       capability: "finalize-goal",
-      workingDir: path.join(tempDir, ".pio", "goals", "child"),
+      workspaceDir: path.join(tempDir, ".pio", "goals", "child"),
       contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "child", queueKey: "child" },
     });
@@ -725,7 +725,7 @@ describe("pio_mark_complete — queue key propagation", () => {
 
     const ctx = makeToolContext({
       capability: "execute-task",
-      workingDir: path.join(tempDir, ".pio", "goals", "my-feature"),
+      workspaceDir: path.join(tempDir, ".pio", "goals", "my-feature"),
       contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "my-feature", queueKey: "my-feature" },
     });
@@ -749,7 +749,7 @@ describe("pio_mark_complete — queue key propagation", () => {
 
     const ctx = makeToolContext({
       capability: "finalize-goal",
-      workingDir: path.join(tempDir, ".pio", "goals", "nested"),
+      workspaceDir: path.join(tempDir, ".pio", "goals", "nested"),
       contract: { inputs: [], outputs: [] },
       sessionParams: { goalName: "nested", parentGoalName: "parent", parentStepNumber: 3, queueKey: "nested" },
     });

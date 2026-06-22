@@ -132,7 +132,7 @@ export interface CapabilityGuidelines {
 export interface CapabilityPackageConfig {
   /** Logical capability name (e.g. "create-goal") */
   capability: string;
-  /** Files that must not be modified during this session (relative to workingDir) */
+  /** Files that must not be modified during this session (relative to workspaceDir) */
   readOnlyFiles?: string[] | ConfigCallback<string[]>;
   /** Allowlist of files that may be written. Takes precedence over readOnlyFiles when present. */
   writeAllowlist?: string[] | ConfigCallback<string[]>;

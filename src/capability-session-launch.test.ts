@@ -29,7 +29,7 @@ function makeMockCtx() {
 function makeConfig(overrides: Partial<import("./types").CapabilityConfig> = {}): import("./types").CapabilityConfig {
   return {
     capability: "test-capability",
-    workingDir: "/tmp/test-goal",
+    workspaceDir: "/tmp/test-goal",
     contract: { inputs: [{ name: "goal", file: "GOAL.md" }], outputs: [] },
     sessionParams: { goalName: "test-goal" },
     allowProjectWrites: false,
@@ -73,7 +73,7 @@ describe("launchCapability — input validation", () => {
 
     // Assert: validateInputs was called with correct args
     expect(mockValidateInputs).toHaveBeenCalledWith(
-      config.workingDir,
+      config.workspaceDir,
       config.contract,
       config.sessionParams,
     );
@@ -125,9 +125,9 @@ describe("launchCapability — input validation", () => {
     expect(ctx.newSession).toHaveBeenCalledTimes(1);
   });
 
-  it("skips validation when workingDir is absent", async () => {
+  it("skips validation when workspaceDir is absent", async () => {
     const launchCapability = await getLaunchCapability();
-    const config = makeConfig({ workingDir: undefined });
+    const config = makeConfig({ workspaceDir: undefined });
 
     await expect(launchCapability(ctx, config)).resolves.toBeUndefined();
 
@@ -155,7 +155,7 @@ describe("launchCapability — input validation", () => {
 
     // Assert: validateInputs was called with sessionParams containing stepNumber
     expect(mockValidateInputs).toHaveBeenCalledWith(
-      config.workingDir,
+      config.workspaceDir,
       config.contract,
       config.sessionParams,
     );

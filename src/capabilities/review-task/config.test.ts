@@ -78,7 +78,7 @@ describe("resolveReviewReadOnlyFiles", () => {
   it("given stepNumber 1, includes DECISIONS.md in readOnlyFiles (plain name)", () => {
     // Act
     const readOnlyFiles = (config.readOnlyFiles as Function)(
-      "/some/workingDir",
+      "/some/workspaceDir",
       { stepNumber: 1 },
     );
 
@@ -101,7 +101,7 @@ describe("resolveReviewWriteAllowlist", () => {
   it("given a step number, should return array containing only REVIEW.md (plain name)", () => {
     // Act
     const allowlist = (config.writeAllowlist as Function)(
-      "/some/workingDir",
+      "/some/workspaceDir",
       { stepNumber: 1 },
     );
 
@@ -113,7 +113,7 @@ describe("resolveReviewWriteAllowlist", () => {
   it("excludes APPROVED from the write allowlist", () => {
     // Act
     const allowlist = (config.writeAllowlist as Function)(
-      "/some/workingDir",
+      "/some/workspaceDir",
       { stepNumber: 3 },
     );
 
@@ -142,7 +142,7 @@ describe("config.prepareSession", () => {
   afterEach(() => cleanup(tempDir));
 
   it("deletes stale APPROVED marker (workspaceDir is already step directory)", () => {
-    // Arrange: stepDir/APPROVED present — pass stepDir directly as workingDir
+    // Arrange: stepDir/APPROVED present — pass stepDir directly as workspaceDir
     const { stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
     fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
 

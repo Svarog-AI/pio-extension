@@ -27,20 +27,20 @@ import { CAPABILITY_CONFIG_FILE } from "./capability-package";
 export type { CapabilityPackageDescriptor } from "./capability-package";
 
 /**
- * Scan `<baseDir>/capabilities/` for capability packages and return
+ * Scan `<scanBase>/capabilities/` for capability packages and return
  * descriptors for all discovered packages.
  *
  * A capability package is a directory containing `config.ts` that
  * default-exports a `CapabilityPackageConfig`.
  *
- * @param baseDir - Base directory containing the `capabilities/` folder
+ * @param scanBase - Directory containing the `capabilities/` folder
  *                  (e.g. `__dirname` or the project `src/` path)
  * @returns Array of descriptors for all discovered packages
  */
 export async function discoverCapabilities(
-  baseDir: string
+  scanBase: string
 ): Promise<CapabilityPackageDescriptor[]> {
-  const capabilitiesDir = path.join(baseDir, "capabilities");
+  const capabilitiesDir = path.join(scanBase, "capabilities");
 
   // If capabilities directory doesn't exist, return empty array
   if (!fs.existsSync(capabilitiesDir)) {

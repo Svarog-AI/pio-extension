@@ -20,7 +20,7 @@ export const REVISE_PLAN_MARKER = "REVISE_PLAN_NEEDED";
  * Callback used by the `writeAllowlist` field in config.
  * Returns array of allowed write paths for the given step number.
  */
-export function resolveEvolveWriteAllowlist(_workingDir: string, params?: Record<string, unknown>): string[] {
+export function resolveEvolveWriteAllowlist(_workspaceDir: string, params?: Record<string, unknown>): string[] {
   const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
   if (stepNumber == null) {
     throw new Error("stepNumber is required for evolve-plan. Ensure the task was enqueued with a valid step number.");

@@ -57,13 +57,13 @@ export default capabilityConfig;
 // prepareSession — read TASK.md skills and merge into capability config
 // ---------------------------------------------------------------------------
 
-function prepareReviewSession(workingDir: string, params?: Record<string, unknown>): void {
-  // workingDir is already the resolved step directory (from Step 9) — no prefix needed
-  fs.rmSync(path.join(workingDir, "APPROVED"), { force: true });
-  fs.rmSync(path.join(workingDir, "REJECTED"), { force: true });
+function prepareReviewSession(workspaceDir: string, params?: Record<string, unknown>): void {
+  // workspaceDir is already the resolved step directory (from Step 9) — no prefix needed
+  fs.rmSync(path.join(workspaceDir, "APPROVED"), { force: true });
+  fs.rmSync(path.join(workspaceDir, "REJECTED"), { force: true });
 
   // Read TASK.md skills and merge into capability config
-  const capState = new CapState(CONTRACT, workingDir, params);
+  const capState = new CapState(CONTRACT, workspaceDir, params);
   const taskFile = capState.input<{ skills?: unknown }>("task");
   const taskData = taskFile.read();
   const taskSkills = taskData?.skills ?? null;

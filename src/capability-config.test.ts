@@ -37,22 +37,22 @@ describe("resolveCapabilityConfig — happy path with static config", () => {
     expect(result!.contract.outputs).toContainEqual(expect.objectContaining({ file: "PLAN.md" }));
   });
 
-  it("returns .pio/ as default workingDir regardless of goalName", async () => {
+  it("returns .pio/ as default workspaceDir regardless of goalName", async () => {
     const cwd = "/tmp/test-proj";
     const params = { capability: "create-goal" as string, goalName: "my-feature", sessionName: "test" };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.workingDir).toBe(path.join("/tmp/test-proj", ".pio"));
+    expect(result!.workspaceDir).toBe(path.join("/tmp/test-proj", ".pio"));
   });
 
-  it("returns .pio/ as default workingDir when no goalName", async () => {
+  it("returns .pio/ as default workspaceDir when no goalName", async () => {
     const cwd = "/tmp/test-proj";
     const params = { capability: "create-goal" as string, sessionName: "test" };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.workingDir).toBe(path.join("/tmp/test-proj", ".pio"));
+    expect(result!.workspaceDir).toBe(path.join("/tmp/test-proj", ".pio"));
   });
 });
 
@@ -61,7 +61,7 @@ describe("resolveCapabilityConfig — happy path with static config", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveCapabilityConfig — workspacePrefix resolution", () => {
-  it("computes workingDir from workspacePrefix: .pio/ + goals/my-feature", async () => {
+  it("computes workspaceDir from workspacePrefix: .pio/ + goals/my-feature", async () => {
     const cwd = "/tmp/test-proj";
     const params = {
       capability: "create-plan" as string,
@@ -71,7 +71,7 @@ describe("resolveCapabilityConfig — workspacePrefix resolution", () => {
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.workingDir).toBe(path.join(cwd, ".pio", "goals", "my-feature"));
+    expect(result!.workspaceDir).toBe(path.join(cwd, ".pio", "goals", "my-feature"));
   });
 
   it("strips workspacePrefix from sessionParams after normalization", async () => {
@@ -89,13 +89,13 @@ describe("resolveCapabilityConfig — workspacePrefix resolution", () => {
     expect(result!.sessionParams?.customField).toBe("value");
   });
 
-  it("without workspacePrefix, workingDir is just .pio/ (backward compatible)", async () => {
+  it("without workspacePrefix, workspaceDir is just .pio/ (backward compatible)", async () => {
     const cwd = "/tmp/test-proj";
     const params = { capability: "create-goal" as string, sessionName: "test" };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.workingDir).toBe(path.join(cwd, ".pio"));
+    expect(result!.workspaceDir).toBe(path.join(cwd, ".pio"));
     expect(result!.sessionParams?.workspacePrefix).toBeUndefined();
   });
 
@@ -109,21 +109,21 @@ describe("resolveCapabilityConfig — workspacePrefix resolution", () => {
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.workingDir).toBe(path.join(cwd, ".pio", "goals", "parent", "S03", "subgoals", "nested"));
+    expect(result!.workspaceDir).toBe(path.join(cwd, ".pio", "goals", "parent", "S03", "subgoals", "nested"));
   });
 
-  it("explicit workingDir is still used as base before prefix resolution", async () => {
+  it("explicit baseDir is still used as base before prefix resolution", async () => {
     const cwd = "/tmp/test-proj";
     const params = {
       capability: "create-plan" as string,
       sessionName: "test",
-      workingDir: "/explicit/path",
+      baseDir: "/explicit/path",
       workspacePrefix: "goals/my-feature",
     };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.workingDir).toBe(path.join("/explicit/path", "goals", "my-feature"));
+    expect(result!.workspaceDir).toBe(path.join("/explicit/path", "goals", "my-feature"));
   });
 
   it("callbacks receive resolved directory (goal-level) not raw .pio/", async () => {
@@ -139,60 +139,60 @@ describe("resolveCapabilityConfig — workspacePrefix resolution", () => {
 
     // After Step 10, readOnlyFiles returns plain "TASK.md" (workspacePrefix handles step folder)
     expect(result!.readOnlyFiles).toContain("TASK.md");
-    // workingDir is the resolved directory
-    expect(result!.workingDir).toBe(path.join(cwd, ".pio", "goals", "my-feature"));
+    // workspaceDir is the resolved directory
+    expect(result!.workspaceDir).toBe(path.join(cwd, ".pio", "goals", "my-feature"));
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveCapabilityConfig — explicit workingDir override
+// resolveCapabilityConfig — explicit baseDir override
 // ---------------------------------------------------------------------------
 
-describe("resolveCapabilityConfig — explicit workingDir override", () => {
-  it("explicit workingDir overrides goalName-based derivation", async () => {
+describe("resolveCapabilityConfig — explicit baseDir override", () => {
+  it("explicit baseDir overrides goalName-based derivation", async () => {
     const cwd = "/tmp/proj";
     const params = {
       capability: "finalize-goal" as string,
       goalName: "my-feature",
-      workingDir: "/explicit/path",
+      baseDir: "/explicit/path",
       sessionName: "test",
     };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.workingDir).toBe("/explicit/path");
+    expect(result!.workspaceDir).toBe("/explicit/path");
   });
 
-  it("returns .pio/ as default when workingDir is absent", async () => {
+  it("returns .pio/ as default when baseDir is absent", async () => {
     const cwd = "/tmp/proj";
     const params = { capability: "create-plan" as string, goalName: "my-feature", sessionName: "test" };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.workingDir).toBe(path.join("/tmp/proj", ".pio"));
+    expect(result!.workspaceDir).toBe(path.join("/tmp/proj", ".pio"));
   });
 
-  it("returns .pio/ as default when neither workingDir nor goalName is present", async () => {
+  it("returns .pio/ as default when neither baseDir nor goalName is present", async () => {
     const cwd = "/tmp/proj";
     const params = { capability: "project-context" as string, sessionName: "test" };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.workingDir).toBe(path.join("/tmp/proj", ".pio"));
+    expect(result!.workspaceDir).toBe(path.join("/tmp/proj", ".pio"));
   });
 
-  it("empty string workingDir falls back to .pio/ default", async () => {
+  it("empty string baseDir falls back to .pio/ default", async () => {
     const cwd = "/tmp/proj";
     const params = {
       capability: "finalize-goal" as string,
       goalName: "my-feature",
-      workingDir: "",
+      baseDir: "",
       sessionName: "test",
     };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.workingDir).toBe(path.join("/tmp/proj", ".pio"));
+    expect(result!.workspaceDir).toBe(path.join("/tmp/proj", ".pio"));
   });
 });
 
@@ -391,9 +391,9 @@ describe("resolveCapabilityConfig — static config passthrough", () => {
 describe("PrepareSessionCallback", () => {
   it("sync callback with correct signature satisfies the type", () => {
     // Arrange + Act: A sync callback matching the expected signature should satisfy PrepareSessionCallback
-    const cb: PrepareSessionCallback = (workingDir: string, params?: Record<string, unknown>) => {
+    const cb: PrepareSessionCallback = (workspaceDir: string, params?: Record<string, unknown>) => {
       // Perform side effects (e.g., file cleanup)
-      if (workingDir.length > 0 && params?.stepNumber) {
+      if (workspaceDir.length > 0 && params?.stepNumber) {
         // noop — type check is the assertion
       }
     };
@@ -404,7 +404,7 @@ describe("PrepareSessionCallback", () => {
 
   it("async callback returning Promise<void> satisfies the type", async () => {
     // Arrange + Act: An async callback should also satisfy PrepareSessionCallback
-    const cb: PrepareSessionCallback = async (workingDir: string, params?: Record<string, unknown>) => {
+    const cb: PrepareSessionCallback = async (workspaceDir: string, params?: Record<string, unknown>) => {
       // Simulate async file deletion
       await new Promise((resolve) => setTimeout(resolve, 0));
     };
@@ -434,7 +434,7 @@ describe("CapabilityConfig.prepareSession", () => {
 
   it("prepareSession accepts a callback on resolved CapabilityConfig", () => {
     // Arrange
-    const cb: PrepareSessionCallback = (workingDir) => {};
+    const cb: PrepareSessionCallback = (workspaceDir) => {};
 
     // Act
     const config: CapabilityConfig = {
@@ -561,12 +561,12 @@ describe("resolveCapabilityConfig — project-context writeAllowlist", () => {
     expect(result!.writeAllowlist).toContain(".pio/PROJECT/GLOSSARY.md");
   });
 
-  it("project-context workingDir defaults to .pio/", async () => {
+  it("project-context workspaceDir defaults to .pio/", async () => {
     const params = { capability: "project-context" as string, sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    expect(result!.workingDir).toBe(path.join("/tmp/proj", ".pio"));
+    expect(result!.workspaceDir).toBe(path.join("/tmp/proj", ".pio"));
   });
 });
 
@@ -744,9 +744,9 @@ describe("resolveCapabilityConfig — postValidate/postExecute passthrough", () 
  * completed goal and verify resolveCapabilityConfig() handles it correctly.
  */
 describe("resolveCapabilityConfig — finalize-goal auto-transition integration", () => {
-  it("finalize-goal auto-transition params default workingDir to .pio/", async () => {
+  it("finalize-goal auto-transition params default workspaceDir to .pio/", async () => {
     // Arrange: simulate the params shape that resolveEvolvePlanToFinalizeGoal() returns
-    // for a completed goal: { goalName, goalDir } (no workingDir)
+    // for a completed goal: { goalName, goalDir } (no workspaceDir)
     const cwd = "/tmp/auto-transition-proj";
     const params = {
       capability: "finalize-goal" as string,
@@ -758,9 +758,9 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
     // Act
     const result = await resolveCapabilityConfig(cwd, params);
 
-    // Assert: workingDir defaults to .pio/ (no goal-scoped derivation)
+    // Assert: workspaceDir defaults to .pio/ (no goal-scoped derivation)
     expect(result).toBeDefined();
-    expect(result!.workingDir).toBe(path.join(cwd, ".pio"));
+    expect(result!.workspaceDir).toBe(path.join(cwd, ".pio"));
     expect(result!.capability).toBe("finalize-goal");
     // writeAllowlist is no longer explicit — auto-derived from CONTRACT.outputs by validation guard
     expect(result!.writeAllowlist).toBeUndefined();
@@ -955,26 +955,26 @@ describe("resolvePaths", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveContractPath", () => {
-  const workingDir = "/proj/.pio";
+  const workspaceDir = "/proj/.pio";
 
-  it("resolves prefixed path — joins workingDir + prefix + contractPath", () => {
-    const result = resolveContractPath("GOAL.md", workingDir, "goals/my-feature");
+  it("resolves prefixed path — joins workspaceDir + prefix + contractPath", () => {
+    const result = resolveContractPath("GOAL.md", workspaceDir, "goals/my-feature");
     expect(result).toBe("/proj/.pio/goals/my-feature/GOAL.md");
   });
 
-  it("resolves root-level path — leading / strips prefix and joins with workingDir", () => {
-    const result = resolveContractPath("/PROJECT/OVERVIEW.md", workingDir, "goals/my-feature");
+  it("resolves root-level path — leading / strips prefix and joins with workspaceDir", () => {
+    const result = resolveContractPath("/PROJECT/OVERVIEW.md", workspaceDir, "goals/my-feature");
     expect(result).toBe("/proj/.pio/PROJECT/OVERVIEW.md");
   });
 
-  it("resolves path without prefix — joins workingDir + contractPath", () => {
-    const result = resolveContractPath("GOAL.md", workingDir, undefined);
+  it("resolves path without prefix — joins workspaceDir + contractPath", () => {
+    const result = resolveContractPath("GOAL.md", workspaceDir, undefined);
     expect(result).toBe("/proj/.pio/GOAL.md");
   });
 
   it("treats empty prefix same as no prefix", () => {
-    const withEmpty = resolveContractPath("GOAL.md", workingDir, "");
-    const withUndefined = resolveContractPath("GOAL.md", workingDir, undefined);
+    const withEmpty = resolveContractPath("GOAL.md", workspaceDir, "");
+    const withUndefined = resolveContractPath("GOAL.md", workspaceDir, undefined);
     expect(withEmpty).toBe(withUndefined);
     expect(withEmpty).toBe("/proj/.pio/GOAL.md");
   });
@@ -982,7 +982,7 @@ describe("resolveContractPath", () => {
   it("resolves placeholders then applies prefix", () => {
     const result = resolveContractPath(
       "S{stepNumber:02d}/TASK.md",
-      workingDir,
+      workspaceDir,
       "goals/my-feature",
       { stepNumber: 3 },
     );
@@ -990,14 +990,14 @@ describe("resolveContractPath", () => {
   });
 
   it("resolves root-level path without prefix", () => {
-    const result = resolveContractPath("/PROJECT/OVERVIEW.md", workingDir, undefined);
+    const result = resolveContractPath("/PROJECT/OVERVIEW.md", workspaceDir, undefined);
     expect(result).toBe("/proj/.pio/PROJECT/OVERVIEW.md");
   });
 
   it("resolves nested workspace prefix correctly", () => {
     const result = resolveContractPath(
       "GOAL.md",
-      workingDir,
+      workspaceDir,
       "goals/parent/S03/subgoals/nested",
     );
     expect(result).toBe("/proj/.pio/goals/parent/S03/subgoals/nested/GOAL.md");
@@ -1007,7 +1007,7 @@ describe("resolveContractPath", () => {
     expect(() =>
       resolveContractPath(
         "S{stepNumber:02d}/TASK.md",
-        workingDir,
+        workspaceDir,
         "goals/my-feature",
       ),
     ).toThrow(/Unresolved placeholder/);
@@ -1017,7 +1017,7 @@ describe("resolveContractPath", () => {
     expect(() =>
       resolveContractPath(
         "S{stepNumber:02d}/TASK.md",
-        workingDir,
+        workspaceDir,
         "goals/my-feature",
         { otherKey: "value" },
       ),
@@ -1121,11 +1121,11 @@ describe("all real capabilities define defaultInitialMessage", () => {
     expect(config!.initialMessage!.length).toBeGreaterThan(0);
   });
 
-  it("execute-task defaultInitialMessage returns a non-empty string with .pio/ workingDir", async () => {
+  it("execute-task defaultInitialMessage returns a non-empty string with .pio/ workspaceDir", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", { capability: "execute-task" as string, stepNumber: 1, sessionName: "test" });
     expect(config!.initialMessage).toBeDefined();
     expect(config!.initialMessage!.length).toBeGreaterThan(0);
-    // With fixed workingDir (.pio/), the message should reference .pio/ not a goal dir
+    // With fixed workspaceDir (.pio/), the message should reference .pio/ not a goal dir
     expect(config!.initialMessage).toContain(".pio");
   });
 

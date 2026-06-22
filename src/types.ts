@@ -79,9 +79,9 @@ export interface CapabilityConfig {
   prompt?: string;
   /** Kickoff prompt sent as a user message to trigger the agent */
   initialMessage?: string;
-  /** Resolved workspace directory — includes workspacePrefix from normalization. Base directory for resolving validation file paths. */
-  workingDir?: string;
-  /** Files that must not be modified during this session (relative to workingDir) */
+  /** Resolved workspace directory — includes workspacePrefix from normalization. */
+  workspaceDir?: string;
+  /** Files that must not be modified during this session (relative to workspaceDir) */
   readOnlyFiles?: string[];
   /** Allowlist of files that may be written during this session. When present, takes precedence over readOnlyFiles. */
   writeAllowlist?: string[];

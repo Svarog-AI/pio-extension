@@ -70,7 +70,7 @@ function isMarkdownFileSpec(entry: OutputEntry): entry is MarkdownFileSpec {
  */
 export function validateOutputs(
   contract: CapabilityContract,
-  baseDir: string,
+  workspaceDir: string,
   params?: Record<string, unknown>,
 ): { success: boolean; message?: string } {
   const workspacePrefix = typeof params?.workspacePrefix === "string"
@@ -79,7 +79,7 @@ export function validateOutputs(
 
   // If COMPLETION_SUMMARY.md exists (resolved through prefix layer), pass validation regardless of other expected files.
   // This allows evolve-plan to write just COMPLETION_SUMMARY.md (when all steps are done) and have pio_mark_complete succeed.
-  if (fs.existsSync(resolveContractPath("COMPLETION_SUMMARY.md", baseDir, workspacePrefix, params))) {
+  if (fs.existsSync(resolveContractPath("COMPLETION_SUMMARY.md", workspaceDir, workspacePrefix, params))) {
     return { success: true };
   }
 
@@ -98,7 +98,7 @@ export function validateOutputs(
       }
 
       // Use resolveContractPath for prefix-aware resolution (handles placeholders internally)
-      const fullPath = resolveContractPath(entry.file, baseDir, workspacePrefix, params);
+      const fullPath = resolveContractPath(entry.file, workspaceDir, workspacePrefix, params);
 
       if (!fs.existsSync(fullPath)) {
         issues.push(`Output file '${entry.file}' is missing`);
@@ -212,13 +212,13 @@ export function validateFrontmatter(
  * Paths are resolved through `resolveContractPath()` which handles workspace
  * prefix injection and placeholder resolution.
  *
- * @param baseDir - Base directory for resolving relative paths
+ * @param workspaceDir - Resolved workspace directory for resolving relative paths
  * @param contract - CapabilityContract with inputs and excludedFiles
  * @param params - Session params for placeholder resolution (must include workspacePrefix if used)
  * @returns Success result or failure with descriptive message
  */
 export function validateInputs(
-  baseDir: string,
+  workspaceDir: string,
   contract: CapabilityContract,
   params?: Record<string, unknown>,
 ): { success: boolean; message?: string } {
@@ -229,7 +229,7 @@ export function validateInputs(
   try {
     // Check required inputs
     for (const spec of contract.inputs) {
-      const fullPath = resolveContractPath(spec.file, baseDir, workspacePrefix, params);
+      const fullPath = resolveContractPath(spec.file, workspaceDir, workspacePrefix, params);
 
       if (!fs.existsSync(fullPath)) {
         return { success: false, message: `Required file missing: ${spec.file}` };
@@ -257,7 +257,7 @@ export function validateInputs(
     // Check excluded files
     if (contract.excludedFiles) {
       for (const file of contract.excludedFiles) {
-        const fullPath = resolveContractPath(file, baseDir, workspacePrefix, params);
+        const fullPath = resolveContractPath(file, workspaceDir, workspacePrefix, params);
         if (fs.existsSync(fullPath)) {
           return { success: false, message: `File must not exist: ${file}` };
         }

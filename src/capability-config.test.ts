@@ -955,26 +955,26 @@ describe("resolvePaths", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveContractPath", () => {
-  const workspaceDir = "/proj/.pio";
+  const baseDir = "/proj/.pio";
 
-  it("resolves prefixed path — joins workspaceDir + prefix + contractPath", () => {
-    const result = resolveContractPath("GOAL.md", workspaceDir, "goals/my-feature");
+  it("resolves prefixed path — joins baseDir + prefix + contractPath", () => {
+    const result = resolveContractPath("GOAL.md", baseDir, "goals/my-feature");
     expect(result).toBe("/proj/.pio/goals/my-feature/GOAL.md");
   });
 
-  it("resolves root-level path — leading / strips prefix and joins with workspaceDir", () => {
-    const result = resolveContractPath("/PROJECT/OVERVIEW.md", workspaceDir, "goals/my-feature");
+  it("resolves root-level path — leading / strips prefix and joins with baseDir", () => {
+    const result = resolveContractPath("/PROJECT/OVERVIEW.md", baseDir, "goals/my-feature");
     expect(result).toBe("/proj/.pio/PROJECT/OVERVIEW.md");
   });
 
-  it("resolves path without prefix — joins workspaceDir + contractPath", () => {
-    const result = resolveContractPath("GOAL.md", workspaceDir, undefined);
+  it("resolves path without prefix — joins baseDir + contractPath", () => {
+    const result = resolveContractPath("GOAL.md", baseDir, undefined);
     expect(result).toBe("/proj/.pio/GOAL.md");
   });
 
   it("treats empty prefix same as no prefix", () => {
-    const withEmpty = resolveContractPath("GOAL.md", workspaceDir, "");
-    const withUndefined = resolveContractPath("GOAL.md", workspaceDir, undefined);
+    const withEmpty = resolveContractPath("GOAL.md", baseDir, "");
+    const withUndefined = resolveContractPath("GOAL.md", baseDir, undefined);
     expect(withEmpty).toBe(withUndefined);
     expect(withEmpty).toBe("/proj/.pio/GOAL.md");
   });
@@ -982,7 +982,7 @@ describe("resolveContractPath", () => {
   it("resolves placeholders then applies prefix", () => {
     const result = resolveContractPath(
       "S{stepNumber:02d}/TASK.md",
-      workspaceDir,
+      baseDir,
       "goals/my-feature",
       { stepNumber: 3 },
     );
@@ -990,14 +990,14 @@ describe("resolveContractPath", () => {
   });
 
   it("resolves root-level path without prefix", () => {
-    const result = resolveContractPath("/PROJECT/OVERVIEW.md", workspaceDir, undefined);
+    const result = resolveContractPath("/PROJECT/OVERVIEW.md", baseDir, undefined);
     expect(result).toBe("/proj/.pio/PROJECT/OVERVIEW.md");
   });
 
   it("resolves nested workspace prefix correctly", () => {
     const result = resolveContractPath(
       "GOAL.md",
-      workspaceDir,
+      baseDir,
       "goals/parent/S03/subgoals/nested",
     );
     expect(result).toBe("/proj/.pio/goals/parent/S03/subgoals/nested/GOAL.md");
@@ -1007,7 +1007,7 @@ describe("resolveContractPath", () => {
     expect(() =>
       resolveContractPath(
         "S{stepNumber:02d}/TASK.md",
-        workspaceDir,
+        baseDir,
         "goals/my-feature",
       ),
     ).toThrow(/Unresolved placeholder/);
@@ -1017,7 +1017,7 @@ describe("resolveContractPath", () => {
     expect(() =>
       resolveContractPath(
         "S{stepNumber:02d}/TASK.md",
-        workspaceDir,
+        baseDir,
         "goals/my-feature",
         { otherKey: "value" },
       ),

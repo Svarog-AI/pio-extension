@@ -46,10 +46,10 @@ function createGoalTree(
 }
 
 // ---------------------------------------------------------------------------
-// validateOutputs — COMPLETION_SUMMARY.md short-circuit at baseDir
+// validateOutputs — COMPLETION_SUMMARY.md short-circuit at workspaceDir
 // ---------------------------------------------------------------------------
 
-describe("validateOutputs with COMPLETION_SUMMARY.md at baseDir", () => {
+describe("validateOutputs with COMPLETION_SUMMARY.md at workspaceDir", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -119,7 +119,7 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at baseDir", () => {
     // Act
     const result = validateOutputs(contract, tempDir);
 
-    // Assert: fails normally (short-circuit only for baseDir/COMPLETION_SUMMARY.md, not subfolder)
+    // Assert: fails normally (short-circuit only for workspaceDir/COMPLETION_SUMMARY.md, not subfolder)
     expect(result.success).toBe(false);
     expect(result.message).toContain("S01/TASK.md");
   });

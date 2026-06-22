@@ -50,7 +50,7 @@ export const markCompleteTool = defineTool({
     // Use `dir` (= config.workspaceDir) everywhere — it's the resolved workspace directory.
 
     // 1. Output validation (existence + frontmatter schema — single call)
-    // validateOutputs falls back to joining baseDir + contractPath when workspacePrefix is absent
+    // validateOutputs falls back to joining workspaceDir + contractPath when workspacePrefix is absent
     const outputsResult = validateOutputs(config.contract, dir, sessionParams);
 
     if (!outputsResult.success) {

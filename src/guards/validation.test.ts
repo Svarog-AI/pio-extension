@@ -1401,8 +1401,8 @@ describe("setupValidation — auto-derived writeAllowlist from contract outputs"
 // ---------------------------------------------------------------------------
 // validateOutputs — stripped workspacePrefix (no duplication)
 // After normalization, workspacePrefix is stripped from sessionParams.
-// validateOutputs falls back to joining baseDir + contractPath — correct
-// because baseDir is already the resolved directory.
+// validateOutputs falls back to joining workspaceDir + contractPath — correct
+// because workspaceDir is already the resolved directory.
 // ---------------------------------------------------------------------------
 
 describe("validateOutputs — stripped workspacePrefix (no duplication)", () => {
@@ -1411,8 +1411,8 @@ describe("validateOutputs — stripped workspacePrefix (no duplication)", () => 
   beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
-  it("resolves step-specific paths with goal-level baseDir when workspacePrefix is absent", () => {
-    // Simulate the post-normalization scenario: baseDir is already the resolved
+  it("resolves step-specific paths with goal-level workspaceDir when workspacePrefix is absent", () => {
+    // Simulate the post-normalization scenario: workspaceDir is already the resolved
     // goal directory, and workspacePrefix is stripped from params.
     const goalDir = path.join(tempDir, ".pio", "goals", "my-feature");
     fs.mkdirSync(path.join(goalDir, "S03"), { recursive: true });
@@ -1423,7 +1423,7 @@ describe("validateOutputs — stripped workspacePrefix (no duplication)", () => 
       outputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
     };
 
-    // workspacePrefix is absent (stripped) — resolveContractPath falls back to baseDir + contractPath
+    // workspacePrefix is absent (stripped) — resolveContractPath falls back to workspaceDir + contractPath
     const result = validateOutputs(contract, goalDir, { stepNumber: 3 });
     expect(result).toEqual({ success: true });
   });
@@ -1443,7 +1443,7 @@ describe("validateOutputs — stripped workspacePrefix (no duplication)", () => 
     expect(result.message).toContain("S{stepNumber:02d}/TASK.md");
   });
 
-  it("resolves multiple outputs with goal-level baseDir when workspacePrefix is absent", () => {
+  it("resolves multiple outputs with goal-level workspaceDir when workspacePrefix is absent", () => {
     const goalDir = path.join(tempDir, ".pio", "goals", "my-feature");
     fs.mkdirSync(path.join(goalDir, "S01"), { recursive: true });
     fs.writeFileSync(path.join(goalDir, "S01", "TASK.md"), "content", "utf-8");
@@ -1461,7 +1461,7 @@ describe("validateOutputs — stripped workspacePrefix (no duplication)", () => 
     expect(result).toEqual({ success: true });
   });
 
-  it("no path duplication: baseDir already includes prefix, no double-join", () => {
+  it("no path duplication: workspaceDir already includes prefix, no double-join", () => {
     // If path duplication occurred, the resolved path would be:
     // .pio/goals/my-feature/goals/my-feature/S01/TASK.md (WRONG)
     // Instead it should be:
@@ -1495,7 +1495,7 @@ describe("validateInputs — stripped workspacePrefix (no duplication)", () => {
   beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
-  it("resolves input paths with goal-level baseDir when workspacePrefix is absent", () => {
+  it("resolves input paths with goal-level workspaceDir when workspacePrefix is absent", () => {
     const goalDir = path.join(tempDir, ".pio", "goals", "my-feature");
     fs.mkdirSync(goalDir, { recursive: true });
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "content", "utf-8");
@@ -1510,7 +1510,7 @@ describe("validateInputs — stripped workspacePrefix (no duplication)", () => {
     expect(result).toEqual({ success: true });
   });
 
-  it("resolves placeholder input paths with goal-level baseDir when workspacePrefix is absent", () => {
+  it("resolves placeholder input paths with goal-level workspaceDir when workspacePrefix is absent", () => {
     const goalDir = path.join(tempDir, ".pio", "goals", "my-feature");
     fs.mkdirSync(path.join(goalDir, "S02"), { recursive: true });
     fs.writeFileSync(path.join(goalDir, "S02", "TASK.md"), "content", "utf-8");

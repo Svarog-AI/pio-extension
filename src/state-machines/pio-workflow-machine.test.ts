@@ -91,7 +91,7 @@ function writeRevisePlanNeeded(goalDir: string, stepNumber: number): void {
   fs.writeFileSync(path.join(stepDir, "REVISE_PLAN_NEEDED"), "", "utf-8");
 }
 
-/** Context object for dispatch calls — baseDir is the resolved goal directory.
+/** Context object for dispatch calls — workspaceDir is the resolved goal directory.
  * mark-complete passes config.workspaceDir (resolved directory) to dispatch.
  * This is the directory where getCapState resolves files relative to — no workspacePrefix needed. */
 function ctx(tempDir: string, goalName: string): { workspaceDir: string } {

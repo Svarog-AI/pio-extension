@@ -843,7 +843,7 @@ describe("CONTRACT integration — execute-task", () => {
 
   it("all inputs present → success (plain file names)", async () => {
     const { CONTRACT } = await import("../capabilities/execute-task/config");
-    // CONTRACT uses plain file names — files resolve directly in baseDir
+    // CONTRACT uses plain file names — files resolve directly in workspaceDir
     fs.writeFileSync(path.join(tempDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
     const result = validateInputs(tempDir, CONTRACT, { stepNumber: 2 });
     expect(result).toEqual({ success: true });
@@ -866,7 +866,7 @@ describe("CONTRACT integration — review-task", () => {
 
   it("all inputs present → success (plain file names)", async () => {
     const { CONTRACT } = await import("../capabilities/review-task/config");
-    // CONTRACT uses plain file names — files resolve directly in baseDir
+    // CONTRACT uses plain file names — files resolve directly in workspaceDir
     fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
     fs.writeFileSync(path.join(tempDir, "SUMMARY.md"), "content", "utf-8");
     fs.writeFileSync(path.join(tempDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
@@ -1101,7 +1101,7 @@ describe("CONTRACT outputs integration — execute-task", () => {
 
   it("all outputs present → success: true (plain file names)", async () => {
     const { CONTRACT } = await import("../capabilities/execute-task/config");
-    // CONTRACT uses plain file names — files resolve directly in baseDir
+    // CONTRACT uses plain file names — files resolve directly in workspaceDir
     fs.writeFileSync(path.join(tempDir, "TEST.md"), "content", "utf-8");
     fs.writeFileSync(path.join(tempDir, "SUMMARY.md"), "content", "utf-8");
     const result = validateOutputs(CONTRACT, tempDir, { stepNumber: 4 });
@@ -1126,7 +1126,7 @@ describe("CONTRACT outputs integration — review-task", () => {
 
   it("all outputs present → success: true (plain file names)", async () => {
     const { CONTRACT } = await import("../capabilities/review-task/config");
-    // CONTRACT uses plain file names — files resolve directly in baseDir
+    // CONTRACT uses plain file names — files resolve directly in workspaceDir
     fs.writeFileSync(
       path.join(tempDir, "REVIEW.md"),
       `---

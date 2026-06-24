@@ -34,7 +34,7 @@ Prompts are **compiled at runtime** by `prompt-compiler.ts` (`compilePrompt()`) 
 
 **Registration:** `discoverCapabilities()` auto-discovers directory packages; `registerCapability(pi, descriptor)` calls the `register(pi)` named export from each `config.ts`. No hardcoded per-capability imports in `index.ts`.
 
-**Project-scoped capabilities:** When a capability writes to `.pio/PROJECT/*.md` (repo-root paths, not goal workspace), pass `goalDir` in enqueue params instead of `goalName`. This keeps `workingDir` as `cwd` so the writeAllowlist resolves relative to repo root. Capabilities like `project-context` and `finalize-goal` follow this pattern.
+**Project-scoped capabilities:** Capabilities that read/write `.pio/PROJECT/*.md` files (e.g., `project-context`, `finalize-goal`) use `projectRelative: true` on `MarkdownFileSpec` entries. This flag resolves paths from the global `pioRootDir` (`<cwd>/.pio/`) instead of the capability's workspace directory. Combined with the validation guard's `allowProjectWrites` opt-in, these capabilities can freely write to PROJECT files without workarounds.
 
 ### Sub-Session Lifecycle
 
@@ -48,13 +48,14 @@ The `capability-session.ts` module (renamed from `session-capability.ts`) orches
 
 ### State Management — CapState + Contract Caching
 
-- **`CapState`** (`capability-state.ts`) provides contract-backed lazy file access. Wraps a `CapabilityContract` with a base directory and params. Three accessors:
+- **`CapState`** (`capability-state.ts`) provides contract-backed lazy file access. Wraps a `CapabilityContract` with a base directory and params. Core accessors:
   - **`.input<T>(name)`** — looks up by `name` in `contract.inputs`, resolves placeholders, validates against schema
   - **`.output<T>(name)`** — looks up by `name` in `contract.outputs` (including inside OneOfGroup entries)
-  - **`.undeclared(path)`** — for marker files not in any contract (no placeholder resolution, no schema validation)
-  Every `MarkdownFileSpec` requires a `name: string`. Duplicate names across inputs/outputs within a single contract throw at construction. Replaces the old `GoalState` (deleted).
+  - **`.undeclared(path)`** — for marker files not in any contract (no placeholder resolution, no schema validation; passes explicit `projectRelative: false`)
+  - **`.resolvePath(entry: MarkdownFileSpec)`** — unified path resolution method. All internal accessors (`input`, `output`) and external consumers flow through this single method. Handles `projectRelative` entries (resolves from global `pioRootDir`), placeholder resolution, and workspace prefix injection.
+  Entry maps store full `MarkdownFileSpec` references (not copies) — new fields on the spec are automatically available. Public `.contract` getter exposes the wrapped contract. Every `MarkdownFileSpec` requires a `name: string`. Duplicate names across inputs/outputs within a single contract throw at construction. Replaces the old `GoalState` (deleted).
 - **Contract caching at startup:** `index.ts` calls `setDiscoveredContracts()` after `discoverCapabilities()` to build a name-to-contract map. `getCapState(capabilityName, baseDir, params?)` (in `state-machines/utils.ts`) provides synchronous lookup for resolve functions — no dynamic imports needed at runtime.
-- **Resolve function pattern:** All resolve functions in `pio-workflow-machine.ts` accept minimal `{ baseDir: string }` context and call `getCapState()` with capability names to perform file reads. No intermediate context object (PioWorkflowContext removed). No cross-capability schema imports from capabilities — framework code imports capability CONTRACTs directly.
+- **Resolve function pattern:** All resolve functions in `pio-workflow-machine.ts` accept minimal `{ workspaceDir: string }` context and call `getCapState()` with capability names to perform file reads. `workspaceDir` is already the resolved directory (includes workspace prefix). No intermediate context object (PioWorkflowContext removed). No cross-capability schema imports from capabilities — framework code imports capability CONTRACTs directly.
 
 **Removed:** `GoalState` (`goal-state.ts`, deleted), `PioWorkflowContext` and `buildPioWorkflowContext()` (removed from `pio-workflow-machine.ts`). Dead filesystem utilities in `state-machines/utils.ts` (`isGoalComplete`, `findCurrentStepNumber`, `SimpleStepStatus`) were also removed — the module now houses only `setDiscoveredContracts` / `getCapState`.
 - **Declarative state machine framework** (`state-machines.ts`) replaces the old imperative `switch`-based resolver (`state-machine.ts`, deleted). The framework is built on three generic types:
@@ -78,7 +79,7 @@ The `capability-session.ts` module (renamed from `session-capability.ts`) orches
 
 Plan steps declared with `complexity: "subgoal"` in the PLAN.md frontmatter `steps` array spawn child goal workspaces under `S{NN}/subgoals/<name>/`. These subgoals run through the full pio lifecycle recursively:
 
-1. **Spawning:** `transitionEvolvePlan` detects `complexity === "subgoal"` via `state.steps()[n].getMetadata()` and routes to `create-goal` with parent context (`parentGoalName`, `parentStepNumber`, `workingDir`) and an `initialMessage` containing a relative path to the parent step's TASK.md
+1. **Spawning:** `transitionEvolvePlan` detects `complexity === "subgoal"` via `state.steps()[n].getMetadata()` and routes to `create-goal` with parent context (`parentGoalName`, `parentStepNumber`, `workspaceDir`) and an `initialMessage` containing a relative path to the parent step's TASK.md
 2. **Directory structure:** Subgoal workspace lives at `.pio/goals/<parent>/S{NN}/subgoals/<name>/` — nested inside the parent step folder, not at the top-level goals directory
 3. **Path resolution:** `resolveGoalDir(cwd, name, parentStepDir?)` supports an optional `parentStepDir` for nested subgoal paths; backward compatible with flat goals
 4. **Completion propagation:** `transitionFinalizeGoal` routes subgoals back to the parent's `evolve-plan` (restoring the parent queue slot). Top-level goals return `undefined` (terminal)
@@ -112,7 +113,7 @@ Mandatory skills are force-injected (content read from disk, frontmatter strippe
 10. **Abort detection in session guards:** Both `step-nudging.ts` (`turn_end`) and `session-guard.ts` (`turn_end` + `agent_end`) detect user aborts via `stopReason` on event messages instead of `ctx.signal?.aborted` (unreliable — `activeRun` is cleared before events fire). The `turn_end` handler in `session-guard.ts` returns early on abort to skip turn counting and recovery prompts; `agent_end` checks the last message's `stopReason` to suppress completion warnings.
 11. **Prompt compilation:** `compilePrompt()` reads component files (`role.md`, `workflow.ts`, `guidelines.md`) and assembles the final prompt — replaces monolithic `.md` prompts (old `src/prompts/` directory removed)
 12. **Dynamic capability loading:** `resolveCapabilityConfig()` uses dynamic imports to load capability modules at runtime
-13. **Callback-based config:** Validation rules and file protections can be static arrays or callbacks `(workingDir, params) => T` for step-dependent configuration
+13. **Callback-based config:** Validation rules and file protections can be static arrays or callbacks `(workspaceDir, params) => T` for step-dependent configuration
 14. **No transpilation:** Runs as raw TypeScript ESM via pi's runtime — `tsconfig.json` is for type checking only
 
 ## Service Integrations

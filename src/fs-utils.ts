@@ -13,7 +13,11 @@ export const pioRootDir = path.join(process.cwd(), ".pio");
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve a goal workspace path.
+ * Resolve a goal workspace path — a pio-workflow-specific helper.
+ *
+ * This is not used by framework defaults: `normalizePackageConfig()` uses a fixed
+ * `.pio/` workspaceDir plus a `workspacePrefix` for all path resolution.
+ * Used only by direct tools and the pio-workflow state machine.
  *
  * When `parentStepDir` is omitted, returns the flat path `<cwd>/.pio/goals/<name>`.
  * When `parentStepDir` is provided, returns `<parentStepDir>/subgoals/<name>`
@@ -95,31 +99,6 @@ export function readIssue(cwd: string, identifier: string): string | undefined {
     return undefined;
   }
   return fs.readFileSync(filePath, "utf-8");
-}
-
-// ---------------------------------------------------------------------------
-// Session name derivation
-// ---------------------------------------------------------------------------
-
-/**
- * Derive a human-readable session name from goal name, capability, and optional step number.
- *
- * Format:
- * - `<goal-name> <capability> s{N}` when all three are present
- * - `<goal-name> <capability>` when only goal name is present
- * - `<capability>` for non-goal sessions (empty or missing goalName)
- */
-export function deriveSessionName(goalName: string, capability: string, stepNumber?: number): string {
-  if (!goalName) return capability;
-
-  // Replace __ delimiters with / for display (hierarchical queue keys from subgoals)
-  const displayName = goalName.replace(/__/g, "/");
-
-  let name = `${displayName} ${capability}`;
-  if (typeof stepNumber === "number") {
-    name += ` s${stepNumber}`;
-  }
-  return name;
 }
 
 // ---------------------------------------------------------------------------

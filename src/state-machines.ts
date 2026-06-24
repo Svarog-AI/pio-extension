@@ -20,6 +20,10 @@ import * as path from "node:path";
  * The `stateMachineId` identifies which state machine produced the result
  * so downstream code knows which machine config to use for subsequent dispatch calls.
  * This enables multi-machine dispatch where transitions chain across the same machine.
+ *
+ * `sessionName` and `initialMessage` are required — every resolve function must provide
+ * them so downstream sessions get a proper identity and meaningful kickoff message.
+ * `dispatch()` spreads these from `ResolverResult` into every `TransitionResult`.
  */
 export interface TransitionResult {
   /** Next capability name (e.g. "evolve-plan") */
@@ -28,6 +32,10 @@ export interface TransitionResult {
   stateMachineId: string;
   /** Adjusted params to propagate (e.g. incremented stepNumber). If omitted, downstream uses session params as-is. */
   params?: Record<string, unknown>;
+  /** Human-readable session identifier (e.g. "my-feature execute-task s3"). Required — propagated by mark-complete into enqueued task params. */
+  sessionName: string;
+  /** Kickoff message for the next session. Required — propagated by mark-complete into enqueued task params. */
+  initialMessage: string;
 }
 
 /**
@@ -36,6 +44,9 @@ export interface TransitionResult {
  * The `stateMachineId` field is deliberately omitted — `dispatch()` guarantees it
  * by setting `stateMachineId: m.id` on every result. This makes it impossible for
  * a resolver to set an incorrect or missing ID.
+ *
+ * All other fields (`capability`, `sessionName`, `initialMessage`, `params?`) come
+ * from `TransitionResult` via `Omit`.
  */
 export type ResolverResult = Omit<TransitionResult, "stateMachineId">;
 

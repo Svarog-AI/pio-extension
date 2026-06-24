@@ -1,9 +1,7 @@
+import { join } from "node:path";
+import { pioRootDir } from "./fs-utils";
 import type { CapabilityConfig, CapabilityContract, ConfigCallback, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback } from "./types";
 import type { CapabilityPackageConfig, CapabilitySkills } from "./capability-package";
-import {
-  resolveGoalDir,
-  deriveSessionName,
-} from "./fs-utils";
 
 /**
  * Resolve a step-dependent config field: if it's a callback, invoke it;
@@ -11,11 +9,11 @@ import {
  */
 function resolveField<T>(
   value: T | ConfigCallback<T> | undefined,
-  workingDir: string,
+  workspaceDir: string,
   params?: Record<string, unknown>,
 ): T | undefined {
   if (typeof value === "function") {
-    return (value as ConfigCallback<T>)(workingDir, params);
+    return (value as ConfigCallback<T>)(workspaceDir, params);
   }
   return value;
 }
@@ -91,47 +89,52 @@ export function resolvePaths(
 }
 
 // ---------------------------------------------------------------------------
-// Shared parameter extraction and config assembly
+// Workspace prefix resolution layer
 // ---------------------------------------------------------------------------
 
 /**
- * Parameters extracted from session params shared by both normalize functions.
+ * Resolve a contract file path through the workspace prefix layer.
+ *
+ * Resolution order:
+ * 1. Placeholder resolution via resolvePaths() (if params provided)
+ * 2. Project-relative paths (`projectRelative: true`) join with global pioRootDir
+ * 3. Prefixed paths join baseDir + workspacePrefix + contractPath
+ * 4. Unprefixed paths join baseDir + contractPath
+ *
+ * @param contractPath - Path from capability contract (may contain {key} placeholders)
+ * @param baseDir - Base directory for path resolution
+ * @param workspacePrefix - Optional prefix string (e.g., "goals/my-feature")
+ * @param params - Optional session params for placeholder resolution
+ * @param projectRelative - When true, resolves from pioRootDir (`.pio/`) bypassing workspace prefix
+ * @returns Fully resolved filesystem path
  */
-interface ExtractedParams {
-  goalName: string;
-  workingDir: string;
-  stepNumber: number | undefined;
-  initialMessage: string | undefined;
-  fileCleanup: string[] | undefined;
-}
-
-/**
- * Extract shared parameters from session params and cwd.
- */
-function extractParams(
-  cwd: string,
+export function resolveContractPath(
+  contractPath: string,
+  baseDir: string,
+  workspacePrefix?: string,
   params?: Record<string, unknown>,
-): ExtractedParams {
-  const goalName = typeof params?.goalName === "string" ? params.goalName : "";
-  const explicitWorkingDir =
-    typeof params?.workingDir === "string" && params.workingDir
-      ? params.workingDir
-      : "";
-  const workingDir = explicitWorkingDir
-    ? explicitWorkingDir
-    : goalName
-      ? resolveGoalDir(cwd, goalName)
-      : cwd;
+  projectRelative?: boolean,
+): string {
+  // 1. Placeholder resolution — always run through resolvePaths
+  // Paths without placeholders pass through unchanged; paths with placeholders
+  // throw if keys are missing (consistent with resolvePaths existing behavior).
+  let resolved = resolvePaths([contractPath], params ?? {})[0];
 
-  return {
-    goalName,
-    workingDir,
-    stepNumber: typeof params?.stepNumber === "number" ? params.stepNumber : undefined,
-    initialMessage:
-      typeof params?.initialMessage === "string" ? params.initialMessage : undefined,
-    fileCleanup: Array.isArray(params?.fileCleanup) ? params.fileCleanup : undefined,
-  };
+  // 2. Project-relative path: resolve from global pioRootDir, ignoring baseDir and prefix
+  if (projectRelative) {
+    return join(pioRootDir, resolved);
+  }
+
+  // 3. Prefixed path: baseDir + workspacePrefix + contractPath
+  if (workspacePrefix) {
+    return join(baseDir, workspacePrefix, resolved);
+  }
+
+  // 4. No prefix: baseDir + contractPath
+  return join(baseDir, resolved);
 }
+
+
 
 /**
  * Assemble a CapabilityConfig from pre-resolved field values.
@@ -141,11 +144,10 @@ function extractParams(
 function buildCapabilityConfig(
   cap: string,
   prompt: string | undefined,
-  workingDir: string,
+  workspaceDir: string,
   readOnlyFiles: string[] | undefined,
   writeAllowlist: string[] | undefined,
   initialMessage: string | undefined,
-  fileCleanup: string[] | undefined,
   sessionParams: Record<string, unknown> | undefined,
   sessionName: string,
   prepareSession: PrepareSessionCallback | undefined,
@@ -153,15 +155,15 @@ function buildCapabilityConfig(
   postExecute: PostExecuteCallback | undefined,
   skills: CapabilitySkills | undefined,
   contract: CapabilityContract,
+  allowProjectWrites: boolean,
 ): CapabilityConfig {
   return {
     capability: cap,
     prompt,
-    workingDir,
+    workspaceDir,
     readOnlyFiles,
     writeAllowlist,
     initialMessage,
-    fileCleanup,
     sessionParams,
     sessionName,
     prepareSession,
@@ -169,6 +171,7 @@ function buildCapabilityConfig(
     postExecute,
     skills,
     contract,
+    allowProjectWrites,
   };
 }
 
@@ -181,26 +184,53 @@ function normalizePackageConfig(
   cwd: string,
   params?: Record<string, unknown>,
 ): CapabilityConfig {
-  const extracted = extractParams(cwd, params);
+  // Inline baseDir resolution — fallback to .pio/ root
+  const baseDir =
+    typeof params?.baseDir === "string" && params.baseDir
+      ? params.baseDir
+      : join(cwd, ".pio");
 
-  const readOnlyFiles = resolveField<string[]>(pkg.readOnlyFiles, extracted.workingDir, params);
-  const writeAllowlist = resolveField<string[]>(pkg.writeAllowlist, extracted.workingDir, params);
+  // Resolve workspace directory from prefix — single source of truth
+  const wsPrefix = typeof params?.workspacePrefix === "string" ? params.workspacePrefix : undefined;
+  const workspaceDir = wsPrefix ? join(baseDir, wsPrefix) : baseDir;
+
+  // Strip prefix from params so downstream code doesn't double-apply
+  // resolveContractPath falls back to joining baseDir + contractPath when workspacePrefix is undefined
+  const resolvedParams = wsPrefix ? { ...params, workspacePrefix: undefined } : params;
+
+  // Mandatory: sessionName — read from original params (before stripping)
+  const sessionName = typeof params?.sessionName === "string" ? params.sessionName : "";
+  if (!sessionName) {
+    throw new Error(`Capability "${cap}" requires a session name. Provide params.sessionName.`);
+  }
+
+  // Mandatory: initialMessage — read from params, fallback to defaultInitialMessage, throw if both missing
+  const initialMsg =
+    (typeof params?.initialMessage === "string" ? params.initialMessage : undefined)
+    ?? pkg.defaultInitialMessage(workspaceDir, resolvedParams);
+  if (!initialMsg) {
+    throw new Error(`Capability "${cap}" requires an initial message. Provide params.initialMessage or define defaultInitialMessage.`);
+  }
+
+  const readOnlyFiles = resolveField<string[]>(pkg.readOnlyFiles, workspaceDir, resolvedParams);
+  const writeAllowlist = resolveField<string[]>(pkg.writeAllowlist, workspaceDir, resolvedParams);
+  const allowProjectWrites = pkg.allowProjectWrites ?? false;
 
   return buildCapabilityConfig(
     cap,
     undefined, // new-style: prompts compiled from component files
-    extracted.workingDir,
+    workspaceDir,
     readOnlyFiles,
     writeAllowlist,
-    extracted.initialMessage ?? pkg.defaultInitialMessage(extracted.workingDir, params),
-    extracted.fileCleanup,
-    params,
-    deriveSessionName(extracted.goalName, cap, extracted.stepNumber),
+    initialMsg,
+    resolvedParams,
+    sessionName,
     pkg.prepareSession,
     pkg.postValidate,
     pkg.postExecute,
     pkg.skills,
     pkg.contract,
+    allowProjectWrites,
   );
 }
 
@@ -217,16 +247,17 @@ export async function resolveCapabilityConfig(
   const cap = typeof params?.capability === "string" ? params.capability : null;
   if (!cap) return undefined;
 
+  let mod;
   try {
-    const mod = await import(`./capabilities/${cap}/config`);
-    if (mod.default) {
-      return normalizePackageConfig(cap, mod.default as CapabilityPackageConfig, cwd, params);
-    }
+    mod = await import(`./capabilities/${cap}/config`);
   } catch (err) {
     console.warn(`pio: could not load capability "${cap}": ${err}`);
     return undefined;
   }
 
-  console.warn(`pio: no default export found for capability "${cap}"`);
-  return undefined;
+  if (!mod?.default) {
+    console.warn(`pio: no default export found for capability "${cap}"`);
+    return undefined;
+  }
+  return normalizePackageConfig(cap, mod.default as CapabilityPackageConfig, cwd, params);
 }

@@ -132,12 +132,12 @@ export interface CapabilityGuidelines {
 export interface CapabilityPackageConfig {
   /** Logical capability name (e.g. "create-goal") */
   capability: string;
-  /** Files that must not be modified during this session (relative to workingDir) */
+  /** Files that must not be modified during this session (relative to workspaceDir) */
   readOnlyFiles?: string[] | ConfigCallback<string[]>;
   /** Allowlist of files that may be written. Takes precedence over readOnlyFiles when present. */
   writeAllowlist?: string[] | ConfigCallback<string[]>;
-  /** Derive initialMessage from workingDir and params */
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => string;
+  /** Derive initialMessage from workspaceDir (resolved directory, includes prefix) and params */
+  defaultInitialMessage: (workspaceDir: string, params?: Record<string, unknown>) => string;
   /** Lifecycle hooks */
   prepareSession?: PrepareSessionCallback;
   postValidate?: PostValidateCallback;
@@ -146,6 +146,8 @@ export interface CapabilityPackageConfig {
   skills?: CapabilitySkills;
   /** Unified capability contract: consolidated inputs, outputs, excluded files, and frontmatter schemas. */
   contract: CapabilityContract;
+  /** When true, permits writing to project files outside `.pio/`. Default false — only contract output files are writable. */
+  allowProjectWrites?: boolean;
 }
 
 /**

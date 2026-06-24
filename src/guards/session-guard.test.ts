@@ -15,7 +15,7 @@ beforeEach(() => {
     const cap = typeof params?.capability === "string" ? params.capability : "unknown";
     return {
       capability: cap,
-      workingDir: params?.workingDir ?? "/test/.pio/goals/test",
+      workspaceDir: params?.workspaceDir ?? "/test/.pio/goals/test",
       sessionParams: params ?? {},
       contract: { inputs: [], outputs: [] },
     };

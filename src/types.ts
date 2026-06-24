@@ -31,6 +31,8 @@ export interface MarkdownFileSpec {
   schema?: TSchema;
   /** Optional predicate to determine if this file is required. Receives session params. If absent, file is always required. */
   requiredWhen?: (params?: Record<string, unknown>) => boolean;
+  /** When true, resolves from pioRootDir (`.pio/`) bypassing workspace prefix. Used for files like `.pio/PROJECT/*.md` that live outside goal workspaces. */
+  projectRelative?: boolean;
 }
 
 /**
@@ -79,9 +81,9 @@ export interface CapabilityConfig {
   prompt?: string;
   /** Kickoff prompt sent as a user message to trigger the agent */
   initialMessage?: string;
-  /** Base directory for resolving validation file paths (the goal workspace dir) */
-  workingDir?: string;
-  /** Files that must not be modified during this session (relative to workingDir) */
+  /** Resolved workspace directory — includes workspacePrefix from normalization. */
+  workspaceDir?: string;
+  /** Files that must not be modified during this session (relative to workspaceDir) */
   readOnlyFiles?: string[];
   /** Allowlist of files that may be written during this session. When present, takes precedence over readOnlyFiles. */
   writeAllowlist?: string[];
@@ -101,19 +103,23 @@ export interface CapabilityConfig {
   skills?: CapabilitySkills;
   /** Unified capability contract: consolidated inputs, outputs, excluded files, and frontmatter schemas. */
   contract: CapabilityContract;
+  /** When true, permits writing to project files outside `.pio/`. */
+  allowProjectWrites: boolean;
 }
 
-/** Callback signature for step-dependent config fields. */
-export type ConfigCallback<T> = (workingDir: string, params?: Record<string, unknown>) => T;
+/** Callback signature for step-dependent config fields.
+ * @param workspaceDir - Resolved workspace directory (already includes workspacePrefix from normalization). */
+export type ConfigCallback<T> = (workspaceDir: string, params?: Record<string, unknown>) => T;
 
-/** Lifecycle hook that runs before the agent starts (e.g., stale-state cleanup). */
-export type PrepareSessionCallback = (workingDir: string, params?: Record<string, unknown>) => void | Promise<void>;
+/** Lifecycle hook that runs before the agent starts (e.g., stale-state cleanup).
+ * @param workspaceDir - Resolved workspace directory (already includes workspacePrefix from normalization). */
+export type PrepareSessionCallback = (workspaceDir: string, params?: Record<string, unknown>) => void | Promise<void>;
 
 /** Lifecycle hook that runs after file-existence validation passes but before transition routing. Can fail to keep the agent in the session to fix issues. */
-export type PostValidateCallback = (goalDir: string, params?: Record<string, unknown>) => { success: boolean; message?: string };
+export type PostValidateCallback = (workspaceDir: string, params?: Record<string, unknown>) => { success: boolean; message?: string };
 
 /** Lifecycle hook that runs after transition routing + task enqueuing completes. Applies irreversible side effects or capability-specific cleanup. */
-export type PostExecuteCallback = (goalDir: string, params?: Record<string, unknown>) => void | Promise<void>;
+export type PostExecuteCallback = (workspaceDir: string, params?: Record<string, unknown>) => void | Promise<void>;
 
 // ---------------------------------------------------------------------------
 // Capability lifecycle phases

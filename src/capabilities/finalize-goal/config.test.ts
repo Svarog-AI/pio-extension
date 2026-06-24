@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import config, { register, validateFinalizeGoal } from "./config";
+import config, { register } from "./config";
 import { readPendingTask } from "../../queues";
 
 // ---------------------------------------------------------------------------
@@ -50,49 +50,40 @@ function createGoalTree(
 // ---------------------------------------------------------------------------
 
 describe("config", () => {
-  function getAllowlist(): string[] {
-    return (config.writeAllowlist as Function)("/dummy", {});
-  }
-
-  it("writeAllowlist is a callback function", () => {
-    expect(typeof config.writeAllowlist).toBe("function");
+  it("writeAllowlist is absent (auto-derived from CONTRACT.outputs)", () => {
+    expect("writeAllowlist" in config).toBe(false);
   });
 
-  it("writeAllowlist contains exactly 7 file paths", () => {
-    expect(getAllowlist()).toHaveLength(7);
+  it("CONTRACT.outputs declares 7 PROJECT files with projectRelative: true", () => {
+    expect(config.contract.outputs).toHaveLength(7);
+    const expectedFiles = [
+      "PROJECT/OVERVIEW.md",
+      "PROJECT/DEVELOPMENT.md",
+      "PROJECT/CONVENTIONS.md",
+      "PROJECT/GIT.md",
+      "PROJECT/ARCHITECTURE.md",
+      "PROJECT/DEPENDENCIES.md",
+      "PROJECT/GLOSSARY.md",
+    ];
+    const outputFiles = config.contract.outputs.map((o: any) => o.file);
+    for (const f of expectedFiles) {
+      expect(outputFiles).toContain(f);
+    }
   });
 
-  it("writeAllowlist includes OVERVIEW.md (absolute path)", () => {
-    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/OVERVIEW.md"))).toBe(true);
+  it("CONTRACT.outputs all have projectRelative: true", () => {
+    for (const entry of config.contract.outputs) {
+      if ("file" in entry) {
+        expect((entry as any).projectRelative).toBe(true);
+      }
+    }
   });
 
-  it("writeAllowlist includes DEVELOPMENT.md (absolute path)", () => {
-    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/DEVELOPMENT.md"))).toBe(true);
-  });
-
-  it("writeAllowlist includes CONVENTIONS.md (absolute path)", () => {
-    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/CONVENTIONS.md"))).toBe(true);
-  });
-
-  it("writeAllowlist includes GIT.md (absolute path)", () => {
-    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/GIT.md"))).toBe(true);
-  });
-
-  it("writeAllowlist includes ARCHITECTURE.md (absolute path)", () => {
-    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/ARCHITECTURE.md"))).toBe(true);
-  });
-
-  it("writeAllowlist includes DEPENDENCIES.md (absolute path)", () => {
-    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/DEPENDENCIES.md"))).toBe(true);
-  });
-
-  it("writeAllowlist includes GLOSSARY.md (absolute path)", () => {
-    expect(getAllowlist().some((p: string) => p.endsWith(".pio/PROJECT/GLOSSARY.md"))).toBe(true);
-  });
-
-  it("writeAllowlist paths are all absolute (resolved from process.cwd())", () => {
-    for (const p of getAllowlist()) {
-      expect(path.isAbsolute(p)).toBe(true);
+  it("CONTRACT.outputs have requiredWhen returning false (optional outputs)", () => {
+    for (const entry of config.contract.outputs) {
+      if ("requiredWhen" in entry && entry.requiredWhen) {
+        expect(entry.requiredWhen()).toBe(false);
+      }
     }
   });
 
@@ -158,57 +149,6 @@ describe("register", () => {
 });
 
 // ---------------------------------------------------------------------------
-// validateFinalizeGoal
-// ---------------------------------------------------------------------------
-
-describe("validateFinalizeGoal", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("returns ready: true when goal dir exists and COMPLETED marker is present", async () => {
-    // Arrange: create goal dir with PLAN.md and COMPLETED
-    createGoalTree(tempDir, "completed-goal", { withPlan: true, withCompletionSummary: true });
-
-    // Act
-    const result = await validateFinalizeGoal("completed-goal", tempDir);
-
-    // Assert
-    expect(result.ready).toBe(true);
-  });
-
-  it("returns error when goal directory does not exist", async () => {
-    // Arrange: no goal dir created
-    // Act
-    const result = await validateFinalizeGoal("nonexistent-goal", tempDir);
-
-    // Assert
-    expect(result.ready).toBe(false);
-    if (!result.ready) {
-      expect(result.error).toMatch(/not exist|does not exist|create/i);
-    }
-  });
-
-  it("returns error when COMPLETION_SUMMARY.md is missing (goal not complete)", async () => {
-    // Arrange: create goal dir with PLAN.md but without COMPLETION_SUMMARY.md
-    createGoalTree(tempDir, "incomplete-goal", { withPlan: true, withCompletionSummary: false });
-
-    // Act
-    const result = await validateFinalizeGoal("incomplete-goal", tempDir);
-
-    // Assert
-    expect(result.ready).toBe(false);
-    if (!result.ready) {
-      expect(result.error).toMatch(/not.*complete|finish/i);
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Tool execute — pio_finalize_goal
 // ---------------------------------------------------------------------------
 
@@ -255,59 +195,64 @@ describe("finalizeGoalTool.execute", () => {
     };
   }
 
-  it("enqueues task with goalDir (not goalName) when goal is complete", async () => {
+  it("enqueues task with workspacePrefix and other params when goal is complete", async () => {
     // Arrange: create completed goal
     createGoalTree(tempDir, "my-goal", { withPlan: true, withCompletionSummary: true });
 
     const tool = getTool();
 
     // Act: call execute
-    const result = await tool.execute("test-call-id", { name: "my-goal" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-call-id", { workspacePrefix: "goals/my-goal" }, undefined, undefined, makeCtx(tempDir));
 
     // Assert: result is success message
     const text = result.content[0].text;
     expect(text).toContain("queued");
 
-    // Assert: task was enqueued with correct params (goalDir, NOT goalName)
+    // Assert: task was enqueued with correct params
     const task = readPendingTask(tempDir, "my-goal");
     expect(task).toBeDefined();
     expect(task!.capability).toBe("finalize-goal");
-    expect(task!.params).toHaveProperty("goalDir");
-    expect(task!.params).not.toHaveProperty("goalName");
+    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-goal");
+    expect(task!.params).toHaveProperty("sessionName", "my-goal finalize-goal");
+    expect(task!.params).toHaveProperty("queueKey", "my-goal");
+    expect(task!.params).toHaveProperty("initialMessage");
+    expect(task!.params).not.toHaveProperty("goalDir");
   });
 
-  it("returns error when goal does not exist", async () => {
+  it("enqueues task when workspace does not exist (validation deferred to launch)", async () => {
     // Arrange: no goal created
     const tool = getTool();
 
     // Act
-    const result = await tool.execute("test-call-id", { name: "nonexistent" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-call-id", { workspacePrefix: "goals/nonexistent" }, undefined, undefined, makeCtx(tempDir));
 
-    // Assert: error message mentions goal doesn't exist
+    // Assert: task was enqueued (pre-validation removed, launch validates)
     const text = result.content[0].text;
-    expect(text).toMatch(/not exist|does not exist/i);
+    expect(text).toContain("queued");
 
-    // Assert: no task was enqueued
+    // Assert: task was enqueued
     const task = readPendingTask(tempDir, "nonexistent");
-    expect(task).toBeUndefined();
+    expect(task).toBeDefined();
+    expect(task!.capability).toBe("finalize-goal");
   });
 
-  it("returns error when goal is not complete", async () => {
+  it("enqueues task when goal is not complete (validation deferred to launch)", async () => {
     // Arrange: create goal with PLAN.md but without COMPLETION_SUMMARY.md
     createGoalTree(tempDir, "incomplete", { withPlan: true, withCompletionSummary: false });
 
     const tool = getTool();
 
     // Act
-    const result = await tool.execute("test-call-id", { name: "incomplete" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-call-id", { workspacePrefix: "goals/incomplete" }, undefined, undefined, makeCtx(tempDir));
 
-    // Assert: error message mentions not complete
+    // Assert: task was enqueued (pre-validation removed, launch validates)
     const text = result.content[0].text;
-    expect(text).toMatch(/not.*complete|finish/i);
+    expect(text).toContain("queued");
 
-    // Assert: no task was enqueued
+    // Assert: task was enqueued
     const task = readPendingTask(tempDir, "incomplete");
-    expect(task).toBeUndefined();
+    expect(task).toBeDefined();
+    expect(task!.capability).toBe("finalize-goal");
   });
 });
 
@@ -389,19 +334,34 @@ describe("handleFinalizeGoal", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/usage|Usage/i), "warning");
   });
 
-  it("shows error when goal does not exist", async () => {
+  it("launches session when workspace exists", async () => {
+    // Arrange: create completed goal
+    createGoalTree(tempDir, "completed-goal", { withPlan: true, withCompletionSummary: true });
+
+    const handler = getHandler();
+    const ctx = makeCtx(tempDir);
+
+    // Act
+    await handler("--workspace-prefix goals/completed-goal", ctx);
+
+    // Assert: newSession was called (launchCapability does this)
+    expect(ctx.newSession).toHaveBeenCalled();
+  });
+
+  it("shows error when workspace does not exist (validation at launch time)", async () => {
     // Arrange
     const handler = getHandler();
     const ctx = makeCtx(tempDir);
 
     // Act
-    await handler("nonexistent-goal", ctx);
+    await handler("--workspace-prefix goals/nonexistent-goal", ctx);
 
-    // Assert
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/not exist|does not exist/i), "error");
+    // Assert: launchCapability validates inputs and throws on missing files;
+    // command handler catches and notifies
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/missing|validation/i), "error");
   });
 
-  it("shows error when goal is not complete", async () => {
+  it("shows error when goal is not complete (validation at launch time)", async () => {
     // Arrange: create goal with PLAN.md but without COMPLETION_SUMMARY.md
     createGoalTree(tempDir, "incomplete", { withPlan: true, withCompletionSummary: false });
 
@@ -409,9 +369,10 @@ describe("handleFinalizeGoal", () => {
     const ctx = makeCtx(tempDir);
 
     // Act
-    await handler("incomplete", ctx);
+    await handler("--workspace-prefix goals/incomplete", ctx);
 
-    // Assert
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/not.*complete|finish/i), "error");
+    // Assert: launchCapability validates inputs and throws on missing files;
+    // command handler catches and notifies
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/missing|COMPLETION_SUMMARY/i), "error");
   });
 });

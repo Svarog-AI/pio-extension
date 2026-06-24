@@ -1,23 +1,11 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { validateExecuteStep } from "./callbacks";
-import config from "./config";
+import { vi } from "vitest";
+import config, { register } from "./config";
 import { stepFolderName } from "../../fs-utils";
 import { resolveCapabilityConfig } from "../../capability-config";
-
-// ---------------------------------------------------------------------------
-// Local test helper (moved from callbacks.ts — not used by production code)
-// ---------------------------------------------------------------------------
-
-function isStepReady(goalDir: string, stepNumber: number): boolean {
-  const folder = stepFolderName(stepNumber);
-  const stepDir = path.join(goalDir, folder);
-  if (!fs.existsSync(path.join(stepDir, "TASK.md"))) return false;
-  if (fs.existsSync(path.join(stepDir, "COMPLETED"))) return false;
-  if (fs.existsSync(path.join(stepDir, "BLOCKED"))) return false;
-  return true;
-}
+import { readPendingTask } from "../../queues";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers (unified across merged sources)
@@ -84,96 +72,6 @@ function createGoalTree(
 }
 
 // ---------------------------------------------------------------------------
-// isStepReady — execution-readiness gate
-// ---------------------------------------------------------------------------
-
-describe("isStepReady(goalDir, stepNumber)", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("TASK.md + TEST.md present, no markers → true", () => {
-    // Arrange: S01 with both spec files, no COMPLETED or BLOCKED
-    const { goalDir } = createGoalTree(tempDir, "ready-goal", {
-      steps: [{ number: 1, files: ["TASK.md", "TEST.md"] }],
-    });
-
-    // Act
-    const result = isStepReady(goalDir, 1);
-
-    // Assert
-    expect(result).toBe(true);
-  });
-
-  it("missing TASK.md → false", () => {
-    // Arrange: S01 with only TEST.md
-    const { goalDir } = createGoalTree(tempDir, "no-task-goal", {
-      steps: [{ number: 1, files: ["TEST.md"] }],
-    });
-
-    // Act
-    const result = isStepReady(goalDir, 1);
-
-    // Assert
-    expect(result).toBe(false);
-  });
-
-  it("TASK.md only → true (no TEST.md required)", () => {
-    // Arrange: S01 with only TASK.md
-    const { goalDir } = createGoalTree(tempDir, "task-only-goal", {
-      steps: [{ number: 1, files: ["TASK.md"] }],
-    });
-
-    // Act
-    const result = isStepReady(goalDir, 1);
-
-    // Assert: TASK.md alone is sufficient for readiness
-    expect(result).toBe(true);
-  });
-
-  it("both specs + COMPLETED marker → false", () => {
-    // Arrange: S01 with both spec files and COMPLETED marker
-    const { goalDir } = createGoalTree(tempDir, "completed-goal", {
-      steps: [{ number: 1, files: ["TASK.md", "TEST.md", "COMPLETED"] }],
-    });
-
-    // Act
-    const result = isStepReady(goalDir, 1);
-
-    // Assert
-    expect(result).toBe(false);
-  });
-
-  it("both specs + BLOCKED marker → false", () => {
-    // Arrange: S01 with both spec files and BLOCKED marker
-    const { goalDir } = createGoalTree(tempDir, "blocked-goal", {
-      steps: [{ number: 1, files: ["TASK.md", "TEST.md", "BLOCKED"] }],
-    });
-
-    // Act
-    const result = isStepReady(goalDir, 1);
-
-    // Assert
-    expect(result).toBe(false);
-  });
-
-  it("step folder does not exist → false", () => {
-    // Arrange: goal dir exists but no S01/ subdirectory
-    const { goalDir } = createGoalTree(tempDir, "empty-goal");
-
-    // Act
-    const result = isStepReady(goalDir, 1);
-
-    // Assert
-    expect(result).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // stepFolderName — zero-padding verification (in execute-task context)
 // ---------------------------------------------------------------------------
 
@@ -196,15 +94,15 @@ describe("stepFolderName", () => {
 
 describe("resolveExecuteReadOnlyFiles", () => {
   it("returns TASK.md only, not TEST.md", async () => {
-    // Arrange: resolve execute-task config with stepNumber 1
-    const params = { capability: "execute-task" as string, goalName: "test-goal", stepNumber: 1 };
+    // Arrange: resolve execute-task config
+    const params = { capability: "execute-task" as string, goalName: "test-goal", sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: read-only files contain only TASK.md
-    expect(result?.readOnlyFiles).toEqual(["S01/TASK.md"]);
-    expect(result?.readOnlyFiles).not.toContain("S01/TEST.md");
+    // Assert: read-only files contain only TASK.md (plain name — workspacePrefix handles step folder)
+    expect(result?.readOnlyFiles).toEqual(["TASK.md"]);
+    expect(result?.readOnlyFiles).not.toContain("TEST.md");
   });
 });
 
@@ -214,39 +112,25 @@ describe("resolveExecuteReadOnlyFiles", () => {
 
 describe("execute-task defaultInitialMessage", () => {
   it("includes working directory in the message", () => {
-    const message = config.defaultInitialMessage("/my/goal/dir", { stepNumber: 1 });
+    const message = config.defaultInitialMessage("/my/goal/dir");
 
     expect(message).toContain("/my/goal/dir");
   });
 
-  it("includes step number and folder reference", () => {
-    const message = config.defaultInitialMessage("/dir", { stepNumber: 5 });
-
-    expect(message).toContain("Step 5");
-    expect(message).toContain("S05");
-  });
-
   it("references TASK.md as the task specification", () => {
-    const message = config.defaultInitialMessage("/dir", { stepNumber: 1 });
+    const message = config.defaultInitialMessage("/dir");
 
     expect(message).toContain("TASK.md");
   });
 
-  it("returns error message when stepNumber is missing", () => {
-    const message = config.defaultInitialMessage("/dir", {});
-
-    expect(message.toLowerCase()).toContain("error");
-    expect(message.toLowerCase()).toContain("stepnumber");
-  });
-
   it("references REVIEW.md when step was previously rejected", () => {
-    // Arrange: create a temp dir with REJECTED marker
+    // Arrange: create a temp dir with REJECTED marker at workspace root
     const tempDir = createTempDir();
     try {
-      const { goalDir } = createGoalTree(tempDir, "rejected-goal", { stepNumber: 2, rejected: true });
+      fs.writeFileSync(path.join(tempDir, "REJECTED"), "", "utf-8");
 
-      // Act
-      const message = config.defaultInitialMessage(goalDir, { stepNumber: 2 });
+      // Act: workspaceDir is the directory with REJECTED at root
+      const message = config.defaultInitialMessage(tempDir);
 
       // Assert: message references REVIEW.md for re-execution context
       expect(message).toContain("REVIEW.md");
@@ -258,10 +142,10 @@ describe("execute-task defaultInitialMessage", () => {
 });
 
 // ---------------------------------------------------------------------------
-// validateExecuteStep — directory resolution
+// Tool execute — pio_execute_task
 // ---------------------------------------------------------------------------
 
-describe("validateExecuteStep", () => {
+describe("executeTaskTool.execute", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -270,16 +154,64 @@ describe("validateExecuteStep", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("resolves goal directory and returns ready with stepNumber", async () => {
-    const goalDir = path.join(tempDir, ".pio", "goals", "my-goal");
-    fs.mkdirSync(goalDir, { recursive: true });
+  function getTool() {
+    const registeredTools: Array<any> = [];
+    const mockPi = {
+      registerTool: vi.fn((tool: any) => registeredTools.push(tool)),
+      registerCommand: vi.fn(),
+    };
+    register(mockPi as any);
+    return registeredTools[0];
+  }
 
-    const result = await validateExecuteStep("my-goal", tempDir, 3);
+  function makeCtx(cwd: string) {
+    return {
+      cwd,
+      ui: { notify: vi.fn() },
+      hasUI: false,
+      sessionManager: { getSessionFile: vi.fn(() => ""), getEntries: vi.fn(() => []) },
+      modelRegistry: {},
+      model: undefined,
+      isIdle: vi.fn(() => true),
+      signal: undefined,
+      abort: vi.fn(),
+      hasPendingMessages: vi.fn(() => false),
+      shutdown: vi.fn(),
+      getContextUsage: vi.fn(),
+      compact: vi.fn(),
+      getSystemPrompt: vi.fn(() => ""),
+    };
+  }
 
-    expect(result.ready).toBe(true);
-    if (result.ready) {
-      expect(result.goalDir).toBe(goalDir);
-      expect(result.stepNumber).toBe(3);
-    }
+  it("enqueues task even when TASK.md is missing (validation moves to launch time)", async () => {
+    // Arrange: goal dir exists but no TASK.md
+    const { goalDir, stepDir } = createGoalTree(tempDir, "no-task", { stepNumber: 1 });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
+    // Don't create TASK.md
+
+    const tool = getTool();
+    const result = await tool.execute("test-id", { workspacePrefix: "goals/no-task/S01" }, undefined, undefined, makeCtx(tempDir));
+
+    // Tool enqueues successfully — validation happens at /pio-next-task launch time
+    expect(result.content[0].text).toContain("Task queued");
+  });
+
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, initialMessage)", async () => {
+    // Arrange: goal dir with TASK.md in S01
+    const { goalDir, stepDir } = createGoalTree(tempDir, "my-feature", { stepNumber: 1 });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
+    fs.writeFileSync(path.join(stepDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
+
+    const tool = getTool();
+    await tool.execute("test-id", { workspacePrefix: "goals/my-feature/S01" }, undefined, undefined, makeCtx(tempDir));
+
+    const task = readPendingTask(tempDir, "S01");
+    expect(task).toBeDefined();
+    expect(task!.capability).toBe("execute-task");
+    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature/S01");
+    expect(task!.params).toHaveProperty("sessionName");
+    expect(task!.params!.sessionName).toContain("execute-task");
+    expect(task!.params).toHaveProperty("queueKey", "S01");
+    expect(task!.params).toHaveProperty("initialMessage");
   });
 });

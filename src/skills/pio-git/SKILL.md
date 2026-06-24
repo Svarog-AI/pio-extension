@@ -20,7 +20,7 @@ Stage only the files the agent actually changed. **Never use `git add -A`.**
 ### Staging strategy
 
 1. **If `SUMMARY.md` exists** (per-step commits): extract file paths from "Files Created", "Files Modified", and "Files Deleted" sections, then `git add <paths>`. Note: `git add` on a deleted path stages the deletion.
-2. **Otherwise** (`execute-plan` or ad-hoc): run `git status --porcelain`, extract paths (strip status prefix), then `git add <paths>`.
+2. **Otherwise** (ad-hoc): run `git status --porcelain`, extract paths (strip status prefix), then `git add <paths>`.
 
 ### Commit message construction
 

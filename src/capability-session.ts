@@ -6,10 +6,11 @@ import { fileURLToPath } from "node:url";
 import type { CapabilityConfig, CapabilitySkills } from "./types";
 import { getSessionConfig } from "./capability-utils";
 import { validateInputs } from "./guards/validation";
+import { CapState } from "./capability-state";
 import type { CompiledPromptSections } from "./capability-package";
 import { compilePrompt } from "./prompt-compiler";
 import { setupStepNudging } from "./guards/step-nudging";
-import { discoverNextStep } from "./fs-utils";
+
 import { resolveModelForCapability } from "./model-config";
 
 // ESM-compatible __dirname for resolving capability package directories
@@ -58,12 +59,11 @@ let enrichedSessionParams: Record<string, unknown> | undefined;
 /** Write config into the new session's custom entry. Survives reload, not visible to LLM. */
 export async function launchCapability(ctx: ExtensionCommandContext, config: CapabilityConfig): Promise<void> {
   // Validate inputs against the capability contract BEFORE launching.
-  if (config.contract && config.workingDir) {
-    const result = validateInputs(
-      config.workingDir,
-      config.contract,
-      config.sessionParams,
-    );
+  // workspacePrefix is stripped from sessionParams during normalization.
+  // workspaceDir already has the prefix baked in, so CapState.workspacePrefix = undefined.
+  if (config.contract && config.workspaceDir) {
+    const capState = new CapState(config.contract, config.workspaceDir, config.sessionParams);
+    const result = validateInputs(capState);
 
     if (!result.success) {
       throw new Error(
@@ -82,6 +82,7 @@ export async function launchCapability(ctx: ExtensionCommandContext, config: Cap
       // via dynamic import of the capability module.
       newSm.appendCustomEntry("pio-config", {
         capability: config.capability,
+        workspaceDir: config.workspaceDir,
         sessionParams: config.sessionParams,
       });
     },
@@ -192,27 +193,14 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
       pi.setSessionName(config.sessionName);
     }
 
-    // Enrich session params with stepNumber for goal workspaces.
-    // Preserve explicit stepNumber if already present; auto-discover only when missing/invalid.
-    const rawParams = config.sessionParams || {};
-    const existingStepNumber = typeof rawParams.stepNumber === "number" ? rawParams.stepNumber : undefined;
-
-    enrichedSessionParams = { ...rawParams };
-
-    if (existingStepNumber == null && config.workingDir) {
-      // Only auto-discover for goal workspaces (path contains /goals/)
-      if (config.workingDir.includes("/goals/")) {
-        const discovered = discoverNextStep(config.workingDir);
-        enrichedSessionParams.stepNumber = discovered;
-      }
-    }
+    enrichedSessionParams = config.sessionParams ? { ...config.sessionParams } : {};
 
     // Run prepareSession hook (lifecycle: prepare → work → markComplete → validateState).
     // Hook runs after enrichedSessionParams is populated, so it has access to stepNumber.
     // Errors are caught and logged — they do not crash the session startup.
-    if (config.prepareSession && config.workingDir) {
+    if (config.prepareSession && config.workspaceDir) {
       try {
-        await config.prepareSession(config.workingDir!, enrichedSessionParams);
+        await config.prepareSession(config.workspaceDir!, enrichedSessionParams);
       } catch (err) {
         console.warn(`pio: prepareSession failed for capability "${config.capability}": ${err}`);
       }
@@ -335,8 +323,8 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
 // ---------------------------------------------------------------------------
 
 /**
- * Return a copy of the enriched session params.
- * Includes auto-discovered stepNumber for goal workspaces.
+ * Return a copy of the session params, programmatically enriched 
+ * with derived values.
  */
 export function getSessionParams(): Record<string, unknown> | undefined {
   if (enrichedSessionParams === undefined) return undefined;
@@ -348,21 +336,4 @@ export function getEnrichedSessionParamsForTesting(): Record<string, unknown> | 
   return enrichedSessionParams;
 }
 
-/**
- * Return the canonical stepNumber from enriched session params.
- * Returns a number when working in a goal workspace, or undefined otherwise.
- */
-export function getStepNumber(): number | undefined {
-  if (enrichedSessionParams === undefined) return undefined;
-  const n = enrichedSessionParams.stepNumber;
-  return typeof n === "number" ? n : undefined;
-}
 
-/**
- * Return the goalName string from enriched session params.
- * Returns a string when inside a capability sub-session with a known goal, or undefined otherwise.
- */
-export function getSessionGoalName(): string | undefined {
-  const params = getSessionParams();
-  return typeof params?.goalName === "string" ? params.goalName : undefined;
-}

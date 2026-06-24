@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { vi, beforeEach, afterEach, describe, it, expect } from "vitest";
-import { getSessionGoalName, resolveProjectContextPath } from "./capability-session";
+import { resolveProjectContextPath } from "./capability-session";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -49,7 +49,7 @@ function makeSkill(name: string, filePath: string, baseDir: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Top-level mock for capability-session (used by getSessionGoalName tests)
+// Top-level mock for capability-session (used by handleNextTask tests)
 // ---------------------------------------------------------------------------
 
 const sessionCapabilityMock = vi.hoisted(() => ({
@@ -64,11 +64,6 @@ vi.mock(
     return {
       ...actual,
       getSessionParams: sessionCapabilityMock.getSessionParams,
-      // Derive from getSessionParams — always tests the real type-guard logic
-      getSessionGoalName: () => {
-        const params = sessionCapabilityMock.getSessionParams();
-        return typeof params?.goalName === "string" ? params.goalName : undefined;
-      },
       launchCapability: sessionCapabilityMock.launchCapability,
     };
   },
@@ -122,7 +117,6 @@ vi.mock("./guards/step-nudging", () => ({
 // ---------------------------------------------------------------------------
 
 const mockEnqueueTask = vi.hoisted(() => vi.fn());
-const mockWriteLastTask = vi.hoisted(() => vi.fn());
 const mockRecordTransition = vi.hoisted(() => vi.fn());
 const mockDispatch = vi.hoisted(() => vi.fn());
 
@@ -131,7 +125,6 @@ vi.mock("./queues", async (importOriginal) => {
   return {
     ...actual,
     enqueueTask: mockEnqueueTask,
-    writeLastTask: mockWriteLastTask,
   };
 });
 
@@ -157,56 +150,22 @@ vi.mock("./state-machines/pio-workflow-machine", async (importOriginal) => {
 // ---------------------------------------------------------------------------
 
 const mockResolveCapabilityConfigForSession = vi.hoisted(() => vi.fn());
+const mockResolveContractPath = vi.hoisted(() => {
+  const { join } = require("node:path");
+  return (contractPath: string, baseDir: string, _prefix?: string, _params?: Record<string, unknown>): string => {
+    return join(baseDir, contractPath.startsWith("/") ? contractPath.slice(1) : contractPath);
+  };
+});
 
 vi.mock("./capability-config", () => ({
   resolveCapabilityConfig: mockResolveCapabilityConfigForSession,
+  resolveContractPath: mockResolveContractPath,
 }));
 
 // ---------------------------------------------------------------------------
-// getSessionGoalName tests
-// These test the real implementation logic by mocking getSessionParams()
-// ---------------------------------------------------------------------------
-
-describe("getSessionGoalName", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('given { goalName: "my-feature" }, returns "my-feature"', () => {
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ goalName: "my-feature" });
-    expect(getSessionGoalName()).toBe("my-feature");
-  });
-
-  it("given { goalName: 123 }, returns undefined (non-string rejected)", () => {
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ goalName: 123 });
-    expect(getSessionGoalName()).toBeUndefined();
-  });
-
-  it("given { goalName: null }, returns undefined (null rejected)", () => {
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ goalName: null });
-    expect(getSessionGoalName()).toBeUndefined();
-  });
-
-  it('given { otherKey: "value" }, returns undefined (no goalName key)', () => {
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ otherKey: "value" });
-    expect(getSessionGoalName()).toBeUndefined();
-  });
-
-  it("given undefined, returns undefined (no session config)", () => {
-    sessionCapabilityMock.getSessionParams.mockReturnValue(undefined);
-    expect(getSessionGoalName()).toBeUndefined();
-  });
-
-  it("given {}, returns undefined (empty params)", () => {
-    sessionCapabilityMock.getSessionParams.mockReturnValue({});
-    expect(getSessionGoalName()).toBeUndefined();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// handleNextTask — goal resolution order tests
+// handleNextTask — queue key resolution order tests
 // These test the command flow by configuring getSessionParams() to control
-// what getSessionGoalName() returns (the real type-guard logic is always exercised)
+// what queue key next-task.ts reads directly from session params
 // ---------------------------------------------------------------------------
 
 describe("handleNextTask — goal resolution order", () => {
@@ -231,14 +190,14 @@ describe("handleNextTask — goal resolution order", () => {
     return { cwd: tempDir, ui: { notify: vi.fn() } };
   }
 
-  it("passes session goalName to launchAndCleanup when no explicit arg", async () => {
-    // Arrange: two goals pending, session has goalName = "other-goal"
+  it("passes session queueKey to launchAndCleanup when no explicit arg", async () => {
+    // Arrange: two goals pending, session has queueKey = "other-goal"
     enqueueTaskFile(tempDir, "other-goal");
     enqueueTaskFile(tempDir, "session-goal");
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ goalName: "other-goal" });
+    sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: "other-goal" });
     mockResolveCapabilityConfigForSession.mockResolvedValue({
       capability: "create-plan",
-      workingDir: tempDir,
+      workspaceDir: tempDir,
       sessionParams: { goalName: "other-goal" },
       contract: { inputs: [], outputs: [] },
     });
@@ -258,13 +217,13 @@ describe("handleNextTask — goal resolution order", () => {
     expect(fs.existsSync(path.join(tempDir, ".pio", "session-queue", "task-session-goal.json"))).toBe(true);
   });
 
-  it("falls through to scan when getSessionGoalName returns undefined", async () => {
-    // Arrange: exactly one pending goal, no session context (no goalName)
+  it("falls through to scan when session has no queueKey", async () => {
+    // Arrange: exactly one pending goal, no session context (no queueKey)
     enqueueTaskFile(tempDir, "only-goal");
     sessionCapabilityMock.getSessionParams.mockReturnValue(undefined);
     mockResolveCapabilityConfigForSession.mockResolvedValue({
       capability: "create-plan",
-      workingDir: tempDir,
+      workspaceDir: tempDir,
       sessionParams: { goalName: "only-goal" },
       contract: { inputs: [], outputs: [] },
     });
@@ -278,11 +237,11 @@ describe("handleNextTask — goal resolution order", () => {
     expect(sessionCapabilityMock.launchCapability).toHaveBeenCalled();
   });
 
-  it("explicit arg takes priority over session goalName", async () => {
+  it("explicit arg takes priority over session queueKey", async () => {
     // Arrange: two goals pending, session says "session-goal" but user specifies "explicit-goal"
     enqueueTaskFile(tempDir, "explicit-goal");
     enqueueTaskFile(tempDir, "session-goal");
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ goalName: "session-goal" });
+    sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: "session-goal" });
 
     const ctx = makeCtx();
 
@@ -294,9 +253,9 @@ describe("handleNextTask — goal resolution order", () => {
     expect(fs.existsSync(path.join(tempDir, ".pio", "session-queue", "task-session-goal.json"))).toBe(true);
   });
 
-  it("shows notification when session goalName has no pending task", async () => {
+  it("shows notification when session queueKey has no pending task", async () => {
     // Arrange: no queue files at all, session says "empty-goal"
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ goalName: "empty-goal" });
+    sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: "empty-goal" });
 
     const ctx = makeCtx();
 
@@ -332,7 +291,7 @@ describe("model resolution — setupSessionInfrastructure and before_agent_start
       const { capability: _cap, ...rest } = params ?? {};
       return {
         capability: cap,
-        workingDir: rest.workingDir ?? "/test/.pio/goals/test",
+        workspaceDir: rest.workspaceDir ?? "/test/.pio/goals/test",
         sessionParams: rest,
         contract: { inputs: [], outputs: [] },
         skills: rest.skills ?? undefined,
@@ -687,7 +646,6 @@ describe("pio_mark_complete — queue key propagation", () => {
     vi.resetModules();
     tempDir = createTempDir();
     mockEnqueueTask.mockClear();
-    mockWriteLastTask.mockClear();
     mockRecordTransition.mockClear();
     mockDispatch.mockClear();
   });
@@ -738,14 +696,14 @@ describe("pio_mark_complete — queue key propagation", () => {
 
     // Arrange: subgoal completion — transition returns parent goal name
     mockDispatch.mockReturnValue([
-      { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "parent", stepNumber: 4 } },
+      { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "parent", stepNumber: 4, queueKey: "parent" } },
     ]);
 
     const ctx = makeToolContext({
       capability: "finalize-goal",
-      workingDir: path.join(tempDir, ".pio", "goals", "child"),
+      workspaceDir: path.join(tempDir, ".pio", "goals", "child"),
       contract: { inputs: [], outputs: [] },
-      sessionParams: { goalName: "child" },
+      sessionParams: { goalName: "child", queueKey: "child" },
     });
 
     // Act
@@ -762,14 +720,14 @@ describe("pio_mark_complete — queue key propagation", () => {
 
     // Arrange: flat goal — transition returns same goal name
     mockDispatch.mockReturnValue([
-      { capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "my-feature", stepNumber: 1 } },
+      { capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "my-feature", stepNumber: 1, queueKey: "my-feature" } },
     ]);
 
     const ctx = makeToolContext({
       capability: "execute-task",
-      workingDir: path.join(tempDir, ".pio", "goals", "my-feature"),
+      workspaceDir: path.join(tempDir, ".pio", "goals", "my-feature"),
       contract: { inputs: [], outputs: [] },
-      sessionParams: { goalName: "my-feature" },
+      sessionParams: { goalName: "my-feature", queueKey: "my-feature" },
     });
 
     // Act
@@ -786,14 +744,14 @@ describe("pio_mark_complete — queue key propagation", () => {
 
     // Arrange: transition returns parent goal name
     mockDispatch.mockReturnValue([
-      { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "parent", stepNumber: 4 } },
+      { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "parent", stepNumber: 4, queueKey: "parent" } },
     ]);
 
     const ctx = makeToolContext({
       capability: "finalize-goal",
-      workingDir: path.join(tempDir, ".pio", "goals", "nested"),
+      workspaceDir: path.join(tempDir, ".pio", "goals", "nested"),
       contract: { inputs: [], outputs: [] },
-      sessionParams: { goalName: "nested", parentGoalName: "parent", parentStepNumber: 3 },
+      sessionParams: { goalName: "nested", parentGoalName: "parent", parentStepNumber: 3, queueKey: "nested" },
     });
 
     // Act

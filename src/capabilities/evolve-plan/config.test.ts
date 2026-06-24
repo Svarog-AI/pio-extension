@@ -1,9 +1,12 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { vi } from "vitest";
 import { validateOutputs } from "../../guards/validation";
 import { resolveCapabilityConfig } from "../../capability-config";
-import { validateEvolveStep } from "./callbacks";
+import { register } from "./config";
+import { readPendingTask } from "../../queues";
+import { CapState } from "../../capability-state";
 import type { CapabilityContract, MarkdownFileSpec } from "../../types";
 
 // ---------------------------------------------------------------------------
@@ -43,10 +46,10 @@ function createGoalTree(
 }
 
 // ---------------------------------------------------------------------------
-// validateOutputs — COMPLETION_SUMMARY.md short-circuit at baseDir
+// validateOutputs — COMPLETION_SUMMARY.md short-circuit at workspaceDir
 // ---------------------------------------------------------------------------
 
-describe("validateOutputs with COMPLETION_SUMMARY.md at baseDir", () => {
+describe("validateOutputs with COMPLETION_SUMMARY.md at workspaceDir", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -65,7 +68,8 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at baseDir", () => {
     };
 
     // Act
-    const result = validateOutputs(contract, tempDir);
+    const capState = new CapState(contract, tempDir);
+    const result = validateOutputs(capState);
 
     // Assert
     expect(result).toEqual({ success: true });
@@ -81,7 +85,8 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at baseDir", () => {
     };
 
     // Act
-    const result = validateOutputs(contract, tempDir);
+    const capState = new CapState(contract, tempDir);
+    const result = validateOutputs(capState);
 
     // Assert
     expect(result).toEqual({ success: true });
@@ -95,7 +100,8 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at baseDir", () => {
     };
 
     // Act
-    const result = validateOutputs(contract, tempDir);
+    const capState = new CapState(contract, tempDir);
+    const result = validateOutputs(capState);
 
     // Assert
     expect(result.success).toBe(false);
@@ -114,9 +120,10 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at baseDir", () => {
     };
 
     // Act
-    const result = validateOutputs(contract, tempDir);
+    const capState = new CapState(contract, tempDir);
+    const result = validateOutputs(capState);
 
-    // Assert: fails normally (short-circuit only for baseDir/COMPLETION_SUMMARY.md, not subfolder)
+    // Assert: fails normally (short-circuit only for workspaceDir/COMPLETION_SUMMARY.md, not subfolder)
     expect(result.success).toBe(false);
     expect(result.message).toContain("S01/TASK.md");
   });
@@ -129,7 +136,7 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at baseDir", () => {
 describe("resolveEvolveWriteAllowlist", () => {
   it("always includes COMPLETION_SUMMARY.md alongside step-folder paths", async () => {
     // Arrange: resolve evolve-plan config with stepNumber 2
-    const params = { capability: "evolve-plan" as string, goalName: "my-feature", stepNumber: 2 };
+    const params = { capability: "evolve-plan" as string, goalName: "my-feature", stepNumber: 2, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -148,7 +155,7 @@ describe("resolveEvolveWriteAllowlist", () => {
 describe("resolveEvolveWriteAllowlist with REVISE_PLAN_NEEDED", () => {
   it("includes S01/REVISE_PLAN_NEEDED in write allowlist for stepNumber=1", async () => {
     // Arrange: resolve evolve-plan config with stepNumber 1
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -159,7 +166,7 @@ describe("resolveEvolveWriteAllowlist with REVISE_PLAN_NEEDED", () => {
 
   it("includes S03/REVISE_PLAN_NEEDED in write allowlist for stepNumber=3", async () => {
     // Arrange: resolve evolve-plan config with stepNumber 3
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 3 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 3, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -170,7 +177,7 @@ describe("resolveEvolveWriteAllowlist with REVISE_PLAN_NEEDED", () => {
 
   it("marker path uses correct step folder naming (zero-padded)", async () => {
     // Arrange: resolve evolve-plan config with stepNumber 12
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 12 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 12, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -189,7 +196,7 @@ describe("resolveEvolveWriteAllowlist with REVISE_PLAN_NEEDED", () => {
 describe("REVISE_PLAN_NEEDED marker filename consistency", () => {
   it("marker filename in evolve-plan writeAllowlist matches revise-plan constant", async () => {
     // Arrange: resolve evolve-plan config for step 2
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -213,7 +220,7 @@ describe("REVISE_PLAN_NEEDED marker filename consistency", () => {
 describe("contract.outputs with DECISIONS_FILE requiredWhen", () => {
   it("excludes DECISIONS.md for stepNumber=1", async () => {
     // Arrange: step 1 should produce only TASK.md
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -228,7 +235,7 @@ describe("contract.outputs with DECISIONS_FILE requiredWhen", () => {
 
   it("includes DECISIONS.md for stepNumber=2", async () => {
     // Arrange: step 2 should include DECISIONS.md alongside TASK.md
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -243,7 +250,7 @@ describe("contract.outputs with DECISIONS_FILE requiredWhen", () => {
 
   it("includes DECISIONS.md for stepNumber=3", async () => {
     // Arrange: step 3+ should also include DECISIONS.md
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 3 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 3, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -264,7 +271,7 @@ describe("contract.outputs with DECISIONS_FILE requiredWhen", () => {
 describe("resolveEvolveWriteAllowlist with DECISIONS_FILE", () => {
   it("excludes DECISIONS.md from write allowlist for stepNumber=1", async () => {
     // Arrange: step 1 should not include DECISIONS.md in the write allowlist
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -275,7 +282,7 @@ describe("resolveEvolveWriteAllowlist with DECISIONS_FILE", () => {
 
   it("includes DECISIONS.md in write allowlist for stepNumber=2", async () => {
     // Arrange: step 2 should include DECISIONS.md alongside existing entries
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2 };
+    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -335,10 +342,10 @@ function createGoalTreeWithFrontmatter(
 }
 
 // ---------------------------------------------------------------------------
-// validateEvolveStep — directory resolution
+// Tool execute — pio_evolve_plan
 // ---------------------------------------------------------------------------
 
-describe("validateEvolveStep", () => {
+describe("evolvePlanTool.execute", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -347,16 +354,69 @@ describe("validateEvolveStep", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("resolves goal directory and returns ready with stepNumber", async () => {
-    const goalDir = path.join(tempDir, ".pio", "goals", "my-goal");
+  function getTool() {
+    const registeredTools: Array<any> = [];
+    const mockPi = {
+      registerTool: vi.fn((tool: any) => registeredTools.push(tool)),
+      registerCommand: vi.fn(),
+    };
+    register(mockPi as any);
+    return registeredTools[0];
+  }
+
+  function makeCtx(cwd: string) {
+    return {
+      cwd,
+      ui: { notify: vi.fn() },
+      hasUI: false,
+      sessionManager: { getSessionFile: vi.fn(() => ""), getEntries: vi.fn(() => []) },
+      modelRegistry: {},
+      model: undefined,
+      isIdle: vi.fn(() => true),
+      signal: undefined,
+      abort: vi.fn(),
+      hasPendingMessages: vi.fn(() => false),
+      shutdown: vi.fn(),
+      getContextUsage: vi.fn(),
+      compact: vi.fn(),
+      getSystemPrompt: vi.fn(() => ""),
+    };
+  }
+
+  it("returns error when PLAN.md is missing", async () => {
+    // Arrange: goal dir exists but no PLAN.md
+    const goalDir = path.join(tempDir, ".pio", "goals", "no-plan");
     fs.mkdirSync(goalDir, { recursive: true });
 
-    const result = await validateEvolveStep("my-goal", tempDir, 3);
+    const tool = getTool();
+    const result = await tool.execute("test-id", { workspacePrefix: "goals/no-plan", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
 
-    expect(result.ready).toBe(true);
-    if (result.ready) {
-      expect(result.goalDir).toBe(goalDir);
-      expect(result.stepNumber).toBe(3);
-    }
+    expect(result.content[0].text).toMatch(/PLAN/i);
+  });
+
+  it("enqueues task when PLAN.md exists", async () => {
+    createGoalTreeWithFrontmatter(tempDir, "my-feature", 3);
+
+    const tool = getTool();
+    const result = await tool.execute("test-id", { workspacePrefix: "goals/my-feature", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
+
+    expect(result.content[0].text).toContain("queued");
+  });
+
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, stepNumber, initialMessage)", async () => {
+    createGoalTreeWithFrontmatter(tempDir, "my-feature", 3);
+
+    const tool = getTool();
+    await tool.execute("test-id", { workspacePrefix: "goals/my-feature", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
+
+    const task = readPendingTask(tempDir, "my-feature");
+    expect(task).toBeDefined();
+    expect(task!.capability).toBe("evolve-plan");
+    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature");
+    expect(task!.params).toHaveProperty("sessionName");
+    expect(task!.params!.sessionName).toContain("evolve-plan");
+    expect(task!.params).toHaveProperty("queueKey", "my-feature");
+    expect(task!.params).toHaveProperty("stepNumber");
+    expect(task!.params).toHaveProperty("initialMessage");
   });
 });

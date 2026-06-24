@@ -25,7 +25,7 @@ beforeEach(() => {
     // resolveCapabilityConfig stores the full params object as sessionParams
     return {
       capability: cap,
-      workingDir: params?.workingDir ?? "/test/.pio/goals/test",
+      workspaceDir: params?.workspaceDir ?? "/test/.pio/goals/test",
       sessionParams: params ?? {},
       contract: { inputs: [], outputs: [] },
     };

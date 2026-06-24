@@ -4,8 +4,8 @@ import * as path from "node:path";
 import * as Value from "typebox/value";
 import { extractFrontmatter, formatSchemaDescription } from "../frontmatter";
 import { getSessionConfig } from "../capability-utils";
-import { resolvePaths } from "../capability-config";
-import type { CapabilityContract, MarkdownFileSpec, OutputEntry, PostValidateCallback } from "../types";
+import { CapState } from "../capability-state";
+import type { MarkdownFileSpec, OutputEntry } from "../types";
 
 // ---------------------------------------------------------------------------
 // Module-level cache (per-session, populated by resources_discover)
@@ -13,18 +13,35 @@ import type { CapabilityContract, MarkdownFileSpec, OutputEntry, PostValidateCal
 
 let readOnlyFilePaths: string[] = [];
 let writeAllowlistPaths: string[] = [];
+let allowProjectWrites: boolean = false;
 
-/** Session working directory — the goal workspace dir (e.g. `/repo/.pio/goals/my-feature`). */
-let workingDir: string | undefined;
+/** Session workspace directory — resolved directory for resolving validation file paths. */
+let workspaceDir: string | undefined;
 
-/** True after we've already warned once and let the switch through. */
-let warnedOnce = false;
+/** Project root directory — boundary for allowProjectWrites. */
+let projectRoot: string | undefined;
 
-/** Total warnings sent this session — capped to avoid infinite loops. */
-let warningsThisSession = 0;
+// ---------------------------------------------------------------------------
+// Test accessors
+// ---------------------------------------------------------------------------
 
-/** Hard limit on total exit-gate warnings per session. */
-const MAX_WARNINGS = 3;
+/**
+ * Test-only accessor for the internal file protection state.
+ *
+ * @internal — Do not use in production code. Exists solely to allow unit tests
+ * to read and manipulate validation state without mocking the full ExtensionAPI.
+ */
+export function __testSetFileProtectionState(state?: {
+  allowProjectWrites?: boolean;
+  projectRoot?: string | undefined;
+  writeAllowlistPaths?: string[];
+  readOnlyFilePaths?: string[];
+}) {
+  if (state?.allowProjectWrites !== undefined) allowProjectWrites = state.allowProjectWrites;
+  if (state?.projectRoot !== undefined) projectRoot = state.projectRoot;
+  if (state?.writeAllowlistPaths !== undefined) writeAllowlistPaths = state.writeAllowlistPaths;
+  if (state?.readOnlyFilePaths !== undefined) readOnlyFilePaths = state.readOnlyFilePaths;
+}
 
 // ---------------------------------------------------------------------------
 // Core validation engine
@@ -39,23 +56,25 @@ function isMarkdownFileSpec(entry: OutputEntry): entry is MarkdownFileSpec {
  * Check that all declared output files exist on disk and validate frontmatter
  * against declared schemas. Collects all issues into a single message string.
  *
- * Paths are resolved relative to `baseDir` via `path.join(baseDir, file)`.
+ * Paths are resolved through CapState.resolvePath() which handles workspace
+ * prefix injection, placeholder resolution, and projectRelative paths.
  */
 export function validateOutputs(
-  contract: CapabilityContract,
-  baseDir: string,
-  params?: Record<string, unknown>,
+  capState: CapState,
 ): { success: boolean; message?: string } {
-  // If COMPLETION_SUMMARY.md exists at baseDir, pass validation regardless of other expected files.
+  const params = capState["params"];
+
+  // If COMPLETION_SUMMARY.md exists (resolved through CapState context), pass validation regardless of other expected files.
   // This allows evolve-plan to write just COMPLETION_SUMMARY.md (when all steps are done) and have pio_mark_complete succeed.
-  if (fs.existsSync(path.join(baseDir, "COMPLETION_SUMMARY.md"))) {
+  const completionSummaryPath = capState.resolvePath({ name: "_bypass", file: "COMPLETION_SUMMARY.md" });
+  if (fs.existsSync(completionSummaryPath)) {
     return { success: true };
   }
 
   try {
     const issues: string[] = [];
 
-    for (const entry of contract.outputs) {
+    for (const entry of capState.contract.outputs) {
       if (!isMarkdownFileSpec(entry)) {
         // OneOfGroup — treat as no-op (deferred to later step)
         continue;
@@ -66,13 +85,11 @@ export function validateOutputs(
         continue;
       }
 
-      // Resolve placeholder tokens in file path
-      const resolvedPaths = resolvePaths([entry.file], params || {});
-      const resolvedFile = resolvedPaths[0];
+      // Use CapState.resolvePath for prefix-aware resolution (handles projectRelative internally)
+      const fullPath = capState.resolvePath(entry);
 
-      const fullPath = path.join(baseDir, resolvedFile);
       if (!fs.existsSync(fullPath)) {
-        issues.push(`Output file '${resolvedFile}' is missing`);
+        issues.push(`Output file '${entry.file}' is missing`);
         continue;
       }
 
@@ -80,7 +97,7 @@ export function validateOutputs(
       if (entry.schema) {
         const raw = extractFrontmatter(fullPath);
         if (raw === null) {
-          issues.push(`Output file '${resolvedFile}' has no valid YAML frontmatter`);
+          issues.push(`Output file '${entry.file}' has no valid YAML frontmatter`);
         } else if (!Value.Check(entry.schema, raw)) {
           const errors = [...Value.Errors(entry.schema, raw)];
           const fieldErrors = errors.map((e) => {
@@ -88,7 +105,7 @@ export function validateOutputs(
             return `Field '${field}': ${e.message}`;
           }).join("; ");
           const schemaDesc = formatSchemaDescription(entry.schema);
-          issues.push(`Frontmatter validation failed for '${resolvedFile}': ${fieldErrors}\nExpected frontmatter structure:\n${schemaDesc}`);
+          issues.push(`Frontmatter validation failed for '${entry.file}': ${fieldErrors}\nExpected frontmatter structure:\n${schemaDesc}`);
         }
       }
     }
@@ -120,14 +137,10 @@ export function validateOutputs(
  * that require reading document body content (e.g., totalSteps vs heading count).
  */
 export function validateFrontmatter(
-  contract: CapabilityContract,
-  workingDir: string,
-  params?: Record<string, unknown>,
+  capState: CapState,
 ): { success: boolean; message?: string } {
-  const resolvedParams = params || {};
-
   try {
-    for (const entry of contract.outputs) {
+    for (const entry of capState.contract.outputs) {
       if (!isMarkdownFileSpec(entry)) {
         // OneOfGroup — skip for frontmatter validation
         continue;
@@ -137,21 +150,18 @@ export function validateFrontmatter(
         continue;
       }
 
-      // Resolve placeholder tokens in file path
-      const resolvedPaths = resolvePaths([entry.file], resolvedParams);
-      const resolvedFile = resolvedPaths[0];
-
-      const filePath = path.join(workingDir, resolvedFile);
+      // Use CapState.resolvePath for prefix-aware resolution
+      const filePath = capState.resolvePath(entry);
 
       // Check file exists
       if (!fs.existsSync(filePath)) {
-        return { success: false, message: `Output file '${resolvedFile}' does not exist` };
+        return { success: false, message: `Output file '${entry.file}' does not exist` };
       }
 
       // Parse frontmatter
       const raw = extractFrontmatter(filePath);
       if (raw === null) {
-        return { success: false, message: `Output file '${resolvedFile}' has no valid YAML frontmatter` };
+        return { success: false, message: `Output file '${entry.file}' has no valid YAML frontmatter` };
       }
 
       // Validate against schema
@@ -164,7 +174,7 @@ export function validateFrontmatter(
           })
           .join("; ");
         const schemaDesc = formatSchemaDescription(entry.schema);
-        return { success: false, message: `Frontmatter validation failed for '${resolvedFile}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}` };
+        return { success: false, message: `Frontmatter validation failed for '${entry.file}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}` };
       }
     }
 
@@ -181,37 +191,29 @@ export function validateFrontmatter(
  * contract.excludedFiles[] (fail-fast on first existing). Returns success only
  * when all checks pass.
  *
- * Paths are resolved via resolvePaths() using the provided params for
- * placeholder substitution.
+ * Paths are resolved through CapState.resolvePath() which handles workspace
+ * prefix injection, placeholder resolution, and projectRelative paths.
  *
- * @param baseDir - Base directory for resolving relative paths
- * @param contract - CapabilityContract with inputs and excludedFiles
- * @param params - Session params for placeholder resolution
+ * @param capState - CapState wrapping the capability contract with resolution context
  * @returns Success result or failure with descriptive message
  */
 export function validateInputs(
-  baseDir: string,
-  contract: CapabilityContract,
-  params?: Record<string, unknown>,
+  capState: CapState,
 ): { success: boolean; message?: string } {
-  const resolvedParams = params || {};
-
   try {
     // Check required inputs
-    for (const spec of contract.inputs) {
-      const resolvedPaths = resolvePaths([spec.file], resolvedParams);
-      const resolvedFile = resolvedPaths[0];
-      const fullPath = path.join(baseDir, resolvedFile);
+    for (const spec of capState.contract.inputs) {
+      const fullPath = capState.resolvePath(spec);
 
       if (!fs.existsSync(fullPath)) {
-        return { success: false, message: `Required file missing: ${resolvedFile}` };
+        return { success: false, message: `Required file missing: ${spec.file}` };
       }
 
       // Frontmatter validation when schema is declared on the input entry
       if (spec.schema) {
         const raw = extractFrontmatter(fullPath);
         if (raw === null) {
-          return { success: false, message: `Input file '${resolvedFile}' has no valid YAML frontmatter` };
+          return { success: false, message: `Input file '${spec.file}' has no valid YAML frontmatter` };
         }
 
         if (!Value.Check(spec.schema, raw)) {
@@ -221,18 +223,17 @@ export function validateInputs(
             return `Field '${field}': ${e.message}`;
           }).join("; ");
           const schemaDesc = formatSchemaDescription(spec.schema);
-          return { success: false, message: `Frontmatter validation failed for '${resolvedFile}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}` };
+          return { success: false, message: `Frontmatter validation failed for '${spec.file}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}` };
         }
       }
     }
 
-    // Check excluded files
-    if (contract.excludedFiles) {
-      for (const file of contract.excludedFiles) {
-        const resolvedPaths = resolvePaths([file], resolvedParams);
-        const resolvedFile = resolvedPaths[0];
-        if (fs.existsSync(path.join(baseDir, resolvedFile))) {
-          return { success: false, message: `File must not exist: ${resolvedFile}` };
+    // Check excluded files (always non-projectRelative — resolve through CapState with synthetic entry)
+    if (capState.contract.excludedFiles) {
+      for (const file of capState.contract.excludedFiles) {
+        const fullPath = capState.resolvePath({ name: "_excluded", file });
+        if (fs.existsSync(fullPath)) {
+          return { success: false, message: `File must not exist: ${file}` };
         }
       }
     }
@@ -241,22 +242,6 @@ export function validateInputs(
   }
 
   return { success: true };
-}
-
-/**
- * Factory that produces a ready-to-use PostValidateCallback from
- * a CapabilityContract.
- *
- * Bridge between contract declarations and the existing
- * postValidate hook system.
- *
- * Usage in capabilities:
- *   postValidate: createFrontmatterValidator(config.contract)
- */
-export function createFrontmatterValidator(
-  contract: CapabilityContract,
-): PostValidateCallback {
-  return (goalDir, params) => validateFrontmatter(contract, goalDir, params);
 }
 
 // ---------------------------------------------------------------------------
@@ -268,150 +253,109 @@ export function setupValidation(pi: ExtensionAPI) {
   pi.on("resources_discover", async (_event, ctx) => {
     const config = await getSessionConfig(ctx);
     if (!config) return;
-    workingDir = config.workingDir;
+    workspaceDir = config.workspaceDir;
 
-    // Resolve read-only file paths to absolute paths
-    if (config.readOnlyFiles && config.workingDir) {
-      readOnlyFilePaths = config.readOnlyFiles.map((f) => path.resolve(config.workingDir!, f));
+    // workspacePrefix is stripped from sessionParams after normalization (Step 9).
+    // workspaceDir already has the prefix baked in, so CapState.workspacePrefix = undefined.
+    const capState = new CapState(config.contract, workspaceDir!, config.sessionParams);
+
+    // Resolve read-only file paths through CapState (always non-projectRelative)
+    if (config.readOnlyFiles && config.workspaceDir) {
+      readOnlyFilePaths = config.readOnlyFiles.map((f) =>
+        path.resolve(capState.resolvePath({ name: "_ro", file: f }))
+      );
     } else {
       readOnlyFilePaths = [];
     }
 
-    // Resolve write-allowlist paths to absolute paths
-    if (config.writeAllowlist && config.workingDir) {
-      writeAllowlistPaths = config.writeAllowlist.map((f) => path.resolve(config.workingDir!, f));
-    } else {
-      writeAllowlistPaths = [];
+    // Start with explicit writeAllowlist from config
+    let baseAllowlist: string[] = [];
+    if (config.writeAllowlist && config.workspaceDir) {
+      baseAllowlist = config.writeAllowlist.map((f) =>
+        path.resolve(capState.resolvePath({ name: "_wl", file: f }))
+      );
     }
 
-    warnedOnce = false;
-    warningsThisSession = 0;
+    // Auto-derive from contract outputs — "zero manual configuration per capability"
+    // Uses CapState.resolvePath() which handles projectRelative: true entries
+    // (resolves to .pio/PROJECT/* via global pioRootDir).
+    const contractOutputPaths: string[] = [];
+    if (config.contract?.outputs) {
+      for (const entry of config.contract.outputs) {
+        if (isMarkdownFileSpec(entry)) {
+          contractOutputPaths.push(path.resolve(capState.resolvePath(entry)));
+        }
+      }
+    }
+
+    writeAllowlistPaths = [...new Set([...baseAllowlist, ...contractOutputPaths])];
+
+    allowProjectWrites = config.allowProjectWrites ?? false;
+
+    // Project root boundary for allowProjectWrites — constrains writes to project workspace
+    projectRoot = path.resolve(ctx.cwd ?? process.cwd());
   });
 
-  // 3. Reset one-shot gate when the agent starts a new turn
-  pi.on("turn_start", async () => {
-    warnedOnce = false;
-  });
-
-  // // 4. Exit-gate: block the first switch if validation fails, then let it go.
-  // //    Hard cap after MAX_WARNINGS to avoid infinite loops.
-  // pi.on("session_before_switch", async (_event, ctx) => {
-  //   if (!validationRules || !baseDir) return; // no rules — allow switch
-
-  //   const result = validateOutputs(validationRules, baseDir);
-
-  //   if (result.passed) return; // all good — allow switch
-
-  //   if (warnedOnce) return; // already warned this round — let them leave
-
-  //   if (warningsThisSession >= MAX_WARNINGS) return; // cap reached — stop blocking
-
-  //   // Warn and block so the agent has a chance to fix things
-  //   warnedOnce = true;
-  //   warningsThisSession++;
-  //   pi.sendUserMessage(`Validation failed. The following expected output files are missing:\n- ${result.missing.join("\n- ")}\n\nPlease produce these files before switching sessions.`);
-  //   ctx.ui.notify(`Capability validation failed. Missing: ${result.missing.join(", ")}`, "warning");
-
-  //   return { cancel: true };
-  // });
-
-  // 5. File protection: default-deny for .pio/ writes + write-allowlist + read-only blocklist
+  // 3. File protection: unified write check + read-only blocklist fallback
   pi.on("tool_call", async (event) => {
     const input = event.input as Record<string, unknown> | undefined;
 
-    // --- Default-deny: block all writes to .pio/ unless explicitly allowed ---
-    // Collect all target file paths from write tools
-    let pioWriteTargets: string[] = [];
+    // Collect all target file paths from write tools (done once)
+    let targetPaths: string[] = [];
 
     if (event.toolName === "write" && typeof input?.path === "string") {
-      pioWriteTargets = [path.resolve(input.path)];
+      targetPaths = [path.resolve(input.path)];
     } else if (event.toolName === "edit" && typeof input?.path === "string") {
-      pioWriteTargets = [path.resolve(input.path)];
+      targetPaths = [path.resolve(input.path)];
     } else if (event.toolName === "vscode_apply_workspace_edit" && Array.isArray(input?.edits)) {
       for (const edit of input.edits as Array<Record<string, unknown>>) {
         if (typeof edit.filePath === "string") {
-          pioWriteTargets.push(path.resolve(edit.filePath));
+          targetPaths.push(path.resolve(edit.filePath));
         }
       }
     }
 
-    // Check if any target is inside a .pio/ directory
-    for (const tp of pioWriteTargets) {
-      if (tp.includes("/.pio/")) {
-        // Permit if the path is in the session's write-allowlist
-        if (writeAllowlistPaths.includes(tp)) {
-          continue;
-        }
+    // No write targets — pass through
+    if (targetPaths.length === 0) return;
 
-        // Permit if the path is inside the session's own workingDir (goal workspace)
-        if (workingDir && (tp.startsWith(workingDir + path.sep) || tp === workingDir)) {
-          continue;
-        }
+    // Unified write check — single pass over all targets
+    for (const tp of targetPaths) {
+      // Allowed: contract output files (auto-derived allowlist)
+      if (writeAllowlistPaths.includes(tp)) continue;
 
-        // Block writes to .pio/ areas outside the session's goal workspace
-        return { block: true, reason: `Writing to .pio/ files is not allowed. These files are managed by the pio workflow and should not be modified directly from this session.` };
-      }
+      // Allowed: project files when capability has allowProjectWrites (scoped to project root)
+      if (allowProjectWrites && !tp.includes("/.pio/") && projectRoot && tp.startsWith(projectRoot + "/")) continue;
+
+      // Allowed: /tmp/ writes (temporary scratch files)
+      if (tp.startsWith("/tmp/")) continue;
+
+      // Block everything else — always list what IS allowed to guide the agent
+      return { block: true, reason: buildAllowanceMessage(writeAllowlistPaths, allowProjectWrites) };
     }
 
-    // --- Write-allowlist check (takes precedence over blocklist) ---
-    if (writeAllowlistPaths.length > 0) {
-      // Collect all target file paths from this tool call
-      let targetPaths: string[] = [];
-
-      if (event.toolName === "write" && typeof input?.path === "string") {
-        targetPaths = [path.resolve(input.path)];
-      } else if (event.toolName === "edit" && typeof input?.path === "string") {
-        targetPaths = [path.resolve(input.path)];
-      } else if (event.toolName === "vscode_apply_workspace_edit" && Array.isArray(input?.edits)) {
-        for (const edit of input.edits as Array<Record<string, unknown>>) {
-          if (typeof edit.filePath === "string") {
-            targetPaths.push(path.resolve(edit.filePath));
-          }
-        }
-      }
-
-      // Block any write tool targeting a file NOT in the allowlist
-      if (targetPaths.length > 0) {
-        for (const tp of targetPaths) {
-          if (!writeAllowlistPaths.includes(tp)) {
-            return { block: true, reason: `Writing is restricted during this session. Allowed write targets: ${writeAllowlistPaths.join(", ")}. You attempted to write to a file outside this list.` };
-          }
-        }
-      }
-
-      // Allowlist check passed — no need to check blocklist (allowlist takes precedence)
-      return;
-    }
-
-    // --- Read-only blocklist check (only if no allowlist is configured) ---
-    if (readOnlyFilePaths.length === 0) return; // no read-only files configured
-
-    // Check `write` tool — input.path
-    if (event.toolName === "write" && typeof input?.path === "string") {
-      const targetPath = path.resolve(input.path);
-      if (readOnlyFilePaths.includes(targetPath)) {
-        return { block: true, reason: `${input.path} is read-only during this session. If you need changes to ${input.path}, flag them to the user and do not modify it.` };
-      }
-    }
-
-    // Check `edit` tool — input.path
-    if (event.toolName === "edit" && typeof input?.path === "string") {
-      const targetPath = path.resolve(input.path);
-      if (readOnlyFilePaths.includes(targetPath)) {
-        return { block: true, reason: `${input.path} is read-only during this session. If you need changes to ${input.path}, flag them to the user and do not modify it.` };
-      }
-    }
-
-    // Check `vscode_apply_workspace_edit` tool — input.edits[].filePath
-    if (event.toolName === "vscode_apply_workspace_edit" && Array.isArray(input?.edits)) {
-      for (const edit of input.edits as Array<Record<string, unknown>>) {
-        if (typeof edit.filePath === "string") {
-          const targetPath = path.resolve(edit.filePath);
-          if (readOnlyFilePaths.includes(targetPath)) {
-            return { block: true, reason: `${edit.filePath} is read-only during this session. If you need changes to ${edit.filePath}, flag them to the user and do not modify it.` };
-          }
+    // Read-only blocklist — final fallback (blocks writes to explicitly read-only files)
+    if (readOnlyFilePaths.length > 0) {
+      for (const tp of targetPaths) {
+        if (readOnlyFilePaths.includes(tp)) {
+          return { block: true, reason: `${tp} is read-only during this session. If you need changes to this file, flag them to the user and do not modify it.` };
         }
       }
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Helper — build helpful error message listing all permitted write categories
+// ---------------------------------------------------------------------------
+
+function buildAllowanceMessage(allowlist: string[], hasProjectWrites: boolean): string {
+  const parts: string[] = [];
+  if (allowlist.length > 0) {
+    parts.push(`contract output files: ${allowlist.join(", ")}`);
+  }
+  if (hasProjectWrites) {
+    parts.push("project source files outside .pio/");
+  }
+  parts.push("temporary files in /tmp/");
+  return `Writing is restricted during this session. Allowed write targets: ${parts.join("; ")}.`;
 }

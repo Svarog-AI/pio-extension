@@ -86,6 +86,7 @@ function makeMockCtx(configData: Record<string, unknown>, cwd: string) {
           customType: "pio-config" as const,
           data: {
             capability: configData.capability,
+            workspaceDir: configData.workspaceDir,
             sessionParams: configData.sessionParams,
           },
         },
@@ -166,6 +167,9 @@ APPROVED
       capability: "review-task",
       goalName: "test-goal",
       stepNumber: 1,
+      sessionName: "test-goal review-task s1",
+      workspacePrefix: "goals/test-goal/S01",
+      queueKey: "test-goal",
     });
 
     const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
@@ -210,6 +214,9 @@ REJECTED
       capability: "review-task",
       goalName: "test-goal",
       stepNumber: 1,
+      sessionName: "test-goal review-task s1",
+      workspacePrefix: "goals/test-goal/S01",
+      queueKey: "test-goal",
     });
 
     const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
@@ -251,6 +258,9 @@ Missing decision field.
       capability: "review-task",
       goalName: "test-goal",
       stepNumber: 1,
+      sessionName: "test-goal review-task s1",
+      workspacePrefix: "goals/test-goal/S01",
+      queueKey: "test-goal",
     });
 
     const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
@@ -291,6 +301,9 @@ Invalid decision value.
       capability: "review-task",
       goalName: "test-goal",
       stepNumber: 1,
+      sessionName: "test-goal review-task s1",
+      workspacePrefix: "goals/test-goal/S01",
+      queueKey: "test-goal",
     });
 
     const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
@@ -320,6 +333,9 @@ Invalid decision value.
       capability: "review-task",
       goalName: "test-goal",
       stepNumber: 1,
+      sessionName: "test-goal review-task s1",
+      workspacePrefix: "goals/test-goal/S01",
+      queueKey: "test-goal",
     });
 
     const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
@@ -335,12 +351,14 @@ Invalid decision value.
 
   it("non-review capability passes without postValidate/postExecute", async () => {
     // Arrange: set up workspace for execute-task (no postValidate)
+    // After Step 10, execute-task CONTRACT uses plain file names with step-level workspacePrefix
     const goalDir = path.join(tempCwd, ".pio", "goals", "test-goal");
     const stepDir = path.join(goalDir, "S01");
     fs.mkdirSync(stepDir, { recursive: true });
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Test Goal", "utf-8");
     fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n\n## Step 1: Test", "utf-8");
-    fs.writeFileSync(path.join(stepDir, "TASK.md"), "# Task", "utf-8");
+    // CONTRACT uses plain file names — files resolve in the step directory (workspacePrefix includes step folder)
+    fs.writeFileSync(path.join(stepDir, "TASK.md"), "---\nskills:\n  mandatory: []\n---\n# Task", "utf-8");
     fs.writeFileSync(path.join(stepDir, "TEST.md"), "# Tests", "utf-8");
     fs.writeFileSync(path.join(stepDir, "SUMMARY.md"), "# Summary\n\n## Status\n\nCOMPLETED", "utf-8");
     fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
@@ -350,6 +368,9 @@ Invalid decision value.
       capability: "execute-task",
       goalName: "test-goal",
       stepNumber: 1,
+      sessionName: "test-goal execute-task s1",
+      workspacePrefix: "goals/test-goal/S01",
+      queueKey: "test-goal",
     });
 
     const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);

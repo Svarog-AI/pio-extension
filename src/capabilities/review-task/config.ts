@@ -6,8 +6,7 @@ import * as path from "node:path";
 
 import { CapState } from "../../capability-state";
 import { launchCapability, setMergedSkills } from "../../capability-session";
-import { mergeCapabilitySkills, parseCommandArgs } from "../../capability-utils";
-import { stepFolderName } from "../../fs-utils";
+import { mergeCapabilitySkills, BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { REVIEW_OUTPUT_SCHEMA } from "./schemas";
@@ -15,7 +14,6 @@ import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import {
-  validateReviewStep,
   resolveReviewReadOnlyFiles,
   resolveReviewWriteAllowlist,
   postValidateReview,
@@ -27,8 +25,12 @@ import {
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ name: "goal", file: "GOAL.md" }, { name: "plan", file: "PLAN.md" }, { name: "completed", file: "S{stepNumber:02d}/COMPLETED" }, { name: "summary", file: "S{stepNumber:02d}/SUMMARY.md" }, { name: "task", file: "S{stepNumber:02d}/TASK.md", schema: TASK_FRONTMATTER_SCHEMA }],
-  outputs: [{ name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema: REVIEW_OUTPUT_SCHEMA }],
+  inputs: [
+    { name: "completed", file: "COMPLETED" },
+    { name: "summary", file: "SUMMARY.md" },
+    { name: "task", file: "TASK.md", schema: TASK_FRONTMATTER_SCHEMA },
+  ],
+  outputs: [{ name: "review", file: "REVIEW.md", schema: REVIEW_OUTPUT_SCHEMA }],
 };
 
 // ---------------------------------------------------------------------------
@@ -46,14 +48,7 @@ const capabilityConfig = {
   skills: {
     mandatory: ["tdd"],
   },
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
-    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-    if (stepNumber == null) {
-      return "Error: stepNumber is required for review-task. The task was not enqueued with a valid step number.";
-    }
-    const folderName = stepFolderName(stepNumber);
-    return `Goal workspace is at ${workingDir}. You are responsible for **Step ${stepNumber}**. Read TASK.md, TEST.md, and SUMMARY.md inside the \`${folderName}/\` directory. Review the implementation, write REVIEW.md, and decide whether to approve or reject.`;
-  },
+  defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;
@@ -62,20 +57,13 @@ export default capabilityConfig;
 // prepareSession — read TASK.md skills and merge into capability config
 // ---------------------------------------------------------------------------
 
-function prepareReviewSession(workingDir: string, params?: Record<string, unknown>): void {
-  const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-  if (stepNumber == null) {
-    throw new Error("stepNumber is required for review-task. Ensure the task was enqueued with a valid step number.");
-  }
-  const folder = stepFolderName(stepNumber);
-  const stepDir = path.join(workingDir, folder);
-
-  // Delete stale markers from previous review attempts; force:true skips missing files.
-  fs.rmSync(path.join(stepDir, "APPROVED"), { force: true });
-  fs.rmSync(path.join(stepDir, "REJECTED"), { force: true });
+function prepareReviewSession(workspaceDir: string, params?: Record<string, unknown>): void {
+  // workspaceDir is already the resolved step directory (from Step 9) — no prefix needed
+  fs.rmSync(path.join(workspaceDir, "APPROVED"), { force: true });
+  fs.rmSync(path.join(workspaceDir, "REJECTED"), { force: true });
 
   // Read TASK.md skills and merge into capability config
-  const capState = new CapState(CONTRACT, workingDir, { stepNumber });
+  const capState = new CapState(CONTRACT, workspaceDir, params);
   const taskFile = capState.input<{ skills?: unknown }>("task");
   const taskData = taskFile.read();
   const taskSkills = taskData?.skills ?? null;
@@ -94,28 +82,27 @@ const reviewTaskTool = defineTool({
   description:
     "Review the implementation of a plan step. Reads TASK.md, TEST.md, SUMMARY.md and implementation files. Writes REVIEW.md with categorized issues and approves or rejects. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Review code implementation for a plan step (approve/reject).",
-  parameters: Type.Object({
-    name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
-    stepNumber: Type.Number({ description: "Step number to review" }),
-  }),
+  parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = await validateReviewStep(params.name, ctx.cwd, params.stepNumber);
-
-    if (!result.ready) {
-      return { content: [{ type: "text", text: result.error }], details: {} };
-    }
-
-    enqueueTask(ctx.cwd, params.name, {
+    const queueKey = deriveQueueKey(params.workspacePrefix);
+    const sessionName = params.sessionName ?? `${queueKey} review-task`;
+    const initialMessage = params.initialMessage ?? "Ready.";
+    enqueueTask(ctx.cwd, queueKey, {
       capability: "review-task",
-      params: { goalName: params.name, stepNumber: result.stepNumber },
+      params: {
+        workspacePrefix: params.workspacePrefix,
+        sessionName,
+        queueKey,
+        initialMessage,
+      },
     });
 
     return {
       content: [
         {
           type: "text",
-          text: `Review queued for Step ${result.stepNumber} of goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.`,
+          text: `Review queued for workspace "${params.workspacePrefix}". Use \`/pio-next-task\` to start the sub-session.`,
         },
       ],
       details: {},
@@ -128,29 +115,32 @@ const reviewTaskTool = defineTool({
 // ---------------------------------------------------------------------------
 
 async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandContext) {
-  const parsed = parseCommandArgs(args);
-  if (!parsed) {
-    ctx.ui.notify("Usage: /pio-review-task <goal-name> <step-number>", "warning");
+  if (!args || args.trim().length === 0) {
+    ctx.ui.notify("Usage: /pio-review-task --workspace-prefix <prefix>", "warning");
     return;
   }
-
-  if (parsed.stepNumber === undefined) {
-    ctx.ui.notify("Step number is required. Usage: /pio-review-task <goal-name> <step-number>", "error");
-    return;
+  const tokens = args.trim().split(/\s+/);
+  let workspacePrefix: string | undefined;
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === "--workspace-prefix" && tokens[i + 1]) {
+      workspacePrefix = tokens[++i];
+    }
   }
-
-  const result = await validateReviewStep(parsed.name, ctx.cwd, parsed.stepNumber);
-
-  if (!result.ready) {
-    ctx.ui.notify(result.error, "error");
+  if (!workspacePrefix) {
+    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-review-task --workspace-prefix <prefix>", "error");
     return;
   }
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  const folderName = stepFolderName(result.stepNumber);
-
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "review-task", goalName: parsed.name, stepNumber: result.stepNumber });
+  const queueKey = deriveQueueKey(workspacePrefix);
+  const config = await resolveCapabilityConfig(ctx.cwd, {
+    capability: "review-task",
+    workspacePrefix,
+    sessionName: `${queueKey} review-task`,
+    queueKey,
+    initialMessage: `Review the implementation of workspace "${workspacePrefix}".`,
+  });
   if (!config) {
     ctx.ui.notify("Failed to resolve review-task config.", "error");
     return;
@@ -179,5 +169,3 @@ export function register(pi: ExtensionAPI) {
     handler: handleReviewTask,
   });
 }
-
-

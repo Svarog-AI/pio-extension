@@ -26,10 +26,8 @@ const mockDispatch = vi.hoisted(() => vi.fn());
 
 vi.mock("./queues", () => ({
   enqueueTask: mockEnqueueTask,
-  writeLastTask: vi.fn(),
   readPendingTask: vi.fn(),
-  listPendingGoals: vi.fn(),
-  deriveQueueKey: vi.fn(),
+  listPendingTasks: vi.fn(),
   queueDir: vi.fn().mockReturnValue("/mock/queue"),
 }));
 
@@ -88,13 +86,13 @@ function makeMockCtxNoConfig(): ExtensionCommandContext {
 }
 
 // ---------------------------------------------------------------------------
-// Tests — pio_transition tool
+// Tests — goalFromIssueTool.execute
 // ---------------------------------------------------------------------------
 
-describe("pio_transition tool", () => {
+describe("goalFromIssueTool.execute", () => {
   let tempCwd: string;
   let cwdSpy: ReturnType<typeof vi.spyOn>;
-  let transitionTool: { execute: Function } | undefined;
+  let goalFromIssueTool: { execute: Function } | undefined;
 
   beforeEach(async () => {
     vi.resetModules();
@@ -103,18 +101,6 @@ describe("pio_transition tool", () => {
     mockEnqueueTask.mockClear();
     mockRecordTransition.mockClear();
     mockResolveCapabilityConfigDirect.mockClear();
-    mockResolveCapabilityConfigDirect.mockImplementation((_cwd, params) => {
-      const cap = typeof params?.capability === "string" ? params.capability : "unknown";
-      // getSessionConfig passes { capability, ...sessionParams } to resolveCapabilityConfig
-      // sessionParams may contain workingDir override for tests
-      const { capability: _cap, workingDir, ...rest } = params ?? {};
-      return {
-        capability: cap,
-        workingDir: workingDir ?? "/test/.pio/goals/test",
-        sessionParams: rest,
-        contract: { inputs: [], outputs: [] },
-      };
-    });
 
     // Import fresh to get the real tool definition
     const { setupDirectTools } = await import("./direct-tools");
@@ -131,7 +117,7 @@ describe("pio_transition tool", () => {
     };
     setupDirectTools(mockPi as any);
 
-    transitionTool = registeredTools.find((t) => t.name === "pio_transition");
+    goalFromIssueTool = registeredTools.find((t) => t.name === "pio_goal_from_issue");
   });
 
   afterEach(() => {
@@ -139,29 +125,57 @@ describe("pio_transition tool", () => {
     cleanup(tempCwd);
   });
 
-  it("returns error when not inside a capability session", async () => {
+  it("returns error when issue does not exist", async () => {
     const mockCtx = makeMockCtxNoConfig();
+    (mockCtx as any).cwd = tempCwd;
 
-    const result = await transitionTool!.execute(
+    const result = await goalFromIssueTool!.execute(
       "test-id",
-      { capability: "create-plan" },
+      { issuePath: "nonexistent-issue" },
       new AbortController().signal,
       () => {},
       mockCtx,
     );
 
-    expect(result.content[0].text).toContain("Not inside a capability session");
+    expect(result.content[0].text).toContain("not found");
   });
 
-  it("enqueues task with correct queue key derived from goalName", async () => {
-    const mockCtx = makeMockCtx({
-      capability: "execute-task",
-      sessionParams: { goalName: "my-feature", stepNumber: 1, workingDir: "/repo/.pio/goals/my-feature" },
-    });
+  it("returns error when goal workspace already exists", async () => {
+    // Arrange: create issue file and goal workspace
+    const issuesDir = path.join(tempCwd, ".pio", "issues");
+    fs.mkdirSync(issuesDir, { recursive: true });
+    fs.writeFileSync(path.join(issuesDir, "my-issue.md"), "# My Issue\n\nDescription", "utf-8");
 
-    await transitionTool!.execute(
+    // Create goal workspace (collision)
+    const goalsDir = path.join(tempCwd, ".pio", "goals", "my-issue");
+    fs.mkdirSync(goalsDir, { recursive: true });
+
+    const mockCtx = makeMockCtxNoConfig();
+    (mockCtx as any).cwd = tempCwd;
+
+    const result = await goalFromIssueTool!.execute(
       "test-id",
-      { capability: "review-task" },
+      { issuePath: "my-issue.md" },
+      new AbortController().signal,
+      () => {},
+      mockCtx,
+    );
+
+    expect(result.content[0].text).toMatch(/already exists/i);
+  });
+
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, initialMessage)", async () => {
+    // Arrange: create issue file
+    const issuesDir = path.join(tempCwd, ".pio", "issues");
+    fs.mkdirSync(issuesDir, { recursive: true });
+    fs.writeFileSync(path.join(issuesDir, "fix-bug.md"), "# Fix Bug\n\nFix a bug", "utf-8");
+
+    const mockCtx = makeMockCtxNoConfig();
+    (mockCtx as any).cwd = tempCwd;
+
+    await goalFromIssueTool!.execute(
+      "test-id",
+      { issuePath: "fix-bug.md" },
       new AbortController().signal,
       () => {},
       mockCtx,
@@ -169,249 +183,38 @@ describe("pio_transition tool", () => {
 
     expect(mockEnqueueTask).toHaveBeenCalledWith(
       tempCwd,
-      "my-feature",
+      "fix-bug",
       expect.objectContaining({
-        capability: "review-task",
-        params: expect.objectContaining({ goalName: "my-feature", stepNumber: 1 }),
-      }),
-    );
-  });
-
-  it("falls back to capability name as queue key when goalName is absent", async () => {
-    const mockCtx = makeMockCtx({
-      capability: "some-capability",
-      sessionParams: { workingDir: "/some/other/dir" },
-    });
-
-    await transitionTool!.execute(
-      "test-id",
-      { capability: "next-capability" },
-      new AbortController().signal,
-      () => {},
-      mockCtx,
-    );
-
-    expect(mockEnqueueTask).toHaveBeenCalledWith(
-      tempCwd,
-      "some-capability",
-      expect.objectContaining({
-        capability: "next-capability",
-      }),
-    );
-  });
-
-  it("merges user-provided params on top of session params", async () => {
-    const mockCtx = makeMockCtx({
-      capability: "execute-task",
-      sessionParams: { goalName: "my-feature", stepNumber: 1, existing: "value", workingDir: "/repo/.pio/goals/my-feature" },
-    });
-
-    await transitionTool!.execute(
-      "test-id",
-      { capability: "review-task", params: { stepNumber: 2, newUser: "data" } },
-      new AbortController().signal,
-      () => {},
-      mockCtx,
-    );
-
-    expect(mockEnqueueTask).toHaveBeenCalledWith(
-      tempCwd,
-      "my-feature",
-      expect.objectContaining({
-        capability: "review-task",
+        capability: "create-goal",
         params: expect.objectContaining({
-          goalName: "my-feature",
-          stepNumber: 2,
-          existing: "value",
-          newUser: "data",
+          workspacePrefix: "goals/fix-bug",
+          sessionName: "fix-bug create-goal",
+          queueKey: "fix-bug",
+          initialMessage: expect.stringContaining("fix-bug"),
         }),
       }),
     );
   });
 
-  it("calls recordTransition only when in a goal workspace", async () => {
-    // Goal workspace — should call recordTransition
-    const mockCtxGoal = makeMockCtx({
-      capability: "execute-task",
-      sessionParams: { goalName: "my-feature", workingDir: "/repo/.pio/goals/my-feature" },
-    });
+  it("includes fileCleanup in enqueued params", async () => {
+    // Arrange: create issue file
+    const issuesDir = path.join(tempCwd, ".pio", "issues");
+    fs.mkdirSync(issuesDir, { recursive: true });
+    const issuePath = path.join(issuesDir, "some-issue.md");
+    fs.writeFileSync(issuePath, "# Some Issue\n\nDescription", "utf-8");
 
-    await transitionTool!.execute(
-      "test-id",
-      { capability: "review-task" },
-      new AbortController().signal,
-      () => {},
-      mockCtxGoal,
-    );
-
-    expect(mockRecordTransition).toHaveBeenCalledTimes(1);
-    mockRecordTransition.mockClear();
-
-    // Non-goal workspace — should NOT call recordTransition
-    const mockCtxNonGoal = makeMockCtx({
-      capability: "execute-task",
-      sessionParams: { workingDir: "/some/random/dir" },
-    });
-
-    await transitionTool!.execute(
-      "test-id",
-      { capability: "review-task" },
-      new AbortController().signal,
-      () => {},
-      mockCtxNonGoal,
-    );
-
-    expect(mockRecordTransition).not.toHaveBeenCalled();
-  });
-
-  it("uses stateMachineId from session params when available", async () => {
-    const mockCtx = makeMockCtx({
-      capability: "execute-task",
-      sessionParams: { goalName: "my-feature", stateMachineId: "custom-machine", workingDir: "/repo/.pio/goals/my-feature" },
-    });
-
-    await transitionTool!.execute(
-      "test-id",
-      { capability: "review-task" },
-      new AbortController().signal,
-      () => {},
-      mockCtx,
-    );
-
-    // recordTransition should be called with the custom stateMachineId
-    expect(mockRecordTransition).toHaveBeenCalledWith(
-      "/repo/.pio/goals/my-feature",
-      "execute-task",
-      expect.objectContaining({
-        capability: "review-task",
-        stateMachineId: "custom-machine",
-      }),
-    );
-  });
-
-  it("returns success message with next-task hint", async () => {
-    const mockCtx = makeMockCtx({
-      capability: "execute-task",
-      sessionParams: { goalName: "my-feature", workingDir: "/repo/.pio/goals/my-feature" },
-    });
-
-    const result = await transitionTool!.execute(
-      "test-id",
-      { capability: "review-task" },
-      new AbortController().signal,
-      () => {},
-      mockCtx,
-    );
-
-    expect(result.content[0].text).toContain("Task enqueued: review-task");
-    expect(result.content[0].text).toContain("/pio-next-task");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Tests — /pio-transition command
-// ---------------------------------------------------------------------------
-
-describe("/pio-transition command", () => {
-  let handleTransition: (args: string | undefined, ctx: ExtensionCommandContext) => Promise<void>;
-
-  beforeEach(async () => {
-    vi.resetModules();
-    mockDispatch.mockClear();
-
-    // Import fresh
-    const { setupDirectTools } = await import("./direct-tools");
-
-    // Capture the registered command handler
-    let commandHandler: Function | undefined;
-    const mockPi = {
-      registerTool: vi.fn(),
-      registerCommand: (_name: string, opts: { handler: Function }) => {
-        if (_name === "pio-transition") {
-          commandHandler = opts.handler;
-        }
-      },
-      on: vi.fn(),
-      setSessionName: vi.fn(),
-    };
-    setupDirectTools(mockPi as any);
-    handleTransition = commandHandler as any;
-  });
-
-  it("reports error when not in a capability session", async () => {
     const mockCtx = makeMockCtxNoConfig();
-    const notifySpy = vi.spyOn((mockCtx as any).ui, "notify");
+    (mockCtx as any).cwd = tempCwd;
 
-    await handleTransition(undefined, mockCtx);
-
-    expect(notifySpy).toHaveBeenCalledWith(
-      "Not inside a capability session. Cannot determine transition context.",
-      "info",
+    await goalFromIssueTool!.execute(
+      "test-id",
+      { issuePath: "some-issue.md" },
+      new AbortController().signal,
+      () => {},
+      mockCtx,
     );
-  });
 
-  it("lists the sole transition when only one match exists", async () => {
-    mockDispatch.mockReturnValue([
-      { capability: "create-plan", stateMachineId: "goal-driven-development" },
-    ]);
-
-    const mockCtx = makeMockCtx({
-      capability: "create-goal",
-      sessionParams: { goalName: "my-feature", workingDir: "/repo/.pio/goals/my-feature" },
-    });
-    const notifySpy = vi.spyOn((mockCtx as any).ui, "notify");
-
-    await handleTransition(undefined, mockCtx);
-
-    expect(notifySpy).toHaveBeenCalledWith(
-      expect.stringContaining("create-plan"),
-      "info",
-    );
-    expect(notifySpy).toHaveBeenCalledWith(
-      expect.stringContaining("Only transition"),
-      "info",
-    );
-  });
-
-  it("displays numbered list for multiple matches", async () => {
-    mockDispatch.mockReturnValue([
-      { capability: "revise-plan", stateMachineId: "goal-driven-development" },
-      { capability: "execute-task", stateMachineId: "goal-driven-development" },
-    ]);
-
-    const mockCtx = makeMockCtx({
-      capability: "evolve-plan",
-      sessionParams: { goalName: "my-feature", stepNumber: 1, workingDir: "/repo/.pio/goals/my-feature" },
-    });
-    const notifySpy = vi.spyOn((mockCtx as any).ui, "notify");
-
-    await handleTransition(undefined, mockCtx);
-
-    expect(notifySpy).toHaveBeenCalledWith(
-      expect.stringContaining("1. revise-plan"),
-      "info",
-    );
-    expect(notifySpy).toHaveBeenCalledWith(
-      expect.stringContaining("2. execute-task"),
-      "info",
-    );
-  });
-
-  it("reports terminal state when no transitions match", async () => {
-    mockDispatch.mockReturnValue([]);
-
-    const mockCtx = makeMockCtx({
-      capability: "finalize-goal",
-      workingDir: "/repo/.pio/goals/my-feature",
-      sessionParams: { goalName: "my-feature" },
-    });
-    const notifySpy = vi.spyOn((mockCtx as any).ui, "notify");
-
-    await handleTransition(undefined, mockCtx);
-
-    expect(notifySpy).toHaveBeenCalledWith(
-      expect.stringContaining("terminal"),
-      "info",
-    );
+    const call = mockEnqueueTask.mock.calls[0];
+    expect(call[2].params.fileCleanup).toContain(issuePath);
   });
 });

@@ -29,9 +29,10 @@ function makeMockCtx() {
 function makeConfig(overrides: Partial<import("./types").CapabilityConfig> = {}): import("./types").CapabilityConfig {
   return {
     capability: "test-capability",
-    workingDir: "/tmp/test-goal",
+    workspaceDir: "/tmp/test-goal",
     contract: { inputs: [{ name: "goal", file: "GOAL.md" }], outputs: [] },
     sessionParams: { goalName: "test-goal" },
+    allowProjectWrites: false,
     ...overrides,
   };
 }
@@ -70,12 +71,11 @@ describe("launchCapability — input validation", () => {
 
     await expect(launchCapability(ctx, config)).resolves.toBeUndefined();
 
-    // Assert: validateInputs was called with correct args
-    expect(mockValidateInputs).toHaveBeenCalledWith(
-      config.workingDir,
-      config.contract,
-      config.sessionParams,
-    );
+    // Assert: validateInputs was called with a CapState instance (single argument)
+    expect(mockValidateInputs).toHaveBeenCalledTimes(1);
+    const capStateArg = mockValidateInputs.mock.calls[0][0];
+    expect(capStateArg).toBeDefined();
+    expect(capStateArg.contract).toEqual(config.contract);
 
     // Assert: session was created (validation passed)
     expect(ctx.newSession).toHaveBeenCalledTimes(1);
@@ -124,9 +124,9 @@ describe("launchCapability — input validation", () => {
     expect(ctx.newSession).toHaveBeenCalledTimes(1);
   });
 
-  it("skips validation when workingDir is absent", async () => {
+  it("skips validation when workspaceDir is absent", async () => {
     const launchCapability = await getLaunchCapability();
-    const config = makeConfig({ workingDir: undefined });
+    const config = makeConfig({ workspaceDir: undefined });
 
     await expect(launchCapability(ctx, config)).resolves.toBeUndefined();
 
@@ -152,12 +152,10 @@ describe("launchCapability — input validation", () => {
 
     await expect(launchCapability(ctx, config)).resolves.toBeUndefined();
 
-    // Assert: validateInputs was called with sessionParams containing stepNumber
-    expect(mockValidateInputs).toHaveBeenCalledWith(
-      config.workingDir,
-      config.contract,
-      config.sessionParams,
-    );
+    // Assert: validateInputs was called with a CapState instance
+    expect(mockValidateInputs).toHaveBeenCalledTimes(1);
+    const capStateArg = mockValidateInputs.mock.calls[0][0];
+    expect(capStateArg.contract).toEqual(config.contract);
 
     // The sessionParams include stepNumber: 3 — inside validateInputs,
     // resolvePaths will use it to resolve S{stepNumber:02d}/TASK.md → S03/TASK.md

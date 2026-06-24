@@ -1,9 +1,8 @@
 import * as fs from "node:fs";
-import * as path from "node:path";
 import type { TSchema } from "typebox";
 import type { CapabilityContract, MarkdownFileSpec, OutputEntry } from "./types";
 import { extractFrontmatter, validateAndCoerce } from "./frontmatter";
-import { resolvePaths } from "./capability-config";
+import { resolveContractPath } from "./capability-config";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -69,21 +68,48 @@ class FileStateImpl<T> implements FileState<T> {
  * - `input(name)` — access a file declared in `contract.inputs` by name
  * - `output(name)` — access a file declared in `contract.outputs` by name
  * - `undeclared(path)` — access marker files not in any contract (e.g. "APPROVED", "BLOCKED")
+ * - `resolvePath(entry)` — resolve a contract entry using stored context and global pioRootDir
+ * - `contract` (getter) — access to the underlying capability contract
  *
  * Import constraints: does NOT import from capabilities schemas, fs-utils, or goal-state.
  */
 export class CapState {
-  private inputNames: Map<string, { file: string; schema?: TSchema }>;
-  private outputNames: Map<string, { file: string; schema?: TSchema }>;
+  private inputNames: Map<string, MarkdownFileSpec>;
+  private outputNames: Map<string, MarkdownFileSpec>;
+  private _contract: CapabilityContract;
 
   constructor(
-    private contract: CapabilityContract,
+    contract: CapabilityContract,
     private baseDir: string,
     private params?: Record<string, unknown>,
+    private workspacePrefix?: string,
   ) {
+    this._contract = contract;
     const maps = this.buildAllMaps();
     this.inputNames = maps.inputNames;
     this.outputNames = maps.outputNames;
+  }
+
+  /** Access to the underlying capability contract. */
+  get contract(): CapabilityContract {
+    return this._contract;
+  }
+
+  /**
+   * Resolve a contract entry's file path using stored context (baseDir, workspacePrefix)
+   * and global pioRootDir. Encapsulates all resolution logic in one call.
+   *
+   * @param entry - Contract entry with file path and optional projectRelative flag
+   * @returns Fully resolved filesystem path
+   */
+  resolvePath(entry: MarkdownFileSpec): string {
+    return resolveContractPath(
+      entry.file,
+      this.baseDir,
+      this.workspacePrefix,
+      this.params,
+      entry.projectRelative,
+    );
   }
 
   /**
@@ -96,10 +122,8 @@ export class CapState {
     if (!entry) {
       throw new Error(`Input '${name}' not found in contract`);
     }
-    const resolvedPath = this.params
-      ? resolvePaths([entry.file], this.params)[0]
-      : entry.file;
-    return new FileStateImpl<T>(path.join(this.baseDir, resolvedPath), entry.schema);
+    const fullPath = this.resolvePath(entry);
+    return new FileStateImpl<T>(fullPath, entry.schema);
   }
 
   /**
@@ -113,10 +137,8 @@ export class CapState {
     if (!entry) {
       throw new Error(`Output '${name}' not found in contract`);
     }
-    const resolvedPath = this.params
-      ? resolvePaths([entry.file], this.params)[0]
-      : entry.file;
-    return new FileStateImpl<T>(path.join(this.baseDir, resolvedPath), entry.schema);
+    const fullPath = this.resolvePath(entry);
+    return new FileStateImpl<T>(fullPath, entry.schema);
   }
 
   /**
@@ -125,35 +147,36 @@ export class CapState {
    * Returns a FileState with no schema validation.
    */
   undeclared(filePath: string): FileState<unknown> {
-    return new FileStateImpl<unknown>(path.join(this.baseDir, filePath));
+    const fullPath = resolveContractPath(filePath, this.baseDir, this.workspacePrefix, undefined, false);
+    return new FileStateImpl<unknown>(fullPath);
   }
 
   /**
-   * Build lookup maps for named accessors: inputNames (name→{file,schema}),
-   * outputNames (name→{file,schema}).
+   * Build lookup maps for named accessors: inputNames (name→MarkdownFileSpec),
+   * outputNames (name→MarkdownFileSpec).
    * Enforces unique names across inputs and outputs — throws on collision.
    */
   private buildAllMaps(): {
-    inputNames: Map<string, { file: string; schema?: TSchema }>;
-    outputNames: Map<string, { file: string; schema?: TSchema }>;
+    inputNames: Map<string, MarkdownFileSpec>;
+    outputNames: Map<string, MarkdownFileSpec>;
   } {
-    const inputNames = new Map<string, { file: string; schema?: TSchema }>();
-    const outputNames = new Map<string, { file: string; schema?: TSchema }>();
+    const inputNames = new Map<string, MarkdownFileSpec>();
+    const outputNames = new Map<string, MarkdownFileSpec>();
     const allNames = new Set<string>();
 
     // Process inputs
-    for (const entry of this.contract.inputs) {
+    for (const entry of this._contract.inputs) {
       if (allNames.has(entry.name)) {
         throw new Error(
           `Duplicate file name '${entry.name}' in contract. Names must be unique across inputs and outputs.`,
         );
       }
       allNames.add(entry.name);
-      inputNames.set(entry.name, { file: entry.file, schema: entry.schema });
+      inputNames.set(entry.name, entry);
     }
 
     // Process outputs (handle OneOfGroup)
-    for (const entry of this.contract.outputs) {
+    for (const entry of this._contract.outputs) {
       if (this.isMarkdownFileSpec(entry)) {
         if (allNames.has(entry.name)) {
           throw new Error(
@@ -161,7 +184,7 @@ export class CapState {
           );
         }
         allNames.add(entry.name);
-        outputNames.set(entry.name, { file: entry.file, schema: entry.schema });
+        outputNames.set(entry.name, entry);
       } else if ("files" in entry && Array.isArray(entry.files)) {
         // OneOfGroup — recurse into files
         for (const fileEntry of entry.files) {
@@ -172,7 +195,7 @@ export class CapState {
               );
             }
             allNames.add(fileEntry.name);
-            outputNames.set(fileEntry.name, { file: fileEntry.file, schema: fileEntry.schema });
+            outputNames.set(fileEntry.name, fileEntry);
           }
         }
       }
@@ -201,6 +224,7 @@ export function createCapState(
   contract: CapabilityContract,
   baseDir: string,
   params?: Record<string, unknown>,
+  workspacePrefix?: string,
 ): CapState {
-  return new CapState(contract, baseDir, params);
+  return new CapState(contract, baseDir, params, workspacePrefix);
 }

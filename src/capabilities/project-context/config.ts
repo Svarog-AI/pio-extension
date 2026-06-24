@@ -32,8 +32,7 @@ const capabilityConfig = {
     ".pio/PROJECT/DEPENDENCIES.md",
     ".pio/PROJECT/GLOSSARY.md",
   ],
-  defaultInitialMessage: (workingDir: string) =>
-    `Please explore this project and produce the multi-file project context under ${workingDir}/.pio/PROJECT/ (OVERVIEW.md, DEVELOPMENT.md, CONVENTIONS.md, GIT.md, ARCHITECTURE.md, DEPENDENCIES.md, GLOSSARY.md).`,
+  defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;
@@ -52,7 +51,11 @@ const projectContextTool = defineTool({
   async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
     enqueueTask(ctx.cwd, "project-context", {
       capability: "project-context",
-      params: {},
+      params: {
+        sessionName: "project-context",
+        queueKey: "project-context",
+        initialMessage: "Analyze the project and generate .pio/PROJECT/ context files.",
+      },
     });
 
     return { content: [{ type: "text", text: `Task queued for project-context. Use \'/pio-next-task\' to start the sub-session.` }], details: {} };
@@ -64,7 +67,12 @@ const projectContextTool = defineTool({
 // ---------------------------------------------------------------------------
 
 async function handleProjectContext(_args: string | undefined, ctx: ExtensionCommandContext) {
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "project-context" });
+  const config = await resolveCapabilityConfig(ctx.cwd, {
+    capability: "project-context",
+    sessionName: "project-context",
+    queueKey: "project-context",
+    initialMessage: "Analyze the project and generate .pio/PROJECT/ context files.",
+  });
   if (!config) {
     ctx.ui.notify("Failed to resolve project-context config.", "error");
     return;

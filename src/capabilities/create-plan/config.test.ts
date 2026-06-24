@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import config, { postValidateCreatePlan, register } from "./config";
+import { readPendingTask } from "../../queues";
 import { vi } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -541,21 +542,21 @@ describe("create-plan tool execute — pre-launch validation", () => {
     };
   }
 
-  it("returns error when goal workspace does not exist", async () => {
+  it("enqueues task when workspace does not exist (validation deferred to launch)", async () => {
     const tool = getTool();
-    const result = await tool.execute("test-id", { name: "nonexistent" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-id", { workspacePrefix: "goals/nonexistent" }, undefined, undefined, makeCtx(tempDir));
 
-    expect(result.content[0].text).toMatch(/does not exist/i);
+    expect(result.content[0].text).toContain("queued");
   });
 
-  it("enqueues task when goal workspace exists", async () => {
+  it("enqueues task when workspace exists", async () => {
     // Arrange: goal dir with GOAL.md
     const goalDir = path.join(tempDir, ".pio", "goals", "valid");
     fs.mkdirSync(goalDir, { recursive: true });
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { name: "valid" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-id", { workspacePrefix: "goals/valid" }, undefined, undefined, makeCtx(tempDir));
 
     expect(result.content[0].text).toContain("queued");
   });
@@ -567,8 +568,27 @@ describe("create-plan tool execute — pre-launch validation", () => {
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { name: "valid" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-id", { workspacePrefix: "goals/valid" }, undefined, undefined, makeCtx(tempDir));
 
     expect(result.content[0].text).toContain("queued");
+  });
+
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, initialMessage)", async () => {
+    // Arrange: goal dir with GOAL.md
+    const goalDir = path.join(tempDir, ".pio", "goals", "my-feature");
+    fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
+
+    const tool = getTool();
+    await tool.execute("test-id", { workspacePrefix: "goals/my-feature" }, undefined, undefined, makeCtx(tempDir));
+
+    // Assert: task was enqueued with correct params
+    const task = readPendingTask(tempDir, "my-feature");
+    expect(task).toBeDefined();
+    expect(task!.capability).toBe("create-plan");
+    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature");
+    expect(task!.params).toHaveProperty("sessionName", "my-feature create-plan");
+    expect(task!.params).toHaveProperty("queueKey", "my-feature");
+    expect(task!.params).toHaveProperty("initialMessage");
   });
 });

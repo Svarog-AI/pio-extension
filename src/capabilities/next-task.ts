@@ -2,8 +2,8 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { launchCapability, getSessionGoalName } from "../capability-session";
-import { queueDir, readPendingTask, listPendingGoals, type SessionQueueTask } from "../queues";
+import { launchCapability, getSessionParams } from "../capability-session";
+import { queueDir, readPendingTask, listPendingTasks, type SessionQueueTask } from "../queues";
 import { resolveCapabilityConfig } from "../capability-config";
 
 // ---------------------------------------------------------------------------
@@ -13,57 +13,58 @@ import { resolveCapabilityConfig } from "../capability-config";
 export async function handleNextTask(args: string | undefined, ctx: ExtensionCommandContext) {
   const dir = queueDir(ctx.cwd);
 
-  // Case 1: goal name provided — read specific per-goal file
+  // Case 1: queue key provided — read specific queue file
   if (args && args.trim()) {
-    const goalName = args.trim();
-    const task = readPendingTask(ctx.cwd, goalName);
+    const queueKey = args.trim();
+    const task = readPendingTask(ctx.cwd, queueKey);
 
     if (!task) {
-      ctx.ui.notify(`No pending task for goal "${goalName}".`, "info");
+      ctx.ui.notify(`No pending task for "${queueKey}".`, "info");
       return;
     }
 
-    await launchAndCleanup(ctx, dir, goalName, task);
+    await launchAndCleanup(ctx, dir, queueKey, task);
     return;
   }
 
-  // Case 2: no arg, but session has goalName from pio-config — use it directly
-  const sessionGoalName = getSessionGoalName();
-  if (sessionGoalName) {
-    const task = readPendingTask(ctx.cwd, sessionGoalName);
+  // Case 2: no arg, but session has queueKey from pio-config — use it directly
+  const params = getSessionParams();
+  const queueKey = typeof params?.queueKey === "string" ? params.queueKey : undefined;
+  if (queueKey) {
+    const task = readPendingTask(ctx.cwd, queueKey);
 
     if (!task) {
-      ctx.ui.notify(`No pending task for goal "${sessionGoalName}".`, "info");
+      ctx.ui.notify(`No pending task for "${queueKey}".`, "info");
       return;
     }
 
-    await launchAndCleanup(ctx, dir, sessionGoalName, task);
+    await launchAndCleanup(ctx, dir, queueKey, task);
     return;
   }
 
-  // Case 3: no arg, no session goalName — scan all pending goals and auto-launch if exactly one
-  const pendingGoals = listPendingGoals(ctx.cwd);
+  // Case 3: no arg, no session goalName — scan all pending tasks and auto-launch if exactly one
+  const pendingTasks = listPendingTasks(ctx.cwd);
 
-  if (pendingGoals.length === 0) {
+  if (pendingTasks.length === 0) {
     ctx.ui.notify("No tasks queued.", "info");
     return;
   }
 
-  if (pendingGoals.length === 1) {
-    const goalName = pendingGoals[0];
-    const task = readPendingTask(ctx.cwd, goalName);
+  if (pendingTasks.length === 1) {
+    const queueKey = pendingTasks[0];
+    const task = readPendingTask(ctx.cwd, queueKey);
     if (!task) {
-      ctx.ui.notify(`No pending task for goal "${goalName}".`, "info");
+      ctx.ui.notify(`No pending task for "${queueKey}".`, "info");
       return;
     }
 
-    await launchAndCleanup(ctx, dir, goalName, task);
+    await launchAndCleanup(ctx, dir, queueKey, task);
     return;
   }
 
-  // Multiple goals pending — notify user to specify which one
-  const list = pendingGoals.map((g) => `  - ${g}`).join("\n");
-  ctx.ui.notify(`Multiple goals have pending tasks. Specify a goal:\n/pio-next-task <goal-name>\n\nPending: \n${list}`, "info");
+  // Multiple tasks pending — notify user to specify which one
+  const list = pendingTasks.map((k) => `  - ${k}`).join("\n");
+  ctx.ui.notify(`Multiple tasks have pending queues. Specify a queue key:\n/pio-next-task <queue-key>\n\nPending: \n${list}`, "info");
 }
 
 /**
@@ -72,10 +73,10 @@ export async function handleNextTask(args: string | undefined, ctx: ExtensionCom
 async function launchAndCleanup(
   ctx: ExtensionCommandContext,
   dir: string,
-  goalName: string,
+  queueKey: string,
   task: SessionQueueTask,
 ) {
-  const filePath = path.join(dir, `task-${goalName}.json`);
+  const filePath = path.join(dir, `task-${queueKey}.json`);
 
   try {
     const config = await resolveCapabilityConfig(ctx.cwd, { ...task.params, capability: task.capability });
@@ -85,7 +86,7 @@ async function launchAndCleanup(
     }
     await launchCapability(ctx, config);
   } catch (err) {
-    console.error(`pio-next-task: failed to launch ${task.capability} for goal "${goalName}"`, err);
+    console.error(`pio-next-task: failed to launch ${task.capability} for "${queueKey}"`, err);
     ctx.ui.notify(`Failed to start ${task.capability}: ${err instanceof Error ? err.message : String(err)}`, "error");
   } finally {
     // Always remove the task file — avoid stuck tasks on error

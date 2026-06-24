@@ -1,4 +1,5 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import type { CapabilityConfig, CapabilitySkills } from "./types";
 import { resolveCapabilityConfig } from "./capability-config";
 
@@ -24,32 +25,36 @@ export async function getSessionConfig(ctx: ExtensionContext): Promise<Capabilit
   const entry = entries.find((e) => e.type === "custom" && e.customType === "pio-config");
   if (!entry || entry.type !== "custom") return null;
 
-  const data = entry.data as { capability?: string; sessionParams?: Record<string, unknown> };
+  const data = entry.data as { capability?: string; workspaceDir?: string; sessionParams?: Record<string, unknown> };
   if (!data.capability) return null;
 
-  try {
-    const resolved = await resolveCapabilityConfig(ctx.cwd, {
-      capability: data.capability,
-      ...data.sessionParams,
-    });
-    return resolved ?? null;
-  } catch (err) {
-    console.warn(`pio: failed to reconstruct config for capability "${data.capability}": ${err}`);
-    return null;
-  }
+  // Pass stored workspaceDir (resolved directory from normalization) so reconstruction
+  // produces the same resolved workspaceDir even when workspacePrefix was stripped from sessionParams.
+  const resolved = await resolveCapabilityConfig(ctx.cwd, {
+    capability: data.capability,
+    baseDir: data.workspaceDir,
+    ...data.sessionParams,
+  });
+  return resolved ?? null;
 }
 
 /**
- * Parse a command argument string into parts.
- * Returns [name, stepNumber] or [name, undefined] if step number is missing.
+ * Base parameter set shared by all capability tools.
+ * Capabilities declare paths relative to a workspace prefix — the prefix tells
+ * path resolution where within `.pio/` to resolve contract files.
  */
-export function parseCommandArgs(args: string | undefined): { name: string; stepNumber: number | undefined } | null {
-  if (!args || !args.trim()) return null;
-  const parts = args.trim().split(/\s+/);
-  const name = parts[0];
-  const raw = parts[1];
-  const stepNumber = raw ? parseInt(raw, 10) : undefined;
-  return { name, stepNumber: (stepNumber !== undefined && !isNaN(stepNumber) && stepNumber >= 1) ? stepNumber : undefined };
+export const BASE_TOOL_PARAMS = {
+  workspacePrefix: Type.String({ description: "Workspace prefix for path resolution, e.g. 'goals/my-feature/S03'" }),
+  sessionName: Type.Optional(Type.String({ description: "Human-readable session name" })),
+  initialMessage: Type.Optional(Type.String({ description: "Custom kickoff message for the session" })),
+};
+
+/**
+ * Derive a queue key from the last path segment of a workspace prefix.
+ * "goals/my-feature" → "my-feature", "goals/my-feature/S03" → "S03".
+ */
+export function deriveQueueKey(workspacePrefix: string): string {
+  return workspacePrefix.split("/").pop() ?? "";
 }
 
 /**

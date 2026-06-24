@@ -1,6 +1,8 @@
+import * as fs from "node:fs";
 import * as path from "node:path";
 import type { PrepareSessionCallback, PostValidateCallback, PostExecuteCallback, CapabilityConfig, CapabilitySkills } from "./types";
-import { resolveCapabilityConfig, resolvePaths } from "./capability-config";
+import { resolveCapabilityConfig, resolvePaths, resolveContractPath } from "./capability-config";
+import { enqueueTask, readPendingTask } from "./queues";
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -17,7 +19,7 @@ function makeCwd(): string {
 describe("resolveCapabilityConfig — happy path with static config", () => {
   it("resolves create-goal config with correct capability name", async () => {
     const cwd = makeCwd();
-    const params = { capability: "create-goal" as string, goalName: "my-feature" };
+    const params = { capability: "create-goal" as string, goalName: "my-feature", sessionName: "test" };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
@@ -27,7 +29,7 @@ describe("resolveCapabilityConfig — happy path with static config", () => {
 
   it("resolves create-plan config with correct contract outputs", async () => {
     const cwd = makeCwd();
-    const params = { capability: "create-plan" as string, goalName: "my-feature" };
+    const params = { capability: "create-plan" as string, goalName: "my-feature", sessionName: "test" };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
@@ -35,98 +37,188 @@ describe("resolveCapabilityConfig — happy path with static config", () => {
     expect(result!.contract.outputs).toContainEqual(expect.objectContaining({ file: "PLAN.md" }));
   });
 
-  it("derives workingDir from goalName (goal-scoped)", async () => {
+  it("returns .pio/ as default workspaceDir regardless of goalName", async () => {
     const cwd = "/tmp/test-proj";
-    const params = { capability: "create-goal" as string, goalName: "my-feature" };
+    const params = { capability: "create-goal" as string, goalName: "my-feature", sessionName: "test" };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.workingDir).toBe(path.join("/tmp/test-proj", ".pio", "goals", "my-feature"));
+    expect(result!.workspaceDir).toBe(path.join("/tmp/test-proj", ".pio"));
   });
 
-  it("falls back to cwd when no goalName (project-scoped)", async () => {
+  it("returns .pio/ as default workspaceDir when no goalName", async () => {
     const cwd = "/tmp/test-proj";
-    const params = { capability: "create-goal" as string };
+    const params = { capability: "create-goal" as string, sessionName: "test" };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.workingDir).toBe("/tmp/test-proj");
+    expect(result!.workspaceDir).toBe(path.join("/tmp/test-proj", ".pio"));
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveCapabilityConfig — explicit workingDir override
+// resolveCapabilityConfig — workspacePrefix resolution
 // ---------------------------------------------------------------------------
 
-describe("resolveCapabilityConfig — explicit workingDir override", () => {
-  it("explicit workingDir overrides goalName-based derivation", async () => {
-    const cwd = "/tmp/proj";
+describe("resolveCapabilityConfig — workspacePrefix resolution", () => {
+  it("computes workspaceDir from workspacePrefix: .pio/ + goals/my-feature", async () => {
+    const cwd = "/tmp/test-proj";
     const params = {
-      capability: "finalize-goal" as string,
-      goalName: "my-feature",
-      workingDir: "/explicit/path",
+      capability: "create-plan" as string,
+      sessionName: "test",
+      workspacePrefix: "goals/my-feature",
     };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.workingDir).toBe("/explicit/path");
+    expect(result!.workspaceDir).toBe(path.join(cwd, ".pio", "goals", "my-feature"));
   });
 
-  it("goalName-based derivation still works when workingDir is absent", async () => {
-    const cwd = "/tmp/proj";
-    const params = { capability: "create-plan" as string, goalName: "my-feature" };
-
-    const result = await resolveCapabilityConfig(cwd, params);
-
-    expect(result!.workingDir).toBe(path.join("/tmp/proj", ".pio", "goals", "my-feature"));
-  });
-
-  it("fallback to cwd when neither workingDir nor goalName is present", async () => {
-    const cwd = "/tmp/proj";
-    const params = { capability: "project-context" as string };
-
-    const result = await resolveCapabilityConfig(cwd, params);
-
-    expect(result!.workingDir).toBe("/tmp/proj");
-  });
-
-  it("empty string workingDir does not override goalName derivation", async () => {
-    const cwd = "/tmp/proj";
+  it("strips workspacePrefix from sessionParams after normalization", async () => {
+    const cwd = "/tmp/test-proj";
     const params = {
-      capability: "finalize-goal" as string,
-      goalName: "my-feature",
-      workingDir: "",
+      capability: "create-plan" as string,
+      sessionName: "test",
+      workspacePrefix: "goals/my-feature",
+      customField: "value",
     };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.workingDir).toBe(path.join("/tmp/proj", ".pio", "goals", "my-feature"));
+    expect(result!.sessionParams?.workspacePrefix).toBeUndefined();
+    expect(result!.sessionParams?.customField).toBe("value");
+  });
+
+  it("without workspacePrefix, workspaceDir is just .pio/ (backward compatible)", async () => {
+    const cwd = "/tmp/test-proj";
+    const params = { capability: "create-goal" as string, sessionName: "test" };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.workspaceDir).toBe(path.join(cwd, ".pio"));
+    expect(result!.sessionParams?.workspacePrefix).toBeUndefined();
+  });
+
+  it("nested workspacePrefix resolves correctly", async () => {
+    const cwd = "/tmp/test-proj";
+    const params = {
+      capability: "create-plan" as string,
+      sessionName: "test",
+      workspacePrefix: "goals/parent/S03/subgoals/nested",
+    };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.workspaceDir).toBe(path.join(cwd, ".pio", "goals", "parent", "S03", "subgoals", "nested"));
+  });
+
+  it("explicit baseDir is still used as base before prefix resolution", async () => {
+    const cwd = "/tmp/test-proj";
+    const params = {
+      capability: "create-plan" as string,
+      sessionName: "test",
+      baseDir: "/explicit/path",
+      workspacePrefix: "goals/my-feature",
+    };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.workspaceDir).toBe(path.join("/explicit/path", "goals", "my-feature"));
+  });
+
+  it("callbacks receive resolved directory (goal-level) not raw .pio/", async () => {
+    const cwd = "/tmp/test-proj";
+    const params = {
+      capability: "execute-task" as string,
+      sessionName: "test",
+      stepNumber: 1,
+      workspacePrefix: "goals/my-feature",
+    };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    // After Step 10, readOnlyFiles returns plain "TASK.md" (workspacePrefix handles step folder)
+    expect(result!.readOnlyFiles).toContain("TASK.md");
+    // workspaceDir is the resolved directory
+    expect(result!.workspaceDir).toBe(path.join(cwd, ".pio", "goals", "my-feature"));
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolveCapabilityConfig — session name derivation
+// resolveCapabilityConfig — explicit baseDir override
 // ---------------------------------------------------------------------------
 
-describe("resolveCapabilityConfig — session name derivation", () => {
-  it("derives session name with goal + capability (no step)", async () => {
-    const params = { capability: "create-plan" as string, goalName: "my-feature" };
+describe("resolveCapabilityConfig — explicit baseDir override", () => {
+  it("explicit baseDir overrides goalName-based derivation", async () => {
+    const cwd = "/tmp/proj";
+    const params = {
+      capability: "finalize-goal" as string,
+      goalName: "my-feature",
+      baseDir: "/explicit/path",
+      sessionName: "test",
+    };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.workspaceDir).toBe("/explicit/path");
+  });
+
+  it("returns .pio/ as default when baseDir is absent", async () => {
+    const cwd = "/tmp/proj";
+    const params = { capability: "create-plan" as string, goalName: "my-feature", sessionName: "test" };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.workspaceDir).toBe(path.join("/tmp/proj", ".pio"));
+  });
+
+  it("returns .pio/ as default when neither baseDir nor goalName is present", async () => {
+    const cwd = "/tmp/proj";
+    const params = { capability: "project-context" as string, sessionName: "test" };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.workspaceDir).toBe(path.join("/tmp/proj", ".pio"));
+  });
+
+  it("empty string baseDir falls back to .pio/ default", async () => {
+    const cwd = "/tmp/proj";
+    const params = {
+      capability: "finalize-goal" as string,
+      goalName: "my-feature",
+      baseDir: "",
+      sessionName: "test",
+    };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.workspaceDir).toBe(path.join("/tmp/proj", ".pio"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveCapabilityConfig — session name passthrough
+// ---------------------------------------------------------------------------
+
+describe("resolveCapabilityConfig — session name passthrough", () => {
+  it("passes through params.sessionName as-is", async () => {
+    const params = { capability: "create-plan" as string, sessionName: "my-feature create-plan" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
     expect(result!.sessionName).toBe("my-feature create-plan");
   });
 
-  it("derives session name with step number", async () => {
-    const params = { capability: "execute-task" as string, goalName: "my-feature", stepNumber: 3 };
+  it("passes through sessionName with step number", async () => {
+    const params = { capability: "execute-task" as string, sessionName: "my-feature execute-task s3", stepNumber: 3 };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
     expect(result!.sessionName).toBe("my-feature execute-task s3");
   });
 
-  it("derives session name without goalName (capability only)", async () => {
-    const params = { capability: "create-goal" as string };
+  it("passes through sessionName without goalName", async () => {
+    const params = { capability: "create-goal" as string, sessionName: "create-goal" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
@@ -141,14 +233,12 @@ describe("resolveCapabilityConfig — session name derivation", () => {
 describe("resolveCapabilityConfig — initial message derivation", () => {
   it("uses defaultInitialMessage when no params.initialMessage", async () => {
     const cwd = "/tmp/proj";
-    const params = { capability: "create-goal" as string, goalName: "my-feature" };
+    const params = { capability: "create-goal" as string, goalName: "my-feature", sessionName: "test" };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
     expect(typeof result!.initialMessage).toBe("string");
-    expect(result!.initialMessage!.length).toBeGreaterThan(0);
-    // New format includes the goal name as a given fact, not just the directory path
-    expect(result!.initialMessage!).toContain("my-feature");
+    expect(result!.initialMessage).toBe("Ready.");
   });
 
   it("uses explicit params.initialMessage over defaultInitialMessage", async () => {
@@ -157,6 +247,7 @@ describe("resolveCapabilityConfig — initial message derivation", () => {
       capability: "create-goal" as string,
       goalName: "my-feature",
       initialMessage: "custom message",
+      sessionName: "test",
     };
 
     const result = await resolveCapabilityConfig(cwd, params);
@@ -164,14 +255,13 @@ describe("resolveCapabilityConfig — initial message derivation", () => {
     expect(result!.initialMessage).toBe("custom message");
   });
 
-  it("defaultInitialMessage contains workingDir path info", async () => {
+  it("defaultInitialMessage is a generic message (no path assumptions)", async () => {
     const cwd = "/tmp/proj";
-    const params = { capability: "create-plan" as string, goalName: "my-feature" };
+    const params = { capability: "create-plan" as string, goalName: "my-feature", sessionName: "test" };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.initialMessage!).toContain("my-feature");
-    expect(result!.initialMessage!).toContain(".pio");
+    expect(result!.initialMessage).toBe("Ready.");
   });
 });
 
@@ -181,7 +271,7 @@ describe("resolveCapabilityConfig — initial message derivation", () => {
 
 describe("resolveCapabilityConfig — step-dependent callback resolution", () => {
   it("invokes evolve-plan contract with correct outputs", async () => {
-    const params = { capability: "evolve-plan" as string, goalName: "my-feature", stepNumber: 3 };
+    const params = { capability: "evolve-plan" as string, goalName: "my-feature", stepNumber: 3, sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
@@ -191,7 +281,7 @@ describe("resolveCapabilityConfig — step-dependent callback resolution", () =>
   });
 
   it("invokes evolve-plan writeAllowlist callback with correct stepNumber", async () => {
-    const params = { capability: "evolve-plan" as string, goalName: "my-feature", stepNumber: 5 };
+    const params = { capability: "evolve-plan" as string, goalName: "my-feature", stepNumber: 5, sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
@@ -199,31 +289,34 @@ describe("resolveCapabilityConfig — step-dependent callback resolution", () =>
     expect(result!.writeAllowlist).not.toContain("S05/TEST.md");
   });
 
-  it("invokes execute-task contract with correct outputs", async () => {
-    const params = { capability: "execute-task" as string, goalName: "my-feature", stepNumber: 2 };
+  it("invokes execute-task contract with correct outputs (plain file names)", async () => {
+    const params = { capability: "execute-task" as string, goalName: "my-feature", stepNumber: 2, sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    expect(result!.contract.outputs).toContainEqual(expect.objectContaining({ file: "S{stepNumber:02d}/TEST.md" }));
-    expect(result!.contract.outputs).toContainEqual(expect.objectContaining({ file: "S{stepNumber:02d}/SUMMARY.md" }));
+    // After Step 10, CONTRACT uses plain file names (workspacePrefix handles step folder)
+    expect(result!.contract.outputs).toContainEqual(expect.objectContaining({ file: "TEST.md" }));
+    expect(result!.contract.outputs).toContainEqual(expect.objectContaining({ file: "SUMMARY.md" }));
   });
 
-  it("invokes execute-task readOnlyFiles callback", async () => {
-    const params = { capability: "execute-task" as string, goalName: "my-feature", stepNumber: 1 };
+  it("invokes execute-task readOnlyFiles callback (plain file names)", async () => {
+    const params = { capability: "execute-task" as string, goalName: "my-feature", stepNumber: 1, sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    expect(result!.readOnlyFiles).toContain("S01/TASK.md");
-    expect(result!.readOnlyFiles).not.toContain("S01/TEST.md");
+    // After Step 10, readOnlyFiles returns plain "TASK.md"
+    expect(result!.readOnlyFiles).toContain("TASK.md");
+    expect(result!.readOnlyFiles).not.toContain("TEST.md");
   });
 
-  it("invokes review-task writeAllowlist callback (REVIEW.md only)", async () => {
-    const params = { capability: "review-task" as string, goalName: "my-feature", stepNumber: 4 };
+  it("invokes review-task writeAllowlist callback (plain REVIEW.md)", async () => {
+    const params = { capability: "review-task" as string, goalName: "my-feature", stepNumber: 4, sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    expect(result!.writeAllowlist).toContain("S04/REVIEW.md");
-    expect(result!.writeAllowlist).not.toContain("S04/APPROVED");
+    // After Step 10, writeAllowlist returns plain "REVIEW.md"
+    expect(result!.writeAllowlist).toContain("REVIEW.md");
+    expect(result!.writeAllowlist).not.toContain("APPROVED");
     expect(result!.writeAllowlist).toHaveLength(1);
   });
 });
@@ -251,7 +344,7 @@ describe("resolveCapabilityConfig — graceful error handling", () => {
     // Suppress console.warn from the failed dynamic import
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    const params = { capability: "nonexistent-capability" as string, goalName: "my-feature" };
+    const params = { capability: "nonexistent-capability" as string, goalName: "my-feature", sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
@@ -261,7 +354,7 @@ describe("resolveCapabilityConfig — graceful error handling", () => {
   });
 
   it("preserves sessionParams in result", async () => {
-    const params = { capability: "create-goal" as string, goalName: "my-feature", customField: "value" };
+    const params = { capability: "create-goal" as string, goalName: "my-feature", customField: "value", sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
@@ -275,7 +368,7 @@ describe("resolveCapabilityConfig — graceful error handling", () => {
 
 describe("resolveCapabilityConfig — static config passthrough", () => {
   it("passes through static contract outputs (create-goal has GOAL.md)", async () => {
-    const params = { capability: "create-goal" as string, goalName: "my-feature" };
+    const params = { capability: "create-goal" as string, goalName: "my-feature", sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
@@ -283,7 +376,7 @@ describe("resolveCapabilityConfig — static config passthrough", () => {
   });
 
   it("passes through static writeAllowlist (create-goal has [\"GOAL.md\"])", async () => {
-    const params = { capability: "create-goal" as string, goalName: "my-feature" };
+    const params = { capability: "create-goal" as string, goalName: "my-feature", sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
@@ -298,9 +391,9 @@ describe("resolveCapabilityConfig — static config passthrough", () => {
 describe("PrepareSessionCallback", () => {
   it("sync callback with correct signature satisfies the type", () => {
     // Arrange + Act: A sync callback matching the expected signature should satisfy PrepareSessionCallback
-    const cb: PrepareSessionCallback = (workingDir: string, params?: Record<string, unknown>) => {
+    const cb: PrepareSessionCallback = (workspaceDir: string, params?: Record<string, unknown>) => {
       // Perform side effects (e.g., file cleanup)
-      if (workingDir.length > 0 && params?.stepNumber) {
+      if (workspaceDir.length > 0 && params?.stepNumber) {
         // noop — type check is the assertion
       }
     };
@@ -311,7 +404,7 @@ describe("PrepareSessionCallback", () => {
 
   it("async callback returning Promise<void> satisfies the type", async () => {
     // Arrange + Act: An async callback should also satisfy PrepareSessionCallback
-    const cb: PrepareSessionCallback = async (workingDir: string, params?: Record<string, unknown>) => {
+    const cb: PrepareSessionCallback = async (workspaceDir: string, params?: Record<string, unknown>) => {
       // Simulate async file deletion
       await new Promise((resolve) => setTimeout(resolve, 0));
     };
@@ -332,6 +425,7 @@ describe("CapabilityConfig.prepareSession", () => {
     const config: CapabilityConfig = {
       capability: "create-goal",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
     };
 
     // Assert
@@ -340,12 +434,13 @@ describe("CapabilityConfig.prepareSession", () => {
 
   it("prepareSession accepts a callback on resolved CapabilityConfig", () => {
     // Arrange
-    const cb: PrepareSessionCallback = (workingDir) => {};
+    const cb: PrepareSessionCallback = (workspaceDir) => {};
 
     // Act
     const config: CapabilityConfig = {
       capability: "review-task",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
       prepareSession: cb,
     };
 
@@ -361,7 +456,7 @@ describe("CapabilityConfig.prepareSession", () => {
 describe("resolveCapabilityConfig — prepareSession", () => {
   it("prepareSession is undefined when capability does not define it", async () => {
     // Arrange: create-goal does not define prepareSession
-    const params = { capability: "create-goal" as string, goalName: "my-feature" };
+    const params = { capability: "create-goal" as string, goalName: "my-feature", sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -384,7 +479,7 @@ describe("resolveCapabilityConfig — prepareSession", () => {
     ];
 
     for (const cap of capabilities) {
-      const params = { capability: cap.name as string, goalName: cap.goalName as string, stepNumber: cap.stepNumber };
+      const params = { capability: cap.name as string, goalName: cap.goalName as string, stepNumber: cap.stepNumber, sessionName: "test" };
       const result = await resolveCapabilityConfig("/tmp/proj", params);
       if (result === undefined) continue;
 
@@ -405,7 +500,7 @@ describe("resolveCapabilityConfig — prepareSession", () => {
 
 describe("backward compatibility — capabilities without prepareSession", () => {
   it("resolving create-goal (no prepareSession) produces valid config with undefined prepareSession", async () => {
-    const params = { capability: "create-goal" as string, goalName: "my-feature" };
+    const params = { capability: "create-goal" as string, goalName: "my-feature", sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
@@ -415,7 +510,7 @@ describe("backward compatibility — capabilities without prepareSession", () =>
   });
 
   it("resolving create-plan (no prepareSession) produces valid config with undefined prepareSession", async () => {
-    const params = { capability: "create-plan" as string, goalName: "my-feature" };
+    const params = { capability: "create-plan" as string, goalName: "my-feature", sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
@@ -425,7 +520,7 @@ describe("backward compatibility — capabilities without prepareSession", () =>
   });
 
   it("resolving execute-task produces valid config with prepareSession defined", async () => {
-    const params = { capability: "execute-task" as string, goalName: "my-feature", stepNumber: 1 };
+    const params = { capability: "execute-task" as string, goalName: "my-feature", stepNumber: 1, sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
@@ -435,7 +530,7 @@ describe("backward compatibility — capabilities without prepareSession", () =>
   });
 
   it("resolving review-task produces valid config with prepareSession defined", async () => {
-    const params = { capability: "review-task" as string, goalName: "my-feature", stepNumber: 2 };
+    const params = { capability: "review-task" as string, goalName: "my-feature", stepNumber: 2, sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
@@ -451,7 +546,7 @@ describe("backward compatibility — capabilities without prepareSession", () =>
 
 describe("resolveCapabilityConfig — project-context writeAllowlist", () => {
   it("resolves project-context with 7-file writeAllowlist", async () => {
-    const params = { capability: "project-context" as string };
+    const params = { capability: "project-context" as string, sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
@@ -466,12 +561,12 @@ describe("resolveCapabilityConfig — project-context writeAllowlist", () => {
     expect(result!.writeAllowlist).toContain(".pio/PROJECT/GLOSSARY.md");
   });
 
-  it("project-context workingDir falls back to cwd", async () => {
-    const params = { capability: "project-context" as string };
+  it("project-context workspaceDir defaults to .pio/", async () => {
+    const params = { capability: "project-context" as string, sessionName: "test" };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    expect(result!.workingDir).toBe("/tmp/proj");
+    expect(result!.workspaceDir).toBe(path.join("/tmp/proj", ".pio"));
   });
 });
 
@@ -556,6 +651,7 @@ describe("CapabilityConfig.postValidate and postExecute", () => {
     const config: CapabilityConfig = {
       capability: "create-goal",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
     };
 
     // Assert
@@ -571,6 +667,7 @@ describe("CapabilityConfig.postValidate and postExecute", () => {
     const config: CapabilityConfig = {
       capability: "review-task",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
       postValidate: cb,
     };
 
@@ -586,6 +683,7 @@ describe("CapabilityConfig.postValidate and postExecute", () => {
     const config: CapabilityConfig = {
       capability: "review-task",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
       postExecute: cb,
     };
 
@@ -601,7 +699,7 @@ describe("CapabilityConfig.postValidate and postExecute", () => {
 describe("resolveCapabilityConfig — postValidate/postExecute passthrough", () => {
   it("passes through postValidate when the capability defines it (review-task)", async () => {
     // Arrange: review-task defines postValidate
-    const params = { capability: "review-task" as string, goalName: "my-feature", stepNumber: 1 };
+    const params = { capability: "review-task" as string, goalName: "my-feature", stepNumber: 1, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -613,7 +711,7 @@ describe("resolveCapabilityConfig — postValidate/postExecute passthrough", () 
 
   it("postValidate is undefined when the capability does not define it (create-goal)", async () => {
     // Arrange: create-goal does not define postValidate
-    const params = { capability: "create-goal" as string, goalName: "my-feature" };
+    const params = { capability: "create-goal" as string, goalName: "my-feature", sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -624,7 +722,7 @@ describe("resolveCapabilityConfig — postValidate/postExecute passthrough", () 
 
   it("postExecute is defined when the capability defines it (review-task)", async () => {
     // Arrange: review-task now defines postExecute (Step 6)
-    const params = { capability: "review-task" as string, goalName: "my-feature", stepNumber: 1 };
+    const params = { capability: "review-task" as string, goalName: "my-feature", stepNumber: 1, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -646,42 +744,98 @@ describe("resolveCapabilityConfig — postValidate/postExecute passthrough", () 
  * completed goal and verify resolveCapabilityConfig() handles it correctly.
  */
 describe("resolveCapabilityConfig — finalize-goal auto-transition integration", () => {
-  it("finalize-goal auto-transition params derive workingDir from goalName", async () => {
+  it("finalize-goal auto-transition params default workspaceDir to .pio/", async () => {
     // Arrange: simulate the params shape that resolveEvolvePlanToFinalizeGoal() returns
-    // for a completed goal: { goalName, goalDir } (no workingDir)
+    // for a completed goal: { goalName, goalDir } (no workspaceDir)
     const cwd = "/tmp/auto-transition-proj";
     const params = {
       capability: "finalize-goal" as string,
       goalName: "my-feature",
       goalDir: path.join(cwd, ".pio", "goals", "my-feature"),
+      sessionName: "test",
     };
 
     // Act
     const result = await resolveCapabilityConfig(cwd, params);
 
-    // Assert: workingDir is derived from goalName (goal directory)
+    // Assert: workspaceDir defaults to .pio/ (no goal-scoped derivation)
     expect(result).toBeDefined();
-    expect(result!.workingDir).toBe(path.join(cwd, ".pio", "goals", "my-feature"));
+    expect(result!.workspaceDir).toBe(path.join(cwd, ".pio"));
     expect(result!.capability).toBe("finalize-goal");
-    // writeAllowlist uses absolute paths (path.resolve(__dirname, "../..") + .pio/PROJECT/*.md)
-    expect(result!.writeAllowlist?.some((p: string) => p.endsWith(".pio/PROJECT/OVERVIEW.md"))).toBe(true);
+    // writeAllowlist is no longer explicit — auto-derived from CONTRACT.outputs by validation guard
+    expect(result!.writeAllowlist).toBeUndefined();
+    // CONTRACT.outputs declares PROJECT files with projectRelative: true
+    const projectOutputs = result!.contract.outputs.filter((o: any) => "file" in o && o.projectRelative === true);
+    expect(projectOutputs).toHaveLength(7);
+    expect(projectOutputs.some((o: any) => o.file === "PROJECT/OVERVIEW.md")).toBe(true);
   });
 
-  it("finalize-goal initial message includes goal name via auto-transition params", async () => {
+  it("finalize-goal initial message is non-empty (defaultInitialMessage)", async () => {
     // Arrange: same params shape as resolveEvolvePlanToFinalizeGoal() for a completed goal
     const cwd = "/tmp/auto-transition-proj";
     const params = {
       capability: "finalize-goal" as string,
       goalName: "my-feature",
       goalDir: path.join(cwd, ".pio", "goals", "my-feature"),
+      sessionName: "test",
     };
 
     // Act
     const result = await resolveCapabilityConfig(cwd, params);
 
-    // Assert: initialMessage includes the goal name (Step 1 fix works through full chain)
+    // Assert: initialMessage is non-empty — comes from defaultInitialMessage callback
+    // (pio-workflow state machine can override via explicit initialMessage param)
     expect(result).toBeDefined();
-    expect(result!.initialMessage).toContain("my-feature");
+    expect(result!.initialMessage).toBeDefined();
+    expect(result!.initialMessage!.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveCapabilityConfig — mandatory param enforcement
+// ---------------------------------------------------------------------------
+
+describe("resolveCapabilityConfig — mandatory param enforcement", () => {
+  it("throws when sessionName is missing", async () => {
+    const params = { capability: "create-goal" as string, goalName: "my-feature" };
+
+    await expect(resolveCapabilityConfig("/tmp/proj", params)).rejects.toThrow(
+      /requires a session name/,
+    );
+  });
+
+  it("throws when sessionName is empty string", async () => {
+    const params = { capability: "create-goal" as string, sessionName: "" };
+
+    await expect(resolveCapabilityConfig("/tmp/proj", params)).rejects.toThrow(
+      /requires a session name/,
+    );
+  });
+
+  it("throws when both initialMessage and defaultInitialMessage are empty", async () => {
+    // test-no-initial-message is a test capability with defaultInitialMessage returning ""
+    const params = { capability: "test-no-initial-message" as string, sessionName: "test" };
+
+    await expect(resolveCapabilityConfig("/tmp/proj", params)).rejects.toThrow(
+      /requires an initial message/,
+    );
+  });
+
+  it("does not throw when defaultInitialMessage provides a value", async () => {
+    // create-goal has defaultInitialMessage returning "Ready."
+    const params = { capability: "create-goal" as string, sessionName: "test" };
+
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+    expect(result).toBeDefined();
+    expect(result!.initialMessage).toBe("Ready.");
+  });
+
+  it("does not throw when params.initialMessage is provided", async () => {
+    const params = { capability: "create-goal" as string, sessionName: "test", initialMessage: "custom" };
+
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+    expect(result).toBeDefined();
+    expect(result!.initialMessage).toBe("custom");
   });
 });
 
@@ -796,10 +950,244 @@ describe("resolvePaths", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// resolveContractPath — workspace prefix resolution layer
+// ---------------------------------------------------------------------------
+
+describe("resolveContractPath", () => {
+  const baseDir = "/proj/.pio";
+
+  it("resolves prefixed path — joins baseDir + prefix + contractPath", () => {
+    const result = resolveContractPath("GOAL.md", baseDir, "goals/my-feature");
+    expect(result).toBe("/proj/.pio/goals/my-feature/GOAL.md");
+  });
+
+  it("resolves path without prefix — joins baseDir + contractPath", () => {
+    const result = resolveContractPath("GOAL.md", baseDir, undefined);
+    expect(result).toBe("/proj/.pio/GOAL.md");
+  });
+
+  it("treats empty prefix same as no prefix", () => {
+    const withEmpty = resolveContractPath("GOAL.md", baseDir, "");
+    const withUndefined = resolveContractPath("GOAL.md", baseDir, undefined);
+    expect(withEmpty).toBe(withUndefined);
+    expect(withEmpty).toBe("/proj/.pio/GOAL.md");
+  });
+
+  it("resolves placeholders then applies prefix", () => {
+    const result = resolveContractPath(
+      "S{stepNumber:02d}/TASK.md",
+      baseDir,
+      "goals/my-feature",
+      { stepNumber: 3 },
+    );
+    expect(result).toBe("/proj/.pio/goals/my-feature/S03/TASK.md");
+  });
+
+  it("resolves nested workspace prefix correctly", () => {
+    const result = resolveContractPath(
+      "GOAL.md",
+      baseDir,
+      "goals/parent/S03/subgoals/nested",
+    );
+    expect(result).toBe("/proj/.pio/goals/parent/S03/subgoals/nested/GOAL.md");
+  });
+
+  it("throws when placeholders present but params is undefined", () => {
+    expect(() =>
+      resolveContractPath(
+        "S{stepNumber:02d}/TASK.md",
+        baseDir,
+        "goals/my-feature",
+      ),
+    ).toThrow(/Unresolved placeholder/);
+  });
+
+  it("propagates resolvePaths error for unresolved placeholders", () => {
+    expect(() =>
+      resolveContractPath(
+        "S{stepNumber:02d}/TASK.md",
+        baseDir,
+        "goals/my-feature",
+        { otherKey: "value" },
+      ),
+    ).toThrow(/Unresolved placeholder/);
+  });
+
+  // --- projectRelative resolution ---
+
+  it("projectRelative path resolves from pioRootDir ignoring prefix", () => {
+    const result = resolveContractPath(
+      "PROJECT/OVERVIEW.md",
+      "/other/.pio",
+      "goals/my-feature",
+      undefined,
+      true,
+    );
+    expect(result).toBe(path.join(process.cwd(), ".pio", "PROJECT", "OVERVIEW.md"));
+  });
+
+  it("projectRelative path resolves placeholders before joining", () => {
+    const result = resolveContractPath(
+      "S{stepNumber:02d}/REPORT.md",
+      "/other/.pio",
+      undefined,
+      { stepNumber: 5 },
+      true,
+    );
+    expect(result).toBe(path.join(process.cwd(), ".pio", "S05", "REPORT.md"));
+  });
+
+  it("projectRelative false uses normal prefixed resolution", () => {
+    const result = resolveContractPath(
+      "GOAL.md",
+      "/base/.pio",
+      "goals/my-feature",
+      undefined,
+      false,
+    );
+    expect(result).toBe("/base/.pio/goals/my-feature/GOAL.md");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration — custom initial message passthrough
+// ---------------------------------------------------------------------------
+
+/**
+ * These tests verify the end-to-end passthrough of custom initialMessage
+ * through the queue mechanism: enqueue → JSON round-trip → resolve → config.
+ * This ensures the mechanism works before Step 6 starts injecting custom
+ * messages in every pio-workflow transition.
+ */
+describe("custom initial message passthrough", () => {
+  const cwd = "/tmp/pio-msg-passthrough";
+  const queueKey = "test-msg-passthrough";
+
+  afterEach(() => {
+    // Clean up queue file after each test
+    const queueFilePath = path.join(cwd, ".pio", "session-queue", `task-${queueKey}.json`);
+    try {
+      fs.unlinkSync(queueFilePath);
+    } catch {
+      // ignore — file may not exist
+    }
+  });
+
+  it("custom initialMessage survives JSON round-trip: enqueue → readPendingTask → resolveCapabilityConfig", async () => {
+    // Arrange: enqueue a task with a custom initialMessage
+    const customMessage = "Build the widget factory with 42 conveyor belts";
+    enqueueTask(cwd, queueKey, {
+      capability: "create-goal",
+      params: { goalName: "widget-factory", initialMessage: customMessage },
+    });
+
+    // Act: read it back and resolve config
+    const task = readPendingTask(cwd, queueKey);
+    const config = await resolveCapabilityConfig(cwd, { ...task!.params, capability: task!.capability, sessionName: "test" });
+
+    // Assert: config.initialMessage is the custom message, not the default "Ready."
+    expect(config).toBeDefined();
+    expect(config!.initialMessage).toBe(customMessage);
+    expect(config!.initialMessage).not.toBe("Ready.");
+  });
+
+  it("fallback chain: when no params.initialMessage, defaultInitialMessage is used", async () => {
+    // Arrange: enqueue a task without initialMessage (relies on defaultInitialMessage)
+    enqueueTask(cwd, queueKey, {
+      capability: "create-plan",
+      params: { goalName: "my-feature" },
+    });
+
+    // Act: read it back and resolve config
+    const task = readPendingTask(cwd, queueKey);
+    const config = await resolveCapabilityConfig(cwd, { ...task!.params, capability: task!.capability, sessionName: "test" });
+
+    // Assert: config.initialMessage is the default ("Ready.")
+    expect(config).toBeDefined();
+    expect(config!.initialMessage).toBe("Ready.");
+  });
+
+  it("throw: when neither params.initialMessage nor defaultInitialMessage provides a value", async () => {
+    // Arrange: test-no-initial-message has defaultInitialMessage returning ""
+    enqueueTask(cwd, queueKey, {
+      capability: "test-no-initial-message",
+      params: {},
+    });
+
+    // Act + Assert: resolving config should throw
+    const task = readPendingTask(cwd, queueKey);
+    await expect(
+      resolveCapabilityConfig(cwd, { ...task!.params, capability: task!.capability, sessionName: "test" }),
+    ).rejects.toThrow(/requires an initial message/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration — all real capabilities define defaultInitialMessage
+// ---------------------------------------------------------------------------
+
+describe("all real capabilities define defaultInitialMessage", () => {
+  it("create-goal defaultInitialMessage returns a non-empty string", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", { capability: "create-goal" as string, sessionName: "test" });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
+  });
+
+  it("create-plan defaultInitialMessage returns a non-empty string", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", { capability: "create-plan" as string, sessionName: "test" });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
+  });
+
+  it("evolve-plan defaultInitialMessage returns a non-empty string", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", { capability: "evolve-plan" as string, stepNumber: 1, sessionName: "test" });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
+  });
+
+  it("execute-task defaultInitialMessage returns a non-empty string with .pio/ workspaceDir", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", { capability: "execute-task" as string, stepNumber: 1, sessionName: "test" });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
+    // With fixed workspaceDir (.pio/), the message should reference .pio/ not a goal dir
+    expect(config!.initialMessage).toContain(".pio");
+  });
+
+  it("review-task defaultInitialMessage returns a non-empty string", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", { capability: "review-task" as string, stepNumber: 1, sessionName: "test" });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
+  });
+
+  it("revise-plan defaultInitialMessage returns a non-empty string", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", { capability: "revise-plan" as string, sessionName: "test" });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
+  });
+
+  it("finalize-goal defaultInitialMessage returns a non-empty string", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", {
+      capability: "finalize-goal" as string,
+      goalName: "my-feature",
+      sessionName: "test",
+    });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
+    // defaultInitialMessage returns a minimal message
+  });
+
+  it("project-context defaultInitialMessage returns a non-empty string", async () => {
+    const config = await resolveCapabilityConfig("/tmp/proj", { capability: "project-context" as string, sessionName: "test" });
+    expect(config!.initialMessage).toBeDefined();
+    expect(config!.initialMessage!.length).toBeGreaterThan(0);
+  });
+});
+
 describe("resolveCapabilityConfig — skills passthrough", () => {
   it("skills are copied when the static config defines them (test-skills-cap)", async () => {
     // Arrange: test-skills-cap is a test-only capability with skills defined
-    const params = { capability: "test-skills-cap" as string, goalName: "my-feature" };
+    const params = { capability: "test-skills-cap" as string, goalName: "my-feature", sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -813,7 +1201,7 @@ describe("resolveCapabilityConfig — skills passthrough", () => {
 
   it("skills are undefined when the static config does not define them (test-no-skills-cap)", async () => {
     // Arrange: test-no-skills-cap does not define skills
-    const params = { capability: "test-no-skills-cap" as string };
+    const params = { capability: "test-no-skills-cap" as string, sessionName: "test" };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -828,6 +1216,7 @@ describe("resolveCapabilityConfig — skills passthrough", () => {
     const config: CapabilityConfig = {
       capability: "test-cap",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
       skills: {
         mandatory: ["pio-planning"],
         recommended: [{ name: "ask-user", condition: "when ambiguous" }],
@@ -843,6 +1232,7 @@ describe("resolveCapabilityConfig — skills passthrough", () => {
     const config: CapabilityConfig = {
       capability: "test-cap",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
       skills: { mandatory: ["pio-git"] },
     };
 
@@ -854,6 +1244,7 @@ describe("resolveCapabilityConfig — skills passthrough", () => {
     const config: CapabilityConfig = {
       capability: "test-cap",
       contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
       skills: { recommended: [{ name: "source-research", condition: "when researching" }] },
     };
 

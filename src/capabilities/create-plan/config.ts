@@ -5,11 +5,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { launchCapability } from "../../capability-session";
-import { resolveGoalDir } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { CapState } from "../../capability-state";
 import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
+import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { type PlanFrontmatter, PLAN_FRONTMATTER_SCHEMA } from "./schemas";
@@ -35,9 +35,9 @@ const STEP_HEADING_RE = /^### Step \d+:/gm;
  * Delegates frontmatter validation to GoalState.planMetadata() — does not
  * import low-level frontmatter utilities directly.
  */
-export function postValidateCreatePlan(goalDir: string): { success: boolean; message?: string } {
+export function postValidateCreatePlan(workspaceDir: string): { success: boolean; message?: string } {
   // Step 1: Validate frontmatter via CapState
-  const capState = new CapState(CONTRACT, goalDir);
+  const capState = new CapState(CONTRACT, workspaceDir);
   const planFile = capState.output<PlanFrontmatter>("plan");
 
   if (!planFile.exists()) {
@@ -46,7 +46,7 @@ export function postValidateCreatePlan(goalDir: string): { success: boolean; mes
   const data = planFile.read();
   if (data === null) {
     // Get detailed error message via direct validation
-    const raw = extractFrontmatter(path.join(goalDir, "PLAN.md"));
+    const raw = extractFrontmatter(path.join(workspaceDir, "PLAN.md"));
     if (raw === null) {
       return { success: false, message: "PLAN.md does not contain valid YAML frontmatter" };
     }
@@ -79,7 +79,7 @@ export function postValidateCreatePlan(goalDir: string): { success: boolean; mes
   }
 
   // Step 4: Count actual ## Step N: headings in PLAN.md
-  const planPath = `${goalDir}/PLAN.md`;
+  const planPath = `${workspaceDir}/PLAN.md`;
   const planContent = fs.readFileSync(planPath, "utf-8");
   const headingMatches = planContent.match(STEP_HEADING_RE);
   const headingCount = headingMatches ? headingMatches.length : 0;
@@ -137,33 +137,11 @@ const capabilityConfig = {
       { name: "source-research", condition: "when researching existing solutions or libraries" },
     ],
   },
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
-    const goalName = typeof params?.goalName === "string" ? params.goalName : undefined;
-    return `Goal workspace is at ${workingDir}. GOAL.md exists. Create PLAN.md in this directory.`;
-  },
+  defaultInitialMessage: () => "Ready.",
   postValidate: postValidateCreatePlan,
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;
-
-// ---------------------------------------------------------------------------
-// Validation
-// ---------------------------------------------------------------------------
-
-/**
- * Validate that the goal workspace exists, has a GOAL.md, and does not yet have a PLAN.md.
- * Returns { goalDir, ready } — call launchCapability separately.
- * Does NOT use ctx so it can be called safely before newSession().
- */
-async function validateGoal(name: string, cwd: string): Promise<{ goalDir: string; ready: boolean; error?: string }> {
-  const goalDir = resolveGoalDir(cwd, name);
-
-  if (!fs.existsSync(goalDir)) {
-    return { goalDir, ready: false, error: `Goal workspace "${name}" does not exist. Create it first with /pio-create-goal ${name}.` };
-  }
-
-  return { goalDir, ready: true };
-}
 
 // ---------------------------------------------------------------------------
 // Tool
@@ -172,25 +150,23 @@ async function validateGoal(name: string, cwd: string): Promise<{ goalDir: strin
 const createPlanTool = defineTool({
   name: "pio_create_plan",
   label: "Pio Create Plan",
-  description: "Create a detailed implementation plan (PLAN.md) for an existing goal. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
-  promptSnippet: "Create an implementation plan (PLAN.md) for an existing goal.",
-  parameters: Type.Object({
-    name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
-  }),
+  description: "Create a detailed implementation plan (PLAN.md) for an existing workspace. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
+  promptSnippet: "Create an implementation plan (PLAN.md) for an existing workspace.",
+  parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = await validateGoal(params.name, ctx.cwd);
-
-    if (!result.ready) {
-      return { content: [{ type: "text", text: result.error! }], details: {} };
-    }
-
-    enqueueTask(ctx.cwd, params.name, {
+    const queueKey = deriveQueueKey(params.workspacePrefix);
+    enqueueTask(ctx.cwd, queueKey, {
       capability: "create-plan",
-      params: { goalName: params.name },
+      params: {
+        workspacePrefix: params.workspacePrefix,
+        sessionName: params.sessionName ?? `${queueKey} create-plan`,
+        queueKey,
+        initialMessage: params.initialMessage ?? `Create an implementation plan for workspace "${params.workspacePrefix}".`,
+      },
     });
 
-    return { content: [{ type: "text", text: `Task queued for goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.` }], details: {} };
+    return { content: [{ type: "text", text: `Task queued for workspace "${params.workspacePrefix}". Use \`/pio-next-task\` to start the sub-session.` }], details: {} };
   },
 });
 
@@ -200,21 +176,32 @@ const createPlanTool = defineTool({
 
 async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandContext) {
   if (!args || !args.trim()) {
-    ctx.ui.notify("Usage: /pio-create-plan <goal-name>", "warning");
+    ctx.ui.notify("Usage: /pio-create-plan --workspace-prefix <prefix>", "warning");
     return;
   }
 
-  const name = args.trim();
-  const result = await validateGoal(name, ctx.cwd);
-
-  if (!result.ready) {
-    ctx.ui.notify(result.error!, "error");
+  const tokens = args.trim().split(/\s+/);
+  let workspacePrefix: string | undefined;
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === "--workspace-prefix" && tokens[i + 1]) {
+      workspacePrefix = tokens[++i];
+    }
+  }
+  if (!workspacePrefix) {
+    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-create-plan --workspace-prefix <prefix>", "error");
     return;
   }
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "create-plan", goalName: name });
+  const queueKey = deriveQueueKey(workspacePrefix);
+  const config = await resolveCapabilityConfig(ctx.cwd, {
+    capability: "create-plan",
+    workspacePrefix,
+    sessionName: `${queueKey} create-plan`,
+    queueKey,
+    initialMessage: `Create an implementation plan for workspace "${workspacePrefix}".`,
+  });
   if (!config) {
     ctx.ui.notify("Failed to resolve create-plan config.", "error");
     return;
@@ -237,9 +224,7 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
 export function register(pi: ExtensionAPI) {
   pi.registerTool(createPlanTool);
   pi.registerCommand("pio-create-plan", {
-    description: "Create an implementation plan for a goal and launch a create-plan session",
+    description: "Create an implementation plan for a workspace and launch a create-plan session",
     handler: handleCreatePlan,
   });
 }
-
-

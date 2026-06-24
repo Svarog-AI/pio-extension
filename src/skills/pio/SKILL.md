@@ -21,8 +21,6 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 
 **Plan revision:** During specification, `evolve-plan` can divert to `revise-plan` when the `REVISE_PLAN_NEEDED` marker is present (decisions make future steps impossible, require changes to completed implementations, or need additional steps). `revise-plan` archives the current `PLAN.md`, deletes incomplete step folders, and writes a fresh plan. After revision, control returns to `evolve-plan`.
 
-**Alternative:** `execute-plan` runs all plan steps in a single session (no evolve/execute/review loop). Requires both `GOAL.md` and `PLAN.md`.
-
 **Nested subgoals:** When a plan step has `complexity: "subgoal"` in the PLAN.md frontmatter `steps` array, `evolve-plan` spawns a child goal workspace at `S{NN}/subgoals/<name>/` instead of producing TASK.md. The subgoal runs through the full pio lifecycle recursively: `create-goal` → `create-plan` → `evolve-plan` → `execute-task` → `review-task` → `finalize-goal`. Recursive nesting is supported — each level adds `subgoals/<name>/` to the path. After the subgoal's `finalize-goal`, completion propagates back to the parent's `evolve-plan` for the next step. The subgoal's `COMPLETED` marker is the authoritative signal — subgoal completion equals parent step completion.
 
 ## Command reference
@@ -30,17 +28,16 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 | Command | Tool | Description | Parameters | Output |
 |---------|------|-------------|------------|--------|
 | `/pio-init` | `pio_init` | Bootstrap `.pio/` directory structure | none | `.pio/` with subdirs |
-| `/pio-create-goal <name>` | `pio_create_goal` | Create goal workspace, launch Goal Definition Assistant | `name` (optional `initialMessage`) | `.pio/goals/<name>/GOAL.md` |
+| `/pio-create-goal --workspace-prefix <prefix>` | `pio_create_goal` | Create a workspace and queue goal definition session | `--workspace-prefix` (optional `--session-name`, `--initial-message`) | Workspace directory with `GOAL.md` |
 | `/pio-delete-goal <name>` | `pio_delete_goal` | Remove a goal workspace directory | `name` | — |
-| `/pio-create-plan <name>` | `pio_create_plan` | Launch Planning Agent to produce PLAN.md from GOAL.md | `name` | `.pio/goals/<name>/PLAN.md` |
-| `/pio-evolve-plan <name>` | `pio_evolve_plan` | Find next incomplete step, launch Specification Writer (or spawn subgoal for composite steps) | `name` | `.pio/goals/<name>/S{NN}/TASK.md` (or subgoal at `S{NN}/subgoals/<name>/`) |
-| `/pio-execute-task <name> [step]` | `pio_execute_task` | Implement one plan step (TDD) | `name`, optional `stepNumber` | `.pio/goals/<name>/S{NN}/COMPLETED` or `BLOCKED`, `SUMMARY.md` |
-| `/pio-review-task <name> [step]` | `pio_review_task` | Review completed step, approve or reject | `name`, optional `stepNumber` | `.pio/goals/<name>/S{NN}/REVIEW.md`, optionally `APPROVED` |
-| `/pio-revise-plan <name>` | `pio_revise_plan` | Archive current PLAN.md, delete incomplete steps, launch fresh planning session | `name` | `.pio/goals/<name>/PLAN.md` (rewritten) |
-| `/pio-execute-plan <name>` | — (command only) | Execute all plan steps in one session | `name` | All code changes from PLAN.md |
+| `/pio-create-plan --workspace-prefix <prefix>` | `pio_create_plan` | Queue planning session to produce PLAN.md | `--workspace-prefix` (optional `--session-name`, `--initial-message`) | `<workspace>/PLAN.md` |
+| `/pio-evolve-plan --workspace-prefix <prefix> --step-number <n>` | `pio_evolve_plan` | Find/evolve a plan step, queue specification session | `--workspace-prefix`, `--step-number` (optional `--session-name`, `--initial-message`) | `<workspace>/TASK.md` |
+| `/pio-execute-task --workspace-prefix <prefix>` | `pio_execute_task` | Queue task execution (TDD) | `--workspace-prefix` (optional `--session-name`, `--initial-message`) | `<workspace>/COMPLETED` or `BLOCKED`, `SUMMARY.md` |
+| `/pio-review-task --workspace-prefix <prefix>` | `pio_review_task` | Queue step review, approve or reject | `--workspace-prefix` (optional `--session-name`, `--initial-message`) | `<workspace>/REVIEW.md`, optionally `APPROVED` |
+| `/pio-revise-plan --workspace-prefix <prefix>` | `pio_revise_plan` | Archive plan and queue fresh planning session | `--workspace-prefix` (optional `--session-name`, `--initial-message`) | `<workspace>/PLAN.md` (rewritten) |
 | `/pio-project-context` | `pio_create_project_context` | Analyze project, produce 7-file project context | none | `.pio/PROJECT/` (7 files) |
 | `/pio-create-issue <slug> <title>` | `pio_create_issue` | Create a new issue as a markdown file under `.pio/issues/` | `slug`, `title`, optional `description`, `category`, `context` | `.pio/issues/<slug>.md` |
-| `/pio-goal-from-issue <issue>` | `pio_goal_from_issue` | Convert an existing issue into a structured goal workspace (goal name derived from issue slug) | `issuePath` | Queues create-goal session |
+| `/pio-goal-from-issue <issue>` | `pio_goal_from_issue` | Convert an existing issue into a structured goal workspace | `issuePath` | Queues create-goal session |
 | `/pio-list-goals` | — (command only) | List all goal workspaces with inferred phase and last task | none | Table of goals, phases, last tasks |
 | `/pio-next-task` | — (command only) | Dequeue and start the oldest queued sub-session task | none | Launches appropriate sub-session |
 | `/pio-parent` | — (command only) | Switch back to parent session | none | — |
@@ -48,7 +45,7 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 
 ## Common conventions
 
-- **`<name>`** always refers to a goal workspace under `.pio/goals/<name>/`.
+- **Workspace prefix:** Capabilities declare paths relative to a workspace prefix (e.g., `goals/my-feature`, `research/proj-x`). The prefix tells path resolution where within `.pio/` to resolve contract files. Pio-workflow uses `goals/<name>/` as the conventional prefix; other state machines choose their own.
 - **Step folders** follow `S{NN}/` naming (e.g., `S01/`, `S02/`) inside the goal workspace.
 - **Subgoal directories** live at `S{NN}/subgoals/<name>/` inside parent step directories. The `subgoals/` marker prevents naming collisions with the step scanner regex (`/^S(\d+)$/`). Recursive nesting is supported — each level adds `subgoals/<name>/` to the path. Example: `.pio/goals/parent/S03/subgoals/nested-feature/`.
 - **File protections:** `readOnlyFiles` and `writeAllowlist` are enforced via the `tool_call` event handler. Reads-only prevent modification of input docs; write-allowlists restrict output to expected files. Writes to `.pio/` outside the session's own goal workspace are blocked by default.
@@ -64,7 +61,7 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 - **`launchCapability()`** (in `session-capability.ts`) creates sub-sessions with a custom `pio-config` entry containing: capability name, working directory, validation rules, file protections, session parameters, and an optional initial message.
 - **Context injection order:** On `before_agent_start`, `.pio/PROJECT/OVERVIEW.md` is loaded first (cached module-level), then the capability-specific prompt from `src/prompts/`. Both are concatenated as a custom conversation message — this preserves pi's default system prompt while layering role-specific instructions on top.
 - **One-shot validation with cap:** The exit-gate blocks only the *first* attempted switch when validation fails (tracked by `warnedOnce`). A hard cap of 3 warnings per session (`MAX_WARNINGS`) prevents infinite blocking loops. The gate resets on each `turn_start`.
-- **Per-goal task slots:** Each goal gets its own queue file at `.pio/session-queue/task-{goalName}.json`. One pending task per goal — enqueueing overwrites any existing task for that goal. No timestamps or FIFO ordering needed.
+- **Generalized task queue:** `enqueueTask(cwd, queueKey, task)` accepts arbitrary string keys. Each state machine instance gets its own queue slot at `.pio/session-queue/task-{queueKey}.json`. Pio-workflow uses goal-scoped keys; other state machines use their own naming convention. One pending task per key — enqueueing overwrites.
 - **`launchCapability` consumes context:** After calling it, the command context is stale. All pre-launch work (validation, filesystem setup) must happen before the call.
 
 ## Agent Usage Guidelines
@@ -74,4 +71,6 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 - **Call tools directly:** Use `pio_create_goal`, `pio_create_plan`, `pio_evolve_plan`, etc. instead of trying to set up workspace files yourself with bash or the write tool.
 - **No manual file creation in `.pio/`:** Never use `bash` (`date`, `ls`, `mkdir`) or the `write` tool to create files under `.pio/` when a pio tool exists for that purpose. The tools manage the directory structure automatically.
 - **No bash workarounds:** Commands like `date +%Y%m%d_%H%M%S` or `ls .pio/issues/` are unnecessary. Use the appropriate pio tool directly.
+- **Capabilities require workspace prefix, not goal names:** All pio capability tools accept `--workspace-prefix` (e.g., `goals/my-feature`). The framework resolves paths within `.pio/` using this prefix — capabilities themselves don't know about goals or directories.
+- **No manual step selection via execute/review commands:** `/pio-execute-task` and `/pio-review-task` require `--workspace-prefix` (not a step number). Use `/pio-next-task` for step-aware auto-advance or rely on mark-complete to automatically enqueue the next workflow step. For manual step specification, use `pio_evolve_plan` which handles step discovery.
 - **Never auto-start queued tasks:** After calling a `pio_*` tool that queues work, report completion and wait for the user to run `/pio-next-task`. Do not attempt to execute `/pio-next-task` or any variant of it programmatically — it is an interactive TUI command for human use only.

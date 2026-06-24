@@ -1,19 +1,16 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import * as fs from "node:fs";
-import * as path from "node:path";
 
 import { launchCapability } from "../../capability-session";
-import { parseCommandArgs } from "../../capability-utils";
-import { resolveGoalDir, stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
+import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { TASK_FRONTMATTER_SCHEMA, COMPLETION_SUMMARY_SCHEMA } from "./schemas";
 import { PLAN_FRONTMATTER_SCHEMA } from "../create-plan/schemas";
-import { validateEvolveStep, resolveEvolveWriteAllowlist } from "./callbacks";
+import { resolveEvolveWriteAllowlist } from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // Contract (single source of truth — imported by callbacks)
@@ -40,14 +37,7 @@ const capabilityConfig = {
   skills: {
     mandatory: ["pio-planning", "grill-me"],
   },
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
-    const stepNumber = typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
-    if (stepNumber == null) {
-      throw new Error("stepNumber is required for evolve-plan. Ensure the task was enqueued with a valid step number.");
-    }
-    const folderName = stepFolderName(stepNumber);
-    return `Goal workspace is at ${workingDir}. PLAN.md exists. You are responsible for **Step ${stepNumber}**. Generate TASK.md inside the \`${folderName}/\` directory.`;
-  },
+  defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;
@@ -62,28 +52,26 @@ const evolvePlanTool = defineTool({
   description:
     "Generate a step-by-step specification (TASK.md) for the next step in an existing PLAN.md. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Generate TASK.md for the next plan step.",
-  parameters: Type.Object({
-    name: Type.String({ description: "Name of the goal workspace (under .pio/goals/<name>)" }),
-    stepNumber: Type.Number({ description: "Step number to evolve" }),
-  }),
+  parameters: Type.Object({ ...BASE_TOOL_PARAMS, stepNumber: Type.Number({ description: "Step number to evolve" }) }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = await validateEvolveStep(params.name, ctx.cwd, params.stepNumber);
-
-    if (!result.ready) {
-      return { content: [{ type: "text", text: result.error }], details: {} };
-    }
-
-    enqueueTask(ctx.cwd, params.name, {
+    const queueKey = deriveQueueKey(params.workspacePrefix);
+    enqueueTask(ctx.cwd, queueKey, {
       capability: "evolve-plan",
-      params: { goalName: params.name, stepNumber: result.stepNumber },
+      params: {
+        workspacePrefix: params.workspacePrefix,
+        sessionName: params.sessionName ?? `${queueKey} evolve-plan s${params.stepNumber}`,
+        queueKey,
+        stepNumber: params.stepNumber,
+        initialMessage: params.initialMessage ?? `Generate TASK.md for Step ${params.stepNumber} of workspace "${params.workspacePrefix}".`,
+      },
     });
 
     return {
       content: [
         {
           type: "text",
-          text: `Task queued for Step ${result.stepNumber} of goal "${params.name}". Use \`/pio-next-task\` to start the sub-session.`,
+          text: `Task queued for Step ${params.stepNumber} of workspace "${params.workspacePrefix}". Use \`/pio-next-task\` to start the sub-session.`,
         },
       ],
       details: {},
@@ -96,31 +84,41 @@ const evolvePlanTool = defineTool({
 // ---------------------------------------------------------------------------
 
 async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandContext) {
-  const parsed = parseCommandArgs(args);
-  if (!parsed) {
-    ctx.ui.notify("Usage: /pio-evolve-plan <goal-name> <step-number>", "warning");
+  if (!args || !args.trim()) {
+    ctx.ui.notify("Usage: /pio-evolve-plan --workspace-prefix <prefix> --step-number <n>", "warning");
     return;
   }
 
-  if (parsed.stepNumber === undefined) {
-    ctx.ui.notify("Step number is required. Usage: /pio-evolve-plan <goal-name> <step-number>", "error");
+  const tokens = args.trim().split(/\s+/);
+  let workspacePrefix: string | undefined;
+  let stepNumber: number | undefined;
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === "--workspace-prefix" && tokens[i + 1]) {
+      workspacePrefix = tokens[++i];
+    } else if (tokens[i] === "--step-number" && tokens[i + 1]) {
+      stepNumber = parseInt(tokens[++i], 10);
+    }
+  }
+  if (!workspacePrefix) {
+    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-evolve-plan --workspace-prefix <prefix> --step-number <n>", "error");
     return;
   }
-
-  const result = await validateEvolveStep(parsed.name, ctx.cwd, parsed.stepNumber);
-
-  if (!result.ready) {
-    ctx.ui.notify(result.error, "error");
+  if (stepNumber === undefined || isNaN(stepNumber)) {
+    ctx.ui.notify("--step-number is required. Usage: /pio-evolve-plan --workspace-prefix <prefix> --step-number <n>", "error");
     return;
   }
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  const folderName = stepFolderName(result.stepNumber);
-  const stepDir = path.join(result.goalDir, folderName);
-  fs.mkdirSync(stepDir, { recursive: true });
-
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "evolve-plan", goalName: parsed.name, stepNumber: result.stepNumber });
+  const queueKey = deriveQueueKey(workspacePrefix);
+  const config = await resolveCapabilityConfig(ctx.cwd, {
+    capability: "evolve-plan",
+    workspacePrefix,
+    sessionName: `${queueKey} evolve-plan s${stepNumber}`,
+    queueKey,
+    stepNumber,
+    initialMessage: `Generate TASK.md for Step ${stepNumber} of workspace "${workspacePrefix}".`,
+  });
   if (!config) {
     ctx.ui.notify("Failed to resolve evolve-plan config.", "error");
     return;
@@ -149,5 +147,3 @@ export function register(pi: ExtensionAPI) {
     handler: handleEvolvePlan,
   });
 }
-
-

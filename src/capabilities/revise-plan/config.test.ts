@@ -1,8 +1,10 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import config from "./config";
-import { validateRevisePlan, prepareSession, cleanupIncompleteSteps } from "./callbacks";
+import { vi } from "vitest";
+import config, { register } from "./config";
+import { prepareSession, cleanupIncompleteSteps } from "./callbacks";
+import { readPendingTask } from "../../queues";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -135,60 +137,6 @@ describe("config wiring consistency", () => {
 
     const result = typeof wl === "function" ? wl("/tmp/goal") : wl;
     expect(result).toContain("PLAN.md");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// validateRevisePlan — directory resolution
-// ---------------------------------------------------------------------------
-
-describe("validateRevisePlan", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("resolves goal directory and returns ready", async () => {
-    const goalDir = path.join(tempDir, ".pio", "goals", "my-goal");
-    fs.mkdirSync(goalDir, { recursive: true });
-
-    const result = await validateRevisePlan("my-goal", tempDir);
-
-    expect(result.ready).toBe(true);
-    expect(result.goalDir).toBe(goalDir);
-  });
-});
-
-describe("validateRevisePlan — accepts valid states", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("succeeds when GOAL.md and PLAN.md exist (no steps required)", async () => {
-    createGoalTree(tempDir, "valid-goal", { withGoal: true, withPlan: true });
-
-    const result = await validateRevisePlan("valid-goal", tempDir);
-
-    expect(result.ready).toBe(true);
-  });
-
-  it("succeeds with APPROVED steps present", async () => {
-    createGoalTree(tempDir, "valid-with-steps", {
-      withGoal: true,
-      withPlan: true,
-      stepFolders: [{ stepNumber: 1, approved: true }],
-    });
-
-    const result = await validateRevisePlan("valid-with-steps", tempDir);
-
-    expect(result.ready).toBe(true);
   });
 });
 
@@ -629,5 +577,76 @@ describe("cleanupIncompleteSteps", () => {
 
     // S01 should remain
     expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tool execute — pio_revise_plan
+// ---------------------------------------------------------------------------
+
+describe("revisePlanTool.execute", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  function getTool() {
+    const registeredTools: Array<any> = [];
+    const mockPi = {
+      registerTool: vi.fn((tool: any) => registeredTools.push(tool)),
+      registerCommand: vi.fn(),
+    };
+    register(mockPi as any);
+    return registeredTools[0];
+  }
+
+  function makeCtx(cwd: string) {
+    return {
+      cwd,
+      ui: { notify: vi.fn() },
+      hasUI: false,
+      sessionManager: { getSessionFile: vi.fn(() => ""), getEntries: vi.fn(() => []) },
+      modelRegistry: {},
+      model: undefined,
+      isIdle: vi.fn(() => true),
+      signal: undefined,
+      abort: vi.fn(),
+      hasPendingMessages: vi.fn(() => false),
+      shutdown: vi.fn(),
+      getContextUsage: vi.fn(),
+      compact: vi.fn(),
+      getSystemPrompt: vi.fn(() => ""),
+    };
+  }
+
+  it("returns error when PLAN.md is missing", async () => {
+    // Arrange: goal dir exists with GOAL.md but no PLAN.md
+    const goalDir = path.join(tempDir, ".pio", "goals", "no-plan");
+    fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
+
+    const tool = getTool();
+    const result = await tool.execute("test-id", { workspacePrefix: "goals/no-plan" }, undefined, undefined, makeCtx(tempDir));
+
+    expect(result.content[0].text).toMatch(/PLAN/i);
+  });
+
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, initialMessage)", async () => {
+    createGoalTree(tempDir, "my-feature", { withGoal: true, withPlan: true });
+
+    const tool = getTool();
+    await tool.execute("test-id", { workspacePrefix: "goals/my-feature" }, undefined, undefined, makeCtx(tempDir));
+
+    const task = readPendingTask(tempDir, "my-feature");
+    expect(task).toBeDefined();
+    expect(task!.capability).toBe("revise-plan");
+    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature");
+    expect(task!.params).toHaveProperty("sessionName");
+    expect(task!.params!.sessionName).toContain("revise-plan");
+    expect(task!.params).toHaveProperty("queueKey", "my-feature");
+    expect(task!.params).toHaveProperty("initialMessage");
   });
 });

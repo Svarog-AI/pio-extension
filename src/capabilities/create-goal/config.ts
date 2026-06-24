@@ -1,11 +1,13 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 import { launchCapability } from "../../capability-session";
-import { prepareGoal } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
+import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 
@@ -32,13 +34,7 @@ const capabilityConfig = {
       { name: "source-research", condition: "when researching existing solutions or libraries" },
     ],
   },
-  defaultInitialMessage: (workingDir: string, params?: Record<string, unknown>) => {
-    const goalName = typeof params?.goalName === "string" ? params.goalName : undefined;
-    if (goalName) {
-      return `Goal workspace created: ${goalName}\n\nWrite GOAL.md in this workspace.`;
-    }
-    return `Created goal workspace at ${workingDir}`;
-  },
+  defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;
@@ -50,26 +46,28 @@ export default capabilityConfig;
 const createGoalTool = defineTool({
   name: "pio_create_goal",
   label: "Pio Create Goal",
-  description: "Create a new goal workspace under .pio/goals/<name> and queue a session with the create-goal system prompt. Use this tool directly — no bash commands or manual file creation needed. The user can run `/pio-next-task` to start the sub-session.",
-  promptSnippet: "Create a new goal workspace and queue a session to define it.",
-  parameters: Type.Object({
-    name: Type.String({ description: "Name for the goal workspace" }),
-    initialMessage: Type.Optional(Type.String({ description: "Optional context to send as the kickoff message to the create-goal session" })),
-  }),
+  description: "Create a workspace and queue a session with the create-goal system prompt. Use this tool directly — no bash commands or manual file creation needed. The user can run `/pio-next-task` to start the sub-session.",
+  promptSnippet: "Create a workspace and queue a session to define it.",
+  parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const { goalDir, ready } = await prepareGoal(params.name, ctx.cwd);
+    const queueKey = deriveQueueKey(params.workspacePrefix);
+    const sessionName = params.sessionName ?? `${queueKey} create-goal`;
+    const initialMessage = typeof params.initialMessage === "string" ? params.initialMessage : undefined;
 
-    if (!ready) {
-      return { content: [{ type: "text", text: `Goal workspace already exists at ${goalDir}` }], details: {} };
+    // Resolve workspace directory: workspaceDir is .pio/, prefix tells us where within it
+    const workspaceDir = path.join(ctx.cwd, ".pio", params.workspacePrefix);
+    if (fs.existsSync(workspaceDir) && fs.readdirSync(workspaceDir).length > 0) {
+      return { content: [{ type: "text", text: `Workspace at "${params.workspacePrefix}" is not empty.` }], details: {} };
     }
+    fs.mkdirSync(workspaceDir, { recursive: true });
 
-    enqueueTask(ctx.cwd, params.name, {
+    enqueueTask(ctx.cwd, queueKey, {
       capability: "create-goal",
-      params: { goalName: params.name, initialMessage: typeof params.initialMessage === "string" ? params.initialMessage : undefined },
+      params: { workspacePrefix: params.workspacePrefix, sessionName, queueKey, initialMessage },
     });
 
-    return { content: [{ type: "text", text: `Goal workspace created at ${goalDir}. Task queued. Use \`/pio-next-task\` to start the sub-session.` }], details: {} };
+    return { content: [{ type: "text", text: `Workspace created at ${workspaceDir}. Task queued. Use \`/pio-next-task\` to start the sub-session.` }], details: {} };
   },
 });
 
@@ -79,21 +77,39 @@ const createGoalTool = defineTool({
 
 async function handleCreateGoal(args: string | undefined, ctx: ExtensionCommandContext) {
   if (!args || !args.trim()) {
-    ctx.ui.notify("Usage: /pio-create-goal <name>", "warning");
+    ctx.ui.notify("Usage: /pio-create-goal --workspace-prefix <prefix>", "warning");
     return;
   }
 
-  const name = args.trim();
-  const { goalDir, ready } = await prepareGoal(name, ctx.cwd);
-
-  if (!ready) {
-    ctx.ui.notify(`Goal workspace already exists at ${goalDir}`, "warning");
+  const tokens = args.trim().split(/\s+/);
+  let workspacePrefix: string | undefined;
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === "--workspace-prefix" && tokens[i + 1]) {
+      workspacePrefix = tokens[++i];
+    }
+  }
+  if (!workspacePrefix) {
+    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-create-goal --workspace-prefix <prefix>", "error");
     return;
   }
+
+  // Resolve workspace directory
+  const workspaceDir = path.join(ctx.cwd, ".pio", workspacePrefix);
+  if (fs.existsSync(workspaceDir) && fs.readdirSync(workspaceDir).length > 0) {
+    ctx.ui.notify(`Workspace at "${workspacePrefix}" is not empty.`, "warning");
+    return;
+  }
+  fs.mkdirSync(workspaceDir, { recursive: true });
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
-  const config = await resolveCapabilityConfig(ctx.cwd, { capability: "create-goal", goalName: name });
+  const queueKey = deriveQueueKey(workspacePrefix);
+  const config = await resolveCapabilityConfig(ctx.cwd, {
+    capability: "create-goal",
+    workspacePrefix,
+    sessionName: `${queueKey} create-goal`,
+    queueKey,
+  });
   if (!config) {
     ctx.ui.notify("Failed to resolve create-goal config.", "error");
     return;
@@ -116,9 +132,7 @@ async function handleCreateGoal(args: string | undefined, ctx: ExtensionCommandC
 export function register(pi: ExtensionAPI) {
   pi.registerTool(createGoalTool);
   pi.registerCommand("pio-create-goal", {
-    description: "Create a new goal workspace and launch a create-goal session",
+    description: "Create a workspace and launch a create-goal session",
     handler: handleCreateGoal,
   });
 }
-
-

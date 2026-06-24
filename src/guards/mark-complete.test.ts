@@ -24,7 +24,6 @@ const mockDispatch = vi.hoisted(() => vi.fn());
 const mockGetMachine = vi.hoisted(() => vi.fn());
 const mockRecordTransition = vi.hoisted(() => vi.fn());
 const mockEnqueueTask = vi.hoisted(() => vi.fn());
-const mockWriteLastTask = vi.hoisted(() => vi.fn());
 
 vi.mock("../guards/validation", () => ({
   validateOutputs: mockValidateOutputs,
@@ -40,7 +39,6 @@ vi.mock("../state-machines", () => ({
 vi.mock("../queues", async (importOriginal) => ({
   ...(await importOriginal()),
   enqueueTask: mockEnqueueTask,
-  writeLastTask: mockWriteLastTask,
 }));
 
 const mockResolveCapabilityConfigMC = vi.hoisted(() => vi.fn());
@@ -71,16 +69,16 @@ describe("mark-complete (setupMarkComplete)", () => {
     mockGetMachine.mockClear();
     mockRecordTransition.mockClear();
     mockEnqueueTask.mockClear();
-    mockWriteLastTask.mockClear();
     mockResolveCapabilityConfigMC.mockClear();
     mockResolveCapabilityConfigMC.mockImplementation((_cwd, params) => {
       const cap = typeof params?.capability === "string" ? params.capability : "unknown";
-      // getSessionConfig passes { capability, ...sessionParams } to resolveCapabilityConfig.
+      // getSessionConfig passes { capability, workspaceDir, ...sessionParams } to resolveCapabilityConfig.
+      // workspaceDir is the resolved directory (includes workspacePrefix).
       // Tests put extra fields in sessionParams for the mock to pick up.
-      const { capability: _cap, workingDir, contract, postValidate, postExecute, fileCleanup, prepareSession, ...sessionParams } = params ?? {};
+      const { capability: _cap, workspaceDir, contract, postValidate, postExecute, fileCleanup, prepareSession, ...sessionParams } = params ?? {};
       return {
         capability: cap,
-        workingDir: workingDir ?? goalDir,
+        workspaceDir: workspaceDir ?? goalDir,
         sessionParams,
         contract: contract ?? { inputs: [], outputs: [] },
         prepareSession,
@@ -127,9 +125,9 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              workingDir: goalDir,
+              workspaceDir: goalDir,
               contract: { inputs: [], outputs: [{ file: "missing.md" }] },
-              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+              sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
             },
           },
         ],
@@ -150,9 +148,9 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
-      sessionParams: { goalName: "test-goal", stepNumber: 1 },
+      sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
       postValidate: postValidateMock,
     });
 
@@ -164,7 +162,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+              sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
             },
           },
         ],
@@ -173,7 +171,7 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     const result = await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
 
-    expect(postValidateMock).toHaveBeenCalledWith(goalDir, { goalName: "test-goal", stepNumber: 1 });
+    expect(postValidateMock).toHaveBeenCalledWith(goalDir, expect.objectContaining({ goalName: "test-goal", stepNumber: 1 }));
     expect(result.content[0].text).toContain("test error");
     expect(result.terminate).toBeFalsy();
   });
@@ -185,9 +183,9 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
-      sessionParams: { goalName: "test-goal", stepNumber: 1 },
+      sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
       postValidate: postValidateMock,
     });
 
@@ -199,7 +197,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+              sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
             },
           },
         ],
@@ -216,7 +214,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   it("postValidate success triggers transition routing", async () => {
     mockValidateOutputs.mockReturnValue({ success: true });
     mockDispatch.mockReturnValue(
-      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 }, sessionName: "test review", initialMessage: "msg" }]
     );
 
     const postValidateMock = vi.fn().mockReturnValue({ success: true });
@@ -229,10 +227,10 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              workingDir: goalDir,
+              workspaceDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
-              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+              sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
             },
           },
         ],
@@ -244,15 +242,14 @@ describe("mark-complete (setupMarkComplete)", () => {
     expect(mockDispatch).toHaveBeenCalled();
     expect(mockEnqueueTask).toHaveBeenCalled();
     expect(mockRecordTransition).toHaveBeenCalled();
-    expect(mockWriteLastTask).toHaveBeenCalled();
     expect(result.terminate).toBe(true);
   });
 
-  it("multiple dispatch results do not enqueue task and recommend /pio-transition", async () => {
+  it("multiple dispatch results do not enqueue task and show unsupported message", async () => {
     mockValidateOutputs.mockReturnValue({ success: true });
     mockDispatch.mockReturnValue([
-      { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 2 } },
-      { capability: "execute-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } },
+      { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 2 }, sessionName: "s1", initialMessage: "m1" },
+      { capability: "execute-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 }, sessionName: "s2", initialMessage: "m2" },
     ]);
 
     const postValidateMock = vi.fn().mockReturnValue({ success: true });
@@ -265,10 +262,10 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "review-task",
-              workingDir: goalDir,
+              workspaceDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
-              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+              sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
             },
           },
         ],
@@ -281,13 +278,13 @@ describe("mark-complete (setupMarkComplete)", () => {
     expect(mockDispatch).toHaveBeenCalled();
     expect(mockEnqueueTask).not.toHaveBeenCalled();
     expect(mockRecordTransition).not.toHaveBeenCalled();
-    expect(mockWriteLastTask).not.toHaveBeenCalled();
 
-    // notification should recommend /pio-transition with available capabilities
+    // notification should list capabilities and say transition is unsupported
     expect(result.content[0].text).toContain("Multiple transitions available");
     expect(result.content[0].text).toContain("evolve-plan");
     expect(result.content[0].text).toContain("execute-task");
-    expect(result.content[0].text).toContain("/pio-transition");
+    expect(result.content[0].text).toContain("not supported at the moment");
+    expect(result.content[0].text).not.toContain("/pio-transition");
     expect(result.terminate).toBe(true);
   });
 
@@ -305,10 +302,10 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "finalize-goal",
-              workingDir: goalDir,
+              workspaceDir: goalDir,
               contract: { inputs: [], outputs: [] },
               postValidate: postValidateMock,
-              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+              sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
             },
           },
         ],
@@ -321,7 +318,6 @@ describe("mark-complete (setupMarkComplete)", () => {
     expect(mockDispatch).toHaveBeenCalled();
     expect(mockEnqueueTask).not.toHaveBeenCalled();
     expect(mockRecordTransition).not.toHaveBeenCalled();
-    expect(mockWriteLastTask).not.toHaveBeenCalled();
 
     // terminal state — no extra notification, just "Validation passed"
     expect(result.content[0].text).toBe("Validation passed. All expected outputs have been produced.");
@@ -331,7 +327,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   it("postExecute runs after transition routing", async () => {
     mockValidateOutputs.mockReturnValue({ success: true });
     mockDispatch.mockReturnValue(
-      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 }, sessionName: "test review", initialMessage: "msg" }]
     );
 
     const callOrder: string[] = [];
@@ -347,9 +343,9 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
-      sessionParams: { goalName: "test-goal", stepNumber: 1 },
+      sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
       postValidate: postValidateMock,
       postExecute: postExecuteMock,
     });
@@ -362,7 +358,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+              sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
             },
           },
         ],
@@ -378,7 +374,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   it("postExecute errors don't block termination", async () => {
     mockValidateOutputs.mockReturnValue({ success: true });
     mockDispatch.mockReturnValue(
-      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 }, sessionName: "test review", initialMessage: "msg" }]
     );
 
     const warnSpy = vi.spyOn(console, "warn");
@@ -390,9 +386,9 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
-      sessionParams: { goalName: "test-goal", stepNumber: 1 },
+      sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
       postValidate: vi.fn().mockReturnValue({ success: true }),
       postExecute: postExecuteMock,
     });
@@ -405,7 +401,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+              sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
             },
           },
         ],
@@ -423,7 +419,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   it("cleanup deletes files in fileCleanup", async () => {
     mockValidateOutputs.mockReturnValue({ success: true });
     mockDispatch.mockReturnValue(
-      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 }, sessionName: "test review", initialMessage: "msg" }]
     );
 
     // Create a temp file to clean up
@@ -432,9 +428,9 @@ describe("mark-complete (setupMarkComplete)", () => {
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
-      sessionParams: { goalName: "test-goal", stepNumber: 1 },
+      sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
       postValidate: vi.fn().mockReturnValue({ success: true }),
       fileCleanup: [cleanupFilePath],
     });
@@ -447,7 +443,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+              sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
             },
           },
         ],
@@ -472,10 +468,10 @@ describe("mark-complete (setupMarkComplete)", () => {
     expect(result.terminate).toBe(true);
   });
 
-  it("missing workingDir passes with terminate true", async () => {
+  it("missing workspaceDir passes with terminate true", async () => {
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      // workingDir is missing
+      // workspaceDir is missing
       contract: { inputs: [], outputs: [] },
       sessionParams: {},
     });
@@ -501,18 +497,15 @@ describe("mark-complete (setupMarkComplete)", () => {
     expect(result.terminate).toBe(true);
   });
 
-  it("dispatches with explicit machine when stateMachineId is in session params", async () => {
+  it("throws when queueKey is missing from session params", async () => {
     mockValidateOutputs.mockReturnValue({ success: true });
-    mockGetMachine.mockReturnValue({ id: "goal-driven-development" });
-    mockDispatch.mockReturnValue(
-      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
-    );
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
-      sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development" },
+      // sessionParams intentionally lacks queueKey
+      sessionParams: { goalName: "test-goal", stepNumber: 1 },
       postValidate: vi.fn().mockReturnValue({ success: true }),
     });
 
@@ -524,7 +517,113 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development" },
+              // sessionParams intentionally lacks queueKey
+              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+            },
+          },
+        ],
+      },
+    };
+
+    // Act & Assert: should throw with the specific error message
+    await expect(
+      registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx),
+    ).rejects.toThrow("mark-complete: queueKey missing from session params — ensure enqueue provides it");
+
+    // dispatch should NOT have been called (throw happens before transitions)
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(mockEnqueueTask).not.toHaveBeenCalled();
+  });
+
+  it("throws when queueKey is an empty string", async () => {
+    mockValidateOutputs.mockReturnValue({ success: true });
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "execute-task",
+      workspaceDir: goalDir,
+      contract: { inputs: [], outputs: [] },
+      sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "" },
+      postValidate: vi.fn().mockReturnValue({ success: true }),
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "" },
+            },
+          },
+        ],
+      },
+    };
+
+    // Act & Assert: empty string is not a valid queueKey
+    await expect(
+      registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx),
+    ).rejects.toThrow("mark-complete: queueKey missing from session params — ensure enqueue provides it");
+  });
+
+  it("throws when queueKey is not a string type", async () => {
+    mockValidateOutputs.mockReturnValue({ success: true });
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "execute-task",
+      workspaceDir: goalDir,
+      contract: { inputs: [], outputs: [] },
+      sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: 123 },
+      postValidate: vi.fn().mockReturnValue({ success: true }),
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: 123 },
+            },
+          },
+        ],
+      },
+    };
+
+    // Act & Assert: non-string queueKey is rejected
+    await expect(
+      registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx),
+    ).rejects.toThrow("mark-complete: queueKey missing from session params — ensure enqueue provides it");
+  });
+
+
+  it("dispatches with explicit machine when stateMachineId is in session params", async () => {
+    mockValidateOutputs.mockReturnValue({ success: true });
+    mockGetMachine.mockReturnValue({ id: "goal-driven-development" });
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 }, sessionName: "test review", initialMessage: "msg" }]
+    );
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "execute-task",
+      workspaceDir: goalDir,
+      contract: { inputs: [], outputs: [] },
+      sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development", queueKey: "test-goal" },
+      postValidate: vi.fn().mockReturnValue({ success: true }),
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development", queueKey: "test-goal" },
             },
           },
         ],
@@ -547,14 +646,14 @@ describe("mark-complete (setupMarkComplete)", () => {
   it("falls back to dispatch(undefined) when stateMachineId is absent", async () => {
     mockValidateOutputs.mockReturnValue({ success: true });
     mockDispatch.mockReturnValue(
-      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 }, sessionName: "test review", initialMessage: "msg" }]
     );
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
-      sessionParams: { goalName: "test-goal", stepNumber: 1 },
+      sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
       postValidate: vi.fn().mockReturnValue({ success: true }),
     });
 
@@ -566,7 +665,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+              sessionParams: { goalName: "test-goal", stepNumber: 1, queueKey: "test-goal" },
             },
           },
         ],
@@ -590,14 +689,14 @@ describe("mark-complete (setupMarkComplete)", () => {
     mockValidateOutputs.mockReturnValue({ success: true });
     mockGetMachine.mockReturnValue(undefined);
     mockDispatch.mockReturnValue(
-      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 }, sessionName: "test review", initialMessage: "msg" }]
     );
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
-      sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "unknown-machine" },
+      sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "unknown-machine", queueKey: "test-goal" },
       postValidate: vi.fn().mockReturnValue({ success: true }),
     });
 
@@ -609,7 +708,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "unknown-machine" },
+              sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "unknown-machine", queueKey: "test-goal" },
             },
           },
         ],
@@ -633,14 +732,14 @@ describe("mark-complete (setupMarkComplete)", () => {
     mockValidateOutputs.mockReturnValue({ success: true });
     mockGetMachine.mockReturnValue({ id: "goal-driven-development" });
     mockDispatch.mockReturnValue(
-      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 } }]
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "test-goal", stepNumber: 1 }, sessionName: "test review", initialMessage: "msg" }]
     );
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
-      sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development" },
+      sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development", queueKey: "test-goal" },
       postValidate: vi.fn().mockReturnValue({ success: true }),
     });
 
@@ -652,7 +751,7 @@ describe("mark-complete (setupMarkComplete)", () => {
             customType: "pio-config",
             data: {
               capability: "execute-task",
-              sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development" },
+              sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development", queueKey: "test-goal" },
             },
           },
         ],
@@ -678,14 +777,14 @@ describe("mark-complete (setupMarkComplete)", () => {
     mockValidateOutputs.mockReturnValue({ success: true });
     mockGetMachine.mockReturnValue({ id: "goal-driven-development" });
     mockDispatch.mockReturnValue(
-      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { stepNumber: 2 } }]
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { stepNumber: 2 }, sessionName: "test review", initialMessage: "msg" }]
     );
 
-    const sessionParams = { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development" };
+    const sessionParams = { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development", queueKey: "test-goal" };
 
     mockResolveCapabilityConfigMC.mockReturnValue({
       capability: "execute-task",
-      workingDir: goalDir,
+      workspaceDir: goalDir,
       contract: { inputs: [], outputs: [] },
       sessionParams,
       postValidate: vi.fn().mockReturnValue({ success: true }),
@@ -716,13 +815,102 @@ describe("mark-complete (setupMarkComplete)", () => {
     // 4th argument (enriched params) should contain stateMachineId at top level
     const enrichedParams = callArgs[3];
     expect(enrichedParams).toHaveProperty("stateMachineId", "goal-driven-development");
-    expect(enrichedParams).toHaveProperty("goalName", "test-goal");
     expect(enrichedParams).toHaveProperty("stepNumber", 2); // from adjustedParams
-    expect(enrichedParams).toHaveProperty("_sessionContext", sessionParams);
+
 
     // Verify the same enriched params were passed to enqueueTask
     const enqueueCall = mockEnqueueTask.mock.calls[0];
     expect(enqueueCall[2].params).toBe(enrichedParams);
+  });
+
+  it("propagates sessionName into enqueued task params", async () => {
+    mockValidateOutputs.mockReturnValue({ success: true });
+    mockGetMachine.mockReturnValue({ id: "goal-driven-development" });
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { stepNumber: 2 }, sessionName: "test review", initialMessage: "msg" }]
+    );
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "execute-task",
+      workspaceDir: goalDir,
+      contract: { inputs: [], outputs: [] },
+      sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development", queueKey: "test-goal" },
+      postValidate: vi.fn().mockReturnValue({ success: true }),
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development", queueKey: "test-goal" },
+            },
+          },
+        ],
+      },
+    };
+
+    await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+
+    // enqueueTask should have been called with sessionName in params
+    expect(mockEnqueueTask).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        capability: "review-task",
+        params: expect.objectContaining({
+          sessionName: "test review",
+        }),
+      }),
+    );
+  });
+
+  it("propagates initialMessage into enqueued task params", async () => {
+    mockValidateOutputs.mockReturnValue({ success: true });
+    mockGetMachine.mockReturnValue({ id: "goal-driven-development" });
+    mockDispatch.mockReturnValue(
+      [{ capability: "review-task", stateMachineId: "goal-driven-development", params: { stepNumber: 2 }, sessionName: "test review", initialMessage: "custom kickoff message" }]
+    );
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "execute-task",
+      workspaceDir: goalDir,
+      contract: { inputs: [], outputs: [] },
+      sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development", queueKey: "test-goal" },
+      postValidate: vi.fn().mockReturnValue({ success: true }),
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              sessionParams: { goalName: "test-goal", stepNumber: 1, stateMachineId: "goal-driven-development", queueKey: "test-goal" },
+            },
+          },
+        ],
+      },
+    };
+
+    await registeredTool!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+
+    // enqueueTask should have been called with initialMessage in params
+    expect(mockEnqueueTask).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        capability: "review-task",
+        params: expect.objectContaining({
+          initialMessage: "custom kickoff message",
+        }),
+      }),
+    );
   });
 });
 

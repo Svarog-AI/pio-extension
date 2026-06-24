@@ -4,6 +4,7 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import { getSessionConfig } from "../capability-utils";
 import { validateOutputs } from "./validation";
+import { CapState } from "../capability-state";
 import { dispatch, getMachine, recordTransition } from "../state-machines";
 import { enqueueTask } from "../queues";
 
@@ -50,8 +51,10 @@ export const markCompleteTool = defineTool({
     // Use `dir` (= config.workspaceDir) everywhere — it's the resolved workspace directory.
 
     // 1. Output validation (existence + frontmatter schema — single call)
-    // validateOutputs falls back to joining workspaceDir + contractPath when workspacePrefix is absent
-    const outputsResult = validateOutputs(config.contract, dir, sessionParams);
+    // workspacePrefix is stripped from sessionParams during normalization.
+    // workspaceDir already has the prefix baked in, so CapState.workspacePrefix = undefined.
+    const capState = new CapState(config.contract, dir, config.sessionParams);
+    const outputsResult = validateOutputs(capState);
 
     if (!outputsResult.success) {
       return { content: [{ type: "text", text: `Validation failed: ${outputsResult.message}\n\nProduce these files and call pio_mark_complete again.` }], details: {} };

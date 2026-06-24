@@ -9,7 +9,7 @@ import { PLAN_FRONTMATTER_SCHEMA } from "../create-plan/schemas";
 import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { validateRevisePlan, prepareSession, cleanupIncompleteSteps, resolveReviseReadOnlyFiles, resolveReviseWriteAllowlist } from "./callbacks";
+import { prepareSession, cleanupIncompleteSteps, resolveReviseReadOnlyFiles, resolveReviseWriteAllowlist } from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // Contract (single source of truth — imported by callbacks)
@@ -55,12 +55,6 @@ const revisePlanTool = defineTool({
   parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = await validateRevisePlan(params.workspacePrefix, ctx.cwd);
-
-    if (!result.ready) {
-      return { content: [{ type: "text", text: result.error! }], details: {} };
-    }
-
     const queueKey = deriveQueueKey(params.workspacePrefix);
     enqueueTask(ctx.cwd, queueKey, {
       capability: "revise-plan",
@@ -103,13 +97,6 @@ async function handleRevisePlan(args: string | undefined, ctx: ExtensionCommandC
   }
   if (!workspacePrefix) {
     ctx.ui.notify("--workspace-prefix is required. Usage: /pio-revise-plan --workspace-prefix <prefix>", "error");
-    return;
-  }
-
-  const result = await validateRevisePlan(workspacePrefix, ctx.cwd);
-
-  if (!result.ready) {
-    ctx.ui.notify(result.error!, "error");
     return;
   }
 

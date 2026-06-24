@@ -1,12 +1,9 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { CapState } from "../../capability-state";
 import { launchCapability } from "../../capability-session";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
-import { validateInputs } from "../../guards/validation";
-import * as path from "node:path";
 import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
@@ -18,13 +15,13 @@ import type { CapabilityPackageConfig } from "../../capability-package";
 export const CONTRACT: CapabilityContract = {
   inputs: [{ name: "goal", file: "GOAL.md" }, { name: "plan", file: "PLAN.md" }, { name: "completion-summary", file: "COMPLETION_SUMMARY.md" }],
   outputs: [
-    { name: "overview", file: "/PROJECT/OVERVIEW.md", requiredWhen: () => false },
-    { name: "development", file: "/PROJECT/DEVELOPMENT.md", requiredWhen: () => false },
-    { name: "conventions", file: "/PROJECT/CONVENTIONS.md", requiredWhen: () => false },
-    { name: "git", file: "/PROJECT/GIT.md", requiredWhen: () => false },
-    { name: "architecture", file: "/PROJECT/ARCHITECTURE.md", requiredWhen: () => false },
-    { name: "dependencies", file: "/PROJECT/DEPENDENCIES.md", requiredWhen: () => false },
-    { name: "glossary", file: "/PROJECT/GLOSSARY.md", requiredWhen: () => false },
+    { name: "overview", file: "PROJECT/OVERVIEW.md", projectRelative: true, requiredWhen: () => false },
+    { name: "development", file: "PROJECT/DEVELOPMENT.md", projectRelative: true, requiredWhen: () => false },
+    { name: "conventions", file: "PROJECT/CONVENTIONS.md", projectRelative: true, requiredWhen: () => false },
+    { name: "git", file: "PROJECT/GIT.md", projectRelative: true, requiredWhen: () => false },
+    { name: "architecture", file: "PROJECT/ARCHITECTURE.md", projectRelative: true, requiredWhen: () => false },
+    { name: "dependencies", file: "PROJECT/DEPENDENCIES.md", projectRelative: true, requiredWhen: () => false },
+    { name: "glossary", file: "PROJECT/GLOSSARY.md", projectRelative: true, requiredWhen: () => false },
   ],
 };
 
@@ -44,31 +41,6 @@ const capabilityConfig = {
 export default capabilityConfig;
 
 // ---------------------------------------------------------------------------
-// Validation
-// ---------------------------------------------------------------------------
-
-/**
- * Validate that the workspace exists and the COMPLETED marker is present.
- *
- * Returns { ready: true } on success, or { ready: false, error } when not ready.
- * Does NOT use ctx so it can be called safely before newSession().
- */
-export async function validateFinalizeGoal(
-  workspacePrefix: string,
-  cwd: string,
-): Promise<
-  | { ready: true }
-  | { ready: false; error: string }
-> {
-  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix });
-  if (!result.success) {
-    return { ready: false, error: result.message ?? `Workspace "${workspacePrefix}" does not have the required inputs.` };
-  }
-
-  return { ready: true };
-}
-
-// ---------------------------------------------------------------------------
 // Tool
 // ---------------------------------------------------------------------------
 
@@ -81,12 +53,6 @@ const finalizeGoalTool = defineTool({
   parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = await validateFinalizeGoal(params.workspacePrefix, ctx.cwd);
-
-    if (!result.ready) {
-      return { content: [{ type: "text", text: result.error }], details: {} };
-    }
-
     const queueKey = deriveQueueKey(params.workspacePrefix);
     enqueueTask(ctx.cwd, queueKey, {
       capability: "finalize-goal",
@@ -129,13 +95,6 @@ async function handleFinalizeGoal(args: string | undefined, ctx: ExtensionComman
   }
   if (!workspacePrefix) {
     ctx.ui.notify("--workspace-prefix is required. Usage: /pio-finalize-goal --workspace-prefix <prefix>", "error");
-    return;
-  }
-
-  const result = await validateFinalizeGoal(workspacePrefix, ctx.cwd);
-
-  if (!result.ready) {
-    ctx.ui.notify(result.error, "error");
     return;
   }
 

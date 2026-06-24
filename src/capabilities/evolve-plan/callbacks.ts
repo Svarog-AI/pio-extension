@@ -1,6 +1,4 @@
 import { stepFolderName } from "../../fs-utils";
-import { validateInputs } from "../../guards/validation";
-import * as path from "node:path";
 import { CONTRACT } from "./config";
 
 
@@ -33,26 +31,4 @@ export function resolveEvolveWriteAllowlist(_workspaceDir: string, params?: Reco
   return allowlist;
 }
 
-// ---------------------------------------------------------------------------
-// Pre-launch validation
-// ---------------------------------------------------------------------------
 
-/**
- * Validate inputs for evolve-plan.
- * Input validation is handled automatically by launchCapability().
- */
-export async function validateEvolveStep(
-  workspacePrefix: string,
-  cwd: string,
-  stepNumber: number,
-): Promise<
-  | { ready: true; stepNumber: number }
-  | { ready: false; error: string }
-> {
-  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix, stepNumber });
-  if (!result.success) {
-    return { ready: false, error: result.message ?? `Step ${stepNumber} validation failed for workspace "${workspacePrefix}".` };
-  }
-
-  return { ready: true, stepNumber };
-}

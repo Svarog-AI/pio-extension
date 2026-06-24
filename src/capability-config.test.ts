@@ -765,10 +765,10 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
     expect(result!.capability).toBe("finalize-goal");
     // writeAllowlist is no longer explicit — auto-derived from CONTRACT.outputs by validation guard
     expect(result!.writeAllowlist).toBeUndefined();
-    // CONTRACT.outputs declares PROJECT files with root-level paths
-    const projectOutputs = result!.contract.outputs.filter((o: any) => "file" in o && o.file.startsWith("/PROJECT/"));
+    // CONTRACT.outputs declares PROJECT files with projectRelative: true
+    const projectOutputs = result!.contract.outputs.filter((o: any) => "file" in o && o.projectRelative === true);
     expect(projectOutputs).toHaveLength(7);
-    expect(projectOutputs.some((o: any) => o.file === "/PROJECT/OVERVIEW.md")).toBe(true);
+    expect(projectOutputs.some((o: any) => o.file === "PROJECT/OVERVIEW.md")).toBe(true);
   });
 
   it("finalize-goal initial message is non-empty (defaultInitialMessage)", async () => {

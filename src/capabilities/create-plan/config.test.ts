@@ -542,11 +542,11 @@ describe("create-plan tool execute — pre-launch validation", () => {
     };
   }
 
-  it("returns error when workspace does not exist", async () => {
+  it("enqueues task when workspace does not exist (validation deferred to launch)", async () => {
     const tool = getTool();
     const result = await tool.execute("test-id", { workspacePrefix: "goals/nonexistent" }, undefined, undefined, makeCtx(tempDir));
 
-    expect(result.content[0].text).toMatch(/missing|does not exist/i);
+    expect(result.content[0].text).toContain("queued");
   });
 
   it("enqueues task when workspace exists", async () => {

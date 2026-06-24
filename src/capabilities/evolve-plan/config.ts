@@ -10,7 +10,7 @@ import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { TASK_FRONTMATTER_SCHEMA, COMPLETION_SUMMARY_SCHEMA } from "./schemas";
 import { PLAN_FRONTMATTER_SCHEMA } from "../create-plan/schemas";
-import { validateEvolveStep, resolveEvolveWriteAllowlist } from "./callbacks";
+import { resolveEvolveWriteAllowlist } from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // Contract (single source of truth — imported by callbacks)
@@ -55,21 +55,15 @@ const evolvePlanTool = defineTool({
   parameters: Type.Object({ ...BASE_TOOL_PARAMS, stepNumber: Type.Number({ description: "Step number to evolve" }) }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = await validateEvolveStep(params.workspacePrefix, ctx.cwd, params.stepNumber);
-
-    if (!result.ready) {
-      return { content: [{ type: "text", text: result.error }], details: {} };
-    }
-
     const queueKey = deriveQueueKey(params.workspacePrefix);
     enqueueTask(ctx.cwd, queueKey, {
       capability: "evolve-plan",
       params: {
         workspacePrefix: params.workspacePrefix,
-        sessionName: params.sessionName ?? `${queueKey} evolve-plan s${result.stepNumber}`,
+        sessionName: params.sessionName ?? `${queueKey} evolve-plan s${params.stepNumber}`,
         queueKey,
-        stepNumber: result.stepNumber,
-        initialMessage: params.initialMessage ?? `Generate TASK.md for Step ${result.stepNumber} of workspace "${params.workspacePrefix}".`,
+        stepNumber: params.stepNumber,
+        initialMessage: params.initialMessage ?? `Generate TASK.md for Step ${params.stepNumber} of workspace "${params.workspacePrefix}".`,
       },
     });
 
@@ -77,7 +71,7 @@ const evolvePlanTool = defineTool({
       content: [
         {
           type: "text",
-          text: `Task queued for Step ${result.stepNumber} of workspace "${params.workspacePrefix}". Use \`/pio-next-task\` to start the sub-session.`,
+          text: `Task queued for Step ${params.stepNumber} of workspace "${params.workspacePrefix}". Use \`/pio-next-task\` to start the sub-session.`,
         },
       ],
       details: {},
@@ -114,23 +108,16 @@ async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandC
     return;
   }
 
-  const result = await validateEvolveStep(workspacePrefix, ctx.cwd, stepNumber);
-
-  if (!result.ready) {
-    ctx.ui.notify(result.error, "error");
-    return;
-  }
-
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   // All ctx-dependent work must happen before this line.
   const queueKey = deriveQueueKey(workspacePrefix);
   const config = await resolveCapabilityConfig(ctx.cwd, {
     capability: "evolve-plan",
     workspacePrefix,
-    sessionName: `${queueKey} evolve-plan s${result.stepNumber}`,
+    sessionName: `${queueKey} evolve-plan s${stepNumber}`,
     queueKey,
-    stepNumber: result.stepNumber,
-    initialMessage: `Generate TASK.md for Step ${result.stepNumber} of workspace "${workspacePrefix}".`,
+    stepNumber,
+    initialMessage: `Generate TASK.md for Step ${stepNumber} of workspace "${workspacePrefix}".`,
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve evolve-plan config.", "error");

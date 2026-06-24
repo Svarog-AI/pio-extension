@@ -5,7 +5,8 @@ import * as Value from "typebox/value";
 import { extractFrontmatter, formatSchemaDescription } from "../frontmatter";
 import { getSessionConfig } from "../capability-utils";
 import { resolveContractPath } from "../capability-config";
-import type { CapabilityContract, MarkdownFileSpec, OutputEntry, PostValidateCallback } from "../types";
+import { CapState } from "../capability-state";
+import type { CapabilityContract, MarkdownFileSpec, OutputEntry } from "../types";
 
 // ---------------------------------------------------------------------------
 // Module-level cache (per-session, populated by resources_discover)
@@ -65,28 +66,25 @@ function isMarkdownFileSpec(entry: OutputEntry): entry is MarkdownFileSpec {
  * Check that all declared output files exist on disk and validate frontmatter
  * against declared schemas. Collects all issues into a single message string.
  *
- * Paths are resolved through `resolveContractPath()` which handles workspace
- * prefix injection and placeholder resolution.
+ * Paths are resolved through CapState.resolvePath() which handles workspace
+ * prefix injection, placeholder resolution, and projectRelative paths.
  */
 export function validateOutputs(
-  contract: CapabilityContract,
-  workspaceDir: string,
-  params?: Record<string, unknown>,
+  capState: CapState,
 ): { success: boolean; message?: string } {
-  const workspacePrefix = typeof params?.workspacePrefix === "string"
-    ? params.workspacePrefix
-    : undefined;
+  const params = capState["params"];
 
-  // If COMPLETION_SUMMARY.md exists (resolved through prefix layer), pass validation regardless of other expected files.
+  // If COMPLETION_SUMMARY.md exists (resolved through CapState context), pass validation regardless of other expected files.
   // This allows evolve-plan to write just COMPLETION_SUMMARY.md (when all steps are done) and have pio_mark_complete succeed.
-  if (fs.existsSync(resolveContractPath("COMPLETION_SUMMARY.md", workspaceDir, workspacePrefix, params))) {
+  const completionSummaryPath = capState.resolvePath({ name: "_bypass", file: "COMPLETION_SUMMARY.md" });
+  if (fs.existsSync(completionSummaryPath)) {
     return { success: true };
   }
 
   try {
     const issues: string[] = [];
 
-    for (const entry of contract.outputs) {
+    for (const entry of capState.contract.outputs) {
       if (!isMarkdownFileSpec(entry)) {
         // OneOfGroup — treat as no-op (deferred to later step)
         continue;
@@ -97,8 +95,8 @@ export function validateOutputs(
         continue;
       }
 
-      // Use resolveContractPath for prefix-aware resolution (handles placeholders internally)
-      const fullPath = resolveContractPath(entry.file, workspaceDir, workspacePrefix, params);
+      // Use CapState.resolvePath for prefix-aware resolution (handles projectRelative internally)
+      const fullPath = capState.resolvePath(entry);
 
       if (!fs.existsSync(fullPath)) {
         issues.push(`Output file '${entry.file}' is missing`);
@@ -149,16 +147,10 @@ export function validateOutputs(
  * that require reading document body content (e.g., totalSteps vs heading count).
  */
 export function validateFrontmatter(
-  contract: CapabilityContract,
-  workspaceDir: string,
-  params?: Record<string, unknown>,
+  capState: CapState,
 ): { success: boolean; message?: string } {
-  const workspacePrefix = typeof params?.workspacePrefix === "string"
-    ? params.workspacePrefix
-    : undefined;
-
   try {
-    for (const entry of contract.outputs) {
+    for (const entry of capState.contract.outputs) {
       if (!isMarkdownFileSpec(entry)) {
         // OneOfGroup — skip for frontmatter validation
         continue;
@@ -168,8 +160,8 @@ export function validateFrontmatter(
         continue;
       }
 
-      // Use resolveContractPath for prefix-aware resolution (handles placeholders internally)
-      const filePath = resolveContractPath(entry.file, workspaceDir, workspacePrefix, params);
+      // Use CapState.resolvePath for prefix-aware resolution
+      const filePath = capState.resolvePath(entry);
 
       // Check file exists
       if (!fs.existsSync(filePath)) {
@@ -209,27 +201,19 @@ export function validateFrontmatter(
  * contract.excludedFiles[] (fail-fast on first existing). Returns success only
  * when all checks pass.
  *
- * Paths are resolved through `resolveContractPath()` which handles workspace
- * prefix injection and placeholder resolution.
+ * Paths are resolved through CapState.resolvePath() which handles workspace
+ * prefix injection, placeholder resolution, and projectRelative paths.
  *
- * @param workspaceDir - Resolved workspace directory for resolving relative paths
- * @param contract - CapabilityContract with inputs and excludedFiles
- * @param params - Session params for placeholder resolution (must include workspacePrefix if used)
+ * @param capState - CapState wrapping the capability contract with resolution context
  * @returns Success result or failure with descriptive message
  */
 export function validateInputs(
-  workspaceDir: string,
-  contract: CapabilityContract,
-  params?: Record<string, unknown>,
+  capState: CapState,
 ): { success: boolean; message?: string } {
-  const workspacePrefix = typeof params?.workspacePrefix === "string"
-    ? params.workspacePrefix
-    : undefined;
-
   try {
     // Check required inputs
-    for (const spec of contract.inputs) {
-      const fullPath = resolveContractPath(spec.file, workspaceDir, workspacePrefix, params);
+    for (const spec of capState.contract.inputs) {
+      const fullPath = capState.resolvePath(spec);
 
       if (!fs.existsSync(fullPath)) {
         return { success: false, message: `Required file missing: ${spec.file}` };
@@ -254,10 +238,10 @@ export function validateInputs(
       }
     }
 
-    // Check excluded files
-    if (contract.excludedFiles) {
-      for (const file of contract.excludedFiles) {
-        const fullPath = resolveContractPath(file, workspaceDir, workspacePrefix, params);
+    // Check excluded files (always non-projectRelative — resolve through CapState with synthetic entry)
+    if (capState.contract.excludedFiles) {
+      for (const file of capState.contract.excludedFiles) {
+        const fullPath = capState.resolvePath({ name: "_excluded", file });
         if (fs.existsSync(fullPath)) {
           return { success: false, message: `File must not exist: ${file}` };
         }
@@ -268,22 +252,6 @@ export function validateInputs(
   }
 
   return { success: true };
-}
-
-/**
- * Factory that produces a ready-to-use PostValidateCallback from
- * a CapabilityContract.
- *
- * Bridge between contract declarations and the existing
- * postValidate hook system.
- *
- * Usage in capabilities:
- *   postValidate: createFrontmatterValidator(config.contract)
- */
-export function createFrontmatterValidator(
-  contract: CapabilityContract,
-): PostValidateCallback {
-  return (workspaceDir, params) => validateFrontmatter(contract, workspaceDir, params);
 }
 
 // ---------------------------------------------------------------------------
@@ -297,14 +265,14 @@ export function setupValidation(pi: ExtensionAPI) {
     if (!config) return;
     workspaceDir = config.workspaceDir;
 
-    const workspacePrefix = typeof config.sessionParams?.workspacePrefix === "string"
-      ? config.sessionParams.workspacePrefix
-      : undefined;
+    // workspacePrefix is stripped from sessionParams after normalization (Step 9).
+    // workspaceDir already has the prefix baked in, so CapState.workspacePrefix = undefined.
+    const capState = new CapState(config.contract, workspaceDir!, config.sessionParams);
 
-    // Resolve read-only file paths through prefix layer
+    // Resolve read-only file paths through CapState (always non-projectRelative)
     if (config.readOnlyFiles && config.workspaceDir) {
       readOnlyFilePaths = config.readOnlyFiles.map((f) =>
-        path.resolve(resolveContractPath(f, workspaceDir!, workspacePrefix, config.sessionParams))
+        path.resolve(capState.resolvePath({ name: "_ro", file: f }))
       );
     } else {
       readOnlyFilePaths = [];
@@ -314,20 +282,18 @@ export function setupValidation(pi: ExtensionAPI) {
     let baseAllowlist: string[] = [];
     if (config.writeAllowlist && config.workspaceDir) {
       baseAllowlist = config.writeAllowlist.map((f) =>
-        path.resolve(resolveContractPath(f, workspaceDir!, workspacePrefix, config.sessionParams))
+        path.resolve(capState.resolvePath({ name: "_wl", file: f }))
       );
     }
 
     // Auto-derive from contract outputs — "zero manual configuration per capability"
-    // Root-level paths (/PROJECT/...) resolve directly from workspaceDir; prefixed paths
-    // resolve through workspacePrefix. Merge with explicit allowlist via Set dedup.
+    // Uses CapState.resolvePath() which handles projectRelative: true entries
+    // (resolves to .pio/PROJECT/* via global pioRootDir).
     const contractOutputPaths: string[] = [];
-    if (config.contract?.outputs && workspaceDir) {
+    if (config.contract?.outputs) {
       for (const entry of config.contract.outputs) {
         if (isMarkdownFileSpec(entry)) {
-          contractOutputPaths.push(path.resolve(resolveContractPath(
-            entry.file, workspaceDir, workspacePrefix, config.sessionParams
-          )));
+          contractOutputPaths.push(path.resolve(capState.resolvePath(entry)));
         }
       }
     }

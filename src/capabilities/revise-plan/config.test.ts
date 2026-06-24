@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { vi } from "vitest";
 import config, { register } from "./config";
-import { validateRevisePlan, prepareSession, cleanupIncompleteSteps } from "./callbacks";
+import { prepareSession, cleanupIncompleteSteps } from "./callbacks";
 import { readPendingTask } from "../../queues";
 
 // ---------------------------------------------------------------------------
@@ -137,61 +137,6 @@ describe("config wiring consistency", () => {
 
     const result = typeof wl === "function" ? wl("/tmp/goal") : wl;
     expect(result).toContain("PLAN.md");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// validateRevisePlan — directory resolution
-// ---------------------------------------------------------------------------
-
-describe("validateRevisePlan", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("resolves workspace and returns ready", async () => {
-    const goalDir = path.join(tempDir, ".pio", "goals", "my-goal");
-    fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal");
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "---\ntotalSteps: 1\nsteps:\n  - name: test\n    complexity: task\n---\n# Plan");
-
-    const result = await validateRevisePlan("goals/my-goal", tempDir);
-
-    expect(result.ready).toBe(true);
-  });
-});
-
-describe("validateRevisePlan — accepts valid states", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("succeeds when GOAL.md and PLAN.md exist (no steps required)", async () => {
-    createGoalTree(tempDir, "valid-goal", { withGoal: true, withPlan: true });
-
-    const result = await validateRevisePlan("goals/valid-goal", tempDir);
-
-    expect(result.ready).toBe(true);
-  });
-
-  it("succeeds with APPROVED steps present", async () => {
-    createGoalTree(tempDir, "valid-with-steps", {
-      withGoal: true,
-      withPlan: true,
-      stepFolders: [{ stepNumber: 1, approved: true }],
-    });
-
-    const result = await validateRevisePlan("goals/valid-with-steps", tempDir);
-
-    expect(result.ready).toBe(true);
   });
 });
 

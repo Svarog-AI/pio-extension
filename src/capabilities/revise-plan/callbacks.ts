@@ -3,7 +3,6 @@ import * as path from "node:path";
 
 import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
 import { stepFolderName } from "../../fs-utils";
-import { validateInputs } from "../../guards/validation";
 import { PLAN_FRONTMATTER_SCHEMA, type PlanFrontmatter } from "../create-plan/schemas";
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "../review-task/schemas";
 import { CONTRACT } from "./config";
@@ -16,26 +15,6 @@ import { CONTRACT } from "./config";
 const PLAN_ARCHIVE_DIR = "PLAN_ARCHIVE";
 export const REVISE_PLAN_MARKER = "REVISE_PLAN_NEEDED";
 const STEP_FOLDER_RE = /^S(\d+)$/;
-
-// ---------------------------------------------------------------------------
-// Pre-launch validation
-// ---------------------------------------------------------------------------
-
-/**
- * Validate inputs for revise-plan.
- * Input validation is handled automatically by launchCapability().
- */
-export async function validateRevisePlan(
-  workspacePrefix: string,
-  cwd: string,
-): Promise<{ ready: boolean; error?: string }> {
-  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix });
-  if (!result.success) {
-    return { ready: false, error: result.message ?? `Workspace "${workspacePrefix}" does not have the required inputs.` };
-  }
-
-  return { ready: true };
-}
 
 // ---------------------------------------------------------------------------
 // prepareSession — archive PLAN.md before the agent starts

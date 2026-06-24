@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { CapabilityConfig, CapabilitySkills } from "./types";
 import { getSessionConfig } from "./capability-utils";
 import { validateInputs } from "./guards/validation";
+import { CapState } from "./capability-state";
 import type { CompiledPromptSections } from "./capability-package";
 import { compilePrompt } from "./prompt-compiler";
 import { setupStepNudging } from "./guards/step-nudging";
@@ -58,12 +59,11 @@ let enrichedSessionParams: Record<string, unknown> | undefined;
 /** Write config into the new session's custom entry. Survives reload, not visible to LLM. */
 export async function launchCapability(ctx: ExtensionCommandContext, config: CapabilityConfig): Promise<void> {
   // Validate inputs against the capability contract BEFORE launching.
+  // workspacePrefix is stripped from sessionParams during normalization.
+  // workspaceDir already has the prefix baked in, so CapState.workspacePrefix = undefined.
   if (config.contract && config.workspaceDir) {
-    const result = validateInputs(
-      config.workspaceDir,
-      config.contract,
-      config.sessionParams,
-    );
+    const capState = new CapState(config.contract, config.workspaceDir, config.sessionParams);
+    const result = validateInputs(capState);
 
     if (!result.success) {
       throw new Error(

@@ -31,6 +31,14 @@ export function getPioRootDir(): string {
 }
 
 /**
+ * Reset pioRootDir for testing. Allows re-initialization.
+ * @internal — Do not use in production code.
+ */
+export function __testResetPioRootDir(): void {
+  _pioRootDir = undefined;
+}
+
+/**
  * Reset the global pioRootDir to undefined.
  * Intended for tests only — allows re-initialization between test suites.
  */

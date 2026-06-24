@@ -7,7 +7,6 @@ import * as path from "node:path";
 import { launchCapability } from "../../capability-session";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
-import { validateInputs } from "../../guards/validation";
 import { CapState } from "../../capability-state";
 import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
 import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
@@ -145,24 +144,6 @@ const capabilityConfig = {
 export default capabilityConfig;
 
 // ---------------------------------------------------------------------------
-// Validation
-// ---------------------------------------------------------------------------
-
-/**
- * Validate that the workspace exists, has a GOAL.md, and does not yet have a PLAN.md.
- * Returns { ready: boolean, error?: string }.
- * Does NOT use ctx so it can be called safely before newSession().
- */
-async function validateGoal(workspacePrefix: string, cwd: string): Promise<{ ready: boolean; error?: string }> {
-  const result = validateInputs(path.join(cwd, ".pio"), CONTRACT, { workspacePrefix });
-  if (!result.success) {
-    return { ready: false, error: result.message ?? `Workspace "${workspacePrefix}" does not have the required inputs.` };
-  }
-
-  return { ready: true };
-}
-
-// ---------------------------------------------------------------------------
 // Tool
 // ---------------------------------------------------------------------------
 
@@ -174,12 +155,6 @@ const createPlanTool = defineTool({
   parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-    const result = await validateGoal(params.workspacePrefix, ctx.cwd);
-
-    if (!result.ready) {
-      return { content: [{ type: "text", text: result.error! }], details: {} };
-    }
-
     const queueKey = deriveQueueKey(params.workspacePrefix);
     enqueueTask(ctx.cwd, queueKey, {
       capability: "create-plan",
@@ -214,13 +189,6 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
   }
   if (!workspacePrefix) {
     ctx.ui.notify("--workspace-prefix is required. Usage: /pio-create-plan --workspace-prefix <prefix>", "error");
-    return;
-  }
-
-  const result = await validateGoal(workspacePrefix, ctx.cwd);
-
-  if (!result.ready) {
-    ctx.ui.notify(result.error!, "error");
     return;
   }
 

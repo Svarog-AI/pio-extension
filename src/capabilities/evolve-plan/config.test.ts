@@ -4,9 +4,10 @@ import * as path from "node:path";
 import { vi } from "vitest";
 import { validateOutputs } from "../../guards/validation";
 import { resolveCapabilityConfig } from "../../capability-config";
-import { validateEvolveStep } from "./callbacks";
 import { register } from "./config";
 import { readPendingTask } from "../../queues";
+import { CapState } from "../../capability-state";
+import { initializePioRootDir, __testResetPioRootDir } from "../../fs-utils";
 import type { CapabilityContract, MarkdownFileSpec } from "../../types";
 
 // ---------------------------------------------------------------------------
@@ -54,6 +55,8 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at workspaceDir", () => {
 
   beforeEach(() => {
     tempDir = createTempDir();
+    try { __testResetPioRootDir(); } catch { /* noop */ }
+    initializePioRootDir(tempDir);
   });
 
   afterEach(() => cleanup(tempDir));
@@ -68,7 +71,8 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at workspaceDir", () => {
     };
 
     // Act
-    const result = validateOutputs(contract, tempDir);
+    const capState = new CapState(contract, tempDir);
+    const result = validateOutputs(capState);
 
     // Assert
     expect(result).toEqual({ success: true });
@@ -84,7 +88,8 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at workspaceDir", () => {
     };
 
     // Act
-    const result = validateOutputs(contract, tempDir);
+    const capState = new CapState(contract, tempDir);
+    const result = validateOutputs(capState);
 
     // Assert
     expect(result).toEqual({ success: true });
@@ -98,7 +103,8 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at workspaceDir", () => {
     };
 
     // Act
-    const result = validateOutputs(contract, tempDir);
+    const capState = new CapState(contract, tempDir);
+    const result = validateOutputs(capState);
 
     // Assert
     expect(result.success).toBe(false);
@@ -117,7 +123,8 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at workspaceDir", () => {
     };
 
     // Act
-    const result = validateOutputs(contract, tempDir);
+    const capState = new CapState(contract, tempDir);
+    const result = validateOutputs(capState);
 
     // Assert: fails normally (short-circuit only for workspaceDir/COMPLETION_SUMMARY.md, not subfolder)
     expect(result.success).toBe(false);
@@ -336,33 +343,6 @@ function createGoalTreeWithFrontmatter(
 
   return goalDir;
 }
-
-// ---------------------------------------------------------------------------
-// validateEvolveStep — directory resolution
-// ---------------------------------------------------------------------------
-
-describe("validateEvolveStep", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("resolves workspace and returns ready with stepNumber", async () => {
-    const goalDir = path.join(tempDir, ".pio", "goals", "my-goal");
-    fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "---\ntotalSteps: 3\nsteps:\n  - name: test\n    complexity: task\n---\n# Plan");
-
-    const result = await validateEvolveStep("goals/my-goal", tempDir, 3);
-
-    expect(result.ready).toBe(true);
-    if (result.ready) {
-      expect(result.stepNumber).toBe(3);
-    }
-  });
-});
 
 // ---------------------------------------------------------------------------
 // Tool execute — pio_evolve_plan

@@ -4,9 +4,8 @@ import * as path from "node:path";
 import * as Value from "typebox/value";
 import { extractFrontmatter, formatSchemaDescription } from "../frontmatter";
 import { getSessionConfig } from "../capability-utils";
-import { resolveContractPath } from "../capability-config";
 import { CapState } from "../capability-state";
-import type { CapabilityContract, MarkdownFileSpec, OutputEntry } from "../types";
+import type { MarkdownFileSpec, OutputEntry } from "../types";
 
 // ---------------------------------------------------------------------------
 // Module-level cache (per-session, populated by resources_discover)
@@ -21,15 +20,6 @@ let workspaceDir: string | undefined;
 
 /** Project root directory — boundary for allowProjectWrites. */
 let projectRoot: string | undefined;
-
-/** True after we've already warned once and let the switch through. */
-let warnedOnce = false;
-
-/** Total warnings sent this session — capped to avoid infinite loops. */
-let warningsThisSession = 0;
-
-/** Hard limit on total exit-gate warnings per session. */
-const MAX_WARNINGS = 3;
 
 // ---------------------------------------------------------------------------
 // Test accessors
@@ -304,39 +294,9 @@ export function setupValidation(pi: ExtensionAPI) {
 
     // Project root boundary for allowProjectWrites — constrains writes to project workspace
     projectRoot = path.resolve(ctx.cwd ?? process.cwd());
-
-    warnedOnce = false;
-    warningsThisSession = 0;
   });
 
-  // 3. Reset one-shot gate when the agent starts a new turn
-  pi.on("turn_start", async () => {
-    warnedOnce = false;
-  });
-
-  // // 4. Exit-gate: block the first switch if validation fails, then let it go.
-  // //    Hard cap after MAX_WARNINGS to avoid infinite loops.
-  // pi.on("session_before_switch", async (_event, ctx) => {
-  //   if (!validationRules || !baseDir) return; // no rules — allow switch
-
-  //   const result = validateOutputs(validationRules, baseDir);
-
-  //   if (result.passed) return; // all good — allow switch
-
-  //   if (warnedOnce) return; // already warned this round — let them leave
-
-  //   if (warningsThisSession >= MAX_WARNINGS) return; // cap reached — stop blocking
-
-  //   // Warn and block so the agent has a chance to fix things
-  //   warnedOnce = true;
-  //   warningsThisSession++;
-  //   pi.sendUserMessage(`Validation failed. The following expected output files are missing:\n- ${result.missing.join("\n- ")}\n\nPlease produce these files before switching sessions.`);
-  //   ctx.ui.notify(`Capability validation failed. Missing: ${result.missing.join(", ")}`, "warning");
-
-  //   return { cancel: true };
-  // });
-
-  // 5. File protection: unified write check + read-only blocklist fallback
+  // 3. File protection: unified write check + read-only blocklist fallback
   pi.on("tool_call", async (event) => {
     const input = event.input as Record<string, unknown> | undefined;
 

@@ -2,6 +2,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+  initializePioRootDir,
+  getPioRootDir,
   resolveGoalDir,
   goalExists,
   prepareGoal,
@@ -589,5 +591,25 @@ describe("mergeCapabilitySkills", () => {
 
     // Assert: should not crash
     expect(result.mandatory).toEqual(["pio"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pioRootDir — global constant for .pio/ root
+// ---------------------------------------------------------------------------
+
+describe("pioRootDir", () => {
+  it("initializePioRootDir sets pioRootDir to cwd/.pio", () => {
+    initializePioRootDir("/test-project");
+    expect(getPioRootDir()).toBe("/test-project/.pio");
+  });
+
+  it("getPioRootDir returns the initialized value", () => {
+    // Already initialized by previous test (module-level state)
+    expect(getPioRootDir()).toBe("/test-project/.pio");
+  });
+
+  it("initializePioRootDir throws if called more than once", () => {
+    expect(() => initializePioRootDir("/other")).toThrow("pioRootDir already initialized");
   });
 });

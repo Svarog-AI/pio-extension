@@ -652,19 +652,6 @@ describe("CapState — workspace prefix integration", () => {
     expect(capState.output("plan").exists()).toBe(true);
   });
 
-  // --- Root-level paths (leading /) bypass prefix ---
-
-  it("root-level path (leading /) bypasses workspace prefix", () => {
-    const contract: CapabilityContract = {
-      inputs: [{ name: "overview", file: "/PROJECT/OVERVIEW.md" }],
-      outputs: [],
-    };
-    // File at baseDir/PROJECT/OVERVIEW.md (not under prefix)
-    writeWithFrontmatter(tempDir, "PROJECT/OVERVIEW.md", { title: "Project" });
-    const capState = createCapState(contract, tempDir, undefined, "goals/my-feature");
-    expect(capState.input("overview").exists()).toBe(true);
-  });
-
   // --- Placeholder resolution with prefix ---
 
   it("placeholder resolution works with prefix", () => {

@@ -26,6 +26,9 @@ import { setupPioWorkflowMachine } from "./state-machines/pio-workflow-machine";
 import { discoverCapabilities, registerCapability } from "./capability-discovery";
 import { setDiscoveredContracts } from "./state-machines/utils";
 
+// PIO root directory initialization
+import { initializePioRootDir } from "./fs-utils";
+
 // ESM-compatible __dirname for resolving skill directories bundled with this extension
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,6 +65,9 @@ export default async function (pi: ExtensionAPI) {
   // Register pio capabilities as discoverable skills so they appear in
   // the <available_skills> section of pi's default system prompt.
   setupSkills(pi);
+
+  // Initialize global pioRootDir before any sessions start
+  initializePioRootDir(process.cwd());
 
   // Shared session infrastructure (wired once)
   setupSessionInfrastructure(pi);

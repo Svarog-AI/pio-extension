@@ -1375,27 +1375,6 @@ describe("setupValidation — auto-derived writeAllowlist from contract outputs"
     const result = validateOutputs(contract, tempDir, { stepNumber: 1, workspacePrefix: "goals/my-goal" });
     expect(result).toEqual({ success: true });
   });
-
-  it("root-level contract paths resolve directly from workspaceDir (bypass prefix)", async () => {
-    const contract: CapabilityContract = {
-      inputs: [],
-      outputs: [
-        { name: "overview", file: "/PROJECT/OVERVIEW.md", requiredWhen: () => false },
-        { name: "task", file: "TASK.md" },
-      ],
-    };
-
-    // /PROJECT/OVERVIEW.md resolves directly from baseDir (no prefix)
-    fs.mkdirSync(path.join(tempDir, "PROJECT"), { recursive: true });
-    fs.writeFileSync(path.join(tempDir, "PROJECT", "OVERVIEW.md"), "content", "utf-8");
-    // TASK.md resolves through prefix
-    const goalDir = path.join(tempDir, "goals", "my-goal");
-    fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "TASK.md"), "content", "utf-8");
-
-    const result = validateOutputs(contract, tempDir, { workspacePrefix: "goals/my-goal" });
-    expect(result).toEqual({ success: true });
-  });
 });
 
 // ---------------------------------------------------------------------------

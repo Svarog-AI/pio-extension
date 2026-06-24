@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { PrepareSessionCallback, PostValidateCallback, PostExecuteCallback, CapabilityConfig, CapabilitySkills } from "./types";
 import { resolveCapabilityConfig, resolvePaths, resolveContractPath } from "./capability-config";
+import { initializePioRootDir, __resetPioRootDir } from "./fs-utils";
 import { enqueueTask, readPendingTask } from "./queues";
 
 // ---------------------------------------------------------------------------
@@ -962,11 +963,6 @@ describe("resolveContractPath", () => {
     expect(result).toBe("/proj/.pio/goals/my-feature/GOAL.md");
   });
 
-  it("resolves root-level path — leading / strips prefix and joins with baseDir", () => {
-    const result = resolveContractPath("/PROJECT/OVERVIEW.md", baseDir, "goals/my-feature");
-    expect(result).toBe("/proj/.pio/PROJECT/OVERVIEW.md");
-  });
-
   it("resolves path without prefix — joins baseDir + contractPath", () => {
     const result = resolveContractPath("GOAL.md", baseDir, undefined);
     expect(result).toBe("/proj/.pio/GOAL.md");
@@ -987,11 +983,6 @@ describe("resolveContractPath", () => {
       { stepNumber: 3 },
     );
     expect(result).toBe("/proj/.pio/goals/my-feature/S03/TASK.md");
-  });
-
-  it("resolves root-level path without prefix", () => {
-    const result = resolveContractPath("/PROJECT/OVERVIEW.md", baseDir, undefined);
-    expect(result).toBe("/proj/.pio/PROJECT/OVERVIEW.md");
   });
 
   it("resolves nested workspace prefix correctly", () => {
@@ -1022,6 +1013,45 @@ describe("resolveContractPath", () => {
         { otherKey: "value" },
       ),
     ).toThrow(/Unresolved placeholder/);
+  });
+
+  // --- projectRelative resolution ---
+
+  it("projectRelative path resolves from pioRootDir ignoring prefix", () => {
+    __resetPioRootDir();
+    initializePioRootDir("/test");
+    const result = resolveContractPath(
+      "PROJECT/OVERVIEW.md",
+      "/other/.pio",
+      "goals/my-feature",
+      undefined,
+      true,
+    );
+    expect(result).toBe("/test/.pio/PROJECT/OVERVIEW.md");
+  });
+
+  it("projectRelative path resolves placeholders before joining", () => {
+    __resetPioRootDir();
+    initializePioRootDir("/test");
+    const result = resolveContractPath(
+      "S{stepNumber:02d}/REPORT.md",
+      "/other/.pio",
+      undefined,
+      { stepNumber: 5 },
+      true,
+    );
+    expect(result).toBe("/test/.pio/S05/REPORT.md");
+  });
+
+  it("projectRelative false uses normal prefixed resolution", () => {
+    const result = resolveContractPath(
+      "GOAL.md",
+      "/base/.pio",
+      "goals/my-feature",
+      undefined,
+      false,
+    );
+    expect(result).toBe("/base/.pio/goals/my-feature/GOAL.md");
   });
 });
 

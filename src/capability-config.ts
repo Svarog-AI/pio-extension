@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { getPioRootDir } from "./fs-utils";
 import type { CapabilityConfig, CapabilityContract, ConfigCallback, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback } from "./types";
 import type { CapabilityPackageConfig, CapabilitySkills } from "./capability-package";
 
@@ -96,7 +97,7 @@ export function resolvePaths(
  *
  * Resolution order:
  * 1. Placeholder resolution via resolvePaths() (if params provided)
- * 2. Root-level paths (/...) join directly with baseDir
+ * 2. Project-relative paths (`projectRelative: true`) join with global pioRootDir
  * 3. Prefixed paths join baseDir + workspacePrefix + contractPath
  * 4. Unprefixed paths join baseDir + contractPath
  *
@@ -104,6 +105,7 @@ export function resolvePaths(
  * @param baseDir - Base directory for path resolution
  * @param workspacePrefix - Optional prefix string (e.g., "goals/my-feature")
  * @param params - Optional session params for placeholder resolution
+ * @param projectRelative - When true, resolves from pioRootDir (`.pio/`) bypassing workspace prefix
  * @returns Fully resolved filesystem path
  */
 export function resolveContractPath(
@@ -111,15 +113,16 @@ export function resolveContractPath(
   baseDir: string,
   workspacePrefix?: string,
   params?: Record<string, unknown>,
+  projectRelative?: boolean,
 ): string {
   // 1. Placeholder resolution — always run through resolvePaths
   // Paths without placeholders pass through unchanged; paths with placeholders
   // throw if keys are missing (consistent with resolvePaths existing behavior).
   let resolved = resolvePaths([contractPath], params ?? {})[0];
 
-  // 2. Root-level path: leading / means skip prefix, join directly with baseDir
-  if (resolved.startsWith("/")) {
-    return join(baseDir, resolved.slice(1));
+  // 2. Project-relative path: resolve from global pioRootDir, ignoring baseDir and prefix
+  if (projectRelative) {
+    return join(getPioRootDir(), resolved);
   }
 
   // 3. Prefixed path: baseDir + workspacePrefix + contractPath

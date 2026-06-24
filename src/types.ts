@@ -31,6 +31,8 @@ export interface MarkdownFileSpec {
   schema?: TSchema;
   /** Optional predicate to determine if this file is required. Receives session params. If absent, file is always required. */
   requiredWhen?: (params?: Record<string, unknown>) => boolean;
+  /** When true, resolves from pioRootDir (`.pio/`) bypassing workspace prefix. Used for files like `.pio/PROJECT/*.md` that live outside goal workspaces. */
+  projectRelative?: boolean;
 }
 
 /**

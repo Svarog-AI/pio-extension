@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { getPioRootDir } from "./fs-utils";
+import { pioRootDir } from "./fs-utils";
 import type { CapabilityConfig, CapabilityContract, ConfigCallback, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback } from "./types";
 import type { CapabilityPackageConfig, CapabilitySkills } from "./capability-package";
 
@@ -122,7 +122,7 @@ export function resolveContractPath(
 
   // 2. Project-relative path: resolve from global pioRootDir, ignoring baseDir and prefix
   if (projectRelative) {
-    return join(getPioRootDir(), resolved);
+    return join(pioRootDir, resolved);
   }
 
   // 3. Prefixed path: baseDir + workspacePrefix + contractPath

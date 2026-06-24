@@ -2,49 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 // ---------------------------------------------------------------------------
-// PIO root directory (global, initialized at extension startup)
+// PIO root directory
 // ---------------------------------------------------------------------------
 
-let _pioRootDir: string | undefined;
-
-/**
- * Initialize the global pioRootDir to `<cwd>/.pio/`.
- * Must be called once during extension startup (src/index.ts).
- * Throws if called more than once.
- */
-export function initializePioRootDir(cwd: string): void {
-  if (_pioRootDir !== undefined) {
-    throw new Error("pioRootDir already initialized");
-  }
-  _pioRootDir = path.join(cwd, ".pio");
-}
-
-/**
- * Return the global pioRootDir (`<cwd>/.pio/`).
- * Throws if called before `initializePioRootDir()`.
- */
-export function getPioRootDir(): string {
-  if (_pioRootDir === undefined) {
-    throw new Error("pioRootDir not initialized. Call initializePioRootDir(cwd) at extension startup.");
-  }
-  return _pioRootDir;
-}
-
-/**
- * Reset pioRootDir for testing. Allows re-initialization.
- * @internal — Do not use in production code.
- */
-export function __testResetPioRootDir(): void {
-  _pioRootDir = undefined;
-}
-
-/**
- * Reset the global pioRootDir to undefined.
- * Intended for tests only — allows re-initialization between test suites.
- */
-export function __resetPioRootDir(): void {
-  _pioRootDir = undefined;
-}
+// pio root directory — resolves to <cwd>/.pio at module load time
+export const pioRootDir = path.join(process.cwd(), ".pio");
 
 // ---------------------------------------------------------------------------
 // Goal directory helpers

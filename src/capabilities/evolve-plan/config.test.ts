@@ -7,7 +7,6 @@ import { resolveCapabilityConfig } from "../../capability-config";
 import { register } from "./config";
 import { readPendingTask } from "../../queues";
 import { CapState } from "../../capability-state";
-import { initializePioRootDir, __testResetPioRootDir } from "../../fs-utils";
 import type { CapabilityContract, MarkdownFileSpec } from "../../types";
 
 // ---------------------------------------------------------------------------
@@ -55,8 +54,6 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at workspaceDir", () => {
 
   beforeEach(() => {
     tempDir = createTempDir();
-    try { __testResetPioRootDir(); } catch { /* noop */ }
-    initializePioRootDir(tempDir);
   });
 
   afterEach(() => cleanup(tempDir));

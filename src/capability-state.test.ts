@@ -4,7 +4,6 @@ import * as path from "node:path";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createCapState, CapState, type FileState } from "./capability-state";
 import { getCapState, setDiscoveredContracts } from "./state-machines/utils";
-import { initializePioRootDir, __resetPioRootDir } from "./fs-utils";
 import type { CapabilityContract, MarkdownFileSpec } from "./types";
 import { Type } from "typebox";
 
@@ -750,11 +749,9 @@ describe("resolvePath() — public method", () => {
 
   beforeEach(() => {
     tempDir = createTempDir();
-    initializePioRootDir(tempDir);
   });
 
   afterEach(() => {
-    __resetPioRootDir();
     cleanup(tempDir);
   });
 
@@ -776,8 +773,8 @@ describe("resolvePath() — public method", () => {
     const entry: MarkdownFileSpec = { name: "overview", file: "PROJECT/OVERVIEW.md", projectRelative: true };
     const capState = createCapState(minimalContract, tempDir, undefined, "goals/my-feature");
     const resolved = capState.resolvePath(entry);
-    // pioRootDir is tempDir/.pio (set by initializePioRootDir)
-    expect(resolved).toBe(path.join(tempDir, ".pio", "PROJECT", "OVERVIEW.md"));
+    // pioRootDir is process.cwd()/.pio (plain const)
+    expect(resolved).toBe(path.join(process.cwd(), ".pio", "PROJECT", "OVERVIEW.md"));
   });
 
   it("resolves projectRelative entry from pioRootDir, ignoring baseDir", () => {
@@ -785,8 +782,8 @@ describe("resolvePath() — public method", () => {
     const entry: MarkdownFileSpec = { name: "overview", file: "PROJECT/OVERVIEW.md", projectRelative: true };
     const capState = createCapState(minimalContract, path.join(tempDir, "some", "other"), undefined, "goals/x");
     const resolved = capState.resolvePath(entry);
-    // pioRootDir is tempDir/.pio — ignores baseDir entirely
-    expect(resolved).toBe(path.join(tempDir, ".pio", "PROJECT", "OVERVIEW.md"));
+    // pioRootDir is process.cwd()/.pio — ignores baseDir entirely
+    expect(resolved).toBe(path.join(process.cwd(), ".pio", "PROJECT", "OVERVIEW.md"));
   });
 
   it("resolves placeholder in non-projectRelative entry", () => {
@@ -800,8 +797,8 @@ describe("resolvePath() — public method", () => {
     const entry: MarkdownFileSpec = { name: "doc", file: "docs/{docName}.md", projectRelative: true };
     const capState = createCapState(minimalContract, tempDir, { docName: "api" });
     const resolved = capState.resolvePath(entry);
-    // pioRootDir is tempDir/.pio
-    expect(resolved).toBe(path.join(tempDir, ".pio", "docs", "api.md"));
+    // pioRootDir is process.cwd()/.pio (plain const)
+    expect(resolved).toBe(path.join(process.cwd(), ".pio", "docs", "api.md"));
   });
 });
 

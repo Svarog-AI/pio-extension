@@ -2,7 +2,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { PrepareSessionCallback, PostValidateCallback, PostExecuteCallback, CapabilityConfig, CapabilitySkills } from "./types";
 import { resolveCapabilityConfig, resolvePaths, resolveContractPath } from "./capability-config";
-import { initializePioRootDir, __resetPioRootDir } from "./fs-utils";
 import { enqueueTask, readPendingTask } from "./queues";
 
 // ---------------------------------------------------------------------------
@@ -1018,8 +1017,6 @@ describe("resolveContractPath", () => {
   // --- projectRelative resolution ---
 
   it("projectRelative path resolves from pioRootDir ignoring prefix", () => {
-    __resetPioRootDir();
-    initializePioRootDir("/test");
     const result = resolveContractPath(
       "PROJECT/OVERVIEW.md",
       "/other/.pio",
@@ -1027,12 +1024,10 @@ describe("resolveContractPath", () => {
       undefined,
       true,
     );
-    expect(result).toBe("/test/.pio/PROJECT/OVERVIEW.md");
+    expect(result).toBe(path.join(process.cwd(), ".pio", "PROJECT", "OVERVIEW.md"));
   });
 
   it("projectRelative path resolves placeholders before joining", () => {
-    __resetPioRootDir();
-    initializePioRootDir("/test");
     const result = resolveContractPath(
       "S{stepNumber:02d}/REPORT.md",
       "/other/.pio",
@@ -1040,7 +1035,7 @@ describe("resolveContractPath", () => {
       { stepNumber: 5 },
       true,
     );
-    expect(result).toBe("/test/.pio/S05/REPORT.md");
+    expect(result).toBe(path.join(process.cwd(), ".pio", "S05", "REPORT.md"));
   });
 
   it("projectRelative false uses normal prefixed resolution", () => {

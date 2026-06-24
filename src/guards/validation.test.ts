@@ -7,7 +7,6 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { CapabilityContract } from "../types";
 import { CapState } from "../capability-state";
 import { validateOutputs, setupValidation, validateFrontmatter, validateInputs, __testSetFileProtectionState } from "./validation";
-import { initializePioRootDir, __testResetPioRootDir } from "../fs-utils";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -29,12 +28,6 @@ function makeCapState(contract: CapabilityContract, dir: string, params?: Record
   return new CapState(contract, dir, params);
 }
 
-/** Initialize pioRootDir for tests (safe to call multiple times via reset). */
-function initPioRootDir(tempDir: string): void {
-  try { __testResetPioRootDir(); } catch { /* noop */ }
-  initializePioRootDir(tempDir);
-}
-
 // ---------------------------------------------------------------------------
 // validateOutputs — contract-based (CapabilityContract)
 // ---------------------------------------------------------------------------
@@ -44,7 +37,6 @@ describe("validateOutputs with CapabilityContract", () => {
 
   beforeEach(() => {
     tempDir = createTempDir();
-    initPioRootDir(tempDir);
   });
 
   afterEach(() => cleanup(tempDir));
@@ -338,7 +330,6 @@ describe("validateFrontmatter with CapabilityContract", () => {
 
   beforeEach(() => {
     tempDir = createTempDir();
-    initPioRootDir(tempDir);
   });
 
   afterEach(() => cleanup(tempDir));
@@ -447,7 +438,6 @@ describe("validateInputs with CapabilityContract", () => {
 
   beforeEach(() => {
     tempDir = createTempDir();
-    initPioRootDir(tempDir);
   });
 
   afterEach(() => cleanup(tempDir));
@@ -716,7 +706,7 @@ skills: not-an-array
 describe("CONTRACT integration — create-goal", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("all inputs present (empty inputs) → success", async () => {
@@ -730,7 +720,7 @@ describe("CONTRACT integration — create-goal", () => {
 describe("CONTRACT integration — create-plan", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("all inputs present → success", async () => {
@@ -764,7 +754,7 @@ describe("CONTRACT integration — create-plan", () => {
 describe("CONTRACT integration — evolve-plan", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("all inputs present → success", async () => {
@@ -833,7 +823,7 @@ steps:
 describe("CONTRACT integration — execute-task", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("all inputs present → success (plain file names)", async () => {
@@ -858,7 +848,7 @@ describe("CONTRACT integration — execute-task", () => {
 describe("CONTRACT integration — review-task", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("all inputs present → success (plain file names)", async () => {
@@ -898,7 +888,7 @@ describe("CONTRACT integration — review-task", () => {
 describe("CONTRACT integration — revise-plan", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("all inputs present → success", async () => {
@@ -932,7 +922,7 @@ describe("CONTRACT integration — revise-plan", () => {
 describe("CONTRACT integration — finalize-goal", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("all inputs present → success", async () => {
@@ -974,7 +964,7 @@ describe("CONTRACT integration — finalize-goal", () => {
 describe("CONTRACT outputs integration — create-goal", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("all outputs present → success: true", async () => {
@@ -997,7 +987,7 @@ describe("CONTRACT outputs integration — create-goal", () => {
 describe("CONTRACT outputs integration — create-plan", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("all outputs present → success: true", async () => {
@@ -1033,7 +1023,7 @@ steps:
 describe("CONTRACT outputs integration — evolve-plan", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("all outputs present (step 1, no DECISIONS.md required) → success: true", async () => {
@@ -1110,7 +1100,7 @@ skills:
 describe("CONTRACT outputs integration — execute-task", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("all outputs present → success: true (plain file names)", async () => {
@@ -1137,7 +1127,7 @@ describe("CONTRACT outputs integration — execute-task", () => {
 describe("CONTRACT outputs integration — review-task", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("all outputs present → success: true (plain file names)", async () => {
@@ -1174,7 +1164,7 @@ lowIssues: 0
 describe("CONTRACT outputs integration — revise-plan", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("all outputs present → success: true", async () => {
@@ -1210,7 +1200,7 @@ steps:
 describe("CONTRACT outputs integration — finalize-goal", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("empty outputs → success: true", async () => {
@@ -1224,7 +1214,7 @@ describe("CONTRACT outputs integration — finalize-goal", () => {
 describe("CONTRACT outputs integration — COMPLETION_SUMMARY.md marker bypass", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("COMPLETION_SUMMARY.md bypasses all output checks (evolve-plan with all outputs missing)", async () => {
@@ -1244,7 +1234,7 @@ describe("CONTRACT outputs integration — COMPLETION_SUMMARY.md marker bypass",
 describe("validateOutputs — unresolved placeholder handling", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("returns failed result when placeholder key is missing from params (no crash)", () => {
@@ -1294,7 +1284,7 @@ describe("validateOutputs — unresolved placeholder handling", () => {
 describe("validateFrontmatter — unresolved placeholder handling", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("returns failed result when placeholder key is missing from params (no crash)", () => {
@@ -1351,7 +1341,7 @@ describe("validateFrontmatter — unresolved placeholder handling", () => {
 describe("validateOutputs — COMPLETION_SUMMARY.md bypass with workspacePrefix", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("COMPLETION_SUMMARY.md bypass works with workspacePrefix set", () => {
@@ -1380,7 +1370,7 @@ describe("validateOutputs — COMPLETION_SUMMARY.md bypass with workspacePrefix"
 describe("setupValidation — auto-derived writeAllowlist from contract outputs", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("contract output paths are resolved through CapState with workspacePrefix", async () => {
@@ -1417,7 +1407,7 @@ describe("setupValidation — auto-derived writeAllowlist from contract outputs"
 describe("validateOutputs — stripped workspacePrefix (no duplication)", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("resolves step-specific paths with goal-level workspaceDir when workspacePrefix is absent", () => {
@@ -1505,7 +1495,7 @@ describe("validateOutputs — stripped workspacePrefix (no duplication)", () => 
 describe("validateInputs — stripped workspacePrefix (no duplication)", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); initPioRootDir(tempDir); });
+  beforeEach(() => { tempDir = createTempDir(); });
   afterEach(() => cleanup(tempDir));
 
   it("resolves input paths with goal-level workspaceDir when workspacePrefix is absent", () => {

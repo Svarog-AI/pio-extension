@@ -2,15 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { __resetPioRootDir } from "./fs-utils";
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Reset pioRootDir before each test so extension startup can initialize it
-beforeEach(() => {
-  __resetPioRootDir();
-});
 
 // Helper: create a minimal mock Pi API that captures event registrations
 function makeMockPi() {

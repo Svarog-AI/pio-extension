@@ -1799,27 +1799,7 @@ describe("resources_discover handler — state reset", () => {
     };
 
     const result = await toolCallHandler(event);
-    // If stale state was cleared, allowProjectWrites is false but writeAllowlistPaths is empty
-    // and projectRoot is undefined — the write should be blocked since allowProjectWrites is false
-    // BUT: with projectRoot = undefined, the allowProjectWrites check short-circuits
-    // Actually, after reset: allowProjectWrites=false, projectRoot=undefined, writeAllowlistPaths=[]
-    // The write to /home/user/my-project/src/index.ts is NOT in writeAllowlistPaths
-    // allowProjectWrites is false, so that check is skipped
-    // It's not /tmp/ either
-    // So it WOULD be blocked... That's not what we want to test.
-    // 
-    // Better approach: verify that writeAllowlistPaths is empty (no stale paths)
-    // by checking that a path that was previously allowed is now blocked,
-    // OR verify that the old read-only files are no longer in the blocklist.
-    //
-    // Actually, the best behavioral test: after reset with null config,
-    // the tool_call handler should NOT block with the old stale allowlist message.
-    // When all state is cleared (allowProjectWrites=false, writeAllowlistPaths=[], projectRoot=undefined),
-    // writes to project files are blocked — but the reason should be the generic "no allowlist"
-    // not the stale session restrictions.
-    //
-    // The real bug is that stale state persists. The best test: verify that a write
-    // that was previously allowed (in writeAllowlistPaths) is now blocked after reset.
+    
     expect(result).toBeDefined();
     expect((result as any).block).toBe(true);
     // The blocked message should NOT mention the old contract path

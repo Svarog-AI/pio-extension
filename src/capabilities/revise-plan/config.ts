@@ -62,7 +62,7 @@ const revisePlanTool = defineTool({
         workspacePrefix: params.workspacePrefix,
         sessionName: params.sessionName ?? `${queueKey} revise-plan`,
         queueKey,
-        initialMessage: params.initialMessage ?? `Archive the current plan and write a fresh plan for workspace "${params.workspacePrefix}".`,
+        initialMessage: params.initialMessage,
       },
     });
 
@@ -108,7 +108,7 @@ async function handleRevisePlan(args: string | undefined, ctx: ExtensionCommandC
     workspacePrefix,
     sessionName: `${queueKey} revise-plan`,
     queueKey,
-    initialMessage: `Archive the current plan and write a fresh plan for workspace "${workspacePrefix}".`,
+    initialMessage: "Revise the plan. Read PLAN_ARCHIVE/ for previous plans, GOAL.md for scope boundaries, and write a fresh PLAN.md.",
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve revise-plan config.", "error");

@@ -202,7 +202,7 @@ describe("finalizeGoalTool.execute", () => {
     const tool = getTool();
 
     // Act: call execute
-    const result = await tool.execute("test-call-id", { workspacePrefix: "goals/my-goal" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute("test-call-id", { workspacePrefix: "goals/my-goal", initialMessage: "test message" }, undefined, undefined, makeCtx(tempDir));
 
     // Assert: result is success message
     const text = result.content[0].text;
@@ -216,6 +216,7 @@ describe("finalizeGoalTool.execute", () => {
     expect(task!.params).toHaveProperty("sessionName", "my-goal finalize-goal");
     expect(task!.params).toHaveProperty("queueKey", "my-goal");
     expect(task!.params).toHaveProperty("initialMessage");
+    expect(task!.params!.initialMessage).toBe("test message");
     expect(task!.params).not.toHaveProperty("goalDir");
   });
 

@@ -129,7 +129,7 @@ describe("dispatch — create-goal → create-plan", () => {
     expect(results[0]).toEqual({
       capability: "create-plan",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Create an implementation plan for goal "my-feature" based on GOAL.md.`,
+      initialMessage: `Create an implementation plan for goal "my-feature". Read GOAL.md to understand current state and target, then produce PLAN.md.`,
       sessionName: "my-feature create-plan",
       params: { workspacePrefix: "goals/my-feature", queueKey: "my-feature" },
     });
@@ -167,7 +167,7 @@ describe("dispatch — create-plan → evolve-plan", () => {
     expect(results[0]).toEqual({
       capability: "evolve-plan",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Generate the specification for Step 1 of goal "my-feature".`,
+      initialMessage: `Generate the specification for Step 1. Read PLAN.md — locate \`### Step 1:\`, review its description and acceptance criteria, then write TASK.md in S01/.`,
       sessionName: "my-feature evolve-plan s1",
       params: { stepNumber: 1, workspacePrefix: "goals/my-feature", queueKey: "my-feature" },
     });
@@ -205,7 +205,7 @@ describe("dispatch — evolve-plan → execute-task", () => {
     expect(results[0]).toEqual({
       capability: "execute-task",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Implement Step 3 of goal "feat" using the specification in TASK.md.`,
+      initialMessage: `Implement Step 3. Your workspace is the step directory (S03/). Read TASK.md for the specification and acceptance criteria, then implement the changes.`,
       sessionName: "feat execute-task s3",
       params: { stepNumber: 3, workspacePrefix: "goals/feat/S03", queueKey: "feat" },
     });
@@ -226,7 +226,7 @@ describe("dispatch — evolve-plan → execute-task", () => {
     expect(results[0]).toEqual({
       capability: "execute-task",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Implement Step 2 of goal "feat" using the specification in TASK.md.`,
+      initialMessage: `Implement Step 2. Your workspace is the step directory (S02/). Read TASK.md for the specification and acceptance criteria, then implement the changes.`,
       sessionName: "feat execute-task s2",
       params: { stepNumber: 2, workspacePrefix: "goals/feat/S02", queueKey: "feat" },
     });
@@ -263,7 +263,7 @@ describe("dispatch — review→evolve→finalize chain", () => {
     expect(reviewResults[0]).toEqual({
       capability: "evolve-plan",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Step 3 approved. Generate the specification for Step 4 of goal "feat".`,
+      initialMessage: `Step 3 approved. Generate the specification for Step 4. Read PLAN.md — locate \`### Step 4:\`, review its description, then write TASK.md in S04/.`,
       sessionName: "feat evolve-plan s4",
       params: { stepNumber: 4, workspacePrefix: "goals/feat", queueKey: "feat" },
     });
@@ -279,7 +279,7 @@ describe("dispatch — review→evolve→finalize chain", () => {
     expect(evolveResults[0]).toEqual({
       capability: "finalize-goal",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Finalize goal "feat" — all steps are complete. Update .pio/PROJECT/ documentation with accumulated decisions.`,
+      initialMessage: `Finalize goal "feat" — all plan steps are complete. Read COMPLETION_SUMMARY.md, then update .pio/PROJECT/ documentation with accumulated decisions.`,
       sessionName: "feat finalize-goal",
       params: {
         workspacePrefix: "goals/feat",
@@ -314,7 +314,7 @@ describe("dispatch — evolve-plan completion detection", () => {
     expect(results[0]).toEqual({
       capability: "finalize-goal",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Finalize goal "feat" — all steps are complete. Update .pio/PROJECT/ documentation with accumulated decisions.`,
+      initialMessage: `Finalize goal "feat" — all plan steps are complete. Read COMPLETION_SUMMARY.md, then update .pio/PROJECT/ documentation with accumulated decisions.`,
       sessionName: "feat finalize-goal",
       params: {
         workspacePrefix: "goals/feat",
@@ -351,7 +351,7 @@ describe("dispatch — evolve-plan completion detection", () => {
     expect(results[0]).toEqual({
       capability: "execute-task",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Implement Step 2 of goal "feat" using the specification in TASK.md.`,
+      initialMessage: `Implement Step 2. Your workspace is the step directory (S02/). Read TASK.md for the specification and acceptance criteria, then implement the changes.`,
       sessionName: "feat execute-task s2",
       params: { stepNumber: 2, workspacePrefix: "goals/feat/S02", queueKey: "feat" },
     });
@@ -381,7 +381,7 @@ describe("dispatch — execute-task → review-task", () => {
     expect(results[0]).toEqual({
       capability: "review-task",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Review the implementation of Step 5 for goal "feat".`,
+      initialMessage: `Review Step 5 for goal "feat". Your workspace is the step directory. Read TASK.md for the specification, SUMMARY.md for what was implemented, and verify against acceptance criteria. Write REVIEW.md.`,
       sessionName: "feat review-task s5",
       params: { stepNumber: 5, workspacePrefix: "goals/feat/S05", queueKey: "feat" },
     });
@@ -402,7 +402,7 @@ describe("dispatch — execute-task → review-task", () => {
     expect(results[0]).toEqual({
       capability: "review-task",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Review the implementation of Step 5 for goal "feat".`,
+      initialMessage: `Review Step 5 for goal "feat". Your workspace is the step directory. Read TASK.md for the specification, SUMMARY.md for what was implemented, and verify against acceptance criteria. Write REVIEW.md.`,
       sessionName: "feat review-task s5",
       params: { stepNumber: 5, workspacePrefix: "goals/feat/S05", queueKey: "feat" },
     });
@@ -438,7 +438,7 @@ describe("dispatch — review-task approval", () => {
     expect(results[0]).toEqual({
       capability: "evolve-plan",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Step 3 approved. Generate the specification for Step 4 of goal "feat".`,
+      initialMessage: `Step 3 approved. Generate the specification for Step 4. Read PLAN.md — locate \`### Step 4:\`, review its description, then write TASK.md in S04/.`,
       sessionName: "feat evolve-plan s4",
       params: { stepNumber: 4, workspacePrefix: "goals/feat", queueKey: "feat" },
     });
@@ -492,7 +492,7 @@ describe("dispatch — review-task rejection", () => {
     expect(results[0]).toEqual({
       capability: "execute-task",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Step 3 rejected. Re-implement using the feedback in REVIEW.md.`,
+      initialMessage: `Step 3 rejected. Your workspace is the step directory (S03/). Read REVIEW.md for rejection reasons and categorized issues. Re-implement by addressing all critical and high-priority findings.`,
       sessionName: "feat execute-task s3",
       params: { stepNumber: 3, workspacePrefix: "goals/feat/S03", queueKey: "feat" },
     });
@@ -617,7 +617,7 @@ describe("TransitionResult shape consistency", () => {
     expect(results[0]).toEqual({
       capability: "execute-task",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Implement Step 1 of goal "feat" using the specification in TASK.md.`,
+      initialMessage: `Implement Step 1. Your workspace is the step directory (S01/). Read TASK.md for the specification and acceptance criteria, then implement the changes.`,
       sessionName: "feat execute-task s1",
       params: { stepNumber: 1, workspacePrefix: "goals/feat/S01", queueKey: "feat" },
     });
@@ -715,7 +715,7 @@ describe("dispatch — revise-plan → evolve-plan", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0].capability).toBe("evolve-plan");
-    expect((results[0] as any).initialMessage).toContain("after plan revision");
+    expect((results[0] as any).initialMessage).toContain("Plan revision complete");
   });
 
   it("preserves queueKey in evolve-plan params", () => {
@@ -793,7 +793,7 @@ describe("recordTransition isolation", () => {
     expect(results[0]).toEqual({
       capability: "create-plan",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Create an implementation plan for goal "test" based on GOAL.md.`,
+      initialMessage: `Create an implementation plan for goal "test". Read GOAL.md to understand current state and target, then produce PLAN.md.`,
       sessionName: "test create-plan",
       params: { workspacePrefix: "goals/test", queueKey: "test" },
     });

@@ -638,7 +638,7 @@ describe("revisePlanTool.execute", () => {
     createGoalTree(tempDir, "my-feature", { withGoal: true, withPlan: true });
 
     const tool = getTool();
-    await tool.execute("test-id", { workspacePrefix: "goals/my-feature" }, undefined, undefined, makeCtx(tempDir));
+    await tool.execute("test-id", { workspacePrefix: "goals/my-feature", initialMessage: "test message" }, undefined, undefined, makeCtx(tempDir));
 
     const task = readPendingTask(tempDir, "my-feature");
     expect(task).toBeDefined();
@@ -648,5 +648,6 @@ describe("revisePlanTool.execute", () => {
     expect(task!.params!.sessionName).toContain("revise-plan");
     expect(task!.params).toHaveProperty("queueKey", "my-feature");
     expect(task!.params).toHaveProperty("initialMessage");
+    expect(task!.params!.initialMessage).toBe("test message");
   });
 });

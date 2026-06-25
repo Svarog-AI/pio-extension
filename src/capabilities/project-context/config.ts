@@ -5,6 +5,7 @@ import { Type } from "typebox";
 import { launchCapability } from "../../capability-session";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
+import { BASE_TOOL_PARAMS } from "../../capability-utils";
 import type { CapabilityPackageConfig } from "../../capability-package";
 
 // ---------------------------------------------------------------------------
@@ -46,15 +47,16 @@ const projectContextTool = defineTool({
   label: "Pio Create Project Context",
   description: "Analyze project files and generate .pio/PROJECT/ context files for session context injection. Use this tool directly — no bash commands or manual file creation needed. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Analyze project and generate .pio/PROJECT/ context files.",
-  parameters: Type.Object({}),
+  parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
 
-  async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+  async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
     enqueueTask(ctx.cwd, "project-context", {
       capability: "project-context",
       params: {
-        sessionName: "project-context",
+        workspacePrefix: params.workspacePrefix,
+        sessionName: params.sessionName ?? "project-context",
         queueKey: "project-context",
-        initialMessage: "Analyze the project and generate .pio/PROJECT/ context files.",
+        initialMessage: params.initialMessage,
       },
     });
 

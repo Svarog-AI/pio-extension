@@ -87,14 +87,13 @@ const reviewTaskTool = defineTool({
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
     const queueKey = deriveQueueKey(params.workspacePrefix);
     const sessionName = params.sessionName ?? `${queueKey} review-task`;
-    const initialMessage = params.initialMessage ?? "Ready.";
     enqueueTask(ctx.cwd, queueKey, {
       capability: "review-task",
       params: {
         workspacePrefix: params.workspacePrefix,
         sessionName,
         queueKey,
-        initialMessage,
+        initialMessage: params.initialMessage,
       },
     });
 
@@ -139,7 +138,7 @@ async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandC
     workspacePrefix,
     sessionName: `${queueKey} review-task`,
     queueKey,
-    initialMessage: `Review the implementation of workspace "${workspacePrefix}".`,
+    initialMessage: "Read TASK.md for the specification, SUMMARY.md for what was implemented, and verify against acceptance criteria. Write REVIEW.md.",
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve review-task config.", "error");

@@ -212,6 +212,9 @@ function normalizePackageConfig(
     throw new Error(`Capability "${cap}" requires an initial message. Provide params.initialMessage or define defaultInitialMessage.`);
   }
 
+  // Prepend workspace directory metadata — covers all paths: state machine, tool handler, default fallback
+  const enrichedMsg = `Workspace directory: ${workspaceDir}\n\n${initialMsg}`;
+
   const readOnlyFiles = resolveField<string[]>(pkg.readOnlyFiles, workspaceDir, resolvedParams);
   const writeAllowlist = resolveField<string[]>(pkg.writeAllowlist, workspaceDir, resolvedParams);
   const allowProjectWrites = pkg.allowProjectWrites ?? false;
@@ -222,7 +225,7 @@ function normalizePackageConfig(
     workspaceDir,
     readOnlyFiles,
     writeAllowlist,
-    initialMsg,
+    enrichedMsg, // workspaceDir-prepended message (covers all paths: state machine, tool handler, default fallback)
     resolvedParams,
     sessionName,
     pkg.prepareSession,

@@ -162,7 +162,7 @@ const createPlanTool = defineTool({
         workspacePrefix: params.workspacePrefix,
         sessionName: params.sessionName ?? `${queueKey} create-plan`,
         queueKey,
-        initialMessage: params.initialMessage ?? `Create an implementation plan for workspace "${params.workspacePrefix}".`,
+        initialMessage: params.initialMessage,
       },
     });
 
@@ -200,7 +200,7 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
     workspacePrefix,
     sessionName: `${queueKey} create-plan`,
     queueKey,
-    initialMessage: `Create an implementation plan for workspace "${workspacePrefix}".`,
+    initialMessage: "Create an implementation plan. Read GOAL.md to understand current state and target, then produce PLAN.md.",
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve create-plan config.", "error");

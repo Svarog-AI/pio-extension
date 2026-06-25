@@ -53,7 +53,7 @@ const createGoalTool = defineTool({
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
     const queueKey = deriveQueueKey(params.workspacePrefix);
     const sessionName = params.sessionName ?? `${queueKey} create-goal`;
-    const initialMessage = typeof params.initialMessage === "string" ? params.initialMessage : undefined;
+    const initialMessage = params.initialMessage;
 
     // Resolve workspace directory: workspaceDir is .pio/, prefix tells us where within it
     const workspaceDir = path.join(ctx.cwd, ".pio", params.workspacePrefix);
@@ -109,6 +109,7 @@ async function handleCreateGoal(args: string | undefined, ctx: ExtensionCommandC
     workspacePrefix,
     sessionName: `${queueKey} create-goal`,
     queueKey,
+    initialMessage: "Create a goal definition. Interview about scope and constraints, then write GOAL.md.",
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve create-goal config.", "error");

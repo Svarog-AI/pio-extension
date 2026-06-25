@@ -6,6 +6,7 @@ import { launchCapability } from "../../capability-session";
 import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
 import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
+import { stepFolderName } from "../../fs-utils";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { TASK_FRONTMATTER_SCHEMA, COMPLETION_SUMMARY_SCHEMA } from "./schemas";
@@ -63,7 +64,7 @@ const evolvePlanTool = defineTool({
         sessionName: params.sessionName ?? `${queueKey} evolve-plan s${params.stepNumber}`,
         queueKey,
         stepNumber: params.stepNumber,
-        initialMessage: params.initialMessage ?? `Generate TASK.md for Step ${params.stepNumber} of workspace "${params.workspacePrefix}".`,
+        initialMessage: params.initialMessage,
       },
     });
 
@@ -117,7 +118,7 @@ async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandC
     sessionName: `${queueKey} evolve-plan s${stepNumber}`,
     queueKey,
     stepNumber,
-    initialMessage: `Generate TASK.md for Step ${stepNumber} of workspace "${workspacePrefix}".`,
+    initialMessage: `Generate the specification for Step ${stepNumber}. Read PLAN.md — locate the step heading, review its description and acceptance criteria, then write TASK.md in ${stepFolderName(stepNumber)}/.`,
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve evolve-plan config.", "error");

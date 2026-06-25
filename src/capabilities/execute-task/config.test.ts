@@ -111,33 +111,16 @@ describe("resolveExecuteReadOnlyFiles", () => {
 // ---------------------------------------------------------------------------
 
 describe("execute-task defaultInitialMessage", () => {
-  it("includes working directory in the message", () => {
-    const message = config.defaultInitialMessage("/my/goal/dir");
+  it("returns static guidance string", () => {
+    const message = config.defaultInitialMessage();
 
-    expect(message).toContain("/my/goal/dir");
+    expect(message).toBe("Read TASK.md and resolve the task.");
   });
 
   it("references TASK.md as the task specification", () => {
-    const message = config.defaultInitialMessage("/dir");
+    const message = config.defaultInitialMessage();
 
     expect(message).toContain("TASK.md");
-  });
-
-  it("references REVIEW.md when step was previously rejected", () => {
-    // Arrange: create a temp dir with REJECTED marker at workspace root
-    const tempDir = createTempDir();
-    try {
-      fs.writeFileSync(path.join(tempDir, "REJECTED"), "", "utf-8");
-
-      // Act: workspaceDir is the directory with REJECTED at root
-      const message = config.defaultInitialMessage(tempDir);
-
-      // Assert: message references REVIEW.md for re-execution context
-      expect(message).toContain("REVIEW.md");
-      expect(message).toContain("previously rejected");
-    } finally {
-      cleanup(tempDir);
-    }
   });
 });
 
@@ -203,7 +186,7 @@ describe("executeTaskTool.execute", () => {
     fs.writeFileSync(path.join(stepDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
 
     const tool = getTool();
-    await tool.execute("test-id", { workspacePrefix: "goals/my-feature/S01" }, undefined, undefined, makeCtx(tempDir));
+    await tool.execute("test-id", { workspacePrefix: "goals/my-feature/S01", initialMessage: "test message" }, undefined, undefined, makeCtx(tempDir));
 
     const task = readPendingTask(tempDir, "S01");
     expect(task).toBeDefined();
@@ -213,5 +196,6 @@ describe("executeTaskTool.execute", () => {
     expect(task!.params!.sessionName).toContain("execute-task");
     expect(task!.params).toHaveProperty("queueKey", "S01");
     expect(task!.params).toHaveProperty("initialMessage");
+    expect(task!.params!.initialMessage).toBe("test message");
   });
 });

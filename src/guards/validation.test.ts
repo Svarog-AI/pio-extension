@@ -1741,6 +1741,156 @@ describe("tool_call handler — allowProjectWrites boundary", () => {
 });
 
 // ---------------------------------------------------------------------------
+// resources_discover handler — state reset on null config
+// ---------------------------------------------------------------------------
+
+describe("resources_discover handler — state reset", () => {
+  beforeEach(() => {
+    mockResolveCapabilityConfig2.mockClear();
+    // Reset state to clean defaults before each test
+    __testSetFileProtectionState({
+      allowProjectWrites: false,
+      projectRoot: undefined,
+      writeAllowlistPaths: [],
+      readOnlyFilePaths: [],
+    });
+  });
+
+  function createMockCtx(entries: Array<{ type: string; customType?: string; data?: unknown }> = []) {
+    return {
+      cwd: "/home/user/my-project",
+      sessionManager: {
+        getEntries: () => entries,
+      },
+    } as any;
+  }
+
+  it("clears stale state when getSessionConfig returns null (no pio-config entry)", async () => {
+    // Arrange: create mock pi and register handlers
+    const { pi, handlers } = createMockPiForToolCall();
+    setupValidation(pi);
+
+    const resourcesDiscoverHandlers = handlers.get("resources_discover");
+    expect(resourcesDiscoverHandlers).toBeDefined();
+    const resourcesDiscoverHandler = resourcesDiscoverHandlers![0];
+
+    const toolCallHandlers = handlers.get("tool_call");
+    expect(toolCallHandlers).toBeDefined();
+    const toolCallHandler = toolCallHandlers![0];
+
+    // Inject stale state: writeAllowlist has a path, allowProjectWrites is false
+    // This simulates a previous sub-session's restrictions still active
+    __testSetFileProtectionState({
+      allowProjectWrites: false,
+      projectRoot: "/home/user/my-project",
+      writeAllowlistPaths: ["/some/old/contract/file.md"],
+      readOnlyFilePaths: ["/some/old/read-only/file.md"],
+    });
+
+    // Act: trigger resources_discover with a context that has no pio-config entry
+    // (getSessionConfig will return null because no custom pio-config entry exists)
+    const ctx = createMockCtx([]);
+    await resourcesDiscoverHandler({} as any, ctx);
+
+    // Assert: stale state should be cleared — a project source file write should NOT be blocked
+    const event = {
+      toolName: "write",
+      input: { path: "/home/user/my-project/src/index.ts" },
+    };
+
+    const result = await toolCallHandler(event);
+    
+    expect(result).toBeDefined();
+    expect((result as any).block).toBe(true);
+    // The blocked message should NOT mention the old contract path
+    expect((result as any).reason).not.toContain("/some/old/contract/file.md");
+  });
+
+  it("clears stale read-only blocklist when config is null", async () => {
+    const { pi, handlers } = createMockPiForToolCall();
+    setupValidation(pi);
+
+    const resourcesDiscoverHandlers = handlers.get("resources_discover");
+    const resourcesDiscoverHandler = resourcesDiscoverHandlers![0];
+    const toolCallHandlers = handlers.get("tool_call");
+    const toolCallHandler = toolCallHandlers![0];
+
+    // Inject stale state with a read-only file
+    __testSetFileProtectionState({
+      allowProjectWrites: false,
+      projectRoot: "/home/user/my-project",
+      writeAllowlistPaths: [],
+      readOnlyFilePaths: ["/home/user/my-project/src/old-guarded.ts"],
+    });
+
+    // Before reset: write to the read-only file should be blocked by read-only check
+    const readOnlyEvent = {
+      toolName: "write",
+      input: { path: "/home/user/my-project/src/old-guarded.ts" },
+    };
+
+    // Trigger reset
+    const ctx = createMockCtx([]);
+    await resourcesDiscoverHandler({} as any, ctx);
+
+    // After reset: the read-only blocklist is cleared
+    // The write is still blocked (allowProjectWrites=false, empty allowlist)
+    // but NOT by the read-only check — it's blocked by the allowlist check
+    const result = await toolCallHandler(readOnlyEvent);
+    expect(result).toBeDefined();
+    expect((result as any).block).toBe(true);
+    // Should NOT mention "read-only" since the list is cleared
+    expect((result as any).reason).not.toContain("read-only");
+  });
+
+  it("populates state from config when config is present", async () => {
+    const { pi, handlers } = createMockPiForToolCall();
+    setupValidation(pi);
+
+    const resourcesDiscoverHandlers = handlers.get("resources_discover");
+    const resourcesDiscoverHandler = resourcesDiscoverHandlers![0];
+    const toolCallHandlers = handlers.get("tool_call");
+    const toolCallHandler = toolCallHandlers![0];
+
+    // Mock resolveCapabilityConfig to return a valid config
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "task", file: "TASK.md" }],
+    };
+
+    mockResolveCapabilityConfig2.mockResolvedValue({
+      capability: "test-capability",
+      workspaceDir: "/home/user/my-project/.pio/goals/test-goal",
+      contract,
+      sessionParams: {},
+      readOnlyFiles: ["GOAL.md"],
+      writeAllowlist: [],
+      allowProjectWrites: true,
+    });
+
+    // Context with pio-config entry containing capability
+    const ctx = createMockCtx([
+      {
+        type: "custom",
+        customType: "pio-config",
+        data: { capability: "test-capability", sessionParams: {} },
+      },
+    ]);
+
+    await resourcesDiscoverHandler({} as any, ctx);
+
+    // State should be populated — project writes should be allowed
+    const event = {
+      toolName: "write",
+      input: { path: "/home/user/my-project/src/index.ts" },
+    };
+
+    const result = await toolCallHandler(event);
+    expect(result).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Helpers for tool_call handler tests
 // ---------------------------------------------------------------------------
 

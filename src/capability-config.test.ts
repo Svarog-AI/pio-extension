@@ -231,17 +231,18 @@ describe("resolveCapabilityConfig — session name passthrough", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveCapabilityConfig — initial message derivation", () => {
-  it("uses defaultInitialMessage when no params.initialMessage", async () => {
+  it("prepends workspace directory to initialMessage (defaultInitialMessage path)", async () => {
     const cwd = "/tmp/proj";
     const params = { capability: "create-goal" as string, goalName: "my-feature", sessionName: "test" };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
     expect(typeof result!.initialMessage).toBe("string");
-    expect(result!.initialMessage).toBe("Ready.");
+    expect(result!.initialMessage!.startsWith("Workspace directory:")).toBe(true);
+    expect(result!.initialMessage).toContain("Ready.");
   });
 
-  it("uses explicit params.initialMessage over defaultInitialMessage", async () => {
+  it("prepends workspace directory to explicit params.initialMessage", async () => {
     const cwd = "/tmp/proj";
     const params = {
       capability: "create-goal" as string,
@@ -252,16 +253,31 @@ describe("resolveCapabilityConfig — initial message derivation", () => {
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.initialMessage).toBe("custom message");
+    expect(result!.initialMessage!.startsWith("Workspace directory:")).toBe(true);
+    expect(result!.initialMessage).toContain("custom message");
   });
 
-  it("defaultInitialMessage is a generic message (no path assumptions)", async () => {
+  it("prepends workspace directory with workspacePrefix (goal-scoped)", async () => {
+    const cwd = "/tmp/proj";
+    const params = {
+      capability: "create-plan" as string,
+      sessionName: "test",
+      workspacePrefix: "goals/my-feature",
+      initialMessage: "plan the feature",
+    };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result!.initialMessage).toBe(`Workspace directory: ${path.join(cwd, ".pio", "goals", "my-feature")}\n\nplan the feature`);
+  });
+
+  it("defaultInitialMessage content is preserved after workspaceDir prefix", async () => {
     const cwd = "/tmp/proj";
     const params = { capability: "create-plan" as string, goalName: "my-feature", sessionName: "test" };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result!.initialMessage).toBe("Ready.");
+    expect(result!.initialMessage).toBe(`Workspace directory: ${path.join(cwd, ".pio")}\n\nReady.`);
   });
 });
 
@@ -827,7 +843,8 @@ describe("resolveCapabilityConfig — mandatory param enforcement", () => {
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
     expect(result).toBeDefined();
-    expect(result!.initialMessage).toBe("Ready.");
+    expect(result!.initialMessage!.startsWith("Workspace directory:")).toBe(true);
+    expect(result!.initialMessage).toContain("Ready.");
   });
 
   it("does not throw when params.initialMessage is provided", async () => {
@@ -835,7 +852,8 @@ describe("resolveCapabilityConfig — mandatory param enforcement", () => {
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
     expect(result).toBeDefined();
-    expect(result!.initialMessage).toBe("custom");
+    expect(result!.initialMessage!.startsWith("Workspace directory:")).toBe(true);
+    expect(result!.initialMessage).toContain("custom");
   });
 });
 
@@ -1086,9 +1104,10 @@ describe("custom initial message passthrough", () => {
     const task = readPendingTask(cwd, queueKey);
     const config = await resolveCapabilityConfig(cwd, { ...task!.params, capability: task!.capability, sessionName: "test" });
 
-    // Assert: config.initialMessage is the custom message, not the default "Ready."
+    // Assert: config.initialMessage starts with workspace metadata and contains the custom message
     expect(config).toBeDefined();
-    expect(config!.initialMessage).toBe(customMessage);
+    expect(config!.initialMessage!.startsWith("Workspace directory:")).toBe(true);
+    expect(config!.initialMessage).toContain(customMessage);
     expect(config!.initialMessage).not.toBe("Ready.");
   });
 
@@ -1103,9 +1122,10 @@ describe("custom initial message passthrough", () => {
     const task = readPendingTask(cwd, queueKey);
     const config = await resolveCapabilityConfig(cwd, { ...task!.params, capability: task!.capability, sessionName: "test" });
 
-    // Assert: config.initialMessage is the default ("Ready.")
+    // Assert: config.initialMessage starts with workspace metadata and contains the default ("Ready.")
     expect(config).toBeDefined();
-    expect(config!.initialMessage).toBe("Ready.");
+    expect(config!.initialMessage!.startsWith("Workspace directory:")).toBe(true);
+    expect(config!.initialMessage).toContain("Ready.");
   });
 
   it("throw: when neither params.initialMessage nor defaultInitialMessage provides a value", async () => {
@@ -1150,8 +1170,11 @@ describe("all real capabilities define defaultInitialMessage", () => {
     const config = await resolveCapabilityConfig("/tmp/proj", { capability: "execute-task" as string, stepNumber: 1, sessionName: "test" });
     expect(config!.initialMessage).toBeDefined();
     expect(config!.initialMessage!.length).toBeGreaterThan(0);
-    // With fixed workspaceDir (.pio/), the message should reference .pio/ not a goal dir
+    // Message starts with workspace metadata block containing .pio/
+    expect(config!.initialMessage!.startsWith("Workspace directory:")).toBe(true);
     expect(config!.initialMessage).toContain(".pio");
+    // Original defaultInitialMessage content preserved after the metadata block
+    expect(config!.initialMessage).toContain("Read TASK.md and resolve the task");
   });
 
   it("review-task defaultInitialMessage returns a non-empty string", async () => {

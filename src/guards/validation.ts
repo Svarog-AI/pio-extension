@@ -252,48 +252,57 @@ export function setupValidation(pi: ExtensionAPI) {
   // 1. Read validation config on session discovery; reset counters
   pi.on("resources_discover", async (_event, ctx) => {
     const config = await getSessionConfig(ctx);
-    if (!config) return;
-    workspaceDir = config.workspaceDir;
 
-    // workspacePrefix is stripped from sessionParams after normalization (Step 9).
-    // workspaceDir already has the prefix baked in, so CapState.workspacePrefix = undefined.
-    const capState = new CapState(config.contract, workspaceDir!, config.sessionParams);
+    if (config) {
+      workspaceDir = config.workspaceDir;
 
-    // Resolve read-only file paths through CapState (always non-projectRelative)
-    if (config.readOnlyFiles && config.workspaceDir) {
-      readOnlyFilePaths = config.readOnlyFiles.map((f) =>
-        path.resolve(capState.resolvePath({ name: "_ro", file: f }))
-      );
-    } else {
-      readOnlyFilePaths = [];
-    }
+      // workspacePrefix is stripped from sessionParams after normalization (Step 9).
+      // workspaceDir already has the prefix baked in, so CapState.workspacePrefix = undefined.
+      const capState = new CapState(config.contract, workspaceDir!, config.sessionParams);
 
-    // Start with explicit writeAllowlist from config
-    let baseAllowlist: string[] = [];
-    if (config.writeAllowlist && config.workspaceDir) {
-      baseAllowlist = config.writeAllowlist.map((f) =>
-        path.resolve(capState.resolvePath({ name: "_wl", file: f }))
-      );
-    }
+      // Resolve read-only file paths through CapState (always non-projectRelative)
+      if (config.readOnlyFiles && config.workspaceDir) {
+        readOnlyFilePaths = config.readOnlyFiles.map((f) =>
+          path.resolve(capState.resolvePath({ name: "_ro", file: f }))
+        );
+      } else {
+        readOnlyFilePaths = [];
+      }
 
-    // Auto-derive from contract outputs — "zero manual configuration per capability"
-    // Uses CapState.resolvePath() which handles projectRelative: true entries
-    // (resolves to .pio/PROJECT/* via global pioRootDir).
-    const contractOutputPaths: string[] = [];
-    if (config.contract?.outputs) {
-      for (const entry of config.contract.outputs) {
-        if (isMarkdownFileSpec(entry)) {
-          contractOutputPaths.push(path.resolve(capState.resolvePath(entry)));
+      // Start with explicit writeAllowlist from config
+      let baseAllowlist: string[] = [];
+      if (config.writeAllowlist && config.workspaceDir) {
+        baseAllowlist = config.writeAllowlist.map((f) =>
+          path.resolve(capState.resolvePath({ name: "_wl", file: f }))
+        );
+      }
+
+      // Auto-derive from contract outputs — "zero manual configuration per capability"
+      // Uses CapState.resolvePath() which handles projectRelative: true entries
+      // (resolves to .pio/PROJECT/* via global pioRootDir).
+      const contractOutputPaths: string[] = [];
+      if (config.contract?.outputs) {
+        for (const entry of config.contract.outputs) {
+          if (isMarkdownFileSpec(entry)) {
+            contractOutputPaths.push(path.resolve(capState.resolvePath(entry)));
+          }
         }
       }
+
+      writeAllowlistPaths = [...new Set([...baseAllowlist, ...contractOutputPaths])];
+
+      allowProjectWrites = config.allowProjectWrites ?? false;
+
+      // Project root boundary for allowProjectWrites — constrains writes to project workspace
+      projectRoot = path.resolve(ctx.cwd ?? process.cwd());
+    } else {
+      // Not a pio sub-session — reset all state to prevent stale restrictions from leaking
+      writeAllowlistPaths = [];
+      readOnlyFilePaths = [];
+      allowProjectWrites = false;
+      workspaceDir = undefined;
+      projectRoot = undefined;
     }
-
-    writeAllowlistPaths = [...new Set([...baseAllowlist, ...contractOutputPaths])];
-
-    allowProjectWrites = config.allowProjectWrites ?? false;
-
-    // Project root boundary for allowProjectWrites — constrains writes to project workspace
-    projectRoot = path.resolve(ctx.cwd ?? process.cwd());
   });
 
   // 3. File protection: unified write check + read-only blocklist fallback

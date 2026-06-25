@@ -63,7 +63,7 @@ const evolvePlanTool = defineTool({
         sessionName: params.sessionName ?? `${queueKey} evolve-plan s${params.stepNumber}`,
         queueKey,
         stepNumber: params.stepNumber,
-        initialMessage: params.initialMessage ?? `Generate TASK.md for Step ${params.stepNumber} of workspace "${params.workspacePrefix}".`,
+        initialMessage: params.initialMessage,
       },
     });
 

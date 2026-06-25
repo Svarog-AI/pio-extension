@@ -162,7 +162,7 @@ const createPlanTool = defineTool({
         workspacePrefix: params.workspacePrefix,
         sessionName: params.sessionName ?? `${queueKey} create-plan`,
         queueKey,
-        initialMessage: params.initialMessage ?? `Create an implementation plan for workspace "${params.workspacePrefix}".`,
+        initialMessage: params.initialMessage,
       },
     });
 

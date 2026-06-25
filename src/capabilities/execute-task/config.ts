@@ -84,14 +84,13 @@ const executeTaskTool = defineTool({
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
     const queueKey = deriveQueueKey(params.workspacePrefix);
     const sessionName = params.sessionName ?? `${queueKey} execute-task`;
-    const initialMessage = params.initialMessage ?? "Ready.";
     enqueueTask(ctx.cwd, queueKey, {
       capability: "execute-task",
       params: {
         workspacePrefix: params.workspacePrefix,
         sessionName,
         queueKey,
-        initialMessage,
+        initialMessage: params.initialMessage,
       },
     });
 

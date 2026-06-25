@@ -62,7 +62,7 @@ const revisePlanTool = defineTool({
         workspacePrefix: params.workspacePrefix,
         sessionName: params.sessionName ?? `${queueKey} revise-plan`,
         queueKey,
-        initialMessage: params.initialMessage ?? `Archive the current plan and write a fresh plan for workspace "${params.workspacePrefix}".`,
+        initialMessage: params.initialMessage,
       },
     });
 

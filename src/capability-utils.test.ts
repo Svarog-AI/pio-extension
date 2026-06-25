@@ -31,8 +31,10 @@ describe("BASE_TOOL_PARAMS", () => {
     expect(BASE_TOOL_PARAMS.sessionName).toBeDefined();
   });
 
-  it("exports initialMessage as optional string", () => {
+  it("exports initialMessage as required string", () => {
     expect(BASE_TOOL_PARAMS.initialMessage).toBeDefined();
+    // Type.String() produces { type: "string" } — Type.Optional wraps it differently
+    expect((BASE_TOOL_PARAMS.initialMessage as any).type).toBe("string");
   });
 });
 

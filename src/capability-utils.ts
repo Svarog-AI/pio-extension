@@ -46,7 +46,7 @@ export async function getSessionConfig(ctx: ExtensionContext): Promise<Capabilit
 export const BASE_TOOL_PARAMS = {
   workspacePrefix: Type.String({ description: "Workspace prefix for path resolution, e.g. 'goals/my-feature/S03'" }),
   sessionName: Type.Optional(Type.String({ description: "Human-readable session name" })),
-  initialMessage: Type.Optional(Type.String({ description: "Custom kickoff message for the session" })),
+  initialMessage: Type.String({ description: "Custom kickoff message for the session" }),
 };
 
 /**

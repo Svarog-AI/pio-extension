@@ -407,7 +407,7 @@ describe("evolvePlanTool.execute", () => {
     createGoalTreeWithFrontmatter(tempDir, "my-feature", 3);
 
     const tool = getTool();
-    await tool.execute("test-id", { workspacePrefix: "goals/my-feature", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
+    await tool.execute("test-id", { workspacePrefix: "goals/my-feature", stepNumber: 1, initialMessage: "test message" }, undefined, undefined, makeCtx(tempDir));
 
     const task = readPendingTask(tempDir, "my-feature");
     expect(task).toBeDefined();
@@ -418,5 +418,6 @@ describe("evolvePlanTool.execute", () => {
     expect(task!.params).toHaveProperty("queueKey", "my-feature");
     expect(task!.params).toHaveProperty("stepNumber");
     expect(task!.params).toHaveProperty("initialMessage");
+    expect(task!.params!.initialMessage).toBe("test message");
   });
 });

@@ -60,7 +60,7 @@ const finalizeGoalTool = defineTool({
         workspacePrefix: params.workspacePrefix,
         sessionName: params.sessionName ?? `${queueKey} finalize-goal`,
         queueKey,
-        initialMessage: params.initialMessage ?? `Finalize workspace "${params.workspacePrefix}" — update .pio/PROJECT/ documentation.`,
+        initialMessage: params.initialMessage,
       },
     });
 

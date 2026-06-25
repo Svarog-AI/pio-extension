@@ -580,7 +580,7 @@ describe("create-plan tool execute — pre-launch validation", () => {
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
 
     const tool = getTool();
-    await tool.execute("test-id", { workspacePrefix: "goals/my-feature" }, undefined, undefined, makeCtx(tempDir));
+    await tool.execute("test-id", { workspacePrefix: "goals/my-feature", initialMessage: "test message" }, undefined, undefined, makeCtx(tempDir));
 
     // Assert: task was enqueued with correct params
     const task = readPendingTask(tempDir, "my-feature");
@@ -590,5 +590,6 @@ describe("create-plan tool execute — pre-launch validation", () => {
     expect(task!.params).toHaveProperty("sessionName", "my-feature create-plan");
     expect(task!.params).toHaveProperty("queueKey", "my-feature");
     expect(task!.params).toHaveProperty("initialMessage");
+    expect(task!.params!.initialMessage).toBe("test message");
   });
 });

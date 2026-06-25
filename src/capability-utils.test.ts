@@ -1,4 +1,5 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+import { Type } from "typebox";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getSessionConfig, BASE_TOOL_PARAMS, deriveQueueKey } from "./capability-utils";
 
@@ -32,9 +33,11 @@ describe("BASE_TOOL_PARAMS", () => {
   });
 
   it("exports initialMessage as required string", () => {
-    expect(BASE_TOOL_PARAMS.initialMessage).toBeDefined();
-    // Type.String() produces { type: "string" } — Type.Optional wraps it differently
-    expect((BASE_TOOL_PARAMS.initialMessage as any).type).toBe("string");
+    const schema = Type.Object({ ...BASE_TOOL_PARAMS });
+    // The distinction between required and optional appears in the .required array
+    expect(schema.required).toContain("initialMessage");
+    // sessionName is optional — verify the test actually discriminates
+    expect(schema.required).not.toContain("sessionName");
   });
 });
 

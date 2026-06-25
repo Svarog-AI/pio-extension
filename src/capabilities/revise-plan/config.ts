@@ -108,7 +108,7 @@ async function handleRevisePlan(args: string | undefined, ctx: ExtensionCommandC
     workspacePrefix,
     sessionName: `${queueKey} revise-plan`,
     queueKey,
-    initialMessage: `Archive the current plan and write a fresh plan for workspace "${workspacePrefix}".`,
+    initialMessage: "Revise the plan. Read PLAN_ARCHIVE/ for previous plans, GOAL.md for scope boundaries, and write a fresh PLAN.md.",
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve revise-plan config.", "error");

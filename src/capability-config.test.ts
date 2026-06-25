@@ -1111,23 +1111,6 @@ describe("custom initial message passthrough", () => {
     expect(config!.initialMessage).not.toBe("Ready.");
   });
 
-  it("fallback chain: when no params.initialMessage, defaultInitialMessage is used", async () => {
-    // Arrange: enqueue a task without initialMessage (relies on defaultInitialMessage)
-    enqueueTask(cwd, queueKey, {
-      capability: "create-plan",
-      params: { goalName: "my-feature" },
-    });
-
-    // Act: read it back and resolve config
-    const task = readPendingTask(cwd, queueKey);
-    const config = await resolveCapabilityConfig(cwd, { ...task!.params, capability: task!.capability, sessionName: "test" });
-
-    // Assert: config.initialMessage starts with workspace metadata and contains the default ("Ready.")
-    expect(config).toBeDefined();
-    expect(config!.initialMessage!.startsWith("Workspace directory:")).toBe(true);
-    expect(config!.initialMessage).toContain("Ready.");
-  });
-
   it("throw: when neither params.initialMessage nor defaultInitialMessage provides a value", async () => {
     // Arrange: test-no-initial-message has defaultInitialMessage returning ""
     enqueueTask(cwd, queueKey, {

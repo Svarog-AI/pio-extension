@@ -109,6 +109,7 @@ async function handleCreateGoal(args: string | undefined, ctx: ExtensionCommandC
     workspacePrefix,
     sessionName: `${queueKey} create-goal`,
     queueKey,
+    initialMessage: "Create a goal definition. Interview about scope and constraints, then write GOAL.md.",
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve create-goal config.", "error");

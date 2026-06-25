@@ -111,33 +111,16 @@ describe("resolveExecuteReadOnlyFiles", () => {
 // ---------------------------------------------------------------------------
 
 describe("execute-task defaultInitialMessage", () => {
-  it("includes working directory in the message", () => {
-    const message = config.defaultInitialMessage("/my/goal/dir");
+  it("returns static guidance string", () => {
+    const message = config.defaultInitialMessage();
 
-    expect(message).toContain("/my/goal/dir");
+    expect(message).toBe("Read TASK.md and resolve the task.");
   });
 
   it("references TASK.md as the task specification", () => {
-    const message = config.defaultInitialMessage("/dir");
+    const message = config.defaultInitialMessage();
 
     expect(message).toContain("TASK.md");
-  });
-
-  it("references REVIEW.md when step was previously rejected", () => {
-    // Arrange: create a temp dir with REJECTED marker at workspace root
-    const tempDir = createTempDir();
-    try {
-      fs.writeFileSync(path.join(tempDir, "REJECTED"), "", "utf-8");
-
-      // Act: workspaceDir is the directory with REJECTED at root
-      const message = config.defaultInitialMessage(tempDir);
-
-      // Assert: message references REVIEW.md for re-execution context
-      expect(message).toContain("REVIEW.md");
-      expect(message).toContain("previously rejected");
-    } finally {
-      cleanup(tempDir);
-    }
   });
 });
 

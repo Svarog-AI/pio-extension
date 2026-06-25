@@ -397,6 +397,7 @@ const goalFromIssueTool = defineTool({
   description: "Convert an existing issue into a structured goal by queuing a create-goal session. Use this tool directly — no bash commands or manual file creation needed. The user can run `/pio-next-task` to start the sub-session.",
   parameters: Type.Object({
     issuePath: Type.String({ description: "Issue filename or identifier (e.g. fix-something.md or fix-something)" }),
+    initialMessage: Type.Optional(Type.String({ description: "Custom initial message for the goal definition session" })),
   }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -413,7 +414,7 @@ const goalFromIssueTool = defineTool({
         workspacePrefix: `goals/${goalName}`,
         sessionName: `${goalName} create-goal`,
         queueKey: goalName,
-        initialMessage: `The following issue has been selected for this goal. Use its content as starting context:\n\nIssue file: ${validation.issuePath}`,
+        initialMessage: params.initialMessage ?? `Create a goal from this issue. Read ${validation.issuePath} for context, interview about scope and constraints, then write GOAL.md.`,
         fileCleanup: [validation.issuePath!],
       },
     });
@@ -448,7 +449,7 @@ async function handleGoalFromIssue(args: string | undefined, ctx: ExtensionComma
     workspacePrefix: `goals/${goalName}`,
     sessionName: `${goalName} create-goal`,
     queueKey: goalName,
-    initialMessage: `The following issue has been selected for this goal. Use its content as starting context:\n\nIssue file: ${validation.issuePath}`,
+    initialMessage: `Create a goal from this issue. Read ${validation.issuePath} for context, interview about scope and constraints, then write GOAL.md.`,
     fileCleanup: [validation.issuePath!],
   });
   if (!config) {

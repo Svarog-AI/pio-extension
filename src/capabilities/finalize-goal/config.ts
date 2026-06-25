@@ -106,7 +106,7 @@ async function handleFinalizeGoal(args: string | undefined, ctx: ExtensionComman
     workspacePrefix,
     sessionName: `${queueKey} finalize-goal`,
     queueKey,
-    initialMessage: `Finalize workspace "${workspacePrefix}" — update .pio/PROJECT/ documentation.`,
+    initialMessage: "All plan steps are complete. Read COMPLETION_SUMMARY.md, then update .pio/PROJECT/ documentation with accumulated decisions.",
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve finalize-goal config.", "error");

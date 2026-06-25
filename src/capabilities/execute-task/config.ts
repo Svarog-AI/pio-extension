@@ -1,8 +1,6 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import * as fs from "node:fs";
-import * as path from "node:path";
 
 import { CapState } from "../../capability-state";
 import { launchCapability, setMergedSkills } from "../../capability-session";
@@ -37,19 +35,7 @@ const capabilityConfig = {
   skills: {
     mandatory: ["tdd", "pio-git"],
   },
-  defaultInitialMessage: (workspaceDir: string, _params?: Record<string, unknown>) => {
-    // workspaceDir is already the resolved step directory (from Step 9).
-    // Check for REJECTED marker at workspace root — no folder construction needed.
-    let prefix = "";
-    try {
-      if (fs.existsSync(path.join(workspaceDir, "REJECTED"))) {
-        prefix = "This step was previously rejected. Read `REVIEW.md` for detailed review feedback before implementing. Address all critical and high-priority issues identified in the review.\n\n";
-      }
-    } catch {
-      // If filesystem read fails, fall through to the normal message
-    }
-    return `${prefix}Working directory is ${workspaceDir}. Read TASK.md and resolve the task.`;
-  },
+  defaultInitialMessage: () => "Read TASK.md and resolve the task.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;
@@ -135,7 +121,7 @@ async function handleExecuteTask(args: string | undefined, ctx: ExtensionCommand
     workspacePrefix,
     sessionName: `${queueKey} execute-task`,
     queueKey,
-    initialMessage: `Working directory is ${workspacePrefix}. Read TASK.md and resolve the task.`,
+    initialMessage: "Read TASK.md for the specification and acceptance criteria, then implement the changes.",
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve execute-task config.", "error");

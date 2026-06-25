@@ -138,7 +138,7 @@ async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandC
     workspacePrefix,
     sessionName: `${queueKey} review-task`,
     queueKey,
-    initialMessage: `Review the implementation of workspace "${workspacePrefix}".`,
+    initialMessage: "Read TASK.md for the specification, SUMMARY.md for what was implemented, and verify against acceptance criteria. Write REVIEW.md.",
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve review-task config.", "error");

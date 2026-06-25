@@ -14,6 +14,7 @@ import type { MarkdownFileSpec, OutputEntry } from "../types";
 let readOnlyFilePaths: string[] = [];
 let writeAllowlistPaths: string[] = [];
 let allowProjectWrites: boolean = false;
+let isActivePioSession: boolean = false;
 
 /** Session workspace directory — resolved directory for resolving validation file paths. */
 let workspaceDir: string | undefined;
@@ -36,11 +37,13 @@ export function __testSetFileProtectionState(state?: {
   projectRoot?: string | undefined;
   writeAllowlistPaths?: string[];
   readOnlyFilePaths?: string[];
+  isActivePioSession?: boolean;
 }) {
   if (state?.allowProjectWrites !== undefined) allowProjectWrites = state.allowProjectWrites;
   if (state?.projectRoot !== undefined) projectRoot = state.projectRoot;
   if (state?.writeAllowlistPaths !== undefined) writeAllowlistPaths = state.writeAllowlistPaths;
   if (state?.readOnlyFilePaths !== undefined) readOnlyFilePaths = state.readOnlyFilePaths;
+  if (state?.isActivePioSession !== undefined) isActivePioSession = state.isActivePioSession;
 }
 
 // ---------------------------------------------------------------------------
@@ -254,6 +257,7 @@ export function setupValidation(pi: ExtensionAPI) {
     const config = await getSessionConfig(ctx);
 
     if (config) {
+      isActivePioSession = true;
       workspaceDir = config.workspaceDir;
 
       // workspacePrefix is stripped from sessionParams after normalization (Step 9).
@@ -297,6 +301,7 @@ export function setupValidation(pi: ExtensionAPI) {
       projectRoot = path.resolve(ctx.cwd ?? process.cwd());
     } else {
       // Not a pio sub-session — reset all state to prevent stale restrictions from leaking
+      isActivePioSession = false;
       writeAllowlistPaths = [];
       readOnlyFilePaths = [];
       allowProjectWrites = false;
@@ -307,6 +312,9 @@ export function setupValidation(pi: ExtensionAPI) {
 
   // 3. File protection: unified write check + read-only blocklist fallback
   pi.on("tool_call", async (event) => {
+    // Skip if not in a pio sub-session — regular sessions should not be restricted
+    if (!isActivePioSession) return;
+
     const input = event.input as Record<string, unknown> | undefined;
 
     // Collect all target file paths from write tools (done once)

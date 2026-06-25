@@ -1556,6 +1556,7 @@ describe("tool_call handler — allowProjectWrites boundary", () => {
   beforeEach(() => {
     // Reset state before each test
     __testSetFileProtectionState({
+      isActivePioSession: false,
       allowProjectWrites: false,
       projectRoot: undefined,
       writeAllowlistPaths: [],
@@ -1573,6 +1574,7 @@ describe("tool_call handler — allowProjectWrites boundary", () => {
 
   it("allows writes within project root when allowProjectWrites is true", async () => {
     __testSetFileProtectionState({
+      isActivePioSession: true,
       allowProjectWrites: true,
       projectRoot,
       writeAllowlistPaths: [],
@@ -1591,6 +1593,7 @@ describe("tool_call handler — allowProjectWrites boundary", () => {
 
   it("blocks writes outside project root even when allowProjectWrites is true", async () => {
     __testSetFileProtectionState({
+      isActivePioSession: true,
       allowProjectWrites: true,
       projectRoot,
       writeAllowlistPaths: [],
@@ -1610,6 +1613,7 @@ describe("tool_call handler — allowProjectWrites boundary", () => {
 
   it("blocks writes to /etc/ even when allowProjectWrites is true", async () => {
     __testSetFileProtectionState({
+      isActivePioSession: true,
       allowProjectWrites: true,
       projectRoot,
       writeAllowlistPaths: [],
@@ -1629,6 +1633,7 @@ describe("tool_call handler — allowProjectWrites boundary", () => {
 
   it("blocks all project writes when allowProjectWrites is false", async () => {
     __testSetFileProtectionState({
+      isActivePioSession: true,
       allowProjectWrites: false,
       projectRoot,
       writeAllowlistPaths: [],
@@ -1648,6 +1653,7 @@ describe("tool_call handler — allowProjectWrites boundary", () => {
 
   it("blocks writes to .pio/ paths even when allowProjectWrites is true", async () => {
     __testSetFileProtectionState({
+      isActivePioSession: true,
       allowProjectWrites: true,
       projectRoot,
       writeAllowlistPaths: [],
@@ -1668,6 +1674,7 @@ describe("tool_call handler — allowProjectWrites boundary", () => {
   it("allows writes to contract output files on allowlist", async () => {
     const contractPath = "/home/user/my-project/.pio/goals/test/S01/TASK.md";
     __testSetFileProtectionState({
+      isActivePioSession: true,
       allowProjectWrites: true,
       projectRoot,
       writeAllowlistPaths: [contractPath],
@@ -1686,6 +1693,7 @@ describe("tool_call handler — allowProjectWrites boundary", () => {
 
   it("allows /tmp/ writes regardless of allowProjectWrites", async () => {
     __testSetFileProtectionState({
+      isActivePioSession: true,
       allowProjectWrites: false,
       projectRoot,
       writeAllowlistPaths: [],
@@ -1704,6 +1712,7 @@ describe("tool_call handler — allowProjectWrites boundary", () => {
 
   it("blocks writes to sibling project when allowProjectWrites is true", async () => {
     __testSetFileProtectionState({
+      isActivePioSession: true,
       allowProjectWrites: true,
       projectRoot,
       writeAllowlistPaths: [],
@@ -1723,6 +1732,7 @@ describe("tool_call handler — allowProjectWrites boundary", () => {
 
   it("allows writes at project root subdirectory boundary", async () => {
     __testSetFileProtectionState({
+      isActivePioSession: true,
       allowProjectWrites: true,
       projectRoot,
       writeAllowlistPaths: [],
@@ -1749,6 +1759,7 @@ describe("resources_discover handler — state reset", () => {
     mockResolveCapabilityConfig2.mockClear();
     // Reset state to clean defaults before each test
     __testSetFileProtectionState({
+      isActivePioSession: false,
       allowProjectWrites: false,
       projectRoot: undefined,
       writeAllowlistPaths: [],
@@ -1765,7 +1776,7 @@ describe("resources_discover handler — state reset", () => {
     } as any;
   }
 
-  it("clears stale state when getSessionConfig returns null (no pio-config entry)", async () => {
+  it("allows writes in a regular session (no pio-config, isActivePioSession=false)", async () => {
     // Arrange: create mock pi and register handlers
     const { pi, handlers } = createMockPiForToolCall();
     setupValidation(pi);
@@ -1778,9 +1789,33 @@ describe("resources_discover handler — state reset", () => {
     expect(toolCallHandlers).toBeDefined();
     const toolCallHandler = toolCallHandlers![0];
 
-    // Inject stale state: writeAllowlist has a path, allowProjectWrites is false
-    // This simulates a previous sub-session's restrictions still active
+    // Trigger resources_discover with no pio-config entry
+    // This sets isActivePioSession = false and resets all state
+    const ctx = createMockCtx([]);
+    await resourcesDiscoverHandler({} as any, ctx);
+
+    // Assert: a regular session write should NOT be blocked
+    const event = {
+      toolName: "write",
+      input: { path: "/home/user/my-project/src/index.ts" },
+    };
+
+    const result = await toolCallHandler(event);
+    expect(result).toBeUndefined();
+  });
+
+  it("clears stale state and allows writes when getSessionConfig returns null", async () => {
+    const { pi, handlers } = createMockPiForToolCall();
+    setupValidation(pi);
+
+    const resourcesDiscoverHandlers = handlers.get("resources_discover");
+    const resourcesDiscoverHandler = resourcesDiscoverHandlers![0];
+    const toolCallHandlers = handlers.get("tool_call");
+    const toolCallHandler = toolCallHandlers![0];
+
+    // Inject stale state: simulates a previous sub-session's restrictions still active
     __testSetFileProtectionState({
+      isActivePioSession: true,
       allowProjectWrites: false,
       projectRoot: "/home/user/my-project",
       writeAllowlistPaths: ["/some/old/contract/file.md"],
@@ -1788,22 +1823,17 @@ describe("resources_discover handler — state reset", () => {
     });
 
     // Act: trigger resources_discover with a context that has no pio-config entry
-    // (getSessionConfig will return null because no custom pio-config entry exists)
     const ctx = createMockCtx([]);
     await resourcesDiscoverHandler({} as any, ctx);
 
-    // Assert: stale state should be cleared — a project source file write should NOT be blocked
+    // Assert: isActivePioSession is now false — tool_call handler should pass through
     const event = {
       toolName: "write",
       input: { path: "/home/user/my-project/src/index.ts" },
     };
 
     const result = await toolCallHandler(event);
-    
-    expect(result).toBeDefined();
-    expect((result as any).block).toBe(true);
-    // The blocked message should NOT mention the old contract path
-    expect((result as any).reason).not.toContain("/some/old/contract/file.md");
+    expect(result).toBeUndefined();
   });
 
   it("clears stale read-only blocklist when config is null", async () => {
@@ -1817,30 +1847,25 @@ describe("resources_discover handler — state reset", () => {
 
     // Inject stale state with a read-only file
     __testSetFileProtectionState({
+      isActivePioSession: true,
       allowProjectWrites: false,
       projectRoot: "/home/user/my-project",
       writeAllowlistPaths: [],
       readOnlyFilePaths: ["/home/user/my-project/src/old-guarded.ts"],
     });
 
-    // Before reset: write to the read-only file should be blocked by read-only check
+    // Trigger reset
+    const ctx = createMockCtx([]);
+    await resourcesDiscoverHandler({} as any, ctx);
+
+    // After reset: isActivePioSession is false — tool_call passes through
     const readOnlyEvent = {
       toolName: "write",
       input: { path: "/home/user/my-project/src/old-guarded.ts" },
     };
 
-    // Trigger reset
-    const ctx = createMockCtx([]);
-    await resourcesDiscoverHandler({} as any, ctx);
-
-    // After reset: the read-only blocklist is cleared
-    // The write is still blocked (allowProjectWrites=false, empty allowlist)
-    // but NOT by the read-only check — it's blocked by the allowlist check
     const result = await toolCallHandler(readOnlyEvent);
-    expect(result).toBeDefined();
-    expect((result as any).block).toBe(true);
-    // Should NOT mention "read-only" since the list is cleared
-    expect((result as any).reason).not.toContain("read-only");
+    expect(result).toBeUndefined();
   });
 
   it("populates state from config when config is present", async () => {
@@ -1887,6 +1912,52 @@ describe("resources_discover handler — state reset", () => {
 
     const result = await toolCallHandler(event);
     expect(result).toBeUndefined();
+  });
+
+  it("blocks writes outside allowlist when isActivePioSession is true and allowProjectWrites is false", async () => {
+    const { pi, handlers } = createMockPiForToolCall();
+    setupValidation(pi);
+
+    const resourcesDiscoverHandlers = handlers.get("resources_discover");
+    const resourcesDiscoverHandler = resourcesDiscoverHandlers![0];
+    const toolCallHandlers = handlers.get("tool_call");
+    const toolCallHandler = toolCallHandlers![0];
+
+    // Mock resolveCapabilityConfig to return a config with allowProjectWrites: false
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "task", file: "TASK.md" }],
+    };
+
+    mockResolveCapabilityConfig2.mockResolvedValue({
+      capability: "test-capability",
+      workspaceDir: "/home/user/my-project/.pio/goals/test-goal",
+      contract,
+      sessionParams: {},
+      readOnlyFiles: [],
+      writeAllowlist: [],
+      allowProjectWrites: false,
+    });
+
+    const ctx = createMockCtx([
+      {
+        type: "custom",
+        customType: "pio-config",
+        data: { capability: "test-capability", sessionParams: {} },
+      },
+    ]);
+
+    await resourcesDiscoverHandler({} as any, ctx);
+
+    // Project writes should be blocked (allowProjectWrites=false, not on allowlist)
+    const event = {
+      toolName: "write",
+      input: { path: "/home/user/my-project/src/index.ts" },
+    };
+
+    const result = await toolCallHandler(event);
+    expect(result).toBeDefined();
+    expect((result as any).block).toBe(true);
   });
 });
 

@@ -117,11 +117,13 @@ describe("pio_mark_complete integration — review-task with real frontmatter", 
     const { CONTRACT: createPlanContract } = await import("./create-plan/config");
     const { CONTRACT: evolvePlanContract } = await import("./evolve-plan/config");
     const { CONTRACT: reviewTaskContract } = await import("./review-task/config");
+    const { CONTRACT: executeTaskContract } = await import("./execute-task/config");
     const utilsMod = await import("../state-machines/utils");
     utilsMod.setDiscoveredContracts({
       "create-plan": createPlanContract,
       "evolve-plan": evolvePlanContract,
       "review-task": reviewTaskContract,
+      "execute-task": executeTaskContract,
     });
 
     // Import and explicitly register goalDrivenDevelopment before importing mark-complete.
@@ -360,7 +362,7 @@ Invalid decision value.
     // CONTRACT uses plain file names — files resolve in the step directory (workspacePrefix includes step folder)
     fs.writeFileSync(path.join(stepDir, "TASK.md"), "---\nskills:\n  mandatory: []\n---\n# Task", "utf-8");
     fs.writeFileSync(path.join(stepDir, "TEST.md"), "# Tests", "utf-8");
-    fs.writeFileSync(path.join(stepDir, "SUMMARY.md"), "# Summary\n\n## Status\n\nCOMPLETED", "utf-8");
+    fs.writeFileSync(path.join(stepDir, "SUMMARY.md"), "---\nstatus: completed\n---\n# Summary\n\n## Status\n\nCOMPLETED", "utf-8");
     fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
     fs.mkdirSync(path.join(tempCwd, ".pio", "session-queue"), { recursive: true });
 

@@ -1107,7 +1107,7 @@ describe("CONTRACT outputs integration — execute-task", () => {
     const { CONTRACT } = await import("../capabilities/execute-task/config");
     // CONTRACT uses plain file names — files resolve directly in workspaceDir
     fs.writeFileSync(path.join(tempDir, "TEST.md"), "content", "utf-8");
-    fs.writeFileSync(path.join(tempDir, "SUMMARY.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "SUMMARY.md"), "---\nstatus: completed\n---\ncontent", "utf-8");
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 4 });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });

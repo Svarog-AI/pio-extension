@@ -184,7 +184,7 @@ describe("executeTaskTool.execute", () => {
 
   it("enqueues task even when TASK.md is missing (validation moves to launch time)", async () => {
     // Arrange: goal dir exists but no TASK.md
-    const { goalDir, stepDir } = createGoalTree(tempDir, "no-task", {
+    const { goalDir } = createGoalTree(tempDir, "no-task", {
       stepNumber: 1,
     });
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");

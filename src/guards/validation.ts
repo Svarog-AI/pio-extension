@@ -16,9 +16,6 @@ let writeAllowlistPaths: string[] = [];
 let allowProjectWrites: boolean = false;
 let isActivePioSession: boolean = false;
 
-/** Session workspace directory — resolved directory for resolving validation file paths. */
-let workspaceDir: string | undefined;
-
 /** Project root directory — boundary for allowProjectWrites. */
 let projectRoot: string | undefined;
 
@@ -70,7 +67,8 @@ export function validateOutputs(capState: CapState): {
   success: boolean;
   message?: string;
 } {
-  const params = capState["params"];
+  // biome-ignore lint/complexity/useLiteralKeys: 'params' is a private field — bracket notation required
+  const params = capState["params"] as Record<string, unknown> | undefined;
 
   // If COMPLETION_SUMMARY.md exists (resolved through CapState context), pass validation regardless of other expected files.
   // This allows evolve-plan to write just COMPLETION_SUMMARY.md (when all steps are done) and have pio_mark_complete succeed.
@@ -309,13 +307,13 @@ export function setupValidation(pi: ExtensionAPI) {
 
     if (config) {
       isActivePioSession = true;
-      workspaceDir = config.workspaceDir;
 
       // workspacePrefix is stripped from sessionParams after normalization (Step 9).
-      // workspaceDir already has the prefix baked in, so CapState.workspacePrefix = undefined.
+      // config.workspaceDir already has the prefix baked in, so CapState.workspacePrefix = undefined.
       const capState = new CapState(
         config.contract,
-        workspaceDir!,
+        // biome-ignore lint/style/noNonNullAssertion: config.workspaceDir is always set when config exists
+        config.workspaceDir!,
         config.sessionParams,
       );
 
@@ -362,7 +360,7 @@ export function setupValidation(pi: ExtensionAPI) {
       writeAllowlistPaths = [];
       readOnlyFilePaths = [];
       allowProjectWrites = false;
-      workspaceDir = undefined;
+
       projectRoot = undefined;
     }
   });

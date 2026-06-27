@@ -217,10 +217,7 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
     // Errors are caught and logged — they do not crash the session startup.
     if (config.prepareSession && config.workspaceDir) {
       try {
-        await config.prepareSession(
-          config.workspaceDir!,
-          enrichedSessionParams,
-        );
+        await config.prepareSession(config.workspaceDir, enrichedSessionParams);
       } catch (err) {
         console.warn(
           `pio: prepareSession failed for capability "${config.capability}": ${err}`,

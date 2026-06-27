@@ -280,7 +280,7 @@ export async function resolveCapabilityConfig(
   const cap = typeof params?.capability === "string" ? params.capability : null;
   if (!cap) return undefined;
 
-  let mod;
+  let mod: unknown;
   try {
     mod = await import(`./capabilities/${cap}/config`);
   } catch (err) {
@@ -288,13 +288,14 @@ export async function resolveCapabilityConfig(
     return undefined;
   }
 
-  if (!mod?.default) {
+  const modDefault = (mod as { default?: unknown })?.default;
+  if (!modDefault) {
     console.warn(`pio: no default export found for capability "${cap}"`);
     return undefined;
   }
   return normalizePackageConfig(
     cap,
-    mod.default as CapabilityPackageConfig,
+    modDefault as CapabilityPackageConfig,
     cwd,
     params,
   );

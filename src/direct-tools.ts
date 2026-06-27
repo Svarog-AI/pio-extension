@@ -453,12 +453,15 @@ const goalFromIssueTool = defineTool({
     const validation = await validateGoalFromIssue(ctx.cwd, params.issuePath);
     if (!validation.ok) {
       return {
-        content: [{ type: "text", text: validation.error! }],
+        content: [
+          { type: "text", text: validation.error ?? "Validation failed" },
+        ],
         details: {},
       };
     }
 
-    const goalName = validation.goalName!;
+    const goalName = validation.goalName ?? "";
+    const issuePath = validation.issuePath ?? "";
 
     enqueueTask(ctx.cwd, goalName, {
       capability: "create-goal",
@@ -468,8 +471,8 @@ const goalFromIssueTool = defineTool({
         queueKey: goalName,
         initialMessage:
           params.initialMessage ??
-          `Create a goal from this issue. Read ${validation.issuePath} for context, interview about scope and constraints, then write GOAL.md.`,
-        fileCleanup: [validation.issuePath!],
+          `Create a goal from this issue. Read ${issuePath} for context, interview about scope and constraints, then write GOAL.md.`,
+        fileCleanup: [issuePath],
       },
     });
 
@@ -505,12 +508,13 @@ async function handleGoalFromIssue(
         "warning",
       );
     } else {
-      ctx.ui.notify(validation.error!, "warning");
+      ctx.ui.notify(validation.error ?? "Validation failed", "warning");
     }
     return;
   }
 
-  const goalName = validation.goalName!;
+  const goalName = validation.goalName ?? "";
+  const resolvedIssuePath = validation.issuePath ?? "";
 
   // launchCapability calls ctx.newSession() — after this, ctx is stale.
   const config = await resolveCapabilityConfig(ctx.cwd, {
@@ -518,8 +522,8 @@ async function handleGoalFromIssue(
     workspacePrefix: `goals/${goalName}`,
     sessionName: `${goalName} create-goal`,
     queueKey: goalName,
-    initialMessage: `Create a goal from this issue. Read ${validation.issuePath} for context, interview about scope and constraints, then write GOAL.md.`,
-    fileCleanup: [validation.issuePath!],
+    initialMessage: `Create a goal from this issue. Read ${resolvedIssuePath} for context, interview about scope and constraints, then write GOAL.md.`,
+    fileCleanup: [resolvedIssuePath],
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve create-goal config.", "error");

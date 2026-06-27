@@ -52,7 +52,7 @@ export async function readWorkflowSteps(
     );
   }
 
-  let mod: any;
+  let mod: unknown;
   try {
     mod = await import(workflowPath);
   } catch (err) {
@@ -62,7 +62,7 @@ export async function readWorkflowSteps(
     throw err;
   }
 
-  const steps = mod.default;
+  const steps = (mod as { default: unknown }).default;
 
   if (!Array.isArray(steps)) {
     console.warn(

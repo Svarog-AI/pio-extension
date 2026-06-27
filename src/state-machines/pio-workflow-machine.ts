@@ -3,6 +3,7 @@ import { registerMachine } from "../state-machines";
 import { discoverNextStep, stepFolderName } from "../fs-utils";
 import { getCapState } from "./utils";
 import type { ReviewOutputs } from "../capabilities/review-task/schemas";
+import type { ExecutionSummaryOutputs } from "../capabilities/execute-task/schemas";
 
 const MACHINE_ID = "goal-driven-development";
 
@@ -188,13 +189,23 @@ function resolveEvolvePlanToExecuteTask(
   };
 }
 
-/** execute-task → review-task: always fires, propagate stepNumber. */
+/** execute-task → review-task: fires only when SUMMARY.md status is "completed". */
 function resolveExecuteTaskToReviewTask(
-  _ctx: { workspaceDir: string },
+  ctx: { workspaceDir: string },
   params?: Record<string, unknown>,
-): ResolverResult {
+): ResolverResult | undefined {
   const stepNumber = requireStepNumber("resolveExecuteTaskToReviewTask", params);
   const goalName = requireGoalName("resolveExecuteTaskToReviewTask", params);
+
+  // Guard: read SUMMARY.md frontmatter — only transition to review-task if status is "completed".
+  // This must read SUMMARY.md directly (not check for BLOCKED marker) because
+  // dispatch (step 3 of mark-complete) runs before postExecute (step 4) creates the marker.
+  const executeState = getCapState("execute-task", ctx.workspaceDir, { stepNumber });
+  const summaryData = executeState.output<ExecutionSummaryOutputs>("summary").read();
+
+  if (summaryData?.status !== "completed") {
+    return undefined;
+  }
 
   return {
     capability: "review-task",

@@ -15,12 +15,14 @@ import type { TransitionResult, ResolverResult } from "../state-machines";
 import { CONTRACT as createPlanContract } from "../capabilities/create-plan/config";
 import { CONTRACT as evolvePlanContract } from "../capabilities/evolve-plan/config";
 import { CONTRACT as reviewTaskContract } from "../capabilities/review-task/config";
+import { CONTRACT as executeTaskContract } from "../capabilities/execute-task/config";
 
 // Populate the contract cache once at module load time.
 setDiscoveredContracts({
   "create-plan": createPlanContract,
   "evolve-plan": evolvePlanContract,
   "review-task": reviewTaskContract,
+  "execute-task": executeTaskContract,
 });
 
 // ---------------------------------------------------------------------------
@@ -96,6 +98,26 @@ function writeRevisePlanNeeded(goalDir: string, stepNumber: number): void {
  * This is the directory where getCapState resolves files relative to — no workspacePrefix needed. */
 function ctx(tempDir: string, goalName: string): { workspaceDir: string } {
   return { workspaceDir: path.join(tempDir, ".pio", "goals", goalName) };
+}
+
+/** Context object for step-level dispatch calls — workspaceDir is the resolved step directory.
+ * Used by execute-task and review-task which resolve files relative to the step folder. */
+function stepCtx(tempDir: string, goalName: string, stepNumber: number): { workspaceDir: string } {
+  return { workspaceDir: path.join(tempDir, ".pio", "goals", goalName, `S${String(stepNumber).padStart(2, "0")}`) };
+}
+
+/** Write a SUMMARY.md with YAML frontmatter for the given step. */
+function writeSummary(goalDir: string, stepNumber: number, status: "completed" | "blocked"): void {
+  const folderName = `S${String(stepNumber).padStart(2, "0")}`;
+  const stepDir = path.join(goalDir, folderName);
+  fs.mkdirSync(stepDir, { recursive: true });
+  const content = `---
+status: "${status}"
+---
+# Summary
+
+Implementation summary.`;
+  fs.writeFileSync(path.join(stepDir, "SUMMARY.md"), content, "utf-8");
 }
 
 // ---------------------------------------------------------------------------
@@ -374,8 +396,10 @@ describe("dispatch — execute-task → review-task", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("returns review-task with goalName and stepNumber propagated when present", () => {
-    const results = dispatch(goalDrivenDevelopment, "execute-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 5 });
+  it("returns review-task when SUMMARY.md has status completed", () => {
+    writeSummary(goalDir, 5, "completed");
+
+    const results = dispatch(goalDrivenDevelopment, "execute-task", stepCtx(tempDir, "feat", 5), { queueKey: "feat", stepNumber: 5 });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
@@ -385,6 +409,21 @@ describe("dispatch — execute-task → review-task", () => {
       sessionName: "feat review-task s5",
       params: { stepNumber: 5, workspacePrefix: "goals/feat/S05", queueKey: "feat" },
     });
+  });
+
+  it("returns empty array when SUMMARY.md has status blocked", () => {
+    writeSummary(goalDir, 5, "blocked");
+
+    const results = dispatch(goalDrivenDevelopment, "execute-task", stepCtx(tempDir, "feat", 5), { queueKey: "feat", stepNumber: 5 });
+
+    expect(results).toHaveLength(0);
+  });
+
+  it("returns empty array when SUMMARY.md is missing", () => {
+    // No SUMMARY.md written — guard returns undefined
+    const results = dispatch(goalDrivenDevelopment, "execute-task", stepCtx(tempDir, "feat", 5), { queueKey: "feat", stepNumber: 5 });
+
+    expect(results).toHaveLength(0);
   });
 
   it("returns empty array when stepNumber is missing from params (throws — wiring error)", () => {
@@ -393,19 +432,6 @@ describe("dispatch — execute-task → review-task", () => {
     // resolveExecuteTaskToReviewTask throws when stepNumber is missing.
     // dispatch() catches the error and logs a warning; no transitions fire.
     expect(results).toHaveLength(0);
-  });
-
-  it("prefers explicit stepNumber from params", () => {
-    const results = dispatch(goalDrivenDevelopment, "execute-task", ctx(tempDir, "feat"), { queueKey: "feat", stepNumber: 5 });
-
-    expect(results).toHaveLength(1);
-    expect(results[0]).toEqual({
-      capability: "review-task",
-      stateMachineId: "goal-driven-development",
-      initialMessage: `Review Step 5 for goal "feat". Your workspace is the step directory. Read TASK.md for the specification, SUMMARY.md for what was implemented, and verify against acceptance criteria. Write REVIEW.md.`,
-      sessionName: "feat review-task s5",
-      params: { stepNumber: 5, workspacePrefix: "goals/feat/S05", queueKey: "feat" },
-    });
   });
 });
 

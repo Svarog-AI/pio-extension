@@ -310,3 +310,66 @@ describe("handleGoalFromIssue — command handler", () => {
     expect(severity).toBe("warning");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tests — pio_delete_goal tool removal
+// ---------------------------------------------------------------------------
+
+describe("pio_delete_goal tool removal", () => {
+  beforeEach(async () => {
+    vi.resetModules();
+  });
+
+  it("does not register pio_delete_goal as a tool", async () => {
+    const { setupDirectTools } = await import("./direct-tools");
+
+    const registeredTools: string[] = [];
+    const mockPi = {
+      registerTool: (t: { name: string }) => {
+        registeredTools.push(t.name);
+      },
+      registerCommand: vi.fn(),
+      on: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+    setupDirectTools(mockPi as any);
+
+    expect(registeredTools).not.toContain("pio_delete_goal");
+  });
+
+  it("still registers pio-delete-goal as a command", async () => {
+    const { setupDirectTools } = await import("./direct-tools");
+
+    const registeredCommands: string[] = [];
+    const mockPi = {
+      registerTool: vi.fn(),
+      registerCommand: (name: string) => {
+        registeredCommands.push(name);
+      },
+      on: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+    setupDirectTools(mockPi as any);
+
+    expect(registeredCommands).toContain("pio-delete-goal");
+  });
+
+  it("still registers other tools (pio_init, pio_create_issue, pio_goal_from_issue)", async () => {
+    const { setupDirectTools } = await import("./direct-tools");
+
+    const registeredTools: string[] = [];
+    const mockPi = {
+      registerTool: (t: { name: string }) => {
+        registeredTools.push(t.name);
+      },
+      registerCommand: vi.fn(),
+      on: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+    setupDirectTools(mockPi as any);
+
+    expect(registeredTools).toContain("pio_init");
+    expect(registeredTools).toContain("pio_create_issue");
+    expect(registeredTools).toContain("pio_goal_from_issue");
+  });
+});

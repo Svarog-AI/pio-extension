@@ -8,7 +8,7 @@ A [pi](https://github.com/earendil-works/pi-coding-agent) extension that provide
 |---------|------|-------------|
 | `/pio-init` | `pio_init` | Initialize a new pio project (`.pio/`) |
 | `/pio-create-goal <name>` | `pio_create_goal` | Create a goal workspace and launch a definition session |
-| `/pio-delete-goal <name>` | `pio_delete_goal` | Delete a goal workspace |
+| `/pio-delete-goal <name>` | — (command only) | Delete a goal workspace |
 | `/pio-create-plan <name>` | `pio_create_plan` | Generate `PLAN.md` for an existing goal |
 | `/pio-evolve-plan <name>` | `pio_evolve_plan` | Generate `TASK.md` + `TEST.md` for the next plan step |
 | `/pio-next-task` | — | Process the next queued task from `.pio/session-queue/` |

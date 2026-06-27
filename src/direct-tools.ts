@@ -367,16 +367,17 @@ async function handleCreateIssue(args: string | undefined, ctx: ExtensionCommand
 /**
  * Validate that the issue exists and no goal workspace collides.
  * Derives the goal name from the issue filename (stripping .md).
- * Returns { ok, error?, goalName?, issuePath? }. If ok, caller should still create the goal directory.
+ * Returns { ok, error?, goalName?, issuePath?, reason? }. If ok, caller should still create the goal directory.
+ * On error, `reason` discriminates the failure type: "issue-not-found" | "collision".
  */
 async function validateGoalFromIssue(
   cwd: string,
   issuePath: string,
-): Promise<{ ok: boolean; error?: string; goalName?: string; issuePath?: string }> {
+): Promise<{ ok: boolean; error?: string; goalName?: string; issuePath?: string; reason?: string }> {
   // 1. Issue must exist — resolve to absolute path
   const resolvedPath = findIssuePath(cwd, issuePath);
   if (!resolvedPath) {
-    return { ok: false, error: `Issue not found: ${issuePath}` };
+    return { ok: false, reason: "issue-not-found", error: `Issue not found: ${issuePath}` };
   }
 
   // 2. Derive goal name from the issue filename slug
@@ -385,7 +386,12 @@ async function validateGoalFromIssue(
   // 3. Goal workspace must not already exist
   const goalDir = resolveGoalDir(cwd, goalName);
   if (goalExists(goalDir)) {
-    return { ok: false, error: `Goal workspace "${goalName}" already exists at ${goalDir}. Call ask_user to let the human decide what to do (pick a new name, reuse existing, or run /pio-delete-goal to remove the old workspace).` };
+    return {
+      ok: false,
+      reason: "collision",
+      goalName,
+      error: `Goal workspace "${goalName}" already exists at ${goalDir}. Call ask_user to let the human decide what to do (pick a new name, reuse existing, or run /pio-delete-goal to remove the old workspace).`,
+    };
   }
 
   return { ok: true, goalName, issuePath: resolvedPath };
@@ -437,7 +443,11 @@ async function handleGoalFromIssue(args: string | undefined, ctx: ExtensionComma
   // All validation must happen before launchCapability (ctx staleness)
   const validation = await validateGoalFromIssue(ctx.cwd, issuePath);
   if (!validation.ok) {
-    ctx.ui.notify(`Goal workspace "${validation.goalName!}" already exists. Pick a new name, reuse the existing one, or run /pio-delete-goal to remove it.`, "warning");
+    if (validation.reason === "collision") {
+      ctx.ui.notify(`Goal workspace "${validation.goalName}" already exists. Pick a new name, reuse the existing one, or run /pio-delete-goal to remove it.`, "warning");
+    } else {
+      ctx.ui.notify(validation.error!, "warning");
+    }
     return;
   }
 

@@ -220,3 +220,93 @@ describe("goalFromIssueTool.execute", () => {
     expect(call[2].params.fileCleanup).toContain(issuePath);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tests — handleGoalFromIssue (command handler)
+// ---------------------------------------------------------------------------
+
+describe("handleGoalFromIssue — command handler", () => {
+  let tempCwd: string;
+  let cwdSpy: ReturnType<typeof vi.spyOn>;
+  let handler: Function | undefined;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    tempCwd = createTempDir();
+    cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempCwd);
+    mockEnqueueTask.mockClear();
+    mockRecordTransition.mockClear();
+    mockResolveCapabilityConfigDirect.mockClear();
+
+    // Import fresh to get the real definitions
+    const { setupDirectTools } = await import("./direct-tools");
+
+    // Capture the registered command
+    const registeredCommands: Array<{ name: string; handler: Function }> = [];
+    const mockPi = {
+      registerTool: vi.fn(),
+      registerCommand: (name: string, config: { handler: Function }) => {
+        registeredCommands.push({ name, handler: config.handler });
+      },
+      on: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+    setupDirectTools(mockPi as any);
+
+    handler = registeredCommands.find((c) => c.name === "pio-goal-from-issue")?.handler;
+  });
+
+  afterEach(() => {
+    cwdSpy?.mockRestore();
+    cleanup(tempCwd);
+  });
+
+  it("shows goal name in collision notification (not undefined)", async () => {
+    // Arrange: create issue file and goal workspace (collision)
+    const issuesDir = path.join(tempCwd, ".pio", "issues");
+    fs.mkdirSync(issuesDir, { recursive: true });
+    fs.writeFileSync(path.join(issuesDir, "my-issue.md"), "# My Issue", "utf-8");
+
+    const goalsDir = path.join(tempCwd, ".pio", "goals", "my-issue");
+    fs.mkdirSync(goalsDir, { recursive: true });
+
+    const mockNotify = vi.fn();
+    const mockCtx = {
+      cwd: tempCwd,
+      ui: { notify: mockNotify },
+      sessionManager: { getEntries: () => [] },
+    };
+
+    // Act
+    await handler!("my-issue.md", mockCtx);
+
+    // Assert: notification contains the actual goal name, not "undefined"
+    expect(mockNotify).toHaveBeenCalled();
+    const [message, severity] = mockNotify.mock.calls[0];
+    expect(message).toContain("my-issue");
+    expect(message).not.toContain("undefined");
+    expect(message).not.toContain("ask_user");
+    expect(message).toContain("already exists");
+    expect(severity).toBe("warning");
+  });
+
+  it("shows issue-not-found message when issue file does not exist", async () => {
+    // Arrange: no issue file
+    const mockNotify = vi.fn();
+    const mockCtx = {
+      cwd: tempCwd,
+      ui: { notify: mockNotify },
+      sessionManager: { getEntries: () => [] },
+    };
+
+    // Act
+    await handler!("nonexistent.md", mockCtx);
+
+    // Assert: notification says not found (not a collision message)
+    expect(mockNotify).toHaveBeenCalled();
+    const [message, severity] = mockNotify.mock.calls[0];
+    expect(message).toContain("not found");
+    expect(message).not.toContain("already exists");
+    expect(severity).toBe("warning");
+  });
+});

@@ -92,19 +92,29 @@ This ensures \`SUMMARY.md\` always reflects the final state of all files, regard
   {
     id: "write-completion-artifacts",
     title: "Write completion artifacts",
-    instructions: `#### On success (all tests pass, all criteria met):
+    instructions: `Write \`SUMMARY.md\` at \`S{NN}/SUMMARY.md\` starting with a YAML frontmatter block at the very top of the file, before any markdown headings. The frontmatter provides structured outcome data for automation:
 
-1. **Write \`COMPLETED\`** — create an empty file at \`S{NN}/COMPLETED\`. This signals the step is done.
-2. **Write \`SUMMARY.md\`** — create \`S{NN}/SUMMARY.md\` with a changelog including: Status, Files Created, Files Modified, Files Deleted, Decisions Made, User-Requested Changes, and Test Coverage sections.
-3. **Commit changes using the \`pio-git\` skill** — load the \`pio-git\` skill and commit the changes. If git fails, log a warning and proceed — never block workflow completion.
-4. **Call \`pio_mark_complete\`** to validate outputs and signal completion.
+\`\`\`yaml
+---
+status: completed
+---
+\`\`\`
 
-#### On failure (blocking issues that cannot be resolved):
+Use \`status: completed\` when all tests pass and all criteria are met. Use \`status: blocked\` when blocking issues cannot be resolved — include the explanation in the SUMMARY.md body text (not in a separate file).
 
-1. **Write \`BLOCKED\`** — create \`S{NN}/BLOCKED\` containing a human-readable explanation of why execution was blocked.
-2. **Write \`SUMMARY.md\`** — document what was attempted and what remains blocked.
-3. **Commit changes using the \`pio-git\` skill** — even on failure, commit whatever files were created/modified as a checkpoint. If git fails, log a warning and proceed.
-4. **Call \`pio_mark_complete\`** to signal the session is done despite the blocker.`,
+After the frontmatter closing \`---\`, write the human-readable markdown body. For successful steps, include: Status, Files Created, Files Modified, Files Deleted, Decisions Made, User-Requested Changes, and Test Coverage sections. For blocked steps, document what was attempted and what remains blocked.
+
+Then follow these steps:
+
+1. **Commit changes using the \`pio-git\` skill** — load the \`pio-git\` skill and commit the changes. If git fails, log a warning and proceed — never block workflow completion.
+2. **Call \`pio_mark_complete\`** to validate outputs and signal completion.
+
+**Do not create marker files (\`COMPLETED\` or \`BLOCKED\`) manually** — the infrastructure creates them automatically based on the \`status\` field in \`SUMMARY.md\` frontmatter:
+
+- If \`status: completed\`: the infrastructure creates an empty \`S{NN}/COMPLETED\` file.
+- If \`status: blocked\`: the infrastructure creates an empty \`S{NN}/BLOCKED\` file and the step is not routed to \`review-task\`.
+
+The routing is handled by infrastructure: after \`pio_mark_complete\`, the transition callback reads \`SUMMARY.md\` frontmatter. Completed → \`review-task\` (step review). Blocked → no transition (step remains blocked).`,
     skills: {
       mandatory: ["pio-git"],
     },

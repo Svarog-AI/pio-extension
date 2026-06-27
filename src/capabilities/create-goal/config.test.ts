@@ -99,6 +99,28 @@ describe("createGoalTool.execute — collision detection", () => {
     expect(result.content[0].text).toContain("/pio-delete-goal");
   });
 
+  it("returns collision error when workspace exists but is empty", async () => {
+    // Arrange: create an empty workspace directory
+    const workspaceDir = path.join(tempDir, ".pio", "goals", "empty-goal");
+    fs.mkdirSync(workspaceDir, { recursive: true });
+
+    const tool = getTool();
+    const result = await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/empty-goal" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    // Assert: message instructs agent to call ask_user and mentions /pio-delete-goal
+    expect(result.content[0].text).toContain("ask_user");
+    expect(result.content[0].text).toContain("/pio-delete-goal");
+
+    // Assert: no task was enqueued
+    expect(mockEnqueueTask).not.toHaveBeenCalled();
+  });
+
   it("does not create directory or enqueue task on collision", async () => {
     // Arrange: create a non-empty workspace
     const workspaceDir = path.join(tempDir, ".pio", "goals", "existing-goal");
@@ -149,6 +171,50 @@ describe("handleCreateGoal — command handler notification", () => {
   });
 
   afterEach(() => cleanup(tempDir));
+
+  it("shows human-friendly notification on collision with empty directory", async () => {
+    // Arrange: create an empty workspace directory
+    const workspaceDir = path.join(tempDir, ".pio", "goals", "empty-goal");
+    fs.mkdirSync(workspaceDir, { recursive: true });
+
+    const mockNotify = vi.fn();
+    const mockCtx = {
+      cwd: tempDir,
+      ui: { notify: mockNotify },
+      hasUI: false,
+      sessionManager: { getSessionFile: vi.fn(() => ""), getEntries: vi.fn(() => []) },
+      modelRegistry: {},
+      model: undefined,
+      isIdle: vi.fn(() => true),
+      signal: undefined,
+      abort: vi.fn(),
+      hasPendingMessages: vi.fn(() => false),
+      shutdown: vi.fn(),
+      getContextUsage: vi.fn(),
+      compact: vi.fn(),
+      getSystemPrompt: vi.fn(() => ""),
+      newSession: vi.fn(),
+    };
+
+    const registeredCommands: Array<any> = [];
+    const mockPi = {
+      registerTool: vi.fn(),
+      registerCommand: vi.fn((_name: string, config: any) => registeredCommands.push(config)),
+    };
+    register(mockPi as any);
+    const handler = registeredCommands.find((c: any) => c.description?.includes("create-goal"))?.handler;
+
+    // Act
+    await handler("--workspace-prefix goals/empty-goal", mockCtx);
+
+    // Assert: notification is human-friendly (no ask_user, mentions /pio-delete-goal)
+    expect(mockNotify).toHaveBeenCalled();
+    const [message, severity] = mockNotify.mock.calls[0];
+    expect(message).not.toContain("ask_user");
+    expect(message).toContain("/pio-delete-goal");
+    expect(message).toContain("already exists");
+    expect(severity).toBe("warning");
+  });
 
   it("shows human-friendly notification without ask_user on collision", async () => {
     // Arrange: create a non-empty workspace directory

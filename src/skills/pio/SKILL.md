@@ -29,7 +29,7 @@ Steps 3–5 form a cycle: `evolve-plan` → `execute-task` → `review-task` →
 |---------|------|-------------|------------|--------|
 | `/pio-init` | `pio_init` | Bootstrap `.pio/` directory structure | none | `.pio/` with subdirs |
 | `/pio-create-goal --workspace-prefix <prefix>` | `pio_create_goal` | Create a workspace and queue goal definition session | `--workspace-prefix` (optional `--session-name`, `--initial-message`) | Workspace directory with `GOAL.md` |
-| `/pio-delete-goal <name>` | `pio_delete_goal` | Remove a goal workspace directory | `name` | — |
+| `/pio-delete-goal <name>` | — (command only) | Remove a goal workspace directory | `name` | — |
 | `/pio-create-plan --workspace-prefix <prefix>` | `pio_create_plan` | Queue planning session to produce PLAN.md | `--workspace-prefix` (optional `--session-name`, `--initial-message`) | `<workspace>/PLAN.md` |
 | `/pio-evolve-plan --workspace-prefix <prefix> --step-number <n>` | `pio_evolve_plan` | Find/evolve a plan step, queue specification session | `--workspace-prefix`, `--step-number` (optional `--session-name`, `--initial-message`) | `<workspace>/TASK.md` |
 | `/pio-execute-task --workspace-prefix <prefix>` | `pio_execute_task` | Queue task execution (TDD) | `--workspace-prefix` (optional `--session-name`, `--initial-message`) | `<workspace>/COMPLETED` or `BLOCKED`, `SUMMARY.md` |

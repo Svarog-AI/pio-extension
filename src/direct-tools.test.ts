@@ -162,6 +162,8 @@ describe("goalFromIssueTool.execute", () => {
     );
 
     expect(result.content[0].text).toMatch(/already exists/i);
+    expect(result.content[0].text).toContain("ask_user");
+    expect(result.content[0].text).toContain("/pio-delete-goal");
   });
 
   it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, initialMessage)", async () => {
@@ -216,5 +218,158 @@ describe("goalFromIssueTool.execute", () => {
 
     const call = mockEnqueueTask.mock.calls[0];
     expect(call[2].params.fileCleanup).toContain(issuePath);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests — handleGoalFromIssue (command handler)
+// ---------------------------------------------------------------------------
+
+describe("handleGoalFromIssue — command handler", () => {
+  let tempCwd: string;
+  let cwdSpy: ReturnType<typeof vi.spyOn>;
+  let handler: Function | undefined;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    tempCwd = createTempDir();
+    cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempCwd);
+    mockEnqueueTask.mockClear();
+    mockRecordTransition.mockClear();
+    mockResolveCapabilityConfigDirect.mockClear();
+
+    // Import fresh to get the real definitions
+    const { setupDirectTools } = await import("./direct-tools");
+
+    // Capture the registered command
+    const registeredCommands: Array<{ name: string; handler: Function }> = [];
+    const mockPi = {
+      registerTool: vi.fn(),
+      registerCommand: (name: string, config: { handler: Function }) => {
+        registeredCommands.push({ name, handler: config.handler });
+      },
+      on: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+    setupDirectTools(mockPi as any);
+
+    handler = registeredCommands.find((c) => c.name === "pio-goal-from-issue")?.handler;
+  });
+
+  afterEach(() => {
+    cwdSpy?.mockRestore();
+    cleanup(tempCwd);
+  });
+
+  it("shows goal name in collision notification (not undefined)", async () => {
+    // Arrange: create issue file and goal workspace (collision)
+    const issuesDir = path.join(tempCwd, ".pio", "issues");
+    fs.mkdirSync(issuesDir, { recursive: true });
+    fs.writeFileSync(path.join(issuesDir, "my-issue.md"), "# My Issue", "utf-8");
+
+    const goalsDir = path.join(tempCwd, ".pio", "goals", "my-issue");
+    fs.mkdirSync(goalsDir, { recursive: true });
+
+    const mockNotify = vi.fn();
+    const mockCtx = {
+      cwd: tempCwd,
+      ui: { notify: mockNotify },
+      sessionManager: { getEntries: () => [] },
+    };
+
+    // Act
+    await handler!("my-issue.md", mockCtx);
+
+    // Assert: notification contains the actual goal name, not "undefined"
+    expect(mockNotify).toHaveBeenCalled();
+    const [message, severity] = mockNotify.mock.calls[0];
+    expect(message).toContain("my-issue");
+    expect(message).not.toContain("undefined");
+    expect(message).not.toContain("ask_user");
+    expect(message).toContain("already exists");
+    expect(severity).toBe("warning");
+  });
+
+  it("shows issue-not-found message when issue file does not exist", async () => {
+    // Arrange: no issue file
+    const mockNotify = vi.fn();
+    const mockCtx = {
+      cwd: tempCwd,
+      ui: { notify: mockNotify },
+      sessionManager: { getEntries: () => [] },
+    };
+
+    // Act
+    await handler!("nonexistent.md", mockCtx);
+
+    // Assert: notification says not found (not a collision message)
+    expect(mockNotify).toHaveBeenCalled();
+    const [message, severity] = mockNotify.mock.calls[0];
+    expect(message).toContain("not found");
+    expect(message).not.toContain("already exists");
+    expect(severity).toBe("warning");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests — pio_delete_goal tool removal
+// ---------------------------------------------------------------------------
+
+describe("pio_delete_goal tool removal", () => {
+  beforeEach(async () => {
+    vi.resetModules();
+  });
+
+  it("does not register pio_delete_goal as a tool", async () => {
+    const { setupDirectTools } = await import("./direct-tools");
+
+    const registeredTools: string[] = [];
+    const mockPi = {
+      registerTool: (t: { name: string }) => {
+        registeredTools.push(t.name);
+      },
+      registerCommand: vi.fn(),
+      on: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+    setupDirectTools(mockPi as any);
+
+    expect(registeredTools).not.toContain("pio_delete_goal");
+  });
+
+  it("still registers pio-delete-goal as a command", async () => {
+    const { setupDirectTools } = await import("./direct-tools");
+
+    const registeredCommands: string[] = [];
+    const mockPi = {
+      registerTool: vi.fn(),
+      registerCommand: (name: string) => {
+        registeredCommands.push(name);
+      },
+      on: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+    setupDirectTools(mockPi as any);
+
+    expect(registeredCommands).toContain("pio-delete-goal");
+  });
+
+  it("still registers other tools (pio_init, pio_create_issue, pio_goal_from_issue)", async () => {
+    const { setupDirectTools } = await import("./direct-tools");
+
+    const registeredTools: string[] = [];
+    const mockPi = {
+      registerTool: (t: { name: string }) => {
+        registeredTools.push(t.name);
+      },
+      registerCommand: vi.fn(),
+      on: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+    setupDirectTools(mockPi as any);
+
+    expect(registeredTools).toContain("pio_init");
+    expect(registeredTools).toContain("pio_create_issue");
+    expect(registeredTools).toContain("pio_goal_from_issue");
   });
 });

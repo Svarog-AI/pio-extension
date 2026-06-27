@@ -58,7 +58,7 @@ const createGoalTool = defineTool({
     // Resolve workspace directory: workspaceDir is .pio/, prefix tells us where within it
     const workspaceDir = path.join(ctx.cwd, ".pio", params.workspacePrefix);
     if (fs.existsSync(workspaceDir) && fs.readdirSync(workspaceDir).length > 0) {
-      return { content: [{ type: "text", text: `Workspace at "${params.workspacePrefix}" is not empty.` }], details: {} };
+      return { content: [{ type: "text", text: `Workspace at "${params.workspacePrefix}" already exists. Call ask_user to let the human decide what to do (pick a new name, reuse existing, or run /pio-delete-goal to remove the old workspace).` }], details: {} };
     }
     fs.mkdirSync(workspaceDir, { recursive: true });
 
@@ -96,7 +96,7 @@ async function handleCreateGoal(args: string | undefined, ctx: ExtensionCommandC
   // Resolve workspace directory
   const workspaceDir = path.join(ctx.cwd, ".pio", workspacePrefix);
   if (fs.existsSync(workspaceDir) && fs.readdirSync(workspaceDir).length > 0) {
-    ctx.ui.notify(`Workspace at "${workspacePrefix}" is not empty.`, "warning");
+    ctx.ui.notify(`Workspace at "${workspacePrefix}" already exists. Pick a new name, reuse the existing one, or run /pio-delete-goal to remove it.`, "warning");
     return;
   }
   fs.mkdirSync(workspaceDir, { recursive: true });

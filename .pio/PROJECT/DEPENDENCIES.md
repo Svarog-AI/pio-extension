@@ -59,7 +59,7 @@ Shared modules:
 ### pio Workflow Pipeline (data flow)
 
 ```
-create-goal ──GOAL.md──→ create-plan ──PLAN.md──→ evolve-plan ──S01/TASK.md──→ execute-task ──S01/COMPLETED+SUMMARY.md──→ review-code ──(goal complete)──→ finalize-goal
+create-goal ──GOAL.md──→ create-plan ──PLAN.md──→ evolve-plan ──S01/TASK.md──→ execute-task ──S01/SUMMARY.md(frontmatter)→auto-COMPLETED──→ review-code ──(goal complete)──→ finalize-goal
                                     ↑                                                      │                                  │         ↑
                                     │           (significant divergence,                   │         APPROVED                 │         │
                                     │            REVISE_PLAN_NEEDED written)               │                              ↓         │

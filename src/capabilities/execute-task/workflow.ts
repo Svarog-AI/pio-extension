@@ -104,9 +104,6 @@ Use \`status: completed\` when all tests pass and all criteria are met. Use \`st
 
 After the frontmatter closing \`---\`, write the human-readable markdown body. For successful steps, include: Status, Files Created, Files Modified, Files Deleted, Decisions Made, User-Requested Changes, and Test Coverage sections. For blocked steps, document what was attempted and what remains blocked.
 
-
-**Do not create marker files (\`COMPLETED\` or \`BLOCKED\`) manually** — the infrastructure creates them automatically based on the \`status\` field in \`SUMMARY.md\` frontmatter.
-
 Then follow these steps:
 1. **Commit changes using the \`pio-git\` skill** — load the \`pio-git\` skill and commit the changes. If git fails, log a warning and proceed — never block workflow completion.
 2. **Call \`pio_mark_complete\`** to validate outputs and signal completion.`,

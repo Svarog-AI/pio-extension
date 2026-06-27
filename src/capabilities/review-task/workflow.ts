@@ -253,13 +253,6 @@ APPROVED or REJECTED
     instructions: `You only need to do two things:
 
 1. **Write \`REVIEW.md\`** (completed in Step 7). Ensure the YAML frontmatter is at the very top of the file and the \`decision\` field matches your actual review outcome.
-2. **Call \`pio_mark_complete\`.** This is your final step.
-
-That's it. Do not create or delete marker files manually — the infrastructure handles this automatically based on the frontmatter in \`REVIEW.md\`:
-
-- If \`decision: APPROVED\`: the infrastructure creates an empty \`S{NN}/APPROVED\` file and leaves \`COMPLETED\` intact.
-- If \`decision: REJECTED\`: the infrastructure creates an empty \`S{NN}/REJECTED\` file and deletes \`S{NN}/COMPLETED\` automatically, allowing \`execute-task\` to re-execute the step.
-
-The routing is handled by infrastructure: after \`pio_mark_complete\`, the transition callback checks for \`S{NN}/APPROVED\` or \`S{NN}/REJECTED\`. Approval → \`evolve-plan\` (next step). Rejection → \`execute-task\` (re-execute same step, with feedback from your \`REVIEW.md\`).`,
+2. **Call \`pio_mark_complete\`.** This is your final step.`,
   },
 ] satisfies WorkflowStep[];

@@ -10,7 +10,8 @@ import { resolveCapabilityConfig } from "../../capability-config";
 import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
 import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { resolveExecuteReadOnlyFiles } from "./callbacks";
+import { resolveExecuteReadOnlyFiles, postExecuteExecute } from "./callbacks";
+import { EXECUTION_SUMMARY_SCHEMA } from "./schemas";
 
 // ---------------------------------------------------------------------------
 // Contract (single source of truth — imported by callbacks)
@@ -19,7 +20,7 @@ import { resolveExecuteReadOnlyFiles } from "./callbacks";
 export const CONTRACT: CapabilityContract = {
   inputs: [{ name: "task", file: "TASK.md", schema: TASK_FRONTMATTER_SCHEMA }],
   excludedFiles: ["REVISE_PLAN_NEEDED"],
-  outputs: [{ name: "test", file: "TEST.md" }, { name: "summary", file: "SUMMARY.md" }],
+  outputs: [{ name: "test", file: "TEST.md" }, { name: "summary", file: "SUMMARY.md", schema: EXECUTION_SUMMARY_SCHEMA }],
 };
 
 // ---------------------------------------------------------------------------
@@ -31,6 +32,7 @@ const capabilityConfig = {
   contract: CONTRACT,
   readOnlyFiles: resolveExecuteReadOnlyFiles,
   prepareSession: prepareExecuteSession,
+  postExecute: postExecuteExecute,
   allowProjectWrites: true,
   skills: {
     mandatory: ["tdd", "pio-git"],

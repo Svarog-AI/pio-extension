@@ -2,10 +2,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
-  queueDir,
   enqueueTask,
-  readPendingTask,
   listPendingTasks,
+  queueDir,
+  readPendingTask,
   type SessionQueueTask,
 } from "./queues";
 
@@ -68,16 +68,32 @@ describe("enqueueTask(cwd, queueKey, task)", () => {
   afterEach(() => cleanup(tempDir));
 
   it("creates correct file path", () => {
-    const task: SessionQueueTask = { capability: "create-plan", params: { goalName: "my-goal" } };
+    const task: SessionQueueTask = {
+      capability: "create-plan",
+      params: { goalName: "my-goal" },
+    };
     enqueueTask(tempDir, "my-goal", task);
-    const filePath = path.join(tempDir, ".pio", "session-queue", "task-my-goal.json");
+    const filePath = path.join(
+      tempDir,
+      ".pio",
+      "session-queue",
+      "task-my-goal.json",
+    );
     expect(fs.existsSync(filePath)).toBe(true);
   });
 
   it("writes valid JSON with correct fields", () => {
-    const task: SessionQueueTask = { capability: "create-plan", params: { goalName: "my-goal" } };
+    const task: SessionQueueTask = {
+      capability: "create-plan",
+      params: { goalName: "my-goal" },
+    };
     enqueueTask(tempDir, "my-goal", task);
-    const filePath = path.join(tempDir, ".pio", "session-queue", "task-my-goal.json");
+    const filePath = path.join(
+      tempDir,
+      ".pio",
+      "session-queue",
+      "task-my-goal.json",
+    );
     const raw = fs.readFileSync(filePath, "utf-8");
     const parsed = JSON.parse(raw);
     expect(parsed.capability).toBe("create-plan");
@@ -90,15 +106,28 @@ describe("enqueueTask(cwd, queueKey, task)", () => {
     enqueueTask(tempDir, "my-goal", task1);
     enqueueTask(tempDir, "my-goal", task2);
 
-    const filePath = path.join(tempDir, ".pio", "session-queue", "task-my-goal.json");
+    const filePath = path.join(
+      tempDir,
+      ".pio",
+      "session-queue",
+      "task-my-goal.json",
+    );
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
     expect(parsed.capability).toBe("evolve-plan");
   });
 
   it("uses 2-space indentation", () => {
-    const task: SessionQueueTask = { capability: "create-plan", params: { goalName: "my-goal" } };
+    const task: SessionQueueTask = {
+      capability: "create-plan",
+      params: { goalName: "my-goal" },
+    };
     enqueueTask(tempDir, "my-goal", task);
-    const filePath = path.join(tempDir, ".pio", "session-queue", "task-my-goal.json");
+    const filePath = path.join(
+      tempDir,
+      ".pio",
+      "session-queue",
+      "task-my-goal.json",
+    );
     const raw = fs.readFileSync(filePath, "utf-8");
     expect(raw).toBe(JSON.stringify(task, null, 2));
   });
@@ -106,7 +135,12 @@ describe("enqueueTask(cwd, queueKey, task)", () => {
   it("accepts arbitrary queue keys (not just goal names)", () => {
     const task: SessionQueueTask = { capability: "research" };
     enqueueTask(tempDir, "research__project-alpha", task);
-    const filePath = path.join(tempDir, ".pio", "session-queue", "task-research__project-alpha.json");
+    const filePath = path.join(
+      tempDir,
+      ".pio",
+      "session-queue",
+      "task-research__project-alpha.json",
+    );
     expect(fs.existsSync(filePath)).toBe(true);
   });
 });
@@ -125,7 +159,10 @@ describe("readPendingTask(cwd, queueKey)", () => {
   afterEach(() => cleanup(tempDir));
 
   it("returns parsed object for existing task", () => {
-    const task: SessionQueueTask = { capability: "create-plan", params: { goalName: "my-goal" } };
+    const task: SessionQueueTask = {
+      capability: "create-plan",
+      params: { goalName: "my-goal" },
+    };
     enqueueTask(tempDir, "my-goal", task);
     const result = readPendingTask(tempDir, "my-goal");
     expect(result).toEqual(task);
@@ -136,7 +173,10 @@ describe("readPendingTask(cwd, queueKey)", () => {
   });
 
   it("round-trip preserves data", () => {
-    const original: SessionQueueTask = { capability: "create-goal", params: { goalName: "x" } };
+    const original: SessionQueueTask = {
+      capability: "create-goal",
+      params: { goalName: "x" },
+    };
     enqueueTask(tempDir, "x", original);
     const result = readPendingTask(tempDir, "x");
     expect(result).toEqual(original);
@@ -180,7 +220,12 @@ describe("listPendingTasks(cwd)", () => {
     // Add a non-task file
     const otherFile = path.join(tempDir, ".pio", "session-queue", "readme.txt");
     fs.writeFileSync(otherFile, "not a task", "utf-8");
-    const otherFile2 = path.join(tempDir, ".pio", "session-queue", "other.json");
+    const otherFile2 = path.join(
+      tempDir,
+      ".pio",
+      "session-queue",
+      "other.json",
+    );
     fs.writeFileSync(otherFile2, "{}", "utf-8");
 
     const tasks = listPendingTasks(tempDir);

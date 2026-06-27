@@ -1,27 +1,69 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { launchCapability } from "../../capability-session";
-import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
-import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
-import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
+import { launchCapability } from "../../capability-session";
+import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
+import { enqueueTask } from "../../queues";
+import type { CapabilityContract } from "../../types";
 
 // ---------------------------------------------------------------------------
 // Contract (single source of truth — imported by callbacks)
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ name: "goal", file: "GOAL.md" }, { name: "plan", file: "PLAN.md" }, { name: "completion-summary", file: "COMPLETION_SUMMARY.md" }],
+  inputs: [
+    { name: "goal", file: "GOAL.md" },
+    { name: "plan", file: "PLAN.md" },
+    { name: "completion-summary", file: "COMPLETION_SUMMARY.md" },
+  ],
   outputs: [
-    { name: "overview", file: "PROJECT/OVERVIEW.md", projectRelative: true, requiredWhen: () => false },
-    { name: "development", file: "PROJECT/DEVELOPMENT.md", projectRelative: true, requiredWhen: () => false },
-    { name: "conventions", file: "PROJECT/CONVENTIONS.md", projectRelative: true, requiredWhen: () => false },
-    { name: "git", file: "PROJECT/GIT.md", projectRelative: true, requiredWhen: () => false },
-    { name: "architecture", file: "PROJECT/ARCHITECTURE.md", projectRelative: true, requiredWhen: () => false },
-    { name: "dependencies", file: "PROJECT/DEPENDENCIES.md", projectRelative: true, requiredWhen: () => false },
-    { name: "glossary", file: "PROJECT/GLOSSARY.md", projectRelative: true, requiredWhen: () => false },
+    {
+      name: "overview",
+      file: "PROJECT/OVERVIEW.md",
+      projectRelative: true,
+      requiredWhen: () => false,
+    },
+    {
+      name: "development",
+      file: "PROJECT/DEVELOPMENT.md",
+      projectRelative: true,
+      requiredWhen: () => false,
+    },
+    {
+      name: "conventions",
+      file: "PROJECT/CONVENTIONS.md",
+      projectRelative: true,
+      requiredWhen: () => false,
+    },
+    {
+      name: "git",
+      file: "PROJECT/GIT.md",
+      projectRelative: true,
+      requiredWhen: () => false,
+    },
+    {
+      name: "architecture",
+      file: "PROJECT/ARCHITECTURE.md",
+      projectRelative: true,
+      requiredWhen: () => false,
+    },
+    {
+      name: "dependencies",
+      file: "PROJECT/DEPENDENCIES.md",
+      projectRelative: true,
+      requiredWhen: () => false,
+    },
+    {
+      name: "glossary",
+      file: "PROJECT/GLOSSARY.md",
+      projectRelative: true,
+      requiredWhen: () => false,
+    },
   ],
 };
 
@@ -49,7 +91,8 @@ const finalizeGoalTool = defineTool({
   label: "Pio Finalize Goal",
   description:
     "Finalize a completed workspace by updating .pio/PROJECT/ documentation based on accumulated decisions. Use this tool directly — no bash commands or manual file creation needed. The user can run `/pio-next-task` to start the sub-session.",
-  promptSnippet: "Finalize a completed workspace and update project documentation.",
+  promptSnippet:
+    "Finalize a completed workspace and update project documentation.",
   parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -80,9 +123,15 @@ const finalizeGoalTool = defineTool({
 // Command
 // ---------------------------------------------------------------------------
 
-async function handleFinalizeGoal(args: string | undefined, ctx: ExtensionCommandContext) {
-  if (!args || !args.trim()) {
-    ctx.ui.notify("Usage: /pio-finalize-goal --workspace-prefix <prefix>", "warning");
+async function handleFinalizeGoal(
+  args: string | undefined,
+  ctx: ExtensionCommandContext,
+) {
+  if (!args?.trim()) {
+    ctx.ui.notify(
+      "Usage: /pio-finalize-goal --workspace-prefix <prefix>",
+      "warning",
+    );
     return;
   }
 
@@ -94,7 +143,10 @@ async function handleFinalizeGoal(args: string | undefined, ctx: ExtensionComman
     }
   }
   if (!workspacePrefix) {
-    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-finalize-goal --workspace-prefix <prefix>", "error");
+    ctx.ui.notify(
+      "--workspace-prefix is required. Usage: /pio-finalize-goal --workspace-prefix <prefix>",
+      "error",
+    );
     return;
   }
 
@@ -106,7 +158,8 @@ async function handleFinalizeGoal(args: string | undefined, ctx: ExtensionComman
     workspacePrefix,
     sessionName: `${queueKey} finalize-goal`,
     queueKey,
-    initialMessage: "All plan steps are complete. Read COMPLETION_SUMMARY.md, then update .pio/PROJECT/ documentation with accumulated decisions.",
+    initialMessage:
+      "All plan steps are complete. Read COMPLETION_SUMMARY.md, then update .pio/PROJECT/ documentation with accumulated decisions.",
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve finalize-goal config.", "error");
@@ -131,7 +184,8 @@ async function handleFinalizeGoal(args: string | undefined, ctx: ExtensionComman
 export function register(pi: ExtensionAPI) {
   pi.registerTool(finalizeGoalTool);
   pi.registerCommand("pio-finalize-goal", {
-    description: "Update .pio/PROJECT/ documentation based on completed workspace decisions",
+    description:
+      "Update .pio/PROJECT/ documentation based on completed workspace decisions",
     handler: handleFinalizeGoal,
   });
 }

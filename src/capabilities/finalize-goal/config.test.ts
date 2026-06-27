@@ -1,9 +1,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import config, { register } from "./config";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readPendingTask } from "../../queues";
+import config, { register } from "./config";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -30,16 +30,28 @@ function createGoalTree(
   fs.mkdirSync(goalDir, { recursive: true });
 
   // GOAL.md is required for goal workspace validity
-  fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n\nTest goal.", "utf-8");
+  fs.writeFileSync(
+    path.join(goalDir, "GOAL.md"),
+    "# Goal\n\nTest goal.",
+    "utf-8",
+  );
 
   // Optionally create PLAN.md
   if (options?.withPlan) {
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "---\ntotalSteps: 1\nsteps:\n  - name: step-1\n    complexity: task\n---\n# Plan\n\n### Step 1: Test\n", "utf-8");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "---\ntotalSteps: 1\nsteps:\n  - name: step-1\n    complexity: task\n---\n# Plan\n\n### Step 1: Test\n",
+      "utf-8",
+    );
   }
 
   // Optionally create COMPLETION_SUMMARY.md
   if (options?.withCompletionSummary) {
-    fs.writeFileSync(path.join(goalDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Goal Complete\n\nAll steps approved.", "utf-8");
+    fs.writeFileSync(
+      path.join(goalDir, "COMPLETION_SUMMARY.md"),
+      "---\nstatus: complete\n---\n# Goal Complete\n\nAll steps approved.",
+      "utf-8",
+    );
   }
 
   return goalDir;
@@ -114,36 +126,50 @@ describe("register", () => {
   });
 
   it("registers a command named pio-finalize-goal", () => {
-    const registeredCommands: Array<{ name: string; options: { description: string } }> = [];
+    const registeredCommands: Array<{
+      name: string;
+      options: { description: string };
+    }> = [];
 
     const mockPi = {
       registerTool: vi.fn(),
-      registerCommand: vi.fn((name: string, options: { description: string; handler: Function }) => {
-        registeredCommands.push({ name, options });
-      }),
+      registerCommand: vi.fn(
+        (name: string, options: { description: string; handler: Function }) => {
+          registeredCommands.push({ name, options });
+        },
+      ),
     };
 
     register(mockPi as any);
 
-    const command = registeredCommands.find((c) => c.name === "pio-finalize-goal");
+    const command = registeredCommands.find(
+      (c) => c.name === "pio-finalize-goal",
+    );
     expect(command).toBeDefined();
   });
 
   it("command description references PROJECT documentation or finalization", () => {
-    const registeredCommands: Array<{ name: string; options: { description: string } }> = [];
+    const registeredCommands: Array<{
+      name: string;
+      options: { description: string };
+    }> = [];
 
     const mockPi = {
       registerTool: vi.fn(),
-      registerCommand: vi.fn((name: string, options: { description: string; handler: Function }) => {
-        registeredCommands.push({ name, options });
-      }),
+      registerCommand: vi.fn(
+        (name: string, options: { description: string; handler: Function }) => {
+          registeredCommands.push({ name, options });
+        },
+      ),
     };
 
     register(mockPi as any);
 
-    const command = registeredCommands.find((c) => c.name === "pio-finalize-goal");
+    const command = registeredCommands.find(
+      (c) => c.name === "pio-finalize-goal",
+    );
     expect(command).toBeDefined();
-    const desc = command!.options.description.toLowerCase();
+    const desc = command?.options.description.toLowerCase();
     expect(desc).toMatch(/project|finalize|\.pio\/project/i);
   });
 });
@@ -181,7 +207,10 @@ describe("finalizeGoalTool.execute", () => {
       cwd,
       ui: { notify: vi.fn() },
       hasUI: false,
-      sessionManager: { getSessionFile: vi.fn(() => ""), getEntries: vi.fn(() => []) },
+      sessionManager: {
+        getSessionFile: vi.fn(() => ""),
+        getEntries: vi.fn(() => []),
+      },
       modelRegistry: {},
       model: undefined,
       isIdle: vi.fn(() => true),
@@ -197,12 +226,21 @@ describe("finalizeGoalTool.execute", () => {
 
   it("enqueues task with workspacePrefix and other params when goal is complete", async () => {
     // Arrange: create completed goal
-    createGoalTree(tempDir, "my-goal", { withPlan: true, withCompletionSummary: true });
+    createGoalTree(tempDir, "my-goal", {
+      withPlan: true,
+      withCompletionSummary: true,
+    });
 
     const tool = getTool();
 
     // Act: call execute
-    const result = await tool.execute("test-call-id", { workspacePrefix: "goals/my-goal", initialMessage: "test message" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute(
+      "test-call-id",
+      { workspacePrefix: "goals/my-goal", initialMessage: "test message" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
 
     // Assert: result is success message
     const text = result.content[0].text;
@@ -211,13 +249,13 @@ describe("finalizeGoalTool.execute", () => {
     // Assert: task was enqueued with correct params
     const task = readPendingTask(tempDir, "my-goal");
     expect(task).toBeDefined();
-    expect(task!.capability).toBe("finalize-goal");
-    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-goal");
-    expect(task!.params).toHaveProperty("sessionName", "my-goal finalize-goal");
-    expect(task!.params).toHaveProperty("queueKey", "my-goal");
-    expect(task!.params).toHaveProperty("initialMessage");
-    expect(task!.params!.initialMessage).toBe("test message");
-    expect(task!.params).not.toHaveProperty("goalDir");
+    expect(task?.capability).toBe("finalize-goal");
+    expect(task?.params).toHaveProperty("workspacePrefix", "goals/my-goal");
+    expect(task?.params).toHaveProperty("sessionName", "my-goal finalize-goal");
+    expect(task?.params).toHaveProperty("queueKey", "my-goal");
+    expect(task?.params).toHaveProperty("initialMessage");
+    expect(task?.params?.initialMessage).toBe("test message");
+    expect(task?.params).not.toHaveProperty("goalDir");
   });
 
   it("enqueues task when workspace does not exist (validation deferred to launch)", async () => {
@@ -225,7 +263,13 @@ describe("finalizeGoalTool.execute", () => {
     const tool = getTool();
 
     // Act
-    const result = await tool.execute("test-call-id", { workspacePrefix: "goals/nonexistent" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute(
+      "test-call-id",
+      { workspacePrefix: "goals/nonexistent" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
 
     // Assert: task was enqueued (pre-validation removed, launch validates)
     const text = result.content[0].text;
@@ -234,17 +278,26 @@ describe("finalizeGoalTool.execute", () => {
     // Assert: task was enqueued
     const task = readPendingTask(tempDir, "nonexistent");
     expect(task).toBeDefined();
-    expect(task!.capability).toBe("finalize-goal");
+    expect(task?.capability).toBe("finalize-goal");
   });
 
   it("enqueues task when goal is not complete (validation deferred to launch)", async () => {
     // Arrange: create goal with PLAN.md but without COMPLETION_SUMMARY.md
-    createGoalTree(tempDir, "incomplete", { withPlan: true, withCompletionSummary: false });
+    createGoalTree(tempDir, "incomplete", {
+      withPlan: true,
+      withCompletionSummary: false,
+    });
 
     const tool = getTool();
 
     // Act
-    const result = await tool.execute("test-call-id", { workspacePrefix: "goals/incomplete" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute(
+      "test-call-id",
+      { workspacePrefix: "goals/incomplete" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
 
     // Assert: task was enqueued (pre-validation removed, launch validates)
     const text = result.content[0].text;
@@ -253,7 +306,7 @@ describe("finalizeGoalTool.execute", () => {
     // Assert: task was enqueued
     const task = readPendingTask(tempDir, "incomplete");
     expect(task).toBeDefined();
-    expect(task!.capability).toBe("finalize-goal");
+    expect(task?.capability).toBe("finalize-goal");
   });
 });
 
@@ -275,9 +328,11 @@ describe("handleFinalizeGoal", () => {
     let capturedHandler: Function | undefined;
     const mockPi = {
       registerTool: vi.fn(),
-      registerCommand: vi.fn((_name: string, options: { handler: Function }) => {
-        capturedHandler = options.handler;
-      }),
+      registerCommand: vi.fn(
+        (_name: string, options: { handler: Function }) => {
+          capturedHandler = options.handler;
+        },
+      ),
     };
     register(mockPi as any);
     return capturedHandler!;
@@ -320,7 +375,10 @@ describe("handleFinalizeGoal", () => {
     await handler(undefined, ctx);
 
     // Assert
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/usage|Usage/i), "warning");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringMatching(/usage|Usage/i),
+      "warning",
+    );
   });
 
   it("shows usage message when empty arguments provided", async () => {
@@ -332,12 +390,18 @@ describe("handleFinalizeGoal", () => {
     await handler("   ", ctx);
 
     // Assert
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/usage|Usage/i), "warning");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringMatching(/usage|Usage/i),
+      "warning",
+    );
   });
 
   it("launches session when workspace exists", async () => {
     // Arrange: create completed goal
-    createGoalTree(tempDir, "completed-goal", { withPlan: true, withCompletionSummary: true });
+    createGoalTree(tempDir, "completed-goal", {
+      withPlan: true,
+      withCompletionSummary: true,
+    });
 
     const handler = getHandler();
     const ctx = makeCtx(tempDir);
@@ -359,12 +423,18 @@ describe("handleFinalizeGoal", () => {
 
     // Assert: launchCapability validates inputs and throws on missing files;
     // command handler catches and notifies
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/missing|validation/i), "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringMatching(/missing|validation/i),
+      "error",
+    );
   });
 
   it("shows error when goal is not complete (validation at launch time)", async () => {
     // Arrange: create goal with PLAN.md but without COMPLETION_SUMMARY.md
-    createGoalTree(tempDir, "incomplete", { withPlan: true, withCompletionSummary: false });
+    createGoalTree(tempDir, "incomplete", {
+      withPlan: true,
+      withCompletionSummary: false,
+    });
 
     const handler = getHandler();
     const ctx = makeCtx(tempDir);
@@ -374,6 +444,9 @@ describe("handleFinalizeGoal", () => {
 
     // Assert: launchCapability validates inputs and throws on missing files;
     // command handler catches and notifies
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/missing|COMPLETION_SUMMARY/i), "error");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringMatching(/missing|COMPLETION_SUMMARY/i),
+      "error",
+    );
   });
 });

@@ -1,22 +1,32 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-
-import { launchCapability } from "../../capability-session";
-import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
-import { PLAN_FRONTMATTER_SCHEMA } from "../create-plan/schemas";
-import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
-import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { prepareSession, cleanupIncompleteSteps, resolveReviseReadOnlyFiles, resolveReviseWriteAllowlist } from "./callbacks";
+import { launchCapability } from "../../capability-session";
+import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
+import { enqueueTask } from "../../queues";
+import type { CapabilityContract } from "../../types";
+import { PLAN_FRONTMATTER_SCHEMA } from "../create-plan/schemas";
+import {
+  cleanupIncompleteSteps,
+  prepareSession,
+  resolveReviseReadOnlyFiles,
+  resolveReviseWriteAllowlist,
+} from "./callbacks";
 
 // ---------------------------------------------------------------------------
 // Contract (single source of truth — imported by callbacks)
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ name: "goal", file: "GOAL.md" }, { name: "existing-plan", file: "PLAN.md" }],
+  inputs: [
+    { name: "goal", file: "GOAL.md" },
+    { name: "existing-plan", file: "PLAN.md" },
+  ],
   outputs: [{ name: "plan", file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
 };
 
@@ -32,7 +42,10 @@ const capabilityConfig = {
   skills: {
     mandatory: ["pio-planning", "grill-me"],
     recommended: [
-      { name: "source-research", condition: "when researching existing solutions or libraries" },
+      {
+        name: "source-research",
+        condition: "when researching existing solutions or libraries",
+      },
     ],
   },
   defaultInitialMessage: () => "Ready.",
@@ -82,9 +95,15 @@ const revisePlanTool = defineTool({
 // Command
 // ---------------------------------------------------------------------------
 
-async function handleRevisePlan(args: string | undefined, ctx: ExtensionCommandContext) {
-  if (!args || !args.trim()) {
-    ctx.ui.notify("Usage: /pio-revise-plan --workspace-prefix <prefix>", "warning");
+async function handleRevisePlan(
+  args: string | undefined,
+  ctx: ExtensionCommandContext,
+) {
+  if (!args?.trim()) {
+    ctx.ui.notify(
+      "Usage: /pio-revise-plan --workspace-prefix <prefix>",
+      "warning",
+    );
     return;
   }
 
@@ -96,7 +115,10 @@ async function handleRevisePlan(args: string | undefined, ctx: ExtensionCommandC
     }
   }
   if (!workspacePrefix) {
-    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-revise-plan --workspace-prefix <prefix>", "error");
+    ctx.ui.notify(
+      "--workspace-prefix is required. Usage: /pio-revise-plan --workspace-prefix <prefix>",
+      "error",
+    );
     return;
   }
 
@@ -108,7 +130,8 @@ async function handleRevisePlan(args: string | undefined, ctx: ExtensionCommandC
     workspacePrefix,
     sessionName: `${queueKey} revise-plan`,
     queueKey,
-    initialMessage: "Revise the plan. Read PLAN_ARCHIVE/ for previous plans, GOAL.md for scope boundaries, and write a fresh PLAN.md.",
+    initialMessage:
+      "Revise the plan. Read PLAN_ARCHIVE/ for previous plans, GOAL.md for scope boundaries, and write a fresh PLAN.md.",
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve revise-plan config.", "error");
@@ -133,7 +156,8 @@ async function handleRevisePlan(args: string | undefined, ctx: ExtensionCommandC
 export function register(pi: ExtensionAPI) {
   pi.registerTool(revisePlanTool);
   pi.registerCommand("pio-revise-plan", {
-    description: "Archive the current plan and launch a session to write a fresh plan",
+    description:
+      "Archive the current plan and launch a session to write a fresh plan",
     handler: handleRevisePlan,
   });
 }

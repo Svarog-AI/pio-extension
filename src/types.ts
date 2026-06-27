@@ -109,17 +109,29 @@ export interface CapabilityConfig {
 
 /** Callback signature for step-dependent config fields.
  * @param workspaceDir - Resolved workspace directory (already includes workspacePrefix from normalization). */
-export type ConfigCallback<T> = (workspaceDir: string, params?: Record<string, unknown>) => T;
+export type ConfigCallback<T> = (
+  workspaceDir: string,
+  params?: Record<string, unknown>,
+) => T;
 
 /** Lifecycle hook that runs before the agent starts (e.g., stale-state cleanup).
  * @param workspaceDir - Resolved workspace directory (already includes workspacePrefix from normalization). */
-export type PrepareSessionCallback = (workspaceDir: string, params?: Record<string, unknown>) => void | Promise<void>;
+export type PrepareSessionCallback = (
+  workspaceDir: string,
+  params?: Record<string, unknown>,
+) => void | Promise<void>;
 
 /** Lifecycle hook that runs after file-existence validation passes but before transition routing. Can fail to keep the agent in the session to fix issues. */
-export type PostValidateCallback = (workspaceDir: string, params?: Record<string, unknown>) => { success: boolean; message?: string };
+export type PostValidateCallback = (
+  workspaceDir: string,
+  params?: Record<string, unknown>,
+) => { success: boolean; message?: string };
 
 /** Lifecycle hook that runs after transition routing + task enqueuing completes. Applies irreversible side effects or capability-specific cleanup. */
-export type PostExecuteCallback = (workspaceDir: string, params?: Record<string, unknown>) => void | Promise<void>;
+export type PostExecuteCallback = (
+  workspaceDir: string,
+  params?: Record<string, unknown>,
+) => void | Promise<void>;
 
 // ---------------------------------------------------------------------------
 // Capability lifecycle phases
@@ -155,5 +167,3 @@ export type PostExecuteCallback = (workspaceDir: string, params?: Record<string,
 //
 // Order: PreValidate → Prepare → agent session → PostValidate →
 //        transition routing → task enqueuing → PostExecute → cleanup → terminate
-
-

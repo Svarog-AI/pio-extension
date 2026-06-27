@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import config, { register } from "./config";
 
 // ---------------------------------------------------------------------------
@@ -60,41 +60,57 @@ describe("register", () => {
 
     register(mockPi as any);
 
-    const tool = registeredTools.find((t) => t.name === "pio_create_project_context");
+    const tool = registeredTools.find(
+      (t) => t.name === "pio_create_project_context",
+    );
     expect(tool).toBeDefined();
   });
 
   it("registers a command named pio-project-context", () => {
-    const registeredCommands: Array<{ name: string; options: { description: string } }> = [];
+    const registeredCommands: Array<{
+      name: string;
+      options: { description: string };
+    }> = [];
 
     const mockPi = {
       registerTool: vi.fn(),
-      registerCommand: vi.fn((name: string, options: { description: string; handler: Function }) => {
-        registeredCommands.push({ name, options });
-      }),
+      registerCommand: vi.fn(
+        (name: string, options: { description: string; handler: Function }) => {
+          registeredCommands.push({ name, options });
+        },
+      ),
     };
 
     register(mockPi as any);
 
-    const command = registeredCommands.find((c) => c.name === "pio-project-context");
+    const command = registeredCommands.find(
+      (c) => c.name === "pio-project-context",
+    );
     expect(command).toBeDefined();
   });
 
   it("command description references multi-file output", () => {
-    const registeredCommands: Array<{ name: string; options: { description: string } }> = [];
+    const registeredCommands: Array<{
+      name: string;
+      options: { description: string };
+    }> = [];
 
     const mockPi = {
       registerTool: vi.fn(),
-      registerCommand: vi.fn((name: string, options: { description: string; handler: Function }) => {
-        registeredCommands.push({ name, options });
-      }),
+      registerCommand: vi.fn(
+        (name: string, options: { description: string; handler: Function }) => {
+          registeredCommands.push({ name, options });
+        },
+      ),
     };
 
     register(mockPi as any);
 
-    const command = registeredCommands.find((c) => c.name === "pio-project-context");
+    const command = registeredCommands.find(
+      (c) => c.name === "pio-project-context",
+    );
     expect(command).toBeDefined();
-    expect(command!.options.description).not.toMatch(/\.pio\/PROJECT\.md\b/);
-    expect(command!.options.description).toMatch(/\.pio\/PROJECT\//);
+    expect(command?.options.description).not.toMatch(/\.pio\/PROJECT\.md\b/);
+    expect(command?.options.description).toMatch(/\.pio\/PROJECT\//);
   });
 });

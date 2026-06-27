@@ -1,7 +1,17 @@
 import { join } from "node:path";
+import type {
+  CapabilityPackageConfig,
+  CapabilitySkills,
+} from "./capability-package";
 import { pioRootDir } from "./fs-utils";
-import type { CapabilityConfig, CapabilityContract, ConfigCallback, PostExecuteCallback, PostValidateCallback, PrepareSessionCallback } from "./types";
-import type { CapabilityPackageConfig, CapabilitySkills } from "./capability-package";
+import type {
+  CapabilityConfig,
+  CapabilityContract,
+  ConfigCallback,
+  PostExecuteCallback,
+  PostValidateCallback,
+  PrepareSessionCallback,
+} from "./types";
 
 /**
  * Resolve a step-dependent config field: if it's a callback, invoke it;
@@ -26,7 +36,9 @@ function resolveField<T>(
  * Parse a format specifier like "02d" into { pad: "0", width: 2, type: "d" }.
  * Returns null if the format is not recognized.
  */
-function parseFormatSpecifier(spec: string): { pad: string; width: number; type: string } | null {
+function parseFormatSpecifier(
+  spec: string,
+): { pad: string; width: number; type: string } | null {
   const match = spec.match(/^(.)?(\d+)(.)$/);
   if (!match) return null;
   return {
@@ -61,7 +73,8 @@ export function resolvePaths(
   const results = paths.map((p) =>
     p.replace(/\{(\w+)(?::([^}]+))?\}/g, (_match, key, formatSpec) => {
       const value = params[key];
-      if (value === undefined || value === null) return `{${key}${formatSpec ? ":" + formatSpec : ""}}`;
+      if (value === undefined || value === null)
+        return `{${key}${formatSpec ? `:${formatSpec}` : ""}}`;
 
       if (formatSpec) {
         const parsed = parseFormatSpecifier(formatSpec);
@@ -118,7 +131,7 @@ export function resolveContractPath(
   // 1. Placeholder resolution — always run through resolvePaths
   // Paths without placeholders pass through unchanged; paths with placeholders
   // throw if keys are missing (consistent with resolvePaths existing behavior).
-  let resolved = resolvePaths([contractPath], params ?? {})[0];
+  const resolved = resolvePaths([contractPath], params ?? {})[0];
 
   // 2. Project-relative path: resolve from global pioRootDir, ignoring baseDir and prefix
   if (projectRelative) {
@@ -133,8 +146,6 @@ export function resolveContractPath(
   // 4. No prefix: baseDir + contractPath
   return join(baseDir, resolved);
 }
-
-
 
 /**
  * Assemble a CapabilityConfig from pre-resolved field values.
@@ -191,32 +202,51 @@ function normalizePackageConfig(
       : join(cwd, ".pio");
 
   // Resolve workspace directory from prefix — single source of truth
-  const wsPrefix = typeof params?.workspacePrefix === "string" ? params.workspacePrefix : undefined;
+  const wsPrefix =
+    typeof params?.workspacePrefix === "string"
+      ? params.workspacePrefix
+      : undefined;
   const workspaceDir = wsPrefix ? join(baseDir, wsPrefix) : baseDir;
 
   // Strip prefix from params so downstream code doesn't double-apply
   // resolveContractPath falls back to joining baseDir + contractPath when workspacePrefix is undefined
-  const resolvedParams = wsPrefix ? { ...params, workspacePrefix: undefined } : params;
+  const resolvedParams = wsPrefix
+    ? { ...params, workspacePrefix: undefined }
+    : params;
 
   // Mandatory: sessionName — read from original params (before stripping)
-  const sessionName = typeof params?.sessionName === "string" ? params.sessionName : "";
+  const sessionName =
+    typeof params?.sessionName === "string" ? params.sessionName : "";
   if (!sessionName) {
-    throw new Error(`Capability "${cap}" requires a session name. Provide params.sessionName.`);
+    throw new Error(
+      `Capability "${cap}" requires a session name. Provide params.sessionName.`,
+    );
   }
 
   // Mandatory: initialMessage — read from params, fallback to defaultInitialMessage, throw if both missing
   const initialMsg =
-    (typeof params?.initialMessage === "string" ? params.initialMessage : undefined)
-    ?? pkg.defaultInitialMessage(workspaceDir, resolvedParams);
+    (typeof params?.initialMessage === "string"
+      ? params.initialMessage
+      : undefined) ?? pkg.defaultInitialMessage(workspaceDir, resolvedParams);
   if (!initialMsg) {
-    throw new Error(`Capability "${cap}" requires an initial message. Provide params.initialMessage or define defaultInitialMessage.`);
+    throw new Error(
+      `Capability "${cap}" requires an initial message. Provide params.initialMessage or define defaultInitialMessage.`,
+    );
   }
 
   // Prepend workspace directory metadata — covers all paths: state machine, tool handler, default fallback
   const enrichedMsg = `Workspace directory: ${workspaceDir}\n\n${initialMsg}`;
 
-  const readOnlyFiles = resolveField<string[]>(pkg.readOnlyFiles, workspaceDir, resolvedParams);
-  const writeAllowlist = resolveField<string[]>(pkg.writeAllowlist, workspaceDir, resolvedParams);
+  const readOnlyFiles = resolveField<string[]>(
+    pkg.readOnlyFiles,
+    workspaceDir,
+    resolvedParams,
+  );
+  const writeAllowlist = resolveField<string[]>(
+    pkg.writeAllowlist,
+    workspaceDir,
+    resolvedParams,
+  );
   const allowProjectWrites = pkg.allowProjectWrites ?? false;
 
   return buildCapabilityConfig(
@@ -262,5 +292,10 @@ export async function resolveCapabilityConfig(
     console.warn(`pio: no default export found for capability "${cap}"`);
     return undefined;
   }
-  return normalizePackageConfig(cap, mod.default as CapabilityPackageConfig, cwd, params);
+  return normalizePackageConfig(
+    cap,
+    mod.default as CapabilityPackageConfig,
+    cwd,
+    params,
+  );
 }

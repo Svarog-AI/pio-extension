@@ -1,5 +1,8 @@
 import * as Value from "typebox/value";
-import { EXECUTION_SUMMARY_SCHEMA, type ExecutionSummaryOutputs } from "./schemas";
+import {
+  EXECUTION_SUMMARY_SCHEMA,
+  type ExecutionSummaryOutputs,
+} from "./schemas";
 
 // ---------------------------------------------------------------------------
 // EXECUTION_SUMMARY_SCHEMA — validation
@@ -7,15 +10,21 @@ import { EXECUTION_SUMMARY_SCHEMA, type ExecutionSummaryOutputs } from "./schema
 
 describe("EXECUTION_SUMMARY_SCHEMA", () => {
   it("accepts status completed", () => {
-    expect(Value.Check(EXECUTION_SUMMARY_SCHEMA, { status: "completed" })).toBe(true);
+    expect(Value.Check(EXECUTION_SUMMARY_SCHEMA, { status: "completed" })).toBe(
+      true,
+    );
   });
 
   it("accepts status blocked", () => {
-    expect(Value.Check(EXECUTION_SUMMARY_SCHEMA, { status: "blocked" })).toBe(true);
+    expect(Value.Check(EXECUTION_SUMMARY_SCHEMA, { status: "blocked" })).toBe(
+      true,
+    );
   });
 
   it("rejects unknown status values", () => {
-    expect(Value.Check(EXECUTION_SUMMARY_SCHEMA, { status: "unknown" })).toBe(false);
+    expect(Value.Check(EXECUTION_SUMMARY_SCHEMA, { status: "unknown" })).toBe(
+      false,
+    );
   });
 
   it("rejects missing status field", () => {

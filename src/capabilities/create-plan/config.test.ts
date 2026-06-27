@@ -1,9 +1,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import config, { postValidateCreatePlan, register } from "./config";
-import { readPendingTask } from "../../queues";
 import { vi } from "vitest";
+import { readPendingTask } from "../../queues";
+import config, { postValidateCreatePlan, register } from "./config";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -30,7 +30,11 @@ function createGoalTree(
   fs.mkdirSync(goalDir, { recursive: true });
 
   // GOAL.md is required for goal workspace validity
-  fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n\nTest goal.", "utf-8");
+  fs.writeFileSync(
+    path.join(goalDir, "GOAL.md"),
+    "# Goal\n\nTest goal.",
+    "utf-8",
+  );
 
   // Write PLAN.md with the provided content
   fs.writeFileSync(path.join(goalDir, "PLAN.md"), planContent, "utf-8");
@@ -43,10 +47,16 @@ function createGoalTree(
  * Includes a valid `steps` array by default.
  */
 function makePlanContent(totalSteps: number, headingCount: number): string {
-  const stepsYaml = Array.from({ length: totalSteps }, (_, i) => `  - name: step-${i + 1}\n    complexity: task`).join("\n");
+  const stepsYaml = Array.from(
+    { length: totalSteps },
+    (_, i) => `  - name: step-${i + 1}\n    complexity: task`,
+  ).join("\n");
   const frontmatter = `---\ntotalSteps: ${totalSteps}\nsteps:\n${stepsYaml}\n---`;
   const title = "# Plan: Test Goal";
-  const headings = Array.from({ length: headingCount }, (_, i) => `### Step ${i + 1}: Step description`).join("\n");
+  const headings = Array.from(
+    { length: headingCount },
+    (_, i) => `### Step ${i + 1}: Step description`,
+  ).join("\n");
   return `${frontmatter}\n${title}\n\n${headings}`;
 }
 
@@ -58,11 +68,16 @@ function makePlanContentWithSteps(
   stepsArray: Array<{ name: string; complexity: "task" | "subgoal" }>,
   headingCount: number,
 ): string {
-  const stepsYaml = stepsArray.map((s) => `  - name: ${s.name}\n    complexity: ${s.complexity}`).join("\n");
+  const stepsYaml = stepsArray
+    .map((s) => `  - name: ${s.name}\n    complexity: ${s.complexity}`)
+    .join("\n");
 
   const frontmatter = `---\ntotalSteps: ${totalSteps}\nsteps:\n${stepsYaml}\n---`;
   const title = "# Plan: Test Goal";
-  const headings = Array.from({ length: headingCount }, (_, i) => `### Step ${i + 1}: Step description`).join("\n");
+  const headings = Array.from(
+    { length: headingCount },
+    (_, i) => `### Step ${i + 1}: Step description`,
+  ).join("\n");
   return `${frontmatter}\n${title}\n\n${headings}`;
 }
 
@@ -103,7 +118,11 @@ describe("postValidateCreatePlan — valid frontmatter and matching headings", (
 
   it("returns success with large step numbers (e.g. 12 steps)", () => {
     // Arrange: PLAN.md with totalSteps: 12 and exactly 12 headings
-    const goalDir = createGoalTree(tempDir, "valid-12", makePlanContent(12, 12));
+    const goalDir = createGoalTree(
+      tempDir,
+      "valid-12",
+      makePlanContent(12, 12),
+    );
 
     // Act
     const result = postValidateCreatePlan(goalDir);
@@ -128,7 +147,8 @@ describe("postValidateCreatePlan — steps array is required", () => {
 
   it("rejects when steps field is missing from frontmatter", () => {
     // Arrange: PLAN.md with only totalSteps, no steps field, and 3 headings
-    const planContent = "---\ntotalSteps: 3\n---\n# Plan: Test Goal\n\n### Step 1: A\n### Step 2: B\n### Step 3: C";
+    const planContent =
+      "---\ntotalSteps: 3\n---\n# Plan: Test Goal\n\n### Step 1: A\n### Step 2: B\n### Step 3: C";
     const goalDir = createGoalTree(tempDir, "missing-steps", planContent);
 
     // Act
@@ -155,7 +175,11 @@ describe("postValidateCreatePlan — steps array validation", () => {
 
   it("passes when steps array length matches totalSteps", () => {
     // Arrange: totalSteps: 3, steps has 3 entries, 3 headings
-    const goalDir = createGoalTree(tempDir, "valid-steps", makePlanContent(3, 3));
+    const goalDir = createGoalTree(
+      tempDir,
+      "valid-steps",
+      makePlanContent(3, 3),
+    );
 
     // Act
     const result = postValidateCreatePlan(goalDir);
@@ -171,7 +195,10 @@ describe("postValidateCreatePlan — steps array validation", () => {
       "complexity-task",
       makePlanContentWithSteps(
         2,
-        [{ name: "a", complexity: "task" }, { name: "b", complexity: "task" }],
+        [
+          { name: "a", complexity: "task" },
+          { name: "b", complexity: "task" },
+        ],
         2,
       ),
     );
@@ -190,7 +217,11 @@ describe("postValidateCreatePlan — steps array validation", () => {
       "complexity-subgoal",
       makePlanContentWithSteps(
         3,
-        [{ name: "a", complexity: "task" }, { name: "b", complexity: "subgoal" }, { name: "c", complexity: "task" }],
+        [
+          { name: "a", complexity: "task" },
+          { name: "b", complexity: "subgoal" },
+          { name: "c", complexity: "task" },
+        ],
         3,
       ),
     );
@@ -207,7 +238,15 @@ describe("postValidateCreatePlan — steps array validation", () => {
     const goalDir = createGoalTree(
       tempDir,
       "steps-too-few",
-      makePlanContentWithSteps(5, [{ name: "a", complexity: "task" }, { name: "b", complexity: "task" }, { name: "c", complexity: "task" }], 5),
+      makePlanContentWithSteps(
+        5,
+        [
+          { name: "a", complexity: "task" },
+          { name: "b", complexity: "task" },
+          { name: "c", complexity: "task" },
+        ],
+        5,
+      ),
     );
 
     // Act
@@ -226,7 +265,12 @@ describe("postValidateCreatePlan — steps array validation", () => {
       "steps-too-many",
       makePlanContentWithSteps(
         2,
-        [{ name: "a", complexity: "task" }, { name: "b", complexity: "task" }, { name: "c", complexity: "task" }, { name: "d", complexity: "task" }],
+        [
+          { name: "a", complexity: "task" },
+          { name: "b", complexity: "task" },
+          { name: "c", complexity: "task" },
+          { name: "d", complexity: "task" },
+        ],
         2,
       ),
     );
@@ -245,7 +289,14 @@ describe("postValidateCreatePlan — steps array validation", () => {
     const goalDir = createGoalTree(
       tempDir,
       "empty-name",
-      makePlanContentWithSteps(2, [{ name: "valid", complexity: "task" }, { name: "", complexity: "task" }], 2),
+      makePlanContentWithSteps(
+        2,
+        [
+          { name: "valid", complexity: "task" },
+          { name: "", complexity: "task" },
+        ],
+        2,
+      ),
     );
 
     // Act
@@ -262,8 +313,8 @@ describe("postValidateCreatePlan — steps array validation", () => {
       "---",
       "totalSteps: 2",
       "steps:",
-      '  - name: step-one',
-      '  - name: step-two',
+      "  - name: step-one",
+      "  - name: step-two",
       "---",
       "# Plan: Test Goal",
       "",
@@ -287,8 +338,8 @@ describe("postValidateCreatePlan — steps array validation", () => {
       "---",
       "totalSteps: 1",
       "steps:",
-      '  - name: a',
-      '    complexity: invalid',
+      "  - name: a",
+      "    complexity: invalid",
       "---",
       "# Plan: Test Goal",
       "",
@@ -476,7 +527,8 @@ describe("postValidateCreatePlan — totalSteps vs heading count mismatch", () =
 
   it("returns failure when there are zero headings but totalSteps is positive", () => {
     // Arrange: totalSteps: 3 and no ### Step N: headings at all
-    const planContent = "---\ntotalSteps: 3\n---\n# Plan: Test Goal\n\nNo step headings here.";
+    const planContent =
+      "---\ntotalSteps: 3\n---\n# Plan: Test Goal\n\nNo step headings here.";
     const goalDir = createGoalTree(tempDir, "zero-headings", planContent);
 
     // Act
@@ -528,7 +580,10 @@ describe("create-plan tool execute — pre-launch validation", () => {
       cwd,
       ui: { notify: vi.fn() },
       hasUI: false,
-      sessionManager: { getSessionFile: vi.fn(() => ""), getEntries: vi.fn(() => []) },
+      sessionManager: {
+        getSessionFile: vi.fn(() => ""),
+        getEntries: vi.fn(() => []),
+      },
       modelRegistry: {},
       model: undefined,
       isIdle: vi.fn(() => true),
@@ -544,7 +599,13 @@ describe("create-plan tool execute — pre-launch validation", () => {
 
   it("enqueues task when workspace does not exist (validation deferred to launch)", async () => {
     const tool = getTool();
-    const result = await tool.execute("test-id", { workspacePrefix: "goals/nonexistent" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/nonexistent" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
 
     expect(result.content[0].text).toContain("queued");
   });
@@ -556,7 +617,13 @@ describe("create-plan tool execute — pre-launch validation", () => {
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { workspacePrefix: "goals/valid" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/valid" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
 
     expect(result.content[0].text).toContain("queued");
   });
@@ -568,7 +635,13 @@ describe("create-plan tool execute — pre-launch validation", () => {
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { workspacePrefix: "goals/valid" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/valid" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
 
     expect(result.content[0].text).toContain("queued");
   });
@@ -580,16 +653,25 @@ describe("create-plan tool execute — pre-launch validation", () => {
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
 
     const tool = getTool();
-    await tool.execute("test-id", { workspacePrefix: "goals/my-feature", initialMessage: "test message" }, undefined, undefined, makeCtx(tempDir));
+    await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/my-feature", initialMessage: "test message" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
 
     // Assert: task was enqueued with correct params
     const task = readPendingTask(tempDir, "my-feature");
     expect(task).toBeDefined();
-    expect(task!.capability).toBe("create-plan");
-    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature");
-    expect(task!.params).toHaveProperty("sessionName", "my-feature create-plan");
-    expect(task!.params).toHaveProperty("queueKey", "my-feature");
-    expect(task!.params).toHaveProperty("initialMessage");
-    expect(task!.params!.initialMessage).toBe("test message");
+    expect(task?.capability).toBe("create-plan");
+    expect(task?.params).toHaveProperty("workspacePrefix", "goals/my-feature");
+    expect(task?.params).toHaveProperty(
+      "sessionName",
+      "my-feature create-plan",
+    );
+    expect(task?.params).toHaveProperty("queueKey", "my-feature");
+    expect(task?.params).toHaveProperty("initialMessage");
+    expect(task?.params?.initialMessage).toBe("test message");
   });
 });

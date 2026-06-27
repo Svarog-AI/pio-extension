@@ -1,9 +1,9 @@
-import type { StateMachine, ResolverResult } from "../state-machines";
-import { registerMachine } from "../state-machines";
-import { discoverNextStep, stepFolderName } from "../fs-utils";
-import { getCapState } from "./utils";
-import type { ReviewOutputs } from "../capabilities/review-task/schemas";
 import type { ExecutionSummaryOutputs } from "../capabilities/execute-task/schemas";
+import type { ReviewOutputs } from "../capabilities/review-task/schemas";
+import { discoverNextStep, stepFolderName } from "../fs-utils";
+import type { ResolverResult, StateMachine } from "../state-machines";
+import { registerMachine } from "../state-machines";
+import { getCapState } from "./utils";
 
 const MACHINE_ID = "goal-driven-development";
 
@@ -12,32 +12,45 @@ const MACHINE_ID = "goal-driven-development";
 // ---------------------------------------------------------------------------
 
 /** Extract stepNumber from params if it's a valid number. */
-function extractStepNumber(params?: Record<string, unknown>): number | undefined {
+function extractStepNumber(
+  params?: Record<string, unknown>,
+): number | undefined {
   return typeof params?.stepNumber === "number" ? params.stepNumber : undefined;
 }
 
 /** Require goalName from params — derive from queueKey (pio-workflow convention).
  * Throw if missing (wiring error). */
-function requireGoalName(resolver: string, params?: Record<string, unknown>): string {
-  const goalName = typeof params?.queueKey === "string" ? params.queueKey : undefined;
+function requireGoalName(
+  resolver: string,
+  params?: Record<string, unknown>,
+): string {
+  const goalName =
+    typeof params?.queueKey === "string" ? params.queueKey : undefined;
   if (!goalName) {
-    throw new Error(`${resolver}: queueKey missing from session params — wiring error upstream`);
+    throw new Error(
+      `${resolver}: queueKey missing from session params — wiring error upstream`,
+    );
   }
   return goalName;
 }
 
 /** Require stepNumber from params — throw if missing (wiring error). */
-function requireStepNumber(resolver: string, params?: Record<string, unknown>): number {
+function requireStepNumber(
+  resolver: string,
+  params?: Record<string, unknown>,
+): number {
   const stepNumber = extractStepNumber(params);
   if (stepNumber == null) {
-    throw new Error(`${resolver}: stepNumber missing from session params — wiring error upstream`);
+    throw new Error(
+      `${resolver}: stepNumber missing from session params — wiring error upstream`,
+    );
   }
   return stepNumber;
 }
 
 /** Construct the workspace prefix for a goal. */
 function workspacePrefix(goalName: string): string {
-  return "goals/" + goalName;
+  return `goals/${goalName}`;
 }
 
 /** Construct the workspace prefix for a step within a goal (includes step folder). */
@@ -46,7 +59,11 @@ function stepWorkspacePrefix(goalName: string, stepNumber: number): string {
 }
 
 /** Derive a human-readable session name from goal name, capability, and optional step number. */
-function sessionName(goalName: string, capability: string, stepNumber?: number): string {
+function sessionName(
+  goalName: string,
+  capability: string,
+  stepNumber?: number,
+): string {
   const base = `${goalName} ${capability}`;
   return stepNumber != null ? `${base} s${stepNumber}` : base;
 }
@@ -62,8 +79,14 @@ function resolveCreateGoalToCreatePlan(
 ): ResolverResult {
   const goalName = requireGoalName("resolveCreateGoalToCreatePlan", params);
 
-  const parentGoalName = typeof params?.parentGoalName === "string" ? params.parentGoalName : undefined;
-  const parentStepNumber = typeof params?.parentStepNumber === "number" ? params.parentStepNumber : undefined;
+  const parentGoalName =
+    typeof params?.parentGoalName === "string"
+      ? params.parentGoalName
+      : undefined;
+  const parentStepNumber =
+    typeof params?.parentStepNumber === "number"
+      ? params.parentStepNumber
+      : undefined;
 
   return {
     capability: "create-plan",
@@ -109,14 +132,20 @@ function resolveEvolvePlanToRevisePlan(
 
   if (explicitStepNumber != null) {
     // ctx.workspaceDir is already the resolved directory — no additional prefix needed
-    const evolveState = getCapState("evolve-plan", ctx.workspaceDir, { stepNumber: explicitStepNumber });
-    const revisePlanPath = stepFolderName(explicitStepNumber) + "/REVISE_PLAN_NEEDED";
+    const evolveState = getCapState("evolve-plan", ctx.workspaceDir, {
+      stepNumber: explicitStepNumber,
+    });
+    const revisePlanPath = `${stepFolderName(explicitStepNumber)}/REVISE_PLAN_NEEDED`;
     if (evolveState.undeclared(revisePlanPath).exists()) {
       return {
         capability: "revise-plan",
         initialMessage: `Revise the plan for goal "${goalName}". Revision triggered at Step ${explicitStepNumber}. Read REVISE_PLAN_NEEDED in ${stepFolderName(explicitStepNumber)}/ for the reason, check PLAN_ARCHIVE/ for previous plans, and read GOAL.md for scope boundaries. Write a fresh PLAN.md.`,
         sessionName: sessionName(goalName, "revise-plan"),
-        params: { revisionTriggerStep: explicitStepNumber, workspacePrefix: prefix, queueKey: goalName },
+        params: {
+          revisionTriggerStep: explicitStepNumber,
+          workspacePrefix: prefix,
+          queueKey: goalName,
+        },
       };
     }
   }
@@ -162,10 +191,13 @@ function resolveEvolvePlanToExecuteTask(
   ctx: { workspaceDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult | undefined {
-  const stepNumber = requireStepNumber("resolveEvolvePlanToExecuteTask", params);
+  const stepNumber = requireStepNumber(
+    "resolveEvolvePlanToExecuteTask",
+    params,
+  );
   const goalName = requireGoalName("resolveEvolvePlanToExecuteTask", params);
 
-  const prefix = workspacePrefix(goalName);
+  const _prefix = workspacePrefix(goalName);
 
   // Guard: if all plan steps are complete, finalize-goal edge should have fired.
   // ctx.workspaceDir is already the resolved directory — no additional prefix needed
@@ -175,8 +207,10 @@ function resolveEvolvePlanToExecuteTask(
   }
 
   // Guard: if the current step signals revision, that edge should have fired instead.
-  const evolveWithStep = getCapState("evolve-plan", ctx.workspaceDir, { stepNumber });
-  const revisePlanPath = stepFolderName(stepNumber) + "/REVISE_PLAN_NEEDED";
+  const evolveWithStep = getCapState("evolve-plan", ctx.workspaceDir, {
+    stepNumber,
+  });
+  const revisePlanPath = `${stepFolderName(stepNumber)}/REVISE_PLAN_NEEDED`;
   if (evolveWithStep.undeclared(revisePlanPath).exists()) {
     return undefined;
   }
@@ -185,7 +219,11 @@ function resolveEvolvePlanToExecuteTask(
     capability: "execute-task",
     initialMessage: `Implement Step ${stepNumber}. Your workspace is the step directory (${stepFolderName(stepNumber)}/). Read TASK.md for the specification and acceptance criteria, then implement the changes.`,
     sessionName: sessionName(goalName, "execute-task", stepNumber),
-    params: { stepNumber, workspacePrefix: stepWorkspacePrefix(goalName, stepNumber), queueKey: goalName },
+    params: {
+      stepNumber,
+      workspacePrefix: stepWorkspacePrefix(goalName, stepNumber),
+      queueKey: goalName,
+    },
   };
 }
 
@@ -194,14 +232,21 @@ function resolveExecuteTaskToReviewTask(
   ctx: { workspaceDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult | undefined {
-  const stepNumber = requireStepNumber("resolveExecuteTaskToReviewTask", params);
+  const stepNumber = requireStepNumber(
+    "resolveExecuteTaskToReviewTask",
+    params,
+  );
   const goalName = requireGoalName("resolveExecuteTaskToReviewTask", params);
 
   // Guard: read SUMMARY.md frontmatter — only transition to review-task if status is "completed".
   // This must read SUMMARY.md directly (not check for BLOCKED marker) because
   // dispatch (step 3 of mark-complete) runs before postExecute (step 4) creates the marker.
-  const executeState = getCapState("execute-task", ctx.workspaceDir, { stepNumber });
-  const summaryData = executeState.output<ExecutionSummaryOutputs>("summary").read();
+  const executeState = getCapState("execute-task", ctx.workspaceDir, {
+    stepNumber,
+  });
+  const summaryData = executeState
+    .output<ExecutionSummaryOutputs>("summary")
+    .read();
 
   if (summaryData?.status !== "completed") {
     return undefined;
@@ -211,7 +256,11 @@ function resolveExecuteTaskToReviewTask(
     capability: "review-task",
     initialMessage: `Review Step ${stepNumber} for goal "${goalName}". Your workspace is the step directory. Read TASK.md for the specification, SUMMARY.md for what was implemented, and verify against acceptance criteria. Write REVIEW.md.`,
     sessionName: sessionName(goalName, "review-task", stepNumber),
-    params: { stepNumber, workspacePrefix: stepWorkspacePrefix(goalName, stepNumber), queueKey: goalName },
+    params: {
+      stepNumber,
+      workspacePrefix: stepWorkspacePrefix(goalName, stepNumber),
+      queueKey: goalName,
+    },
   };
 }
 
@@ -225,7 +274,9 @@ function resolveReviewTaskToEvolvePlan(
 
   const prefix = workspacePrefix(goalName);
   // ctx.workspaceDir is already the resolved directory — no additional prefix needed
-  const reviewState = getCapState("review-task", ctx.workspaceDir, { stepNumber });
+  const reviewState = getCapState("review-task", ctx.workspaceDir, {
+    stepNumber,
+  });
   const reviewData = reviewState.output<ReviewOutputs>("review").read();
 
   if (reviewData?.decision === "APPROVED") {
@@ -234,7 +285,11 @@ function resolveReviewTaskToEvolvePlan(
       capability: "evolve-plan",
       initialMessage: `Step ${stepNumber} approved. Generate the specification for Step ${nextStep}. Read PLAN.md — locate \`### Step ${nextStep}:\`, review its description, then write TASK.md in ${stepFolderName(nextStep)}/.`,
       sessionName: sessionName(goalName, "evolve-plan", nextStep),
-      params: { stepNumber: nextStep, workspacePrefix: prefix, queueKey: goalName },
+      params: {
+        stepNumber: nextStep,
+        workspacePrefix: prefix,
+        queueKey: goalName,
+      },
     };
   }
 
@@ -247,11 +302,16 @@ function resolveReviewTaskToExecuteTask(
   params?: Record<string, unknown>,
 ): ResolverResult | undefined {
   const goalName = requireGoalName("resolveReviewTaskToExecuteTask", params);
-  const stepNumber = requireStepNumber("resolveReviewTaskToExecuteTask", params);
+  const stepNumber = requireStepNumber(
+    "resolveReviewTaskToExecuteTask",
+    params,
+  );
 
-  const prefix = workspacePrefix(goalName);
+  const _prefix = workspacePrefix(goalName);
   // ctx.workspaceDir is already the resolved directory — no additional prefix needed
-  const reviewState = getCapState("review-task", ctx.workspaceDir, { stepNumber });
+  const reviewState = getCapState("review-task", ctx.workspaceDir, {
+    stepNumber,
+  });
   const reviewData = reviewState.output<ReviewOutputs>("review").read();
 
   if (reviewData?.decision === "REJECTED") {
@@ -259,7 +319,11 @@ function resolveReviewTaskToExecuteTask(
       capability: "execute-task",
       initialMessage: `Step ${stepNumber} rejected. Your workspace is the step directory (${stepFolderName(stepNumber)}/). Read REVIEW.md for rejection reasons and categorized issues. Re-implement by addressing all critical and high-priority findings.`,
       sessionName: sessionName(goalName, "execute-task", stepNumber),
-      params: { stepNumber, workspacePrefix: stepWorkspacePrefix(goalName, stepNumber), queueKey: goalName },
+      params: {
+        stepNumber,
+        workspacePrefix: stepWorkspacePrefix(goalName, stepNumber),
+        queueKey: goalName,
+      },
     };
   }
 
@@ -275,7 +339,10 @@ function resolveRevisePlanToEvolvePlan(
 
   const prefix = workspacePrefix(goalName);
   // ctx.workspaceDir is already the resolved goal directory — no prefix needed
-  const revisionTriggerStep = typeof params?.revisionTriggerStep === "number" ? params.revisionTriggerStep : undefined;
+  const revisionTriggerStep =
+    typeof params?.revisionTriggerStep === "number"
+      ? params.revisionTriggerStep
+      : undefined;
 
   // discoverNextStep still needed — revise-plan deletes non-APPROVED step folders via postExecute,
   // so the next step number can only be determined by scanning the filesystem.
@@ -299,8 +366,14 @@ function resolveFinalizeGoalToEvolvePlan(
   _ctx: { workspaceDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult | undefined {
-  const parentGoalName = typeof params?.parentGoalName === "string" ? params.parentGoalName : undefined;
-  const parentStepNumber = typeof params?.parentStepNumber === "number" ? params.parentStepNumber : undefined;
+  const parentGoalName =
+    typeof params?.parentGoalName === "string"
+      ? params.parentGoalName
+      : undefined;
+  const parentStepNumber =
+    typeof params?.parentStepNumber === "number"
+      ? params.parentStepNumber
+      : undefined;
 
   if (parentGoalName) {
     const nextStep = (parentStepNumber ?? 0) + 1;
@@ -329,17 +402,61 @@ export const goalDrivenDevelopment: StateMachine<{ workspaceDir: string }> = {
   name: "Goal-Driven Development",
   description: "Default pio workflow state machine for goal-driven development",
   edges: [
-    { from: "create-goal",   to: "create-plan",   resolve: resolveCreateGoalToCreatePlan },
-    { from: "create-plan",   to: "evolve-plan",    resolve: resolveCreatePlanToEvolvePlan },
-    { from: "evolve-plan",   to: "revise-plan",    resolve: resolveEvolvePlanToRevisePlan },
-    { from: "evolve-plan",   to: "create-goal",    resolve: resolveEvolvePlanToCreateGoal },
-    { from: "evolve-plan",   to: "finalize-goal",  resolve: resolveEvolvePlanToFinalizeGoal },
-    { from: "evolve-plan",   to: "execute-task",   resolve: resolveEvolvePlanToExecuteTask },
-    { from: "execute-task",  to: "review-task",    resolve: resolveExecuteTaskToReviewTask },
-    { from: "review-task",   to: "evolve-plan",    resolve: resolveReviewTaskToEvolvePlan },
-    { from: "review-task",   to: "execute-task",   resolve: resolveReviewTaskToExecuteTask },
-    { from: "revise-plan",   to: "evolve-plan",    resolve: resolveRevisePlanToEvolvePlan },
-    { from: "finalize-goal", to: "evolve-plan",    resolve: resolveFinalizeGoalToEvolvePlan },
+    {
+      from: "create-goal",
+      to: "create-plan",
+      resolve: resolveCreateGoalToCreatePlan,
+    },
+    {
+      from: "create-plan",
+      to: "evolve-plan",
+      resolve: resolveCreatePlanToEvolvePlan,
+    },
+    {
+      from: "evolve-plan",
+      to: "revise-plan",
+      resolve: resolveEvolvePlanToRevisePlan,
+    },
+    {
+      from: "evolve-plan",
+      to: "create-goal",
+      resolve: resolveEvolvePlanToCreateGoal,
+    },
+    {
+      from: "evolve-plan",
+      to: "finalize-goal",
+      resolve: resolveEvolvePlanToFinalizeGoal,
+    },
+    {
+      from: "evolve-plan",
+      to: "execute-task",
+      resolve: resolveEvolvePlanToExecuteTask,
+    },
+    {
+      from: "execute-task",
+      to: "review-task",
+      resolve: resolveExecuteTaskToReviewTask,
+    },
+    {
+      from: "review-task",
+      to: "evolve-plan",
+      resolve: resolveReviewTaskToEvolvePlan,
+    },
+    {
+      from: "review-task",
+      to: "execute-task",
+      resolve: resolveReviewTaskToExecuteTask,
+    },
+    {
+      from: "revise-plan",
+      to: "evolve-plan",
+      resolve: resolveRevisePlanToEvolvePlan,
+    },
+    {
+      from: "finalize-goal",
+      to: "evolve-plan",
+      resolve: resolveFinalizeGoalToEvolvePlan,
+    },
   ],
 };
 

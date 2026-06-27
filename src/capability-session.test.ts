@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { vi, beforeEach, afterEach, describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveProjectContextPath } from "./capability-session";
 
 // ---------------------------------------------------------------------------
@@ -17,7 +17,11 @@ function cleanup(tempDir: string): void {
 }
 
 // Create a queue file for a specific goal
-function enqueueTaskFile(cwd: string, goalName: string, capability = "create-plan"): void {
+function enqueueTaskFile(
+  cwd: string,
+  goalName: string,
+  capability = "create-plan",
+): void {
   const queuePath = path.join(cwd, ".pio", "session-queue");
   fs.mkdirSync(queuePath, { recursive: true });
   fs.writeFileSync(
@@ -32,20 +36,35 @@ function enqueueTaskFile(cwd: string, goalName: string, capability = "create-pla
 // ---------------------------------------------------------------------------
 
 /** Create a SKILL.md file with optional frontmatter and return its path. */
-function writeSkillFile(tempDir: string, skillName: string, body: string, frontmatter?: string): string {
+function writeSkillFile(
+  tempDir: string,
+  skillName: string,
+  body: string,
+  frontmatter?: string,
+): string {
   const dir = path.join(tempDir, "skills", skillName);
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, "SKILL.md");
-  const content = frontmatter
-    ? `---\n${frontmatter}\n---\n\n${body}`
-    : body;
+  const content = frontmatter ? `---\n${frontmatter}\n---\n\n${body}` : body;
   fs.writeFileSync(filePath, content, "utf-8");
   return filePath;
 }
 
 /** Create a mock Skill registry entry. */
 function makeSkill(name: string, filePath: string, baseDir: string) {
-  return { name, filePath, baseDir, description: "", sourceInfo: { path: filePath, source: "test", scope: "project" as const, origin: "package" as const }, disableModelInvocation: false };
+  return {
+    name,
+    filePath,
+    baseDir,
+    description: "",
+    sourceInfo: {
+      path: filePath,
+      source: "test",
+      scope: "project" as const,
+      origin: "package" as const,
+    },
+    disableModelInvocation: false,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -57,17 +76,14 @@ const sessionCapabilityMock = vi.hoisted(() => ({
   launchCapability: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock(
-  "./capability-session",
-  async (importOriginal) => {
-    const actual = (await importOriginal()) as Record<string, unknown>;
-    return {
-      ...actual,
-      getSessionParams: sessionCapabilityMock.getSessionParams,
-      launchCapability: sessionCapabilityMock.launchCapability,
-    };
-  },
-);
+vi.mock("./capability-session", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    getSessionParams: sessionCapabilityMock.getSessionParams,
+    launchCapability: sessionCapabilityMock.launchCapability,
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Top-level mock for model-config (used by model resolution tests)
@@ -121,7 +137,7 @@ const mockRecordTransition = vi.hoisted(() => vi.fn());
 const mockDispatch = vi.hoisted(() => vi.fn());
 
 vi.mock("./queues", async (importOriginal) => {
-  const actual = await importOriginal() as Record<string, unknown>;
+  const actual = (await importOriginal()) as Record<string, unknown>;
   return {
     ...actual,
     enqueueTask: mockEnqueueTask,
@@ -129,7 +145,7 @@ vi.mock("./queues", async (importOriginal) => {
 });
 
 vi.mock("./state-machines", async (importOriginal) => {
-  const actual = await importOriginal() as Record<string, unknown>;
+  const actual = (await importOriginal()) as Record<string, unknown>;
   return {
     ...actual,
     dispatch: mockDispatch,
@@ -137,7 +153,7 @@ vi.mock("./state-machines", async (importOriginal) => {
 });
 
 vi.mock("./state-machines/pio-workflow-machine", async (importOriginal) => {
-  const actual = await importOriginal() as Record<string, unknown>;
+  const actual = (await importOriginal()) as Record<string, unknown>;
   return {
     ...actual,
     goalDrivenDevelopment: {},
@@ -152,8 +168,16 @@ vi.mock("./state-machines/pio-workflow-machine", async (importOriginal) => {
 const mockResolveCapabilityConfigForSession = vi.hoisted(() => vi.fn());
 const mockResolveContractPath = vi.hoisted(() => {
   const { join } = require("node:path");
-  return (contractPath: string, baseDir: string, _prefix?: string, _params?: Record<string, unknown>): string => {
-    return join(baseDir, contractPath.startsWith("/") ? contractPath.slice(1) : contractPath);
+  return (
+    contractPath: string,
+    baseDir: string,
+    _prefix?: string,
+    _params?: Record<string, unknown>,
+  ): string => {
+    return join(
+      baseDir,
+      contractPath.startsWith("/") ? contractPath.slice(1) : contractPath,
+    );
   };
 });
 
@@ -194,7 +218,9 @@ describe("handleNextTask — goal resolution order", () => {
     // Arrange: two goals pending, session has queueKey = "other-goal"
     enqueueTaskFile(tempDir, "other-goal");
     enqueueTaskFile(tempDir, "session-goal");
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: "other-goal" });
+    sessionCapabilityMock.getSessionParams.mockReturnValue({
+      queueKey: "other-goal",
+    });
     mockResolveCapabilityConfigForSession.mockResolvedValue({
       capability: "create-plan",
       workspaceDir: tempDir,
@@ -209,12 +235,22 @@ describe("handleNextTask — goal resolution order", () => {
 
     // Assert: launched other-goal's task, not session-goal's
     expect(sessionCapabilityMock.launchCapability).toHaveBeenCalled();
-    expect(ctx.ui.notify).not.toHaveBeenCalledWith(expect.stringContaining("Multiple goals"));
+    expect(ctx.ui.notify).not.toHaveBeenCalledWith(
+      expect.stringContaining("Multiple goals"),
+    );
 
     // other-goal queue file should be deleted (consumed)
-    expect(fs.existsSync(path.join(tempDir, ".pio", "session-queue", "task-other-goal.json"))).toBe(false);
+    expect(
+      fs.existsSync(
+        path.join(tempDir, ".pio", "session-queue", "task-other-goal.json"),
+      ),
+    ).toBe(false);
     // session-goal queue file should still exist (not touched — scan was not triggered)
-    expect(fs.existsSync(path.join(tempDir, ".pio", "session-queue", "task-session-goal.json"))).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(tempDir, ".pio", "session-queue", "task-session-goal.json"),
+      ),
+    ).toBe(true);
   });
 
   it("falls through to scan when session has no queueKey", async () => {
@@ -241,7 +277,9 @@ describe("handleNextTask — goal resolution order", () => {
     // Arrange: two goals pending, session says "session-goal" but user specifies "explicit-goal"
     enqueueTaskFile(tempDir, "explicit-goal");
     enqueueTaskFile(tempDir, "session-goal");
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: "session-goal" });
+    sessionCapabilityMock.getSessionParams.mockReturnValue({
+      queueKey: "session-goal",
+    });
 
     const ctx = makeCtx();
 
@@ -249,13 +287,23 @@ describe("handleNextTask — goal resolution order", () => {
     await handleNextTask("explicit-goal", ctx);
 
     // Assert: explicit-goal's queue file was consumed, session-goal's was not
-    expect(fs.existsSync(path.join(tempDir, ".pio", "session-queue", "task-explicit-goal.json"))).toBe(false);
-    expect(fs.existsSync(path.join(tempDir, ".pio", "session-queue", "task-session-goal.json"))).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(tempDir, ".pio", "session-queue", "task-explicit-goal.json"),
+      ),
+    ).toBe(false);
+    expect(
+      fs.existsSync(
+        path.join(tempDir, ".pio", "session-queue", "task-session-goal.json"),
+      ),
+    ).toBe(true);
   });
 
   it("shows notification when session queueKey has no pending task", async () => {
     // Arrange: no queue files at all, session says "empty-goal"
-    sessionCapabilityMock.getSessionParams.mockReturnValue({ queueKey: "empty-goal" });
+    sessionCapabilityMock.getSessionParams.mockReturnValue({
+      queueKey: "empty-goal",
+    });
 
     const ctx = makeCtx();
 
@@ -263,7 +311,10 @@ describe("handleNextTask — goal resolution order", () => {
     await handleNextTask(undefined, ctx);
 
     // Assert: notified about no pending task for empty-goal, no launch attempted
-    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("No pending task"), expect.any(String));
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("No pending task"),
+      expect.any(String),
+    );
     expect(ctx.ui.notify.mock.calls[0][0]).toContain("empty-goal");
     expect(sessionCapabilityMock.launchCapability).not.toHaveBeenCalled();
   });
@@ -285,7 +336,8 @@ describe("model resolution — setupSessionInfrastructure and before_agent_start
     process.env.PIO_CONFIG_TEST_HOME = tempHomeDir;
     mockResolveCapabilityConfigForSession.mockClear();
     mockResolveCapabilityConfigForSession.mockImplementation((_cwd, params) => {
-      const cap = typeof params?.capability === "string" ? params.capability : "unknown";
+      const cap =
+        typeof params?.capability === "string" ? params.capability : "unknown";
       // getSessionConfig passes { capability, ...sessionParams } to resolveCapabilityConfig.
       // Tests may put skills/other fields in sessionParams for the mock to pick up.
       const { capability: _cap, ...rest } = params ?? {};
@@ -334,11 +386,16 @@ describe("model resolution — setupSessionInfrastructure and before_agent_start
       registeredHandlers,
       setModelMock,
       triggerResourcesDiscover: (capabilityName: string) => {
-        const handler = registeredHandlers["resources_discover"];
-        if (!handler) throw new Error("resources_discover handler not registered");
+        const handler = registeredHandlers.resources_discover;
+        if (!handler)
+          throw new Error("resources_discover handler not registered");
 
         return handler(
-          { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+          {
+            type: "resources_discover",
+            cwd: process.cwd(),
+            reason: "startup" as const,
+          },
           {
             sessionManager: {
               getEntries: () => [
@@ -380,9 +437,12 @@ describe("model resolution — setupSessionInfrastructure and before_agent_start
     await triggerResourcesDiscover("create-goal");
 
     // Act: trigger before_agent_start
-    const handler = registeredHandlers["before_agent_start"];
+    const handler = registeredHandlers.before_agent_start;
     if (!handler) throw new Error("before_agent_start handler not registered");
-    await handler({ type: "before_agent_start", prompt: "test", systemPrompt: "" } as any, ctx);
+    await handler(
+      { type: "before_agent_start", prompt: "test", systemPrompt: "" } as any,
+      ctx,
+    );
 
     // Assert: setModel was called with the resolved model
     expect(setModelMock).toHaveBeenCalledTimes(1);
@@ -406,9 +466,12 @@ describe("model resolution — setupSessionInfrastructure and before_agent_start
     await triggerResourcesDiscover("create-goal");
 
     // Act
-    const handler = registeredHandlers["before_agent_start"];
+    const handler = registeredHandlers.before_agent_start;
     if (!handler) throw new Error("before_agent_start handler not registered");
-    await handler({ type: "before_agent_start", prompt: "test", systemPrompt: "" } as any, ctx);
+    await handler(
+      { type: "before_agent_start", prompt: "test", systemPrompt: "" } as any,
+      ctx,
+    );
 
     // Assert: no redundant setModel call
     expect(setModelMock).not.toHaveBeenCalled();
@@ -422,9 +485,12 @@ describe("model resolution — setupSessionInfrastructure and before_agent_start
     const ctx = {} as any;
 
     // Act
-    const handler = registeredHandlers["before_agent_start"];
+    const handler = registeredHandlers.before_agent_start;
     if (!handler) throw new Error("before_agent_start handler not registered");
-    await handler({ type: "before_agent_start", prompt: "test", systemPrompt: "" } as any, ctx);
+    await handler(
+      { type: "before_agent_start", prompt: "test", systemPrompt: "" } as any,
+      ctx,
+    );
 
     // Assert: resolveModelForCapability was NOT called
     expect(mockResolveModel).not.toHaveBeenCalled();
@@ -443,9 +509,12 @@ describe("model resolution — setupSessionInfrastructure and before_agent_start
     const ctx = {} as any;
 
     // Act
-    const handler = registeredHandlers["before_agent_start"];
+    const handler = registeredHandlers.before_agent_start;
     if (!handler) throw new Error("before_agent_start handler not registered");
-    await handler({ type: "before_agent_start", prompt: "test", systemPrompt: "" } as any, ctx);
+    await handler(
+      { type: "before_agent_start", prompt: "test", systemPrompt: "" } as any,
+      ctx,
+    );
 
     // Assert: setModel was NOT called
     expect(setModelMock).not.toHaveBeenCalled();
@@ -456,7 +525,10 @@ describe("model resolution — setupSessionInfrastructure and before_agent_start
       await setupWithMockPi();
 
     // Arrange: config resolves a model but registry can't find it
-    mockResolveModel.mockReturnValue({ provider: "unknown-provider", modelId: "some-model" });
+    mockResolveModel.mockReturnValue({
+      provider: "unknown-provider",
+      modelId: "some-model",
+    });
 
     const warnSpy = vi.spyOn(console, "warn");
     warnSpy.mockImplementation(() => {});
@@ -469,9 +541,12 @@ describe("model resolution — setupSessionInfrastructure and before_agent_start
     await triggerResourcesDiscover("execute-task");
 
     // Act
-    const handler = registeredHandlers["before_agent_start"];
+    const handler = registeredHandlers.before_agent_start;
     if (!handler) throw new Error("before_agent_start handler not registered");
-    await handler({ type: "before_agent_start", prompt: "test", systemPrompt: "" } as any, ctx);
+    await handler(
+      { type: "before_agent_start", prompt: "test", systemPrompt: "" } as any,
+      ctx,
+    );
 
     // Assert: setModel NOT called (model not found), warning logged
     expect(setModelMock).not.toHaveBeenCalled();
@@ -480,7 +555,8 @@ describe("model resolution — setupSessionInfrastructure and before_agent_start
   });
 
   it("capabilityName is captured from config.capability during resources_discover", async () => {
-    const { registeredHandlers, triggerResourcesDiscover } = await setupWithMockPi();
+    const { registeredHandlers, triggerResourcesDiscover } =
+      await setupWithMockPi();
 
     // Arrange: use the mock to verify which capability name is used
     mockResolveModel.mockReturnValue({ provider: "j6000", modelId: "coding" });
@@ -489,7 +565,7 @@ describe("model resolution — setupSessionInfrastructure and before_agent_start
     await triggerResourcesDiscover("execute-task");
 
     // Act: trigger before_agent_start
-    const handler = registeredHandlers["before_agent_start"];
+    const handler = registeredHandlers.before_agent_start;
     if (!handler) throw new Error("before_agent_start handler not registered");
     await handler(
       { type: "before_agent_start", prompt: "test", systemPrompt: "" } as any,
@@ -511,7 +587,9 @@ describe("model resolution — setupSessionInfrastructure and before_agent_start
 
 describe("resolveProjectContextPath", () => {
   it("resolves to .pio/PROJECT/OVERVIEW.md", () => {
-    expect(resolveProjectContextPath("/some/dir")).toBe("/some/dir/.pio/PROJECT/OVERVIEW.md");
+    expect(resolveProjectContextPath("/some/dir")).toBe(
+      "/some/dir/.pio/PROJECT/OVERVIEW.md",
+    );
   });
 
   it("uses path.join for cross-platform separators", () => {
@@ -550,7 +628,9 @@ describe("model resolution — backwards compatibility", () => {
 
     const mockPi = {
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
       setModel: setModelMock,
       setSessionName: vi.fn(),
     };
@@ -559,14 +639,22 @@ describe("model resolution — backwards compatibility", () => {
     mod.setupSessionInfrastructure(mockPi as any);
 
     // Trigger resources_discover with a capability
-    const rdHandler = registeredHandlers["resources_discover"];
+    const rdHandler = registeredHandlers.resources_discover;
     if (rdHandler) {
       await rdHandler(
-        { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+        {
+          type: "resources_discover",
+          cwd: process.cwd(),
+          reason: "startup" as const,
+        },
         {
           sessionManager: {
             getEntries: () => [
-              { type: "custom", customType: "pio-config", data: { capability: "create-goal", sessionParams: {} } },
+              {
+                type: "custom",
+                customType: "pio-config",
+                data: { capability: "create-goal", sessionParams: {} },
+              },
             ],
           },
         },
@@ -574,9 +662,12 @@ describe("model resolution — backwards compatibility", () => {
     }
 
     // Trigger before_agent_start
-    const handler = registeredHandlers["before_agent_start"];
+    const handler = registeredHandlers.before_agent_start;
     if (handler) {
-      await handler({ type: "before_agent_start", prompt: "test", systemPrompt: "" } as any, {} as any);
+      await handler(
+        { type: "before_agent_start", prompt: "test", systemPrompt: "" } as any,
+        {} as any,
+      );
     }
 
     expect(setModelMock).not.toHaveBeenCalled();
@@ -590,7 +681,9 @@ describe("model resolution — backwards compatibility", () => {
 
     const mockPi = {
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
       setModel: setModelMock,
       setSessionName: vi.fn(),
     };
@@ -599,10 +692,14 @@ describe("model resolution — backwards compatibility", () => {
     mod.setupSessionInfrastructure(mockPi as any);
 
     // Trigger resources_discover with a capability that has a prompt
-    const rdHandler = registeredHandlers["resources_discover"];
+    const rdHandler = registeredHandlers.resources_discover;
     if (rdHandler) {
       await rdHandler(
-        { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+        {
+          type: "resources_discover",
+          cwd: process.cwd(),
+          reason: "startup" as const,
+        },
         {
           sessionManager: {
             getEntries: () => [
@@ -618,7 +715,7 @@ describe("model resolution — backwards compatibility", () => {
     }
 
     // Trigger before_agent_start — should return the prompt injection message
-    const handler = registeredHandlers["before_agent_start"];
+    const handler = registeredHandlers.before_agent_start;
     if (!handler) throw new Error("before_agent_start handler not registered");
     const result = await handler(
       { type: "before_agent_start", prompt: "test", systemPrompt: "" } as any,
@@ -660,8 +757,12 @@ describe("pio_mark_complete — queue key propagation", () => {
     const registeredHandlers: Record<string, Function> = {};
 
     const mockPi = {
-      registerTool: (tool: any) => { registeredTools.push(tool); },
-      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      registerTool: (tool: any) => {
+        registeredTools.push(tool);
+      },
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
       setModel: vi.fn(),
       setSessionName: vi.fn(),
     };
@@ -670,7 +771,9 @@ describe("pio_mark_complete — queue key propagation", () => {
     markMod.setupMarkComplete(mockPi as any);
 
     // Find the pio_mark_complete tool
-    const markCompleteTool = registeredTools.find((t) => t.name === "pio_mark_complete");
+    const markCompleteTool = registeredTools.find(
+      (t) => t.name === "pio_mark_complete",
+    );
     expect(markCompleteTool).toBeDefined();
 
     return {
@@ -696,7 +799,11 @@ describe("pio_mark_complete — queue key propagation", () => {
 
     // Arrange: subgoal completion — transition returns parent goal name
     mockDispatch.mockReturnValue([
-      { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "parent", stepNumber: 4, queueKey: "parent" } },
+      {
+        capability: "evolve-plan",
+        stateMachineId: "goal-driven-development",
+        params: { goalName: "parent", stepNumber: 4, queueKey: "parent" },
+      },
     ]);
 
     const ctx = makeToolContext({
@@ -720,7 +827,15 @@ describe("pio_mark_complete — queue key propagation", () => {
 
     // Arrange: flat goal — transition returns same goal name
     mockDispatch.mockReturnValue([
-      { capability: "review-task", stateMachineId: "goal-driven-development", params: { goalName: "my-feature", stepNumber: 1, queueKey: "my-feature" } },
+      {
+        capability: "review-task",
+        stateMachineId: "goal-driven-development",
+        params: {
+          goalName: "my-feature",
+          stepNumber: 1,
+          queueKey: "my-feature",
+        },
+      },
     ]);
 
     const ctx = makeToolContext({
@@ -744,14 +859,23 @@ describe("pio_mark_complete — queue key propagation", () => {
 
     // Arrange: transition returns parent goal name
     mockDispatch.mockReturnValue([
-      { capability: "evolve-plan", stateMachineId: "goal-driven-development", params: { goalName: "parent", stepNumber: 4, queueKey: "parent" } },
+      {
+        capability: "evolve-plan",
+        stateMachineId: "goal-driven-development",
+        params: { goalName: "parent", stepNumber: 4, queueKey: "parent" },
+      },
     ]);
 
     const ctx = makeToolContext({
       capability: "finalize-goal",
       workspaceDir: path.join(tempDir, ".pio", "goals", "nested"),
       contract: { inputs: [], outputs: [] },
-      sessionParams: { goalName: "nested", parentGoalName: "parent", parentStepNumber: 3, queueKey: "nested" },
+      sessionParams: {
+        goalName: "nested",
+        parentGoalName: "parent",
+        parentStepNumber: 3,
+        queueKey: "nested",
+      },
     });
 
     // Act
@@ -818,7 +942,12 @@ describe("buildSkillLoadingSection", () => {
   it("given a config with recommended skills when buildSkillLoadingSection is called then recommended skills appear as instruction-based listings", async () => {
     const config = {
       skills: {
-        recommended: [{ name: "source-research", condition: "when researching external libraries" }],
+        recommended: [
+          {
+            name: "source-research",
+            condition: "when researching external libraries",
+          },
+        ],
       },
     };
 
@@ -852,7 +981,13 @@ describe("buildSkillLoadingSection", () => {
   });
 
   it("given a mandatory skill whose file does not exist on disk when buildSkillLoadingSection is called then it logs a warning and skips", async () => {
-    const registry = [makeSkill("missing-skill", "/nonexistent/path/SKILL.md", "/nonexistent/path")];
+    const registry = [
+      makeSkill(
+        "missing-skill",
+        "/nonexistent/path/SKILL.md",
+        "/nonexistent/path",
+      ),
+    ];
     const config = { skills: { mandatory: ["missing-skill"] } };
 
     const warnSpy = vi.spyOn(console, "warn");
@@ -903,7 +1038,12 @@ describe("buildSkillLoadingSection", () => {
 
   it("given a skill with YAML frontmatter in SKILL.md when buildSkillLoadingSection reads and strips it then the injected body does not contain frontmatter delimiters", async () => {
     const skillBody = "# Test Skill\n\nThis is the body.";
-    const filePath = writeSkillFile(tempDir, "frontmatter-skill", skillBody, "name: frontmatter-skill\ndescription: test");
+    const filePath = writeSkillFile(
+      tempDir,
+      "frontmatter-skill",
+      skillBody,
+      "name: frontmatter-skill\ndescription: test",
+    );
     const baseDir = path.dirname(filePath);
 
     const registry = [makeSkill("frontmatter-skill", filePath, baseDir)];
@@ -964,7 +1104,9 @@ describe("skill injection — before_agent_start integration", () => {
 
     const mockPi = {
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
       setModel: setModelMock,
       setSessionName: vi.fn(),
     };
@@ -973,10 +1115,14 @@ describe("skill injection — before_agent_start integration", () => {
     mod.setupSessionInfrastructure(mockPi as any);
 
     // Trigger resources_discover with skills config
-    const rdHandler = registeredHandlers["resources_discover"];
+    const rdHandler = registeredHandlers.resources_discover;
     if (rdHandler) {
       await rdHandler(
-        { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+        {
+          type: "resources_discover",
+          cwd: process.cwd(),
+          reason: "startup" as const,
+        },
         {
           sessionManager: {
             getEntries: () => [
@@ -995,7 +1141,7 @@ describe("skill injection — before_agent_start integration", () => {
     }
 
     // Trigger before_agent_start with skill registry
-    const handler = registeredHandlers["before_agent_start"];
+    const handler = registeredHandlers.before_agent_start;
     if (!handler) throw new Error("before_agent_start handler not registered");
     const result = await handler(
       {
@@ -1027,7 +1173,9 @@ describe("skill injection — before_agent_start integration", () => {
 
     const mockPi = {
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
       setModel: setModelMock,
       setSessionName: vi.fn(),
     };
@@ -1036,10 +1184,14 @@ describe("skill injection — before_agent_start integration", () => {
     mod.setupSessionInfrastructure(mockPi as any);
 
     // Trigger resources_discover
-    const rdHandler = registeredHandlers["resources_discover"];
+    const rdHandler = registeredHandlers.resources_discover;
     if (rdHandler) {
       await rdHandler(
-        { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+        {
+          type: "resources_discover",
+          cwd: process.cwd(),
+          reason: "startup" as const,
+        },
         {
           sessionManager: {
             getEntries: () => [
@@ -1055,7 +1207,7 @@ describe("skill injection — before_agent_start integration", () => {
     }
 
     // Trigger before_agent_start with registry containing "pio" skill
-    const handler = registeredHandlers["before_agent_start"];
+    const handler = registeredHandlers.before_agent_start;
     if (!handler) throw new Error("before_agent_start handler not registered");
     const result = await handler(
       {
@@ -1071,7 +1223,9 @@ describe("skill injection — before_agent_start integration", () => {
 
     // Verify order: PROJECT OVERVIEW before SKILL LOADING before YOUR INSTRUCTIONS
     const projectIdx = result.systemPrompt.indexOf("--- PROJECT OVERVIEW ---");
-    const skillIdx = result.systemPrompt.indexOf("--- SKILL LOADING INSTRUCTIONS ---");
+    const skillIdx = result.systemPrompt.indexOf(
+      "--- SKILL LOADING INSTRUCTIONS ---",
+    );
     const yourIdx = result.systemPrompt.indexOf("--- YOUR INSTRUCTIONS ---");
 
     expect(projectIdx).toBeGreaterThan(-1);
@@ -1093,7 +1247,9 @@ describe("skill injection — before_agent_start integration", () => {
 
     const mockPi = {
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
       setModel: setModelMock,
       setSessionName: vi.fn(),
     };
@@ -1102,10 +1258,14 @@ describe("skill injection — before_agent_start integration", () => {
     mod.setupSessionInfrastructure(mockPi as any);
 
     // Trigger resources_discover with the skill in config
-    const rdHandler = registeredHandlers["resources_discover"];
+    const rdHandler = registeredHandlers.resources_discover;
     if (rdHandler) {
       await rdHandler(
-        { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+        {
+          type: "resources_discover",
+          cwd: process.cwd(),
+          reason: "startup" as const,
+        },
         {
           sessionManager: {
             getEntries: () => [
@@ -1124,7 +1284,7 @@ describe("skill injection — before_agent_start integration", () => {
     }
 
     // Trigger before_agent_start with registry
-    const handler = registeredHandlers["before_agent_start"];
+    const handler = registeredHandlers.before_agent_start;
     if (!handler) throw new Error("before_agent_start handler not registered");
     const result = await handler(
       {
@@ -1154,7 +1314,9 @@ describe("skill injection — before_agent_start integration", () => {
 
     const mockPi = {
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
       setModel: setModelMock,
       setSessionName: vi.fn(),
     };
@@ -1163,10 +1325,14 @@ describe("skill injection — before_agent_start integration", () => {
     mod.setupSessionInfrastructure(mockPi as any);
 
     // Trigger resources_discover
-    const rdHandler = registeredHandlers["resources_discover"];
+    const rdHandler = registeredHandlers.resources_discover;
     if (rdHandler) {
       await rdHandler(
-        { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+        {
+          type: "resources_discover",
+          cwd: process.cwd(),
+          reason: "startup" as const,
+        },
         {
           sessionManager: {
             getEntries: () => [
@@ -1182,7 +1348,7 @@ describe("skill injection — before_agent_start integration", () => {
     }
 
     // Trigger before_agent_start with a non-empty base systemPrompt
-    const handler = registeredHandlers["before_agent_start"];
+    const handler = registeredHandlers.before_agent_start;
     if (!handler) throw new Error("before_agent_start handler not registered");
     const result = await handler(
       {
@@ -1197,7 +1363,7 @@ describe("skill injection — before_agent_start integration", () => {
     // Assert: base prompt is preserved as prefix
     expect(result.systemPrompt).toBeDefined();
     expect(typeof result.systemPrompt).toBe("string");
-    expect(result.systemPrompt!.startsWith(basePrompt)).toBe(true);
+    expect(result.systemPrompt?.startsWith(basePrompt)).toBe(true);
     // Appended content follows after the separator
     expect(result.systemPrompt).toContain("\n\n");
     expect(result.systemPrompt).toContain("--- YOUR INSTRUCTIONS ---");
@@ -1231,7 +1397,9 @@ describe("resources_discover — skill loading uses buildSkillLoadingSection", (
 
     const mockPi = {
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
       setModel: vi.fn(),
       setSessionName: vi.fn(),
     };
@@ -1240,10 +1408,14 @@ describe("resources_discover — skill loading uses buildSkillLoadingSection", (
     mod.setupSessionInfrastructure(mockPi as any);
 
     // Trigger resources_discover with skills config
-    const rdHandler = registeredHandlers["resources_discover"];
+    const rdHandler = registeredHandlers.resources_discover;
     if (rdHandler) {
       await rdHandler(
-        { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+        {
+          type: "resources_discover",
+          cwd: process.cwd(),
+          reason: "startup" as const,
+        },
         {
           sessionManager: {
             getEntries: () => [
@@ -1262,7 +1434,7 @@ describe("resources_discover — skill loading uses buildSkillLoadingSection", (
     }
 
     // Trigger before_agent_start with skill registry
-    const handler = registeredHandlers["before_agent_start"];
+    const handler = registeredHandlers.before_agent_start;
     if (!handler) throw new Error("before_agent_start handler not registered");
     const result = await handler(
       {
@@ -1311,7 +1483,9 @@ describe("prompt compiler integration — resources_discover", () => {
 
     const mockPi = {
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
       setModel: vi.fn(),
       setSessionName: vi.fn(),
     };
@@ -1320,17 +1494,25 @@ describe("prompt compiler integration — resources_discover", () => {
     mod.setupSessionInfrastructure(mockPi as any);
 
     // Trigger resources_discover
-    const rdHandler = registeredHandlers["resources_discover"];
-    if (!rdHandler) throw new Error("resources_discover handler not registered");
+    const rdHandler = registeredHandlers.resources_discover;
+    if (!rdHandler)
+      throw new Error("resources_discover handler not registered");
     await rdHandler(
-      { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+      {
+        type: "resources_discover",
+        cwd: process.cwd(),
+        reason: "startup" as const,
+      },
       {
         sessionManager: {
           getEntries: () => [
             {
               type: "custom",
               customType: "pio-config",
-              data: { capability: "test-cap", sessionParams: { skills: { mandatory: ["tdd"] } } },
+              data: {
+                capability: "test-cap",
+                sessionParams: { skills: { mandatory: ["tdd"] } },
+              },
             },
           ],
         },
@@ -1355,7 +1537,9 @@ describe("prompt compiler integration — resources_discover", () => {
 
     const mockPi = {
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
       setModel: vi.fn(),
       setSessionName: vi.fn(),
     };
@@ -1364,13 +1548,18 @@ describe("prompt compiler integration — resources_discover", () => {
     mod.setupSessionInfrastructure(mockPi as any);
 
     // Trigger resources_discover
-    const rdHandler = registeredHandlers["resources_discover"];
-    if (!rdHandler) throw new Error("resources_discover handler not registered");
+    const rdHandler = registeredHandlers.resources_discover;
+    if (!rdHandler)
+      throw new Error("resources_discover handler not registered");
 
     // Act: should not throw
     await expect(
       rdHandler(
-        { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+        {
+          type: "resources_discover",
+          cwd: process.cwd(),
+          reason: "startup" as const,
+        },
         {
           sessionManager: {
             getEntries: () => [
@@ -1386,7 +1575,9 @@ describe("prompt compiler integration — resources_discover", () => {
     ).resolves.toBeUndefined();
 
     // Assert: warning was logged
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("compilePrompt"));
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("compilePrompt"),
+    );
 
     warnSpy.mockRestore();
   });
@@ -1434,7 +1625,9 @@ describe("workflow steps population — enrichedSessionParams", () => {
 
     const mockPi = {
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
       setModel: vi.fn(),
       setSessionName: vi.fn(),
     };
@@ -1443,10 +1636,15 @@ describe("workflow steps population — enrichedSessionParams", () => {
     mod.setupSessionInfrastructure(mockPi as any);
 
     // Trigger resources_discover
-    const rdHandler = registeredHandlers["resources_discover"];
-    if (!rdHandler) throw new Error("resources_discover handler not registered");
+    const rdHandler = registeredHandlers.resources_discover;
+    if (!rdHandler)
+      throw new Error("resources_discover handler not registered");
     await rdHandler(
-      { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+      {
+        type: "resources_discover",
+        cwd: process.cwd(),
+        reason: "startup" as const,
+      },
       {
         sessionManager: {
           getEntries: () => [
@@ -1466,8 +1664,8 @@ describe("workflow steps population — enrichedSessionParams", () => {
     // Verify enrichedSessionParams via internal getter (getSessionParams is mocked at module level)
     const rawParams = mod.getEnrichedSessionParamsForTesting();
     expect(rawParams).toBeDefined();
-    expect(rawParams!.totalWorkflowSteps).toBe(2);
-    expect(rawParams!.workflowSteps).toEqual([
+    expect(rawParams?.totalWorkflowSteps).toBe(2);
+    expect(rawParams?.workflowSteps).toEqual([
       { id: "step-1", title: "Step One" },
       { id: "step-2", title: "Step Two" },
     ]);
@@ -1543,7 +1741,9 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
 
     const mockPi = {
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
       setModel: vi.fn(),
       setSessionName: vi.fn(),
     };
@@ -1552,10 +1752,15 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
     mod.setupSessionInfrastructure(mockPi as any);
 
     // Trigger resources_discover
-    const rdHandler = registeredHandlers["resources_discover"];
-    if (!rdHandler) throw new Error("resources_discover handler not registered");
+    const rdHandler = registeredHandlers.resources_discover;
+    if (!rdHandler)
+      throw new Error("resources_discover handler not registered");
     await rdHandler(
-      { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+      {
+        type: "resources_discover",
+        cwd: process.cwd(),
+        reason: "startup" as const,
+      },
       {
         sessionManager: {
           getEntries: () => [
@@ -1570,7 +1775,7 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
     );
 
     // Trigger before_agent_start
-    const handler = registeredHandlers["before_agent_start"];
+    const handler = registeredHandlers.before_agent_start;
     if (!handler) throw new Error("before_agent_start handler not registered");
     const result = await handler(
       {
@@ -1609,7 +1814,9 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
 
     const mockPi = {
       registerTool: vi.fn(),
-      on: (event: string, handler: Function) => { registeredHandlers[event] = handler; },
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
       setModel: vi.fn(),
       setSessionName: vi.fn(),
     };
@@ -1618,10 +1825,15 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
     mod.setupSessionInfrastructure(mockPi as any);
 
     // Trigger resources_discover
-    const rdHandler = registeredHandlers["resources_discover"];
-    if (!rdHandler) throw new Error("resources_discover handler not registered");
+    const rdHandler = registeredHandlers.resources_discover;
+    if (!rdHandler)
+      throw new Error("resources_discover handler not registered");
     await rdHandler(
-      { type: "resources_discover", cwd: process.cwd(), reason: "startup" as const },
+      {
+        type: "resources_discover",
+        cwd: process.cwd(),
+        reason: "startup" as const,
+      },
       {
         sessionManager: {
           getEntries: () => [
@@ -1636,7 +1848,7 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
     );
 
     // Trigger before_agent_start
-    const handler = registeredHandlers["before_agent_start"];
+    const handler = registeredHandlers.before_agent_start;
     if (!handler) throw new Error("before_agent_start handler not registered");
     const result = await handler(
       {

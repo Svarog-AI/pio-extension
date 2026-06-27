@@ -1,20 +1,30 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
-
-import { launchCapability, getSessionParams } from "../capability-session";
-import { queueDir, readPendingTask, listPendingTasks, type SessionQueueTask } from "../queues";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
 import { resolveCapabilityConfig } from "../capability-config";
+import { getSessionParams, launchCapability } from "../capability-session";
+import {
+  listPendingTasks,
+  queueDir,
+  readPendingTask,
+  type SessionQueueTask,
+} from "../queues";
 
 // ---------------------------------------------------------------------------
 // Command
 // ---------------------------------------------------------------------------
 
-export async function handleNextTask(args: string | undefined, ctx: ExtensionCommandContext) {
+export async function handleNextTask(
+  args: string | undefined,
+  ctx: ExtensionCommandContext,
+) {
   const dir = queueDir(ctx.cwd);
 
   // Case 1: queue key provided — read specific queue file
-  if (args && args.trim()) {
+  if (args?.trim()) {
     const queueKey = args.trim();
     const task = readPendingTask(ctx.cwd, queueKey);
 
@@ -29,7 +39,8 @@ export async function handleNextTask(args: string | undefined, ctx: ExtensionCom
 
   // Case 2: no arg, but session has queueKey from pio-config — use it directly
   const params = getSessionParams();
-  const queueKey = typeof params?.queueKey === "string" ? params.queueKey : undefined;
+  const queueKey =
+    typeof params?.queueKey === "string" ? params.queueKey : undefined;
   if (queueKey) {
     const task = readPendingTask(ctx.cwd, queueKey);
 
@@ -64,7 +75,10 @@ export async function handleNextTask(args: string | undefined, ctx: ExtensionCom
 
   // Multiple tasks pending — notify user to specify which one
   const list = pendingTasks.map((k) => `  - ${k}`).join("\n");
-  ctx.ui.notify(`Multiple tasks have pending queues. Specify a queue key:\n/pio-next-task <queue-key>\n\nPending: \n${list}`, "info");
+  ctx.ui.notify(
+    `Multiple tasks have pending queues. Specify a queue key:\n/pio-next-task <queue-key>\n\nPending: \n${list}`,
+    "info",
+  );
 }
 
 /**
@@ -79,15 +93,27 @@ async function launchAndCleanup(
   const filePath = path.join(dir, `task-${queueKey}.json`);
 
   try {
-    const config = await resolveCapabilityConfig(ctx.cwd, { ...task.params, capability: task.capability });
+    const config = await resolveCapabilityConfig(ctx.cwd, {
+      ...task.params,
+      capability: task.capability,
+    });
     if (!config) {
-      ctx.ui.notify(`Unknown capability "${task.capability}" in queued task.`, "error");
+      ctx.ui.notify(
+        `Unknown capability "${task.capability}" in queued task.`,
+        "error",
+      );
       return;
     }
     await launchCapability(ctx, config);
   } catch (err) {
-    console.error(`pio-next-task: failed to launch ${task.capability} for "${queueKey}"`, err);
-    ctx.ui.notify(`Failed to start ${task.capability}: ${err instanceof Error ? err.message : String(err)}`, "error");
+    console.error(
+      `pio-next-task: failed to launch ${task.capability} for "${queueKey}"`,
+      err,
+    );
+    ctx.ui.notify(
+      `Failed to start ${task.capability}: ${err instanceof Error ? err.message : String(err)}`,
+      "error",
+    );
   } finally {
     // Always remove the task file — avoid stuck tasks on error
     try {

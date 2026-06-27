@@ -72,7 +72,10 @@ export interface TransitionEdge<C> {
    * The `stateMachineId` is auto-injected by `dispatch()` — do not set it in the return value.
    * This combines condition check + param computation in one call.
    */
-  resolve: (context: C, params?: Record<string, unknown>) => ResolverResult | undefined;
+  resolve: (
+    context: C,
+    params?: Record<string, unknown>,
+  ) => ResolverResult | undefined;
 }
 
 /**
@@ -209,7 +212,9 @@ export function dispatch<C>(
 ): TransitionResult[] {
   // Always iterate an array of machines — single element or all registered.
   const machines: StateMachine<unknown>[] =
-    machine !== undefined ? [machine as StateMachine<unknown>] : getRegisteredMachines();
+    machine !== undefined
+      ? [machine as StateMachine<unknown>]
+      : getRegisteredMachines();
 
   const results: TransitionResult[] = [];
   for (const m of machines) {
@@ -221,7 +226,10 @@ export function dispatch<C>(
           results.push({ ...result, stateMachineId: m.id });
         }
       } catch (err) {
-        console.warn(`dispatch: resolve threw in machine "${m.id}", edge ${edge.from} → ${edge.to}`, err);
+        console.warn(
+          `dispatch: resolve threw in machine "${m.id}", edge ${edge.from} → ${edge.to}`,
+          err,
+        );
       }
     }
   }

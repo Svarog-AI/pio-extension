@@ -1,5 +1,5 @@
-import { Type } from "typebox";
 import type { Static } from "typebox";
+import { Type } from "typebox";
 
 // ---------------------------------------------------------------------------
 // Task frontmatter schema and types
@@ -53,4 +53,6 @@ export const COMPLETION_SUMMARY_SCHEMA = Type.Object({
 });
 
 /** Derived type. */
-export type CompletionSummaryFrontmatter = Static<typeof COMPLETION_SUMMARY_SCHEMA>;
+export type CompletionSummaryFrontmatter = Static<
+  typeof COMPLETION_SUMMARY_SCHEMA
+>;

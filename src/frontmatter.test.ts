@@ -2,7 +2,11 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Type } from "typebox";
-import { extractFrontmatter, validateAndCoerce, formatSchemaDescription } from "./frontmatter";
+import {
+  extractFrontmatter,
+  formatSchemaDescription,
+  validateAndCoerce,
+} from "./frontmatter";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -16,7 +20,11 @@ function cleanup(tempDir: string): void {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
 
-function writeFrontmatterFile(tempDir: string, fileName: string, content: string): string {
+function writeFrontmatterFile(
+  tempDir: string,
+  fileName: string,
+  content: string,
+): string {
   const filePath = path.join(tempDir, fileName);
   fs.writeFileSync(filePath, content, "utf-8");
   return filePath;
@@ -54,23 +62,18 @@ describe("extractFrontmatter", () => {
     const result = extractFrontmatter(filePath);
 
     expect(result).not.toBeNull();
-    expect(result!.decision).toBe("APPROVED");
-    expect(result!.criticalIssues).toBe(0);
-    expect(result!.highIssues).toBe(1);
-    expect(result!.mediumIssues).toBe(2);
-    expect(result!.lowIssues).toBe(3);
+    expect(result?.decision).toBe("APPROVED");
+    expect(result?.criticalIssues).toBe(0);
+    expect(result?.highIssues).toBe(1);
+    expect(result?.mediumIssues).toBe(2);
+    expect(result?.lowIssues).toBe(3);
   });
 
   it("returns parsed object for minimal valid frontmatter", () => {
     const filePath = writeFrontmatterFile(
       tempDir,
       "minimal.md",
-      [
-        "---",
-        "key: value",
-        "---",
-        "body",
-      ].join("\n"),
+      ["---", "key: value", "---", "body"].join("\n"),
     );
 
     const result = extractFrontmatter(filePath);
@@ -98,7 +101,7 @@ describe("extractFrontmatter", () => {
     const filePath = writeFrontmatterFile(
       tempDir,
       "no-closing.md",
-        "---\nkey: value",
+      "---\nkey: value",
     );
 
     const result = extractFrontmatter(filePath);
@@ -109,7 +112,7 @@ describe("extractFrontmatter", () => {
     const filePath = writeFrontmatterFile(
       tempDir,
       "malformed.md",
-        "---\nkey: [unclosed\n---\nbody",
+      "---\nkey: [unclosed\n---\nbody",
     );
 
     const result = extractFrontmatter(filePath);
@@ -120,7 +123,7 @@ describe("extractFrontmatter", () => {
     const filePath = writeFrontmatterFile(
       tempDir,
       "empty-yaml.md",
-        "---\n---\nbody",
+      "---\n---\nbody",
     );
 
     const result = extractFrontmatter(filePath);
@@ -131,7 +134,7 @@ describe("extractFrontmatter", () => {
     const filePath = writeFrontmatterFile(
       tempDir,
       "leading-whitespace.md",
-        "\n---\nkey: value\n---\nbody",
+      "\n---\nkey: value\n---\nbody",
     );
 
     const result = extractFrontmatter(filePath);
@@ -142,28 +145,28 @@ describe("extractFrontmatter", () => {
     const filePath = writeFrontmatterFile(
       tempDir,
       "integers.md",
-        "---\ncount: 42\n---\nbody",
+      "---\ncount: 42\n---\nbody",
     );
 
     const result = extractFrontmatter(filePath);
 
     expect(result).not.toBeNull();
-    expect(result!.count).toBe(42);
-    expect(typeof result!.count).toBe("number");
+    expect(result?.count).toBe(42);
+    expect(typeof result?.count).toBe("number");
   });
 
   it("preserves boolean values from YAML", () => {
     const filePath = writeFrontmatterFile(
       tempDir,
       "booleans.md",
-        "---\nenabled: true\n---\nbody",
+      "---\nenabled: true\n---\nbody",
     );
 
     const result = extractFrontmatter(filePath);
 
     expect(result).not.toBeNull();
-    expect(result!.enabled).toBe(true);
-    expect(typeof result!.enabled).toBe("boolean");
+    expect(result?.enabled).toBe(true);
+    expect(typeof result?.enabled).toBe("boolean");
   });
 });
 
@@ -193,8 +196,8 @@ describe("validateAndCoerce", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.data).toBeDefined();
-    expect(result.data!.decision).toBe("APPROVED");
-    expect(result.data!.criticalIssues).toBe(0);
+    expect(result.data?.decision).toBe("APPROVED");
+    expect(result.data?.criticalIssues).toBe(0);
   });
 
   it("returns error for missing required field", () => {
@@ -264,14 +267,16 @@ describe("validateAndCoerce", () => {
   });
 
   it("passes when enum value matches one of allowed values", () => {
-    const schema = Type.Object({ status: Type.Union([Type.Literal("A"), Type.Literal("B")]) });
+    const schema = Type.Object({
+      status: Type.Union([Type.Literal("A"), Type.Literal("B")]),
+    });
     const raw = { status: "B" };
 
     const result = validateAndCoerce(raw, schema);
 
     expect(result.error).toBeUndefined();
     expect(result.data).toBeDefined();
-    expect(result.data!.status).toBe("B");
+    expect(result.data?.status).toBe("B");
   });
 
   it("returns error for integer below min threshold", () => {
@@ -293,7 +298,7 @@ describe("validateAndCoerce", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.data).toBeDefined();
-    expect(result.data!.count).toBe(0);
+    expect(result.data?.count).toBe(0);
   });
 
   it("ignores extra fields not declared in schema", () => {
@@ -304,7 +309,7 @@ describe("validateAndCoerce", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.data).toBeDefined();
-    expect(result.data!.name).toBe("test");
+    expect(result.data?.name).toBe("test");
     expect((result.data! as Record<string, unknown>).extra).toBeUndefined();
   });
 
@@ -319,9 +324,9 @@ describe("validateAndCoerce", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.data).toBeDefined();
-    expect(result.data!.name).toBe("test");
+    expect(result.data?.name).toBe("test");
     // Optional field present in raw should be preserved (not dropped)
-    expect(result.data!.alias).toBe("t");
+    expect(result.data?.alias).toBe("t");
   });
 
   it("omits optional fields not present in raw data", () => {
@@ -335,7 +340,7 @@ describe("validateAndCoerce", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.data).toBeDefined();
-    expect(result.data!.name).toBe("test");
+    expect(result.data?.name).toBe("test");
     expect((result.data! as Record<string, unknown>).alias).toBeUndefined();
   });
 
@@ -391,12 +396,17 @@ describe("formatSchemaDescription", () => {
 
   it("describes union of literals with one-of format", () => {
     const schema = Type.Object({
-      decision: Type.Union([Type.Literal("APPROVED"), Type.Literal("REJECTED")]),
+      decision: Type.Union([
+        Type.Literal("APPROVED"),
+        Type.Literal("REJECTED"),
+      ]),
     });
 
     const result = formatSchemaDescription(schema);
 
-    expect(result).toContain('decision (required): string (one of: "APPROVED" | "REJECTED")');
+    expect(result).toContain(
+      'decision (required): string (one of: "APPROVED" | "REJECTED")',
+    );
   });
 
   it("describes array types with angle bracket notation", () => {
@@ -411,13 +421,19 @@ describe("formatSchemaDescription", () => {
 
   it("describes nested objects with proper indentation", () => {
     const schema = Type.Object({
-      skills: Type.Optional(Type.Object({
-        mandatory: Type.Array(Type.String()),
-        recommended: Type.Optional(Type.Array(Type.Object({
-          name: Type.String(),
-          condition: Type.String(),
-        }))),
-      })),
+      skills: Type.Optional(
+        Type.Object({
+          mandatory: Type.Array(Type.String()),
+          recommended: Type.Optional(
+            Type.Array(
+              Type.Object({
+                name: Type.String(),
+                condition: Type.String(),
+              }),
+            ),
+          ),
+        }),
+      ),
     });
 
     const result = formatSchemaDescription(schema);
@@ -467,7 +483,9 @@ describe("formatSchemaDescription", () => {
 
     const result = formatSchemaDescription(schema);
 
-    expect(result).toContain('pattern (required): string (pattern: "^feat|fix")');
+    expect(result).toContain(
+      'pattern (required): string (pattern: "^feat|fix")',
+    );
   });
 
   it("handles unknown types gracefully", () => {
@@ -507,10 +525,12 @@ describe("formatSchemaDescription", () => {
 
   it("describes array of objects", () => {
     const schema = Type.Object({
-      items: Type.Array(Type.Object({
-        id: Type.String(),
-        value: Type.Integer(),
-      })),
+      items: Type.Array(
+        Type.Object({
+          id: Type.String(),
+          value: Type.Integer(),
+        }),
+      ),
     });
 
     const result = formatSchemaDescription(schema);
@@ -552,7 +572,10 @@ describe("formatSchemaDescription", () => {
 
   it("describes the REVIEW_OUTPUT_SCHEMA example", () => {
     const schema = Type.Object({
-      decision: Type.Union([Type.Literal("APPROVED"), Type.Literal("REJECTED")]),
+      decision: Type.Union([
+        Type.Literal("APPROVED"),
+        Type.Literal("REJECTED"),
+      ]),
       criticalIssues: Type.Integer({ minimum: 0 }),
       highIssues: Type.Integer({ minimum: 0 }),
       mediumIssues: Type.Integer({ minimum: 0 }),
@@ -561,7 +584,9 @@ describe("formatSchemaDescription", () => {
 
     const result = formatSchemaDescription(schema);
 
-    expect(result).toContain('decision (required): string (one of: "APPROVED" | "REJECTED")');
+    expect(result).toContain(
+      'decision (required): string (one of: "APPROVED" | "REJECTED")',
+    );
     expect(result).toContain("criticalIssues (required): number");
     expect(result).toContain("highIssues (required): number");
     expect(result).toContain("mediumIssues (required): number");

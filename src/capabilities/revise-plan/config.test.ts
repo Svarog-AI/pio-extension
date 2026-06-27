@@ -2,9 +2,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { vi } from "vitest";
-import config, { register } from "./config";
-import { prepareSession, cleanupIncompleteSteps } from "./callbacks";
 import { readPendingTask } from "../../queues";
+import { cleanupIncompleteSteps, prepareSession } from "./callbacks";
+import config, { register } from "./config";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -29,7 +29,11 @@ function createGoalTree(
     withGoal?: boolean;
     withPlan?: boolean;
     planContent?: string;
-    stepFolders?: Array<{ stepNumber: number; approved: boolean; withMarker?: boolean }>;
+    stepFolders?: Array<{
+      stepNumber: number;
+      approved: boolean;
+      withMarker?: boolean;
+    }>;
     withArchive?: boolean;
   },
 ): string {
@@ -43,7 +47,8 @@ function createGoalTree(
   if (options?.withPlan) {
     fs.writeFileSync(
       path.join(goalDir, "PLAN.md"),
-      options.planContent || "---\ntotalSteps: 3\nsteps:\n  - name: step-1\n    complexity: task\n  - name: step-2\n    complexity: task\n  - name: step-3\n    complexity: task\n---\n# Plan\n",
+      options.planContent ||
+        "---\ntotalSteps: 3\nsteps:\n  - name: step-1\n    complexity: task\n  - name: step-2\n    complexity: task\n  - name: step-3\n    complexity: task\n---\n# Plan\n",
       "utf-8",
     );
   }
@@ -72,10 +77,17 @@ function createGoalTree(
   }
 
   // Write PLAN.md with steps array if stepFolders are provided (for GoalState.steps() frontmatter derivation)
-  if (options?.stepFolders && options.stepFolders.length > 0 && !options.withPlan) {
-    const totalSteps = Math.max(...options.stepFolders.map((s) => s.stepNumber));
-    const stepsYaml = Array.from({ length: totalSteps }, (_, i) =>
-      `  - name: step-${i + 1}\n    complexity: task`,
+  if (
+    options?.stepFolders &&
+    options.stepFolders.length > 0 &&
+    !options.withPlan
+  ) {
+    const totalSteps = Math.max(
+      ...options.stepFolders.map((s) => s.stepNumber),
+    );
+    const stepsYaml = Array.from(
+      { length: totalSteps },
+      (_, i) => `  - name: step-${i + 1}\n    complexity: task`,
     ).join("\n");
     fs.writeFileSync(
       path.join(goalDir, "PLAN.md"),
@@ -88,7 +100,11 @@ function createGoalTree(
   if (options?.withArchive) {
     const archiveDir = path.join(goalDir, "PLAN_ARCHIVE");
     fs.mkdirSync(archiveDir, { recursive: true });
-    fs.writeFileSync(path.join(archiveDir, "PLAN-2026-01-01T000000Z.md"), "# Old Plan\n", "utf-8");
+    fs.writeFileSync(
+      path.join(archiveDir, "PLAN-2026-01-01T000000Z.md"),
+      "# Old Plan\n",
+      "utf-8",
+    );
   }
 
   return goalDir;
@@ -101,7 +117,8 @@ function createGoalTree(
 describe("config structure", () => {
   it("contract outputs includes PLAN.md with schema", () => {
     expect(config.contract.outputs.length).toBe(1);
-    const output = config.contract.outputs[0] as import("../../types").MarkdownFileSpec;
+    const output = config.contract
+      .outputs[0] as import("../../types").MarkdownFileSpec;
     expect(output.file).toBe("PLAN.md");
     expect(output.schema).toBeDefined();
   });
@@ -155,7 +172,8 @@ describe("prepareSession — archiving", () => {
   afterEach(() => cleanup(tempDir));
 
   it("archives PLAN.md to PLAN_ARCHIVE/ with timestamped filename", async () => {
-    const planContent = "---\ntotalSteps: 3\n---\n# Original Plan\n\n## Step 1: Do something\n";
+    const planContent =
+      "---\ntotalSteps: 3\n---\n# Original Plan\n\n## Step 1: Do something\n";
     goalDir = createGoalTree(tempDir, "archive-test", {
       withGoal: true,
       withPlan: true,
@@ -169,11 +187,16 @@ describe("prepareSession — archiving", () => {
     expect(fs.existsSync(archiveDir)).toBe(true);
 
     // Assert exactly one file matching PLAN-*.md exists
-    const archiveFiles = fs.readdirSync(archiveDir).filter((f) => /^PLAN-.*\.md$/.test(f));
+    const archiveFiles = fs
+      .readdirSync(archiveDir)
+      .filter((f) => /^PLAN-.*\.md$/.test(f));
     expect(archiveFiles.length).toBe(1);
 
     // Assert archived file content matches original
-    const archivedContent = fs.readFileSync(path.join(archiveDir, archiveFiles[0]), "utf-8");
+    const archivedContent = fs.readFileSync(
+      path.join(archiveDir, archiveFiles[0]),
+      "utf-8",
+    );
     expect(archivedContent).toBe(planContent);
 
     // Assert original PLAN.md is preserved (copy-only behavior)
@@ -181,7 +204,10 @@ describe("prepareSession — archiving", () => {
   });
 
   it("creates PLAN_ARCHIVE/ directory if it does not exist", async () => {
-    goalDir = createGoalTree(tempDir, "no-archive-dir", { withGoal: true, withPlan: true });
+    goalDir = createGoalTree(tempDir, "no-archive-dir", {
+      withGoal: true,
+      withPlan: true,
+    });
 
     // Verify PLAN_ARCHIVE doesn't exist before
     expect(fs.existsSync(path.join(goalDir, "PLAN_ARCHIVE"))).toBe(false);
@@ -202,7 +228,9 @@ describe("prepareSession — archiving", () => {
     await prepareSession(goalDir);
 
     const archiveDir = path.join(goalDir, "PLAN_ARCHIVE");
-    const archiveFiles = fs.readdirSync(archiveDir).filter((f) => /^PLAN-.*\.md$/.test(f));
+    const archiveFiles = fs
+      .readdirSync(archiveDir)
+      .filter((f) => /^PLAN-.*\.md$/.test(f));
 
     // Should have the old archive + the new one = 2 files
     expect(archiveFiles.length).toBe(2);
@@ -326,29 +354,29 @@ describe("prepareSession — marker cleanup", () => {
     goalDir = createGoalTree(tempDir, "marker-test", {
       withGoal: true,
       withPlan: true,
-      stepFolders: [
-        { stepNumber: 1, approved: true, withMarker: true },
-      ],
+      stepFolders: [{ stepNumber: 1, approved: true, withMarker: true }],
     });
 
     // Verify marker exists before
-    expect(fs.existsSync(path.join(goalDir, "S01", "REVISE_PLAN_NEEDED"))).toBe(true);
+    expect(fs.existsSync(path.join(goalDir, "S01", "REVISE_PLAN_NEEDED"))).toBe(
+      true,
+    );
 
     await prepareSession(goalDir, { revisionTriggerStep: 1 });
 
     // S01 should still exist (it's APPROVED)
     expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
     // Marker should also still exist — cleanup is deferred to postExecute
-    expect(fs.existsSync(path.join(goalDir, "S01", "REVISE_PLAN_NEEDED"))).toBe(true);
+    expect(fs.existsSync(path.join(goalDir, "S01", "REVISE_PLAN_NEEDED"))).toBe(
+      true,
+    );
   });
 
   it("preserves folder and marker when revisionTriggerStep is not provided", async () => {
     goalDir = createGoalTree(tempDir, "no-trigger", {
       withGoal: true,
       withPlan: true,
-      stepFolders: [
-        { stepNumber: 2, approved: false, withMarker: true },
-      ],
+      stepFolders: [{ stepNumber: 2, approved: false, withMarker: true }],
     });
 
     // Call without params — S02 is non-APPROVED but should be preserved
@@ -357,21 +385,23 @@ describe("prepareSession — marker cleanup", () => {
     // S02 folder should still exist — cleanup deferred to postExecute
     expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(true);
     // Marker should also still exist
-    expect(fs.existsSync(path.join(goalDir, "S02", "REVISE_PLAN_NEEDED"))).toBe(true);
+    expect(fs.existsSync(path.join(goalDir, "S02", "REVISE_PLAN_NEEDED"))).toBe(
+      true,
+    );
   });
 
   it("handles missing marker gracefully", async () => {
     goalDir = createGoalTree(tempDir, "no-marker", {
       withGoal: true,
       withPlan: true,
-      stepFolders: [
-        { stepNumber: 1, approved: true },
-      ],
+      stepFolders: [{ stepNumber: 1, approved: true }],
     });
 
     // S01 is APPROVED but has no REVISE_PLAN_NEEDED marker
     // Should not throw
-    await expect(prepareSession(goalDir, { revisionTriggerStep: 1 })).resolves.toBeUndefined();
+    await expect(
+      prepareSession(goalDir, { revisionTriggerStep: 1 }),
+    ).resolves.toBeUndefined();
     // S01 should still exist
     expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
   });
@@ -392,7 +422,8 @@ describe("end-to-end lifecycle: prepareSession then cleanupIncompleteSteps", () 
   afterEach(() => cleanup(tempDir));
 
   it("prepareSession archives plan and preserves all folders; cleanupIncompleteSteps deletes non-APPROVED", async () => {
-    const planContent = "---\ntotalSteps: 5\nsteps:\n  - name: step-1\n    complexity: task\n  - name: step-2\n    complexity: task\n  - name: step-3\n    complexity: task\n  - name: step-4\n    complexity: task\n  - name: step-5\n    complexity: task\n---\n# Original Plan\n\n## Step 1: Done\n## Step 2: In progress\n## Step 3: Pending\n";
+    const planContent =
+      "---\ntotalSteps: 5\nsteps:\n  - name: step-1\n    complexity: task\n  - name: step-2\n    complexity: task\n  - name: step-3\n    complexity: task\n  - name: step-4\n    complexity: task\n  - name: step-5\n    complexity: task\n---\n# Original Plan\n\n## Step 1: Done\n## Step 2: In progress\n## Step 3: Pending\n";
 
     goalDir = createGoalTree(tempDir, "full-lifecycle", {
       withGoal: true,
@@ -406,7 +437,11 @@ describe("end-to-end lifecycle: prepareSession then cleanupIncompleteSteps", () 
     });
 
     // Add SUMMARY.md to S03 to make it more realistic
-    fs.writeFileSync(path.join(goalDir, "S03", "SUMMARY.md"), "# Summary\n", "utf-8");
+    fs.writeFileSync(
+      path.join(goalDir, "S03", "SUMMARY.md"),
+      "# Summary\n",
+      "utf-8",
+    );
 
     // Phase 1: prepareSession — archive only, preserve all folders
     await prepareSession(goalDir, { revisionTriggerStep: 1 });
@@ -414,9 +449,14 @@ describe("end-to-end lifecycle: prepareSession then cleanupIncompleteSteps", () 
     // PLAN_ARCHIVE/ has one timestamped file with correct content
     const archiveDir = path.join(goalDir, "PLAN_ARCHIVE");
     expect(fs.existsSync(archiveDir)).toBe(true);
-    const archiveFiles = fs.readdirSync(archiveDir).filter((f) => /^PLAN-.*\.md$/.test(f));
+    const archiveFiles = fs
+      .readdirSync(archiveDir)
+      .filter((f) => /^PLAN-.*\.md$/.test(f));
     expect(archiveFiles.length).toBe(1);
-    const archivedContent = fs.readFileSync(path.join(archiveDir, archiveFiles[0]), "utf-8");
+    const archivedContent = fs.readFileSync(
+      path.join(archiveDir, archiveFiles[0]),
+      "utf-8",
+    );
     expect(archivedContent).toBe(planContent);
 
     // Original PLAN.md is preserved (copy-only behavior)
@@ -425,7 +465,9 @@ describe("end-to-end lifecycle: prepareSession then cleanupIncompleteSteps", () 
     // All step folders should still exist after prepareSession
     expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
     expect(fs.existsSync(path.join(goalDir, "S01", "APPROVED"))).toBe(true);
-    expect(fs.existsSync(path.join(goalDir, "S01", "REVISE_PLAN_NEEDED"))).toBe(true);
+    expect(fs.existsSync(path.join(goalDir, "S01", "REVISE_PLAN_NEEDED"))).toBe(
+      true,
+    );
     expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(true);
     expect(fs.existsSync(path.join(goalDir, "S03"))).toBe(true);
 
@@ -435,7 +477,9 @@ describe("end-to-end lifecycle: prepareSession then cleanupIncompleteSteps", () 
     // S01 (APPROVED) should remain but marker should be cleaned
     expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
     expect(fs.existsSync(path.join(goalDir, "S01", "APPROVED"))).toBe(true);
-    expect(fs.existsSync(path.join(goalDir, "S01", "REVISE_PLAN_NEEDED"))).toBe(false);
+    expect(fs.existsSync(path.join(goalDir, "S01", "REVISE_PLAN_NEEDED"))).toBe(
+      false,
+    );
 
     // S02 and S03 (non-APPROVED) should be deleted
     expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(false);
@@ -526,7 +570,8 @@ describe("cleanupIncompleteSteps", () => {
     goalDir = createGoalTree(tempDir, "disk-scan", {
       withGoal: true,
       withPlan: true,
-      planContent: "---\ntotalSteps: 2\nsteps:\n  - name: step-1\n    complexity: task\n  - name: step-2\n    complexity: task\n---\n# Plan\n",
+      planContent:
+        "---\ntotalSteps: 2\nsteps:\n  - name: step-1\n    complexity: task\n  - name: step-2\n    complexity: task\n---\n# Plan\n",
       stepFolders: [
         { stepNumber: 1, approved: true },
         { stepNumber: 2, approved: false },
@@ -548,9 +593,7 @@ describe("cleanupIncompleteSteps", () => {
     goalDir = createGoalTree(tempDir, "marker-cleanup", {
       withGoal: true,
       withPlan: true,
-      stepFolders: [
-        { stepNumber: 1, approved: true, withMarker: true },
-      ],
+      stepFolders: [{ stepNumber: 1, approved: true, withMarker: true }],
     });
 
     // S01 is APPROVED with a marker — folder should survive but marker should be cleaned
@@ -559,21 +602,23 @@ describe("cleanupIncompleteSteps", () => {
     expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
     expect(fs.existsSync(path.join(goalDir, "S01", "APPROVED"))).toBe(true);
     // Marker should be removed
-    expect(fs.existsSync(path.join(goalDir, "S01", "REVISE_PLAN_NEEDED"))).toBe(false);
+    expect(fs.existsSync(path.join(goalDir, "S01", "REVISE_PLAN_NEEDED"))).toBe(
+      false,
+    );
   });
 
   it("handles missing trigger step folder gracefully", async () => {
     goalDir = createGoalTree(tempDir, "missing-trigger", {
       withGoal: true,
       withPlan: true,
-      stepFolders: [
-        { stepNumber: 1, approved: true },
-      ],
+      stepFolders: [{ stepNumber: 1, approved: true }],
     });
 
     // revisionTriggerStep: 99 — S99 doesn't exist
     // Should not throw
-    await expect(cleanupIncompleteSteps(goalDir, { revisionTriggerStep: 99 })).resolves.toBeUndefined();
+    await expect(
+      cleanupIncompleteSteps(goalDir, { revisionTriggerStep: 99 }),
+    ).resolves.toBeUndefined();
 
     // S01 should remain
     expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
@@ -608,7 +653,10 @@ describe("revisePlanTool.execute", () => {
       cwd,
       ui: { notify: vi.fn() },
       hasUI: false,
-      sessionManager: { getSessionFile: vi.fn(() => ""), getEntries: vi.fn(() => []) },
+      sessionManager: {
+        getSessionFile: vi.fn(() => ""),
+        getEntries: vi.fn(() => []),
+      },
       modelRegistry: {},
       model: undefined,
       isIdle: vi.fn(() => true),
@@ -629,7 +677,13 @@ describe("revisePlanTool.execute", () => {
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { workspacePrefix: "goals/no-plan" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/no-plan" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
 
     expect(result.content[0].text).toMatch(/PLAN/i);
   });
@@ -638,16 +692,22 @@ describe("revisePlanTool.execute", () => {
     createGoalTree(tempDir, "my-feature", { withGoal: true, withPlan: true });
 
     const tool = getTool();
-    await tool.execute("test-id", { workspacePrefix: "goals/my-feature", initialMessage: "test message" }, undefined, undefined, makeCtx(tempDir));
+    await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/my-feature", initialMessage: "test message" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
 
     const task = readPendingTask(tempDir, "my-feature");
     expect(task).toBeDefined();
-    expect(task!.capability).toBe("revise-plan");
-    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature");
-    expect(task!.params).toHaveProperty("sessionName");
-    expect(task!.params!.sessionName).toContain("revise-plan");
-    expect(task!.params).toHaveProperty("queueKey", "my-feature");
-    expect(task!.params).toHaveProperty("initialMessage");
-    expect(task!.params!.initialMessage).toBe("test message");
+    expect(task?.capability).toBe("revise-plan");
+    expect(task?.params).toHaveProperty("workspacePrefix", "goals/my-feature");
+    expect(task?.params).toHaveProperty("sessionName");
+    expect(task?.params?.sessionName).toContain("revise-plan");
+    expect(task?.params).toHaveProperty("queueKey", "my-feature");
+    expect(task?.params).toHaveProperty("initialMessage");
+    expect(task?.params?.initialMessage).toBe("test message");
   });
 });

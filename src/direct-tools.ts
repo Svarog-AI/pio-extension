@@ -1,14 +1,16 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { defineTool } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
-
-import { resolveGoalDir, issuesDir, findIssuePath } from "./fs-utils";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
+import { defineTool } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
+import { resolveCapabilityConfig } from "./capability-config";
+import { launchCapability } from "./capability-session";
+import { findIssuePath, issuesDir, resolveGoalDir } from "./fs-utils";
 import type { SessionQueueTask } from "./queues";
 import { enqueueTask } from "./queues";
-import { launchCapability } from "./capability-session";
-import { resolveCapabilityConfig } from "./capability-config";
 
 // ---------------------------------------------------------------------------
 // pio_init
@@ -35,7 +37,8 @@ async function init(): Promise<string> {
 const initTool = defineTool({
   name: "pio_init",
   label: "Pio Init",
-  description: "Initialize a new pio project in the current working directory. Use this tool directly — all filesystem operations are handled internally.",
+  description:
+    "Initialize a new pio project in the current working directory. Use this tool directly — all filesystem operations are handled internally.",
   parameters: Type.Object({}),
 
   async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
@@ -47,7 +50,10 @@ const initTool = defineTool({
   },
 });
 
-async function handleInit(_args: string | undefined, ctx: ExtensionCommandContext) {
+async function handleInit(
+  _args: string | undefined,
+  ctx: ExtensionCommandContext,
+) {
   const result = await init();
   ctx.ui.notify(result, "info");
 }
@@ -67,8 +73,11 @@ async function deleteGoal(name: string, cwd: string): Promise<string> {
   return `Deleted goal workspace at ${goalDir}`;
 }
 
-async function handleDeleteGoal(args: string | undefined, ctx: ExtensionCommandContext) {
-  if (!args || !args.trim()) {
+async function handleDeleteGoal(
+  args: string | undefined,
+  ctx: ExtensionCommandContext,
+) {
+  if (!args?.trim()) {
     ctx.ui.notify("Usage: /pio-delete-goal <name>", "warning");
     return;
   }
@@ -145,7 +154,9 @@ export function findSubgoals(
       if (!fs.existsSync(subgoalsDir)) continue;
 
       try {
-        const subgoalEntries = fs.readdirSync(subgoalsDir, { withFileTypes: true });
+        const subgoalEntries = fs.readdirSync(subgoalsDir, {
+          withFileTypes: true,
+        });
         for (const subEntry of subgoalEntries) {
           if (!subEntry.isDirectory()) continue;
 
@@ -170,11 +181,17 @@ export function findSubgoals(
   return results;
 }
 
-async function handleListGoals(_args: string | undefined, ctx: ExtensionCommandContext) {
+async function handleListGoals(
+  _args: string | undefined,
+  ctx: ExtensionCommandContext,
+) {
   const goalsBaseDir = path.join(ctx.cwd, ".pio", "goals");
 
   if (!fs.existsSync(goalsBaseDir)) {
-    ctx.ui.notify("No goals found. Create one with /pio-create-goal <name>.", "info");
+    ctx.ui.notify(
+      "No goals found. Create one with /pio-create-goal <name>.",
+      "info",
+    );
     return;
   }
 
@@ -182,7 +199,10 @@ async function handleListGoals(_args: string | undefined, ctx: ExtensionCommandC
   const goalDirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
 
   if (goalDirs.length === 0) {
-    ctx.ui.notify("No goals found. Create one with /pio-create-goal <name>.", "info");
+    ctx.ui.notify(
+      "No goals found. Create one with /pio-create-goal <name>.",
+      "info",
+    );
     return;
   }
 
@@ -222,7 +242,9 @@ async function handleListGoals(_args: string | undefined, ctx: ExtensionCommandC
 // ---------------------------------------------------------------------------
 
 /** Find the parent session path from the header (set by pi on newSession). */
-async function findParentPath(ctx: ExtensionCommandContext): Promise<string | null> {
+async function findParentPath(
+  ctx: ExtensionCommandContext,
+): Promise<string | null> {
   const header = ctx.sessionManager.getHeader();
   if (header?.parentSession && fs.existsSync(header.parentSession)) {
     return header.parentSession;
@@ -230,7 +252,10 @@ async function findParentPath(ctx: ExtensionCommandContext): Promise<string | nu
   return null;
 }
 
-async function handleParent(_args: string | undefined, ctx: ExtensionCommandContext) {
+async function handleParent(
+  _args: string | undefined,
+  ctx: ExtensionCommandContext,
+) {
   const parentPath = await findParentPath(ctx);
 
   if (!parentPath) {
@@ -278,7 +303,7 @@ export async function createIssue(
     lines.push("", "## Context", "", context);
   }
 
-  const content = lines.join("\n") + "\n";
+  const content = `${lines.join("\n")}\n`;
   fs.writeFileSync(filePath, content, "utf-8");
 
   return `Issue created at ${filePath}`;
@@ -297,11 +322,23 @@ Issue creation is a quick capture, not an investigation. Before calling this too
 Use this tool directly — no bash commands or manual file creation needed.`,
 
   parameters: Type.Object({
-    slug: Type.String({ description: "Unique slug used as the filename (e.g. fix-type-error). If it already exists, pick a different one." }),
+    slug: Type.String({
+      description:
+        "Unique slug used as the filename (e.g. fix-type-error). If it already exists, pick a different one.",
+    }),
     title: Type.String({ description: "Issue title" }),
     description: Type.String({ description: "Issue body/description" }),
-    category: Type.Optional(Type.String({ description: "Optional classification (e.g. bug, improvement, idea)" })),
-    context: Type.Optional(Type.String({ description: "Optional additional context (file references, observed behavior)" })),
+    category: Type.Optional(
+      Type.String({
+        description: "Optional classification (e.g. bug, improvement, idea)",
+      }),
+    ),
+    context: Type.Optional(
+      Type.String({
+        description:
+          "Optional additional context (file references, observed behavior)",
+      }),
+    ),
   }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -320,9 +357,15 @@ Use this tool directly — no bash commands or manual file creation needed.`,
   },
 });
 
-async function handleCreateIssue(args: string | undefined, ctx: ExtensionCommandContext) {
-  if (!args || !args.trim()) {
-    ctx.ui.notify("Usage: /pio-create-issue <slug> <title> [description]", "warning");
+async function handleCreateIssue(
+  args: string | undefined,
+  ctx: ExtensionCommandContext,
+) {
+  if (!args?.trim()) {
+    ctx.ui.notify(
+      "Usage: /pio-create-issue <slug> <title> [description]",
+      "warning",
+    );
     return;
   }
 
@@ -355,11 +398,21 @@ async function handleCreateIssue(args: string | undefined, ctx: ExtensionCommand
 async function validateGoalFromIssue(
   cwd: string,
   issuePath: string,
-): Promise<{ ok: boolean; error?: string; goalName?: string; issuePath?: string; reason?: string }> {
+): Promise<{
+  ok: boolean;
+  error?: string;
+  goalName?: string;
+  issuePath?: string;
+  reason?: string;
+}> {
   // 1. Issue must exist — resolve to absolute path
   const resolvedPath = findIssuePath(cwd, issuePath);
   if (!resolvedPath) {
-    return { ok: false, reason: "issue-not-found", error: `Issue not found: ${issuePath}` };
+    return {
+      ok: false,
+      reason: "issue-not-found",
+      error: `Issue not found: ${issuePath}`,
+    };
   }
 
   // 2. Derive goal name from the issue filename slug
@@ -382,16 +435,27 @@ async function validateGoalFromIssue(
 const goalFromIssueTool = defineTool({
   name: "pio_goal_from_issue",
   label: "Pio Goal From Issue",
-  description: "Convert an existing issue into a structured goal by queuing a create-goal session. Use this tool directly — no bash commands or manual file creation needed. The user can run `/pio-next-task` to start the sub-session.",
+  description:
+    "Convert an existing issue into a structured goal by queuing a create-goal session. Use this tool directly — no bash commands or manual file creation needed. The user can run `/pio-next-task` to start the sub-session.",
   parameters: Type.Object({
-    issuePath: Type.String({ description: "Issue filename or identifier (e.g. fix-something.md or fix-something)" }),
-    initialMessage: Type.Optional(Type.String({ description: "Custom initial message for the goal definition session" })),
+    issuePath: Type.String({
+      description:
+        "Issue filename or identifier (e.g. fix-something.md or fix-something)",
+    }),
+    initialMessage: Type.Optional(
+      Type.String({
+        description: "Custom initial message for the goal definition session",
+      }),
+    ),
   }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
     const validation = await validateGoalFromIssue(ctx.cwd, params.issuePath);
     if (!validation.ok) {
-      return { content: [{ type: "text", text: validation.error! }], details: {} };
+      return {
+        content: [{ type: "text", text: validation.error! }],
+        details: {},
+      };
     }
 
     const goalName = validation.goalName!;
@@ -402,20 +466,30 @@ const goalFromIssueTool = defineTool({
         workspacePrefix: `goals/${goalName}`,
         sessionName: `${goalName} create-goal`,
         queueKey: goalName,
-        initialMessage: params.initialMessage ?? `Create a goal from this issue. Read ${validation.issuePath} for context, interview about scope and constraints, then write GOAL.md.`,
+        initialMessage:
+          params.initialMessage ??
+          `Create a goal from this issue. Read ${validation.issuePath} for context, interview about scope and constraints, then write GOAL.md.`,
         fileCleanup: [validation.issuePath!],
       },
     });
 
     return {
-      content: [{ type: "text", text: `Task queued from issue. Use \`/pio-next-task\` to start the goal definition session for "${goalName}".` }],
+      content: [
+        {
+          type: "text",
+          text: `Task queued from issue. Use \`/pio-next-task\` to start the goal definition session for "${goalName}".`,
+        },
+      ],
       details: {},
     };
   },
 });
 
-async function handleGoalFromIssue(args: string | undefined, ctx: ExtensionCommandContext) {
-  if (!args || !args.trim()) {
+async function handleGoalFromIssue(
+  args: string | undefined,
+  ctx: ExtensionCommandContext,
+) {
+  if (!args?.trim()) {
     ctx.ui.notify("Usage: /pio-goal-from-issue <issue-identifier>", "warning");
     return;
   }
@@ -426,7 +500,10 @@ async function handleGoalFromIssue(args: string | undefined, ctx: ExtensionComma
   const validation = await validateGoalFromIssue(ctx.cwd, issuePath);
   if (!validation.ok) {
     if (validation.reason === "collision") {
-      ctx.ui.notify(`Goal workspace "${validation.goalName}" already exists. Pick a new name, reuse the existing one, or run /pio-delete-goal to remove it.`, "warning");
+      ctx.ui.notify(
+        `Goal workspace "${validation.goalName}" already exists. Pick a new name, reuse the existing one, or run /pio-delete-goal to remove it.`,
+        "warning",
+      );
     } else {
       ctx.ui.notify(validation.error!, "warning");
     }
@@ -475,7 +552,8 @@ export function setupDirectTools(pi: ExtensionAPI): void {
 
   // pio_list_goals
   pi.registerCommand("pio-list-goals", {
-    description: "List all goal workspaces with inferred phase and last executed task",
+    description:
+      "List all goal workspaces with inferred phase and last executed task",
     handler: handleListGoals,
   });
 
@@ -498,5 +576,4 @@ export function setupDirectTools(pi: ExtensionAPI): void {
     description: "Convert an existing issue into a structured goal",
     handler: handleGoalFromIssue,
   });
-
 }

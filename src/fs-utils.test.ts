@@ -1,16 +1,16 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-  resolveGoalDir,
-  prepareGoal,
-  issuesDir,
-  findIssuePath,
-  readIssue,
-  stepFolderName,
-  discoverNextStep,
-} from "./fs-utils";
 import { mergeCapabilitySkills } from "./capability-utils";
+import {
+  discoverNextStep,
+  findIssuePath,
+  issuesDir,
+  prepareGoal,
+  readIssue,
+  resolveGoalDir,
+  stepFolderName,
+} from "./fs-utils";
 import type { CapabilitySkills } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -27,7 +27,11 @@ function cleanup(tempDir: string): void {
 
 // Create a goal directory tree with specified step folders.
 // Each entry in `steps` can specify which files to create inside the step folder.
-function createGoalTree(tempDir: string, goalName: string, steps?: { number: number; files: string[] }[]): string {
+function createGoalTree(
+  tempDir: string,
+  goalName: string,
+  steps?: { number: number; files: string[] }[],
+): string {
   const goalDir = path.join(tempDir, ".pio", "goals", goalName);
   fs.mkdirSync(goalDir, { recursive: true });
 
@@ -44,12 +48,19 @@ function createGoalTree(tempDir: string, goalName: string, steps?: { number: num
 }
 
 // Create an issues directory and write issue files
-function createIssueFiles(tempDir: string, issues: { slug: string; content: string }[]): void {
+function createIssueFiles(
+  tempDir: string,
+  issues: { slug: string; content: string }[],
+): void {
   const issuesDirPath = path.join(tempDir, ".pio", "issues");
   fs.mkdirSync(issuesDirPath, { recursive: true });
 
   for (const issue of issues) {
-    fs.writeFileSync(path.join(issuesDirPath, `${issue.slug}.md`), issue.content, "utf-8");
+    fs.writeFileSync(
+      path.join(issuesDirPath, `${issue.slug}.md`),
+      issue.content,
+      "utf-8",
+    );
   }
 }
 
@@ -65,7 +76,9 @@ describe("resolveGoalDir(cwd, name)", () => {
 
   it("handles names with hyphens and underscores", () => {
     const result = resolveGoalDir("/tmp/proj", "my_feature-v2");
-    expect(result).toBe(path.join("/tmp/proj", ".pio", "goals", "my_feature-v2"));
+    expect(result).toBe(
+      path.join("/tmp/proj", ".pio", "goals", "my_feature-v2"),
+    );
   });
 
   it("handles names with dots", () => {
@@ -210,7 +223,9 @@ describe("readIssue(cwd, identifier)", () => {
   afterEach(() => cleanup(tempDir));
 
   it("returns file contents for existing issue", () => {
-    createIssueFiles(tempDir, [{ slug: "test-issue", content: "test content" }]);
+    createIssueFiles(tempDir, [
+      { slug: "test-issue", content: "test content" },
+    ]);
     expect(readIssue(tempDir, "test-issue")).toBe("test content");
   });
 
@@ -326,15 +341,35 @@ describe("resolveGoalDir with parentStepDir", () => {
   });
 
   it("nested subgoal resolves relative to parentStepDir", () => {
-    const parentStepDir = path.join("/tmp/proj", ".pio", "goals", "parent", "S03");
+    const parentStepDir = path.join(
+      "/tmp/proj",
+      ".pio",
+      "goals",
+      "parent",
+      "S03",
+    );
     const result = resolveGoalDir("/tmp/proj", "nested-task", parentStepDir);
     expect(result).toBe(
-      path.join("/tmp/proj", ".pio", "goals", "parent", "S03", "subgoals", "nested-task")
+      path.join(
+        "/tmp/proj",
+        ".pio",
+        "goals",
+        "parent",
+        "S03",
+        "subgoals",
+        "nested-task",
+      ),
     );
   });
 
   it("nested subgoal path contains subgoals segment", () => {
-    const parentStepDir = path.join("/tmp/proj", ".pio", "goals", "parent", "S03");
+    const parentStepDir = path.join(
+      "/tmp/proj",
+      ".pio",
+      "goals",
+      "parent",
+      "S03",
+    );
     const result = resolveGoalDir("/tmp/proj", "nested-task", parentStepDir);
     expect(result.split(path.sep)).toContain("subgoals");
   });
@@ -384,7 +419,9 @@ describe("mergeCapabilitySkills", () => {
   it("concatenates recommended skills with first-seen-wins dedup by name", () => {
     // Arrange
     const base: CapabilitySkills = {
-      recommended: [{ name: "source-research", condition: "for lib internals" }],
+      recommended: [
+        { name: "source-research", condition: "for lib internals" },
+      ],
     };
     const task: CapabilitySkills = {
       recommended: [
@@ -502,4 +539,3 @@ describe("mergeCapabilitySkills", () => {
     expect(result.mandatory).toEqual(["pio"]);
   });
 });
-

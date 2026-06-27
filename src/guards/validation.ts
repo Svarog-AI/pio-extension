@@ -1,10 +1,10 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as Value from "typebox/value";
-import { extractFrontmatter, formatSchemaDescription } from "../frontmatter";
-import { getSessionConfig } from "../capability-utils";
 import { CapState } from "../capability-state";
+import { getSessionConfig } from "../capability-utils";
+import { extractFrontmatter, formatSchemaDescription } from "../frontmatter";
 import type { MarkdownFileSpec, OutputEntry } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -39,11 +39,15 @@ export function __testSetFileProtectionState(state?: {
   readOnlyFilePaths?: string[];
   isActivePioSession?: boolean;
 }) {
-  if (state?.allowProjectWrites !== undefined) allowProjectWrites = state.allowProjectWrites;
+  if (state?.allowProjectWrites !== undefined)
+    allowProjectWrites = state.allowProjectWrites;
   if (state?.projectRoot !== undefined) projectRoot = state.projectRoot;
-  if (state?.writeAllowlistPaths !== undefined) writeAllowlistPaths = state.writeAllowlistPaths;
-  if (state?.readOnlyFilePaths !== undefined) readOnlyFilePaths = state.readOnlyFilePaths;
-  if (state?.isActivePioSession !== undefined) isActivePioSession = state.isActivePioSession;
+  if (state?.writeAllowlistPaths !== undefined)
+    writeAllowlistPaths = state.writeAllowlistPaths;
+  if (state?.readOnlyFilePaths !== undefined)
+    readOnlyFilePaths = state.readOnlyFilePaths;
+  if (state?.isActivePioSession !== undefined)
+    isActivePioSession = state.isActivePioSession;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,14 +66,18 @@ function isMarkdownFileSpec(entry: OutputEntry): entry is MarkdownFileSpec {
  * Paths are resolved through CapState.resolvePath() which handles workspace
  * prefix injection, placeholder resolution, and projectRelative paths.
  */
-export function validateOutputs(
-  capState: CapState,
-): { success: boolean; message?: string } {
+export function validateOutputs(capState: CapState): {
+  success: boolean;
+  message?: string;
+} {
   const params = capState["params"];
 
   // If COMPLETION_SUMMARY.md exists (resolved through CapState context), pass validation regardless of other expected files.
   // This allows evolve-plan to write just COMPLETION_SUMMARY.md (when all steps are done) and have pio_mark_complete succeed.
-  const completionSummaryPath = capState.resolvePath({ name: "_bypass", file: "COMPLETION_SUMMARY.md" });
+  const completionSummaryPath = capState.resolvePath({
+    name: "_bypass",
+    file: "COMPLETION_SUMMARY.md",
+  });
   if (fs.existsSync(completionSummaryPath)) {
     return { success: true };
   }
@@ -100,15 +108,23 @@ export function validateOutputs(
       if (entry.schema) {
         const raw = extractFrontmatter(fullPath);
         if (raw === null) {
-          issues.push(`Output file '${entry.file}' has no valid YAML frontmatter`);
+          issues.push(
+            `Output file '${entry.file}' has no valid YAML frontmatter`,
+          );
         } else if (!Value.Check(entry.schema, raw)) {
           const errors = [...Value.Errors(entry.schema, raw)];
-          const fieldErrors = errors.map((e) => {
-            const field = e.instancePath ? e.instancePath.replace(/^\//, "") : "root";
-            return `Field '${field}': ${e.message}`;
-          }).join("; ");
+          const fieldErrors = errors
+            .map((e) => {
+              const field = e.instancePath
+                ? e.instancePath.replace(/^\//, "")
+                : "root";
+              return `Field '${field}': ${e.message}`;
+            })
+            .join("; ");
           const schemaDesc = formatSchemaDescription(entry.schema);
-          issues.push(`Frontmatter validation failed for '${entry.file}': ${fieldErrors}\nExpected frontmatter structure:\n${schemaDesc}`);
+          issues.push(
+            `Frontmatter validation failed for '${entry.file}': ${fieldErrors}\nExpected frontmatter structure:\n${schemaDesc}`,
+          );
         }
       }
     }
@@ -118,7 +134,10 @@ export function validateOutputs(
     }
     return { success: true };
   } catch (err) {
-    return { success: false, message: err instanceof Error ? err.message : String(err) };
+    return {
+      success: false,
+      message: err instanceof Error ? err.message : String(err),
+    };
   }
 }
 
@@ -139,9 +158,10 @@ export function validateOutputs(
  * This is a schema-only validation — it does NOT perform cross-field checks
  * that require reading document body content (e.g., totalSteps vs heading count).
  */
-export function validateFrontmatter(
-  capState: CapState,
-): { success: boolean; message?: string } {
+export function validateFrontmatter(capState: CapState): {
+  success: boolean;
+  message?: string;
+} {
   try {
     for (const entry of capState.contract.outputs) {
       if (!isMarkdownFileSpec(entry)) {
@@ -158,13 +178,19 @@ export function validateFrontmatter(
 
       // Check file exists
       if (!fs.existsSync(filePath)) {
-        return { success: false, message: `Output file '${entry.file}' does not exist` };
+        return {
+          success: false,
+          message: `Output file '${entry.file}' does not exist`,
+        };
       }
 
       // Parse frontmatter
       const raw = extractFrontmatter(filePath);
       if (raw === null) {
-        return { success: false, message: `Output file '${entry.file}' has no valid YAML frontmatter` };
+        return {
+          success: false,
+          message: `Output file '${entry.file}' has no valid YAML frontmatter`,
+        };
       }
 
       // Validate against schema
@@ -172,18 +198,26 @@ export function validateFrontmatter(
         const errors = [...Value.Errors(entry.schema, raw)];
         const messages = errors
           .map((e) => {
-            const field = e.instancePath ? e.instancePath.replace(/^\//, "") : "root";
+            const field = e.instancePath
+              ? e.instancePath.replace(/^\//, "")
+              : "root";
             return `Field '${field}': ${e.message}`;
           })
           .join("; ");
         const schemaDesc = formatSchemaDescription(entry.schema);
-        return { success: false, message: `Frontmatter validation failed for '${entry.file}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}` };
+        return {
+          success: false,
+          message: `Frontmatter validation failed for '${entry.file}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}`,
+        };
       }
     }
 
     return { success: true };
   } catch (err) {
-    return { success: false, message: err instanceof Error ? err.message : String(err) };
+    return {
+      success: false,
+      message: err instanceof Error ? err.message : String(err),
+    };
   }
 }
 
@@ -200,33 +234,47 @@ export function validateFrontmatter(
  * @param capState - CapState wrapping the capability contract with resolution context
  * @returns Success result or failure with descriptive message
  */
-export function validateInputs(
-  capState: CapState,
-): { success: boolean; message?: string } {
+export function validateInputs(capState: CapState): {
+  success: boolean;
+  message?: string;
+} {
   try {
     // Check required inputs
     for (const spec of capState.contract.inputs) {
       const fullPath = capState.resolvePath(spec);
 
       if (!fs.existsSync(fullPath)) {
-        return { success: false, message: `Required file missing: ${spec.file}` };
+        return {
+          success: false,
+          message: `Required file missing: ${spec.file}`,
+        };
       }
 
       // Frontmatter validation when schema is declared on the input entry
       if (spec.schema) {
         const raw = extractFrontmatter(fullPath);
         if (raw === null) {
-          return { success: false, message: `Input file '${spec.file}' has no valid YAML frontmatter` };
+          return {
+            success: false,
+            message: `Input file '${spec.file}' has no valid YAML frontmatter`,
+          };
         }
 
         if (!Value.Check(spec.schema, raw)) {
           const errors = [...Value.Errors(spec.schema, raw)];
-          const messages = errors.map((e) => {
-            const field = e.instancePath ? e.instancePath.replace(/^\//, "") : "root";
-            return `Field '${field}': ${e.message}`;
-          }).join("; ");
+          const messages = errors
+            .map((e) => {
+              const field = e.instancePath
+                ? e.instancePath.replace(/^\//, "")
+                : "root";
+              return `Field '${field}': ${e.message}`;
+            })
+            .join("; ");
           const schemaDesc = formatSchemaDescription(spec.schema);
-          return { success: false, message: `Frontmatter validation failed for '${spec.file}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}` };
+          return {
+            success: false,
+            message: `Frontmatter validation failed for '${spec.file}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}`,
+          };
         }
       }
     }
@@ -241,7 +289,10 @@ export function validateInputs(
       }
     }
   } catch (err) {
-    return { success: false, message: err instanceof Error ? err.message : String(err) };
+    return {
+      success: false,
+      message: err instanceof Error ? err.message : String(err),
+    };
   }
 
   return { success: true };
@@ -262,12 +313,16 @@ export function setupValidation(pi: ExtensionAPI) {
 
       // workspacePrefix is stripped from sessionParams after normalization (Step 9).
       // workspaceDir already has the prefix baked in, so CapState.workspacePrefix = undefined.
-      const capState = new CapState(config.contract, workspaceDir!, config.sessionParams);
+      const capState = new CapState(
+        config.contract,
+        workspaceDir!,
+        config.sessionParams,
+      );
 
       // Resolve read-only file paths through CapState (always non-projectRelative)
       if (config.readOnlyFiles && config.workspaceDir) {
         readOnlyFilePaths = config.readOnlyFiles.map((f) =>
-          path.resolve(capState.resolvePath({ name: "_ro", file: f }))
+          path.resolve(capState.resolvePath({ name: "_ro", file: f })),
         );
       } else {
         readOnlyFilePaths = [];
@@ -277,7 +332,7 @@ export function setupValidation(pi: ExtensionAPI) {
       let baseAllowlist: string[] = [];
       if (config.writeAllowlist && config.workspaceDir) {
         baseAllowlist = config.writeAllowlist.map((f) =>
-          path.resolve(capState.resolvePath({ name: "_wl", file: f }))
+          path.resolve(capState.resolvePath({ name: "_wl", file: f })),
         );
       }
 
@@ -293,7 +348,9 @@ export function setupValidation(pi: ExtensionAPI) {
         }
       }
 
-      writeAllowlistPaths = [...new Set([...baseAllowlist, ...contractOutputPaths])];
+      writeAllowlistPaths = [
+        ...new Set([...baseAllowlist, ...contractOutputPaths]),
+      ];
 
       allowProjectWrites = config.allowProjectWrites ?? false;
 
@@ -324,7 +381,10 @@ export function setupValidation(pi: ExtensionAPI) {
       targetPaths = [path.resolve(input.path)];
     } else if (event.toolName === "edit" && typeof input?.path === "string") {
       targetPaths = [path.resolve(input.path)];
-    } else if (event.toolName === "vscode_apply_workspace_edit" && Array.isArray(input?.edits)) {
+    } else if (
+      event.toolName === "vscode_apply_workspace_edit" &&
+      Array.isArray(input?.edits)
+    ) {
       for (const edit of input.edits as Array<Record<string, unknown>>) {
         if (typeof edit.filePath === "string") {
           targetPaths.push(path.resolve(edit.filePath));
@@ -341,20 +401,32 @@ export function setupValidation(pi: ExtensionAPI) {
       if (writeAllowlistPaths.includes(tp)) continue;
 
       // Allowed: project files when capability has allowProjectWrites (scoped to project root)
-      if (allowProjectWrites && !tp.includes("/.pio/") && projectRoot && tp.startsWith(projectRoot + "/")) continue;
+      if (
+        allowProjectWrites &&
+        !tp.includes("/.pio/") &&
+        projectRoot &&
+        tp.startsWith(`${projectRoot}/`)
+      )
+        continue;
 
       // Allowed: /tmp/ writes (temporary scratch files)
       if (tp.startsWith("/tmp/")) continue;
 
       // Block everything else — always list what IS allowed to guide the agent
-      return { block: true, reason: buildAllowanceMessage(writeAllowlistPaths, allowProjectWrites) };
+      return {
+        block: true,
+        reason: buildAllowanceMessage(writeAllowlistPaths, allowProjectWrites),
+      };
     }
 
     // Read-only blocklist — final fallback (blocks writes to explicitly read-only files)
     if (readOnlyFilePaths.length > 0) {
       for (const tp of targetPaths) {
         if (readOnlyFilePaths.includes(tp)) {
-          return { block: true, reason: `${tp} is read-only during this session. If you need changes to this file, flag them to the user and do not modify it.` };
+          return {
+            block: true,
+            reason: `${tp} is read-only during this session. If you need changes to this file, flag them to the user and do not modify it.`,
+          };
         }
       }
     }
@@ -365,7 +437,10 @@ export function setupValidation(pi: ExtensionAPI) {
 // Helper — build helpful error message listing all permitted write categories
 // ---------------------------------------------------------------------------
 
-function buildAllowanceMessage(allowlist: string[], hasProjectWrites: boolean): string {
+function buildAllowanceMessage(
+  allowlist: string[],
+  hasProjectWrites: boolean,
+): string {
   const parts: string[] = [];
   if (allowlist.length > 0) {
     parts.push(`contract output files: ${allowlist.join(", ")}`);

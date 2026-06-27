@@ -3,10 +3,14 @@ import * as path from "node:path";
 
 import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
 import { stepFolderName } from "../../fs-utils";
-import { PLAN_FRONTMATTER_SCHEMA, type PlanFrontmatter } from "../create-plan/schemas";
-import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "../review-task/schemas";
-import { CONTRACT } from "./config";
-
+import {
+  PLAN_FRONTMATTER_SCHEMA,
+  type PlanFrontmatter,
+} from "../create-plan/schemas";
+import {
+  REVIEW_OUTPUT_SCHEMA,
+  type ReviewOutputs,
+} from "../review-task/schemas";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -76,9 +80,10 @@ export async function cleanupIncompleteSteps(
   }
 
   // Clean up REVISE_PLAN_NEEDED marker from trigger step folder if it still exists
-  const revisionTriggerStep = typeof params?.revisionTriggerStep === "number"
-    ? params.revisionTriggerStep
-    : undefined;
+  const revisionTriggerStep =
+    typeof params?.revisionTriggerStep === "number"
+      ? params.revisionTriggerStep
+      : undefined;
 
   if (revisionTriggerStep != null) {
     const folderName = stepFolderName(revisionTriggerStep);
@@ -94,14 +99,20 @@ export async function cleanupIncompleteSteps(
 // Config callbacks (used by config.ts and resolveCapabilityConfig)
 // ---------------------------------------------------------------------------
 
-export function resolveReviseReadOnlyFiles(workspaceDir: string, _params?: Record<string, unknown>): string[] {
+export function resolveReviseReadOnlyFiles(
+  workspaceDir: string,
+  _params?: Record<string, unknown>,
+): string[] {
   const readOnly: string[] = [];
 
   // Read PLAN.md to get totalSteps
   const planRaw = extractFrontmatter(path.join(workspaceDir, "PLAN.md"));
   if (planRaw == null) return readOnly;
 
-  const planResult = validateAndCoerce<PlanFrontmatter>(planRaw, PLAN_FRONTMATTER_SCHEMA);
+  const planResult = validateAndCoerce<PlanFrontmatter>(
+    planRaw,
+    PLAN_FRONTMATTER_SCHEMA,
+  );
   if ("error" in planResult) return readOnly;
 
   const totalSteps = planResult.data.totalSteps;
@@ -109,7 +120,10 @@ export function resolveReviseReadOnlyFiles(workspaceDir: string, _params?: Recor
     const reviewPath = path.join(workspaceDir, stepFolderName(i), "REVIEW.md");
     const reviewRaw = extractFrontmatter(reviewPath);
     if (reviewRaw == null) continue;
-    const reviewResult = validateAndCoerce<ReviewOutputs>(reviewRaw, REVIEW_OUTPUT_SCHEMA);
+    const reviewResult = validateAndCoerce<ReviewOutputs>(
+      reviewRaw,
+      REVIEW_OUTPUT_SCHEMA,
+    );
     if ("data" in reviewResult && reviewResult.data?.decision === "APPROVED") {
       readOnly.push(`S${String(i).padStart(2, "0")}/*`);
     }
@@ -118,6 +132,9 @@ export function resolveReviseReadOnlyFiles(workspaceDir: string, _params?: Recor
   return readOnly;
 }
 
-export function resolveReviseWriteAllowlist(_workspaceDir: string, _params?: Record<string, unknown>): string[] {
+export function resolveReviseWriteAllowlist(
+  _workspaceDir: string,
+  _params?: Record<string, unknown>,
+): string[] {
   return ["PLAN.md"];
 }

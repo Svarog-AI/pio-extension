@@ -1,5 +1,5 @@
-import { Type } from "typebox";
 import type { Static } from "typebox";
+import { Type } from "typebox";
 
 // ---------------------------------------------------------------------------
 // Plan frontmatter schema and types
@@ -16,7 +16,9 @@ import type { Static } from "typebox";
 /** Step metadata entry in the `steps` array of PLAN.md frontmatter. */
 export const STEP_ENTRY_SCHEMA = Type.Object({
   name: Type.String({ minLength: 1 }),
-  complexity: Type.Optional(Type.Union([Type.Literal("task"), Type.Literal("subgoal")])),
+  complexity: Type.Optional(
+    Type.Union([Type.Literal("task"), Type.Literal("subgoal")]),
+  ),
 });
 
 /** Derived type — no manual interface definition. */

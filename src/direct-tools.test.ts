@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -46,8 +46,6 @@ vi.mock("./capability-config", () => ({
   resolveCapabilityConfig: mockResolveCapabilityConfigDirect,
 }));
 
-
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -55,13 +53,21 @@ vi.mock("./capability-config", () => ({
 /**
  * Build a mock ExtensionCommandContext with a pio-config entry.
  */
-function makeMockCtx(configData?: Record<string, unknown>): ExtensionCommandContext {
+function _makeMockCtx(
+  configData?: Record<string, unknown>,
+): ExtensionCommandContext {
   return {
     cwd: "/test/cwd",
     sessionManager: {
       getEntries: () =>
         configData
-          ? [{ type: "custom" as const, customType: "pio-config" as const, data: configData }]
+          ? [
+              {
+                type: "custom" as const,
+                customType: "pio-config" as const,
+                data: configData,
+              },
+            ]
           : [],
     },
     ui: {
@@ -117,7 +123,9 @@ describe("goalFromIssueTool.execute", () => {
     };
     setupDirectTools(mockPi as any);
 
-    goalFromIssueTool = registeredTools.find((t) => t.name === "pio_goal_from_issue");
+    goalFromIssueTool = registeredTools.find(
+      (t) => t.name === "pio_goal_from_issue",
+    );
   });
 
   afterEach(() => {
@@ -129,7 +137,7 @@ describe("goalFromIssueTool.execute", () => {
     const mockCtx = makeMockCtxNoConfig();
     (mockCtx as any).cwd = tempCwd;
 
-    const result = await goalFromIssueTool!.execute(
+    const result = await goalFromIssueTool?.execute(
       "test-id",
       { issuePath: "nonexistent-issue" },
       new AbortController().signal,
@@ -144,7 +152,11 @@ describe("goalFromIssueTool.execute", () => {
     // Arrange: create issue file and goal workspace
     const issuesDir = path.join(tempCwd, ".pio", "issues");
     fs.mkdirSync(issuesDir, { recursive: true });
-    fs.writeFileSync(path.join(issuesDir, "my-issue.md"), "# My Issue\n\nDescription", "utf-8");
+    fs.writeFileSync(
+      path.join(issuesDir, "my-issue.md"),
+      "# My Issue\n\nDescription",
+      "utf-8",
+    );
 
     // Create goal workspace (collision)
     const goalsDir = path.join(tempCwd, ".pio", "goals", "my-issue");
@@ -153,7 +165,7 @@ describe("goalFromIssueTool.execute", () => {
     const mockCtx = makeMockCtxNoConfig();
     (mockCtx as any).cwd = tempCwd;
 
-    const result = await goalFromIssueTool!.execute(
+    const result = await goalFromIssueTool?.execute(
       "test-id",
       { issuePath: "my-issue.md" },
       new AbortController().signal,
@@ -170,12 +182,16 @@ describe("goalFromIssueTool.execute", () => {
     // Arrange: create issue file
     const issuesDir = path.join(tempCwd, ".pio", "issues");
     fs.mkdirSync(issuesDir, { recursive: true });
-    fs.writeFileSync(path.join(issuesDir, "fix-bug.md"), "# Fix Bug\n\nFix a bug", "utf-8");
+    fs.writeFileSync(
+      path.join(issuesDir, "fix-bug.md"),
+      "# Fix Bug\n\nFix a bug",
+      "utf-8",
+    );
 
     const mockCtx = makeMockCtxNoConfig();
     (mockCtx as any).cwd = tempCwd;
 
-    await goalFromIssueTool!.execute(
+    await goalFromIssueTool?.execute(
       "test-id",
       { issuePath: "fix-bug.md" },
       new AbortController().signal,
@@ -208,7 +224,7 @@ describe("goalFromIssueTool.execute", () => {
     const mockCtx = makeMockCtxNoConfig();
     (mockCtx as any).cwd = tempCwd;
 
-    await goalFromIssueTool!.execute(
+    await goalFromIssueTool?.execute(
       "test-id",
       { issuePath: "some-issue.md" },
       new AbortController().signal,
@@ -253,7 +269,9 @@ describe("handleGoalFromIssue — command handler", () => {
     };
     setupDirectTools(mockPi as any);
 
-    handler = registeredCommands.find((c) => c.name === "pio-goal-from-issue")?.handler;
+    handler = registeredCommands.find(
+      (c) => c.name === "pio-goal-from-issue",
+    )?.handler;
   });
 
   afterEach(() => {
@@ -265,7 +283,11 @@ describe("handleGoalFromIssue — command handler", () => {
     // Arrange: create issue file and goal workspace (collision)
     const issuesDir = path.join(tempCwd, ".pio", "issues");
     fs.mkdirSync(issuesDir, { recursive: true });
-    fs.writeFileSync(path.join(issuesDir, "my-issue.md"), "# My Issue", "utf-8");
+    fs.writeFileSync(
+      path.join(issuesDir, "my-issue.md"),
+      "# My Issue",
+      "utf-8",
+    );
 
     const goalsDir = path.join(tempCwd, ".pio", "goals", "my-issue");
     fs.mkdirSync(goalsDir, { recursive: true });
@@ -278,7 +300,7 @@ describe("handleGoalFromIssue — command handler", () => {
     };
 
     // Act
-    await handler!("my-issue.md", mockCtx);
+    await handler?.("my-issue.md", mockCtx);
 
     // Assert: notification contains the actual goal name, not "undefined"
     expect(mockNotify).toHaveBeenCalled();
@@ -300,7 +322,7 @@ describe("handleGoalFromIssue — command handler", () => {
     };
 
     // Act
-    await handler!("nonexistent.md", mockCtx);
+    await handler?.("nonexistent.md", mockCtx);
 
     // Assert: notification says not found (not a collision message)
     expect(mockNotify).toHaveBeenCalled();

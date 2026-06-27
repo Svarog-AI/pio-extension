@@ -1,13 +1,13 @@
-import { vi, beforeEach } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { beforeEach, vi } from "vitest";
 import {
-  setupStepNudging,
-  generateNudgeMessage,
-  workflowStepFinishTool,
   __testSetActiveSession,
   __testSetCurrentWorkflowStep,
-  __testSetTotalWorkflowSteps,
   __testSetStepsList,
+  __testSetTotalWorkflowSteps,
+  generateNudgeMessage,
+  setupStepNudging,
+  workflowStepFinishTool,
 } from "./step-nudging";
 
 // Mock resolveCapabilityConfig so getSessionConfig() returns a full config with live functions
@@ -21,7 +21,8 @@ vi.mock("../capability-config", () => ({
 beforeEach(() => {
   mockResolveCapabilityConfig.mockClear();
   mockResolveCapabilityConfig.mockImplementation((_cwd, params) => {
-    const cap = typeof params?.capability === "string" ? params.capability : "unknown";
+    const cap =
+      typeof params?.capability === "string" ? params.capability : "unknown";
     // resolveCapabilityConfig stores the full params object as sessionParams
     return {
       capability: cap,
@@ -67,23 +68,42 @@ function createMockPi(): {
     registerCommand(): void {},
     registerShortcut(): void {},
     registerFlag(): void {},
-    getFlag(): boolean | string | undefined { return undefined; },
+    getFlag(): boolean | string | undefined {
+      return undefined;
+    },
     registerMessageRenderer(): void {},
-    sendMessage(message: unknown, options?: { deliverAs?: "steer" | "followUp" }): void {
+    sendMessage(
+      message: unknown,
+      options?: { deliverAs?: "steer" | "followUp" },
+    ): void {
       sendMessageCalls.push({ message, options });
     },
     sendUserMessage(): void {},
     appendEntry(): void {},
     setSessionName(): void {},
-    getSessionName(): string | undefined { return undefined; },
+    getSessionName(): string | undefined {
+      return undefined;
+    },
     setLabel(): void {},
-    exec(): Promise<unknown> { return Promise.resolve({}); },
-    getActiveTools(): string[] { return []; },
-    getAllTools() { return []; },
+    exec(): Promise<unknown> {
+      return Promise.resolve({});
+    },
+    getActiveTools(): string[] {
+      return [];
+    },
+    getAllTools() {
+      return [];
+    },
     setActiveTools(): void {},
-    getCommands(): unknown[] { return []; },
-    setModel(): Promise<boolean> { return Promise.resolve(true); },
-    getThinkingLevel(): unknown { return "off"; },
+    getCommands(): unknown[] {
+      return [];
+    },
+    setModel(): Promise<boolean> {
+      return Promise.resolve(true);
+    },
+    getThinkingLevel(): unknown {
+      return "off";
+    },
     setThinkingLevel(): void {},
     registerProvider(): void {},
     unregisterProvider(): void {},
@@ -193,7 +213,7 @@ describe("setupStepNudging — handler registration", () => {
 
     const discoverHandlers = handlers.get("resources_discover");
     expect(discoverHandlers).toBeDefined();
-    expect(discoverHandlers!.length).toBeGreaterThan(0);
+    expect(discoverHandlers?.length).toBeGreaterThan(0);
   });
 
   it("registers turn_end handler", () => {
@@ -203,7 +223,7 @@ describe("setupStepNudging — handler registration", () => {
 
     const turnEndHandlers = handlers.get("turn_end");
     expect(turnEndHandlers).toBeDefined();
-    expect(turnEndHandlers!.length).toBeGreaterThan(0);
+    expect(turnEndHandlers?.length).toBeGreaterThan(0);
   });
 
   it("registers before_agent_start handler", () => {
@@ -213,7 +233,7 @@ describe("setupStepNudging — handler registration", () => {
 
     const beforeAgentStartHandlers = handlers.get("before_agent_start");
     expect(beforeAgentStartHandlers).toBeDefined();
-    expect(beforeAgentStartHandlers!.length).toBeGreaterThan(0);
+    expect(beforeAgentStartHandlers?.length).toBeGreaterThan(0);
   });
 });
 
@@ -227,7 +247,13 @@ describe("resources_discover — session detection and state initialization", ()
 
     const mockSessionManager = {
       getEntries(): MockEntry[] {
-        return [{ type: "custom", customType: "pio-config", data: { capability: "create-goal", sessionParams: {} } }];
+        return [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: { capability: "create-goal", sessionParams: {} },
+          },
+        ];
       },
     };
 
@@ -236,7 +262,10 @@ describe("resources_discover — session detection and state initialization", ()
     const discoverHandlers = handlers.get("resources_discover");
     const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
-      await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
+      await handler(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        mockCtx,
+      );
     }
 
     expect(__testSetActiveSession()).toBe(true);
@@ -256,7 +285,10 @@ describe("resources_discover — session detection and state initialization", ()
     const discoverHandlers = handlers.get("resources_discover");
     const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
-      await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
+      await handler(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        mockCtx,
+      );
     }
 
     expect(__testSetActiveSession()).toBe(false);
@@ -285,7 +317,10 @@ describe("resources_discover — session detection and state initialization", ()
     const discoverHandlers = handlers.get("resources_discover");
     const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
-      await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
+      await handler(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        mockCtx,
+      );
     }
 
     expect(__testSetTotalWorkflowSteps()).toBe(5);
@@ -312,7 +347,10 @@ describe("resources_discover — session detection and state initialization", ()
     const discoverHandlers = handlers.get("resources_discover");
     const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
-      await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
+      await handler(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        mockCtx,
+      );
     }
 
     expect(__testSetTotalWorkflowSteps()).toBe(0);
@@ -376,14 +414,22 @@ describe("turn_end — nudge message injection", () => {
 
     const turnEndHandlers = handlers.get("turn_end");
     const mockCtx = {} as any;
-    const event = { type: "turn_end", turnIndex: 0, message: {}, toolResults: [] };
+    const event = {
+      type: "turn_end",
+      turnIndex: 0,
+      message: {},
+      toolResults: [],
+    };
     for (const handler of turnEndHandlers!) {
       handler(event, mockCtx);
     }
 
     expect(sendMessageCalls).toHaveLength(1);
     expect(sendMessageCalls[0].options).toEqual({ deliverAs: "steer" });
-    expect(sendMessageCalls[0].message).toHaveProperty("customType", "step-nudge");
+    expect(sendMessageCalls[0].message).toHaveProperty(
+      "customType",
+      "step-nudge",
+    );
     expect(sendMessageCalls[0].message).toHaveProperty("display", false);
   });
 
@@ -398,7 +444,12 @@ describe("turn_end — nudge message injection", () => {
 
     const turnEndHandlers = handlers.get("turn_end");
     const mockCtx = {} as any;
-    const event = { type: "turn_end", turnIndex: 0, message: {}, toolResults: [] };
+    const event = {
+      type: "turn_end",
+      turnIndex: 0,
+      message: {},
+      toolResults: [],
+    };
     for (const handler of turnEndHandlers!) {
       handler(event, mockCtx);
     }
@@ -417,7 +468,12 @@ describe("turn_end — nudge message injection", () => {
 
     const turnEndHandlers = handlers.get("turn_end");
     const mockCtx = {} as any;
-    const event = { type: "turn_end", turnIndex: 0, message: {}, toolResults: [] };
+    const event = {
+      type: "turn_end",
+      turnIndex: 0,
+      message: {},
+      toolResults: [],
+    };
     for (const handler of turnEndHandlers!) {
       handler(event, mockCtx);
     }
@@ -436,7 +492,12 @@ describe("turn_end — nudge message injection", () => {
 
     const turnEndHandlers = handlers.get("turn_end");
     const mockCtx = {} as any;
-    const event = { type: "turn_end", turnIndex: 0, message: { stopReason: "aborted" }, toolResults: [] };
+    const event = {
+      type: "turn_end",
+      turnIndex: 0,
+      message: { stopReason: "aborted" },
+      toolResults: [],
+    };
     for (const handler of turnEndHandlers!) {
       handler(event, mockCtx);
     }
@@ -455,13 +516,21 @@ describe("turn_end — nudge message injection", () => {
 
     const turnEndHandlers = handlers.get("turn_end");
     const mockCtx = {} as any;
-    const event = { type: "turn_end", turnIndex: 0, message: {}, toolResults: [] };
+    const event = {
+      type: "turn_end",
+      turnIndex: 0,
+      message: {},
+      toolResults: [],
+    };
     for (const handler of turnEndHandlers!) {
       handler(event, mockCtx);
     }
 
     expect(sendMessageCalls).toHaveLength(1);
-    expect(sendMessageCalls[0].message).toHaveProperty("customType", "step-nudge");
+    expect(sendMessageCalls[0].message).toHaveProperty(
+      "customType",
+      "step-nudge",
+    );
   });
 
   it("injects nudge when event.message.stopReason is 'stop' (normal completion)", () => {
@@ -475,13 +544,21 @@ describe("turn_end — nudge message injection", () => {
 
     const turnEndHandlers = handlers.get("turn_end");
     const mockCtx = {} as any;
-    const event = { type: "turn_end", turnIndex: 0, message: { stopReason: "stop" }, toolResults: [] };
+    const event = {
+      type: "turn_end",
+      turnIndex: 0,
+      message: { stopReason: "stop" },
+      toolResults: [],
+    };
     for (const handler of turnEndHandlers!) {
       handler(event, mockCtx);
     }
 
     expect(sendMessageCalls).toHaveLength(1);
-    expect(sendMessageCalls[0].message).toHaveProperty("customType", "step-nudge");
+    expect(sendMessageCalls[0].message).toHaveProperty(
+      "customType",
+      "step-nudge",
+    );
   });
 });
 
@@ -493,7 +570,9 @@ describe("workflow-step-finish tool — behavior", () => {
   const mockCtx = {} as any;
   const mockSignal = new AbortController().signal;
 
-  function getText(result: Awaited<ReturnType<typeof workflowStepFinishTool.execute>>) {
+  function getText(
+    result: Awaited<ReturnType<typeof workflowStepFinishTool.execute>>,
+  ) {
     const block = result.content[0] as { type: string; text?: string };
     return block.text!;
   }
@@ -503,7 +582,13 @@ describe("workflow-step-finish tool — behavior", () => {
     __testSetCurrentWorkflowStep(0);
     __testSetTotalWorkflowSteps(0);
 
-    const result = await workflowStepFinishTool.execute("mock-id", {}, mockSignal, undefined, mockCtx);
+    const result = await workflowStepFinishTool.execute(
+      "mock-id",
+      {},
+      mockSignal,
+      undefined,
+      mockCtx,
+    );
     const text = getText(result);
 
     expect(text).toBe("Step nudging is not active in this session.");
@@ -515,11 +600,19 @@ describe("workflow-step-finish tool — behavior", () => {
     __testSetTotalWorkflowSteps(5);
     __testSetStepsList([]);
 
-    const result = await workflowStepFinishTool.execute("mock-id", {}, mockSignal, undefined, mockCtx);
+    const result = await workflowStepFinishTool.execute(
+      "mock-id",
+      {},
+      mockSignal,
+      undefined,
+      mockCtx,
+    );
     const text = getText(result);
 
     expect(__testSetCurrentWorkflowStep()).toBe(2);
-    expect(text).toBe("Workflow step finished. Moving to workflow step 2 of 5. If you need clarification before starting, call `ask_user`. Otherwise, continue with this step.");
+    expect(text).toBe(
+      "Workflow step finished. Moving to workflow step 2 of 5. If you need clarification before starting, call `ask_user`. Otherwise, continue with this step.",
+    );
   });
 
   it("increments step counter and returns next step message with title", async () => {
@@ -532,11 +625,19 @@ describe("workflow-step-finish tool — behavior", () => {
       { id: "step-3", title: "Implement" },
     ]);
 
-    const result = await workflowStepFinishTool.execute("mock-id", {}, mockSignal, undefined, mockCtx);
+    const result = await workflowStepFinishTool.execute(
+      "mock-id",
+      {},
+      mockSignal,
+      undefined,
+      mockCtx,
+    );
     const text = getText(result);
 
     expect(__testSetCurrentWorkflowStep()).toBe(2);
-    expect(text).toBe("Workflow step finished. Moving to 'Research context' (workflow step 2 of 3). If you need clarification before starting, call `ask_user`. Otherwise, continue with this step.");
+    expect(text).toBe(
+      "Workflow step finished. Moving to 'Research context' (workflow step 2 of 3). If you need clarification before starting, call `ask_user`. Otherwise, continue with this step.",
+    );
   });
 
   it("clamps step counter and returns last step message", async () => {
@@ -546,11 +647,19 @@ describe("workflow-step-finish tool — behavior", () => {
     __testSetStepsList([]);
 
     // First call: step 4 → 5 (last)
-    const result = await workflowStepFinishTool.execute("mock-id", {}, mockSignal, undefined, mockCtx);
+    const result = await workflowStepFinishTool.execute(
+      "mock-id",
+      {},
+      mockSignal,
+      undefined,
+      mockCtx,
+    );
     const text = getText(result);
 
     expect(__testSetCurrentWorkflowStep()).toBe(5);
-    expect(text).toBe("All workflow steps completed. You are on the final workflow step (5 of 5). If you need clarification, call `ask_user`. Otherwise, consider your work done and call pio_mark_complete if all outputs are ready.");
+    expect(text).toBe(
+      "All workflow steps completed. You are on the final workflow step (5 of 5). If you need clarification, call `ask_user`. Otherwise, consider your work done and call pio_mark_complete if all outputs are ready.",
+    );
   });
 
   it("stays at last step when already at max (clamp on second call)", async () => {
@@ -559,7 +668,13 @@ describe("workflow-step-finish tool — behavior", () => {
     __testSetTotalWorkflowSteps(5);
     __testSetStepsList([]);
 
-    const result = await workflowStepFinishTool.execute("mock-id", {}, mockSignal, undefined, mockCtx);
+    const result = await workflowStepFinishTool.execute(
+      "mock-id",
+      {},
+      mockSignal,
+      undefined,
+      mockCtx,
+    );
     const text = getText(result);
 
     // Step should still be 5 (clamped), not 6

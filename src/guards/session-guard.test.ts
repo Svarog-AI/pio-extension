@@ -1,6 +1,15 @@
-import { vi, beforeEach } from "vitest";
-import type { ExtensionAPI, TurnEndEvent } from "@earendil-works/pi-coding-agent";
-import { isThinkingOnlyTurn, setupSessionGuard, __testSetActiveSession, __testSetMarkCompleteCalled, __testSetTurnCount } from "./session-guard";
+import type {
+  ExtensionAPI,
+  TurnEndEvent,
+} from "@earendil-works/pi-coding-agent";
+import { beforeEach, vi } from "vitest";
+import {
+  __testSetActiveSession,
+  __testSetMarkCompleteCalled,
+  __testSetTurnCount,
+  isThinkingOnlyTurn,
+  setupSessionGuard,
+} from "./session-guard";
 
 // Mock resolveCapabilityConfig so getSessionConfig() returns a full config with live functions
 const mockResolveCapabilityConfig = vi.hoisted(() => vi.fn());
@@ -12,7 +21,8 @@ vi.mock("../capability-config", () => ({
 beforeEach(() => {
   mockResolveCapabilityConfig.mockClear();
   mockResolveCapabilityConfig.mockImplementation((_cwd, params) => {
-    const cap = typeof params?.capability === "string" ? params.capability : "unknown";
+    const cap =
+      typeof params?.capability === "string" ? params.capability : "unknown";
     return {
       capability: cap,
       workspaceDir: params?.workspaceDir ?? "/test/.pio/goals/test",
@@ -53,23 +63,42 @@ function createMockPi(): {
     registerCommand(): void {},
     registerShortcut(): void {},
     registerFlag(): void {},
-    getFlag(): boolean | string | undefined { return undefined; },
+    getFlag(): boolean | string | undefined {
+      return undefined;
+    },
     registerMessageRenderer(): void {},
     sendMessage(): void {},
-    sendUserMessage(content: string, options?: { deliverAs?: "steer" | "followUp" }): void {
+    sendUserMessage(
+      content: string,
+      options?: { deliverAs?: "steer" | "followUp" },
+    ): void {
       sendUserMessageCalls.push({ content, options });
     },
     appendEntry(): void {},
     setSessionName(): void {},
-    getSessionName(): string | undefined { return undefined; },
+    getSessionName(): string | undefined {
+      return undefined;
+    },
     setLabel(): void {},
-    exec(): Promise<unknown> { return Promise.resolve({}); },
-    getActiveTools(): string[] { return []; },
-    getAllTools() { return []; },
+    exec(): Promise<unknown> {
+      return Promise.resolve({});
+    },
+    getActiveTools(): string[] {
+      return [];
+    },
+    getAllTools() {
+      return [];
+    },
     setActiveTools(): void {},
-    getCommands(): unknown[] { return []; },
-    setModel(): Promise<boolean> { return Promise.resolve(true); },
-    getThinkingLevel(): unknown { return "off"; },
+    getCommands(): unknown[] {
+      return [];
+    },
+    setModel(): Promise<boolean> {
+      return Promise.resolve(true);
+    },
+    getThinkingLevel(): unknown {
+      return "off";
+    },
     setThinkingLevel(): void {},
     registerProvider(): void {},
     unregisterProvider(): void {},
@@ -183,7 +212,13 @@ describe("setupSessionGuard", () => {
 
     const mockSessionManager = {
       getEntries(): MockEntry[] {
-        return [{ type: "custom", customType: "pio-config", data: { capability: "create-goal", sessionParams: {} } }];
+        return [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: { capability: "create-goal", sessionParams: {} },
+          },
+        ];
       },
     };
 
@@ -193,12 +228,15 @@ describe("setupSessionGuard", () => {
     // Simulate resources_discover firing
     const discoverHandlers = handlers.get("resources_discover");
     expect(discoverHandlers).toBeDefined();
-    expect(discoverHandlers!.length).toBeGreaterThan(0);
+    expect(discoverHandlers?.length).toBeGreaterThan(0);
 
     // Invoke the handler with mock context
     const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
-      await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
+      await handler(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        mockCtx,
+      );
     }
 
     // Assert: flag should now be true
@@ -225,7 +263,10 @@ describe("setupSessionGuard", () => {
 
     const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
     for (const handler of discoverHandlers!) {
-      await handler({ type: "resources_discover", cwd: ".", reason: "startup" }, mockCtx);
+      await handler(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        mockCtx,
+      );
     }
 
     // Assert: flag should be false
@@ -243,7 +284,7 @@ describe("setupSessionGuard", () => {
     // Assert
     const turnEndHandlers = handlers.get("turn_end");
     expect(turnEndHandlers).toBeDefined();
-    expect(turnEndHandlers!.length).toBeGreaterThan(0);
+    expect(turnEndHandlers?.length).toBeGreaterThan(0);
   });
 
   // "turn_end does nothing when not in pio session"
@@ -266,7 +307,14 @@ describe("setupSessionGuard", () => {
         api: "anthropic-messages" as any,
         provider: { name: "test" } as any,
         model: "test-model",
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
         stopReason: "stop",
         timestamp: Date.now(),
       },
@@ -337,7 +385,14 @@ describe("setupSessionGuard", () => {
         api: "anthropic-messages" as any,
         provider: { name: "test" } as any,
         model: "test-model",
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
         stopReason: "stop",
         timestamp: Date.now(),
       },
@@ -381,7 +436,14 @@ describe("setupSessionGuard", () => {
         api: "anthropic-messages" as any,
         provider: { name: "test" } as any,
         model: "test-model",
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
         stopReason: "stop",
         timestamp: Date.now(),
       },
@@ -498,7 +560,10 @@ describe("tool_call handler — pio_mark_complete tracking", () => {
 
     // Act
     const toolCallHandlers = handlers.get("tool_call");
-    const event = { toolName: "write", input: { path: "some-file.ts", content: "code" } };
+    const event = {
+      toolName: "write",
+      input: { path: "some-file.ts", content: "code" },
+    };
     for (const handler of toolCallHandlers!) {
       await handler(event);
     }
@@ -592,7 +657,7 @@ describe("setupSessionGuard — handler registration for new events", () => {
     // Assert
     const toolCallHandlers = handlers.get("tool_call");
     expect(toolCallHandlers).toBeDefined();
-    expect(toolCallHandlers!.length).toBeGreaterThan(0);
+    expect(toolCallHandlers?.length).toBeGreaterThan(0);
   });
 
   // "setupSessionGuard registers before_agent_start handler"
@@ -606,7 +671,7 @@ describe("setupSessionGuard — handler registration for new events", () => {
     // Assert
     const beforeAgentStartHandlers = handlers.get("before_agent_start");
     expect(beforeAgentStartHandlers).toBeDefined();
-    expect(beforeAgentStartHandlers!.length).toBeGreaterThan(0);
+    expect(beforeAgentStartHandlers?.length).toBeGreaterThan(0);
   });
 
   // "setupSessionGuard registers agent_end handler"
@@ -620,7 +685,7 @@ describe("setupSessionGuard — handler registration for new events", () => {
     // Assert
     const agentEndHandlers = handlers.get("agent_end");
     expect(agentEndHandlers).toBeDefined();
-    expect(agentEndHandlers!.length).toBeGreaterThan(0);
+    expect(agentEndHandlers?.length).toBeGreaterThan(0);
   });
 });
 
@@ -641,7 +706,10 @@ describe("turn_count — refinement loop nudge", () => {
   });
 
   // Helper: simulate N turn_end events with assistant text content
-  function simulateTurns(handlers: Map<string, Array<(...args: unknown[]) => unknown>>, count: number) {
+  function simulateTurns(
+    handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+    count: number,
+  ) {
     const turnEndHandlers = handlers.get("turn_end");
     if (!turnEndHandlers) throw new Error("No turn_end handlers registered");
     const mockCtx = {} as any;
@@ -655,7 +723,20 @@ describe("turn_count — refinement loop nudge", () => {
           api: "anthropic-messages" as any,
           provider: { name: "test" } as any,
           model: "test-model",
-          usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+          usage: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
           stopReason: "stop",
           timestamp: Date.now(),
         },
@@ -706,7 +787,9 @@ describe("turn_count — refinement loop nudge", () => {
     simulateTurns(handlers, 15);
 
     // Assert: nudge was sent exactly once (steer, not recovery)
-    const steerCalls = sendUserMessageCalls.filter((c) => c.options?.deliverAs === "steer");
+    const steerCalls = sendUserMessageCalls.filter(
+      (c) => c.options?.deliverAs === "steer",
+    );
     expect(steerCalls).toHaveLength(1);
     expect(steerCalls[0].content).toContain("loop");
   });
@@ -725,7 +808,7 @@ describe("turn_count — refinement loop nudge", () => {
     expect(__testSetTurnCount()).toBe(0);
   });
 
-  it("nudge message uses { deliverAs: \"steer\" }", () => {
+  it('nudge message uses { deliverAs: "steer" }', () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
     __testSetActiveSession(true);
@@ -736,7 +819,9 @@ describe("turn_count — refinement loop nudge", () => {
     simulateTurns(handlers, 15);
 
     // Assert
-    const steerCalls = sendUserMessageCalls.filter((c) => c.options?.deliverAs === "steer");
+    const steerCalls = sendUserMessageCalls.filter(
+      (c) => c.options?.deliverAs === "steer",
+    );
     expect(steerCalls).toHaveLength(1);
     expect(steerCalls[0].options).toEqual({ deliverAs: "steer" });
   });
@@ -752,7 +837,9 @@ describe("turn_count — refinement loop nudge", () => {
     simulateTurns(handlers, 30);
 
     // Assert: nudge was sent exactly twice
-    const steerCalls = sendUserMessageCalls.filter((c) => c.options?.deliverAs === "steer");
+    const steerCalls = sendUserMessageCalls.filter(
+      (c) => c.options?.deliverAs === "steer",
+    );
     expect(steerCalls).toHaveLength(2);
   });
 
@@ -856,7 +943,9 @@ describe("turn_count — refinement loop nudge", () => {
     simulateTurns(handlers, 15);
 
     // Assert: nudge fired (turnCount was 15, which is >= threshold 15)
-    const steerCalls = sendUserMessageCalls.filter((c) => c.options?.deliverAs === "steer");
+    const steerCalls = sendUserMessageCalls.filter(
+      (c) => c.options?.deliverAs === "steer",
+    );
     expect(steerCalls).toHaveLength(1);
     expect(steerCalls[0].content).toContain("loop");
     // And counter reset, so turn 16 would start fresh
@@ -953,7 +1042,10 @@ describe("agent_end handler", () => {
     // Act: invoke the agent_end handler with last message having stopReason: "aborted"
     const agentEndHandlers = handlers.get("agent_end");
     const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [{ stopReason: "aborted" }] };
+    const event = {
+      type: "agent_end" as const,
+      messages: [{ stopReason: "aborted" }],
+    };
     for (const handler of agentEndHandlers!) {
       await handler(event, mockCtx);
     }
@@ -996,7 +1088,10 @@ describe("agent_end handler", () => {
     // Act: invoke the agent_end handler with last message having stopReason: "stop"
     const agentEndHandlers = handlers.get("agent_end");
     const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [{ stopReason: "stop" }] };
+    const event = {
+      type: "agent_end" as const,
+      messages: [{ stopReason: "stop" }],
+    };
     for (const handler of agentEndHandlers!) {
       await handler(event, mockCtx);
     }
@@ -1040,7 +1135,14 @@ describe("turn_end handler — abort detection via stopReason", () => {
         api: "anthropic-messages" as any,
         provider: { name: "test" } as any,
         model: "test-model",
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
         stopReason: "aborted",
         timestamp: Date.now(),
       },
@@ -1076,7 +1178,14 @@ describe("turn_end handler — abort detection via stopReason", () => {
         api: "anthropic-messages" as any,
         provider: { name: "test" } as any,
         model: "test-model",
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
         stopReason: "stop",
         timestamp: Date.now(),
       },
@@ -1092,4 +1201,3 @@ describe("turn_end handler — abort detection via stopReason", () => {
     expect(sendUserMessageCalls[0].options).toEqual({ deliverAs: "steer" });
   });
 });
-

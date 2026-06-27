@@ -1,6 +1,10 @@
-import type { AgentEndEvent, ExtensionAPI, TurnEndEvent } from "@earendil-works/pi-coding-agent";
-import { readTurnThreshold } from "../model-config";
+import type {
+  AgentEndEvent,
+  ExtensionAPI,
+  TurnEndEvent,
+} from "@earendil-works/pi-coding-agent";
 import { getSessionConfig } from "../capability-utils";
+import { readTurnThreshold } from "../model-config";
 
 // ---------------------------------------------------------------------------
 // Minimal local interfaces for content blocks
@@ -69,8 +73,6 @@ export function __testSetTurnCount(value?: number): number {
   return turnCount;
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Pure detection logic — extracted for unit testing
 // ---------------------------------------------------------------------------
@@ -113,9 +115,16 @@ export function isThinkingOnlyTurn(
  * of typed blocks, but TypeScript can't access it without a type assertion since
  * the underlying union members are private.
  */
-function getAssistantContent(event: TurnEndEvent): readonly ContentBlock[] | undefined {
-  const msg = event.message as { role?: string; content?: readonly ContentBlock[] };
-  return msg.role === "assistant" && Array.isArray(msg.content) ? msg.content : undefined;
+function getAssistantContent(
+  event: TurnEndEvent,
+): readonly ContentBlock[] | undefined {
+  const msg = event.message as {
+    role?: string;
+    content?: readonly ContentBlock[];
+  };
+  return msg.role === "assistant" && Array.isArray(msg.content)
+    ? msg.content
+    : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -123,10 +132,12 @@ function getAssistantContent(event: TurnEndEvent): readonly ContentBlock[] | und
 // ---------------------------------------------------------------------------
 
 /** Recovery prompt sent to nudge the agent when it produces only thinking. */
-const RECOVERY_PROMPT = "Your last response contained only thinking blocks. If you need clarification to proceed, call \`ask_user\`. Otherwise, provide a visible response or take an action.";
+const RECOVERY_PROMPT =
+  "Your last response contained only thinking blocks. If you need clarification to proceed, call `ask_user`. Otherwise, provide a visible response or take an action.";
 
 /** Warning sent when a pio sub-session ends without calling pio_mark_complete. */
-const AGENT_END_WARNING = "This session ended without calling pio_mark_complete. If you need clarification before completing work, call \`ask_user\`. Otherwise, output files were not validated against expected outputs, and next task in the workflow may not be scheduled.";
+const AGENT_END_WARNING =
+  "This session ended without calling pio_mark_complete. If you need clarification before completing work, call `ask_user`. Otherwise, output files were not validated against expected outputs, and next task in the workflow may not be scheduled.";
 
 /**
  * Register session guard handlers.
@@ -155,7 +166,8 @@ export function setupSessionGuard(pi: ExtensionAPI) {
     if (!isActivePioSession) return;
 
     // Skip all processing on aborted turns — agent is shutting down
-    if ((event.message as { stopReason?: string }).stopReason === "aborted") return;
+    if ((event.message as { stopReason?: string }).stopReason === "aborted")
+      return;
 
     // Turn-count tracking for refinement-loop detection
     // Increment on EVERY turn (not just thinking-only) — counts total session activity
@@ -176,7 +188,7 @@ export function setupSessionGuard(pi: ExtensionAPI) {
 
     // Detect thinking-only turns and send recovery prompt
     if (isThinkingOnlyTurn(content, event.toolResults)) {
-      pi.sendUserMessage(RECOVERY_PROMPT, { deliverAs: "steer"});
+      pi.sendUserMessage(RECOVERY_PROMPT, { deliverAs: "steer" });
     }
   });
 
@@ -198,7 +210,9 @@ export function setupSessionGuard(pi: ExtensionAPI) {
   pi.on("agent_end", async (event: AgentEndEvent, _ctx) => {
     if (!isActivePioSession) return;
     if (markCompleteCalled) return;
-    const lastMessage = event.messages[event.messages.length - 1] as { stopReason?: string } | undefined;
+    const lastMessage = event.messages[event.messages.length - 1] as
+      | { stopReason?: string }
+      | undefined;
     if (lastMessage?.stopReason === "aborted") return;
 
     pi.sendUserMessage(AGENT_END_WARNING, { deliverAs: "followUp" });

@@ -110,23 +110,26 @@ describe("readConfig — valid config parsing", () => {
     const mod = await import("./model-config");
     const result = mod.readConfig();
     expect(result).toBeDefined();
-    expect(result!.default).toEqual({ provider: "j6000", modelId: "my-model" });
+    expect(result?.default).toEqual({ provider: "j6000", modelId: "my-model" });
   });
 
   it("parses a config with default: and capabilities: entries", async () => {
-    writeConfig(tempDir, [
-      "default:",
-      "  provider: j6000",
-      "  modelId: general",
-      "capabilities:",
-      "  execute-task:",
-      "    provider: j6000",
-      "    modelId: coding-model",
-    ].join("\n"));
+    writeConfig(
+      tempDir,
+      [
+        "default:",
+        "  provider: j6000",
+        "  modelId: general",
+        "capabilities:",
+        "  execute-task:",
+        "    provider: j6000",
+        "    modelId: coding-model",
+      ].join("\n"),
+    );
 
     const mod = await import("./model-config");
     const result = mod.readConfig();
-    expect(result!.capabilities?.["execute-task"]).toEqual({
+    expect(result?.capabilities?.["execute-task"]).toEqual({
       provider: "j6000",
       modelId: "coding-model",
     });
@@ -232,15 +235,18 @@ describe("resolveModelForCapability — per-capability override", () => {
     vi.resetModules();
     tempDir = createTempDir();
     process.env.PIO_CONFIG_TEST_HOME = tempDir;
-    writeConfig(tempDir, [
-      "default:",
-      "  provider: j6000",
-      "  modelId: general",
-      "capabilities:",
-      "  execute-task:",
-      "    provider: j6000",
-      "    modelId: coding",
-    ].join("\n"));
+    writeConfig(
+      tempDir,
+      [
+        "default:",
+        "  provider: j6000",
+        "  modelId: general",
+        "capabilities:",
+        "  execute-task:",
+        "    provider: j6000",
+        "    modelId: coding",
+      ].join("\n"),
+    );
   });
 
   afterEach(() => {
@@ -267,12 +273,15 @@ describe("resolveModelForCapability — per-capability override", () => {
   it("unknown capability with only capabilities (no default) returns undefined", async () => {
     // Write config without default — fresh module for new config
     vi.resetModules();
-    writeConfig(tempDir, [
-      "capabilities:",
-      "  execute-task:",
-      "    provider: j6000",
-      "    modelId: coding",
-    ].join("\n"));
+    writeConfig(
+      tempDir,
+      [
+        "capabilities:",
+        "  execute-task:",
+        "    provider: j6000",
+        "    modelId: coding",
+      ].join("\n"),
+    );
 
     const mod = await import("./model-config");
     expect(mod.resolveModelForCapability("unknown-capability")).toBeUndefined();
@@ -311,33 +320,30 @@ describe("readTurnThreshold — valid values", () => {
   });
 
   it("returns configured value when guards.turnThreshold is a positive integer", async () => {
-    writeConfig(tempDir, [
-      "guards:",
-      "  turnThreshold: 20",
-    ].join("\n"));
+    writeConfig(tempDir, ["guards:", "  turnThreshold: 20"].join("\n"));
 
     const mod = await import("./model-config");
     expect(mod.readTurnThreshold()).toBe(20);
   });
 
   it("returns 1 when guards.turnThreshold is 1", async () => {
-    writeConfig(tempDir, [
-      "guards:",
-      "  turnThreshold: 1",
-    ].join("\n"));
+    writeConfig(tempDir, ["guards:", "  turnThreshold: 1"].join("\n"));
 
     const mod = await import("./model-config");
     expect(mod.readTurnThreshold()).toBe(1);
   });
 
   it("returns configured value alongside other config keys", async () => {
-    writeConfig(tempDir, [
-      "default:",
-      "  provider: j6000",
-      "  modelId: general",
-      "guards:",
-      "  turnThreshold: 15",
-    ].join("\n"));
+    writeConfig(
+      tempDir,
+      [
+        "default:",
+        "  provider: j6000",
+        "  modelId: general",
+        "guards:",
+        "  turnThreshold: 15",
+      ].join("\n"),
+    );
 
     const mod = await import("./model-config");
     expect(mod.readTurnThreshold()).toBe(15);
@@ -376,62 +382,47 @@ describe("readTurnThreshold — fallback to default", () => {
   });
 
   it("returns DEFAULT_TURN_THRESHOLD when guards block has no turnThreshold", async () => {
-    writeConfig(tempDir, [
-      "default:",
-      "  provider: j6000",
-      "  modelId: general",
-      "guards:",
-    ].join("\n"));
+    writeConfig(
+      tempDir,
+      ["default:", "  provider: j6000", "  modelId: general", "guards:"].join(
+        "\n",
+      ),
+    );
 
     const mod = await import("./model-config");
     expect(mod.readTurnThreshold()).toBe(mod.DEFAULT_TURN_THRESHOLD);
   });
 
   it("returns DEFAULT_TURN_THRESHOLD when turnThreshold is 0", async () => {
-    writeConfig(tempDir, [
-      "guards:",
-      "  turnThreshold: 0",
-    ].join("\n"));
+    writeConfig(tempDir, ["guards:", "  turnThreshold: 0"].join("\n"));
 
     const mod = await import("./model-config");
     expect(mod.readTurnThreshold()).toBe(mod.DEFAULT_TURN_THRESHOLD);
   });
 
   it("returns DEFAULT_TURN_THRESHOLD when turnThreshold is negative", async () => {
-    writeConfig(tempDir, [
-      "guards:",
-      "  turnThreshold: -5",
-    ].join("\n"));
+    writeConfig(tempDir, ["guards:", "  turnThreshold: -5"].join("\n"));
 
     const mod = await import("./model-config");
     expect(mod.readTurnThreshold()).toBe(mod.DEFAULT_TURN_THRESHOLD);
   });
 
   it("returns DEFAULT_TURN_THRESHOLD when turnThreshold is a float", async () => {
-    writeConfig(tempDir, [
-      "guards:",
-      "  turnThreshold: 3.5",
-    ].join("\n"));
+    writeConfig(tempDir, ["guards:", "  turnThreshold: 3.5"].join("\n"));
 
     const mod = await import("./model-config");
     expect(mod.readTurnThreshold()).toBe(mod.DEFAULT_TURN_THRESHOLD);
   });
 
   it("returns DEFAULT_TURN_THRESHOLD when turnThreshold is null", async () => {
-    writeConfig(tempDir, [
-      "guards:",
-      "  turnThreshold: null",
-    ].join("\n"));
+    writeConfig(tempDir, ["guards:", "  turnThreshold: null"].join("\n"));
 
     const mod = await import("./model-config");
     expect(mod.readTurnThreshold()).toBe(mod.DEFAULT_TURN_THRESHOLD);
   });
 
   it("returns DEFAULT_TURN_THRESHOLD when turnThreshold is a string", async () => {
-    writeConfig(tempDir, [
-      "guards:",
-      '  turnThreshold: "twelve"',
-    ].join("\n"));
+    writeConfig(tempDir, ["guards:", '  turnThreshold: "twelve"'].join("\n"));
 
     const mod = await import("./model-config");
     expect(mod.readTurnThreshold()).toBe(mod.DEFAULT_TURN_THRESHOLD);

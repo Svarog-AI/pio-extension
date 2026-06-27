@@ -1,24 +1,30 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { defineTool } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
-
-import { CapState } from "../../capability-state";
-import { launchCapability, setMergedSkills } from "../../capability-session";
-import { mergeCapabilitySkills, BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
-import { enqueueTask } from "../../queues";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
+import { defineTool } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { resolveCapabilityConfig } from "../../capability-config";
-import { REVIEW_OUTPUT_SCHEMA } from "./schemas";
-import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
-import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
+import { launchCapability, setMergedSkills } from "../../capability-session";
+import { CapState } from "../../capability-state";
 import {
+  BASE_TOOL_PARAMS,
+  deriveQueueKey,
+  mergeCapabilitySkills,
+} from "../../capability-utils";
+import { enqueueTask } from "../../queues";
+import type { CapabilityContract } from "../../types";
+import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
+import {
+  postExecuteReview,
+  postValidateReview,
   resolveReviewReadOnlyFiles,
   resolveReviewWriteAllowlist,
-  postValidateReview,
-  postExecuteReview,
 } from "./callbacks";
+import { REVIEW_OUTPUT_SCHEMA } from "./schemas";
 
 // ---------------------------------------------------------------------------
 // Contract (single source of truth — imported by callbacks)
@@ -30,7 +36,9 @@ export const CONTRACT: CapabilityContract = {
     { name: "summary", file: "SUMMARY.md" },
     { name: "task", file: "TASK.md", schema: TASK_FRONTMATTER_SCHEMA },
   ],
-  outputs: [{ name: "review", file: "REVIEW.md", schema: REVIEW_OUTPUT_SCHEMA }],
+  outputs: [
+    { name: "review", file: "REVIEW.md", schema: REVIEW_OUTPUT_SCHEMA },
+  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -57,7 +65,10 @@ export default capabilityConfig;
 // prepareSession — read TASK.md skills and merge into capability config
 // ---------------------------------------------------------------------------
 
-function prepareReviewSession(workspaceDir: string, params?: Record<string, unknown>): void {
+function prepareReviewSession(
+  workspaceDir: string,
+  params?: Record<string, unknown>,
+): void {
   // workspaceDir is already the resolved step directory (from Step 9) — no prefix needed
   fs.rmSync(path.join(workspaceDir, "APPROVED"), { force: true });
   fs.rmSync(path.join(workspaceDir, "REJECTED"), { force: true });
@@ -113,9 +124,15 @@ const reviewTaskTool = defineTool({
 // Command
 // ---------------------------------------------------------------------------
 
-async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandContext) {
+async function handleReviewTask(
+  args: string | undefined,
+  ctx: ExtensionCommandContext,
+) {
   if (!args || args.trim().length === 0) {
-    ctx.ui.notify("Usage: /pio-review-task --workspace-prefix <prefix>", "warning");
+    ctx.ui.notify(
+      "Usage: /pio-review-task --workspace-prefix <prefix>",
+      "warning",
+    );
     return;
   }
   const tokens = args.trim().split(/\s+/);
@@ -126,7 +143,10 @@ async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandC
     }
   }
   if (!workspacePrefix) {
-    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-review-task --workspace-prefix <prefix>", "error");
+    ctx.ui.notify(
+      "--workspace-prefix is required. Usage: /pio-review-task --workspace-prefix <prefix>",
+      "error",
+    );
     return;
   }
 
@@ -138,7 +158,8 @@ async function handleReviewTask(args: string | undefined, ctx: ExtensionCommandC
     workspacePrefix,
     sessionName: `${queueKey} review-task`,
     queueKey,
-    initialMessage: "Read TASK.md for the specification, SUMMARY.md for what was implemented, and verify against acceptance criteria. Write REVIEW.md.",
+    initialMessage:
+      "Read TASK.md for the specification, SUMMARY.md for what was implemented, and verify against acceptance criteria. Write REVIEW.md.",
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve review-task config.", "error");

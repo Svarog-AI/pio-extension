@@ -1,6 +1,4 @@
-import * as os from "node:os";
-import * as path from "node:path";
-import { vi, beforeEach, afterEach, describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Mock validateInputs to control validation outcomes
@@ -26,7 +24,9 @@ function makeMockCtx() {
   } as any;
 }
 
-function makeConfig(overrides: Partial<import("./types").CapabilityConfig> = {}): import("./types").CapabilityConfig {
+function makeConfig(
+  overrides: Partial<import("./types").CapabilityConfig> = {},
+): import("./types").CapabilityConfig {
   return {
     capability: "test-capability",
     workspaceDir: "/tmp/test-goal",
@@ -142,7 +142,10 @@ describe("launchCapability — input validation", () => {
     const config = makeConfig({
       capability: "evolve-plan",
       contract: {
-        inputs: [{ name: "plan", file: "PLAN.md" }, { name: "task", file: "S{stepNumber:02d}/TASK.md" }],
+        inputs: [
+          { name: "plan", file: "PLAN.md" },
+          { name: "task", file: "S{stepNumber:02d}/TASK.md" },
+        ],
         outputs: [],
       },
       sessionParams: { goalName: "test-goal", stepNumber: 3 },
@@ -167,7 +170,10 @@ describe("launchCapability — input validation", () => {
     const config = makeConfig({
       capability: "evolve-plan",
       contract: {
-        inputs: [{ name: "plan", file: "PLAN.md" }, { name: "task", file: "S{stepNumber:02d}/TASK.md" }],
+        inputs: [
+          { name: "plan", file: "PLAN.md" },
+          { name: "task", file: "S{stepNumber:02d}/TASK.md" },
+        ],
         outputs: [],
       },
       // stepNumber is missing from sessionParams!
@@ -177,11 +183,12 @@ describe("launchCapability — input validation", () => {
     // validateInputs catches resolvePaths errors and returns { success: false }
     mockValidateInputs.mockReturnValue({
       success: false,
-      message: "Unresolved placeholder {stepNumber:02d} in path. Ensure session params include key 'stepNumber'.",
+      message:
+        "Unresolved placeholder {stepNumber:02d} in path. Ensure session params include key 'stepNumber'.",
     });
 
     await expect(launchCapability(ctx, config)).rejects.toThrow(
-      'Input validation failed for "evolve-plan": Unresolved placeholder {stepNumber:02d} in path. Ensure session params include key \'stepNumber\'.',
+      "Input validation failed for \"evolve-plan\": Unresolved placeholder {stepNumber:02d} in path. Ensure session params include key 'stepNumber'.",
     );
 
     expect(ctx.newSession).not.toHaveBeenCalled();

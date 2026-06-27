@@ -51,7 +51,10 @@ function makeCtx(cwd: string) {
     cwd,
     ui: { notify: vi.fn() },
     hasUI: false,
-    sessionManager: { getSessionFile: vi.fn(() => ""), getEntries: vi.fn(() => []) },
+    sessionManager: {
+      getSessionFile: vi.fn(() => ""),
+      getEntries: vi.fn(() => []),
+    },
     modelRegistry: {},
     model: undefined,
     isIdle: vi.fn(() => true),
@@ -83,7 +86,11 @@ describe("createGoalTool.execute — collision detection", () => {
     // Arrange: create a non-empty workspace directory
     const workspaceDir = path.join(tempDir, ".pio", "goals", "existing-goal");
     fs.mkdirSync(workspaceDir, { recursive: true });
-    fs.writeFileSync(path.join(workspaceDir, "GOAL.md"), "# Existing Goal", "utf-8");
+    fs.writeFileSync(
+      path.join(workspaceDir, "GOAL.md"),
+      "# Existing Goal",
+      "utf-8",
+    );
 
     const tool = getTool();
     const result = await tool.execute(
@@ -125,7 +132,11 @@ describe("createGoalTool.execute — collision detection", () => {
     // Arrange: create a non-empty workspace
     const workspaceDir = path.join(tempDir, ".pio", "goals", "existing-goal");
     fs.mkdirSync(workspaceDir, { recursive: true });
-    fs.writeFileSync(path.join(workspaceDir, "GOAL.md"), "# Existing Goal", "utf-8");
+    fs.writeFileSync(
+      path.join(workspaceDir, "GOAL.md"),
+      "# Existing Goal",
+      "utf-8",
+    );
 
     const tool = getTool();
     await tool.execute(
@@ -151,7 +162,9 @@ describe("createGoalTool.execute — collision detection", () => {
     );
 
     // Assert: workspace was created
-    expect(fs.existsSync(path.join(tempDir, ".pio", "goals", "new-goal"))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, ".pio", "goals", "new-goal"))).toBe(
+      true,
+    );
 
     // Assert: task was enqueued
     expect(mockEnqueueTask).toHaveBeenCalledTimes(1);
@@ -182,7 +195,10 @@ describe("handleCreateGoal — command handler notification", () => {
       cwd: tempDir,
       ui: { notify: mockNotify },
       hasUI: false,
-      sessionManager: { getSessionFile: vi.fn(() => ""), getEntries: vi.fn(() => []) },
+      sessionManager: {
+        getSessionFile: vi.fn(() => ""),
+        getEntries: vi.fn(() => []),
+      },
       modelRegistry: {},
       model: undefined,
       isIdle: vi.fn(() => true),
@@ -199,10 +215,14 @@ describe("handleCreateGoal — command handler notification", () => {
     const registeredCommands: Array<any> = [];
     const mockPi = {
       registerTool: vi.fn(),
-      registerCommand: vi.fn((_name: string, config: any) => registeredCommands.push(config)),
+      registerCommand: vi.fn((_name: string, config: any) =>
+        registeredCommands.push(config),
+      ),
     };
     register(mockPi as any);
-    const handler = registeredCommands.find((c: any) => c.description?.includes("create-goal"))?.handler;
+    const handler = registeredCommands.find((c: any) =>
+      c.description?.includes("create-goal"),
+    )?.handler;
 
     // Act
     await handler("--workspace-prefix goals/empty-goal", mockCtx);
@@ -220,14 +240,21 @@ describe("handleCreateGoal — command handler notification", () => {
     // Arrange: create a non-empty workspace directory
     const workspaceDir = path.join(tempDir, ".pio", "goals", "existing-goal");
     fs.mkdirSync(workspaceDir, { recursive: true });
-    fs.writeFileSync(path.join(workspaceDir, "GOAL.md"), "# Existing Goal", "utf-8");
+    fs.writeFileSync(
+      path.join(workspaceDir, "GOAL.md"),
+      "# Existing Goal",
+      "utf-8",
+    );
 
     const mockNotify = vi.fn();
     const mockCtx = {
       cwd: tempDir,
       ui: { notify: mockNotify },
       hasUI: false,
-      sessionManager: { getSessionFile: vi.fn(() => ""), getEntries: vi.fn(() => []) },
+      sessionManager: {
+        getSessionFile: vi.fn(() => ""),
+        getEntries: vi.fn(() => []),
+      },
       modelRegistry: {},
       model: undefined,
       isIdle: vi.fn(() => true),
@@ -245,10 +272,14 @@ describe("handleCreateGoal — command handler notification", () => {
     const registeredCommands: Array<any> = [];
     const mockPi = {
       registerTool: vi.fn(),
-      registerCommand: vi.fn((_name: string, config: any) => registeredCommands.push(config)),
+      registerCommand: vi.fn((_name: string, config: any) =>
+        registeredCommands.push(config),
+      ),
     };
     register(mockPi as any);
-    const handler = registeredCommands.find((c: any) => c.description?.includes("create-goal"))?.handler;
+    const handler = registeredCommands.find((c: any) =>
+      c.description?.includes("create-goal"),
+    )?.handler;
 
     // Act
     await handler("--workspace-prefix goals/existing-goal", mockCtx);

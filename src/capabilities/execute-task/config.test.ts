@@ -2,10 +2,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { vi } from "vitest";
-import config, { register } from "./config";
-import { stepFolderName } from "../../fs-utils";
 import { resolveCapabilityConfig } from "../../capability-config";
+import { stepFolderName } from "../../fs-utils";
 import { readPendingTask } from "../../queues";
+import config, { register } from "./config";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers (unified across merged sources)
@@ -25,7 +25,11 @@ function cleanup(tempDir: string): void {
 function createGoalTree(
   tempDir: string,
   goalName: string,
-  options?: { steps?: { number: number; files: string[] }[]; stepNumber?: number; rejected?: boolean },
+  options?: {
+    steps?: { number: number; files: string[] }[];
+    stepNumber?: number;
+    rejected?: boolean;
+  },
 ): { goalDir: string; stepDir: string } {
   const goalDir = path.join(tempDir, ".pio", "goals", goalName);
   fs.mkdirSync(goalDir, { recursive: true });
@@ -39,7 +43,11 @@ function createGoalTree(
       const currentStepDir = path.join(goalDir, folderName);
       fs.mkdirSync(currentStepDir, { recursive: true });
       for (const file of step.files) {
-        fs.writeFileSync(path.join(currentStepDir, file), `content of ${file}`, "utf-8");
+        fs.writeFileSync(
+          path.join(currentStepDir, file),
+          `content of ${file}`,
+          "utf-8",
+        );
       }
     }
   }
@@ -58,9 +66,10 @@ function createGoalTree(
   // Write PLAN.md with steps array so GoalState.steps() can derive from frontmatter
   const totalSteps = options?.steps
     ? Math.max(...options.steps.map((s) => s.number))
-    : options?.stepNumber ?? 1;
-  const stepsYaml = Array.from({ length: totalSteps }, (_, i) =>
-    `  - name: step-${i + 1}\n    complexity: task`,
+    : (options?.stepNumber ?? 1);
+  const stepsYaml = Array.from(
+    { length: totalSteps },
+    (_, i) => `  - name: step-${i + 1}\n    complexity: task`,
   ).join("\n");
   fs.writeFileSync(
     path.join(goalDir, "PLAN.md"),
@@ -95,7 +104,11 @@ describe("stepFolderName", () => {
 describe("resolveExecuteReadOnlyFiles", () => {
   it("returns TASK.md only, not TEST.md", async () => {
     // Arrange: resolve execute-task config
-    const params = { capability: "execute-task" as string, goalName: "test-goal", sessionName: "test" };
+    const params = {
+      capability: "execute-task" as string,
+      goalName: "test-goal",
+      sessionName: "test",
+    };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -152,7 +165,10 @@ describe("executeTaskTool.execute", () => {
       cwd,
       ui: { notify: vi.fn() },
       hasUI: false,
-      sessionManager: { getSessionFile: vi.fn(() => ""), getEntries: vi.fn(() => []) },
+      sessionManager: {
+        getSessionFile: vi.fn(() => ""),
+        getEntries: vi.fn(() => []),
+      },
       modelRegistry: {},
       model: undefined,
       isIdle: vi.fn(() => true),
@@ -168,12 +184,20 @@ describe("executeTaskTool.execute", () => {
 
   it("enqueues task even when TASK.md is missing (validation moves to launch time)", async () => {
     // Arrange: goal dir exists but no TASK.md
-    const { goalDir, stepDir } = createGoalTree(tempDir, "no-task", { stepNumber: 1 });
+    const { goalDir, stepDir } = createGoalTree(tempDir, "no-task", {
+      stepNumber: 1,
+    });
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
     // Don't create TASK.md
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { workspacePrefix: "goals/no-task/S01" }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/no-task/S01" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
 
     // Tool enqueues successfully — validation happens at /pio-next-task launch time
     expect(result.content[0].text).toContain("Task queued");
@@ -181,21 +205,39 @@ describe("executeTaskTool.execute", () => {
 
   it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, initialMessage)", async () => {
     // Arrange: goal dir with TASK.md in S01
-    const { goalDir, stepDir } = createGoalTree(tempDir, "my-feature", { stepNumber: 1 });
+    const { goalDir, stepDir } = createGoalTree(tempDir, "my-feature", {
+      stepNumber: 1,
+    });
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
-    fs.writeFileSync(path.join(stepDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
+    fs.writeFileSync(
+      path.join(stepDir, "TASK.md"),
+      "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task",
+      "utf-8",
+    );
 
     const tool = getTool();
-    await tool.execute("test-id", { workspacePrefix: "goals/my-feature/S01", initialMessage: "test message" }, undefined, undefined, makeCtx(tempDir));
+    await tool.execute(
+      "test-id",
+      {
+        workspacePrefix: "goals/my-feature/S01",
+        initialMessage: "test message",
+      },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
 
     const task = readPendingTask(tempDir, "S01");
     expect(task).toBeDefined();
-    expect(task!.capability).toBe("execute-task");
-    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature/S01");
-    expect(task!.params).toHaveProperty("sessionName");
-    expect(task!.params!.sessionName).toContain("execute-task");
-    expect(task!.params).toHaveProperty("queueKey", "S01");
-    expect(task!.params).toHaveProperty("initialMessage");
-    expect(task!.params!.initialMessage).toBe("test message");
+    expect(task?.capability).toBe("execute-task");
+    expect(task?.params).toHaveProperty(
+      "workspacePrefix",
+      "goals/my-feature/S01",
+    );
+    expect(task?.params).toHaveProperty("sessionName");
+    expect(task?.params?.sessionName).toContain("execute-task");
+    expect(task?.params).toHaveProperty("queueKey", "S01");
+    expect(task?.params).toHaveProperty("initialMessage");
+    expect(task?.params?.initialMessage).toBe("test message");
   });
 });

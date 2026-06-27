@@ -385,7 +385,7 @@ async function validateGoalFromIssue(
   // 3. Goal workspace must not already exist
   const goalDir = resolveGoalDir(cwd, goalName);
   if (goalExists(goalDir)) {
-    return { ok: false, error: `Goal workspace already exists at ${goalDir}` };
+    return { ok: false, error: `Goal workspace "${goalName}" already exists at ${goalDir}. Call ask_user to let the human decide what to do.` };
   }
 
   return { ok: true, goalName, issuePath: resolvedPath };

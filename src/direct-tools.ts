@@ -4,7 +4,7 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { resolveGoalDir, goalExists, issuesDir, findIssuePath } from "./fs-utils";
+import { resolveGoalDir, issuesDir, findIssuePath } from "./fs-utils";
 import type { SessionQueueTask } from "./queues";
 import { enqueueTask } from "./queues";
 import { launchCapability } from "./capability-session";
@@ -59,7 +59,7 @@ async function handleInit(_args: string | undefined, ctx: ExtensionCommandContex
 async function deleteGoal(name: string, cwd: string): Promise<string> {
   const goalDir = resolveGoalDir(cwd, name);
 
-  if (!goalExists(goalDir)) {
+  if (!fs.existsSync(goalDir)) {
     return `Goal workspace not found at ${goalDir}`;
   }
 
@@ -367,7 +367,7 @@ async function validateGoalFromIssue(
 
   // 3. Goal workspace must not already exist
   const goalDir = resolveGoalDir(cwd, goalName);
-  if (goalExists(goalDir)) {
+  if (fs.existsSync(goalDir)) {
     return {
       ok: false,
       reason: "collision",

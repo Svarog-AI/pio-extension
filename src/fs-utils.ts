@@ -30,11 +30,6 @@ export function resolveGoalDir(cwd: string, name: string, parentStepDir?: string
   return path.join(cwd, ".pio", "goals", name);
 }
 
-/** Check if a goal workspace exists. */
-export function goalExists(goalDir: string): boolean {
-  return fs.existsSync(goalDir);
-}
-
 /**
  * Prepare the goal workspace (mkdir).
  * Returns { goalDir, ready } — ready is false if directory already exists.
@@ -42,7 +37,7 @@ export function goalExists(goalDir: string): boolean {
 export function prepareGoal(name: string, cwd: string): { goalDir: string; ready: boolean } {
   const goalDir = resolveGoalDir(cwd, name);
 
-  if (goalExists(goalDir)) {
+  if (fs.existsSync(goalDir)) {
     return { goalDir, ready: false };
   }
 

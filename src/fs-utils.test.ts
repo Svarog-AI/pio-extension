@@ -3,7 +3,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
   resolveGoalDir,
-  goalExists,
   prepareGoal,
   issuesDir,
   findIssuePath,
@@ -79,38 +78,6 @@ describe("resolveGoalDir(cwd, name)", () => {
     // On all platforms, path.join uses the correct separator
     expect(result.split(path.sep)).toContain(".pio");
     expect(result.split(path.sep)).toContain("goals");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// goalExists
-// ---------------------------------------------------------------------------
-
-describe("goalExists(goalDir)", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("returns true for existing directory", () => {
-    const goalDir = path.join(tempDir, "existing-goal");
-    fs.mkdirSync(goalDir, { recursive: true });
-    expect(goalExists(goalDir)).toBe(true);
-  });
-
-  it("returns false for non-existent path", () => {
-    const goalDir = path.join(tempDir, "non-existent-goal");
-    expect(goalExists(goalDir)).toBe(false);
-  });
-
-  it("returns true for a file (not directory) — documents fs.existsSync behavior", () => {
-    const filePath = path.join(tempDir, "not-a-dir");
-    fs.writeFileSync(filePath, "hello", "utf-8");
-    // fs.existsSync returns true for files too — goalExists uses fs.existsSync directly
-    expect(goalExists(filePath)).toBe(true);
   });
 });
 

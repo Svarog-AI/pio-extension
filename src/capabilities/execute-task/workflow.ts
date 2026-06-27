@@ -109,12 +109,7 @@ Then follow these steps:
 1. **Commit changes using the \`pio-git\` skill** — load the \`pio-git\` skill and commit the changes. If git fails, log a warning and proceed — never block workflow completion.
 2. **Call \`pio_mark_complete\`** to validate outputs and signal completion.
 
-**Do not create marker files (\`COMPLETED\` or \`BLOCKED\`) manually** — the infrastructure creates them automatically based on the \`status\` field in \`SUMMARY.md\` frontmatter:
-
-- If \`status: completed\`: the infrastructure creates an empty \`S{NN}/COMPLETED\` file.
-- If \`status: blocked\`: the infrastructure creates an empty \`S{NN}/BLOCKED\` file and the step is not routed to \`review-task\`.
-
-The routing is handled by infrastructure: after \`pio_mark_complete\`, the transition callback reads \`SUMMARY.md\` frontmatter. Completed → \`review-task\` (step review). Blocked → no transition (step remains blocked).`,
+After \`pio_mark_complete\`, the infrastructure reads \`SUMMARY.md\` frontmatter to determine next steps: \`status: completed\` routes to \`review-task\`, \`status: blocked\` stops the pipeline.`,
     skills: {
       mandatory: ["pio-git"],
     },

@@ -12,6 +12,8 @@ Developed by Svarog AI. Licensed under MIT. Repository: `github.com:Svarog-AI/pi
 - **Validation schemas:** `typebox` ^1.1.24 — JSON Schema types for tool parameter definitions
 - **YAML parsing:** `js-yaml` ^4.1.1 — parses REVIEW.md frontmatter and `~/.pi/pio-config.yaml`
 - **Test runner:** Vitest 4.x — unit tests with global `describe/it/expect`, Node.js environment
+- **Linter and formatter:** `@biomejs/biome` ^2.5.1 — linting (`biome check`), formatting, and import organization configured in `biome.json` (v2 format, recommended preset)
+- **Git hooks:** `lefthook` ^2.1.9 — pre-commit hook runs Biome on staged `.ts`/`.json` files (config in `lefthook.yml`)
 - **TypeScript config:** Strict mode, `noEmit`, bundler module resolution (`tsconfig.json`)
 - **Package manager:** npm (see `package-lock.json`)
 
@@ -76,6 +78,8 @@ pio-extension/
 ├── docs/                      # Empty — no documentation files yet
 ├── package.json               # Dependency manifest + pi extension config (pi.extensions[0])
 ├── tsconfig.json              # TypeScript compiler options (strict, noEmit)
+├── biome.json                 # Biome v2 config: linting, formatting, import organization
+├── lefthook.yml               # lefthook pre-commit hook config (Biome on staged .ts/.json)
 ├── vitest.config.ts           # Vitest config: Node.js env, globals, src/**/*.test.ts
 ├── LICENSE                    # MIT (c) 2026 Svarog AI
 └── README.md                  # Project documentation with command reference

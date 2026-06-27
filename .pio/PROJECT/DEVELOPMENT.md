@@ -4,6 +4,9 @@
 
 - **Install:** `npm install` — installs devDependencies (`@earendil-works/pi-coding-agent`, `typebox`, `typescript`, `vitest`) and runtime dependency (`js-yaml`).
 - **Type check:** `npm run check` — runs `tsc --noEmit`. This is the primary static analysis. Fails on type errors.
+- **Lint:** `npm run lint` — runs `biome check --error-on-warnings .`. Enforces Biome's recommended rules with zero warnings allowed. Test files (`*.test.ts`) have rule overrides for `noExplicitAny`, `noBannedTypes`, `noNonNullAssertion`, `noDuplicateTestHooks`, and `noNonNullAssertedOptionalChain`.
+- **Lint fix:** `npm run lint:fix` — runs `biome check --write .`. Auto-fixes formatting, import organization, and safe lint issues locally.
+- **Pre-commit hook:** Automatically installed by `npm install` via the `prepare` script (skipped in CI). Runs Biome on staged `.ts`/`.json` files via lefthook; auto-re-stages fixed files. Use `npx lefthook install` to reinstall manually.
 - **Tests:** `npm test` — runs all Vitest tests (`vitest run`). Tests are colocated `.test.ts` files under `src/`.
 - **No build step:** The extension is consumed as raw TypeScript ESM modules by the pi framework. Scripts for `build` and `clean` are no-op stubs. No transpilation or bundling.
 
@@ -30,8 +33,9 @@ Tests use `fs.mkdtempSync()` for temp directories (not mocked filesystems). Most
 1. Checkout repository
 2. Setup Node.js 22 with npm caching
 3. `npm install`
-4. `npm run check` (TypeScript type checking)
-5. `npm test` (Vitest test suite)
+4. `npm run lint` (Biome linting — fails on errors and warnings)
+5. `npm run check` (TypeScript type checking)
+6. `npm test` (Vitest test suite)
 
 No release cycle, versioning tags, or packaging pipeline exists. The extension is consumed directly from the repository path (no npm publish).
 

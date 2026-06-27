@@ -18,6 +18,8 @@ Model switching (`~/.pi/pio-config.yaml`) references LLM providers (e.g., Anthro
 | `@types/js-yaml` | ^4.0.9 (devDep) | TypeScript declarations for js-yaml |
 | `js-yaml` | ^4.1.1 (dep) | YAML parsing: REVIEW.md frontmatter, `~/.pi/pio-config.yaml` |
 | `pi-ask-user` | ^0.10.0 (devDep) | Provides the `ask-user` skill for decision handshakes in pio sub-sessions |
+| `@biomejs/biome` | ^2.5.1 (devDep) | Linter and formatter — recommended preset with test file overrides (config in `biome.json`) |
+| `lefthook` | ^2.1.9 (devDep) | Git hook manager — pre-commit Biome check on staged `.ts`/`.json` files (config in `lefthook.yml`) |
 
 All devDependencies run at development time or via pi's TypeScript runtime. The only production dependency is `js-yaml`.
 

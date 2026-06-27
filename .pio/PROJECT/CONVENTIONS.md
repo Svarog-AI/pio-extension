@@ -20,12 +20,15 @@ No `.editorconfig`, `.prettierrc`, or ESLint configuration exists. Formatting co
 
 ## Linting and Formatting
 
-- **Type checking as lint:** `npm run check` (`tsc --noEmit`) is the primary quality gate — catches type errors, undefined variables, and interface mismatches
-- **No dedicated linter:** No ESLint, Biome, or similar tools configured
-- **No formatter:** No Prettier, Biome format, or similar tools configured
-- **CI enforces:** Both type checking and tests must pass (`.github/workflows/ci.yml`)
+**Biome** (`@biomejs/biome` ^2.5.1) is the project linter and formatter, configured in `biome.json`:
 
-Consider adding a formatter (e.g., Prettier or Biome) to standardize code style across contributors.
+- **Format:** 2-space indent, double quotes, semicolons always, trailing commas (all Biome defaults match existing code)
+- **Imports:** Auto-organized via `assist.actions.source.organizeImports: "on"` — alphabetical ordering, grouped by source type
+- **Lint preset:** `recommended` with test file overrides for `noExplicitAny`, `noBannedTypes`, `noNonNullAssertion`, `noDuplicateTestHooks`, `noNonNullAssertedOptionalChain`
+- **File scope:** All files (`"**"`) except `.pio/`, `dist/`, and `package-lock.json` (force-ignored with `!!`). `files.ignoreUnknown: true` suppresses diagnostics for non-code files
+- **Commands:** `npm run lint` (strict, CI), `npm run lint:fix` (auto-fix, local dev)
+- **Pre-commit hook:** lefthook runs Biome on staged `.ts`/`.json` files with auto-stage of fixes. Installed automatically by `npm install` via the `prepare` script (CI guard: `[ -n "$CI" ] && exit 0`)
+- **CI enforces:** Lint, type checking, and tests must all pass (`.github/workflows/ci.yml`)
 
 ## AI Agent Instructions
 

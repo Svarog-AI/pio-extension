@@ -94,8 +94,9 @@ describe("createGoalTool.execute — collision detection", () => {
       makeCtx(tempDir),
     );
 
-    // Assert: message instructs agent to call ask_user
+    // Assert: message instructs agent to call ask_user and mentions /pio-delete-goal
     expect(result.content[0].text).toContain("ask_user");
+    expect(result.content[0].text).toContain("/pio-delete-goal");
   });
 
   it("does not create directory or enqueue task on collision", async () => {
@@ -133,5 +134,65 @@ describe("createGoalTool.execute — collision detection", () => {
     // Assert: task was enqueued
     expect(mockEnqueueTask).toHaveBeenCalledTimes(1);
     expect(result.content[0].text).toContain("queued");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleCreateGoal — command handler notification (human-facing)
+// ---------------------------------------------------------------------------
+
+describe("handleCreateGoal — command handler notification", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("shows human-friendly notification without ask_user on collision", async () => {
+    // Arrange: create a non-empty workspace directory
+    const workspaceDir = path.join(tempDir, ".pio", "goals", "existing-goal");
+    fs.mkdirSync(workspaceDir, { recursive: true });
+    fs.writeFileSync(path.join(workspaceDir, "GOAL.md"), "# Existing Goal", "utf-8");
+
+    const mockNotify = vi.fn();
+    const mockCtx = {
+      cwd: tempDir,
+      ui: { notify: mockNotify },
+      hasUI: false,
+      sessionManager: { getSessionFile: vi.fn(() => ""), getEntries: vi.fn(() => []) },
+      modelRegistry: {},
+      model: undefined,
+      isIdle: vi.fn(() => true),
+      signal: undefined,
+      abort: vi.fn(),
+      hasPendingMessages: vi.fn(() => false),
+      shutdown: vi.fn(),
+      getContextUsage: vi.fn(),
+      compact: vi.fn(),
+      getSystemPrompt: vi.fn(() => ""),
+      newSession: vi.fn(),
+    };
+
+    // Import handleCreateGoal indirectly via the register'd command
+    const registeredCommands: Array<any> = [];
+    const mockPi = {
+      registerTool: vi.fn(),
+      registerCommand: vi.fn((_name: string, config: any) => registeredCommands.push(config)),
+    };
+    register(mockPi as any);
+    const handler = registeredCommands.find((c: any) => c.description?.includes("create-goal"))?.handler;
+
+    // Act
+    await handler("--workspace-prefix goals/existing-goal", mockCtx);
+
+    // Assert: notification is human-friendly (no ask_user, mentions /pio-delete-goal)
+    expect(mockNotify).toHaveBeenCalled();
+    const [message, severity] = mockNotify.mock.calls[0];
+    expect(message).not.toContain("ask_user");
+    expect(message).toContain("/pio-delete-goal");
+    expect(message).toContain("already exists");
+    expect(severity).toBe("warning");
   });
 });

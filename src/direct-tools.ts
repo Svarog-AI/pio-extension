@@ -385,7 +385,7 @@ async function validateGoalFromIssue(
   // 3. Goal workspace must not already exist
   const goalDir = resolveGoalDir(cwd, goalName);
   if (goalExists(goalDir)) {
-    return { ok: false, error: `Goal workspace "${goalName}" already exists at ${goalDir}. Call ask_user to let the human decide what to do.` };
+    return { ok: false, error: `Goal workspace "${goalName}" already exists at ${goalDir}. Call ask_user to let the human decide what to do (pick a new name, reuse existing, or run /pio-delete-goal to remove the old workspace).` };
   }
 
   return { ok: true, goalName, issuePath: resolvedPath };
@@ -437,7 +437,7 @@ async function handleGoalFromIssue(args: string | undefined, ctx: ExtensionComma
   // All validation must happen before launchCapability (ctx staleness)
   const validation = await validateGoalFromIssue(ctx.cwd, issuePath);
   if (!validation.ok) {
-    ctx.ui.notify(validation.error!, "warning");
+    ctx.ui.notify(`Goal workspace "${validation.goalName!}" already exists. Pick a new name, reuse the existing one, or run /pio-delete-goal to remove it.`, "warning");
     return;
   }
 

@@ -163,6 +163,7 @@ describe("goalFromIssueTool.execute", () => {
 
     expect(result.content[0].text).toMatch(/already exists/i);
     expect(result.content[0].text).toContain("ask_user");
+    expect(result.content[0].text).toContain("/pio-delete-goal");
   });
 
   it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, initialMessage)", async () => {

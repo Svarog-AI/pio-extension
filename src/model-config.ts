@@ -64,8 +64,10 @@ function isValidEntry(entry: unknown): entry is PioModelEntry {
   if (entry == null || typeof entry !== "object") return false;
   const obj = entry as Record<string, unknown>;
   return (
-    typeof obj.provider === "string" && obj.provider.length > 0 &&
-    typeof obj.modelId === "string" && obj.modelId.length > 0
+    typeof obj.provider === "string" &&
+    obj.provider.length > 0 &&
+    typeof obj.modelId === "string" &&
+    obj.modelId.length > 0
   );
 }
 
@@ -112,7 +114,11 @@ export function readConfig(): PioConfig | undefined {
       config.default = obj.default as PioModelEntry;
     }
 
-    if (obj.capabilities != null && typeof obj.capabilities === "object" && !Array.isArray(obj.capabilities)) {
+    if (
+      obj.capabilities != null &&
+      typeof obj.capabilities === "object" &&
+      !Array.isArray(obj.capabilities)
+    ) {
       const caps: Record<string, PioModelEntry> = {};
       for (const [key, value] of Object.entries(obj.capabilities)) {
         if (isValidEntry(value)) {
@@ -125,10 +131,18 @@ export function readConfig(): PioConfig | undefined {
     }
 
     // Parse guards block
-    if (obj.guards != null && typeof obj.guards === "object" && !Array.isArray(obj.guards)) {
+    if (
+      obj.guards != null &&
+      typeof obj.guards === "object" &&
+      !Array.isArray(obj.guards)
+    ) {
       const guardsObj = obj.guards as Record<string, unknown>;
       const turnThreshold = guardsObj.turnThreshold;
-      if (typeof turnThreshold === "number" && Number.isInteger(turnThreshold) && turnThreshold > 0) {
+      if (
+        typeof turnThreshold === "number" &&
+        Number.isInteger(turnThreshold) &&
+        turnThreshold > 0
+      ) {
         config.guards = { turnThreshold };
       }
     }
@@ -160,7 +174,9 @@ export function readConfig(): PioConfig | undefined {
  * 2. Default model in config.default
  * 3. undefined — no override, inherit parent's model
  */
-export function resolveModelForCapability(capabilityName: string): PioModelEntry | undefined {
+export function resolveModelForCapability(
+  capabilityName: string,
+): PioModelEntry | undefined {
   const config = readConfig();
   if (!config) return undefined;
 

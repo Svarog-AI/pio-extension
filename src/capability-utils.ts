@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import type { CapabilityConfig, CapabilitySkills } from "./types";
 import { resolveCapabilityConfig } from "./capability-config";
+import type { CapabilityConfig, CapabilitySkills } from "./types";
 
 /**
  * Read the `pio-config` custom entry from the current session and reconstruct
@@ -20,12 +20,20 @@ import { resolveCapabilityConfig } from "./capability-config";
  * Accepts `ExtensionContext` (base type) so it works in both event handlers
  * and command handlers.
  */
-export async function getSessionConfig(ctx: ExtensionContext): Promise<CapabilityConfig | null> {
+export async function getSessionConfig(
+  ctx: ExtensionContext,
+): Promise<CapabilityConfig | null> {
   const entries = ctx.sessionManager.getEntries();
-  const entry = entries.find((e) => e.type === "custom" && e.customType === "pio-config");
-  if (!entry || entry.type !== "custom") return null;
+  const entry = entries.find(
+    (e) => e.type === "custom" && e.customType === "pio-config",
+  );
+  if (entry?.type !== "custom") return null;
 
-  const data = entry.data as { capability?: string; workspaceDir?: string; sessionParams?: Record<string, unknown> };
+  const data = entry.data as {
+    capability?: string;
+    workspaceDir?: string;
+    sessionParams?: Record<string, unknown>;
+  };
   if (!data.capability) return null;
 
   // Pass stored workspaceDir (resolved directory from normalization) so reconstruction
@@ -44,9 +52,16 @@ export async function getSessionConfig(ctx: ExtensionContext): Promise<Capabilit
  * path resolution where within `.pio/` to resolve contract files.
  */
 export const BASE_TOOL_PARAMS = {
-  workspacePrefix: Type.String({ description: "Workspace prefix for path resolution, e.g. 'goals/my-feature/S03'" }),
-  sessionName: Type.Optional(Type.String({ description: "Human-readable session name" })),
-  initialMessage: Type.String({ description: "Custom kickoff message for the session" }),
+  workspacePrefix: Type.String({
+    description:
+      "Workspace prefix for path resolution, e.g. 'goals/my-feature/S03'",
+  }),
+  sessionName: Type.Optional(
+    Type.String({ description: "Human-readable session name" }),
+  ),
+  initialMessage: Type.String({
+    description: "Custom kickoff message for the session",
+  }),
 };
 
 /**

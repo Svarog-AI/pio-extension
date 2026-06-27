@@ -1,18 +1,20 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { defineTool } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
-
-import { launchCapability } from "../../capability-session";
-import { enqueueTask } from "../../queues";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
+import { defineTool } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { resolveCapabilityConfig } from "../../capability-config";
-import { CapState } from "../../capability-state";
-import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
-import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
-import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { type PlanFrontmatter, PLAN_FRONTMATTER_SCHEMA } from "./schemas";
+import { launchCapability } from "../../capability-session";
+import { CapState } from "../../capability-state";
+import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
+import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
+import { enqueueTask } from "../../queues";
+import type { CapabilityContract } from "../../types";
+import { PLAN_FRONTMATTER_SCHEMA, type PlanFrontmatter } from "./schemas";
 
 // ---------------------------------------------------------------------------
 // postValidate — validates PLAN.md frontmatter correctness
@@ -35,7 +37,10 @@ const STEP_HEADING_RE = /^### Step \d+:/gm;
  * Delegates frontmatter validation to GoalState.planMetadata() — does not
  * import low-level frontmatter utilities directly.
  */
-export function postValidateCreatePlan(workspaceDir: string): { success: boolean; message?: string } {
+export function postValidateCreatePlan(workspaceDir: string): {
+  success: boolean;
+  message?: string;
+} {
   // Step 1: Validate frontmatter via CapState
   const capState = new CapState(CONTRACT, workspaceDir);
   const planFile = capState.output<PlanFrontmatter>("plan");
@@ -48,9 +53,15 @@ export function postValidateCreatePlan(workspaceDir: string): { success: boolean
     // Get detailed error message via direct validation
     const raw = extractFrontmatter(path.join(workspaceDir, "PLAN.md"));
     if (raw === null) {
-      return { success: false, message: "PLAN.md does not contain valid YAML frontmatter" };
+      return {
+        success: false,
+        message: "PLAN.md does not contain valid YAML frontmatter",
+      };
     }
-    const result = validateAndCoerce<PlanFrontmatter>(raw, PLAN_FRONTMATTER_SCHEMA);
+    const result = validateAndCoerce<PlanFrontmatter>(
+      raw,
+      PLAN_FRONTMATTER_SCHEMA,
+    );
     if ("error" in result) {
       return { success: false, message: result.error };
     }
@@ -134,7 +145,10 @@ const capabilityConfig = {
   skills: {
     mandatory: ["pio-planning", "grill-me"],
     recommended: [
-      { name: "source-research", condition: "when researching existing solutions or libraries" },
+      {
+        name: "source-research",
+        condition: "when researching existing solutions or libraries",
+      },
     ],
   },
   defaultInitialMessage: () => "Ready.",
@@ -150,8 +164,10 @@ export default capabilityConfig;
 const createPlanTool = defineTool({
   name: "pio_create_plan",
   label: "Pio Create Plan",
-  description: "Create a detailed implementation plan (PLAN.md) for an existing workspace. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
-  promptSnippet: "Create an implementation plan (PLAN.md) for an existing workspace.",
+  description:
+    "Create a detailed implementation plan (PLAN.md) for an existing workspace. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
+  promptSnippet:
+    "Create an implementation plan (PLAN.md) for an existing workspace.",
   parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -166,7 +182,15 @@ const createPlanTool = defineTool({
       },
     });
 
-    return { content: [{ type: "text", text: `Task queued for workspace "${params.workspacePrefix}". Use \`/pio-next-task\` to start the sub-session.` }], details: {} };
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Task queued for workspace "${params.workspacePrefix}". Use \`/pio-next-task\` to start the sub-session.`,
+        },
+      ],
+      details: {},
+    };
   },
 });
 
@@ -174,9 +198,15 @@ const createPlanTool = defineTool({
 // Command
 // ---------------------------------------------------------------------------
 
-async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandContext) {
-  if (!args || !args.trim()) {
-    ctx.ui.notify("Usage: /pio-create-plan --workspace-prefix <prefix>", "warning");
+async function handleCreatePlan(
+  args: string | undefined,
+  ctx: ExtensionCommandContext,
+) {
+  if (!args?.trim()) {
+    ctx.ui.notify(
+      "Usage: /pio-create-plan --workspace-prefix <prefix>",
+      "warning",
+    );
     return;
   }
 
@@ -188,7 +218,10 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
     }
   }
   if (!workspacePrefix) {
-    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-create-plan --workspace-prefix <prefix>", "error");
+    ctx.ui.notify(
+      "--workspace-prefix is required. Usage: /pio-create-plan --workspace-prefix <prefix>",
+      "error",
+    );
     return;
   }
 
@@ -200,7 +233,8 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
     workspacePrefix,
     sessionName: `${queueKey} create-plan`,
     queueKey,
-    initialMessage: "Create an implementation plan. Read GOAL.md to understand current state and target, then produce PLAN.md.",
+    initialMessage:
+      "Create an implementation plan. Read GOAL.md to understand current state and target, then produce PLAN.md.",
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve create-plan config.", "error");
@@ -224,7 +258,8 @@ async function handleCreatePlan(args: string | undefined, ctx: ExtensionCommandC
 export function register(pi: ExtensionAPI) {
   pi.registerTool(createPlanTool);
   pi.registerCommand("pio-create-plan", {
-    description: "Create an implementation plan for a workspace and launch a create-plan session",
+    description:
+      "Create an implementation plan for a workspace and launch a create-plan session",
     handler: handleCreatePlan,
   });
 }

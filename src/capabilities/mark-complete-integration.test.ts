@@ -1,10 +1,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveCapabilityConfig } from "../capability-config";
-import { setDiscoveredContracts } from "../state-machines/utils";
 
 // Mock prompt-compiler and step-nudging so they don't interfere with integration tests
 vi.mock("../prompt-compiler", () => ({
@@ -25,7 +24,9 @@ vi.mock("../guards/step-nudging", () => ({
 // ---------------------------------------------------------------------------
 
 function createTempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "pio-mark-complete-integration-"));
+  return fs.mkdtempSync(
+    path.join(os.tmpdir(), "pio-mark-complete-integration-"),
+  );
 }
 
 function cleanup(tempDir: string): void {
@@ -41,12 +42,16 @@ function cleanup(tempDir: string): void {
  */
 function makeMockPi(): {
   mockPi: ExtensionAPI;
-  getRegisteredTool: () => { name: string; label: string; execute: Function } | undefined;
+  getRegisteredTool: () =>
+    | { name: string; label: string; execute: Function }
+    | undefined;
 } {
   let tool: { name: string; label: string; execute: Function } | undefined;
 
   const mockPi = {
-    registerTool: (t: { name: string; label: string; execute: Function }) => { tool = t; },
+    registerTool: (t: { name: string; label: string; execute: Function }) => {
+      tool = t;
+    },
     on: vi.fn(),
     setSessionName: vi.fn(),
   } as unknown as ExtensionAPI;
@@ -57,17 +62,34 @@ function makeMockPi(): {
 /**
  * Set up the goal workspace structure for review-task integration tests.
  */
-function setupGoalWorkspace(tempCwd: string, reviewContent: string): { goalDir: string; stepDir: string } {
+function setupGoalWorkspace(
+  tempCwd: string,
+  reviewContent: string,
+): { goalDir: string; stepDir: string } {
   const goalDir = path.join(tempCwd, ".pio", "goals", "test-goal");
   const stepDir = path.join(goalDir, "S01");
   fs.mkdirSync(stepDir, { recursive: true });
 
-  fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Test Goal\n\n## Description\n\nTest goal.", "utf-8");
-  fs.writeFileSync(path.join(goalDir, "PLAN.md"), "---\ntotalSteps: 1\nsteps:\n  - name: test-step\n    complexity: task\n---\n# Plan\n\n## Step 1: Test Step\n\nDescription.", "utf-8");
+  fs.writeFileSync(
+    path.join(goalDir, "GOAL.md"),
+    "# Test Goal\n\n## Description\n\nTest goal.",
+    "utf-8",
+  );
+  fs.writeFileSync(
+    path.join(goalDir, "PLAN.md"),
+    "---\ntotalSteps: 1\nsteps:\n  - name: test-step\n    complexity: task\n---\n# Plan\n\n## Step 1: Test Step\n\nDescription.",
+    "utf-8",
+  );
   fs.writeFileSync(path.join(stepDir, "REVIEW.md"), reviewContent, "utf-8");
   fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
-  fs.writeFileSync(path.join(stepDir, "SUMMARY.md"), "# Summary\n\n## Status\n\nCOMPLETED", "utf-8");
-  fs.mkdirSync(path.join(tempCwd, ".pio", "session-queue"), { recursive: true });
+  fs.writeFileSync(
+    path.join(stepDir, "SUMMARY.md"),
+    "# Summary\n\n## Status\n\nCOMPLETED",
+    "utf-8",
+  );
+  fs.mkdirSync(path.join(tempCwd, ".pio", "session-queue"), {
+    recursive: true,
+  });
 
   return { goalDir, stepDir };
 }
@@ -102,9 +124,11 @@ function makeMockCtx(configData: Record<string, unknown>, cwd: string) {
 
 describe("pio_mark_complete integration — review-task with real frontmatter", () => {
   let tempCwd: string;
-  let goalDir: string;
+  let _goalDir: string;
   let stepDir: string;
-  let getRegisteredTool: () => { name: string; label: string; execute: Function } | undefined;
+  let getRegisteredTool: () =>
+    | { name: string; label: string; execute: Function }
+    | undefined;
   let cwdSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
@@ -114,10 +138,18 @@ describe("pio_mark_complete integration — review-task with real frontmatter", 
     // Populate contract cache FIRST — before any module that uses getCapState is imported.
     // This ensures the _discoveredContracts variable in utils.ts is set before
     // pio-workflow-machine.ts captures its reference to getCapState.
-    const { CONTRACT: createPlanContract } = await import("./create-plan/config");
-    const { CONTRACT: evolvePlanContract } = await import("./evolve-plan/config");
-    const { CONTRACT: reviewTaskContract } = await import("./review-task/config");
-    const { CONTRACT: executeTaskContract } = await import("./execute-task/config");
+    const { CONTRACT: createPlanContract } = await import(
+      "./create-plan/config"
+    );
+    const { CONTRACT: evolvePlanContract } = await import(
+      "./evolve-plan/config"
+    );
+    const { CONTRACT: reviewTaskContract } = await import(
+      "./review-task/config"
+    );
+    const { CONTRACT: executeTaskContract } = await import(
+      "./execute-task/config"
+    );
     const utilsMod = await import("../state-machines/utils");
     utilsMod.setDiscoveredContracts({
       "create-plan": createPlanContract,
@@ -127,7 +159,9 @@ describe("pio_mark_complete integration — review-task with real frontmatter", 
     });
 
     // Import and explicitly register goalDrivenDevelopment before importing mark-complete.
-    const { setupPioWorkflowMachine } = await import("../state-machines/pio-workflow-machine");
+    const { setupPioWorkflowMachine } = await import(
+      "../state-machines/pio-workflow-machine"
+    );
     setupPioWorkflowMachine();
 
     // Import mark-complete fresh (no mocks in this file)
@@ -162,7 +196,10 @@ lowIssues: 2
 ## Decision
 APPROVED
 `;
-    ({ goalDir, stepDir } = setupGoalWorkspace(tempCwd, reviewContent));
+    ({ goalDir: _goalDir, stepDir } = setupGoalWorkspace(
+      tempCwd,
+      reviewContent,
+    ));
 
     // Resolve the real capability config (includes real postValidate)
     const config = await resolveCapabilityConfig(tempCwd, {
@@ -174,10 +211,19 @@ APPROVED
       queueKey: "test-goal",
     });
 
-    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
+    const mockCtx = makeMockCtx(
+      config! as unknown as Record<string, unknown>,
+      tempCwd,
+    );
 
     // Act
-    const result = await getRegisteredTool()!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+    const result = await getRegisteredTool()?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
 
     // Assert: APPROVED marker exists
     expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
@@ -185,7 +231,12 @@ APPROVED
     expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(true);
 
     // Assert: queue file was created with evolve-plan capability
-    const queuePath = path.join(tempCwd, ".pio", "session-queue", "task-test-goal.json");
+    const queuePath = path.join(
+      tempCwd,
+      ".pio",
+      "session-queue",
+      "task-test-goal.json",
+    );
     expect(fs.existsSync(queuePath)).toBe(true);
     const queueData = JSON.parse(fs.readFileSync(queuePath, "utf-8"));
     expect(queueData.capability).toBe("evolve-plan");
@@ -210,7 +261,10 @@ lowIssues: 0
 ## Decision
 REJECTED
 `;
-    ({ goalDir, stepDir } = setupGoalWorkspace(tempCwd, reviewContent));
+    ({ goalDir: _goalDir, stepDir } = setupGoalWorkspace(
+      tempCwd,
+      reviewContent,
+    ));
 
     const config = await resolveCapabilityConfig(tempCwd, {
       capability: "review-task",
@@ -221,10 +275,19 @@ REJECTED
       queueKey: "test-goal",
     });
 
-    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
+    const mockCtx = makeMockCtx(
+      config! as unknown as Record<string, unknown>,
+      tempCwd,
+    );
 
     // Act
-    const result = await getRegisteredTool()!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+    const result = await getRegisteredTool()?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
 
     // Assert: REJECTED marker exists, APPROVED doesn't, COMPLETED deleted
     expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(true);
@@ -232,7 +295,12 @@ REJECTED
     expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(false);
 
     // Assert: queue file was created with execute-task capability (re-execute same step)
-    const queuePath = path.join(tempCwd, ".pio", "session-queue", "task-test-goal.json");
+    const queuePath = path.join(
+      tempCwd,
+      ".pio",
+      "session-queue",
+      "task-test-goal.json",
+    );
     expect(fs.existsSync(queuePath)).toBe(true);
     const queueData = JSON.parse(fs.readFileSync(queuePath, "utf-8"));
     expect(queueData.capability).toBe("execute-task");
@@ -254,7 +322,10 @@ lowIssues: 0
 
 Missing decision field.
 `;
-    ({ goalDir, stepDir } = setupGoalWorkspace(tempCwd, reviewContent));
+    ({ goalDir: _goalDir, stepDir } = setupGoalWorkspace(
+      tempCwd,
+      reviewContent,
+    ));
 
     const config = await resolveCapabilityConfig(tempCwd, {
       capability: "review-task",
@@ -265,10 +336,19 @@ Missing decision field.
       queueKey: "test-goal",
     });
 
-    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
+    const mockCtx = makeMockCtx(
+      config! as unknown as Record<string, unknown>,
+      tempCwd,
+    );
 
     // Act
-    const result = await getRegisteredTool()!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+    const result = await getRegisteredTool()?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
 
     // Assert: error message mentions the missing field
     expect(result.content[0].text).toContain("decision");
@@ -279,7 +359,12 @@ Missing decision field.
     expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
 
     // Assert: no queue file created
-    const queuePath = path.join(tempCwd, ".pio", "session-queue", "task-test-goal.json");
+    const queuePath = path.join(
+      tempCwd,
+      ".pio",
+      "session-queue",
+      "task-test-goal.json",
+    );
     expect(fs.existsSync(queuePath)).toBe(false);
   });
 
@@ -297,7 +382,10 @@ lowIssues: 0
 
 Invalid decision value.
 `;
-    ({ goalDir, stepDir } = setupGoalWorkspace(tempCwd, reviewContent));
+    ({ goalDir: _goalDir, stepDir } = setupGoalWorkspace(
+      tempCwd,
+      reviewContent,
+    ));
 
     const config = await resolveCapabilityConfig(tempCwd, {
       capability: "review-task",
@@ -308,10 +396,19 @@ Invalid decision value.
       queueKey: "test-goal",
     });
 
-    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
+    const mockCtx = makeMockCtx(
+      config! as unknown as Record<string, unknown>,
+      tempCwd,
+    );
 
     // Act
-    const result = await getRegisteredTool()!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+    const result = await getRegisteredTool()?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
 
     // Assert: error message mentions the invalid value
     expect(result.content[0].text).toContain("decision");
@@ -328,8 +425,14 @@ Invalid decision value.
     const stepDir = path.join(goalDir, "S01");
     fs.mkdirSync(stepDir, { recursive: true });
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Test Goal", "utf-8");
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n\n## Step 1: Test", "utf-8");
-    fs.mkdirSync(path.join(tempCwd, ".pio", "session-queue"), { recursive: true });
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "# Plan\n\n## Step 1: Test",
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tempCwd, ".pio", "session-queue"), {
+      recursive: true,
+    });
 
     const config = await resolveCapabilityConfig(tempCwd, {
       capability: "review-task",
@@ -340,10 +443,19 @@ Invalid decision value.
       queueKey: "test-goal",
     });
 
-    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
+    const mockCtx = makeMockCtx(
+      config! as unknown as Record<string, unknown>,
+      tempCwd,
+    );
 
     // Act
-    const result = await getRegisteredTool()!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+    const result = await getRegisteredTool()?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
 
     // Assert: validation failed (missing REVIEW.md)
     expect(result.content[0].text).toContain("Validation failed");
@@ -358,13 +470,27 @@ Invalid decision value.
     const stepDir = path.join(goalDir, "S01");
     fs.mkdirSync(stepDir, { recursive: true });
     fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Test Goal", "utf-8");
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n\n## Step 1: Test", "utf-8");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "# Plan\n\n## Step 1: Test",
+      "utf-8",
+    );
     // CONTRACT uses plain file names — files resolve in the step directory (workspacePrefix includes step folder)
-    fs.writeFileSync(path.join(stepDir, "TASK.md"), "---\nskills:\n  mandatory: []\n---\n# Task", "utf-8");
+    fs.writeFileSync(
+      path.join(stepDir, "TASK.md"),
+      "---\nskills:\n  mandatory: []\n---\n# Task",
+      "utf-8",
+    );
     fs.writeFileSync(path.join(stepDir, "TEST.md"), "# Tests", "utf-8");
-    fs.writeFileSync(path.join(stepDir, "SUMMARY.md"), "---\nstatus: completed\n---\n# Summary\n\n## Status\n\nCOMPLETED", "utf-8");
+    fs.writeFileSync(
+      path.join(stepDir, "SUMMARY.md"),
+      "---\nstatus: completed\n---\n# Summary\n\n## Status\n\nCOMPLETED",
+      "utf-8",
+    );
     fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
-    fs.mkdirSync(path.join(tempCwd, ".pio", "session-queue"), { recursive: true });
+    fs.mkdirSync(path.join(tempCwd, ".pio", "session-queue"), {
+      recursive: true,
+    });
 
     const config = await resolveCapabilityConfig(tempCwd, {
       capability: "execute-task",
@@ -375,17 +501,31 @@ Invalid decision value.
       queueKey: "test-goal",
     });
 
-    const mockCtx = makeMockCtx(config! as unknown as Record<string, unknown>, tempCwd);
+    const mockCtx = makeMockCtx(
+      config! as unknown as Record<string, unknown>,
+      tempCwd,
+    );
 
     // Act
-    const result = await getRegisteredTool()!.execute("test-id", {}, new AbortController(), () => {}, mockCtx);
+    const result = await getRegisteredTool()?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
 
     // Assert: validation passed, session terminated
     expect(result.content[0].text).toContain("Validation passed");
     expect(result.terminate).toBe(true);
 
     // Assert: next task enqueued (review-task)
-    const queuePath = path.join(tempCwd, ".pio", "session-queue", "task-test-goal.json");
+    const queuePath = path.join(
+      tempCwd,
+      ".pio",
+      "session-queue",
+      "task-test-goal.json",
+    );
     expect(fs.existsSync(queuePath)).toBe(true);
     const queueData = JSON.parse(fs.readFileSync(queuePath, "utf-8"));
     expect(queueData.capability).toBe("review-task");

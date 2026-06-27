@@ -3,9 +3,8 @@ import * as path from "node:path";
 
 import { CapState } from "../../capability-state";
 import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
-import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
 import { CONTRACT } from "./config";
-
+import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -26,7 +25,10 @@ const DECISIONS_FILE = "DECISIONS.md";
  * Returns array of read-only files for the given step.
  * workspacePrefix already includes the step folder — plain names resolve correctly.
  */
-export function resolveReviewReadOnlyFiles(_dir: string, _params?: Record<string, unknown>): string[] {
+export function resolveReviewReadOnlyFiles(
+  _dir: string,
+  _params?: Record<string, unknown>,
+): string[] {
   return [TASK_FILE, TEST_FILE, SUMMARY_FILE, DECISIONS_FILE];
 }
 
@@ -35,7 +37,10 @@ export function resolveReviewReadOnlyFiles(_dir: string, _params?: Record<string
  * Returns array of writable files for the given step.
  * workspacePrefix already includes the step folder — plain name resolves correctly.
  */
-export function resolveReviewWriteAllowlist(_dir: string, _params?: Record<string, unknown>): string[] {
+export function resolveReviewWriteAllowlist(
+  _dir: string,
+  _params?: Record<string, unknown>,
+): string[] {
   return [REVIEW_FILE];
 }
 
@@ -47,7 +52,10 @@ export function resolveReviewWriteAllowlist(_dir: string, _params?: Record<strin
  * Post-validate hook: reads REVIEW.md frontmatter and validates against schema.
  * Does NOT create markers — that is the job of postExecuteReview().
  */
-export function postValidateReview(workspaceDir: string, params?: Record<string, unknown>): { success: boolean; message?: string } {
+export function postValidateReview(
+  workspaceDir: string,
+  params?: Record<string, unknown>,
+): { success: boolean; message?: string } {
   // Read REVIEW.md via CapState — uses CONTRACT.outputs schema for validation
   const capState = new CapState(CONTRACT, workspaceDir, params);
   const reviewFile = capState.output<ReviewOutputs>("review");
@@ -61,13 +69,19 @@ export function postValidateReview(workspaceDir: string, params?: Record<string,
     const reviewPath = path.join(workspaceDir, REVIEW_FILE);
     const raw = extractFrontmatter(reviewPath);
     if (raw === null) {
-      return { success: false, message: "REVIEW.md does not contain valid YAML frontmatter" };
+      return {
+        success: false,
+        message: "REVIEW.md does not contain valid YAML frontmatter",
+      };
     }
     const result = validateAndCoerce<ReviewOutputs>(raw, REVIEW_OUTPUT_SCHEMA);
     if ("error" in result) {
       return { success: false, message: result.error };
     }
-    return { success: false, message: "REVIEW.md frontmatter validation failed" };
+    return {
+      success: false,
+      message: "REVIEW.md frontmatter validation failed",
+    };
   }
 
   // Schema validation passed — do NOT create markers here (that's postExecute's job)
@@ -79,7 +93,10 @@ export function postValidateReview(workspaceDir: string, params?: Record<string,
  * Runs after transition routing + task enqueuing (step 4 in mark-complete.ts).
  * Re-reads REVIEW.md from disk — both hooks read independently.
  */
-export function postExecuteReview(workspaceDir: string, params?: Record<string, unknown>): void {
+export function postExecuteReview(
+  workspaceDir: string,
+  params?: Record<string, unknown>,
+): void {
   // Re-read REVIEW.md via CapState (reads fresh from disk on every call)
   const capState = new CapState(CONTRACT, workspaceDir, params);
   const reviewFile = capState.output<ReviewOutputs>("review");
@@ -90,7 +107,9 @@ export function postExecuteReview(workspaceDir: string, params?: Record<string, 
   }
   const data = reviewFile.read();
   if (data === null) {
-    console.warn("pio: postExecuteReview could not parse REVIEW.md: frontmatter validation failed");
+    console.warn(
+      "pio: postExecuteReview could not parse REVIEW.md: frontmatter validation failed",
+    );
     return;
   }
 

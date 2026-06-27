@@ -1,22 +1,24 @@
-import type { ExtensionAPI, ExtensionCommandContext, Skill } from "@earendil-works/pi-coding-agent";
-import { stripFrontmatter } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CapabilityConfig, CapabilitySkills } from "./types";
-import { getSessionConfig } from "./capability-utils";
-import { validateInputs } from "./guards/validation";
-import { CapState } from "./capability-state";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+  Skill,
+} from "@earendil-works/pi-coding-agent";
+import { stripFrontmatter } from "@earendil-works/pi-coding-agent";
 import type { CompiledPromptSections } from "./capability-package";
-import { compilePrompt } from "./prompt-compiler";
+import { CapState } from "./capability-state";
+import { getSessionConfig } from "./capability-utils";
 import { setupStepNudging } from "./guards/step-nudging";
-
+import { validateInputs } from "./guards/validation";
 import { resolveModelForCapability } from "./model-config";
+import { compilePrompt } from "./prompt-compiler";
+import type { CapabilityConfig } from "./types";
 
 // ESM-compatible __dirname for resolving capability package directories
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
 
 // Module-level cache per runtime instance
 let compiledSections: CompiledPromptSections | undefined;
@@ -29,7 +31,9 @@ let currentConfig: CapabilityConfig | undefined;
  * Called by `prepareSession` hooks after reading TASK.md frontmatter skills.
  * The merged result is applied to `currentConfig` before `before_agent_start` runs.
  */
-export function setMergedSkills(skills: Pick<CapabilityConfig, "skills">["skills"]): void {
+export function setMergedSkills(
+  skills: Pick<CapabilityConfig, "skills">["skills"],
+): void {
   if (currentConfig) {
     currentConfig.skills = skills;
   }
@@ -57,12 +61,19 @@ let enrichedSessionParams: Record<string, unknown> | undefined;
 // ---------------------------------------------------------------------------
 
 /** Write config into the new session's custom entry. Survives reload, not visible to LLM. */
-export async function launchCapability(ctx: ExtensionCommandContext, config: CapabilityConfig): Promise<void> {
+export async function launchCapability(
+  ctx: ExtensionCommandContext,
+  config: CapabilityConfig,
+): Promise<void> {
   // Validate inputs against the capability contract BEFORE launching.
   // workspacePrefix is stripped from sessionParams during normalization.
   // workspaceDir already has the prefix baked in, so CapState.workspacePrefix = undefined.
   if (config.contract && config.workspaceDir) {
-    const capState = new CapState(config.contract, config.workspaceDir, config.sessionParams);
+    const capState = new CapState(
+      config.contract,
+      config.workspaceDir,
+      config.sessionParams,
+    );
     const result = validateInputs(capState);
 
     if (!result.success) {
@@ -122,13 +133,17 @@ export function buildSkillLoadingSection(
   for (const skillName of mandatoryNames) {
     const skillEntry = skills.find((s) => s.name === skillName);
     if (!skillEntry) {
-      console.warn(`pio: mandatory skill "${skillName}" not found in skill registry — skipping`);
+      console.warn(
+        `pio: mandatory skill "${skillName}" not found in skill registry — skipping`,
+      );
       continue;
     }
 
     const skillPath = skillEntry.filePath;
     if (!fs.existsSync(skillPath)) {
-      console.warn(`pio: mandatory skill "${skillName}" file not found: ${skillPath} — skipping`);
+      console.warn(
+        `pio: mandatory skill "${skillName}" file not found: ${skillPath} — skipping`,
+      );
       continue;
     }
 
@@ -142,16 +157,16 @@ export function buildSkillLoadingSection(
           `</skill>`,
       );
     } catch (err) {
-      console.warn(`pio: failed to read mandatory skill "${skillName}": ${err} — skipping`);
+      console.warn(
+        `pio: failed to read mandatory skill "${skillName}": ${err} — skipping`,
+      );
     }
   }
 
   // Generate recommended skills listing
   const recommended = config.skills?.recommended;
   if (recommended && recommended.length > 0) {
-    const recLines = recommended.map(
-      (r) => `- \`${r.name}\` — ${r.condition}`,
-    );
+    const recLines = recommended.map((r) => `- \`${r.name}\` — ${r.condition}`);
     parts.push(
       `--- RECOMMENDED SKILLS ---\n\n` +
         `Load these skills when the listed condition matches your current task:\n\n` +
@@ -193,36 +208,49 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
       pi.setSessionName(config.sessionName);
     }
 
-    enrichedSessionParams = config.sessionParams ? { ...config.sessionParams } : {};
+    enrichedSessionParams = config.sessionParams
+      ? { ...config.sessionParams }
+      : {};
 
     // Run prepareSession hook (lifecycle: prepare → work → markComplete → validateState).
     // Hook runs after enrichedSessionParams is populated, so it has access to stepNumber.
     // Errors are caught and logged — they do not crash the session startup.
     if (config.prepareSession && config.workspaceDir) {
       try {
-        await config.prepareSession(config.workspaceDir!, enrichedSessionParams);
+        await config.prepareSession(config.workspaceDir, enrichedSessionParams);
       } catch (err) {
-        console.warn(`pio: prepareSession failed for capability "${config.capability}": ${err}`);
+        console.warn(
+          `pio: prepareSession failed for capability "${config.capability}": ${err}`,
+        );
       }
     }
 
     // Compile prompt from capability package directory
-    const capabilityDir = path.join(__dirname, "capabilities", config.capability);
+    const capabilityDir = path.join(
+      __dirname,
+      "capabilities",
+      config.capability,
+    );
     try {
       compiledSections = await compilePrompt(capabilityDir, {
         baseSkills: config.skills,
       });
 
       // Populate enrichedSessionParams with workflow step info for step nudging
-      if (compiledSections && compiledSections._steps) {
-        enrichedSessionParams.totalWorkflowSteps = compiledSections._steps.length;
-        enrichedSessionParams.workflowSteps = compiledSections._steps.map((s) => ({
-          id: s.id,
-          title: s.title,
-        }));
+      if (compiledSections?._steps) {
+        enrichedSessionParams.totalWorkflowSteps =
+          compiledSections._steps.length;
+        enrichedSessionParams.workflowSteps = compiledSections._steps.map(
+          (s) => ({
+            id: s.id,
+            title: s.title,
+          }),
+        );
       }
     } catch (err) {
-      console.warn(`pio: compilePrompt failed for capability "${config.capability}": ${err}`);
+      console.warn(
+        `pio: compilePrompt failed for capability "${config.capability}": ${err}`,
+      );
     }
 
     // Cache config for skill injection in before_agent_start
@@ -273,10 +301,14 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
     if (compiledSections) {
       const capabilitySections: string[] = [];
       if (compiledSections.role) capabilitySections.push(compiledSections.role);
-      if (compiledSections.workflow) capabilitySections.push(compiledSections.workflow);
-      if (compiledSections.guidelines) capabilitySections.push(compiledSections.guidelines);
+      if (compiledSections.workflow)
+        capabilitySections.push(compiledSections.workflow);
+      if (compiledSections.guidelines)
+        capabilitySections.push(compiledSections.guidelines);
       if (capabilitySections.length > 0) {
-        prompts.push(`--- YOUR INSTRUCTIONS ---\n\n${capabilitySections.join("\n\n")}`);
+        prompts.push(
+          `--- YOUR INSTRUCTIONS ---\n\n${capabilitySections.join("\n\n")}`,
+        );
       }
     }
 
@@ -285,7 +317,7 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
     // Return as systemPrompt — persistent across turns without accumulating in history.
     // Prepend _event.systemPrompt to preserve pi's base prompt (last-writer-wins).
     const result = {
-      systemPrompt: _event.systemPrompt + "\n\n" + prompts.join("\n\n"),
+      systemPrompt: `${_event.systemPrompt}\n\n${prompts.join("\n\n")}`,
     };
 
     // Model resolution: switch to the configured model for this capability.
@@ -296,12 +328,18 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
         // Skip if current model already matches
         const currentProvider = ctx.model?.provider;
         const currentId = ctx.model?.id;
-        if (currentProvider === resolved.provider && currentId === resolved.modelId) {
+        if (
+          currentProvider === resolved.provider &&
+          currentId === resolved.modelId
+        ) {
           return result;
         }
 
         // Look up the full Model object from pi's registry
-        const model = ctx.modelRegistry.find(resolved.provider, resolved.modelId);
+        const model = ctx.modelRegistry.find(
+          resolved.provider,
+          resolved.modelId,
+        );
         if (!model) {
           console.warn(
             `pio: model "${resolved.provider}/${resolved.modelId}" not found in registry ` +
@@ -323,7 +361,7 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
 // ---------------------------------------------------------------------------
 
 /**
- * Return a copy of the session params, programmatically enriched 
+ * Return a copy of the session params, programmatically enriched
  * with derived values.
  */
 export function getSessionParams(): Record<string, unknown> | undefined {
@@ -332,8 +370,8 @@ export function getSessionParams(): Record<string, unknown> | undefined {
 }
 
 /** Exported for testing — returns the raw enrichedSessionParams (not a copy). */
-export function getEnrichedSessionParamsForTesting(): Record<string, unknown> | undefined {
+export function getEnrichedSessionParamsForTesting():
+  | Record<string, unknown>
+  | undefined {
   return enrichedSessionParams;
 }
-
-

@@ -1,16 +1,22 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-
-import { CapState } from "../../capability-state";
-import { launchCapability, setMergedSkills } from "../../capability-session";
-import { mergeCapabilitySkills, BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
-import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
-import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
-import type { CapabilityContract } from "../../types";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { resolveExecuteReadOnlyFiles, postExecuteExecute } from "./callbacks";
+import { launchCapability, setMergedSkills } from "../../capability-session";
+import { CapState } from "../../capability-state";
+import {
+  BASE_TOOL_PARAMS,
+  deriveQueueKey,
+  mergeCapabilitySkills,
+} from "../../capability-utils";
+import { enqueueTask } from "../../queues";
+import type { CapabilityContract } from "../../types";
+import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
+import { postExecuteExecute, resolveExecuteReadOnlyFiles } from "./callbacks";
 import { EXECUTION_SUMMARY_SCHEMA } from "./schemas";
 
 // ---------------------------------------------------------------------------
@@ -20,7 +26,10 @@ import { EXECUTION_SUMMARY_SCHEMA } from "./schemas";
 export const CONTRACT: CapabilityContract = {
   inputs: [{ name: "task", file: "TASK.md", schema: TASK_FRONTMATTER_SCHEMA }],
   excludedFiles: ["REVISE_PLAN_NEEDED"],
-  outputs: [{ name: "test", file: "TEST.md" }, { name: "summary", file: "SUMMARY.md", schema: EXECUTION_SUMMARY_SCHEMA }],
+  outputs: [
+    { name: "test", file: "TEST.md" },
+    { name: "summary", file: "SUMMARY.md", schema: EXECUTION_SUMMARY_SCHEMA },
+  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -46,7 +55,10 @@ export default capabilityConfig;
 // prepareSession — read TASK.md skills and merge into capability config
 // ---------------------------------------------------------------------------
 
-function prepareExecuteSession(workspaceDir: string, params?: Record<string, unknown>): void {
+function prepareExecuteSession(
+  workspaceDir: string,
+  params?: Record<string, unknown>,
+): void {
   // CONTRACT uses plain "TASK.md" — no placeholders need resolving
   const capState = new CapState(CONTRACT, workspaceDir, params);
   const taskFile = capState.input<{ skills?: unknown }>("task");
@@ -98,9 +110,15 @@ const executeTaskTool = defineTool({
 // Command
 // ---------------------------------------------------------------------------
 
-async function handleExecuteTask(args: string | undefined, ctx: ExtensionCommandContext) {
+async function handleExecuteTask(
+  args: string | undefined,
+  ctx: ExtensionCommandContext,
+) {
   if (!args || args.trim().length === 0) {
-    ctx.ui.notify("Usage: /pio-execute-task --workspace-prefix <prefix>", "warning");
+    ctx.ui.notify(
+      "Usage: /pio-execute-task --workspace-prefix <prefix>",
+      "warning",
+    );
     return;
   }
   const tokens = args.trim().split(/\s+/);
@@ -111,7 +129,10 @@ async function handleExecuteTask(args: string | undefined, ctx: ExtensionCommand
     }
   }
   if (!workspacePrefix) {
-    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-execute-task --workspace-prefix <prefix>", "error");
+    ctx.ui.notify(
+      "--workspace-prefix is required. Usage: /pio-execute-task --workspace-prefix <prefix>",
+      "error",
+    );
     return;
   }
 
@@ -123,7 +144,8 @@ async function handleExecuteTask(args: string | undefined, ctx: ExtensionCommand
     workspacePrefix,
     sessionName: `${queueKey} execute-task`,
     queueKey,
-    initialMessage: "Read TASK.md for the specification and acceptance criteria, then implement the changes.",
+    initialMessage:
+      "Read TASK.md for the specification and acceptance criteria, then implement the changes.",
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve execute-task config.", "error");

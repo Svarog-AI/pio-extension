@@ -1,8 +1,12 @@
 import * as fs from "node:fs";
 import type { TSchema } from "typebox";
-import type { CapabilityContract, MarkdownFileSpec, OutputEntry } from "./types";
-import { extractFrontmatter, validateAndCoerce } from "./frontmatter";
 import { resolveContractPath } from "./capability-config";
+import { extractFrontmatter, validateAndCoerce } from "./frontmatter";
+import type {
+  CapabilityContract,
+  MarkdownFileSpec,
+  OutputEntry,
+} from "./types";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -45,7 +49,10 @@ class FileStateImpl<T> implements FileState<T> {
     if (raw === null) return null;
 
     if (this.schema) {
-      const result = validateAndCoerce<Record<string, unknown>>(raw, this.schema);
+      const result = validateAndCoerce<Record<string, unknown>>(
+        raw,
+        this.schema,
+      );
       if (result.error) return null;
       return result.data as T;
     }
@@ -147,7 +154,13 @@ export class CapState {
    * Returns a FileState with no schema validation.
    */
   undeclared(filePath: string): FileState<unknown> {
-    const fullPath = resolveContractPath(filePath, this.baseDir, this.workspacePrefix, undefined, false);
+    const fullPath = resolveContractPath(
+      filePath,
+      this.baseDir,
+      this.workspacePrefix,
+      undefined,
+      false,
+    );
     return new FileStateImpl<unknown>(fullPath);
   }
 
@@ -205,7 +218,9 @@ export class CapState {
   }
 
   /** Type guard: MarkdownFileSpec vs OneOfGroup. */
-  private isMarkdownFileSpec(entry: OutputEntry | MarkdownFileSpec): entry is MarkdownFileSpec {
+  private isMarkdownFileSpec(
+    entry: OutputEntry | MarkdownFileSpec,
+  ): entry is MarkdownFileSpec {
     return "file" in entry && !("files" in entry);
   }
 }

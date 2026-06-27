@@ -38,38 +38,46 @@ import {
  * @returns Array of workflow steps
  * @throws When workflow.ts is missing, has no default export, or import fails
  */
-export async function readWorkflowSteps(dirPath: string): Promise<WorkflowStep[]> {
+export async function readWorkflowSteps(
+  dirPath: string,
+): Promise<WorkflowStep[]> {
   const workflowPath = path.join(dirPath, CAPABILITY_WORKFLOW_FILE);
 
   if (!fs.existsSync(workflowPath)) {
-    console.warn(`[pio] Prompt compiler: ${CAPABILITY_WORKFLOW_FILE} not found at "${workflowPath}"`);
-    throw new Error(`Required file ${CAPABILITY_WORKFLOW_FILE} not found in "${dirPath}"`);
+    console.warn(
+      `[pio] Prompt compiler: ${CAPABILITY_WORKFLOW_FILE} not found at "${workflowPath}"`,
+    );
+    throw new Error(
+      `Required file ${CAPABILITY_WORKFLOW_FILE} not found in "${dirPath}"`,
+    );
   }
 
-  let mod: any;
+  let mod: unknown;
   try {
     mod = await import(workflowPath);
   } catch (err) {
     console.warn(
-      `[pio] Prompt compiler: failed to import ${CAPABILITY_WORKFLOW_FILE} from "${dirPath}": ${err instanceof Error ? err.message : String(err)}`
+      `[pio] Prompt compiler: failed to import ${CAPABILITY_WORKFLOW_FILE} from "${dirPath}": ${err instanceof Error ? err.message : String(err)}`,
     );
     throw err;
   }
 
-  const steps = mod.default;
+  const steps = (mod as { default: unknown }).default;
 
   if (!Array.isArray(steps)) {
     console.warn(
-      `[pio] Prompt compiler: ${CAPABILITY_WORKFLOW_FILE} in "${dirPath}" does not default-export an array — expected WorkflowStep[]`
+      `[pio] Prompt compiler: ${CAPABILITY_WORKFLOW_FILE} in "${dirPath}" does not default-export an array — expected WorkflowStep[]`,
     );
-    throw new Error(`${CAPABILITY_WORKFLOW_FILE} must default-export a WorkflowStep[] array`);
+    throw new Error(
+      `${CAPABILITY_WORKFLOW_FILE} must default-export a WorkflowStep[] array`,
+    );
   }
 
   // Validate each step has required fields
   for (const step of steps) {
     if (!step.id || !step.title || !step.instructions) {
       console.warn(
-        `[pio] Prompt compiler: malformed workflow step in "${dirPath}" — missing id, title, or instructions: ${JSON.stringify(step)}`
+        `[pio] Prompt compiler: malformed workflow step in "${dirPath}" — missing id, title, or instructions: ${JSON.stringify(step)}`,
       );
     }
   }
@@ -195,7 +203,9 @@ export function mergeWorkflowStepSkills(
  * @returns Resolved components with role, steps, and guidelines
  * @throws When workflow.ts is missing or malformed
  */
-export async function readPackageComponents(dirPath: string): Promise<CapabilityPackageComponents> {
+export async function readPackageComponents(
+  dirPath: string,
+): Promise<CapabilityPackageComponents> {
   // Read role.md (optional) — raw text
   const rolePath = path.join(dirPath, CAPABILITY_ROLE_FILE);
   const role = fs.existsSync(rolePath)
@@ -246,7 +256,10 @@ export async function compilePrompt(
   const components = await readPackageComponents(capabilityDir);
 
   // 2. Merge workflow step skills into base capability skills
-  const mergedSkills = mergeWorkflowStepSkills(components.steps, options.baseSkills);
+  const mergedSkills = mergeWorkflowStepSkills(
+    components.steps,
+    options.baseSkills,
+  );
 
   // 3. Render sections
   const sections: CompiledPromptSections = {};

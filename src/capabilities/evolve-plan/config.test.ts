@@ -2,12 +2,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { vi } from "vitest";
-import { validateOutputs } from "../../guards/validation";
 import { resolveCapabilityConfig } from "../../capability-config";
-import { register } from "./config";
-import { readPendingTask } from "../../queues";
 import { CapState } from "../../capability-state";
+import { validateOutputs } from "../../guards/validation";
+import { readPendingTask } from "../../queues";
 import type { CapabilityContract, MarkdownFileSpec } from "../../types";
+import { register } from "./config";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -22,7 +22,7 @@ function cleanup(tempDir: string): void {
 }
 
 // Create a minimal goal directory tree with PLAN.md and optional COMPLETION_SUMMARY.md.
-function createGoalTree(
+function _createGoalTree(
   tempDir: string,
   goalName: string,
   options?: { withCompletionSummary?: boolean; planContent?: string },
@@ -39,7 +39,11 @@ function createGoalTree(
 
   // Optionally create COMPLETION_SUMMARY.md
   if (options?.withCompletionSummary) {
-    fs.writeFileSync(path.join(goalDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete\n", "utf-8");
+    fs.writeFileSync(
+      path.join(goalDir, "COMPLETION_SUMMARY.md"),
+      "---\nstatus: complete\n---\n# Complete\n",
+      "utf-8",
+    );
   }
 
   return goalDir;
@@ -60,11 +64,18 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at workspaceDir", () => {
 
   it("passes when COMPLETION_SUMMARY.md exists, even if other expected files are missing", () => {
     // Arrange: temp dir with COMPLETION_SUMMARY.md file but no TASK.md/TEST.md
-    fs.writeFileSync(path.join(tempDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete\n", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "COMPLETION_SUMMARY.md"),
+      "---\nstatus: complete\n---\n# Complete\n",
+      "utf-8",
+    );
 
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ name: "task", file: "TASK.md" }, { name: "test", file: "TEST.md" }],
+      outputs: [
+        { name: "task", file: "TASK.md" },
+        { name: "test", file: "TEST.md" },
+      ],
     };
 
     // Act
@@ -77,7 +88,11 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at workspaceDir", () => {
 
   it("passes when COMPLETION_SUMMARY.md is the only expected file and it exists", () => {
     // Arrange: temp dir with COMPLETION_SUMMARY.md
-    fs.writeFileSync(path.join(tempDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete\n", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "COMPLETION_SUMMARY.md"),
+      "---\nstatus: complete\n---\n# Complete\n",
+      "utf-8",
+    );
 
     const contract: CapabilityContract = {
       inputs: [],
@@ -112,7 +127,11 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at workspaceDir", () => {
     // Arrange: temp dir with S01/COMPLETION_SUMMARY.md but no COMPLETION_SUMMARY.md at root
     const s01Dir = path.join(tempDir, "S01");
     fs.mkdirSync(s01Dir, { recursive: true });
-    fs.writeFileSync(path.join(s01Dir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete\n", "utf-8");
+    fs.writeFileSync(
+      path.join(s01Dir, "COMPLETION_SUMMARY.md"),
+      "---\nstatus: complete\n---\n# Complete\n",
+      "utf-8",
+    );
 
     const contract: CapabilityContract = {
       inputs: [],
@@ -136,15 +155,20 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at workspaceDir", () => {
 describe("resolveEvolveWriteAllowlist", () => {
   it("always includes COMPLETION_SUMMARY.md alongside step-folder paths", async () => {
     // Arrange: resolve evolve-plan config with stepNumber 2
-    const params = { capability: "evolve-plan" as string, goalName: "my-feature", stepNumber: 2, sessionName: "test" };
+    const params = {
+      capability: "evolve-plan" as string,
+      goalName: "my-feature",
+      stepNumber: 2,
+      sessionName: "test",
+    };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
     // Assert: writeAllowlist contains COMPLETION_SUMMARY.md, S02/TASK.md (no TEST.md)
-    expect(result!.writeAllowlist).toContain("COMPLETION_SUMMARY.md");
-    expect(result!.writeAllowlist).toContain("S02/TASK.md");
-    expect(result!.writeAllowlist).not.toContain("S02/TEST.md");
+    expect(result?.writeAllowlist).toContain("COMPLETION_SUMMARY.md");
+    expect(result?.writeAllowlist).toContain("S02/TASK.md");
+    expect(result?.writeAllowlist).not.toContain("S02/TEST.md");
   });
 });
 
@@ -155,7 +179,12 @@ describe("resolveEvolveWriteAllowlist", () => {
 describe("resolveEvolveWriteAllowlist with REVISE_PLAN_NEEDED", () => {
   it("includes S01/REVISE_PLAN_NEEDED in write allowlist for stepNumber=1", async () => {
     // Arrange: resolve evolve-plan config with stepNumber 1
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1, sessionName: "test" };
+    const params = {
+      capability: "evolve-plan" as string,
+      goalName: "test-goal",
+      stepNumber: 1,
+      sessionName: "test",
+    };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -166,7 +195,12 @@ describe("resolveEvolveWriteAllowlist with REVISE_PLAN_NEEDED", () => {
 
   it("includes S03/REVISE_PLAN_NEEDED in write allowlist for stepNumber=3", async () => {
     // Arrange: resolve evolve-plan config with stepNumber 3
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 3, sessionName: "test" };
+    const params = {
+      capability: "evolve-plan" as string,
+      goalName: "test-goal",
+      stepNumber: 3,
+      sessionName: "test",
+    };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -177,7 +211,12 @@ describe("resolveEvolveWriteAllowlist with REVISE_PLAN_NEEDED", () => {
 
   it("marker path uses correct step folder naming (zero-padded)", async () => {
     // Arrange: resolve evolve-plan config with stepNumber 12
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 12, sessionName: "test" };
+    const params = {
+      capability: "evolve-plan" as string,
+      goalName: "test-goal",
+      stepNumber: 12,
+      sessionName: "test",
+    };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -196,15 +235,22 @@ describe("resolveEvolveWriteAllowlist with REVISE_PLAN_NEEDED", () => {
 describe("REVISE_PLAN_NEEDED marker filename consistency", () => {
   it("marker filename in evolve-plan writeAllowlist matches revise-plan constant", async () => {
     // Arrange: resolve evolve-plan config for step 2
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2, sessionName: "test" };
+    const params = {
+      capability: "evolve-plan" as string,
+      goalName: "test-goal",
+      stepNumber: 2,
+      sessionName: "test",
+    };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
     // Assert: extract the marker path from writeAllowlist, check basename equals "REVISE_PLAN_NEEDED"
-    const markerPath = result?.writeAllowlist?.find((p) => p.includes("REVISE_PLAN_NEEDED"));
+    const markerPath = result?.writeAllowlist?.find((p) =>
+      p.includes("REVISE_PLAN_NEEDED"),
+    );
     expect(markerPath).toBeDefined();
-    const basename = markerPath!.split("/").pop();
+    const basename = markerPath?.split("/").pop();
     expect(basename).toBe("REVISE_PLAN_NEEDED");
 
     // Cross-check: the revise-plan module uses the same constant value
@@ -220,7 +266,12 @@ describe("REVISE_PLAN_NEEDED marker filename consistency", () => {
 describe("contract.outputs with DECISIONS_FILE requiredWhen", () => {
   it("excludes DECISIONS.md for stepNumber=1", async () => {
     // Arrange: step 1 should produce only TASK.md
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1, sessionName: "test" };
+    const params = {
+      capability: "evolve-plan" as string,
+      goalName: "test-goal",
+      stepNumber: 1,
+      sessionName: "test",
+    };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -230,12 +281,17 @@ describe("contract.outputs with DECISIONS_FILE requiredWhen", () => {
       (e: any) => "file" in e && e.file.includes("DECISIONS.md"),
     ) as MarkdownFileSpec | undefined;
     expect(decisionsEntry).toBeDefined();
-    expect(decisionsEntry!.requiredWhen!(params)).toBe(false);
+    expect(decisionsEntry?.requiredWhen?.(params)).toBe(false);
   });
 
   it("includes DECISIONS.md for stepNumber=2", async () => {
     // Arrange: step 2 should include DECISIONS.md alongside TASK.md
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2, sessionName: "test" };
+    const params = {
+      capability: "evolve-plan" as string,
+      goalName: "test-goal",
+      stepNumber: 2,
+      sessionName: "test",
+    };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -245,12 +301,17 @@ describe("contract.outputs with DECISIONS_FILE requiredWhen", () => {
       (e: any) => "file" in e && e.file.includes("DECISIONS.md"),
     ) as MarkdownFileSpec | undefined;
     expect(decisionsEntry).toBeDefined();
-    expect(decisionsEntry!.requiredWhen!(params)).toBe(true);
+    expect(decisionsEntry?.requiredWhen?.(params)).toBe(true);
   });
 
   it("includes DECISIONS.md for stepNumber=3", async () => {
     // Arrange: step 3+ should also include DECISIONS.md
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 3, sessionName: "test" };
+    const params = {
+      capability: "evolve-plan" as string,
+      goalName: "test-goal",
+      stepNumber: 3,
+      sessionName: "test",
+    };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -260,7 +321,7 @@ describe("contract.outputs with DECISIONS_FILE requiredWhen", () => {
       (e: any) => "file" in e && e.file.includes("DECISIONS.md"),
     ) as MarkdownFileSpec | undefined;
     expect(decisionsEntry).toBeDefined();
-    expect(decisionsEntry!.requiredWhen!(params)).toBe(true);
+    expect(decisionsEntry?.requiredWhen?.(params)).toBe(true);
   });
 });
 
@@ -271,18 +332,30 @@ describe("contract.outputs with DECISIONS_FILE requiredWhen", () => {
 describe("resolveEvolveWriteAllowlist with DECISIONS_FILE", () => {
   it("excludes DECISIONS.md from write allowlist for stepNumber=1", async () => {
     // Arrange: step 1 should not include DECISIONS.md in the write allowlist
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 1, sessionName: "test" };
+    const params = {
+      capability: "evolve-plan" as string,
+      goalName: "test-goal",
+      stepNumber: 1,
+      sessionName: "test",
+    };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
     // Assert: no DECISIONS.md in the allowlist
-    expect(result?.writeAllowlist?.some((p) => p.includes("DECISIONS.md"))).toBe(false);
+    expect(
+      result?.writeAllowlist?.some((p) => p.includes("DECISIONS.md")),
+    ).toBe(false);
   });
 
   it("includes DECISIONS.md in write allowlist for stepNumber=2", async () => {
     // Arrange: step 2 should include DECISIONS.md alongside existing entries
-    const params = { capability: "evolve-plan" as string, goalName: "test-goal", stepNumber: 2, sessionName: "test" };
+    const params = {
+      capability: "evolve-plan" as string,
+      goalName: "test-goal",
+      stepNumber: 2,
+      sessionName: "test",
+    };
 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
@@ -314,7 +387,10 @@ function createGoalTreeWithFrontmatter(
   fs.mkdirSync(goalDir, { recursive: true });
 
   // Create PLAN.md with YAML frontmatter
-  const stepsYaml = Array.from({ length: totalSteps }, (_, i) => `  - name: step-${i + 1}\n    complexity: task`).join("\n");
+  const stepsYaml = Array.from(
+    { length: totalSteps },
+    (_, i) => `  - name: step-${i + 1}\n    complexity: task`,
+  ).join("\n");
   const planContent = `---\ntotalSteps: ${totalSteps}\nsteps:\n${stepsYaml}\n---\n# Plan\n\n### Step 1: Test step\n`;
   fs.writeFileSync(path.join(goalDir, "PLAN.md"), planContent, "utf-8");
 
@@ -335,7 +411,11 @@ function createGoalTreeWithFrontmatter(
 
   // Optionally create COMPLETION_SUMMARY.md
   if (options?.withCompletionSummary) {
-    fs.writeFileSync(path.join(goalDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete\n", "utf-8");
+    fs.writeFileSync(
+      path.join(goalDir, "COMPLETION_SUMMARY.md"),
+      "---\nstatus: complete\n---\n# Complete\n",
+      "utf-8",
+    );
   }
 
   return goalDir;
@@ -369,7 +449,10 @@ describe("evolvePlanTool.execute", () => {
       cwd,
       ui: { notify: vi.fn() },
       hasUI: false,
-      sessionManager: { getSessionFile: vi.fn(() => ""), getEntries: vi.fn(() => []) },
+      sessionManager: {
+        getSessionFile: vi.fn(() => ""),
+        getEntries: vi.fn(() => []),
+      },
       modelRegistry: {},
       model: undefined,
       isIdle: vi.fn(() => true),
@@ -389,7 +472,13 @@ describe("evolvePlanTool.execute", () => {
     fs.mkdirSync(goalDir, { recursive: true });
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { workspacePrefix: "goals/no-plan", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/no-plan", stepNumber: 1 },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
 
     expect(result.content[0].text).toMatch(/PLAN/i);
   });
@@ -398,7 +487,13 @@ describe("evolvePlanTool.execute", () => {
     createGoalTreeWithFrontmatter(tempDir, "my-feature", 3);
 
     const tool = getTool();
-    const result = await tool.execute("test-id", { workspacePrefix: "goals/my-feature", stepNumber: 1 }, undefined, undefined, makeCtx(tempDir));
+    const result = await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/my-feature", stepNumber: 1 },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
 
     expect(result.content[0].text).toContain("queued");
   });
@@ -407,17 +502,27 @@ describe("evolvePlanTool.execute", () => {
     createGoalTreeWithFrontmatter(tempDir, "my-feature", 3);
 
     const tool = getTool();
-    await tool.execute("test-id", { workspacePrefix: "goals/my-feature", stepNumber: 1, initialMessage: "test message" }, undefined, undefined, makeCtx(tempDir));
+    await tool.execute(
+      "test-id",
+      {
+        workspacePrefix: "goals/my-feature",
+        stepNumber: 1,
+        initialMessage: "test message",
+      },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
 
     const task = readPendingTask(tempDir, "my-feature");
     expect(task).toBeDefined();
-    expect(task!.capability).toBe("evolve-plan");
-    expect(task!.params).toHaveProperty("workspacePrefix", "goals/my-feature");
-    expect(task!.params).toHaveProperty("sessionName");
-    expect(task!.params!.sessionName).toContain("evolve-plan");
-    expect(task!.params).toHaveProperty("queueKey", "my-feature");
-    expect(task!.params).toHaveProperty("stepNumber");
-    expect(task!.params).toHaveProperty("initialMessage");
-    expect(task!.params!.initialMessage).toBe("test message");
+    expect(task?.capability).toBe("evolve-plan");
+    expect(task?.params).toHaveProperty("workspacePrefix", "goals/my-feature");
+    expect(task?.params).toHaveProperty("sessionName");
+    expect(task?.params?.sessionName).toContain("evolve-plan");
+    expect(task?.params).toHaveProperty("queueKey", "my-feature");
+    expect(task?.params).toHaveProperty("stepNumber");
+    expect(task?.params).toHaveProperty("initialMessage");
+    expect(task?.params?.initialMessage).toBe("test message");
   });
 });

@@ -1,4 +1,7 @@
-import type { ExtensionAPI, TurnEndEvent } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  TurnEndEvent,
+} from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { getSessionConfig } from "../capability-utils";
@@ -67,7 +70,9 @@ export function __testSetTotalWorkflowSteps(value?: number): number {
  *
  * @internal — Do not use in production code.
  */
-export function __testSetStepsList(value?: { id: string; title: string }[]): { id: string; title: string }[] {
+export function __testSetStepsList(
+  value?: { id: string; title: string }[],
+): { id: string; title: string }[] {
   if (value !== undefined) {
     stepsList = value;
   }
@@ -92,7 +97,8 @@ export function generateNudgeMessage(
   steps?: { id: string; title: string }[],
 ): string {
   const isLastStep = current >= total;
-  const stepTitle = steps && steps.length > 0 ? steps[current - 1]?.title : undefined;
+  const stepTitle =
+    steps && steps.length > 0 ? steps[current - 1]?.title : undefined;
 
   if (isLastStep) {
     if (stepTitle) {
@@ -115,14 +121,20 @@ export function generateNudgeMessage(
 export const workflowStepFinishTool = defineTool({
   name: "workflow-step-finish",
   label: "Workflow Step Finish",
-  description: "Signal that the current workflow step is complete and advance to the next step.",
+  description:
+    "Signal that the current workflow step is complete and advance to the next step.",
   promptSnippet: "Advance to the next workflow step.",
   parameters: Type.Object({}),
 
   async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
     // Gated: not active outside capability sessions
     if (!isActivePioSession) {
-      return { content: [{ type: "text", text: "Step nudging is not active in this session." }], details: {} };
+      return {
+        content: [
+          { type: "text", text: "Step nudging is not active in this session." },
+        ],
+        details: {},
+      };
     }
 
     // Increment step counter
@@ -135,7 +147,10 @@ export const workflowStepFinishTool = defineTool({
 
     // Generate response
     const isLastStep = currentWorkflowStep >= totalWorkflowSteps;
-    const stepTitle = stepsList.length > 0 ? stepsList[currentWorkflowStep - 1]?.title : undefined;
+    const stepTitle =
+      stepsList.length > 0
+        ? stepsList[currentWorkflowStep - 1]?.title
+        : undefined;
 
     if (isLastStep) {
       return {
@@ -208,7 +223,10 @@ export function setupStepNudging(pi: ExtensionAPI) {
 
       // Read workflowSteps array from sessionParams (for title lookups)
       if (Array.isArray(sessionParams.workflowSteps)) {
-        stepsList = sessionParams.workflowSteps as { id: string; title: string }[];
+        stepsList = sessionParams.workflowSteps as {
+          id: string;
+          title: string;
+        }[];
       } else {
         stepsList = [];
       }
@@ -228,9 +246,14 @@ export function setupStepNudging(pi: ExtensionAPI) {
     // Guard: only active for capability sub-sessions with workflow steps defined
     if (!isActivePioSession) return;
     if (totalWorkflowSteps <= 0) return;
-    if ((event.message as { stopReason?: string }).stopReason === "aborted") return;
+    if ((event.message as { stopReason?: string }).stopReason === "aborted")
+      return;
 
-    const message = generateNudgeMessage(currentWorkflowStep, totalWorkflowSteps, stepsList);
+    const message = generateNudgeMessage(
+      currentWorkflowStep,
+      totalWorkflowSteps,
+      stepsList,
+    );
 
     pi.sendMessage(
       {

@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { WorkflowStep, CapabilitySkills } from "./capability-package";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CapabilitySkills, WorkflowStep } from "./capability-package";
 
 // ---------------------------------------------------------------------------
 // renderWorkflowSection (pure function — no filesystem)
@@ -23,7 +23,11 @@ describe("renderWorkflowSection", () => {
 
   it("renders a single step without skills", () => {
     const steps: WorkflowStep[] = [
-      { id: "step-1", title: "Understand the goal", instructions: "Read GOAL.md and internalize the current state." },
+      {
+        id: "step-1",
+        title: "Understand the goal",
+        instructions: "Read GOAL.md and internalize the current state.",
+      },
     ];
 
     const result = renderWorkflowSection(steps);
@@ -77,7 +81,9 @@ describe("renderWorkflowSection", () => {
     expect(result).toContain("Skills: [source-research]");
     expect(result).toContain("### Step 2: Implement");
     // Step 2 has no skills — no Skills line
-    const step2Section = result.split("### Step 2: Implement")[1]!.split("### Step 3")[0]!;
+    const step2Section = result
+      .split("### Step 2: Implement")[1]
+      ?.split("### Step 3")[0]!;
     expect(step2Section).not.toContain("Skills:");
     expect(result).toContain("### Step 3: Commit");
     expect(result).toContain("Skills: [pio-git]");
@@ -122,7 +128,8 @@ describe("renderWorkflowSection", () => {
       {
         id: "step-1",
         title: "Complex step",
-        instructions: "First, read the file.\n\nThen, write tests.\n\nFinally, implement.",
+        instructions:
+          "First, read the file.\n\nThen, write tests.\n\nFinally, implement.",
       },
     ];
 
@@ -139,7 +146,10 @@ describe("renderWorkflowSection", () => {
 // ---------------------------------------------------------------------------
 
 describe("mergeWorkflowStepSkills", () => {
-  let mergeWorkflowStepSkills: (steps: WorkflowStep[], base?: CapabilitySkills) => CapabilitySkills;
+  let mergeWorkflowStepSkills: (
+    steps: WorkflowStep[],
+    base?: CapabilitySkills,
+  ) => CapabilitySkills;
 
   beforeEach(async () => {
     const mod = await import("./prompt-compiler");
@@ -147,7 +157,10 @@ describe("mergeWorkflowStepSkills", () => {
   });
 
   it("returns base skills when steps have no skills", () => {
-    const base: CapabilitySkills = { mandatory: ["pio"], recommended: [{ name: "tdd", condition: "always" }] };
+    const base: CapabilitySkills = {
+      mandatory: ["pio"],
+      recommended: [{ name: "tdd", condition: "always" }],
+    };
     const steps: WorkflowStep[] = [
       { id: "s1", title: "Step 1", instructions: "Do it." },
     ];
@@ -160,7 +173,12 @@ describe("mergeWorkflowStepSkills", () => {
 
   it("returns step skills when base is undefined", () => {
     const steps: WorkflowStep[] = [
-      { id: "s1", title: "Step 1", instructions: "Do it.", skills: { mandatory: ["tdd"] } },
+      {
+        id: "s1",
+        title: "Step 1",
+        instructions: "Do it.",
+        skills: { mandatory: ["tdd"] },
+      },
     ];
 
     const result = mergeWorkflowStepSkills(steps);
@@ -181,8 +199,18 @@ describe("mergeWorkflowStepSkills", () => {
   it("deduplicates mandatory skills with Set (first-seen wins, preserves order)", () => {
     const base: CapabilitySkills = { mandatory: ["pio", "ask-user"] };
     const steps: WorkflowStep[] = [
-      { id: "s1", title: "Step 1", instructions: "A.", skills: { mandatory: ["ask-user", "tdd"] } },
-      { id: "s2", title: "Step 2", instructions: "B.", skills: { mandatory: ["tdd", "pio-git"] } },
+      {
+        id: "s1",
+        title: "Step 1",
+        instructions: "A.",
+        skills: { mandatory: ["ask-user", "tdd"] },
+      },
+      {
+        id: "s2",
+        title: "Step 2",
+        instructions: "B.",
+        skills: { mandatory: ["tdd", "pio-git"] },
+      },
     ];
 
     const result = mergeWorkflowStepSkills(steps, base);
@@ -201,7 +229,12 @@ describe("mergeWorkflowStepSkills", () => {
         id: "s1",
         title: "Step 1",
         instructions: "A.",
-        skills: { recommended: [{ name: "tdd", condition: "when testing" }, { name: "pio-git", condition: "when committing" }] },
+        skills: {
+          recommended: [
+            { name: "tdd", condition: "when testing" },
+            { name: "pio-git", condition: "when committing" },
+          ],
+        },
       },
     ];
 
@@ -217,7 +250,12 @@ describe("mergeWorkflowStepSkills", () => {
   it("does not mutate input objects", () => {
     const base: CapabilitySkills = { mandatory: ["pio"] };
     const steps: WorkflowStep[] = [
-      { id: "s1", title: "Step 1", instructions: "A.", skills: { mandatory: ["tdd"] } },
+      {
+        id: "s1",
+        title: "Step 1",
+        instructions: "A.",
+        skills: { mandatory: ["tdd"] },
+      },
     ];
 
     const baseBefore = JSON.stringify(base);
@@ -239,7 +277,10 @@ describe("mergeWorkflowStepSkills", () => {
         id: "s1",
         title: "Step 1",
         instructions: "A.",
-        skills: { mandatory: ["tdd"], recommended: [{ name: "pio-git", condition: "committing" }] },
+        skills: {
+          mandatory: ["tdd"],
+          recommended: [{ name: "pio-git", condition: "committing" }],
+        },
       },
     ];
 
@@ -279,7 +320,7 @@ describe("readWorkflowSteps", () => {
       `export default [
   { id: "step-1", title: "First", instructions: "Do first." },
   { id: "step-2", title: "Second", instructions: "Do second." },
-];`
+];`,
     );
 
     const steps = await readWorkflowSteps(capDir);
@@ -302,14 +343,16 @@ describe("readWorkflowSteps", () => {
     instructions: "Write code.",
     skills: { mandatory: ["tdd"], recommended: [{ name: "pio-git", condition: "when committing" }] },
   },
-];`
+];`,
     );
 
     const steps = await readWorkflowSteps(capDir);
 
     expect(steps).toHaveLength(1);
     expect(steps[0].skills?.mandatory).toEqual(["tdd"]);
-    expect(steps[0].skills?.recommended).toEqual([{ name: "pio-git", condition: "when committing" }]);
+    expect(steps[0].skills?.recommended).toEqual([
+      { name: "pio-git", condition: "when committing" },
+    ]);
   });
 
   it("throws when workflow.ts is missing", async () => {
@@ -329,7 +372,7 @@ describe("readWorkflowSteps", () => {
     fs.mkdirSync(capDir, { recursive: true });
     fs.writeFileSync(
       path.join(capDir, "workflow.ts"),
-      `export const steps = [{ id: "s1", title: "X", instructions: "Y" }];`
+      `export const steps = [{ id: "s1", title: "X", instructions: "Y" }];`,
     );
 
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -348,7 +391,7 @@ describe("readWorkflowSteps", () => {
       `export default [
   { id: "step-1", title: "Good", instructions: "OK" },
   { title: "Missing ID" },
-];`
+];`,
     );
 
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -384,10 +427,13 @@ describe("readPackageComponents", () => {
     const capDir = path.join(tempDir, "test-cap");
     fs.mkdirSync(capDir, { recursive: true });
     fs.writeFileSync(path.join(capDir, "role.md"), "# My Role\n\nI do things.");
-    fs.writeFileSync(path.join(capDir, "guidelines.md"), "- Be careful\n- Test everything");
+    fs.writeFileSync(
+      path.join(capDir, "guidelines.md"),
+      "- Be careful\n- Test everything",
+    );
     fs.writeFileSync(
       path.join(capDir, "workflow.ts"),
-      `export default [{ id: "s1", title: "Step 1", instructions: "Do it." }];`
+      `export default [{ id: "s1", title: "Step 1", instructions: "Do it." }];`,
     );
 
     const components = await readPackageComponents(capDir);
@@ -395,7 +441,9 @@ describe("readPackageComponents", () => {
     expect(components.role).toBe("# My Role\n\nI do things.");
     expect(components.steps).toHaveLength(1);
     expect(components.steps[0].title).toBe("Step 1");
-    expect(components.guidelines?.content).toBe("- Be careful\n- Test everything");
+    expect(components.guidelines?.content).toBe(
+      "- Be careful\n- Test everything",
+    );
   });
 
   it("handles missing role.md gracefully (role is undefined)", async () => {
@@ -403,7 +451,7 @@ describe("readPackageComponents", () => {
     fs.mkdirSync(capDir, { recursive: true });
     fs.writeFileSync(
       path.join(capDir, "workflow.ts"),
-      `export default [{ id: "s1", title: "Step 1", instructions: "Do it." }];`
+      `export default [{ id: "s1", title: "Step 1", instructions: "Do it." }];`,
     );
 
     const components = await readPackageComponents(capDir);
@@ -417,7 +465,7 @@ describe("readPackageComponents", () => {
     fs.mkdirSync(capDir, { recursive: true });
     fs.writeFileSync(
       path.join(capDir, "workflow.ts"),
-      `export default [{ id: "s1", title: "Step 1", instructions: "Do it." }];`
+      `export default [{ id: "s1", title: "Step 1", instructions: "Do it." }];`,
     );
 
     const components = await readPackageComponents(capDir);
@@ -455,11 +503,17 @@ describe("compilePrompt", () => {
   it("returns CompiledPromptSections with role, workflow, and guidelines", async () => {
     const capDir = path.join(tempDir, "test-cap");
     fs.mkdirSync(capDir, { recursive: true });
-    fs.writeFileSync(path.join(capDir, "role.md"), "I am the Goal Definition Assistant.");
-    fs.writeFileSync(path.join(capDir, "guidelines.md"), "- Be thorough\n- Ask clarifying questions");
+    fs.writeFileSync(
+      path.join(capDir, "role.md"),
+      "I am the Goal Definition Assistant.",
+    );
+    fs.writeFileSync(
+      path.join(capDir, "guidelines.md"),
+      "- Be thorough\n- Ask clarifying questions",
+    );
     fs.writeFileSync(
       path.join(capDir, "workflow.ts"),
-      `export default [{ id: "s1", title: "Understand", instructions: "Read the goal." }];`
+      `export default [{ id: "s1", title: "Understand", instructions: "Read the goal." }];`,
     );
 
     const result = await compilePrompt(capDir, {});
@@ -477,7 +531,7 @@ describe("compilePrompt", () => {
     fs.mkdirSync(capDir, { recursive: true });
     fs.writeFileSync(
       path.join(capDir, "workflow.ts"),
-      `export default [{ id: "s1", title: "Step 1", instructions: "Do it." }];`
+      `export default [{ id: "s1", title: "Step 1", instructions: "Do it." }];`,
     );
 
     const result = await compilePrompt(capDir, {});
@@ -491,7 +545,7 @@ describe("compilePrompt", () => {
     fs.mkdirSync(capDir, { recursive: true });
     fs.writeFileSync(
       path.join(capDir, "workflow.ts"),
-      `export default [{ id: "s1", title: "Step 1", instructions: "Do it." }];`
+      `export default [{ id: "s1", title: "Step 1", instructions: "Do it." }];`,
     );
 
     const result = await compilePrompt(capDir, {});
@@ -510,7 +564,7 @@ describe("compilePrompt", () => {
   title: "Step 1",
   instructions: "Do it.",
   skills: { mandatory: ["tdd"] },
-}];`
+}];`,
     );
 
     const result = await compilePrompt(capDir, {
@@ -518,7 +572,7 @@ describe("compilePrompt", () => {
     });
 
     expect(result.mergedSkills).toBeDefined();
-    expect(result.mergedSkills!.mandatory).toEqual(["pio", "tdd"]);
+    expect(result.mergedSkills?.mandatory).toEqual(["pio", "tdd"]);
   });
 
   it("workflow section is always present (required)", async () => {
@@ -526,7 +580,7 @@ describe("compilePrompt", () => {
     fs.mkdirSync(capDir, { recursive: true });
     fs.writeFileSync(
       path.join(capDir, "workflow.ts"),
-      `export default [{ id: "s1", title: "Step 1", instructions: "Do it." }];`
+      `export default [{ id: "s1", title: "Step 1", instructions: "Do it." }];`,
     );
 
     const result = await compilePrompt(capDir, {});
@@ -550,14 +604,14 @@ describe("compilePrompt", () => {
       `export default [
   { id: "s1", title: "Step A", instructions: "First.", skills: { mandatory: ["tdd"] } },
   { id: "s2", title: "Step B", instructions: "Second." },
-];`
+];`,
     );
 
     const result = await compilePrompt(capDir, {});
 
     expect(result.workflow).toContain("Skills: [tdd]");
     // Step B has no skills — verify no Skills line in its section
-    const stepBSection = result.workflow!.split("### Step 2: Step B")[1]!;
+    const stepBSection = result.workflow?.split("### Step 2: Step B")[1]!;
     expect(stepBSection).not.toContain("Skills:");
   });
 });

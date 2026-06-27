@@ -23,7 +23,11 @@ export const pioRootDir = path.join(process.cwd(), ".pio");
  * When `parentStepDir` is provided, returns `<parentStepDir>/subgoals/<name>`
  * for nested subgoal workspaces.
  */
-export function resolveGoalDir(cwd: string, name: string, parentStepDir?: string): string {
+export function resolveGoalDir(
+  cwd: string,
+  name: string,
+  parentStepDir?: string,
+): string {
   if (parentStepDir !== undefined) {
     return path.join(parentStepDir, "subgoals", name);
   }
@@ -34,7 +38,10 @@ export function resolveGoalDir(cwd: string, name: string, parentStepDir?: string
  * Prepare the goal workspace (mkdir).
  * Returns { goalDir, ready } — ready is false if directory already exists.
  */
-export function prepareGoal(name: string, cwd: string): { goalDir: string; ready: boolean } {
+export function prepareGoal(
+  name: string,
+  cwd: string,
+): { goalDir: string; ready: boolean } {
   const goalDir = resolveGoalDir(cwd, name);
 
   if (fs.existsSync(goalDir)) {
@@ -63,7 +70,10 @@ export function issuesDir(cwd: string): string {
  * Accepts a slug (`my-issue`), filename (`my-issue.md`), or relative/absolute path.
  * Returns `undefined` if not found.
  */
-export function findIssuePath(cwd: string, identifier: string): string | undefined {
+export function findIssuePath(
+  cwd: string,
+  identifier: string,
+): string | undefined {
   // Absolute path — check directly
   if (path.isAbsolute(identifier) && fs.existsSync(identifier)) {
     return identifier;
@@ -78,7 +88,7 @@ export function findIssuePath(cwd: string, identifier: string): string | undefin
 
   // Bare slug — append .md (e.g. `my-issue` → `my-issue.md`)
   if (!basename.endsWith(".md")) {
-    const withExt = path.join(dir, basename + ".md");
+    const withExt = path.join(dir, `${basename}.md`);
     if (fs.existsSync(withExt)) return withExt;
   }
 

@@ -1,5 +1,11 @@
 import { Type } from "typebox";
-import type { CapabilitySkills, CapabilityConfig, MarkdownFileSpec, OneOfGroup, OutputEntry, CapabilityContract } from "./types";
+import type {
+  CapabilityConfig,
+  CapabilityContract,
+  CapabilitySkills,
+  MarkdownFileSpec,
+  OneOfGroup,
+} from "./types";
 
 // ---------------------------------------------------------------------------
 // CapabilitySkills — compile-time type verification
@@ -29,14 +35,17 @@ describe("CapabilitySkills", () => {
     // Arrange + Act
     const skills: CapabilitySkills = {
       recommended: [
-        { name: "source-research", condition: "when researching external libraries" },
+        {
+          name: "source-research",
+          condition: "when researching external libraries",
+        },
       ],
     };
 
     // Assert
     expect(skills.recommended).toHaveLength(1);
-    expect(skills.recommended![0].name).toBe("source-research");
-    expect(typeof skills.recommended![0].condition).toBe("string");
+    expect(skills.recommended?.[0].name).toBe("source-research");
+    expect(typeof skills.recommended?.[0].condition).toBe("string");
     expect(skills.mandatory).toBeUndefined();
   });
 
@@ -44,15 +53,13 @@ describe("CapabilitySkills", () => {
     // Arrange + Act
     const skills: CapabilitySkills = {
       mandatory: ["tdd"],
-      recommended: [
-        { name: "pio-git", condition: "during completion" },
-      ],
+      recommended: [{ name: "pio-git", condition: "during completion" }],
     };
 
     // Assert
     expect(skills.mandatory).toEqual(["tdd"]);
     expect(skills.recommended).toHaveLength(1);
-    expect(skills.recommended![0].name).toBe("pio-git");
+    expect(skills.recommended?.[0].name).toBe("pio-git");
   });
 
   it("accepts an empty object (both fields optional)", () => {
@@ -72,7 +79,7 @@ describe("CapabilitySkills", () => {
 
     // Assert
     expect(Array.isArray(skills.mandatory)).toBe(true);
-    expect(typeof skills.mandatory![0]).toBe("string");
+    expect(typeof skills.mandatory?.[0]).toBe("string");
   });
 
   it("recommended contains objects with name and condition string fields", () => {
@@ -107,15 +114,18 @@ describe("CapabilityConfig — skills field", () => {
       skills: {
         mandatory: ["pio-planning", "grill-me"],
         recommended: [
-          { name: "source-research", condition: "when researching architecture" },
+          {
+            name: "source-research",
+            condition: "when researching architecture",
+          },
         ],
       },
     };
 
     // Assert
     expect(config.skills).toBeDefined();
-    expect(config.skills!.mandatory).toEqual(["pio-planning", "grill-me"]);
-    expect(config.skills!.recommended).toHaveLength(1);
+    expect(config.skills?.mandatory).toEqual(["pio-planning", "grill-me"]);
+    expect(config.skills?.recommended).toHaveLength(1);
   });
 
   it("accepts a config without the skills field (backward compatibility)", () => {
@@ -138,15 +148,18 @@ describe("CapabilityConfig — skills field", () => {
       allowProjectWrites: false,
       skills: {
         recommended: [
-          { name: "source-research", condition: "when researching external libraries" },
+          {
+            name: "source-research",
+            condition: "when researching external libraries",
+          },
         ],
       },
     };
 
     // Assert
-    expect(config.skills!.mandatory).toBeUndefined();
-    expect(config.skills!.recommended).toHaveLength(1);
-    expect(config.skills!.recommended![0].name).toBe("source-research");
+    expect(config.skills?.mandatory).toBeUndefined();
+    expect(config.skills?.recommended).toHaveLength(1);
+    expect(config.skills?.recommended?.[0].name).toBe("source-research");
   });
 });
 
@@ -170,10 +183,14 @@ describe("unified contract types", () => {
         {
           name: "decisions",
           file: "S{stepNumber:02d}/DECISIONS.md",
-          requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1,
+          requiredWhen: (params) =>
+            typeof params?.stepNumber === "number" && params.stepNumber > 1,
         },
         {
-          files: [{ name: "approved", file: "APPROVED" }, { name: "rejected", file: "REJECTED" }],
+          files: [
+            { name: "approved", file: "APPROVED" },
+            { name: "rejected", file: "REJECTED" },
+          ],
         } satisfies OneOfGroup,
       ],
     };
@@ -187,9 +204,9 @@ describe("unified contract types", () => {
 
     // Assert: requiredWhen predicate behavior (the only runtime behavior in these types)
     const decisions = contract.outputs[1] as MarkdownFileSpec;
-    expect(decisions.requiredWhen!({ stepNumber: 3 })).toBe(true);
-    expect(decisions.requiredWhen!({ stepNumber: 1 })).toBe(false);
-    expect(decisions.requiredWhen!()).toBe(false);
+    expect(decisions.requiredWhen?.({ stepNumber: 3 })).toBe(true);
+    expect(decisions.requiredWhen?.({ stepNumber: 1 })).toBe(false);
+    expect(decisions.requiredWhen?.()).toBe(false);
 
     // Assert: OneOfGroup is accepted as OutputEntry
     const oneOf = contract.outputs[2] as OneOfGroup;

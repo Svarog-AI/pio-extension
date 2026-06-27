@@ -21,17 +21,29 @@ function cleanup(tempDir: string): void {
 function createGoalWorkspace(baseDir: string, goalName: string): string {
   const goalDir = path.join(baseDir, ".pio", "goals", goalName);
   fs.mkdirSync(goalDir, { recursive: true });
-  fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal\n\nTest goal.", "utf-8");
+  fs.writeFileSync(
+    path.join(goalDir, "GOAL.md"),
+    "# Goal\n\nTest goal.",
+    "utf-8",
+  );
   return goalDir;
 }
 
 /**
  * Create a subgoal workspace under S{NN}/subgoals/<name>/ with GOAL.md.
  */
-function createSubgoalWorkspace(goalDir: string, stepFolder: string, subgoalName: string): string {
+function createSubgoalWorkspace(
+  goalDir: string,
+  stepFolder: string,
+  subgoalName: string,
+): string {
   const subgoalDir = path.join(goalDir, stepFolder, "subgoals", subgoalName);
   fs.mkdirSync(subgoalDir, { recursive: true });
-  fs.writeFileSync(path.join(subgoalDir, "GOAL.md"), "# Subgoal\n\nNested subgoal.", "utf-8");
+  fs.writeFileSync(
+    path.join(subgoalDir, "GOAL.md"),
+    "# Subgoal\n\nNested subgoal.",
+    "utf-8",
+  );
   return subgoalDir;
 }
 
@@ -68,7 +80,11 @@ describe("inferPhase", () => {
   it('returns "planned" when GOAL.md and PLAN.md exist but no step folders', () => {
     // Arrange
     const goalDir = createGoalWorkspace(tempDir, "planned");
-    fs.writeFileSync(path.join(goalDir, "PLAN.md"), "# Plan\n\nSome plan.", "utf-8");
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      "# Plan\n\nSome plan.",
+      "utf-8",
+    );
 
     // Act & Assert
     expect(inferPhase(goalDir)).toBe("planned");
@@ -122,7 +138,9 @@ describe("findSubgoals", () => {
     // Assert
     expect(result).toHaveLength(1);
     expect(result[0].displayName).toBe("parent-goal/S03/nested-feature");
-    expect(result[0].dir).toBe(path.join(goalDir, "S03", "subgoals", "nested-feature"));
+    expect(result[0].dir).toBe(
+      path.join(goalDir, "S03", "subgoals", "nested-feature"),
+    );
   });
 
   it("returns entries for subgoals in multiple step folders", () => {
@@ -211,7 +229,11 @@ describe("readLastTask", () => {
     // Arrange
     const goalDir = createGoalWorkspace(tempDir, "with-last-task");
     const taskFile = path.join(goalDir, "LAST_TASK.json");
-    fs.writeFileSync(taskFile, JSON.stringify({ capability: "execute-task", params: {} }), "utf-8");
+    fs.writeFileSync(
+      taskFile,
+      JSON.stringify({ capability: "execute-task", params: {} }),
+      "utf-8",
+    );
 
     // Act & Assert
     expect(readLastTask(goalDir)).toBe("execute-task");

@@ -38,7 +38,7 @@ export type { CapabilityPackageDescriptor } from "./capability-package";
  * @returns Array of descriptors for all discovered packages
  */
 export async function discoverCapabilities(
-  scanBase: string
+  scanBase: string,
 ): Promise<CapabilityPackageDescriptor[]> {
   const capabilitiesDir = path.join(scanBase, "capabilities");
 
@@ -78,7 +78,7 @@ export async function discoverCapabilities(
 
       if (!config) {
         console.warn(
-          `[pio] Capability "${entry.name}" has config.ts but no default export — skipping`
+          `[pio] Capability "${entry.name}" has config.ts but no default export — skipping`,
         );
         continue;
       }
@@ -90,7 +90,7 @@ export async function discoverCapabilities(
       });
     } catch (err) {
       console.warn(
-        `[pio] Failed to load config for capability "${entry.name}": ${err instanceof Error ? err.message : String(err)} — skipping`
+        `[pio] Failed to load config for capability "${entry.name}": ${err instanceof Error ? err.message : String(err)} — skipping`,
       );
     }
   }
@@ -118,14 +118,14 @@ export async function registerCapability(
     const mod = await import(configPath);
     if (typeof mod.register !== "function") {
       console.warn(
-        `[pio] Capability "${descriptor.name}" has no register() export — skipping registration`
+        `[pio] Capability "${descriptor.name}" has no register() export — skipping registration`,
       );
       return;
     }
     mod.register(pi);
   } catch (err) {
     console.warn(
-      `[pio] Failed to register capability "${descriptor.name}": ${err instanceof Error ? err.message : String(err)}`
+      `[pio] Failed to register capability "${descriptor.name}": ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }

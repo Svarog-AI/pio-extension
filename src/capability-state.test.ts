@@ -1,11 +1,11 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createCapState, CapState, type FileState } from "./capability-state";
+import { Type } from "typebox";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createCapState } from "./capability-state";
 import { getCapState, setDiscoveredContracts } from "./state-machines/utils";
 import type { CapabilityContract, MarkdownFileSpec } from "./types";
-import { Type } from "typebox";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -60,7 +60,12 @@ const contractWithPlaceholderSchema: CapabilityContract = {
 };
 
 /** Write a file with YAML frontmatter. */
-function writeWithFrontmatter(dir: string, relPath: string, frontmatter: Record<string, unknown>, body: string = ""): void {
+function writeWithFrontmatter(
+  dir: string,
+  relPath: string,
+  frontmatter: Record<string, unknown>,
+  body: string = "",
+): void {
   const yaml = require("js-yaml").dump(frontmatter);
   const content = `---\n${yaml}---\n${body}`;
   const fullPath = path.join(dir, relPath);
@@ -112,14 +117,23 @@ describe("FileState.read() — without schema", () => {
   });
 
   it("returns raw frontmatter for files without schema", () => {
-    writeWithFrontmatter(tempDir, "GOAL.md", { title: "Test Goal", version: 1 });
+    writeWithFrontmatter(tempDir, "GOAL.md", {
+      title: "Test Goal",
+      version: 1,
+    });
     const capState = createCapState(minimalContract, tempDir);
-    const data = capState.input<{ title: string; version: number }>("goal").read();
+    const data = capState
+      .input<{ title: string; version: number }>("goal")
+      .read();
     expect(data).toEqual({ title: "Test Goal", version: 1 });
   });
 
   it("returns null for files with no YAML frontmatter", () => {
-    fs.writeFileSync(path.join(tempDir, "GOAL.md"), "# Just a heading, no frontmatter", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "GOAL.md"),
+      "# Just a heading, no frontmatter",
+      "utf-8",
+    );
     const capState = createCapState(minimalContract, tempDir);
     expect(capState.input("goal").read()).toBe(null);
   });
@@ -230,7 +244,9 @@ describe("Placeholder resolution", () => {
   afterEach(() => cleanup(tempDir));
 
   it("resolves placeholder paths in constructor params", () => {
-    const capState = createCapState(contractWithPlaceholders, tempDir, { stepNumber: 3 });
+    const capState = createCapState(contractWithPlaceholders, tempDir, {
+      stepNumber: 3,
+    });
     // S{stepNumber:02d}/TASK.md should resolve to S03/TASK.md
     const taskPath = path.join(tempDir, "S03", "TASK.md");
     fs.mkdirSync(path.dirname(taskPath), { recursive: true });
@@ -240,7 +256,9 @@ describe("Placeholder resolution", () => {
   });
 
   it("matches resolved contract entries with placeholder query", () => {
-    const capState = createCapState(contractWithPlaceholders, tempDir, { stepNumber: 5 });
+    const capState = createCapState(contractWithPlaceholders, tempDir, {
+      stepNumber: 5,
+    });
     const taskPath = path.join(tempDir, "S05", "TASK.md");
     fs.mkdirSync(path.dirname(taskPath), { recursive: true });
     writeWithFrontmatter(tempDir, "S05/TASK.md", { title: "Task 5" });
@@ -253,7 +271,9 @@ describe("Placeholder resolution", () => {
     // If resolution is broken, the file won't match any contract entry,
     // and read() will return raw data (not validated). We verify schema
     // validation is applied — proving the contract entry was matched.
-    const capState = createCapState(contractWithPlaceholderSchema, tempDir, { stepNumber: 3 });
+    const capState = createCapState(contractWithPlaceholderSchema, tempDir, {
+      stepNumber: 3,
+    });
 
     // Valid frontmatter — should pass schema validation
     writeWithFrontmatter(tempDir, "S03/TASK.md", { stepName: "Build feature" });
@@ -378,9 +398,10 @@ describe("input(name) — lookup by name in contract.inputs", () => {
 
   it("throws when the given name is not found in inputs", () => {
     const capState = createCapState(minimalContract, tempDir);
-    expect(() => capState.input("nonexistent")).toThrow("Input 'nonexistent' not found in contract");
+    expect(() => capState.input("nonexistent")).toThrow(
+      "Input 'nonexistent' not found in contract",
+    );
   });
-
 });
 
 // ---------------------------------------------------------------------------
@@ -465,9 +486,10 @@ describe("output(name) — lookup by name in contract.outputs", () => {
       outputs: [{ name: "plan", file: "PLAN.md" }],
     };
     const capState = createCapState(contract, tempDir);
-    expect(() => capState.output("nonexistent")).toThrow("Output 'nonexistent' not found in contract");
+    expect(() => capState.output("nonexistent")).toThrow(
+      "Output 'nonexistent' not found in contract",
+    );
   });
-
 });
 
 // ---------------------------------------------------------------------------
@@ -611,14 +633,28 @@ describe("CapState — workspace prefix integration", () => {
   // --- Constructor and factory ---
 
   it("createCapState with prefix resolves input() through prefixed path", () => {
-    writeWithFrontmatter(tempDir, "goals/my-feature/GOAL.md", { title: "Goal" });
-    const capState = createCapState(minimalContract, tempDir, undefined, "goals/my-feature");
+    writeWithFrontmatter(tempDir, "goals/my-feature/GOAL.md", {
+      title: "Goal",
+    });
+    const capState = createCapState(
+      minimalContract,
+      tempDir,
+      undefined,
+      "goals/my-feature",
+    );
     expect(capState.input("goal").exists()).toBe(true);
   });
 
   it("createCapState with prefix resolves output() through prefixed path", () => {
-    writeWithFrontmatter(tempDir, "goals/my-feature/PLAN.md", { totalSteps: 2 });
-    const capState = createCapState(minimalContract, tempDir, undefined, "goals/my-feature");
+    writeWithFrontmatter(tempDir, "goals/my-feature/PLAN.md", {
+      totalSteps: 2,
+    });
+    const capState = createCapState(
+      minimalContract,
+      tempDir,
+      undefined,
+      "goals/my-feature",
+    );
     expect(capState.output("plan").exists()).toBe(true);
   });
 
@@ -632,23 +668,42 @@ describe("CapState — workspace prefix integration", () => {
 
   it("input() with prefix resolves through baseDir + prefix + contractPath", () => {
     // Create file at goals/my-feature/GOAL.md
-    writeWithFrontmatter(tempDir, "goals/my-feature/GOAL.md", { title: "Goal" });
-    const capState = createCapState(minimalContract, tempDir, undefined, "goals/my-feature");
+    writeWithFrontmatter(tempDir, "goals/my-feature/GOAL.md", {
+      title: "Goal",
+    });
+    const capState = createCapState(
+      minimalContract,
+      tempDir,
+      undefined,
+      "goals/my-feature",
+    );
     expect(capState.input("goal").exists()).toBe(true);
   });
 
   it("input() with prefix resolves to correct path (not baseDir + file)", () => {
     // File exists at baseDir/GOAL.md but should NOT be found with prefix
     writeWithFrontmatter(tempDir, "GOAL.md", { title: "Wrong" });
-    const capState = createCapState(minimalContract, tempDir, undefined, "goals/my-feature");
+    const capState = createCapState(
+      minimalContract,
+      tempDir,
+      undefined,
+      "goals/my-feature",
+    );
     expect(capState.input("goal").exists()).toBe(false);
   });
 
   // --- Prefixed output() resolution ---
 
   it("output() with prefix resolves through baseDir + prefix + contractPath", () => {
-    writeWithFrontmatter(tempDir, "goals/my-feature/PLAN.md", { totalSteps: 2 });
-    const capState = createCapState(minimalContract, tempDir, undefined, "goals/my-feature");
+    writeWithFrontmatter(tempDir, "goals/my-feature/PLAN.md", {
+      totalSteps: 2,
+    });
+    const capState = createCapState(
+      minimalContract,
+      tempDir,
+      undefined,
+      "goals/my-feature",
+    );
     expect(capState.output("plan").exists()).toBe(true);
   });
 
@@ -670,10 +725,20 @@ describe("CapState — workspace prefix integration", () => {
   // --- Undeclared with prefix ---
 
   it("undeclared() with prefix resolves through baseDir + prefix + path", () => {
-    const markerPath = path.join(tempDir, "goals/my-feature", "S01", "COMPLETED");
+    const markerPath = path.join(
+      tempDir,
+      "goals/my-feature",
+      "S01",
+      "COMPLETED",
+    );
     fs.mkdirSync(path.dirname(markerPath), { recursive: true });
     fs.writeFileSync(markerPath, "", "utf-8");
-    const capState = createCapState(minimalContract, tempDir, undefined, "goals/my-feature");
+    const capState = createCapState(
+      minimalContract,
+      tempDir,
+      undefined,
+      "goals/my-feature",
+    );
     expect(capState.undeclared("S01/COMPLETED").exists()).toBe(true);
   });
 
@@ -708,14 +773,28 @@ describe("getCapState helper", () => {
   afterEach(() => cleanup(tempDir));
 
   it("accepts 4th workspacePrefix parameter and resolves prefixed paths", () => {
-    writeWithFrontmatter(tempDir, "goals/my-feature/GOAL.md", { title: "Goal" });
-    const capState = getCapState("test-cap", tempDir, undefined, "goals/my-feature");
+    writeWithFrontmatter(tempDir, "goals/my-feature/GOAL.md", {
+      title: "Goal",
+    });
+    const capState = getCapState(
+      "test-cap",
+      tempDir,
+      undefined,
+      "goals/my-feature",
+    );
     expect(capState.input("goal").exists()).toBe(true);
   });
 
   it("accepts 4th workspacePrefix parameter and resolves prefixed outputs", () => {
-    writeWithFrontmatter(tempDir, "goals/my-feature/PLAN.md", { totalSteps: 2 });
-    const capState = getCapState("test-cap", tempDir, undefined, "goals/my-feature");
+    writeWithFrontmatter(tempDir, "goals/my-feature/PLAN.md", {
+      totalSteps: 2,
+    });
+    const capState = getCapState(
+      "test-cap",
+      tempDir,
+      undefined,
+      "goals/my-feature",
+    );
     expect(capState.output("plan").exists()).toBe(true);
   });
 
@@ -732,7 +811,9 @@ describe("getCapState helper", () => {
   });
 
   it("throws when capability is not found in cache", () => {
-    expect(() => getCapState("unknown-cap", tempDir)).toThrow('No contract found for "unknown-cap"');
+    expect(() => getCapState("unknown-cap", tempDir)).toThrow(
+      'No contract found for "unknown-cap"',
+    );
   });
 });
 
@@ -757,7 +838,12 @@ describe("resolvePath() — public method", () => {
 
   it("resolves non-projectRelative entry through baseDir + prefix + file", () => {
     const entry: MarkdownFileSpec = { name: "goal", file: "GOAL.md" };
-    const capState = createCapState(minimalContract, tempDir, undefined, "goals/my-feature");
+    const capState = createCapState(
+      minimalContract,
+      tempDir,
+      undefined,
+      "goals/my-feature",
+    );
     const resolved = capState.resolvePath(entry);
     expect(resolved).toBe(path.join(tempDir, "goals", "my-feature", "GOAL.md"));
   });
@@ -770,32 +856,68 @@ describe("resolvePath() — public method", () => {
   });
 
   it("resolves projectRelative entry from pioRootDir, ignoring prefix", () => {
-    const entry: MarkdownFileSpec = { name: "overview", file: "PROJECT/OVERVIEW.md", projectRelative: true };
-    const capState = createCapState(minimalContract, tempDir, undefined, "goals/my-feature");
+    const entry: MarkdownFileSpec = {
+      name: "overview",
+      file: "PROJECT/OVERVIEW.md",
+      projectRelative: true,
+    };
+    const capState = createCapState(
+      minimalContract,
+      tempDir,
+      undefined,
+      "goals/my-feature",
+    );
     const resolved = capState.resolvePath(entry);
     // pioRootDir is process.cwd()/.pio (plain const)
-    expect(resolved).toBe(path.join(process.cwd(), ".pio", "PROJECT", "OVERVIEW.md"));
+    expect(resolved).toBe(
+      path.join(process.cwd(), ".pio", "PROJECT", "OVERVIEW.md"),
+    );
   });
 
   it("resolves projectRelative entry from pioRootDir, ignoring baseDir", () => {
     // Even though baseDir is tempDir/some/other, projectRelative resolves from pioRootDir
-    const entry: MarkdownFileSpec = { name: "overview", file: "PROJECT/OVERVIEW.md", projectRelative: true };
-    const capState = createCapState(minimalContract, path.join(tempDir, "some", "other"), undefined, "goals/x");
+    const entry: MarkdownFileSpec = {
+      name: "overview",
+      file: "PROJECT/OVERVIEW.md",
+      projectRelative: true,
+    };
+    const capState = createCapState(
+      minimalContract,
+      path.join(tempDir, "some", "other"),
+      undefined,
+      "goals/x",
+    );
     const resolved = capState.resolvePath(entry);
     // pioRootDir is process.cwd()/.pio — ignores baseDir entirely
-    expect(resolved).toBe(path.join(process.cwd(), ".pio", "PROJECT", "OVERVIEW.md"));
+    expect(resolved).toBe(
+      path.join(process.cwd(), ".pio", "PROJECT", "OVERVIEW.md"),
+    );
   });
 
   it("resolves placeholder in non-projectRelative entry", () => {
-    const entry: MarkdownFileSpec = { name: "task", file: "S{stepNumber:02d}/TASK.md" };
-    const capState = createCapState(contractWithPlaceholders, tempDir, { stepNumber: 7 }, "goals/g");
+    const entry: MarkdownFileSpec = {
+      name: "task",
+      file: "S{stepNumber:02d}/TASK.md",
+    };
+    const capState = createCapState(
+      contractWithPlaceholders,
+      tempDir,
+      { stepNumber: 7 },
+      "goals/g",
+    );
     const resolved = capState.resolvePath(entry);
     expect(resolved).toBe(path.join(tempDir, "goals", "g", "S07", "TASK.md"));
   });
 
   it("resolves placeholder in projectRelative entry", () => {
-    const entry: MarkdownFileSpec = { name: "doc", file: "docs/{docName}.md", projectRelative: true };
-    const capState = createCapState(minimalContract, tempDir, { docName: "api" });
+    const entry: MarkdownFileSpec = {
+      name: "doc",
+      file: "docs/{docName}.md",
+      projectRelative: true,
+    };
+    const capState = createCapState(minimalContract, tempDir, {
+      docName: "api",
+    });
     const resolved = capState.resolvePath(entry);
     // pioRootDir is process.cwd()/.pio (plain const)
     expect(resolved).toBe(path.join(process.cwd(), ".pio", "docs", "api.md"));
@@ -919,6 +1041,8 @@ describe("Concrete test — real create-plan CONTRACT", () => {
     const data = capState.output("plan").read();
     expect(data).not.toBe(null);
     expect((data as any).totalSteps).toBe(1);
-    expect((data as any).steps).toEqual([{ name: "step-one", complexity: "task" }]);
+    expect((data as any).steps).toEqual([
+      { name: "step-one", complexity: "task" },
+    ]);
   });
 });

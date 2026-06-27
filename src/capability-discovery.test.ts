@@ -1,8 +1,11 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { discoverCapabilities, registerCapability } from "./capability-discovery";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  discoverCapabilities,
+  registerCapability,
+} from "./capability-discovery";
 
 // ---------------------------------------------------------------------------
 // discoverCapabilities
@@ -41,7 +44,7 @@ describe("discoverCapabilities", () => {
     fs.mkdirSync(path.join(tempDir, "capabilities"), { recursive: true });
     fs.writeFileSync(
       path.join(tempDir, "capabilities", "old-style-cap.ts"),
-      'export const CAPABILITY_CONFIG = { capability: "old" };'
+      'export const CAPABILITY_CONFIG = { capability: "old" };',
     );
 
     // Act
@@ -53,10 +56,12 @@ describe("discoverCapabilities", () => {
 
   it("ignores directories without config.ts", async () => {
     // Arrange: create a directory without config.ts
-    fs.mkdirSync(path.join(tempDir, "capabilities", "incomplete-cap"), { recursive: true });
+    fs.mkdirSync(path.join(tempDir, "capabilities", "incomplete-cap"), {
+      recursive: true,
+    });
     fs.writeFileSync(
       path.join(tempDir, "capabilities", "incomplete-cap", "role.md"),
-      "# Role"
+      "# Role",
     );
 
     // Act
@@ -77,7 +82,7 @@ const config: CapabilityPackageConfig = {
   capability: "test-cap",
   defaultInitialMessage: () => "Hello",
 };
-export default config;`
+export default config;`,
     );
 
     // Act
@@ -102,7 +107,7 @@ export default config;`
   capability: "${name}",
   defaultInitialMessage: () => "Msg from ${name}",
 };
-export default config;`
+export default config;`,
       );
     }
 
@@ -122,7 +127,7 @@ export default config;`
     fs.mkdirSync(capDir, { recursive: true });
     fs.writeFileSync(
       path.join(capDir, "config.ts"),
-      `export const namedExport = { capability: "bad-cap" };`
+      `export const namedExport = { capability: "bad-cap" };`,
     );
 
     // Act
@@ -141,7 +146,7 @@ export default config;`
     fs.mkdirSync(capDir, { recursive: true });
     fs.writeFileSync(
       path.join(capDir, "config.ts"),
-      `this is not valid typescript {{{`
+      `this is not valid typescript {{{`,
     );
 
     // Act
@@ -172,7 +177,7 @@ const config = {
   capability: "reg-cap",
   defaultInitialMessage: () => "Hello",
 };
-export default config;`
+export default config;`,
       );
 
       // Import to get the module reference
@@ -203,7 +208,7 @@ const config = {
   capability: "no-register-cap",
   defaultInitialMessage: () => "Hello",
 };
-export default config;`
+export default config;`,
       );
 
       const mod = await import(path.join(capDir, "config.ts"));
@@ -219,7 +224,7 @@ export default config;`
 
       // Assert
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("has no register() export")
+        expect.stringContaining("has no register() export"),
       );
       warnSpy.mockRestore();
     });
@@ -243,7 +248,7 @@ export default config;`
 
       // Assert: no throw, just a warning
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to register")
+        expect.stringContaining("Failed to register"),
       );
       warnSpy.mockRestore();
     });
@@ -265,7 +270,7 @@ export default config;`
   capability: "good-cap",
   defaultInitialMessage: () => "OK",
 };
-export default config;`
+export default config;`,
     );
 
     // Act

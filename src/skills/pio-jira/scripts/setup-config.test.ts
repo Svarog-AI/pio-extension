@@ -19,7 +19,10 @@ function cleanup(dir: string): void {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
-function runScript(cwd: string, args: string[]): { stdout: string; stderr: string; status: number | null } {
+function runScript(
+  cwd: string,
+  args: string[],
+): { stdout: string; stderr: string; status: number | null } {
   const result = cp.spawnSync("bash", [SCRIPT_PATH, ...args], {
     cwd,
     encoding: "utf-8",
@@ -54,13 +57,17 @@ describe("setup-config.sh", () => {
   it("creates .pio/jira-config.yaml with site, projectKey, and defaultType Task", () => {
     runScript(tempDir, ["mysite.atlassian.net", "PROJ"]);
     const content = readConfig(tempDir);
-    expect(content).toBe('site: "mysite.atlassian.net"\nprojectKey: "PROJ"\ndefaultType: "Task"\n');
+    expect(content).toBe(
+      'site: "mysite.atlassian.net"\nprojectKey: "PROJ"\ndefaultType: "Task"\n',
+    );
   });
 
   it("sets custom defaultType when third argument is provided", () => {
     runScript(tempDir, ["mysite.atlassian.net", "PROJ", "Story"]);
     const content = readConfig(tempDir);
-    expect(content).toBe('site: "mysite.atlassian.net"\nprojectKey: "PROJ"\ndefaultType: "Story"\n');
+    expect(content).toBe(
+      'site: "mysite.atlassian.net"\nprojectKey: "PROJ"\ndefaultType: "Story"\n',
+    );
   });
 
   it("exits non-zero and prints usage to stderr when no arguments given", () => {
@@ -92,14 +99,18 @@ describe("setup-config.sh", () => {
   it("handles project keys with hyphens", () => {
     runScript(tempDir, ["mysite.atlassian.net", "MY-PROJ"]);
     const content = readConfig(tempDir);
-    expect(content).toBe('site: "mysite.atlassian.net"\nprojectKey: "MY-PROJ"\ndefaultType: "Task"\n');
+    expect(content).toBe(
+      'site: "mysite.atlassian.net"\nprojectKey: "MY-PROJ"\ndefaultType: "Task"\n',
+    );
   });
 
   it("creates .pio directory when it does not exist", () => {
     expect(fs.existsSync(path.join(tempDir, ".pio"))).toBe(false);
     runScript(tempDir, ["mysite.atlassian.net", "PROJ"]);
     expect(fs.existsSync(path.join(tempDir, ".pio"))).toBe(true);
-    expect(fs.existsSync(path.join(tempDir, ".pio", "jira-config.yaml"))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, ".pio", "jira-config.yaml"))).toBe(
+      true,
+    );
   });
 
   it("prints a confirmation message to stdout on success", () => {

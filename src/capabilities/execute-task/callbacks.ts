@@ -3,8 +3,7 @@ import * as path from "node:path";
 
 import { CapState } from "../../capability-state";
 import { CONTRACT } from "./config";
-import { type ExecutionSummaryOutputs } from "./schemas";
-
+import type { ExecutionSummaryOutputs } from "./schemas";
 
 // ---------------------------------------------------------------------------
 // Config callbacks (used by config.ts and resolveCapabilityConfig)
@@ -15,7 +14,10 @@ import { type ExecutionSummaryOutputs } from "./schemas";
  * Returns array of read-only files for the given step.
  * workspacePrefix already includes the step folder — plain name resolves correctly.
  */
-export function resolveExecuteReadOnlyFiles(_workspaceDir: string, _params?: Record<string, unknown>): string[] {
+export function resolveExecuteReadOnlyFiles(
+  _workspaceDir: string,
+  _params?: Record<string, unknown>,
+): string[] {
   return ["TASK.md"];
 }
 
@@ -29,7 +31,10 @@ export function resolveExecuteReadOnlyFiles(_workspaceDir: string, _params?: Rec
  * Runs after transition routing + task enqueuing (step 4 in mark-complete.ts).
  * Mirrors postExecuteReview() in review-task/callbacks.ts.
  */
-export function postExecuteExecute(workspaceDir: string, params?: Record<string, unknown>): void {
+export function postExecuteExecute(
+  workspaceDir: string,
+  params?: Record<string, unknown>,
+): void {
   // Read SUMMARY.md via CapState (reads fresh from disk on every call)
   const capState = new CapState(CONTRACT, workspaceDir, params);
   const summaryFile = capState.output<ExecutionSummaryOutputs>("summary");
@@ -40,7 +45,9 @@ export function postExecuteExecute(workspaceDir: string, params?: Record<string,
   }
   const data = summaryFile.read();
   if (data === null) {
-    console.warn("pio: postExecuteExecute could not parse SUMMARY.md: frontmatter validation failed");
+    console.warn(
+      "pio: postExecuteExecute could not parse SUMMARY.md: frontmatter validation failed",
+    );
     return;
   }
 

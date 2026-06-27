@@ -1,7 +1,11 @@
-import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
-import { Type } from "typebox";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getSessionConfig, BASE_TOOL_PARAMS, deriveQueueKey } from "./capability-utils";
+import { Type } from "typebox";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  BASE_TOOL_PARAMS,
+  deriveQueueKey,
+  getSessionConfig,
+} from "./capability-utils";
 
 // Mock resolveCapabilityConfig to control dynamic import behavior
 const mockResolveCapabilityConfig = vi.hoisted(() => vi.fn());
@@ -16,7 +20,13 @@ function makeMockCtx(configData?: Record<string, unknown>): ExtensionContext {
     sessionManager: {
       getEntries: () =>
         configData
-          ? [{ type: "custom" as const, customType: "pio-config" as const, data: configData }]
+          ? [
+              {
+                type: "custom" as const,
+                customType: "pio-config" as const,
+                data: configData,
+              },
+            ]
           : [],
     },
     ui: { notify: () => {} },
@@ -99,9 +109,9 @@ describe("getSessionConfig", () => {
     const result = await getSessionConfig(ctx);
 
     expect(result).not.toBeNull();
-    expect(result!.capability).toBe("create-plan");
-    expect(result!.workspaceDir).toBe("/repo/.pio/goals/test-goal");
-    expect(result!.sessionParams).toEqual({ goalName: "test-goal" });
+    expect(result?.capability).toBe("create-plan");
+    expect(result?.workspaceDir).toBe("/repo/.pio/goals/test-goal");
+    expect(result?.sessionParams).toEqual({ goalName: "test-goal" });
   });
 
   it("calls resolveCapabilityConfig with correct args", async () => {
@@ -118,14 +128,17 @@ describe("getSessionConfig", () => {
     });
     await getSessionConfig(ctx);
 
-    expect(mockResolveCapabilityConfig).toHaveBeenCalledWith(
-      "/test/cwd",
-      { capability: "evolve-plan", goalName: "my-goal", stepNumber: 2 },
-    );
+    expect(mockResolveCapabilityConfig).toHaveBeenCalledWith("/test/cwd", {
+      capability: "evolve-plan",
+      goalName: "my-goal",
+      stepNumber: 2,
+    });
   });
 
   it("propagates error when resolveCapabilityConfig throws", async () => {
-    mockResolveCapabilityConfig.mockRejectedValue(new Error("module not found"));
+    mockResolveCapabilityConfig.mockRejectedValue(
+      new Error("module not found"),
+    );
 
     const ctx = makeMockCtx({ capability: "missing-cap" });
     await expect(getSessionConfig(ctx)).rejects.toThrow("module not found");
@@ -162,8 +175,11 @@ describe("getSessionConfig", () => {
     const result = await getSessionConfig(ctx);
 
     expect(result).not.toBeNull();
-    const completionSummary = result!.contract.outputs.find(
-      (o: any) => typeof o === "object" && "file" in o && o.file === "COMPLETION_SUMMARY.md",
+    const completionSummary = result?.contract.outputs.find(
+      (o: any) =>
+        typeof o === "object" &&
+        "file" in o &&
+        o.file === "COMPLETION_SUMMARY.md",
     ) as { requiredWhen?: () => boolean };
     expect(completionSummary.requiredWhen).toBe(requiredWhenFn);
   });

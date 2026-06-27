@@ -2,28 +2,27 @@
  * pio — Evolving extension for pi
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-
-// Direct tools (non-AI tools/commands registered directly)
-import { setupDirectTools } from "./direct-tools";
-
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 // Non-directory capabilities (single .ts files, not auto-discovered)
 import { setupNextTask } from "./capabilities/next-task";
+// Auto-discovery
+import {
+  discoverCapabilities,
+  registerCapability,
+} from "./capability-discovery";
 
 // Shared session infrastructure (explicit imports)
 import { setupSessionInfrastructure } from "./capability-session";
+// Direct tools (non-AI tools/commands registered directly)
+import { setupDirectTools } from "./direct-tools";
 import { setupMarkComplete } from "./guards/mark-complete";
-import { setupValidation } from "./guards/validation";
 import { setupSessionGuard } from "./guards/session-guard";
-
+import { setupValidation } from "./guards/validation";
 // State machine — explicit registration (no side-effect imports)
 import { setupPioWorkflowMachine } from "./state-machines/pio-workflow-machine";
-
-// Auto-discovery
-import { discoverCapabilities, registerCapability } from "./capability-discovery";
 import { setDiscoveredContracts } from "./state-machines/utils";
 
 // ESM-compatible __dirname for resolving skill directories bundled with this extension
@@ -90,7 +89,7 @@ export default async function (pi: ExtensionAPI) {
 
   // Cache contracts for runtime lookup by resolve functions (via getCapState)
   const contracts = Object.fromEntries(
-    capabilities.map(d => [d.name, d.config.contract]),
+    capabilities.map((d) => [d.name, d.config.contract]),
   );
   setDiscoveredContracts(contracts);
 }

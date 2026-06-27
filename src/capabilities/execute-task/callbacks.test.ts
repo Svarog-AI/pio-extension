@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyExecutionStatus, postExecuteExecute } from "./callbacks";
 
 // ---------------------------------------------------------------------------
@@ -17,7 +17,11 @@ function cleanup(tempDir: string): void {
 }
 
 // Helper: write a SUMMARY.md with YAML frontmatter
-function writeSummaryMd(dir: string, frontmatter: Record<string, unknown>, body?: string): void {
+function writeSummaryMd(
+  dir: string,
+  frontmatter: Record<string, unknown>,
+  body?: string,
+): void {
   const yamlLines = Object.entries(frontmatter)
     .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
     .join("\n");
@@ -190,7 +194,11 @@ describe("postExecuteExecute", () => {
 
   it("logs warning when SUMMARY.md has no frontmatter", () => {
     // Arrange: SUMMARY.md without YAML frontmatter
-    fs.writeFileSync(path.join(tempDir, "SUMMARY.md"), "# Summary\n\nNo frontmatter.", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "SUMMARY.md"),
+      "# Summary\n\nNo frontmatter.",
+      "utf-8",
+    );
 
     // Act
     postExecuteExecute(tempDir);

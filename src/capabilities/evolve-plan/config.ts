@@ -1,17 +1,19 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-
-import { launchCapability } from "../../capability-session";
-import { enqueueTask } from "../../queues";
 import { resolveCapabilityConfig } from "../../capability-config";
+import type { CapabilityPackageConfig } from "../../capability-package";
+import { launchCapability } from "../../capability-session";
 import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import { stepFolderName } from "../../fs-utils";
+import { enqueueTask } from "../../queues";
 import type { CapabilityContract } from "../../types";
-import type { CapabilityPackageConfig } from "../../capability-package";
-import { TASK_FRONTMATTER_SCHEMA, COMPLETION_SUMMARY_SCHEMA } from "./schemas";
 import { PLAN_FRONTMATTER_SCHEMA } from "../create-plan/schemas";
 import { resolveEvolveWriteAllowlist } from "./callbacks";
+import { COMPLETION_SUMMARY_SCHEMA, TASK_FRONTMATTER_SCHEMA } from "./schemas";
 
 // ---------------------------------------------------------------------------
 // Contract (single source of truth — imported by callbacks)
@@ -21,9 +23,23 @@ export const CONTRACT: CapabilityContract = {
   inputs: [{ name: "plan", file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
   excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
   outputs: [
-    { name: "task", file: "S{stepNumber:02d}/TASK.md", schema: TASK_FRONTMATTER_SCHEMA },
-    { name: "decisions", file: "S{stepNumber:02d}/DECISIONS.md", requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1 },
-    { name: "completion-summary", file: "COMPLETION_SUMMARY.md", schema: COMPLETION_SUMMARY_SCHEMA, requiredWhen: () => false },
+    {
+      name: "task",
+      file: "S{stepNumber:02d}/TASK.md",
+      schema: TASK_FRONTMATTER_SCHEMA,
+    },
+    {
+      name: "decisions",
+      file: "S{stepNumber:02d}/DECISIONS.md",
+      requiredWhen: (params) =>
+        typeof params?.stepNumber === "number" && params.stepNumber > 1,
+    },
+    {
+      name: "completion-summary",
+      file: "COMPLETION_SUMMARY.md",
+      schema: COMPLETION_SUMMARY_SCHEMA,
+      requiredWhen: () => false,
+    },
   ],
 };
 
@@ -53,7 +69,10 @@ const evolvePlanTool = defineTool({
   description:
     "Generate a step-by-step specification (TASK.md) for the next step in an existing PLAN.md. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Generate TASK.md for the next plan step.",
-  parameters: Type.Object({ ...BASE_TOOL_PARAMS, stepNumber: Type.Number({ description: "Step number to evolve" }) }),
+  parameters: Type.Object({
+    ...BASE_TOOL_PARAMS,
+    stepNumber: Type.Number({ description: "Step number to evolve" }),
+  }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
     const queueKey = deriveQueueKey(params.workspacePrefix);
@@ -61,7 +80,8 @@ const evolvePlanTool = defineTool({
       capability: "evolve-plan",
       params: {
         workspacePrefix: params.workspacePrefix,
-        sessionName: params.sessionName ?? `${queueKey} evolve-plan s${params.stepNumber}`,
+        sessionName:
+          params.sessionName ?? `${queueKey} evolve-plan s${params.stepNumber}`,
         queueKey,
         stepNumber: params.stepNumber,
         initialMessage: params.initialMessage,
@@ -84,9 +104,15 @@ const evolvePlanTool = defineTool({
 // Command
 // ---------------------------------------------------------------------------
 
-async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandContext) {
-  if (!args || !args.trim()) {
-    ctx.ui.notify("Usage: /pio-evolve-plan --workspace-prefix <prefix> --step-number <n>", "warning");
+async function handleEvolvePlan(
+  args: string | undefined,
+  ctx: ExtensionCommandContext,
+) {
+  if (!args?.trim()) {
+    ctx.ui.notify(
+      "Usage: /pio-evolve-plan --workspace-prefix <prefix> --step-number <n>",
+      "warning",
+    );
     return;
   }
 
@@ -101,11 +127,17 @@ async function handleEvolvePlan(args: string | undefined, ctx: ExtensionCommandC
     }
   }
   if (!workspacePrefix) {
-    ctx.ui.notify("--workspace-prefix is required. Usage: /pio-evolve-plan --workspace-prefix <prefix> --step-number <n>", "error");
+    ctx.ui.notify(
+      "--workspace-prefix is required. Usage: /pio-evolve-plan --workspace-prefix <prefix> --step-number <n>",
+      "error",
+    );
     return;
   }
-  if (stepNumber === undefined || isNaN(stepNumber)) {
-    ctx.ui.notify("--step-number is required. Usage: /pio-evolve-plan --workspace-prefix <prefix> --step-number <n>", "error");
+  if (stepNumber === undefined || Number.isNaN(stepNumber)) {
+    ctx.ui.notify(
+      "--step-number is required. Usage: /pio-evolve-plan --workspace-prefix <prefix> --step-number <n>",
+      "error",
+    );
     return;
   }
 

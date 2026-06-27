@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as jsyaml from "js-yaml";
-import * as Value from "typebox/value";
 import type { TSchema } from "typebox";
+import * as Value from "typebox/value";
 
 // Maximum recursion depth for schema description (prevents runaway output on deeply-nested schemas).
 const MAX_DEPTH = 4;
@@ -34,7 +34,9 @@ export type CoerceResult<T> =
  * - YAML between delimiters is malformed
  * - Parsed YAML value is `null`, `undefined`, or not a plain object
  */
-export function extractFrontmatter(filePath: string): Record<string, unknown> | null {
+export function extractFrontmatter(
+  filePath: string,
+): Record<string, unknown> | null {
   let content: string;
   try {
     content = fs.readFileSync(filePath, "utf-8");
@@ -100,10 +102,14 @@ export function validateAndCoerce<T extends Record<string, unknown>>(
   if (!Value.Check(schema, raw)) {
     // Collect all errors into a single message including field paths
     const errors = [...Value.Errors(schema, raw)];
-    const messages = errors.map((e) => {
-      const field = e.instancePath ? e.instancePath.replace(/^\//, "") : "root";
-      return `Field '${field}': ${e.message}`;
-    }).join("; ");
+    const messages = errors
+      .map((e) => {
+        const field = e.instancePath
+          ? e.instancePath.replace(/^\//, "")
+          : "root";
+        return `Field '${field}': ${e.message}`;
+      })
+      .join("; ");
     return { error: messages };
   }
 
@@ -113,7 +119,10 @@ export function validateAndCoerce<T extends Record<string, unknown>>(
   const schemaType = (schema as Record<string, unknown>).type;
 
   if (schemaType === "object") {
-    const properties = (schema as Record<string, unknown>).properties as Record<string, unknown>;
+    const properties = (schema as Record<string, unknown>).properties as Record<
+      string,
+      unknown
+    >;
     const data: Record<string, unknown> = {};
     for (const key of Object.keys(properties)) {
       if (key in raw) {
@@ -140,7 +149,10 @@ export function validateAndCoerce<T extends Record<string, unknown>>(
  *
  * Depth is capped at `MAX_DEPTH` levels — deeper nesting shows `...`.
  */
-export function formatSchemaDescription(schema: TSchema, depth: number = 0): string {
+export function formatSchemaDescription(
+  schema: TSchema,
+  depth: number = 0,
+): string {
   if (depth > MAX_DEPTH) {
     return "  ...";
   }
@@ -184,7 +196,9 @@ function describeType(schema: TSchema, depth: number): string {
   if ("anyOf" in node && Array.isArray(node.anyOf)) {
     const options = node.anyOf as TSchema[];
     const allLiterals = options.every(
-      (opt) => (opt as Record<string, unknown>).type === "string" && "const" in (opt as Record<string, unknown>),
+      (opt) =>
+        (opt as Record<string, unknown>).type === "string" &&
+        "const" in (opt as Record<string, unknown>),
     );
     if (allLiterals) {
       const values = options
@@ -229,10 +243,16 @@ function describeType(schema: TSchema, depth: number): string {
 
     // For arrays of objects, show `array<object>` on the line and nest fields below
     if (itemNode.type === "object") {
-      const properties = itemNode.properties as Record<string, unknown> | undefined;
+      const properties = itemNode.properties as
+        | Record<string, unknown>
+        | undefined;
       const required = (itemNode.required as string[] | undefined) ?? [];
 
-      if (properties && Object.keys(properties).length > 0 && depth < MAX_DEPTH) {
+      if (
+        properties &&
+        Object.keys(properties).length > 0 &&
+        depth < MAX_DEPTH
+      ) {
         // Properties of array items are nested one level deeper than the array itself.
         // The array is at depth+1 (child of parent property), so its item properties
         // need depth+2 for the indent and depth+2 for recursive describeType calls.
@@ -285,5 +305,3 @@ function describeType(schema: TSchema, depth: number): string {
   // Unknown type
   return `unknown (type: ${node.type ?? "null"})`;
 }
-
-

@@ -1,12 +1,18 @@
-import { vi, beforeEach } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import type { CapabilityContract } from "../types";
+import { Type } from "typebox";
+import { beforeEach, vi } from "vitest";
 import { CapState } from "../capability-state";
-import { validateOutputs, setupValidation, validateFrontmatter, validateInputs, __testSetFileProtectionState } from "./validation";
+import type { CapabilityContract } from "../types";
+import {
+  __testSetFileProtectionState,
+  setupValidation,
+  validateFrontmatter,
+  validateInputs,
+  validateOutputs,
+} from "./validation";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -24,7 +30,11 @@ function cleanup(tempDir: string): void {
  * Construct a CapState for the given contract, dir, and optional params.
  * After normalization, workspacePrefix is stripped from params (undefined).
  */
-function makeCapState(contract: CapabilityContract, dir: string, params?: Record<string, unknown>): CapState {
+function makeCapState(
+  contract: CapabilityContract,
+  dir: string,
+  params?: Record<string, unknown>,
+): CapState {
   return new CapState(contract, dir, params);
 }
 
@@ -47,7 +57,10 @@ describe("validateOutputs with CapabilityContract", () => {
 
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ name: "plan", file: "PLAN.md" }, { name: "summary", file: "SUMMARY.md" }],
+      outputs: [
+        { name: "plan", file: "PLAN.md" },
+        { name: "summary", file: "SUMMARY.md" },
+      ],
     };
 
     const capState = makeCapState(contract, tempDir);
@@ -60,7 +73,10 @@ describe("validateOutputs with CapabilityContract", () => {
 
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ name: "plan", file: "PLAN.md" }, { name: "summary", file: "SUMMARY.md" }],
+      outputs: [
+        { name: "plan", file: "PLAN.md" },
+        { name: "summary", file: "SUMMARY.md" },
+      ],
     };
 
     const capState = makeCapState(contract, tempDir);
@@ -85,7 +101,12 @@ describe("validateOutputs with CapabilityContract", () => {
       inputs: [],
       outputs: [
         { name: "plan", file: "PLAN.md" },
-        { name: "decisions", file: "DECISIONS.md", requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1 },
+        {
+          name: "decisions",
+          file: "DECISIONS.md",
+          requiredWhen: (params) =>
+            typeof params?.stepNumber === "number" && params.stepNumber > 1,
+        },
       ],
     };
 
@@ -102,7 +123,12 @@ describe("validateOutputs with CapabilityContract", () => {
       inputs: [],
       outputs: [
         { name: "plan", file: "PLAN.md" },
-        { name: "decisions", file: "DECISIONS.md", requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1 },
+        {
+          name: "decisions",
+          file: "DECISIONS.md",
+          requiredWhen: (params) =>
+            typeof params?.stepNumber === "number" && params.stepNumber > 1,
+        },
       ],
     };
 
@@ -120,7 +146,12 @@ describe("validateOutputs with CapabilityContract", () => {
       inputs: [],
       outputs: [
         { name: "plan", file: "PLAN.md" },
-        { name: "decisions", file: "DECISIONS.md", requiredWhen: (params) => typeof params?.stepNumber === "number" && params.stepNumber > 1 },
+        {
+          name: "decisions",
+          file: "DECISIONS.md",
+          requiredWhen: (params) =>
+            typeof params?.stepNumber === "number" && params.stepNumber > 1,
+        },
       ],
     };
 
@@ -137,7 +168,12 @@ describe("validateOutputs with CapabilityContract", () => {
       inputs: [],
       outputs: [
         { name: "plan", file: "PLAN.md" },
-        { files: [{ name: "approved", file: "APPROVED" }, { name: "rejected", file: "REJECTED" }] }, // OneOfGroup
+        {
+          files: [
+            { name: "approved", file: "APPROVED" },
+            { name: "rejected", file: "REJECTED" },
+          ],
+        }, // OneOfGroup
       ],
     };
 
@@ -152,11 +188,18 @@ describe("validateOutputs with CapabilityContract", () => {
   it("COMPLETION_SUMMARY.md bypass still works with contract", () => {
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ name: "plan", file: "PLAN.md" }, { name: "summary", file: "SUMMARY.md" }],
+      outputs: [
+        { name: "plan", file: "PLAN.md" },
+        { name: "summary", file: "SUMMARY.md" },
+      ],
     };
 
     // COMPLETION_SUMMARY.md exists, but PLAN.md and SUMMARY.md are missing
-    fs.writeFileSync(path.join(tempDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete\n", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "COMPLETION_SUMMARY.md"),
+      "---\nstatus: complete\n---\n# Complete\n",
+      "utf-8",
+    );
 
     const capState = makeCapState(contract, tempDir);
     const result = validateOutputs(capState);
@@ -246,7 +289,11 @@ totalSteps: -5
       outputs: [{ name: "plan", file: "PLAN.md", schema }],
     };
 
-    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "# Plan\n\nNo frontmatter.", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      "# Plan\n\nNo frontmatter.",
+      "utf-8",
+    );
 
     const capState = makeCapState(contract, tempDir);
     const result = validateOutputs(capState);
@@ -301,7 +348,9 @@ totalSteps: -5
     const schema = Type.Object({ decision: Type.String() });
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema }],
+      outputs: [
+        { name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema },
+      ],
     };
 
     fs.mkdirSync(path.join(tempDir, "S02"), { recursive: true });
@@ -447,7 +496,10 @@ describe("validateInputs with CapabilityContract", () => {
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
 
     const contract: CapabilityContract = {
-      inputs: [{ name: "goal", file: "GOAL.md" }, { name: "plan", file: "PLAN.md" }],
+      inputs: [
+        { name: "goal", file: "GOAL.md" },
+        { name: "plan", file: "PLAN.md" },
+      ],
       outputs: [],
     };
 
@@ -460,7 +512,10 @@ describe("validateInputs with CapabilityContract", () => {
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
 
     const contract: CapabilityContract = {
-      inputs: [{ name: "goal", file: "GOAL.md" }, { name: "plan", file: "PLAN.md" }],
+      inputs: [
+        { name: "goal", file: "GOAL.md" },
+        { name: "plan", file: "PLAN.md" },
+      ],
       outputs: [],
     };
 
@@ -509,13 +564,19 @@ describe("validateInputs with CapabilityContract", () => {
     const capState = makeCapState(contract, tempDir, { stepNumber: 2 });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
-    expect(result.message).toBe("Required file missing: S{stepNumber:02d}/TASK.md");
+    expect(result.message).toBe(
+      "Required file missing: S{stepNumber:02d}/TASK.md",
+    );
   });
 
   it("placeholder resolution in excluded files with params", () => {
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
     fs.mkdirSync(path.join(tempDir, "S01"), { recursive: true });
-    fs.writeFileSync(path.join(tempDir, "S01", "REVISE_PLAN_NEEDED"), "", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "S01", "REVISE_PLAN_NEEDED"),
+      "",
+      "utf-8",
+    );
 
     const contract: CapabilityContract = {
       inputs: [{ name: "goal", file: "GOAL.md" }],
@@ -526,7 +587,9 @@ describe("validateInputs with CapabilityContract", () => {
     const capState = makeCapState(contract, tempDir, { stepNumber: 1 });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
-    expect(result.message).toBe("File must not exist: S{stepNumber:02d}/REVISE_PLAN_NEEDED");
+    expect(result.message).toBe(
+      "File must not exist: S{stepNumber:02d}/REVISE_PLAN_NEEDED",
+    );
   });
 
   it("empty inputs → success: true", () => {
@@ -624,7 +687,11 @@ totalSteps: -5
       outputs: [],
     };
 
-    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "# Plan\n\nNo frontmatter here.", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      "# Plan\n\nNo frontmatter here.",
+      "utf-8",
+    );
 
     const capState = makeCapState(contract, tempDir);
     const result = validateInputs(capState);
@@ -706,7 +773,9 @@ skills: not-an-array
 describe("CONTRACT integration — create-goal", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("all inputs present (empty inputs) → success", async () => {
@@ -720,7 +789,9 @@ describe("CONTRACT integration — create-goal", () => {
 describe("CONTRACT integration — create-plan", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("all inputs present → success", async () => {
@@ -754,7 +825,9 @@ describe("CONTRACT integration — create-plan", () => {
 describe("CONTRACT integration — evolve-plan", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("all inputs present → success", async () => {
@@ -788,7 +861,11 @@ steps:
 
   it("invalid PLAN.md frontmatter → failure", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
-    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "# Plan\n\nNo frontmatter.", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      "# Plan\n\nNo frontmatter.",
+      "utf-8",
+    );
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 3 });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
@@ -812,7 +889,11 @@ steps:
       "utf-8",
     );
     fs.mkdirSync(path.join(tempDir, "S03"), { recursive: true });
-    fs.writeFileSync(path.join(tempDir, "S03", "REVISE_PLAN_NEEDED"), "", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "S03", "REVISE_PLAN_NEEDED"),
+      "",
+      "utf-8",
+    );
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 3 });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
@@ -823,13 +904,19 @@ steps:
 describe("CONTRACT integration — execute-task", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("all inputs present → success (plain file names)", async () => {
     const { CONTRACT } = await import("../capabilities/execute-task/config");
     // CONTRACT uses plain file names — files resolve directly in workspaceDir
-    fs.writeFileSync(path.join(tempDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "TASK.md"),
+      "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task",
+      "utf-8",
+    );
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 2 });
     const result = validateInputs(capState);
     expect(result).toEqual({ success: true });
@@ -848,7 +935,9 @@ describe("CONTRACT integration — execute-task", () => {
 describe("CONTRACT integration — review-task", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("all inputs present → success (plain file names)", async () => {
@@ -856,7 +945,11 @@ describe("CONTRACT integration — review-task", () => {
     // CONTRACT uses plain file names — files resolve directly in workspaceDir
     fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
     fs.writeFileSync(path.join(tempDir, "SUMMARY.md"), "content", "utf-8");
-    fs.writeFileSync(path.join(tempDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "TASK.md"),
+      "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task",
+      "utf-8",
+    );
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 1 });
     const result = validateInputs(capState);
     expect(result).toEqual({ success: true });
@@ -865,7 +958,11 @@ describe("CONTRACT integration — review-task", () => {
   it("missing COMPLETED → failure naming COMPLETED", async () => {
     const { CONTRACT } = await import("../capabilities/review-task/config");
     fs.writeFileSync(path.join(tempDir, "SUMMARY.md"), "content", "utf-8");
-    fs.writeFileSync(path.join(tempDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "TASK.md"),
+      "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task",
+      "utf-8",
+    );
     // COMPLETED is missing
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 1 });
     const result = validateInputs(capState);
@@ -876,7 +973,11 @@ describe("CONTRACT integration — review-task", () => {
   it("missing SUMMARY.md → failure naming SUMMARY.md", async () => {
     const { CONTRACT } = await import("../capabilities/review-task/config");
     fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
-    fs.writeFileSync(path.join(tempDir, "TASK.md"), "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "TASK.md"),
+      "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task",
+      "utf-8",
+    );
     // SUMMARY.md is missing
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 1 });
     const result = validateInputs(capState);
@@ -888,7 +989,9 @@ describe("CONTRACT integration — review-task", () => {
 describe("CONTRACT integration — revise-plan", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("all inputs present → success", async () => {
@@ -922,14 +1025,20 @@ describe("CONTRACT integration — revise-plan", () => {
 describe("CONTRACT integration — finalize-goal", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("all inputs present → success", async () => {
     const { CONTRACT } = await import("../capabilities/finalize-goal/config");
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
-    fs.writeFileSync(path.join(tempDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "COMPLETION_SUMMARY.md"),
+      "---\nstatus: complete\n---\n# Complete",
+      "utf-8",
+    );
     const capState = makeCapState(CONTRACT, tempDir);
     const result = validateInputs(capState);
     expect(result).toEqual({ success: true });
@@ -964,7 +1073,9 @@ describe("CONTRACT integration — finalize-goal", () => {
 describe("CONTRACT outputs integration — create-goal", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("all outputs present → success: true", async () => {
@@ -987,7 +1098,9 @@ describe("CONTRACT outputs integration — create-goal", () => {
 describe("CONTRACT outputs integration — create-plan", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("all outputs present → success: true", async () => {
@@ -1023,7 +1136,9 @@ steps:
 describe("CONTRACT outputs integration — evolve-plan", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("all outputs present (step 1, no DECISIONS.md required) → success: true", async () => {
@@ -1060,7 +1175,11 @@ skills:
 `,
       "utf-8",
     );
-    fs.writeFileSync(path.join(tempDir, "S03", "DECISIONS.md"), "content", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "S03", "DECISIONS.md"),
+      "content",
+      "utf-8",
+    );
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 3 });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
@@ -1100,14 +1219,20 @@ skills:
 describe("CONTRACT outputs integration — execute-task", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("all outputs present → success: true (plain file names)", async () => {
     const { CONTRACT } = await import("../capabilities/execute-task/config");
     // CONTRACT uses plain file names — files resolve directly in workspaceDir
     fs.writeFileSync(path.join(tempDir, "TEST.md"), "content", "utf-8");
-    fs.writeFileSync(path.join(tempDir, "SUMMARY.md"), "---\nstatus: completed\n---\ncontent", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "SUMMARY.md"),
+      "---\nstatus: completed\n---\ncontent",
+      "utf-8",
+    );
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 4 });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
@@ -1127,7 +1252,9 @@ describe("CONTRACT outputs integration — execute-task", () => {
 describe("CONTRACT outputs integration — review-task", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("all outputs present → success: true (plain file names)", async () => {
@@ -1164,7 +1291,9 @@ lowIssues: 0
 describe("CONTRACT outputs integration — revise-plan", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("all outputs present → success: true", async () => {
@@ -1200,7 +1329,9 @@ steps:
 describe("CONTRACT outputs integration — finalize-goal", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("empty outputs → success: true", async () => {
@@ -1214,13 +1345,19 @@ describe("CONTRACT outputs integration — finalize-goal", () => {
 describe("CONTRACT outputs integration — COMPLETION_SUMMARY.md marker bypass", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("COMPLETION_SUMMARY.md bypasses all output checks (evolve-plan with all outputs missing)", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
     // COMPLETION_SUMMARY.md exists, but S01/TASK.md is missing
-    fs.writeFileSync(path.join(tempDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete\n", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "COMPLETION_SUMMARY.md"),
+      "---\nstatus: complete\n---\n# Complete\n",
+      "utf-8",
+    );
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 1 });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
@@ -1234,7 +1371,9 @@ describe("CONTRACT outputs integration — COMPLETION_SUMMARY.md marker bypass",
 describe("validateOutputs — unresolved placeholder handling", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("returns failed result when placeholder key is missing from params (no crash)", () => {
@@ -1284,14 +1423,18 @@ describe("validateOutputs — unresolved placeholder handling", () => {
 describe("validateFrontmatter — unresolved placeholder handling", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("returns failed result when placeholder key is missing from params (no crash)", () => {
     const schema = Type.Object({ totalSteps: Type.Integer() });
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema }],
+      outputs: [
+        { name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema },
+      ],
     };
 
     // stepNumber is missing — resolvePaths would throw without try/catch
@@ -1305,7 +1448,9 @@ describe("validateFrontmatter — unresolved placeholder handling", () => {
     const schema = Type.Object({ totalSteps: Type.Integer() });
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema }],
+      outputs: [
+        { name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema },
+      ],
     };
 
     const capState = makeCapState(contract, tempDir);
@@ -1318,7 +1463,9 @@ describe("validateFrontmatter — unresolved placeholder handling", () => {
     const schema = Type.Object({ decision: Type.String() });
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema }],
+      outputs: [
+        { name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema },
+      ],
     };
 
     fs.mkdirSync(path.join(tempDir, "S02"), { recursive: true });
@@ -1341,7 +1488,9 @@ describe("validateFrontmatter — unresolved placeholder handling", () => {
 describe("validateOutputs — COMPLETION_SUMMARY.md bypass with workspacePrefix", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("COMPLETION_SUMMARY.md bypass works with workspacePrefix set", () => {
@@ -1354,10 +1503,19 @@ describe("validateOutputs — COMPLETION_SUMMARY.md bypass with workspacePrefix"
     // (baseDir + workspacePrefix + "/COMPLETION_SUMMARY.md")
     const goalDir = path.join(tempDir, "goals", "test-goal");
     fs.mkdirSync(goalDir, { recursive: true });
-    fs.writeFileSync(path.join(goalDir, "COMPLETION_SUMMARY.md"), "---\nstatus: complete\n---\n# Complete\n", "utf-8");
+    fs.writeFileSync(
+      path.join(goalDir, "COMPLETION_SUMMARY.md"),
+      "---\nstatus: complete\n---\n# Complete\n",
+      "utf-8",
+    );
 
     // workspacePrefix is set — bypass should still work
-    const capState = new CapState(contract, tempDir, undefined, "goals/test-goal");
+    const capState = new CapState(
+      contract,
+      tempDir,
+      undefined,
+      "goals/test-goal",
+    );
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -1370,7 +1528,9 @@ describe("validateOutputs — COMPLETION_SUMMARY.md bypass with workspacePrefix"
 describe("setupValidation — auto-derived writeAllowlist from contract outputs", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("contract output paths are resolved through CapState with workspacePrefix", async () => {
@@ -1388,10 +1548,19 @@ describe("setupValidation — auto-derived writeAllowlist from contract outputs"
     const goalDir = path.join(tempDir, "goals", "my-goal");
     fs.mkdirSync(path.join(goalDir, "S01"), { recursive: true });
     fs.writeFileSync(path.join(goalDir, "S01", "TASK.md"), "content", "utf-8");
-    fs.writeFileSync(path.join(goalDir, "S01", "SUMMARY.md"), "content", "utf-8");
+    fs.writeFileSync(
+      path.join(goalDir, "S01", "SUMMARY.md"),
+      "content",
+      "utf-8",
+    );
 
     // With workspacePrefix, paths resolve under goals/my-goal/
-    const capState = new CapState(contract, tempDir, { stepNumber: 1 }, "goals/my-goal");
+    const capState = new CapState(
+      contract,
+      tempDir,
+      { stepNumber: 1 },
+      "goals/my-goal",
+    );
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -1407,7 +1576,9 @@ describe("setupValidation — auto-derived writeAllowlist from contract outputs"
 describe("validateOutputs — stripped workspacePrefix (no duplication)", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("resolves step-specific paths with goal-level workspaceDir when workspacePrefix is absent", () => {
@@ -1448,7 +1619,11 @@ describe("validateOutputs — stripped workspacePrefix (no duplication)", () => 
     const goalDir = path.join(tempDir, ".pio", "goals", "my-feature");
     fs.mkdirSync(path.join(goalDir, "S01"), { recursive: true });
     fs.writeFileSync(path.join(goalDir, "S01", "TASK.md"), "content", "utf-8");
-    fs.writeFileSync(path.join(goalDir, "S01", "SUMMARY.md"), "content", "utf-8");
+    fs.writeFileSync(
+      path.join(goalDir, "S01", "SUMMARY.md"),
+      "content",
+      "utf-8",
+    );
 
     const contract: CapabilityContract = {
       inputs: [],
@@ -1495,7 +1670,9 @@ describe("validateOutputs — stripped workspacePrefix (no duplication)", () => 
 describe("validateInputs — stripped workspacePrefix (no duplication)", () => {
   let tempDir: string;
 
-  beforeEach(() => { tempDir = createTempDir(); });
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
   afterEach(() => cleanup(tempDir));
 
   it("resolves input paths with goal-level workspaceDir when workspacePrefix is absent", () => {
@@ -1505,7 +1682,10 @@ describe("validateInputs — stripped workspacePrefix (no duplication)", () => {
     fs.writeFileSync(path.join(goalDir, "PLAN.md"), "content", "utf-8");
 
     const contract: CapabilityContract = {
-      inputs: [{ name: "goal", file: "GOAL.md" }, { name: "plan", file: "PLAN.md" }],
+      inputs: [
+        { name: "goal", file: "GOAL.md" },
+        { name: "plan", file: "PLAN.md" },
+      ],
       outputs: [],
     };
 
@@ -1539,7 +1719,8 @@ describe("validateInputs — stripped workspacePrefix (no duplication)", () => {
 const mockResolveCapabilityConfig2 = vi.hoisted(() => vi.fn());
 
 vi.mock("../capability-config", async (importOriginal) => {
-  const original = await importOriginal<typeof import("../capability-config")>();
+  const original =
+    await importOriginal<typeof import("../capability-config")>();
   return {
     ...original,
     resolveCapabilityConfig: mockResolveCapabilityConfig2,
@@ -1767,7 +1948,9 @@ describe("resources_discover handler — state reset", () => {
     });
   });
 
-  function createMockCtx(entries: Array<{ type: string; customType?: string; data?: unknown }> = []) {
+  function createMockCtx(
+    entries: Array<{ type: string; customType?: string; data?: unknown }> = [],
+  ) {
     return {
       cwd: "/home/user/my-project",
       sessionManager: {

@@ -1,12 +1,12 @@
+import * as fs from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import * as fs from "node:fs";
-import { getSessionConfig } from "../capability-utils";
-import { validateOutputs } from "./validation";
 import { CapState } from "../capability-state";
-import { dispatch, getMachine, recordTransition } from "../state-machines";
+import { getSessionConfig } from "../capability-utils";
 import { enqueueTask } from "../queues";
+import { dispatch, getMachine, recordTransition } from "../state-machines";
+import { validateOutputs } from "./validation";
 
 // ---------------------------------------------------------------------------
 // pio_mark_complete tool — orchestrates the full capability exit lifecycle
@@ -15,8 +15,10 @@ import { enqueueTask } from "../queues";
 export const markCompleteTool = defineTool({
   name: "pio_mark_complete",
   label: "Pio Mark Complete",
-  description: "Signal that your work is done. Validates that all expected output files have been produced and auto-enqueues the next workflow task.",
-  promptSnippet: "Signal that your work is done. Validates expected output files.",
+  description:
+    "Signal that your work is done. Validates that all expected output files have been produced and auto-enqueues the next workflow task.",
+  promptSnippet:
+    "Signal that your work is done. Validates expected output files.",
   parameters: Type.Object({}),
 
   async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
@@ -24,22 +26,41 @@ export const markCompleteTool = defineTool({
 
     // No config — not a capability session, always pass
     if (!config) {
-      return { content: [{ type: "text", text: "No validation rules configured for this session." }], details: {}, terminate: true };
+      return {
+        content: [
+          {
+            type: "text",
+            text: "No validation rules configured for this session.",
+          },
+        ],
+        details: {},
+        terminate: true,
+      };
     }
     const dir = config.workspaceDir;
 
     // No workspaceDir — can't do anything meaningful, pass and terminate
     if (!dir) {
-      return { content: [{ type: "text", text: "No directory is defined for this session. Something went wrong." }], details: {}, terminate: true };
+      return {
+        content: [
+          {
+            type: "text",
+            text: "No directory is defined for this session. Something went wrong.",
+          },
+        ],
+        details: {},
+        terminate: true,
+      };
     }
 
     // Use the completing session's params directly — they are authoritative.
     const sessionParams = config.sessionParams || {};
 
     // Read queueKey from session params (set by the state machine)
-    const queueKey = typeof sessionParams.queueKey === "string"
-      ? sessionParams.queueKey
-      : undefined;
+    const queueKey =
+      typeof sessionParams.queueKey === "string"
+        ? sessionParams.queueKey
+        : undefined;
     if (!queueKey) {
       throw new Error(
         `mark-complete: queueKey missing from session params — ensure enqueue provides it`,
@@ -57,7 +78,15 @@ export const markCompleteTool = defineTool({
     const outputsResult = validateOutputs(capState);
 
     if (!outputsResult.success) {
-      return { content: [{ type: "text", text: `Validation failed: ${outputsResult.message}\n\nProduce these files and call pio_mark_complete again.` }], details: {} };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Validation failed: ${outputsResult.message}\n\nProduce these files and call pio_mark_complete again.`,
+          },
+        ],
+        details: {},
+      };
     }
 
     // 2. PostValidate hook — can fail to keep agent in session
@@ -65,10 +94,21 @@ export const markCompleteTool = defineTool({
       try {
         const postValidateResult = config.postValidate(dir, sessionParams);
         if (!postValidateResult.success) {
-          return { content: [{ type: "text", text: postValidateResult.message || "Post-validation failed." }], details: {} };
+          return {
+            content: [
+              {
+                type: "text",
+                text: postValidateResult.message || "Post-validation failed.",
+              },
+            ],
+            details: {},
+          };
         }
       } catch (err) {
-        return { content: [{ type: "text", text: `Post-validation error: ${err}` }], details: {} };
+        return {
+          content: [{ type: "text", text: `Post-validation error: ${err}` }],
+          details: {},
+        };
       }
     }
 
@@ -79,13 +119,19 @@ export const markCompleteTool = defineTool({
 
     // Multi-machine dispatch: read stateMachineId from session params, look up machine explicitly.
     // Falls back to dispatch(undefined, ...) for first transitions or legacy sessions.
-    const machineId = typeof sessionParams.stateMachineId === "string"
-      ? sessionParams.stateMachineId
-      : undefined;
+    const machineId =
+      typeof sessionParams.stateMachineId === "string"
+        ? sessionParams.stateMachineId
+        : undefined;
     const targetMachine = machineId ? getMachine(machineId) : undefined;
 
     const results = capability
-      ? dispatch(targetMachine, capability, { workspaceDir: dir }, sessionParams)
+      ? dispatch(
+          targetMachine,
+          capability,
+          { workspaceDir: dir },
+          sessionParams,
+        )
       : [];
 
     if (capability && results.length === 1) {
@@ -107,9 +153,10 @@ export const markCompleteTool = defineTool({
 
         // Queue key for scheduling: use adjustedParams.queueKey if set (e.g. subgoal → parent),
         // otherwise fall back to completing session's own key.
-        const nextQueueKey = typeof adjustedParams.queueKey === "string"
-          ? adjustedParams.queueKey
-          : queueKey;
+        const nextQueueKey =
+          typeof adjustedParams.queueKey === "string"
+            ? adjustedParams.queueKey
+            : queueKey;
 
         enqueueTask(process.cwd(), nextQueueKey, {
           capability: nextTask.capability,
@@ -136,7 +183,9 @@ export const markCompleteTool = defineTool({
           await postExecuteResult;
         }
       } catch (err) {
-        console.warn(`pio: postExecute failed for capability "${config.capability}": ${err}`);
+        console.warn(
+          `pio: postExecute failed for capability "${config.capability}": ${err}`,
+        );
       }
     }
 
@@ -152,7 +201,16 @@ export const markCompleteTool = defineTool({
       }
     }
 
-    return { content: [{ type: "text", text: `Validation passed. All expected outputs have been produced.${notification}` }], details: {}, terminate: true };
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Validation passed. All expected outputs have been produced.${notification}`,
+        },
+      ],
+      details: {},
+      terminate: true,
+    };
   },
 });
 

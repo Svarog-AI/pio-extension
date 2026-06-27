@@ -1,5 +1,5 @@
-import { Type } from "typebox";
 import type { Static } from "typebox";
+import { Type } from "typebox";
 
 // ---------------------------------------------------------------------------
 // Review output schema and types

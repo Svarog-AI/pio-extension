@@ -13,7 +13,12 @@ const capabilityConfig = {
   },
   skills: {
     mandatory: ["tdd", "pio-git"],
-    recommended: [{ name: "source-research", condition: "when researching external libraries" }],
+    recommended: [
+      {
+        name: "source-research",
+        condition: "when researching external libraries",
+      },
+    ],
   },
   defaultInitialMessage: () => "Test capability with skills",
 } satisfies CapabilityPackageConfig;

@@ -107,7 +107,7 @@ If no updates were warranted, explicitly state: "No PROJECT file updates were wa
   {
     id: "create-pr",
     title: "Create a pull request",
-    instructions: `After producing the summary, you **must** create a pull request for this goal's changes. Follow the PR Creation Protocol from the pio-git skill. Pass the goal name and workspace path as context so the skill can derive the PR title and body. This step is required before calling \`pio_mark_complete\`. Graceful failure semantics apply: if PR creation fails due to missing prerequisites (no \`gh\` CLI, not authenticated, no remote, etc.), log a warning and continue — do not block completion. However, skipping this step without attempting is not permitted.`,
+    instructions: `After producing the summary, you **must** create a pull request for this goal's changes. Follow the PR Creation Protocol from the pio-git skill. Pass the goal name and workspace path as context so the skill can derive the PR title and body. This step is required before calling \`pio_mark_complete\`. Graceful failure semantics apply: if PR creation fails due to missing prerequisites (no \`gh\` CLI, not authenticated, no remote, etc.), log a warning and continue — do not block completion. However, skipping this step without attempting is not permitted. The PR description should summarize all commits in the branch and the change as part of the delivered goal. Not explain intermediate decision or changes of plan within the scope of the goal. Make sure this is true.`,
     skills: { mandatory: ["pio-git"] },
   },
   {

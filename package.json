@@ -8,7 +8,10 @@
     "clean": "echo 'nothing to clean'",
     "build": "echo 'nothing to build'",
     "check": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "biome check --error-on-warnings .",
+    "lint:fix": "biome check --write .",
+    "prepare": "[ -n \"$CI\" ] && exit 0; lefthook install"
   },
   "pi": {
     "extensions": [

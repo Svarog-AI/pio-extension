@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { vi } from "vitest";
 import { readPendingTask } from "../../queues";
 import config, { postValidateCreatePlan, register } from "./config";
+import workflowSteps from "./workflow";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -673,5 +674,29 @@ describe("create-plan tool execute — pre-launch validation", () => {
     expect(task?.params).toHaveProperty("queueKey", "my-feature");
     expect(task?.params).toHaveProperty("initialMessage");
     expect(task?.params?.initialMessage).toBe("test message");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Workflow steps — self-review step exists
+// ---------------------------------------------------------------------------
+
+describe("create-plan workflow steps", () => {
+  it("contains a self-review step between write-plan and signal-completion", () => {
+    const ids = workflowSteps.map((s) => s.id);
+    const writePlanIdx = ids.indexOf("write-plan");
+    const selfReviewIdx = ids.indexOf("self-review");
+    const signalCompletionIdx = ids.indexOf("signal-completion");
+
+    expect(selfReviewIdx).toBeGreaterThan(-1);
+    expect(selfReviewIdx).toBe(writePlanIdx + 1);
+    expect(signalCompletionIdx).toBe(selfReviewIdx + 1);
+  });
+
+  it("self-review step has instructions mentioning verification patterns", () => {
+    const step = workflowSteps.find((s) => s.id === "self-review");
+    expect(step).toBeDefined();
+    const instructions = step!.instructions.toLowerCase();
+    expect(instructions).toMatch(/verify|validate|check|test|confirm/i);
   });
 });

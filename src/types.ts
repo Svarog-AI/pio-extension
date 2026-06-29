@@ -9,6 +9,7 @@
  */
 
 import type { TSchema } from "typebox";
+import type { CapState } from "./capability-state";
 
 // ---------------------------------------------------------------------------
 // Capability contract types (unified input/output declarations)
@@ -30,7 +31,10 @@ export interface MarkdownFileSpec {
   /** Optional TypeBox schema for YAML frontmatter validation — plain existence check when absent */
   schema?: TSchema;
   /** Optional predicate to determine if this file is required. Receives session params. If absent, file is always required. */
-  requiredWhen?: (params?: Record<string, unknown>) => boolean;
+  requiredWhen?: (
+    params?: Record<string, unknown>,
+    capState?: CapState,
+  ) => boolean;
   /** When true, resolves from pioRootDir (`.pio/`) bypassing workspace prefix. Used for files like `.pio/PROJECT/*.md` that live outside goal workspaces. */
   projectRelative?: boolean;
 }

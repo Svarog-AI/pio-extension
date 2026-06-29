@@ -90,7 +90,10 @@ export function validateOutputs(capState: CapState): {
       }
 
       // Evaluate requiredWhen predicate
-      if (entry.requiredWhen !== undefined && !entry.requiredWhen(params)) {
+      if (
+        entry.requiredWhen !== undefined &&
+        !entry.requiredWhen(params, capState)
+      ) {
         continue;
       }
 

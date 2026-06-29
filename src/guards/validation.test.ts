@@ -185,7 +185,7 @@ describe("validateOutputs with CapabilityContract", () => {
     expect(result).toEqual({ success: true });
   });
 
-  it("COMPLETION_SUMMARY.md bypass still works with contract", () => {
+  it("COMPLETION_SUMMARY.md is not required when not declared in contract", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
@@ -194,16 +194,20 @@ describe("validateOutputs with CapabilityContract", () => {
       ],
     };
 
-    // COMPLETION_SUMMARY.md exists, but PLAN.md and SUMMARY.md are missing
+    // COMPLETION_SUMMARY.md exists but is NOT declared in the contract
+    // Validation should proceed normally — checking only declared outputs
     fs.writeFileSync(
       path.join(tempDir, "COMPLETION_SUMMARY.md"),
       "---\nstatus: complete\n---\n# Complete\n",
       "utf-8",
     );
+    // PLAN.md and SUMMARY.md are missing — validation should fail
 
     const capState = makeCapState(contract, tempDir);
     const result = validateOutputs(capState);
-    expect(result).toEqual({ success: true });
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("PLAN.md");
+    expect(result.message).toContain("SUMMARY.md");
   });
 
   it("placeholder resolution in output file paths", () => {
@@ -1143,6 +1147,23 @@ describe("CONTRACT outputs integration — evolve-plan", () => {
 
   it("all outputs present (step 1, no DECISIONS.md required) → success: true", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
+    // Create PLAN.md with totalSteps: 3
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: 3
+steps:
+  - name: step-1
+    complexity: task
+  - name: step-2
+    complexity: task
+  - name: step-3
+    complexity: task
+---
+# Plan
+`,
+      "utf-8",
+    );
     fs.mkdirSync(path.join(tempDir, "S01"), { recursive: true });
     fs.writeFileSync(
       path.join(tempDir, "S01", "TASK.md"),
@@ -1163,6 +1184,23 @@ skills:
 
   it("all outputs present (step 3, DECISIONS.md required) → success: true", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
+    // Create PLAN.md with totalSteps: 3
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: 3
+steps:
+  - name: step-1
+    complexity: task
+  - name: step-2
+    complexity: task
+  - name: step-3
+    complexity: task
+---
+# Plan
+`,
+      "utf-8",
+    );
     fs.mkdirSync(path.join(tempDir, "S03"), { recursive: true });
     fs.writeFileSync(
       path.join(tempDir, "S03", "TASK.md"),
@@ -1187,6 +1225,23 @@ skills:
 
   it("missing TASK.md → failure naming S02/TASK.md", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
+    // Create PLAN.md with totalSteps: 3
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: 3
+steps:
+  - name: step-1
+    complexity: task
+  - name: step-2
+    complexity: task
+  - name: step-3
+    complexity: task
+---
+# Plan
+`,
+      "utf-8",
+    );
     // S02/TASK.md is missing
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 2 });
     const result = validateOutputs(capState);
@@ -1196,6 +1251,23 @@ skills:
 
   it("missing DECISIONS.md (step > 1) → failure naming S03/DECISIONS.md", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
+    // Create PLAN.md with totalSteps: 3
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---
+totalSteps: 3
+steps:
+  - name: step-1
+    complexity: task
+  - name: step-2
+    complexity: task
+  - name: step-3
+    complexity: task
+---
+# Plan
+`,
+      "utf-8",
+    );
     fs.mkdirSync(path.join(tempDir, "S03"), { recursive: true });
     fs.writeFileSync(
       path.join(tempDir, "S03", "TASK.md"),
@@ -1342,7 +1414,7 @@ describe("CONTRACT outputs integration — finalize-goal", () => {
   });
 });
 
-describe("CONTRACT outputs integration — COMPLETION_SUMMARY.md marker bypass", () => {
+describe("CONTRACT outputs integration — COMPLETION_SUMMARY.md via contract", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -1350,15 +1422,22 @@ describe("CONTRACT outputs integration — COMPLETION_SUMMARY.md marker bypass",
   });
   afterEach(() => cleanup(tempDir));
 
-  it("COMPLETION_SUMMARY.md bypasses all output checks (evolve-plan with all outputs missing)", async () => {
+  it("COMPLETION_SUMMARY.md is required when stepNumber > totalSteps (evolve-plan)", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
-    // COMPLETION_SUMMARY.md exists, but S01/TASK.md is missing
+    // Create PLAN.md with totalSteps: 2
+    const stepsYaml = `  - name: step-1\n    complexity: task\n  - name: step-2\n    complexity: task`;
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---\ntotalSteps: 2\nsteps:\n${stepsYaml}\n---\n# Plan\n`,
+      "utf-8",
+    );
+    // stepNumber: 3 > totalSteps: 2 → only COMPLETION_SUMMARY.md required
     fs.writeFileSync(
       path.join(tempDir, "COMPLETION_SUMMARY.md"),
       "---\nstatus: complete\n---\n# Complete\n",
       "utf-8",
     );
-    const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 1 });
+    const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 3 });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -1482,10 +1561,10 @@ describe("validateFrontmatter — unresolved placeholder handling", () => {
 });
 
 // ---------------------------------------------------------------------------
-// COMPLETION_SUMMARY.md bypass with workspacePrefix
+// COMPLETION_SUMMARY.md validation with workspacePrefix
 // ---------------------------------------------------------------------------
 
-describe("validateOutputs — COMPLETION_SUMMARY.md bypass with workspacePrefix", () => {
+describe("validateOutputs — COMPLETION_SUMMARY.md with workspacePrefix", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -1493,27 +1572,34 @@ describe("validateOutputs — COMPLETION_SUMMARY.md bypass with workspacePrefix"
   });
   afterEach(() => cleanup(tempDir));
 
-  it("COMPLETION_SUMMARY.md bypass works with workspacePrefix set", () => {
-    const contract: CapabilityContract = {
-      inputs: [],
-      outputs: [{ name: "task", file: "S{stepNumber:02d}/TASK.md" }],
-    };
+  it("COMPLETION_SUMMARY.md validation works with workspacePrefix set (evolve-plan)", async () => {
+    const { CONTRACT } = await import("../capabilities/evolve-plan/config");
 
     // When workspacePrefix is set, COMPLETION_SUMMARY.md resolves through the prefix
     // (baseDir + workspacePrefix + "/COMPLETION_SUMMARY.md")
     const goalDir = path.join(tempDir, "goals", "test-goal");
     fs.mkdirSync(goalDir, { recursive: true });
+
+    // Create PLAN.md with totalSteps: 2
+    const stepsYaml = `  - name: step-1\n    complexity: task\n  - name: step-2\n    complexity: task`;
+    fs.writeFileSync(
+      path.join(goalDir, "PLAN.md"),
+      `---\ntotalSteps: 2\nsteps:\n${stepsYaml}\n---\n# Plan\n`,
+      "utf-8",
+    );
+
+    // stepNumber: 3 > totalSteps: 2 → only COMPLETION_SUMMARY.md required
     fs.writeFileSync(
       path.join(goalDir, "COMPLETION_SUMMARY.md"),
       "---\nstatus: complete\n---\n# Complete\n",
       "utf-8",
     );
 
-    // workspacePrefix is set — bypass should still work
+    // workspacePrefix is set — contract validation should work
     const capState = new CapState(
-      contract,
+      CONTRACT,
       tempDir,
-      undefined,
+      { stepNumber: 3 },
       "goals/test-goal",
     );
     const result = validateOutputs(capState);

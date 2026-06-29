@@ -62,8 +62,9 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at workspaceDir", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("passes when COMPLETION_SUMMARY.md exists, even if other expected files are missing", () => {
-    // Arrange: temp dir with COMPLETION_SUMMARY.md file but no TASK.md/TEST.md
+  it("fails when COMPLETION_SUMMARY.md exists but is not declared in contract", () => {
+    // COMPLETION_SUMMARY.md exists but is NOT declared in the contract
+    // Validation should proceed normally — checking only declared outputs
     fs.writeFileSync(
       path.join(tempDir, "COMPLETION_SUMMARY.md"),
       "---\nstatus: complete\n---\n# Complete\n",
@@ -82,8 +83,10 @@ describe("validateOutputs with COMPLETION_SUMMARY.md at workspaceDir", () => {
     const capState = new CapState(contract, tempDir);
     const result = validateOutputs(capState);
 
-    // Assert
-    expect(result).toEqual({ success: true });
+    // Assert: fails because TASK.md and TEST.md are missing (no bypass)
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("TASK.md");
+    expect(result.message).toContain("TEST.md");
   });
 
   it("passes when COMPLETION_SUMMARY.md is the only expected file and it exists", () => {

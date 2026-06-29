@@ -70,16 +70,6 @@ export function validateOutputs(capState: CapState): {
   // biome-ignore lint/complexity/useLiteralKeys: 'params' is a private field — bracket notation required
   const params = capState["params"] as Record<string, unknown> | undefined;
 
-  // If COMPLETION_SUMMARY.md exists (resolved through CapState context), pass validation regardless of other expected files.
-  // This allows evolve-plan to write just COMPLETION_SUMMARY.md (when all steps are done) and have pio_mark_complete succeed.
-  const completionSummaryPath = capState.resolvePath({
-    name: "_bypass",
-    file: "COMPLETION_SUMMARY.md",
-  });
-  if (fs.existsSync(completionSummaryPath)) {
-    return { success: true };
-  }
-
   try {
     const issues: string[] = [];
 

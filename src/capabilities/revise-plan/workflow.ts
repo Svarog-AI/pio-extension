@@ -149,6 +149,31 @@ totalSteps: 7
 - Completed step entries need only a brief description and status marker — they are references, not actionable items`,
   },
   {
+    id: "self-review",
+    title: "Self-review plan headings",
+    instructions: `Before signaling completion, review the PLAN.md you just wrote for verification-style step titles.
+
+**Scan all \`### Step N:\` headings** but **skip headings marked \`[COMPLETED]\`** — those are historical anchors from prior steps, not authored by the current session.
+
+Check remaining headings for titles whose primary purpose is verification. The following patterns are forbidden as step titles:
+
+- **Verify** (e.g., "Verify Implementation", "Verify Changes")
+- **Validate** (e.g., "Validate Integration", "Validate Configuration")
+- **Check** (e.g., "Check All Tests Pass", "Check Integration")
+- **Test** (e.g., "Add Tests", "Test the Feature")
+- **Confirm** (e.g., "Confirm Everything Works")
+- Or similar verification-focused language where the sole purpose of the step is verification without producing other deliverables
+
+**Important distinctions:**
+- Steps that *update or modify existing tests as part of a larger implementation change* are permitted (e.g., "Update test suite for API migration")
+- An *integration verification step near the end* is allowed when it involves cross-module or end-to-end verification spanning multiple steps
+- Only steps whose *sole purpose is verification* without producing other deliverables are forbidden
+
+**If offending headings are found:** Rewrite those steps as concrete deliverables with clear outputs, and update PLAN.md accordingly.
+
+**If all non-completed headings are clean:** Proceed to \`signal-completion\` without further iteration.`,
+  },
+  {
     id: "signal-completion",
     title: "Signal completion",
     instructions: `When \`PLAN.md\` has been written and confirmed, call the \`pio_mark_complete\` tool to validate that all expected outputs have been produced. If validation reports missing files, produce them before calling again. Do not end your work without calling this tool.`,

@@ -1,5 +1,5 @@
 - **Do not modify GOAL.md.** Your output is PLAN.md only. If you find issues with GOAL.md that prevent planning, report them to the user.
-- **Follow acceptance criteria guidelines from the `pio-planning` skill.** Prefer programmatic verification. Criteria verify completion — they do not plan tests. No dedicated test steps.
+- **Follow acceptance criteria guidelines from the `pio-planning` skill.** Prefer programmatic verification. Criteria verify completion — they do not plan tests. No dedicated verification steps: do not create steps titled "Verify", "Validate", "Check", "Test", "Confirm", or similar where the sole purpose is verification. Each step's acceptance criteria already handle verification — a dedicated check step is always redundant. (Exception: steps that update tests as part of a larger deliverable are permitted; an integration verification step spanning multiple steps near the end is allowed.)
 - **Reference real files only.** Every path in PLAN.md should correspond to a file you actually read or confirmed exists.
 - **No source code in PLAN.md.** Describe changes in natural language or high-level pseudocode. Short interface signatures (type stubs) are allowed — never full function bodies.
 - **Stay within GOAL.md scope.** Do not add steps for refactoring unrelated code, fixing style issues, or "while you're at it" improvements.

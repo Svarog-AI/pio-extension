@@ -118,11 +118,13 @@ Your job is to specify how each step can be checked programmatically once implem
 - Bad: "unit tests for X cover all edge cases" (that's evolve-plan/execute-task territory)
 - Bad: "write a new test file `src/__tests__/x.test.ts`" (belonging in TEST.md, not PLAN.md)
 
-### No Dedicated Test Steps
+### No Dedicated Verification Steps
 
-You must not create dedicated plan steps for writing unit tests. Per-step unit testing is handled by `evolve-plan` (which generates `TEST.md` with specific test cases) and `execute-task` (which writes and runs those tests).
+You must not create dedicated plan steps whose primary purpose is verification. This includes steps titled or primarily focused on "Verify", "Validate", "Check", "Test", "Confirm", or similar verification-focused language. Each implementation step's acceptance criteria already handle verification — a dedicated verification step is always redundant.
 
-**Exception:** You may include an integration verification step near the end of a plan when the goal requires cross-module or end-to-end verification spanning multiple steps. This is distinct from per-step unit testing.
+**What is permitted:** Steps that update or modify existing tests as part of a larger implementation change are allowed. For example, "Update existing test suite for API migration" or "Refactor X and update dependent tests" — these produce a concrete deliverable (code changes, including test code). Only steps whose *sole purpose* is verification without producing other deliverables are forbidden.
+
+**Exception:** You may include an integration verification step near the end of a plan when the goal requires cross-module or end-to-end verification spanning multiple steps. This is distinct from per-step verification.
 
 ### Specificity
 

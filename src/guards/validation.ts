@@ -91,7 +91,7 @@ export function validateOutputs(capState: CapState): {
       const fullPath = capState.resolvePath(entry);
 
       if (!fs.existsSync(fullPath)) {
-        issues.push(`Output file '${entry.file}' is missing`);
+        issues.push(`Output file '${fullPath}' is missing`);
         continue;
       }
 
@@ -100,7 +100,7 @@ export function validateOutputs(capState: CapState): {
         const raw = extractFrontmatter(fullPath);
         if (raw === null) {
           issues.push(
-            `Output file '${entry.file}' has no valid YAML frontmatter`,
+            `Output file '${fullPath}' has no valid YAML frontmatter`,
           );
         } else if (!Value.Check(entry.schema, raw)) {
           const errors = [...Value.Errors(entry.schema, raw)];
@@ -114,7 +114,7 @@ export function validateOutputs(capState: CapState): {
             .join("; ");
           const schemaDesc = formatSchemaDescription(entry.schema);
           issues.push(
-            `Frontmatter validation failed for '${entry.file}': ${fieldErrors}\nExpected frontmatter structure:\n${schemaDesc}`,
+            `Frontmatter validation failed for '${fullPath}': ${fieldErrors}\nExpected frontmatter structure:\n${schemaDesc}`,
           );
         }
       }
@@ -123,86 +123,6 @@ export function validateOutputs(capState: CapState): {
     if (issues.length > 0) {
       return { success: false, message: issues.join("\n") };
     }
-    return { success: true };
-  } catch (err) {
-    return {
-      success: false,
-      message: err instanceof Error ? err.message : String(err),
-    };
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Frontmatter schema validation
-// ---------------------------------------------------------------------------
-
-/**
- * Validate YAML frontmatter of output files against declared TypeBox schemas.
- *
- * Iterates over contract.outputs[] entries with schema defined, reads each file
- * via extractFrontmatter(), and validates the parsed object against the declared
- * schema using Value.Check().
- *
- * Returns on the first failure (fail-fast). Error messages include the
- * outputFile name so the executor knows which file failed.
- *
- * This is a schema-only validation — it does NOT perform cross-field checks
- * that require reading document body content (e.g., totalSteps vs heading count).
- */
-export function validateFrontmatter(capState: CapState): {
-  success: boolean;
-  message?: string;
-} {
-  try {
-    for (const entry of capState.contract.outputs) {
-      if (!isMarkdownFileSpec(entry)) {
-        // OneOfGroup — skip for frontmatter validation
-        continue;
-      }
-      if (!entry.schema) {
-        // No schema — skip frontmatter validation for this file
-        continue;
-      }
-
-      // Use CapState.resolvePath for prefix-aware resolution
-      const filePath = capState.resolvePath(entry);
-
-      // Check file exists
-      if (!fs.existsSync(filePath)) {
-        return {
-          success: false,
-          message: `Output file '${entry.file}' does not exist`,
-        };
-      }
-
-      // Parse frontmatter
-      const raw = extractFrontmatter(filePath);
-      if (raw === null) {
-        return {
-          success: false,
-          message: `Output file '${entry.file}' has no valid YAML frontmatter`,
-        };
-      }
-
-      // Validate against schema
-      if (!Value.Check(entry.schema, raw)) {
-        const errors = [...Value.Errors(entry.schema, raw)];
-        const messages = errors
-          .map((e) => {
-            const field = e.instancePath
-              ? e.instancePath.replace(/^\//, "")
-              : "root";
-            return `Field '${field}': ${e.message}`;
-          })
-          .join("; ");
-        const schemaDesc = formatSchemaDescription(entry.schema);
-        return {
-          success: false,
-          message: `Frontmatter validation failed for '${entry.file}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}`,
-        };
-      }
-    }
-
     return { success: true };
   } catch (err) {
     return {
@@ -237,7 +157,7 @@ export function validateInputs(capState: CapState): {
       if (!fs.existsSync(fullPath)) {
         return {
           success: false,
-          message: `Required file missing: ${spec.file}`,
+          message: `Required file missing: ${fullPath}`,
         };
       }
 
@@ -247,7 +167,7 @@ export function validateInputs(capState: CapState): {
         if (raw === null) {
           return {
             success: false,
-            message: `Input file '${spec.file}' has no valid YAML frontmatter`,
+            message: `Input file '${fullPath}' has no valid YAML frontmatter`,
           };
         }
 
@@ -264,7 +184,7 @@ export function validateInputs(capState: CapState): {
           const schemaDesc = formatSchemaDescription(spec.schema);
           return {
             success: false,
-            message: `Frontmatter validation failed for '${spec.file}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}`,
+            message: `Frontmatter validation failed for '${fullPath}': ${messages}\nExpected frontmatter structure:\n${schemaDesc}`,
           };
         }
       }
@@ -275,7 +195,10 @@ export function validateInputs(capState: CapState): {
       for (const file of capState.contract.excludedFiles) {
         const fullPath = capState.resolvePath({ name: "_excluded", file });
         if (fs.existsSync(fullPath)) {
-          return { success: false, message: `File must not exist: ${file}` };
+          return {
+            success: false,
+            message: `File must not exist: ${fullPath}`,
+          };
         }
       }
     }

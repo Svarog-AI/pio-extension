@@ -9,7 +9,6 @@ import type { CapabilityContract } from "../types";
 import {
   __testSetFileProtectionState,
   setupValidation,
-  validateFrontmatter,
   validateInputs,
   validateOutputs,
 } from "./validation";
@@ -233,7 +232,7 @@ describe("validateOutputs with CapabilityContract", () => {
     const capState = makeCapState(contract, tempDir, { stepNumber: 3 });
     const result = validateOutputs(capState);
     expect(result.success).toBe(false);
-    expect(result.message).toContain("S{stepNumber:02d}/TASK.md");
+    expect(result.message).toContain("S03/TASK.md");
   });
 
   // -----------------------------------------------------------------------
@@ -375,114 +374,6 @@ decision: APPROVED
 });
 
 // ---------------------------------------------------------------------------
-// validateFrontmatter — contract-based (CapabilityContract)
-// ---------------------------------------------------------------------------
-
-describe("validateFrontmatter with CapabilityContract", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("outputs with schema — valid frontmatter → success", () => {
-    const schema = Type.Object({ totalSteps: Type.Integer({ minimum: 1 }) });
-    const contract: CapabilityContract = {
-      inputs: [],
-      outputs: [{ name: "plan", file: "PLAN.md", schema }],
-    };
-
-    fs.writeFileSync(
-      path.join(tempDir, "PLAN.md"),
-      `---
-totalSteps: 3
----
-# Plan
-`,
-      "utf-8",
-    );
-
-    const capState = makeCapState(contract, tempDir);
-    const result = validateFrontmatter(capState);
-    expect(result).toEqual({ success: true });
-  });
-
-  it("outputs with schema — missing required field → failure", () => {
-    const schema = Type.Object({ totalSteps: Type.Integer({ minimum: 1 }) });
-    const contract: CapabilityContract = {
-      inputs: [],
-      outputs: [{ name: "plan", file: "PLAN.md", schema }],
-    };
-
-    fs.writeFileSync(
-      path.join(tempDir, "PLAN.md"),
-      `---
----
-# Plan
-`,
-      "utf-8",
-    );
-
-    const capState = makeCapState(contract, tempDir);
-    const result = validateFrontmatter(capState);
-    expect(result.success).toBe(false);
-    expect(result.message).toContain("PLAN.md");
-  });
-
-  it("outputs without schema — skipped (no frontmatter validation)", () => {
-    const contract: CapabilityContract = {
-      inputs: [],
-      outputs: [{ name: "plan", file: "PLAN.md" }], // no schema
-    };
-
-    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "just plain text", "utf-8");
-
-    const capState = makeCapState(contract, tempDir);
-    const result = validateFrontmatter(capState);
-    expect(result).toEqual({ success: true });
-  });
-
-  it("empty outputs → success: true", () => {
-    const contract: CapabilityContract = {
-      inputs: [],
-      outputs: [],
-    };
-
-    const capState = makeCapState(contract, tempDir);
-    const result = validateFrontmatter(capState);
-    expect(result).toEqual({ success: true });
-  });
-
-  it("mixed outputs — validates only entries with schema", () => {
-    const schema = Type.Object({ name: Type.String() });
-    const contract: CapabilityContract = {
-      inputs: [],
-      outputs: [
-        { name: "plan", file: "PLAN.md", schema },
-        { name: "summary", file: "SUMMARY.md" }, // no schema — skip
-      ],
-    };
-
-    fs.writeFileSync(
-      path.join(tempDir, "PLAN.md"),
-      `---
-name: test
----
-content
-`,
-      "utf-8",
-    );
-    // SUMMARY.md doesn't exist — but it has no schema so frontmatter validation skips it
-
-    const capState = makeCapState(contract, tempDir);
-    const result = validateFrontmatter(capState);
-    expect(result).toEqual({ success: true });
-  });
-});
-
-// ---------------------------------------------------------------------------
 // validateInputs — contract-based (CapabilityContract)
 // ---------------------------------------------------------------------------
 
@@ -526,7 +417,8 @@ describe("validateInputs with CapabilityContract", () => {
     const capState = makeCapState(contract, tempDir);
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
-    expect(result.message).toBe("Required file missing: PLAN.md");
+    expect(result.message).toContain("Required file missing:");
+    expect(result.message).toContain("PLAN.md");
   });
 
   it("excluded file exists → failure with file name", () => {
@@ -542,7 +434,8 @@ describe("validateInputs with CapabilityContract", () => {
     const capState = makeCapState(contract, tempDir);
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
-    expect(result.message).toBe("File must not exist: PLAN.md");
+    expect(result.message).toContain("File must not exist:");
+    expect(result.message).toContain("PLAN.md");
   });
 
   it("placeholder resolution in input paths with params", () => {
@@ -568,9 +461,8 @@ describe("validateInputs with CapabilityContract", () => {
     const capState = makeCapState(contract, tempDir, { stepNumber: 2 });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
-    expect(result.message).toBe(
-      "Required file missing: S{stepNumber:02d}/TASK.md",
-    );
+    expect(result.message).toContain("Required file missing:");
+    expect(result.message).toContain("S02/TASK.md");
   });
 
   it("placeholder resolution in excluded files with params", () => {
@@ -591,9 +483,8 @@ describe("validateInputs with CapabilityContract", () => {
     const capState = makeCapState(contract, tempDir, { stepNumber: 1 });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
-    expect(result.message).toBe(
-      "File must not exist: S{stepNumber:02d}/REVISE_PLAN_NEEDED",
-    );
+    expect(result.message).toContain("File must not exist:");
+    expect(result.message).toContain("S01/REVISE_PLAN_NEEDED");
   });
 
   it("empty inputs → success: true", () => {
@@ -762,7 +653,7 @@ skills: not-an-array
     const capState = makeCapState(contract, tempDir, { stepNumber: 3 });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
-    expect(result.message).toContain("S{stepNumber:02d}/TASK.md");
+    expect(result.message).toContain("S03/TASK.md");
     expect(result.message).toContain("skills");
   });
 });
@@ -1496,71 +1387,6 @@ describe("validateOutputs — unresolved placeholder handling", () => {
 });
 
 // ---------------------------------------------------------------------------
-// validateFrontmatter — graceful error handling for unresolved placeholders
-// ---------------------------------------------------------------------------
-
-describe("validateFrontmatter — unresolved placeholder handling", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-  afterEach(() => cleanup(tempDir));
-
-  it("returns failed result when placeholder key is missing from params (no crash)", () => {
-    const schema = Type.Object({ totalSteps: Type.Integer() });
-    const contract: CapabilityContract = {
-      inputs: [],
-      outputs: [
-        { name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema },
-      ],
-    };
-
-    // stepNumber is missing — resolvePaths would throw without try/catch
-    const capState = makeCapState(contract, tempDir, { goalName: "test" });
-    const result = validateFrontmatter(capState);
-    expect(result.success).toBe(false);
-    expect(result.message).toContain("Unresolved placeholder");
-  });
-
-  it("returns failed result when placeholder key is missing (no params at all)", () => {
-    const schema = Type.Object({ totalSteps: Type.Integer() });
-    const contract: CapabilityContract = {
-      inputs: [],
-      outputs: [
-        { name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema },
-      ],
-    };
-
-    const capState = makeCapState(contract, tempDir);
-    const result = validateFrontmatter(capState);
-    expect(result.success).toBe(false);
-    expect(result.message).toContain("stepNumber");
-  });
-
-  it("passes normally when all placeholders resolved and frontmatter is valid", () => {
-    const schema = Type.Object({ decision: Type.String() });
-    const contract: CapabilityContract = {
-      inputs: [],
-      outputs: [
-        { name: "review", file: "S{stepNumber:02d}/REVIEW.md", schema },
-      ],
-    };
-
-    fs.mkdirSync(path.join(tempDir, "S02"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tempDir, "S02", "REVIEW.md"),
-      `---\ndecision: APPROVED\n---\n# Review`,
-      "utf-8",
-    );
-
-    const capState = makeCapState(contract, tempDir, { stepNumber: 2 });
-    const result = validateFrontmatter(capState);
-    expect(result).toEqual({ success: true });
-  });
-});
-
-// ---------------------------------------------------------------------------
 // COMPLETION_SUMMARY.md validation with workspacePrefix
 // ---------------------------------------------------------------------------
 
@@ -1698,7 +1524,7 @@ describe("validateOutputs — stripped workspacePrefix (no duplication)", () => 
     const capState = makeCapState(contract, goalDir, { stepNumber: 3 });
     const result = validateOutputs(capState);
     expect(result.success).toBe(false);
-    expect(result.message).toContain("S{stepNumber:02d}/TASK.md");
+    expect(result.message).toContain("S03/TASK.md");
   });
 
   it("resolves multiple outputs with goal-level workspaceDir when workspacePrefix is absent", () => {

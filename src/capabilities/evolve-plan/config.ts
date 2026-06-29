@@ -7,13 +7,26 @@ import { Type } from "typebox";
 import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
 import { launchCapability } from "../../capability-session";
+import type { CapState } from "../../capability-state";
 import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import { stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import type { CapabilityContract } from "../../types";
+import type { PlanFrontmatter } from "../create-plan/schemas";
 import { PLAN_FRONTMATTER_SCHEMA } from "../create-plan/schemas";
 import { resolveEvolveWriteAllowlist } from "./callbacks";
 import { COMPLETION_SUMMARY_SCHEMA, TASK_FRONTMATTER_SCHEMA } from "./schemas";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Read totalSteps from PLAN.md via CapState (returns null if unreadable). */
+function getTotalSteps(capState?: CapState): number | null {
+  if (!capState) return null;
+  const plan = capState.input<PlanFrontmatter>("plan").read();
+  return plan?.totalSteps ?? null;
+}
 
 // ---------------------------------------------------------------------------
 // Contract (single source of truth — imported by callbacks)
@@ -27,18 +40,36 @@ export const CONTRACT: CapabilityContract = {
       name: "task",
       file: "S{stepNumber:02d}/TASK.md",
       schema: TASK_FRONTMATTER_SCHEMA,
+      requiredWhen: (params, capState) => {
+        const stepNumber =
+          typeof params?.stepNumber === "number" ? params.stepNumber : NaN;
+        const totalSteps = getTotalSteps(capState);
+        if (totalSteps == null) return true;
+        return stepNumber <= totalSteps;
+      },
     },
     {
       name: "decisions",
       file: "S{stepNumber:02d}/DECISIONS.md",
-      requiredWhen: (params) =>
-        typeof params?.stepNumber === "number" && params.stepNumber > 1,
+      requiredWhen: (params, capState) => {
+        const stepNumber =
+          typeof params?.stepNumber === "number" ? params.stepNumber : NaN;
+        const totalSteps = getTotalSteps(capState);
+        if (totalSteps == null) return stepNumber > 1;
+        return stepNumber > 1 && stepNumber <= totalSteps;
+      },
     },
     {
       name: "completion-summary",
       file: "COMPLETION_SUMMARY.md",
       schema: COMPLETION_SUMMARY_SCHEMA,
-      requiredWhen: () => false,
+      requiredWhen: (params, capState) => {
+        const stepNumber =
+          typeof params?.stepNumber === "number" ? params.stepNumber : NaN;
+        const totalSteps = getTotalSteps(capState);
+        if (totalSteps == null) return false;
+        return stepNumber > totalSteps;
+      },
     },
   ],
 };

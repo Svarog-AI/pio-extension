@@ -2,11 +2,8 @@ import * as fs from "node:fs";
 import type { TSchema } from "typebox";
 import { resolveContractPath } from "./capability-config";
 import { extractFrontmatter, validateAndCoerce } from "./frontmatter";
-import type {
-  CapabilityContract,
-  MarkdownFileSpec,
-  OutputEntry,
-} from "./types";
+import type { CapabilityContract, MarkdownFileSpec } from "./types";
+import { isMarkdownFileSpec } from "./types";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -149,6 +146,32 @@ export class CapState {
   }
 
   /**
+   * Non-throwing lookup for an output file by name.
+   * Returns the contract entry and its resolved path, or undefined if not found.
+   * Uses the pre-built outputNames map — O(1) lookup, zero iteration.
+   */
+  tryResolveOutput(
+    name: string,
+  ): { entry: MarkdownFileSpec; path: string } | undefined {
+    const entry = this.outputNames.get(name);
+    if (!entry) return undefined;
+    return { entry, path: this.resolvePath(entry) };
+  }
+
+  /**
+   * Non-throwing lookup for an input file by name.
+   * Returns the contract entry and its resolved path, or undefined if not found.
+   * Uses the pre-built inputNames map — O(1) lookup, zero iteration.
+   */
+  tryResolveInput(
+    name: string,
+  ): { entry: MarkdownFileSpec; path: string } | undefined {
+    const entry = this.inputNames.get(name);
+    if (!entry) return undefined;
+    return { entry, path: this.resolvePath(entry) };
+  }
+
+  /**
    * Access a file not declared in any contract (marker files like "APPROVED", "BLOCKED").
    * The caller must pass a resolved path — no placeholder resolution is performed.
    * Returns a FileState with no schema validation.
@@ -190,7 +213,7 @@ export class CapState {
 
     // Process outputs (handle OneOfGroup)
     for (const entry of this._contract.outputs) {
-      if (this.isMarkdownFileSpec(entry)) {
+      if (isMarkdownFileSpec(entry)) {
         if (allNames.has(entry.name)) {
           throw new Error(
             `Duplicate file name '${entry.name}' in contract. Names must be unique across inputs and outputs.`,
@@ -201,7 +224,7 @@ export class CapState {
       } else if ("files" in entry && Array.isArray(entry.files)) {
         // OneOfGroup — recurse into files
         for (const fileEntry of entry.files) {
-          if (this.isMarkdownFileSpec(fileEntry)) {
+          if (isMarkdownFileSpec(fileEntry)) {
             if (allNames.has(fileEntry.name)) {
               throw new Error(
                 `Duplicate file name '${fileEntry.name}' in contract. Names must be unique across inputs and outputs.`,
@@ -215,13 +238,6 @@ export class CapState {
     }
 
     return { inputNames, outputNames };
-  }
-
-  /** Type guard: MarkdownFileSpec vs OneOfGroup. */
-  private isMarkdownFileSpec(
-    entry: OutputEntry | MarkdownFileSpec,
-  ): entry is MarkdownFileSpec {
-    return "file" in entry && !("files" in entry);
   }
 }
 

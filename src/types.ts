@@ -49,6 +49,13 @@ export interface OneOfGroup {
 /** An output entry: either a single file spec or a one-of group. */
 export type OutputEntry = MarkdownFileSpec | OneOfGroup;
 
+/** Type guard: distinguish MarkdownFileSpec from OneOfGroup within OutputEntry[]. */
+export function isMarkdownFileSpec(
+  entry: OutputEntry,
+): entry is MarkdownFileSpec {
+  return "file" in entry && !("files" in entry);
+}
+
 /**
  * Declares a marker file the framework automatically creates based on frontmatter.
  *

@@ -959,6 +959,112 @@ describe("contract getter", () => {
 });
 
 // ---------------------------------------------------------------------------
+// tryResolveOutput / tryResolveInput — non-throwing lookups
+// ---------------------------------------------------------------------------
+
+describe("tryResolveOutput / tryResolveInput — non-throwing lookups", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("tryResolveOutput returns entry and path for existing output", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "plan", file: "PLAN.md" }],
+    };
+    const capState = createCapState(contract, tempDir);
+    const result = capState.tryResolveOutput("plan");
+    expect(result).toBeDefined();
+    expect(result!.entry.name).toBe("plan");
+    expect(result!.entry.file).toBe("PLAN.md");
+    expect(result!.path).toBe(path.join(tempDir, "PLAN.md"));
+  });
+
+  it("tryResolveOutput returns undefined for unknown name", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "plan", file: "PLAN.md" }],
+    };
+    const capState = createCapState(contract, tempDir);
+    expect(capState.tryResolveOutput("nonexistent")).toBeUndefined();
+  });
+
+  it("tryResolveOutput resolves with workspace prefix", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "plan", file: "PLAN.md" }],
+    };
+    const capState = createCapState(
+      contract,
+      tempDir,
+      undefined,
+      "goals/my-feature",
+    );
+    const result = capState.tryResolveOutput("plan");
+    expect(result!.path).toBe(
+      path.join(tempDir, "goals", "my-feature", "PLAN.md"),
+    );
+  });
+
+  it("tryResolveOutput resolves OneOfGroup entries", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        {
+          files: [{ name: "task", file: "TASK.md" }],
+        },
+      ],
+    };
+    const capState = createCapState(contract, tempDir);
+    const result = capState.tryResolveOutput("task");
+    expect(result).toBeDefined();
+    expect(result!.entry.name).toBe("task");
+  });
+
+  it("tryResolveInput returns entry and path for existing input", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "goal", file: "GOAL.md" }],
+      outputs: [],
+    };
+    const capState = createCapState(contract, tempDir);
+    const result = capState.tryResolveInput("goal");
+    expect(result).toBeDefined();
+    expect(result!.entry.name).toBe("goal");
+    expect(result!.path).toBe(path.join(tempDir, "GOAL.md"));
+  });
+
+  it("tryResolveInput returns undefined for unknown name", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "goal", file: "GOAL.md" }],
+      outputs: [],
+    };
+    const capState = createCapState(contract, tempDir);
+    expect(capState.tryResolveInput("nonexistent")).toBeUndefined();
+  });
+
+  it("tryResolveInput resolves with workspace prefix", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "goal", file: "GOAL.md" }],
+      outputs: [],
+    };
+    const capState = createCapState(
+      contract,
+      tempDir,
+      undefined,
+      "goals/my-feature",
+    );
+    const result = capState.tryResolveInput("goal");
+    expect(result!.path).toBe(
+      path.join(tempDir, "goals", "my-feature", "GOAL.md"),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Entry maps store MarkdownFileSpec references
 // ---------------------------------------------------------------------------
 

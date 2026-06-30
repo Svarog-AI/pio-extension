@@ -5,7 +5,7 @@ import * as Value from "typebox/value";
 import { CapState } from "../capability-state";
 import { getSessionConfig } from "../capability-utils";
 import { extractFrontmatter, formatSchemaDescription } from "../frontmatter";
-import type { MarkdownFileSpec, OutputEntry } from "../types";
+import { isMarkdownFileSpec } from "../types";
 
 // ---------------------------------------------------------------------------
 // Module-level cache (per-session, populated by resources_discover)
@@ -50,11 +50,6 @@ export function __testSetFileProtectionState(state?: {
 // ---------------------------------------------------------------------------
 // Core validation engine
 // ---------------------------------------------------------------------------
-
-/** Type guard: distinguish MarkdownFileSpec from OneOfGroup within OutputEntry[]. */
-function isMarkdownFileSpec(entry: OutputEntry): entry is MarkdownFileSpec {
-  return "file" in entry && !("files" in entry);
-}
 
 /**
  * Check that all declared output files exist on disk and validate frontmatter

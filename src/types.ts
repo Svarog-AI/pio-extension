@@ -49,6 +49,31 @@ export interface OneOfGroup {
 /** An output entry: either a single file spec or a one-of group. */
 export type OutputEntry = MarkdownFileSpec | OneOfGroup;
 
+/** Type guard: distinguish MarkdownFileSpec from OneOfGroup within OutputEntry[]. */
+export function isMarkdownFileSpec(
+  entry: OutputEntry,
+): entry is MarkdownFileSpec {
+  return "file" in entry && !("files" in entry);
+}
+
+/**
+ * Declares a marker file the framework automatically creates based on frontmatter.
+ *
+ * The framework reads the specified output file, extracts the frontmatter field,
+ * and creates an empty marker file with the matched filename. This replaces
+ * custom `postExecute` callbacks that manually create marker files.
+ *
+ * Example: `{ outputFile: "summary", field: "status", values: { completed: "COMPLETED", blocked: "BLOCKED" } }`
+ */
+export interface MarkerDeclaration {
+  /** Name matching a MarkdownFileSpec.name in contract outputs */
+  outputFile: string;
+  /** Frontmatter key to read (e.g. "status", "decision") */
+  field: string;
+  /** Maps frontmatter value → marker filename (e.g. { completed: "COMPLETED" }) */
+  values: Record<string, string>;
+}
+
 /**
  * Unified capability contract: declares inputs, outputs, excluded files,
  * and frontmatter schemas in a single object.
@@ -63,6 +88,8 @@ export interface CapabilityContract {
   excludedFiles?: string[];
   /** Required output files or one-of groups */
   outputs: OutputEntry[];
+  /** Declarative marker file rules — framework auto-creates/cleans up marker files based on frontmatter values */
+  markers?: MarkerDeclaration[];
 }
 
 // ---------------------------------------------------------------------------

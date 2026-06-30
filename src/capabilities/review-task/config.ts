@@ -1,5 +1,3 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
@@ -19,7 +17,6 @@ import { enqueueTask } from "../../queues";
 import type { CapabilityContract } from "../../types";
 import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
 import {
-  postExecuteReview,
   postValidateReview,
   resolveReviewReadOnlyFiles,
   resolveReviewWriteAllowlist,
@@ -39,6 +36,13 @@ export const CONTRACT: CapabilityContract = {
   outputs: [
     { name: "review", file: "REVIEW.md", schema: REVIEW_OUTPUT_SCHEMA },
   ],
+  markers: [
+    {
+      outputFile: "review",
+      field: "decision",
+      values: { APPROVED: "APPROVED", REJECTED: "REJECTED" },
+    },
+  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -52,7 +56,6 @@ const capabilityConfig = {
   writeAllowlist: resolveReviewWriteAllowlist,
   prepareSession: prepareReviewSession,
   postValidate: postValidateReview,
-  postExecute: postExecuteReview,
   skills: {
     mandatory: ["tdd"],
   },
@@ -69,10 +72,6 @@ function prepareReviewSession(
   workspaceDir: string,
   params?: Record<string, unknown>,
 ): void {
-  // workspaceDir is already the resolved step directory (from Step 9) — no prefix needed
-  fs.rmSync(path.join(workspaceDir, "APPROVED"), { force: true });
-  fs.rmSync(path.join(workspaceDir, "REJECTED"), { force: true });
-
   // Read TASK.md skills and merge into capability config
   const capState = new CapState(CONTRACT, workspaceDir, params);
   const taskFile = capState.input<{ skills?: unknown }>("task");

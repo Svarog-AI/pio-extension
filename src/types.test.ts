@@ -5,7 +5,9 @@ import type {
   CapabilitySkills,
   MarkdownFileSpec,
   OneOfGroup,
+  OutputEntry,
 } from "./types";
+import { isMarkdownFileSpec } from "./types";
 
 // ---------------------------------------------------------------------------
 // CapabilitySkills — compile-time type verification
@@ -97,6 +99,39 @@ describe("CapabilitySkills", () => {
       expect(typeof rec.name).toBe("string");
       expect(typeof rec.condition).toBe("string");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isMarkdownFileSpec — type guard for OutputEntry
+// ---------------------------------------------------------------------------
+
+describe("isMarkdownFileSpec", () => {
+  it("returns true for MarkdownFileSpec entries", () => {
+    const entry: OutputEntry = { name: "plan", file: "PLAN.md" };
+    expect(isMarkdownFileSpec(entry)).toBe(true);
+  });
+
+  it("returns false for OneOfGroup entries", () => {
+    const entry: OutputEntry = {
+      files: [
+        { name: "approved", file: "APPROVED" },
+        { name: "rejected", file: "REJECTED" },
+      ],
+    };
+    expect(isMarkdownFileSpec(entry)).toBe(false);
+  });
+
+  it("narrows type to MarkdownFileSpec (type guard behavior)", () => {
+    const entries: OutputEntry[] = [
+      { name: "plan", file: "PLAN.md" },
+      { files: [{ name: "approved", file: "APPROVED" }] },
+    ];
+
+    const fileSpecs = entries.filter(isMarkdownFileSpec);
+    // TypeScript narrows to MarkdownFileSpec[] — name and file are accessible
+    expect(fileSpecs.map((e) => e.name)).toEqual(["plan"]);
+    expect(fileSpecs.map((e) => e.file)).toEqual(["PLAN.md"]);
   });
 });
 

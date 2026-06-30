@@ -1303,6 +1303,257 @@ describe("mark-complete (setupMarkComplete)", () => {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
+// cleanupMarkers — framework auto-cleanup at session start
+// ---------------------------------------------------------------------------
+
+describe("cleanupMarkers", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => {
+    cleanup(tempDir);
+  });
+
+  it("deletes all declared marker filenames from all values mappings", async () => {
+    const { cleanupMarkers } = await import("./mark-complete");
+
+    // Create marker files
+    fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "BLOCKED"), "", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "APPROVED"), "", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "REJECTED"), "", "utf-8");
+
+    const contract: import("../types").CapabilityContract = {
+      inputs: [],
+      outputs: [],
+      markers: [
+        {
+          outputFile: "summary",
+          field: "status",
+          values: { completed: "COMPLETED", blocked: "BLOCKED" },
+        },
+        {
+          outputFile: "review",
+          field: "decision",
+          values: { APPROVED: "APPROVED", REJECTED: "REJECTED" },
+        },
+      ],
+    };
+
+    cleanupMarkers(tempDir, contract);
+
+    expect(fs.existsSync(path.join(tempDir, "COMPLETED"))).toBe(false);
+    expect(fs.existsSync(path.join(tempDir, "BLOCKED"))).toBe(false);
+    expect(fs.existsSync(path.join(tempDir, "APPROVED"))).toBe(false);
+    expect(fs.existsSync(path.join(tempDir, "REJECTED"))).toBe(false);
+  });
+
+  it("handles missing files gracefully (no errors thrown)", async () => {
+    const { cleanupMarkers } = await import("./mark-complete");
+
+    // No files created — all markers are missing
+    const contract = {
+      inputs: [],
+      outputs: [],
+      markers: [
+        {
+          outputFile: "summary",
+          field: "status",
+          values: { completed: "COMPLETED", blocked: "BLOCKED" },
+        },
+      ],
+    };
+
+    expect(() => cleanupMarkers(tempDir, contract)).not.toThrow();
+  });
+
+  it("handles undefined markers as no-op", async () => {
+    const { cleanupMarkers } = await import("./mark-complete");
+
+    const contract = {
+      inputs: [],
+      outputs: [],
+      // markers is undefined
+    };
+
+    expect(() => cleanupMarkers(tempDir, contract)).not.toThrow();
+  });
+
+  it("handles empty markers array as no-op", async () => {
+    const { cleanupMarkers } = await import("./mark-complete");
+
+    const contract = {
+      inputs: [],
+      outputs: [],
+      markers: [],
+    };
+
+    expect(() => cleanupMarkers(tempDir, contract)).not.toThrow();
+  });
+
+  it("deduplicates filenames across multiple declarations", async () => {
+    const { cleanupMarkers } = await import("./mark-complete");
+
+    // Create the shared marker file
+    fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
+
+    // Two declarations both produce "COMPLETED"
+    const contract: import("../types").CapabilityContract = {
+      inputs: [],
+      outputs: [],
+      markers: [
+        {
+          outputFile: "summary",
+          field: "status",
+          values: { completed: "COMPLETED" },
+        },
+        {
+          outputFile: "other",
+          field: "result",
+          values: { done: "COMPLETED" },
+        },
+      ],
+    };
+
+    expect(() => cleanupMarkers(tempDir, contract)).not.toThrow();
+    expect(fs.existsSync(path.join(tempDir, "COMPLETED"))).toBe(false);
+  });
+
+  it("only deletes declared markers, leaves other files untouched", async () => {
+    const { cleanupMarkers } = await import("./mark-complete");
+
+    fs.writeFileSync(path.join(tempDir, "COMPLETED"), "", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "SUMMARY.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "TASK.md"), "content", "utf-8");
+
+    const contract = {
+      inputs: [],
+      outputs: [],
+      markers: [
+        {
+          outputFile: "summary",
+          field: "status",
+          values: { completed: "COMPLETED", blocked: "BLOCKED" },
+        },
+      ],
+    };
+
+    cleanupMarkers(tempDir, contract);
+
+    expect(fs.existsSync(path.join(tempDir, "COMPLETED"))).toBe(false);
+    // These should still exist
+    expect(fs.existsSync(path.join(tempDir, "SUMMARY.md"))).toBe(true);
+    expect(fs.existsSync(path.join(tempDir, "TASK.md"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// cleanupMarkers integration — runs before prepareSession in resources_discover
+// ---------------------------------------------------------------------------
+
+describe("cleanupMarkers integration (session startup)", () => {
+  let tempDir: string;
+  let goalDir: string;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    goalDir = path.join(tempDir, ".pio", "goals", "test-goal");
+    fs.mkdirSync(goalDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    cleanup(tempDir);
+  });
+
+  it("cleanupMarkers runs before prepareSession during resources_discover", async () => {
+    // Create a marker file that should be cleaned up
+    fs.writeFileSync(path.join(goalDir, "APPROVED"), "", "utf-8");
+
+    const callOrder: string[] = [];
+
+    // prepareSession checks if APPROVED was already deleted
+    const prepareSessionMock = vi.fn().mockImplementation((wd: string) => {
+      callOrder.push("prepareSession");
+      callOrder.push(
+        fs.existsSync(path.join(wd, "APPROVED"))
+          ? "APPROVED still exists"
+          : "APPROVED already deleted",
+      );
+    });
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "review-task",
+      workspaceDir: goalDir,
+      contract: {
+        inputs: [],
+        outputs: [{ name: "review", file: "REVIEW.md", schema: undefined }],
+        markers: [
+          {
+            outputFile: "review",
+            field: "decision",
+            values: { APPROVED: "APPROVED", REJECTED: "REJECTED" },
+          },
+        ],
+      },
+      sessionParams: {
+        goalName: "test-goal",
+        stepNumber: 1,
+        queueKey: "test-goal",
+      },
+      prepareSession: prepareSessionMock,
+    });
+
+    // Import capability-session which wires up resources_discover
+    const mod = await import("../capability-session");
+
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: vi.fn().mockImplementation((event, handler) => {
+        if (event === "resources_discover") {
+          // Simulate resources_discover event
+          const mockCtx = {
+            sessionManager: {
+              getEntries: () => [
+                {
+                  type: "custom",
+                  customType: "pio-config",
+                  data: {
+                    capability: "review-task",
+                    workspaceDir: goalDir,
+                    sessionParams: {
+                      goalName: "test-goal",
+                      stepNumber: 1,
+                      queueKey: "test-goal",
+                    },
+                  },
+                },
+              ],
+            },
+          };
+          // Call the handler synchronously (it's async but we'll await)
+          Promise.resolve(handler(null, mockCtx)).catch(() => {});
+        }
+      }),
+      setSessionName: vi.fn(),
+    };
+
+    mod.setupSessionInfrastructure(mockPi as any);
+
+    // Wait for async handler to complete
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // APPROVED should have been deleted before prepareSession ran
+    expect(callOrder).toContain("prepareSession");
+    expect(callOrder).toContain("APPROVED already deleted");
+    expect(fs.existsSync(path.join(goalDir, "APPROVED"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // applyMarkers — framework marker engine
 // ---------------------------------------------------------------------------
 

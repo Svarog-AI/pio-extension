@@ -10,6 +10,7 @@ import { stripFrontmatter } from "@earendil-works/pi-coding-agent";
 import type { CompiledPromptSections } from "./capability-package";
 import { CapState } from "./capability-state";
 import { getSessionConfig } from "./capability-utils";
+import { cleanupMarkers } from "./guards/mark-complete";
 import { setupStepNudging } from "./guards/step-nudging";
 import { validateInputs } from "./guards/validation";
 import { resolveModelForCapability } from "./model-config";
@@ -211,6 +212,23 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
     enrichedSessionParams = config.sessionParams
       ? { ...config.sessionParams }
       : {};
+
+    // Framework-level marker cleanup — deletes all declared marker files before
+    // the capability-specific prepareSession hook runs. This is transparent:
+    // capabilities declare markers in their contract, the framework handles cleanup.
+    if (
+      config.contract?.markers &&
+      config.contract.markers.length > 0 &&
+      config.workspaceDir
+    ) {
+      try {
+        cleanupMarkers(config.workspaceDir, config.contract);
+      } catch (err) {
+        console.warn(
+          `pio: cleanupMarkers failed for capability "${config.capability}": ${err}`,
+        );
+      }
+    }
 
     // Run prepareSession hook (lifecycle: prepare → work → markComplete → validateState).
     // Hook runs after enrichedSessionParams is populated, so it has access to stepNumber.

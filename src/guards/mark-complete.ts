@@ -120,6 +120,44 @@ export function applyMarkers(
 }
 
 // ---------------------------------------------------------------------------
+// Marker cleanup — deletes all declared marker files at session startup
+// ---------------------------------------------------------------------------
+
+/**
+ * Delete all marker filenames declared in contract.markers at session startup.
+ * Collects every filename from all values mappings across all declarations.
+ * Uses force:true so missing files are silently ignored.
+ *
+ * @param workspaceDir - Absolute path to the workspace directory
+ * @param contract - Capability contract with markers declarations
+ */
+export function cleanupMarkers(
+  workspaceDir: string,
+  contract: CapabilityContract,
+): void {
+  if (!contract.markers || contract.markers.length === 0) {
+    return;
+  }
+
+  // Collect all unique marker filenames from all declarations
+  const markerFiles = new Set<string>();
+  for (const declaration of contract.markers) {
+    for (const fileName of Object.values(declaration.values)) {
+      markerFiles.add(fileName);
+    }
+  }
+
+  // Delete each unique marker file
+  for (const fileName of markerFiles) {
+    try {
+      fs.rmSync(path.join(workspaceDir, fileName), { force: true });
+    } catch {
+      // ignore delete errors — force:true should handle most cases
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // pio_mark_complete tool — orchestrates the full capability exit lifecycle
 // ---------------------------------------------------------------------------
 

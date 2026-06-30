@@ -246,7 +246,7 @@ APPROVED
     expect(result.terminate).toBe(true);
   });
 
-  it("valid REJECTED frontmatter creates REJECTED marker, deletes COMPLETED, enqueues execute-task", async () => {
+  it("valid REJECTED frontmatter creates REJECTED marker, enqueues execute-task", async () => {
     // Arrange: create REVIEW.md with valid REJECTED frontmatter
     const reviewContent = `---
 decision: REJECTED

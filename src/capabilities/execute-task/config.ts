@@ -16,7 +16,7 @@ import {
 import { enqueueTask } from "../../queues";
 import type { CapabilityContract } from "../../types";
 import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
-import { postExecuteExecute, resolveExecuteReadOnlyFiles } from "./callbacks";
+import { resolveExecuteReadOnlyFiles } from "./callbacks";
 import { EXECUTION_SUMMARY_SCHEMA } from "./schemas";
 
 // ---------------------------------------------------------------------------
@@ -30,6 +30,13 @@ export const CONTRACT: CapabilityContract = {
     { name: "test", file: "TEST.md" },
     { name: "summary", file: "SUMMARY.md", schema: EXECUTION_SUMMARY_SCHEMA },
   ],
+  markers: [
+    {
+      outputFile: "summary",
+      field: "status",
+      values: { completed: "COMPLETED", blocked: "BLOCKED" },
+    },
+  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -41,7 +48,6 @@ const capabilityConfig = {
   contract: CONTRACT,
   readOnlyFiles: resolveExecuteReadOnlyFiles,
   prepareSession: prepareExecuteSession,
-  postExecute: postExecuteExecute,
   allowProjectWrites: true,
   skills: {
     mandatory: ["tdd", "pio-git"],

@@ -5,7 +5,6 @@ import * as Value from "typebox/value";
 import { vi } from "vitest";
 import { stepFolderName } from "../../fs-utils";
 import { readPendingTask } from "../../queues";
-import { applyReviewDecision, postExecuteReview } from "./callbacks";
 import config, { register } from "./config";
 import { REVIEW_OUTPUT_SCHEMA, type ReviewOutputs } from "./schemas";
 
@@ -140,92 +139,31 @@ describe("config.prepareSession", () => {
     expect(typeof config.prepareSession).toBe("function");
   });
 
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
+  it("does not manually delete markers (framework cleanupMarkers handles it)", () => {
+    // prepareSession no longer contains fs.rmSync calls for APPROVED/REJECTED.
+    // The framework cleanupMarkers() handles marker deletion at session startup.
+    expect(config.prepareSession).toBeDefined();
+    // Verify prepareSession doesn't reference rmSync by checking the function string
+    const fnStr = config.prepareSession?.toString() ?? "";
+    expect(fnStr).not.toContain("rmSync");
   });
 
-  afterEach(() => cleanup(tempDir));
-
-  it("deletes stale APPROVED marker (workspaceDir is already step directory)", () => {
-    // Arrange: stepDir/APPROVED present — pass stepDir directly as workspaceDir
+  it("still merges skills from TASK.md", () => {
+    // Arrange: stepDir with TASK.md containing skills
+    const tempDir = createTempDir();
     const { stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
-    fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
-
-    // Act: workspaceDir is already the resolved step directory
-    config.prepareSession?.(stepDir, { stepNumber: 1 });
-
-    // Assert
-    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(false);
-  });
-
-  it("deletes stale REJECTED marker", () => {
-    // Arrange: stepDir/REJECTED present
-    const { stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 2 });
-    fs.writeFileSync(path.join(stepDir, "REJECTED"), "", "utf-8");
-
-    // Act
-    config.prepareSession?.(stepDir, { stepNumber: 2 });
-
-    // Assert
-    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
-  });
-
-  it("deletes both APPROVED and REJECTED when both exist", () => {
-    // Arrange: stepDir/ with both markers
-    const { stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
-    fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
-    fs.writeFileSync(path.join(stepDir, "REJECTED"), "", "utf-8");
-
-    // Act
-    config.prepareSession?.(stepDir, { stepNumber: 1 });
-
-    // Assert
-    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(false);
-    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
-  });
-
-  it("does not delete COMPLETED marker", () => {
-    // Arrange: stepDir/ with APPROVED and COMPLETED
-    const { stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
-    fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
-    fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
-
-    // Act
-    config.prepareSession?.(stepDir, { stepNumber: 1 });
-
-    // Assert: COMPLETED still exists; APPROVED is gone
-    expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(false);
-  });
-
-  it("does not delete REVIEW.md", () => {
-    // Arrange: stepDir/ with APPROVED and REVIEW.md
-    const { stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
-    fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
     fs.writeFileSync(
-      path.join(stepDir, "REVIEW.md"),
-      "some review content",
+      path.join(stepDir, "TASK.md"),
+      "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task",
       "utf-8",
     );
-
-    // Act
-    config.prepareSession?.(stepDir, { stepNumber: 1 });
-
-    // Assert: REVIEW.md still exists; APPROVED is gone
-    expect(fs.existsSync(path.join(stepDir, "REVIEW.md"))).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(false);
-  });
-
-  it("handles missing markers gracefully (no error)", () => {
-    // Arrange: clean step folder with no APPROVED or REJECTED
-    const { stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
 
     // Act & Assert: should not throw
     expect(() => {
       config.prepareSession?.(stepDir, { stepNumber: 1 });
     }).not.toThrow();
+
+    cleanup(tempDir);
   });
 });
 
@@ -323,191 +261,6 @@ describe("ReviewOutputs", () => {
     // Assert — if this compiles, the type is correct
     expect(validOutputs.decision).toBe("APPROVED");
     expect(validOutputs.criticalIssues).toBe(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// applyReviewDecision (moved from validation.ts)
-// ---------------------------------------------------------------------------
-
-describe("applyReviewDecision", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("creates APPROVED marker on APPROVED decision (workspaceDir is already step directory)", () => {
-    // Arrange: S01 with COMPLETED and REVIEW.md
-    const { stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
-    fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
-    fs.writeFileSync(path.join(stepDir, "REVIEW.md"), "# Review", "utf-8");
-
-    const outputs: ReviewOutputs = {
-      decision: "APPROVED",
-      criticalIssues: 0,
-      highIssues: 0,
-      mediumIssues: 0,
-      lowIssues: 0,
-    };
-
-    // Act: workspaceDir is already the resolved step directory
-    applyReviewDecision(stepDir, outputs);
-
-    // Assert
-    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(true);
-  });
-
-  it("creates REJECTED marker and deletes COMPLETED on REJECTED decision", () => {
-    // Arrange: S01 with COMPLETED and REVIEW.md
-    const { stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
-    fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
-    fs.writeFileSync(path.join(stepDir, "REVIEW.md"), "# Review", "utf-8");
-
-    const outputs: ReviewOutputs = {
-      decision: "REJECTED",
-      criticalIssues: 0,
-      highIssues: 0,
-      mediumIssues: 0,
-      lowIssues: 0,
-    };
-
-    // Act
-    applyReviewDecision(stepDir, outputs);
-
-    // Assert
-    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(false);
-  });
-
-  it("creates directory if missing (workspaceDir is step directory)", () => {
-    // Arrange: workspaceDir doesn't exist yet
-    const workspaceDir = path.join(tempDir, "nonexistent");
-
-    const outputs: ReviewOutputs = {
-      decision: "APPROVED",
-      criticalIssues: 0,
-      highIssues: 0,
-      mediumIssues: 0,
-      lowIssues: 0,
-    };
-
-    // Act — should not throw even though workspaceDir doesn't exist
-    expect(() => {
-      applyReviewDecision(workspaceDir, outputs);
-    }).not.toThrow();
-
-    // Assert
-    expect(fs.existsSync(path.join(workspaceDir, "APPROVED"))).toBe(true);
-  });
-
-  // -----------------------------------------------------------------------
-  // Stale marker cleanup (idempotency)
-  // -----------------------------------------------------------------------
-
-  it("APPROVED then REJECTED leaves only REJECTED on disk", () => {
-    // Arrange: S01 with no pre-existing markers
-    const { stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
-
-    const approved: ReviewOutputs = {
-      decision: "APPROVED",
-      criticalIssues: 0,
-      highIssues: 0,
-      mediumIssues: 0,
-      lowIssues: 0,
-    };
-    const rejected: ReviewOutputs = {
-      decision: "REJECTED",
-      criticalIssues: 0,
-      highIssues: 0,
-      mediumIssues: 0,
-      lowIssues: 0,
-    };
-
-    // Act: apply APPROVED first, then REJECTED
-    applyReviewDecision(stepDir, approved);
-    applyReviewDecision(stepDir, rejected);
-
-    // Assert: only REJECTED exists, no stale APPROVED
-    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(false);
-  });
-
-  it("REJECTED then APPROVED leaves only APPROVED on disk", () => {
-    // Arrange: S01 with COMPLETED so REJECTED branch can delete it
-    const { stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
-    fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
-
-    const rejected: ReviewOutputs = {
-      decision: "REJECTED",
-      criticalIssues: 0,
-      highIssues: 0,
-      mediumIssues: 0,
-      lowIssues: 0,
-    };
-    const approved: ReviewOutputs = {
-      decision: "APPROVED",
-      criticalIssues: 0,
-      highIssues: 0,
-      mediumIssues: 0,
-      lowIssues: 0,
-    };
-
-    // Act: apply REJECTED first, then APPROVED
-    applyReviewDecision(stepDir, rejected);
-    applyReviewDecision(stepDir, approved);
-
-    // Assert: only APPROVED exists, no stale REJECTED
-    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
-  });
-
-  it("multiple calls with the same decision are idempotent", () => {
-    // Arrange: S01 with no pre-existing markers
-    const { stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
-
-    const approved: ReviewOutputs = {
-      decision: "APPROVED",
-      criticalIssues: 0,
-      highIssues: 0,
-      mediumIssues: 0,
-      lowIssues: 0,
-    };
-
-    // Act: call twice with APPROVED — should not throw
-    expect(() => {
-      applyReviewDecision(stepDir, approved);
-      applyReviewDecision(stepDir, approved);
-    }).not.toThrow();
-
-    // Assert: APPROVED exists exactly once
-    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
-  });
-
-  it("removes both markers when both already coexist", () => {
-    // Arrange: S01 with both APPROVED and REJECTED (simulating a prior bug state)
-    const { stepDir } = createGoalTree(tempDir, "test-goal", { stepNumber: 1 });
-    fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
-    fs.writeFileSync(path.join(stepDir, "REJECTED"), "", "utf-8");
-
-    const approved: ReviewOutputs = {
-      decision: "APPROVED",
-      criticalIssues: 0,
-      highIssues: 0,
-      mediumIssues: 0,
-      lowIssues: 0,
-    };
-
-    // Act: apply APPROVED — should clean up both, then write APPROVED
-    applyReviewDecision(stepDir, approved);
-
-    // Assert: only APPROVED exists
-    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
   });
 });
 
@@ -752,88 +505,24 @@ describe("review-task postValidate — missing or invalid frontmatter", () => {
 });
 
 // ---------------------------------------------------------------------------
-// review-task postExecute — marker creation
+// review-task has no postExecute (markers handled by framework)
 // ---------------------------------------------------------------------------
 
-describe("review-task postExecute — marker creation", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
+describe("review-task declarative markers", () => {
+  it("config has no postExecute callback (markers via contract.markers)", () => {
+    expect((config as Record<string, unknown>).postExecute).toBeUndefined();
   });
 
-  afterEach(() => cleanup(tempDir));
-
-  it("valid APPROVED creates APPROVED marker (workspaceDir is step directory)", () => {
-    // Arrange: temp goal dir with S01/REVIEW.md containing valid APPROVED frontmatter
-    const { stepDir } = createGoalTree(tempDir, "pe-approved", {
-      stepNumber: 1,
+  it("contract has markers declaration with correct values", () => {
+    expect(config.contract.markers).toBeDefined();
+    expect(config.contract.markers).toHaveLength(1);
+    const marker = config.contract.markers![0];
+    expect(marker.outputFile).toBe("review");
+    expect(marker.field).toBe("decision");
+    expect(marker.values).toEqual({
+      APPROVED: "APPROVED",
+      REJECTED: "REJECTED",
     });
-    writeReviewMd(stepDir, {
-      decision: "APPROVED",
-      criticalIssues: 0,
-      highIssues: 0,
-      mediumIssues: 0,
-      lowIssues: 0,
-    });
-
-    // Act: workspaceDir is already the resolved step directory
-    config.postExecute?.(stepDir, { stepNumber: 1 });
-
-    // Assert: S01/APPROVED exists, no S01/REJECTED
-    expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
-  });
-
-  it("valid REJECTED creates REJECTED marker and deletes COMPLETED", () => {
-    // Arrange: temp goal dir with S02/REVIEW.md (REJECTED) and S02/COMPLETED
-    const { stepDir } = createGoalTree(tempDir, "pe-rejected", {
-      stepNumber: 2,
-    });
-    writeReviewMd(stepDir, {
-      decision: "REJECTED",
-      criticalIssues: 0,
-      highIssues: 0,
-      mediumIssues: 0,
-      lowIssues: 0,
-    });
-    fs.writeFileSync(path.join(stepDir, "COMPLETED"), "", "utf-8");
-
-    // Act
-    config.postExecute?.(stepDir, { stepNumber: 2 });
-
-    // Assert: S02/REJECTED exists, S02/COMPLETED removed
-    expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(true);
-    expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(false);
-  });
-
-  it("handles missing REVIEW.md gracefully (logs warning, no crash)", () => {
-    // Arrange: temp goal dir with no REVIEW.md
-    const { stepDir } = createGoalTree(tempDir, "pe-missing", {
-      stepNumber: 3,
-    });
-
-    // Act & Assert: should not throw
-    expect(() => {
-      postExecuteReview(stepDir, { stepNumber: 3 });
-    }).not.toThrow();
-  });
-
-  it("handles invalid frontmatter gracefully (logs warning, no crash)", () => {
-    // Arrange: REVIEW.md with invalid frontmatter
-    const { stepDir } = createGoalTree(tempDir, "pe-invalid", {
-      stepNumber: 4,
-    });
-    fs.writeFileSync(
-      path.join(stepDir, "REVIEW.md"),
-      "# Review\n\nNo frontmatter.",
-      "utf-8",
-    );
-
-    // Act & Assert: should not throw
-    expect(() => {
-      postExecuteReview(stepDir, { stepNumber: 4 });
-    }).not.toThrow();
   });
 });
 

@@ -289,10 +289,11 @@ REJECTED
       mockCtx,
     );
 
-    // Assert: REJECTED marker exists, APPROVED doesn't, COMPLETED deleted
+    // Assert: REJECTED marker exists, APPROVED doesn't
+    // COMPLETED is NOT deleted — framework auto-cleanup handles it when execute-task re-runs
     expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(true);
     expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(false);
-    expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(false);
+    expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(true);
 
     // Assert: queue file was created with execute-task capability (re-execute same step)
     const queuePath = path.join(

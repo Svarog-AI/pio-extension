@@ -914,8 +914,8 @@ describe("resolveCapabilityConfig — postValidate/postExecute passthrough", () 
     expect(result?.postValidate).toBeUndefined();
   });
 
-  it("postExecute is defined when the capability defines it (review-task)", async () => {
-    // Arrange: review-task now defines postExecute (Step 6)
+  it("postExecute is undefined for review-task (markers via contract.markers)", async () => {
+    // Arrange: review-task no longer defines postExecute — markers are declarative
     const params = {
       capability: "review-task" as string,
       goalName: "my-feature",
@@ -926,9 +926,8 @@ describe("resolveCapabilityConfig — postValidate/postExecute passthrough", () 
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert
-    expect(result?.postExecute).toBeDefined();
-    expect(typeof result?.postExecute).toBe("function");
+    // Assert: postExecute removed in favor of declarative markers
+    expect(result?.postExecute).toBeUndefined();
   });
 });
 

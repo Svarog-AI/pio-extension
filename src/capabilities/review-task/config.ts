@@ -40,7 +40,11 @@ export const CONTRACT: CapabilityContract = {
     {
       outputFile: "review",
       field: "decision",
-      values: { APPROVED: "APPROVED", REJECTED: "REJECTED" },
+      values: {
+        APPROVED: "APPROVED",
+        REJECTED: "REJECTED",
+        BLOCKED: "BLOCKED",
+      },
     },
   ],
 };

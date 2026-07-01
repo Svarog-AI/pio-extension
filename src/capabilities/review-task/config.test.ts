@@ -211,17 +211,17 @@ describe("REVIEW_OUTPUT_SCHEMA", () => {
     ]);
   });
 
-  it("decision field is anyOf (union) of APPROVED and REJECTED", () => {
+  it("decision field is anyOf (union) of APPROVED, REJECTED, and BLOCKED", () => {
     // Act
     const decisionProp = REVIEW_OUTPUT_SCHEMA.properties.decision;
 
     // Assert
     expect(decisionProp.anyOf).toBeDefined();
     const options = decisionProp.anyOf;
-    expect(options).toHaveLength(2);
+    expect(options).toHaveLength(3);
 
     const values = options.map((o) => o.const as string).sort();
-    expect(values).toEqual(["APPROVED", "REJECTED"]);
+    expect(values).toEqual(["APPROVED", "BLOCKED", "REJECTED"]);
   });
 
   it("count fields are integer type with minimum 0", () => {
@@ -262,6 +262,20 @@ describe("ReviewOutputs", () => {
     expect(validOutputs.decision).toBe("APPROVED");
     expect(validOutputs.criticalIssues).toBe(0);
   });
+
+  it("accepts BLOCKED decision at compile time", () => {
+    // Arrange — a valid object with BLOCKED decision
+    const blockedOutputs: ReviewOutputs = {
+      decision: "BLOCKED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+
+    // Assert — if this compiles, the type accepts BLOCKED
+    expect(blockedOutputs.decision).toBe("BLOCKED");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -281,6 +295,23 @@ describe("REVIEW_OUTPUT_SCHEMA runtime validation", () => {
 
     // Act
     const result = Value.Check(REVIEW_OUTPUT_SCHEMA, validData);
+
+    // Assert
+    expect(result).toBe(true);
+  });
+
+  it("Value.Check returns true for BLOCKED decision", () => {
+    // Arrange
+    const blockedData = {
+      decision: "BLOCKED" as const,
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    };
+
+    // Act
+    const result = Value.Check(REVIEW_OUTPUT_SCHEMA, blockedData);
 
     // Assert
     expect(result).toBe(true);
@@ -412,6 +443,27 @@ describe("review-task postValidate — valid frontmatter", () => {
     expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
     expect(fs.existsSync(path.join(stepDir, "COMPLETED"))).toBe(true);
   });
+
+  it("valid BLOCKED returns success without creating markers", () => {
+    // Arrange: temp goal dir with S03/REVIEW.md (BLOCKED)
+    const { stepDir } = createGoalTree(tempDir, "pv-blocked", {
+      stepNumber: 3,
+    });
+    writeReviewMd(stepDir, {
+      decision: "BLOCKED",
+      criticalIssues: 0,
+      highIssues: 0,
+      mediumIssues: 0,
+      lowIssues: 0,
+    });
+
+    // Act
+    const result = config.postValidate?.(stepDir, { stepNumber: 3 });
+
+    // Assert: returns success, NO markers created (framework handles markers)
+    expect(result.success).toBe(true);
+    expect(fs.existsSync(path.join(stepDir, "BLOCKED"))).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -522,6 +574,7 @@ describe("review-task declarative markers", () => {
     expect(marker.values).toEqual({
       APPROVED: "APPROVED",
       REJECTED: "REJECTED",
+      BLOCKED: "BLOCKED",
     });
   });
 });

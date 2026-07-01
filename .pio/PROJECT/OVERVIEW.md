@@ -65,7 +65,7 @@ pio-extension/
 │   ├── capability-state.ts    # CapState — contract-backed lazy file access (replaces GoalState)
 │   ├── goal-state.ts          # DELETED — replaced by capability-state.ts
 │   ├── state-machines/        # Declarative state machine framework
-│   │   ├── pio-workflow-machine.ts  # pio workflow machine config (11 edges, resolve functions)
+│   │   ├── pio-workflow-machine.ts  # pio workflow machine config (12 edges, resolve functions)
 │   ├── state-machines.ts      # Framework types (StateMachine<C>, TransitionEdge<C>) + dispatch API
 │   ├── queues.ts              # Session task queue (enqueueTask, readPendingTask, per-goal slots)
 │   └── model-config.ts        # Per-capability model config from ~/.pi/pio-config.yaml

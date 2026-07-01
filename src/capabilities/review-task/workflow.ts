@@ -163,7 +163,16 @@ If an issue matches a HIGH or CRITICAL bullet in the classification rules, it is
   {
     id: "step-6",
     title: "Make the approval decision",
-    instructions: `Based on your analysis and the severity rules from Step 5, start by assuming this review is **REJECTED**. To change this to **APPROVED**, you must explicitly verify each condition below:
+    instructions: `Based on your analysis and the severity rules from Step 5, follow this decision flow:
+
+**First, check for external blockers (BLOCKED decision):** Before applying severity rules, determine whether the step has an external blocker that re-execution cannot resolve. Ask yourself: *can re-execution fix this?* If the answer is no, use **BLOCKED**. Examples of external blockers:
+- A required dependency has not yet been built
+- An external API or service is not ready
+- An environmental constraint is outside pio's control
+
+**The key distinction:** Can re-execution fix it? Yes → REJECT. No, because the blocker is external → BLOCK. When BLOCKED, the task specification must be adapted by evolve-plan — no amount of re-execution will resolve the issue.
+
+**If no external blocker exists, proceed with severity-based decision:** Start by assuming this review is **REJECTED**. To change this to **APPROVED**, you must explicitly verify each condition below:
 
 1. **No critical issues found.** Verify that zero CRITICAL issues were identified in Step 5.
 2. **No high issues found.** Verify that zero HIGH issues were identified in Step 5.
@@ -191,7 +200,7 @@ Only after confirming all three conditions above, write: **Therefore: APPROVED**
 
 \`\`\`yaml
 ---
-decision: APPROVED | REJECTED
+decision: APPROVED | REJECTED | BLOCKED
 criticalIssues: <number>
 highIssues: <number>
 mediumIssues: <number>
@@ -200,14 +209,14 @@ lowIssues: <number>
 \`\`\`
 
 The frontmatter fields are:
-- \`decision\` — either \`APPROVED\` or \`REJECTED\`. This is the authoritative outcome used by automation to create marker files.
+- \`decision\` — one of \`APPROVED\`, \`REJECTED\`, or \`BLOCKED\`. This is the authoritative outcome used by automation to create marker files.
 - \`criticalIssues\`, \`highIssues\`, \`mediumIssues\`, \`lowIssues\` — integer counts of issues found at each severity level during your analysis in Step 5.
 
 After the frontmatter closing \`---\`, write the human-readable markdown body. The \`## Decision\` section must remain in the body for readability, and its value must match the \`decision\` field in the frontmatter (frontmatter for machines, body for humans). Full structure:
 
 \`\`\`markdown
 ---
-decision: APPROVED | REJECTED
+decision: APPROVED | REJECTED | BLOCKED
 criticalIssues: 0
 highIssues: 0
 mediumIssues: 0
@@ -216,7 +225,7 @@ lowIssues: 0
 # Code Review: <Step Title> (Step N)
 
 ## Decision
-APPROVED or REJECTED
+APPROVED, REJECTED, or BLOCKED
 
 ## Summary
 <Brief assessment of overall quality, 2-4 sentences>
@@ -245,6 +254,17 @@ APPROVED or REJECTED
 
 ## Recommendations
 <Suggestions for improvement on re-execution, if rejected. Omit or write "N/A" if approved.>
+
+## Blocker Details
+<Applicable only when BLOCKED: what is blocking, what was attempted, what is needed to unblock. Omit or write "N/A" otherwise.>
+\`\`\`\`
+
+**When \`decision\` is \`BLOCKED\`,** you must document in the Blocker Details section (not frontmatter):
+- What external dependency or constraint is blocking the step
+- What has been attempted so far
+- What would be needed to unblock the step
+
+This information is read by evolve-plan during spec revision — it is critical context for deciding whether to adapt TASK.md or trigger REVISE_PLAN_NEEDED.
 \`\`\``,
   },
   {

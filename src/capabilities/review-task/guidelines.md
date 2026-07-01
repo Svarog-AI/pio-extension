@@ -4,3 +4,4 @@
 - **Reference real lines.** When citing issues, reference specific file paths and line numbers. Use `read` tool to confirm before writing the review.
 - **No silent approvals on high/critical.** If you find critical or high issues, REJECT. No exceptions.
 - **Use `ask_user` when uncertain.** If a decision is genuinely ambiguous (e.g., medium issue might be acceptable), ask the user rather than guessing.
+- **Use BLOCKED for external blockers.** If the step cannot proceed due to missing dependencies, unready services, or constraints outside pio's control, use BLOCKED instead of REJECTED — blocking signals that no amount of re-execution will resolve the issue. Use REJECTED only when the implementation can be fixed by re-execution.

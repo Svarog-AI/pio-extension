@@ -86,7 +86,8 @@ Tool call (pio_create_goal, etc.)
 ```
 Agent calls pio_mark_complete
   → validateOutputs() checks expected files exist
-  → If review-code: parseReviewFrontmatter(), applyReviewDecision() (create APPROVED/REJECTED markers)
+  → applyMarkers() creates markers from contract.markers declarations (reads frontmatter, creates matched marker, deletes stale markers)
+  → postExecute callback runs (backward compatibility for non-migrated capabilities)
   → If `stateMachineId` in session params: look up machine via `getMachine()`, dispatch explicitly against that machine. Otherwise: `dispatch(undefined, ...)` queries all registered machines
     — 1 result → auto-advance (enqueueTask) — enqueued task params include top-level `stateMachineId` from transition result
     — >1 results → recommend /pio-transition (no auto-advance)

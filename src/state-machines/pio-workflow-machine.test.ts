@@ -80,7 +80,7 @@ function writePlanWithFrontmatter(goalDir: string, totalSteps: number): void {
 function writeReview(
   goalDir: string,
   stepNumber: number,
-  decision: "APPROVED" | "REJECTED",
+  decision: "APPROVED" | "REJECTED" | "BLOCKED",
 ): void {
   const folderName = `S${String(stepNumber).padStart(2, "0")}`;
   const stepDir = path.join(goalDir, folderName);
@@ -535,7 +535,7 @@ describe("dispatch — execute-task → review-task", () => {
     });
   });
 
-  it("returns empty array when SUMMARY.md has status blocked", () => {
+  it("returns evolve-plan transition when SUMMARY.md has status blocked", () => {
     writeSummary(goalDir, 5, "blocked");
 
     const results = dispatch(
@@ -545,7 +545,18 @@ describe("dispatch — execute-task → review-task", () => {
       { queueKey: "feat", stepNumber: 5 },
     );
 
-    expect(results).toHaveLength(0);
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
+      capability: "evolve-plan",
+      stateMachineId: "goal-driven-development",
+      initialMessage: expect.stringContaining("Step 5 is blocked"),
+      sessionName: "feat evolve-plan s5",
+      params: {
+        stepNumber: 5,
+        workspacePrefix: "goals/feat",
+        queueKey: "feat",
+      },
+    });
   });
 
   it("returns empty array when SUMMARY.md is missing", () => {
@@ -714,6 +725,81 @@ describe("dispatch — review-task rejection", () => {
 });
 
 // ---------------------------------------------------------------------------
+// dispatch — review-task blocked
+// ---------------------------------------------------------------------------
+
+describe("dispatch — review-task blocked", () => {
+  let tempDir: string;
+  let goalDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+    goalDir = createGoalTree(tempDir, "feat");
+    writePlanWithFrontmatter(goalDir, 3);
+    writeReview(goalDir, 3, "BLOCKED");
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  // review-task workspacePrefix includes step folder — baseDir is the resolved step directory
+  function stepCtx(stepNumber: number): { workspaceDir: string } {
+    return {
+      workspaceDir: path.join(
+        tempDir,
+        ".pio",
+        "goals",
+        "feat",
+        `S${String(stepNumber).padStart(2, "0")}`,
+      ),
+    };
+  }
+
+  it("routes to evolve-plan with same stepNumber when REVIEW.md decision is BLOCKED", () => {
+    const results = dispatch(goalDrivenDevelopment, "review-task", stepCtx(3), {
+      queueKey: "feat",
+      stepNumber: 3,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
+      capability: "evolve-plan",
+      stateMachineId: "goal-driven-development",
+      initialMessage: expect.stringContaining("Step 3 is blocked"),
+      sessionName: "feat evolve-plan s3",
+      params: {
+        stepNumber: 3,
+        workspacePrefix: "goals/feat",
+        queueKey: "feat",
+      },
+    });
+  });
+
+  it("preserves queueKey and same stepNumber when blocked", () => {
+    writeReview(goalDir, 2, "BLOCKED");
+
+    const results = dispatch(goalDrivenDevelopment, "review-task", stepCtx(2), {
+      queueKey: "feat",
+      stepNumber: 2,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.queueKey).toBe("feat");
+    expect(results[0].params?.stepNumber).toBe(2);
+    expect(results[0].params?.workspacePrefix).toBe("goals/feat");
+  });
+
+  it("does not route to execute-task when BLOCKED (only evolve-plan fires)", () => {
+    const results = dispatch(goalDrivenDevelopment, "review-task", stepCtx(3), {
+      queueKey: "feat",
+      stepNumber: 3,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("evolve-plan");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // dispatch — review-task fallback (no REVIEW.md or unknown decision)
 // ---------------------------------------------------------------------------
 
@@ -845,6 +931,10 @@ describe("TransitionResult shape consistency", () => {
     expect(results[0]).toHaveProperty("params");
     expect(results[0]).toHaveProperty("initialMessage");
     expect(results[0].stateMachineId).toBe("goal-driven-development");
+  });
+
+  it("state machine has 12 edges (11 original + execute-task → evolve-plan for blocked)", () => {
+    expect(goalDrivenDevelopment.edges.length).toBe(12);
   });
 
   it("edge resolve functions return TransitionResult directly (not double-wrapped)", () => {

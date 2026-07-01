@@ -264,7 +264,45 @@ function resolveExecuteTaskToReviewTask(
   };
 }
 
-/** review-task → evolve-plan: fires when step is approved (REVIEW.md decision === "APPROVED"). */
+/** execute-task → evolve-plan: fires when SUMMARY.md status is "blocked".
+ * Routes to evolve-plan with the same step number for spec revision. */
+function resolveExecuteTaskToEvolvePlan(
+  ctx: { workspaceDir: string },
+  params?: Record<string, unknown>,
+): ResolverResult | undefined {
+  const stepNumber = requireStepNumber(
+    "resolveExecuteTaskToEvolvePlan",
+    params,
+  );
+  const goalName = requireGoalName("resolveExecuteTaskToEvolvePlan", params);
+
+  // Guard: read SUMMARY.md frontmatter — only transition to evolve-plan if status is "blocked".
+  const executeState = getCapState("execute-task", ctx.workspaceDir, {
+    stepNumber,
+  });
+  const summaryData = executeState
+    .output<ExecutionSummaryOutputs>("summary")
+    .read();
+
+  if (summaryData?.status !== "blocked") {
+    return undefined;
+  }
+
+  return {
+    capability: "evolve-plan",
+    initialMessage: `Step ${stepNumber} is blocked (execute-task). Your workspace is the step directory (${stepFolderName(stepNumber)}/). Read SUMMARY.md for blocker details, then evaluate whether the task can be adapted to work around the blocker or if structural plan changes are needed (write REVISE_PLAN_NEEDED if so).`,
+    sessionName: sessionName(goalName, "evolve-plan", stepNumber),
+    params: {
+      stepNumber,
+      workspacePrefix: workspacePrefix(goalName),
+      queueKey: goalName,
+    },
+  };
+}
+
+/** review-task → evolve-plan: fires when step is approved (REVIEW.md decision === "APPROVED")
+ * or blocked (decision === "BLOCKED"). Both decisions route to evolve-plan —
+ * APPROVED advances to next step, BLOCKED stays on the same step for spec revision. */
 function resolveReviewTaskToEvolvePlan(
   ctx: { workspaceDir: string },
   params?: Record<string, unknown>,
@@ -287,6 +325,19 @@ function resolveReviewTaskToEvolvePlan(
       sessionName: sessionName(goalName, "evolve-plan", nextStep),
       params: {
         stepNumber: nextStep,
+        workspacePrefix: prefix,
+        queueKey: goalName,
+      },
+    };
+  }
+
+  if (reviewData?.decision === "BLOCKED") {
+    return {
+      capability: "evolve-plan",
+      initialMessage: `Step ${stepNumber} is blocked (review-task). Your workspace is the step directory (${stepFolderName(stepNumber)}/). Read REVIEW.md for blocker details, then evaluate whether the task can be adapted to work around the blocker or if structural plan changes are needed (write REVISE_PLAN_NEEDED if so).`,
+      sessionName: sessionName(goalName, "evolve-plan", stepNumber),
+      params: {
+        stepNumber,
         workspacePrefix: prefix,
         queueKey: goalName,
       },
@@ -436,6 +487,11 @@ export const goalDrivenDevelopment: StateMachine<{ workspaceDir: string }> = {
       from: "execute-task",
       to: "review-task",
       resolve: resolveExecuteTaskToReviewTask,
+    },
+    {
+      from: "execute-task",
+      to: "evolve-plan",
+      resolve: resolveExecuteTaskToEvolvePlan,
     },
     {
       from: "review-task",

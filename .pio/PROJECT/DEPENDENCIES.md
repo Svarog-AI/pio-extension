@@ -69,6 +69,10 @@ create-goal ──GOAL.md──→ create-plan ──PLAN.md──→ evolve-pla
                                                                                                             REJECTED → re-exec │
 ```
 
+**Blocked-step transitions** (additional paths, not shown in diagram for clarity):
+- `execute-task → evolve-plan` — when SUMMARY.md `status: "blocked"`, routes back to evolve-plan for the same step number so the spec can be adapted
+- `review-code → evolve-plan` — when REVIEW.md `decision: "BLOCKED"`, routes back to evolve-plan for the same step number (shared edge with APPROVED transition, differentiated by resolver logic)
+
 ### Session Queue Flow (control flow)
 
 ```

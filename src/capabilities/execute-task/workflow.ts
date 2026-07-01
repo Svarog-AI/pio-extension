@@ -102,7 +102,28 @@ status: completed
 
 Use \`status: completed\` when all tests pass and all criteria are met. Use \`status: blocked\` when blocking issues cannot be resolved — include the explanation in the SUMMARY.md body text (not in a separate file).
 
-After the frontmatter closing \`---\`, write the human-readable markdown body. For successful steps, include: Status, Files Created, Files Modified, Files Deleted, Decisions Made, User-Requested Changes, and Test Coverage sections. For blocked steps, document what was attempted and what remains blocked.
+**When \`status: blocked\` is appropriate:**
+
+- **External dependencies not yet available** — a third-party API has not been deployed, a service endpoint is unreachable, or a dependency library is missing from the project.
+- **Environmental constraints outside pio's control** — missing infrastructure (databases, message queues), missing permissions or credentials, or platform-level restrictions.
+- **Ambiguous specifications requiring human clarification** — TASK.md is unclear on a critical decision and there is no reasonable default or convention to follow.
+
+**When \`status: blocked\` is NOT appropriate:**
+
+- **Test failures** — debug and fix them using the TDD loop.
+- **Compilation or type errors** — resolve the root cause; these are implementation issues, not blockers.
+- **Unclear task requirements where a reasonable interpretation exists** — attempt your best interpretation and document your assumptions in SUMMARY.md.
+- **Complexity or difficulty in implementation** — iterate using TDD; difficulty is not a blocker.
+
+**Required SUMMARY.md body content for blocked steps:**
+
+When \`status: blocked\`, the SUMMARY.md body must include a structured section documenting:
+
+- **What was attempted** — specific actions, commands, or approaches tried before declaring blocked.
+- **What specifically remains blocking** — the exact external dependency, constraint, or ambiguity preventing progress.
+- **Prerequisite to unblock** — what needs to happen externally (e.g., "API endpoint must be deployed", "credentials must be provisioned", "specification must clarify X").
+
+After the frontmatter closing \`---\`, write the human-readable markdown body. For successful steps, include: Status, Files Created, Files Modified, Files Deleted, Decisions Made, User-Requested Changes, and Test Coverage sections. For blocked steps, include the structured blocker documentation described above.
 
 Then follow these steps:
 1. **Commit changes using the \`pio-git\` skill** — load the \`pio-git\` skill and commit the changes. If git fails, log a warning and proceed — never block workflow completion.

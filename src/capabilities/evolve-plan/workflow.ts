@@ -91,7 +91,9 @@ If any dimension raises doubts, you **must research further or ask the user befo
   {
     id: "write-task",
     title: "Write TASK.md",
-    instructions: `Write \`TASK.md\` into the \`S{NN}/\` folder. This file is a focused, actionable specification of exactly what needs to be built in this step.
+    instructions: `**Existing TASK.md — read before writing:** Before writing TASK.md, check if it already exists in the current step folder (\`S{NN}/TASK.md\`). If it does, this means evolve-plan has been rerun on a previously-specified step. Read the existing TASK.md to understand what was previously specified. Use its content as context for adapting the task: keep parts that don't conflict with new requirements, modify only what is necessary.
+
+Write \`TASK.md\` into the \`S{NN}/\` folder. This file is a focused, actionable specification of exactly what needs to be built in this step.
 
 **YAML frontmatter (required):** TASK.md begins with a YAML frontmatter block delimited by \`---\`. This block is always present — even when empty. It provides machine-readable data consumed at runtime by execute-task and review-task sessions. The frontmatter may include an optional \`skills\` block:
 

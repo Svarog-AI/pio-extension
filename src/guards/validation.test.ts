@@ -1128,7 +1128,7 @@ steps:
     expect(result.message).toContain("PLAN.md");
   });
 
-  it("excluded REVISE_PLAN_NEEDED exists → failure", async () => {
+  it("excluded REVISE_PLAN_NEEDED.md exists → failure", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
     fs.writeFileSync(
       path.join(tempDir, "PLAN.md"),
@@ -1144,12 +1144,8 @@ steps:
 `,
       "utf-8",
     );
-    fs.mkdirSync(path.join(tempDir, "S03"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tempDir, "S03", "REVISE_PLAN_NEEDED"),
-      "",
-      "utf-8",
-    );
+    // REVISE_PLAN_NEEDED.md is now at workspace root (not inside S{NN}/)
+    fs.writeFileSync(path.join(tempDir, "REVISE_PLAN_NEEDED.md"), "", "utf-8");
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 3 });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);

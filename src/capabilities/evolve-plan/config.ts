@@ -12,6 +12,7 @@ import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import { stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import type { CapabilityContract } from "../../types";
+import { OneOfGroup } from "../../types";
 import type { PlanFrontmatter } from "../create-plan/schemas";
 import { PLAN_FRONTMATTER_SCHEMA } from "../create-plan/schemas";
 import { resolveEvolveWriteAllowlist } from "./callbacks";
@@ -34,7 +35,7 @@ function getTotalSteps(capState?: CapState): number | null {
 
 export const CONTRACT: CapabilityContract = {
   inputs: [{ name: "plan", file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
-  excludedFiles: ["S{stepNumber:02d}/REVISE_PLAN_NEEDED"],
+  excludedFiles: ["REVISE_PLAN_NEEDED.md"],
   outputs: [
     {
       name: "task",
@@ -59,18 +60,23 @@ export const CONTRACT: CapabilityContract = {
         return stepNumber > 1 && stepNumber <= totalSteps;
       },
     },
-    {
-      name: "completion-summary",
-      file: "COMPLETION_SUMMARY.md",
-      schema: COMPLETION_SUMMARY_SCHEMA,
-      requiredWhen: (params, capState) => {
+    new OneOfGroup(
+      [
+        {
+          name: "completion-summary",
+          file: "COMPLETION_SUMMARY.md",
+          schema: COMPLETION_SUMMARY_SCHEMA,
+        },
+        { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+      ],
+      (params, capState) => {
         const stepNumber =
           typeof params?.stepNumber === "number" ? params.stepNumber : NaN;
         const totalSteps = getTotalSteps(capState);
         if (totalSteps == null) return false;
         return stepNumber > totalSteps;
       },
-    },
+    ),
   ],
 };
 

@@ -31,8 +31,9 @@ Also note any prerequisites listed at the top of the plan.
 
 **Important — check if this step exists in the plan:** Search PLAN.md for your assigned step number (e.g., look for "Step 3" or "### Step 3"). If you **cannot find** your assigned step in PLAN.md, it means all steps have already been specified. In that case:
 
-1. Write \`COMPLETION_SUMMARY.md\` in the goal workspace root (next to \`PLAN.md\`). Include YAML frontmatter with \`status: "complete"\` and a markdown body explaining why the goal is considered complete (e.g., "all N steps have been approved").
-2. Call \`pio_mark_complete\` and stop — you are done.
+1. **First, assess whether a plan revision is needed:** Review the completed work — were there scope items missed? Do decisions from completed steps require additional plan steps? If additional steps are needed, write \`REVISE_PLAN_NEEDED.md\` at the workspace root (next to \`PLAN.md\`) with YAML frontmatter including \`reason\` (required) and \`decisions\` (optional), followed by a body explaining the context. **Do NOT also write \`COMPLETION_SUMMARY.md\`** — these two files must never coexist.
+2. If no revision is needed, write \`COMPLETION_SUMMARY.md\` in the goal workspace root (next to \`PLAN.md\`). Include YAML frontmatter with \`status: "complete"\` and a markdown body explaining why the goal is considered complete (e.g., "all N steps have been approved").
+3. Call \`pio_mark_complete\` and stop — you are done.
 
 If the step **does** exist, continue with the normal process below.`,
   },
@@ -83,7 +84,7 @@ Be thorough — this research ensures your specification is grounded in reality 
 
 - **Spec completeness:** Does the specification leave implementation-critical decisions to the executor's guesswork? Are interfaces, contracts, and edge cases explicit enough to write tests from?
 - **Downstream impact on future steps:** Will specification choices (file placement, interface signatures, new types) break or confuse later steps' specs?
-- **Plan deviation assessment:** Do specification decisions diverge from the original plan in ways that affect completed work or require revision? Should \`REVISE_PLAN_NEEDED\` be written?
+- **Plan deviation assessment:** Do specification decisions diverge from the original plan in ways that affect completed work or require revision? Should \`REVISE_PLAN_NEEDED.md\` be written?
 - **Skill relevance:** Have all relevant skills been identified for the execute-task agent? Review \`<available_skills>\` for both bundled skills (from \`src/skills/\`) and external skills. Does the frontmatter \`skills\` block cover what the executor will need?
 
 If any dimension raises doubts, you **must research further or ask the user before proceeding**. This ensures TASK.md is a truly actionable specification, not a restatement of PLAN.md with surface-level detail.`,
@@ -111,7 +112,7 @@ Follow the TASK.md template with sections: Title, Context, What to Build, Code C
     title: "Assess if plan revision is needed",
     instructions: `After writing \`TASK.md\`, evaluate whether your specification decisions require a plan revision.
 
-Write a \`REVISE_PLAN_NEEDED\` marker file inside the current \`S{NN}/\` folder if **any** of the following conditions are met:
+Write a \`REVISE_PLAN_NEEDED.md\` marker file at the workspace root (next to \`PLAN.md\`) if **any** of the following conditions are met:
 
 1. **Impossible future steps:** Decisions made during specification make at least one future step impossible as-planned.
 2. **Requires completed changes:** Decisions require changes to implementations in already-completed previous steps.
@@ -121,11 +122,11 @@ Write a \`REVISE_PLAN_NEEDED\` marker file inside the current \`S{NN}/\` folder 
 
 Do **not** write the marker when only minor descriptive changes are needed in a single future step, or all steps stay roughly the same with minor additions or removals.
 
-Write \`REVISE_PLAN_NEEDED\` as a markdown file with YAML frontmatter including \`reason\` and \`decisions\` fields, followed by a markdown body explaining the context.`,
+Write \`REVISE_PLAN_NEEDED.md\` as a markdown file with YAML frontmatter including \`reason\` and \`decisions\` fields, followed by a markdown body explaining the context.`,
   },
   {
     id: "signal-completion",
     title: "Signal completion",
-    instructions: `When \`TASK.md\` is written and confirmed (and \`DECISIONS.md\` for Step 2+, and \`REVISE_PLAN_NEEDED\` if applicable), call the \`pio_mark_complete\` tool to validate that all expected outputs have been produced. If validation reports missing files, produce them before calling again. Do not end your work without calling this tool.`,
+    instructions: `When \`TASK.md\` is written and confirmed (and \`DECISIONS.md\` for Step 2+, and \`REVISE_PLAN_NEEDED.md\` if applicable), call the \`pio_mark_complete\` tool to validate that all expected outputs have been produced. If validation reports missing files, produce them before calling again. Do not end your work without calling this tool.`,
   },
 ] satisfies WorkflowStep[];

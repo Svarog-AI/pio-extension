@@ -188,6 +188,19 @@ export class CapState {
   }
 
   /**
+   * Resolve paths for all registered output specs.
+   * Iterates the pre-built outputNames map (populated by recursive buildAllMaps()).
+   * Returns array of fully resolved absolute paths.
+   */
+  public getAllOutputPaths(): string[] {
+    const paths: string[] = [];
+    for (const spec of this.outputNames.values()) {
+      paths.push(this.resolvePath(spec));
+    }
+    return paths;
+  }
+
+  /**
    * Recursively register a single output entry in the lookup maps.
    * Handles MarkdownFileSpec (leaf), OneOfGroup (recurse into files),
    * and bare arrays (implicit AND-groups, recurse into elements).

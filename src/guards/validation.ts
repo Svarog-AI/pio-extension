@@ -5,7 +5,12 @@ import * as Value from "typebox/value";
 import { CapState } from "../capability-state";
 import { getSessionConfig } from "../capability-utils";
 import { extractFrontmatter, formatSchemaDescription } from "../frontmatter";
-import { isMarkdownFileSpec } from "../types";
+import {
+  isArrayOutput,
+  isMarkdownFileSpec,
+  type MarkdownFileSpec,
+  type OutputEntry,
+} from "../types";
 
 // ---------------------------------------------------------------------------
 // Module-level cache (per-session, populated by resources_discover)
@@ -69,50 +74,8 @@ export function validateOutputs(capState: CapState): {
     const issues: string[] = [];
 
     for (const entry of capState.contract.outputs) {
-      if (!isMarkdownFileSpec(entry)) {
-        // OneOfGroup — treat as no-op (deferred to later step)
-        continue;
-      }
-
-      // Evaluate requiredWhen predicate
-      if (
-        entry.requiredWhen !== undefined &&
-        !entry.requiredWhen(params, capState)
-      ) {
-        continue;
-      }
-
-      // Use CapState.resolvePath for prefix-aware resolution (handles projectRelative internally)
-      const fullPath = capState.resolvePath(entry);
-
-      if (!fs.existsSync(fullPath)) {
-        issues.push(`Output file '${fullPath}' is missing`);
-        continue;
-      }
-
-      // Frontmatter validation when schema is declared
-      if (entry.schema) {
-        const raw = extractFrontmatter(fullPath);
-        if (raw === null) {
-          issues.push(
-            `Output file '${fullPath}' has no valid YAML frontmatter`,
-          );
-        } else if (!Value.Check(entry.schema, raw)) {
-          const errors = [...Value.Errors(entry.schema, raw)];
-          const fieldErrors = errors
-            .map((e) => {
-              const field = e.instancePath
-                ? e.instancePath.replace(/^\//, "")
-                : "root";
-              return `Field '${field}': ${e.message}`;
-            })
-            .join("; ");
-          const schemaDesc = formatSchemaDescription(entry.schema);
-          issues.push(
-            `Frontmatter validation failed for '${fullPath}': ${fieldErrors}\nExpected frontmatter structure:\n${schemaDesc}`,
-          );
-        }
-      }
+      const result = evaluateOutputEntry(entry, capState, params);
+      issues.push(...result.issues);
     }
 
     if (issues.length > 0) {
@@ -125,6 +88,136 @@ export function validateOutputs(capState: CapState): {
       message: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Recursive output evaluation
+// ---------------------------------------------------------------------------
+
+function evaluateOutputEntry(
+  entry: OutputEntry,
+  capState: CapState,
+  params?: Record<string, unknown>,
+): { success: boolean; issues: string[] } {
+  if (isMarkdownFileSpec(entry)) {
+    return evaluateMarkdownFileSpec(entry, capState, params);
+  }
+
+  if (isArrayOutput(entry)) {
+    // Bare array — implicit AND: all sub-entries must succeed
+    const allIssues: string[] = [];
+    let allSuccess = true;
+    for (const sub of entry) {
+      const result = evaluateOutputEntry(sub, capState, params);
+      if (!result.success) {
+        allSuccess = false;
+        allIssues.push(...result.issues);
+      }
+    }
+    return { success: allSuccess, issues: allIssues };
+  }
+
+  // OneOfGroup — exactly one sub-entry must succeed
+  if (
+    entry.requiredWhen !== undefined &&
+    !entry.requiredWhen(params, capState)
+  ) {
+    return { success: true, issues: [] };
+  }
+
+  const successes: string[] = [];
+  const allIssues: string[] = [];
+
+  for (const sub of entry.files) {
+    const result = evaluateOutputEntry(sub, capState, params);
+    if (result.success) {
+      successes.push(getEntryLabel(sub));
+    } else {
+      allIssues.push(...result.issues);
+    }
+  }
+
+  if (successes.length === 0) {
+    const options = entry.files.map(getEntryLabel).join(" or ");
+    return {
+      success: false,
+      issues: [`Either ${options} must exist`],
+    };
+  }
+
+  if (successes.length > 1) {
+    return {
+      success: false,
+      issues: [`Multiple conflicting outputs present: ${successes.join(", ")}`],
+    };
+  }
+
+  return { success: true, issues: [] };
+}
+
+function evaluateMarkdownFileSpec(
+  entry: MarkdownFileSpec,
+  capState: CapState,
+  params?: Record<string, unknown>,
+): { success: boolean; issues: string[] } {
+  // Evaluate requiredWhen predicate
+  if (
+    entry.requiredWhen !== undefined &&
+    !entry.requiredWhen(params, capState)
+  ) {
+    return { success: true, issues: [] };
+  }
+
+  // Use CapState.resolvePath for prefix-aware resolution (handles projectRelative internally)
+  const fullPath = capState.resolvePath(entry);
+
+  if (!fs.existsSync(fullPath)) {
+    return { success: false, issues: [`Output file '${fullPath}' is missing`] };
+  }
+
+  // Frontmatter validation when schema is declared
+  if (entry.schema) {
+    const raw = extractFrontmatter(fullPath);
+    if (raw === null) {
+      return {
+        success: false,
+        issues: [`Output file '${fullPath}' has no valid YAML frontmatter`],
+      };
+    }
+
+    if (!Value.Check(entry.schema, raw)) {
+      const errors = [...Value.Errors(entry.schema, raw)];
+      const fieldErrors = errors
+        .map((e) => {
+          const field = e.instancePath
+            ? e.instancePath.replace(/^\//, "")
+            : "root";
+          return `Field '${field}': ${e.message}`;
+        })
+        .join("; ");
+      const schemaDesc = formatSchemaDescription(entry.schema);
+      return {
+        success: false,
+        issues: [
+          `Frontmatter validation failed for '${fullPath}': ${fieldErrors}\nExpected frontmatter structure:\n${schemaDesc}`,
+        ],
+      };
+    }
+  }
+
+  return { success: true, issues: [] };
+}
+
+/** Get a human-readable label for an OutputEntry (name if available, otherwise file path). */
+function getEntryLabel(entry: OutputEntry): string {
+  if (isMarkdownFileSpec(entry)) {
+    return entry.name || entry.file;
+  }
+  if (isArrayOutput(entry)) {
+    return entry.map(getEntryLabel).join(" + ");
+  }
+  // OneOfGroup
+  return entry.files.map(getEntryLabel).join(" or ");
 }
 
 /**
@@ -246,16 +339,11 @@ export function setupValidation(pi: ExtensionAPI) {
       }
 
       // Auto-derive from contract outputs — "zero manual configuration per capability"
-      // Uses CapState.resolvePath() which handles projectRelative: true entries
-      // (resolves to .pio/PROJECT/* via global pioRootDir).
-      const contractOutputPaths: string[] = [];
-      if (config.contract?.outputs) {
-        for (const entry of config.contract.outputs) {
-          if (isMarkdownFileSpec(entry)) {
-            contractOutputPaths.push(path.resolve(capState.resolvePath(entry)));
-          }
-        }
-      }
+      // Uses getAllOutputPaths() which recursively traverses the full OutputEntry tree
+      // (handles OneOfGroups, bare arrays, and projectRelative: true entries).
+      const contractOutputPaths: string[] = config.contract?.outputs
+        ? capState.getAllOutputPaths().map((p) => path.resolve(p))
+        : [];
 
       writeAllowlistPaths = [
         ...new Set([...baseAllowlist, ...contractOutputPaths]),

@@ -7,7 +7,7 @@ import type {
   OneOfGroup,
   OutputEntry,
 } from "./types";
-import { isMarkdownFileSpec } from "./types";
+import { isArrayOutput, isMarkdownFileSpec } from "./types";
 
 // ---------------------------------------------------------------------------
 // CapabilitySkills — compile-time type verification
@@ -133,6 +133,67 @@ describe("isMarkdownFileSpec", () => {
     expect(fileSpecs.map((e) => e.name)).toEqual(["plan"]);
     expect(fileSpecs.map((e) => e.file)).toEqual(["PLAN.md"]);
   });
+
+  it("returns false for bare array entries (OutputEntry[])", () => {
+    const entry: OutputEntry = [
+      { name: "a", file: "A.md" },
+      { name: "b", file: "B.md" },
+    ];
+    expect(isMarkdownFileSpec(entry)).toBe(false);
+  });
+
+  it("correctly distinguishes all three variants in a mixed array", () => {
+    const entries: OutputEntry[] = [
+      { name: "plan", file: "PLAN.md" },
+      { files: [{ name: "approved", file: "APPROVED" }] },
+      [{ name: "a", file: "A.md" }],
+    ];
+
+    expect(entries.filter(isMarkdownFileSpec)).toHaveLength(1);
+    expect(
+      entries.filter((e) => !isMarkdownFileSpec(e) && !Array.isArray(e)),
+    ).toHaveLength(1);
+    expect(entries.filter(Array.isArray)).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isArrayOutput — type guard for bare arrays in OutputEntry
+// ---------------------------------------------------------------------------
+
+describe("isArrayOutput", () => {
+  it("returns true for bare array entries", () => {
+    const entry: OutputEntry = [
+      { name: "a", file: "A.md" },
+      { name: "b", file: "B.md" },
+    ];
+    expect(isArrayOutput(entry)).toBe(true);
+  });
+
+  it("returns false for MarkdownFileSpec entries", () => {
+    const entry: OutputEntry = { name: "plan", file: "PLAN.md" };
+    expect(isArrayOutput(entry)).toBe(false);
+  });
+
+  it("returns false for OneOfGroup entries", () => {
+    const entry: OutputEntry = {
+      files: [{ name: "approved", file: "APPROVED" }],
+    };
+    expect(isArrayOutput(entry)).toBe(false);
+  });
+
+  it("narrows type to OutputEntry[] (type guard behavior)", () => {
+    const entries: OutputEntry[] = [
+      { name: "plan", file: "PLAN.md" },
+      { files: [{ name: "approved", file: "APPROVED" }] },
+      [{ name: "a", file: "A.md" }],
+    ];
+
+    const arrays = entries.filter(isArrayOutput);
+    // TypeScript narrows to OutputEntry[][] — can iterate sub-entries
+    expect(arrays).toHaveLength(1);
+    expect(arrays[0]).toHaveLength(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -249,6 +310,73 @@ describe("unified contract types", () => {
 
     // Assert: contract is set on CapabilityConfig
     expect(config.contract).toBe(contract);
+  });
+
+  it("supports recursive nesting — OneOfGroup containing OneOfGroup and bare arrays", () => {
+    // Arrange: OneOfGroup with nested group and bare array (AND inside OR)
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        {
+          files: [
+            // Option A: single file
+            { name: "solo", file: "SOLO.md" },
+            // Option B: nested OneOfGroup (either X or Y)
+            {
+              files: [
+                { name: "x", file: "X.md" },
+                { name: "y", file: "Y.md" },
+              ],
+            } satisfies OneOfGroup,
+            // Option C: bare array (both C1 and C2 — implicit AND)
+            [
+              { name: "c1", file: "C1.md" },
+              { name: "c2", file: "C2.md" },
+            ],
+          ],
+          requiredWhen: () => true,
+        } satisfies OneOfGroup,
+      ],
+    };
+
+    // Assert: TypeScript accepts the recursive nesting
+    const group = contract.outputs[0] as OneOfGroup;
+    expect(group.files).toHaveLength(3);
+    expect(group.requiredWhen?.()).toBe(true);
+
+    // Assert: nested OneOfGroup is at index 1
+    const nestedGroup = group.files[1] as OneOfGroup;
+    expect(nestedGroup.files).toHaveLength(2);
+
+    // Assert: bare array is at index 2
+    const bareArray = group.files[2] as OutputEntry[];
+    expect(Array.isArray(bareArray)).toBe(true);
+    expect(bareArray).toHaveLength(2);
+  });
+
+  it("OneOfGroup requiredWhen predicate receives params and capState", () => {
+    // Arrange
+    const group: OneOfGroup = {
+      files: [
+        { name: "completion-summary", file: "COMPLETION_SUMMARY.md" },
+        { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+      ],
+      requiredWhen: (params) => {
+        const stepNum = params?.stepNumber as number | undefined;
+        const total = params?.totalSteps as number | undefined;
+        return (
+          typeof stepNum === "number" &&
+          typeof total === "number" &&
+          stepNum > total
+        );
+      },
+    };
+
+    // Assert: requiredWhen fires only when stepNumber > totalSteps
+    expect(group.requiredWhen?.({ stepNumber: 4, totalSteps: 3 })).toBe(true);
+    expect(group.requiredWhen?.({ stepNumber: 2, totalSteps: 3 })).toBe(false);
+    expect(group.requiredWhen?.({ stepNumber: 3, totalSteps: 3 })).toBe(false);
+    expect(group.requiredWhen?.()).toBe(false);
   });
 });
 

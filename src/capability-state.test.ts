@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCapState } from "./capability-state";
 import { getCapState, setDiscoveredContracts } from "./state-machines/utils";
 import type { CapabilityContract, MarkdownFileSpec } from "./types";
+import { OneOfGroup } from "./types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -466,12 +467,10 @@ describe("output(name) — lookup by name in contract.outputs", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        {
-          files: [
-            { name: "approved", file: "APPROVED" },
-            { name: "rejected", file: "REJECTED" },
-          ],
-        },
+        new OneOfGroup([
+          { name: "approved", file: "APPROVED" },
+          { name: "rejected", file: "REJECTED" },
+        ]),
       ],
     };
     const capState = createCapState(contract, tempDir);
@@ -583,11 +582,7 @@ describe("Duplicate name detection", () => {
   it("throws when the same name appears in a OneOfGroup and inputs", () => {
     const contract: CapabilityContract = {
       inputs: [{ name: "approved", file: "APPROVED" }],
-      outputs: [
-        {
-          files: [{ name: "approved", file: "REJECTED" }],
-        },
-      ],
+      outputs: [new OneOfGroup([{ name: "approved", file: "REJECTED" }])],
     };
     expect(() => createCapState(contract, tempDir)).toThrow(
       "Duplicate file name 'approved' in contract. Names must be unique across inputs and outputs.",
@@ -1013,11 +1008,7 @@ describe("tryResolveOutput / tryResolveInput — non-throwing lookups", () => {
   it("tryResolveOutput resolves OneOfGroup entries", () => {
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [
-        {
-          files: [{ name: "task", file: "TASK.md" }],
-        },
-      ],
+      outputs: [new OneOfGroup([{ name: "task", file: "TASK.md" }])],
     };
     const capState = createCapState(contract, tempDir);
     const result = capState.tryResolveOutput("task");
@@ -1100,15 +1091,13 @@ describe("Entry maps store MarkdownFileSpec references", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        {
-          files: [
-            {
-              name: "task",
-              file: "TASK.md",
-              schema: Type.Object({ stepName: Type.String() }),
-            },
-          ],
-        },
+        new OneOfGroup([
+          {
+            name: "task",
+            file: "TASK.md",
+            schema: Type.Object({ stepName: Type.String() }),
+          },
+        ]),
       ],
     };
     const capState = createCapState(contract, tempDir);
@@ -1132,14 +1121,10 @@ describe("Recursive output lookup", () => {
   afterEach(() => cleanup(tempDir));
 
   it("finds a spec nested inside a bare array within a OneOfGroup", () => {
-    // { files: [[{ name: "x", file: "X.md" }]] } → output("x") works
+    // new OneOfGroup([[{ name: "x", file: "X.md" }]]) → output("x") works
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [
-        {
-          files: [[{ name: "x", file: "X.md" }]],
-        },
-      ],
+      outputs: [new OneOfGroup([[{ name: "x", file: "X.md" }]])],
     };
     const capState = createCapState(contract, tempDir);
     writeWithFrontmatter(tempDir, "X.md", { value: 1 });
@@ -1150,13 +1135,7 @@ describe("Recursive output lookup", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        {
-          files: [
-            {
-              files: [{ name: "deep", file: "DEEP.md" }],
-            },
-          ],
-        },
+        new OneOfGroup([new OneOfGroup([{ name: "deep", file: "DEEP.md" }])]),
       ],
     };
     const capState = createCapState(contract, tempDir);
@@ -1170,9 +1149,7 @@ describe("Recursive output lookup", () => {
       inputs: [],
       outputs: [
         { name: "top", file: "TOP.md" },
-        {
-          files: [[[{ name: "nested", file: "NESTED.md" }]]],
-        },
+        new OneOfGroup([[[{ name: "nested", file: "NESTED.md" }]]]),
       ],
     };
     const capState = createCapState(contract, tempDir);
@@ -1186,7 +1163,7 @@ describe("Recursive output lookup", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        { files: [] }, // empty OneOfGroup
+        new OneOfGroup([]), // empty OneOfGroup
         [], // empty bare array (implicit AND)
         { name: "real", file: "REAL.md" },
       ],
@@ -1201,9 +1178,7 @@ describe("Recursive output lookup", () => {
       inputs: [],
       outputs: [
         { name: "dup", file: "A.md" },
-        {
-          files: [[{ name: "dup", file: "B.md" }]],
-        },
+        new OneOfGroup([[{ name: "dup", file: "B.md" }]]),
       ],
     };
     expect(() => createCapState(contract, tempDir)).toThrow(
@@ -1215,12 +1190,10 @@ describe("Recursive output lookup", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        {
-          files: [
-            { files: [{ name: "dup", file: "A.md" }] },
-            { files: [{ name: "dup", file: "B.md" }] },
-          ],
-        },
+        new OneOfGroup([
+          new OneOfGroup([{ name: "dup", file: "A.md" }]),
+          new OneOfGroup([{ name: "dup", file: "B.md" }]),
+        ]),
       ],
     };
     expect(() => createCapState(contract, tempDir)).toThrow(
@@ -1242,12 +1215,10 @@ describe("Recursive output lookup", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        {
-          files: [
-            { name: "a", file: "A.md" },
-            { name: "b", file: "B.md" },
-          ],
-        },
+        new OneOfGroup([
+          { name: "a", file: "A.md" },
+          { name: "b", file: "B.md" },
+        ]),
       ],
     };
     const capState = createCapState(contract, tempDir);
@@ -1259,11 +1230,7 @@ describe("Recursive output lookup", () => {
   it("inputs are unaffected — input() still works as before", () => {
     const contract: CapabilityContract = {
       inputs: [{ name: "goal", file: "GOAL.md" }],
-      outputs: [
-        {
-          files: [[{ name: "x", file: "X.md" }]],
-        },
-      ],
+      outputs: [new OneOfGroup([[{ name: "x", file: "X.md" }]])],
     };
     const capState = createCapState(contract, tempDir);
     writeWithFrontmatter(tempDir, "GOAL.md", { title: "Goal" });

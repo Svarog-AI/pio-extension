@@ -6,6 +6,7 @@ import { Type } from "typebox";
 import { beforeEach, vi } from "vitest";
 import { CapState } from "../capability-state";
 import type { CapabilityContract } from "../types";
+import { OneOfGroup } from "../types";
 import {
   __testSetFileProtectionState,
   setupValidation,
@@ -171,12 +172,10 @@ describe("validateOutputs with CapabilityContract", () => {
       inputs: [],
       outputs: [
         { name: "plan", file: "PLAN.md" },
-        {
-          files: [
-            { name: "approved", file: "APPROVED" },
-            { name: "rejected", file: "REJECTED" },
-          ],
-        },
+        new OneOfGroup([
+          { name: "approved", file: "APPROVED" },
+          { name: "rejected", file: "REJECTED" },
+        ]),
       ],
     };
 
@@ -194,12 +193,10 @@ describe("validateOutputs with CapabilityContract", () => {
       inputs: [],
       outputs: [
         { name: "plan", file: "PLAN.md" },
-        {
-          files: [
-            { name: "approved", file: "APPROVED" },
-            { name: "rejected", file: "REJECTED" },
-          ],
-        },
+        new OneOfGroup([
+          { name: "approved", file: "APPROVED" },
+          { name: "rejected", file: "REJECTED" },
+        ]),
       ],
     };
 
@@ -218,12 +215,10 @@ describe("validateOutputs with CapabilityContract", () => {
       inputs: [],
       outputs: [
         { name: "plan", file: "PLAN.md" },
-        {
-          files: [
-            { name: "approved", file: "APPROVED" },
-            { name: "rejected", file: "REJECTED" },
-          ],
-        },
+        new OneOfGroup([
+          { name: "approved", file: "APPROVED" },
+          { name: "rejected", file: "REJECTED" },
+        ]),
       ],
     };
 
@@ -242,7 +237,7 @@ describe("validateOutputs with CapabilityContract", () => {
   it("OneOfGroup — empty files array → failure", () => {
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [{ name: "plan", file: "PLAN.md" }, { files: [] }],
+      outputs: [{ name: "plan", file: "PLAN.md" }, new OneOfGroup([])],
     };
 
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
@@ -257,14 +252,14 @@ describe("validateOutputs with CapabilityContract", () => {
       inputs: [],
       outputs: [
         { name: "plan", file: "PLAN.md" },
-        {
-          files: [
+        new OneOfGroup(
+          [
             { name: "approved", file: "APPROVED" },
             { name: "rejected", file: "REJECTED" },
           ],
-          requiredWhen: (params) =>
+          (params) =>
             typeof params?.stepNumber === "number" && params.stepNumber > 2,
-        },
+        ),
       ],
     };
 
@@ -281,14 +276,14 @@ describe("validateOutputs with CapabilityContract", () => {
       inputs: [],
       outputs: [
         { name: "plan", file: "PLAN.md" },
-        {
-          files: [
+        new OneOfGroup(
+          [
             { name: "approved", file: "APPROVED" },
             { name: "rejected", file: "REJECTED" },
           ],
-          requiredWhen: (params) =>
+          (params) =>
             typeof params?.stepNumber === "number" && params.stepNumber > 2,
-        },
+        ),
       ],
     };
 
@@ -304,19 +299,15 @@ describe("validateOutputs with CapabilityContract", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        {
-          files: [
-            // Option A: a nested group where exactly one must match
-            {
-              files: [
-                { name: "a1", file: "A1" },
-                { name: "a2", file: "A2" },
-              ],
-            },
-            // Option B: a single file
-            { name: "b", file: "B" },
-          ],
-        },
+        new OneOfGroup([
+          // Option A: a nested group where exactly one must match
+          new OneOfGroup([
+            { name: "a1", file: "A1" },
+            { name: "a2", file: "A2" },
+          ]),
+          // Option B: a single file
+          { name: "b", file: "B" },
+        ]),
       ],
     };
 
@@ -332,17 +323,15 @@ describe("validateOutputs with CapabilityContract", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        {
-          files: [
-            // Option A: bare array — both files must exist for this option to succeed
-            [
-              { name: "a1", file: "A1" },
-              { name: "a2", file: "A2" },
-            ],
-            // Option B: single file
-            { name: "b", file: "B" },
+        new OneOfGroup([
+          // Option A: bare array — both files must exist for this option to succeed
+          [
+            { name: "a1", file: "A1" },
+            { name: "a2", file: "A2" },
           ],
-        },
+          // Option B: single file
+          { name: "b", file: "B" },
+        ]),
       ],
     };
 
@@ -360,15 +349,13 @@ describe("validateOutputs with CapabilityContract", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        {
-          files: [
-            [
-              { name: "a1", file: "A1" },
-              { name: "a2", file: "A2" },
-            ],
-            { name: "b", file: "B" },
+        new OneOfGroup([
+          [
+            { name: "a1", file: "A1" },
+            { name: "a2", file: "A2" },
           ],
-        },
+          { name: "b", file: "B" },
+        ]),
       ],
     };
 
@@ -388,12 +375,10 @@ describe("validateOutputs with CapabilityContract", () => {
         // Top-level entry 1: flat spec (AND)
         { name: "plan", file: "PLAN.md" },
         // Top-level entry 2: OneOfGroup (OR — exactly one must succeed)
-        {
-          files: [
-            { name: "approved", file: "APPROVED" },
-            { name: "rejected", file: "REJECTED" },
-          ],
-        },
+        new OneOfGroup([
+          { name: "approved", file: "APPROVED" },
+          { name: "rejected", file: "REJECTED" },
+        ]),
         // Top-level entry 3: bare array (AND — all must succeed)
         [
           { name: "summary", file: "SUMMARY.md" },
@@ -438,12 +423,10 @@ describe("validateOutputs with CapabilityContract", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        {
-          files: [
-            { name: "completion-summary", file: "COMPLETION_SUMMARY.md" },
-            { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
-          ],
-        },
+        new OneOfGroup([
+          { name: "completion-summary", file: "COMPLETION_SUMMARY.md" },
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+        ]),
       ],
     };
 
@@ -459,12 +442,10 @@ describe("validateOutputs with CapabilityContract", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        {
-          files: [
-            { name: "completion-summary", file: "COMPLETION_SUMMARY.md" },
-            { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
-          ],
-        },
+        new OneOfGroup([
+          { name: "completion-summary", file: "COMPLETION_SUMMARY.md" },
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+        ]),
       ],
     };
 
@@ -491,16 +472,14 @@ describe("validateOutputs with CapabilityContract", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        {
-          files: [
-            {
-              name: "completion-summary",
-              file: "COMPLETION_SUMMARY.md",
-              schema,
-            },
-            { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
-          ],
-        },
+        new OneOfGroup([
+          {
+            name: "completion-summary",
+            file: "COMPLETION_SUMMARY.md",
+            schema,
+          },
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+        ]),
       ],
     };
 
@@ -521,16 +500,14 @@ describe("validateOutputs with CapabilityContract", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        {
-          files: [
-            {
-              name: "completion-summary",
-              file: "COMPLETION_SUMMARY.md",
-              schema,
-            },
-            { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
-          ],
-        },
+        new OneOfGroup([
+          {
+            name: "completion-summary",
+            file: "COMPLETION_SUMMARY.md",
+            schema,
+          },
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+        ]),
       ],
     };
 
@@ -550,15 +527,13 @@ describe("validateOutputs with CapabilityContract", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        {
-          files: [
-            {
-              name: "task",
-              file: "S{stepNumber:02d}/TASK.md",
-            },
-            { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
-          ],
-        },
+        new OneOfGroup([
+          {
+            name: "task",
+            file: "S{stepNumber:02d}/TASK.md",
+          },
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+        ]),
       ],
     };
 

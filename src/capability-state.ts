@@ -3,7 +3,7 @@ import type { TSchema } from "typebox";
 import { resolveContractPath } from "./capability-config";
 import { extractFrontmatter, validateAndCoerce } from "./frontmatter";
 import type { CapabilityContract, MarkdownFileSpec } from "./types";
-import { isArrayOutput, isMarkdownFileSpec } from "./types";
+import { isArrayOutput, isMarkdownFileSpec, OneOfGroup } from "./types";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -223,7 +223,7 @@ export class CapState {
       for (const sub of entry) {
         this.registerOutputEntry(sub, outputNames, allNames);
       }
-    } else {
+    } else if (entry instanceof OneOfGroup) {
       // OneOfGroup — recurse into files[]
       for (const sub of entry.files) {
         this.registerOutputEntry(sub, outputNames, allNames);

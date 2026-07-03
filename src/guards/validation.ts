@@ -8,6 +8,7 @@ import { extractFrontmatter, formatSchemaDescription } from "../frontmatter";
 import {
   isArrayOutput,
   isMarkdownFileSpec,
+  isOneOfGroup,
   type MarkdownFileSpec,
   type OutputEntry,
 } from "../types";
@@ -107,7 +108,12 @@ function evaluateOutputEntry(
     return evaluateBareArray(entry, capState, params);
   }
 
-  return evaluateOneOfGroup(entry, capState, params);
+  if (isOneOfGroup(entry)) {
+    return evaluateOneOfGroup(entry, capState, params);
+  }
+
+  // Unreachable — OutputEntry is MarkdownFileSpec | OneOfGroup | OutputEntry[]
+  throw new Error(`Unexpected OutputEntry type`);
 }
 
 /**
@@ -245,8 +251,12 @@ function getEntryLabel(entry: OutputEntry): string {
   if (isArrayOutput(entry)) {
     return entry.map(getEntryLabel).join(" + ");
   }
-  // OneOfGroup
-  return entry.files.map(getEntryLabel).join(" or ");
+  if (isOneOfGroup(entry)) {
+    return entry.files.map(getEntryLabel).join(" or ");
+  }
+
+  // Unreachable — OutputEntry is MarkdownFileSpec | OneOfGroup | OutputEntry[]
+  throw new Error(`Unexpected OutputEntry type`);
 }
 
 /**

@@ -212,8 +212,6 @@ function resolveEvolvePlanToExecuteTask(
   );
   const goalName = requireGoalName("resolveEvolvePlanToExecuteTask", params);
 
-  const _prefix = workspacePrefix(goalName);
-
   // Guard: if all plan steps are complete, finalize-goal edge should have fired.
   // ctx.workspaceDir is already the resolved directory — no additional prefix needed
   const evolveState = getCapState("evolve-plan", ctx.workspaceDir, {});
@@ -222,8 +220,7 @@ function resolveEvolvePlanToExecuteTask(
   }
 
   // Guard: if workspace-root REVISE_PLAN_NEEDED.md exists, that edge should have fired.
-  const evolveStateRoot = getCapState("evolve-plan", ctx.workspaceDir, {});
-  const revisePlan = evolveStateRoot.tryResolveOutput("revise-plan");
+  const revisePlan = evolveState.tryResolveOutput("revise-plan");
   if (revisePlan && fs.existsSync(revisePlan.path)) {
     return undefined;
   }

@@ -99,12 +99,9 @@ function writeCompletionSummary(goalDir: string): void {
   );
 }
 
-/** Write a REVISE_PLAN_NEEDED marker file. */
-function writeRevisePlanNeeded(goalDir: string, stepNumber: number): void {
-  const folderName = `S${String(stepNumber).padStart(2, "0")}`;
-  const stepDir = path.join(goalDir, folderName);
-  fs.mkdirSync(stepDir, { recursive: true });
-  fs.writeFileSync(path.join(stepDir, "REVISE_PLAN_NEEDED"), "", "utf-8");
+/** Write a REVISE_PLAN_NEEDED.md marker file at the workspace root. */
+function writeRevisePlanNeeded(goalDir: string): void {
+  fs.writeFileSync(path.join(goalDir, "REVISE_PLAN_NEEDED.md"), "", "utf-8");
 }
 
 /** Context object for dispatch calls — workspaceDir is the resolved goal directory.
@@ -964,6 +961,19 @@ describe("TransitionResult shape consistency", () => {
 // dispatch — evolve-plan → revise-plan
 // ---------------------------------------------------------------------------
 
+// Test CONTRACT fixture with "revise-plan" as a named output.
+// The real evolve-plan contract gets "revise-plan" added by Step 5.
+// We register this fixture so tryResolveOutput("revise-plan") resolves a path.
+const evolvePlanContractWithRevisePlan = {
+  inputs: [{ name: "plan", file: "PLAN.md" }],
+  outputs: [
+    { name: "task", file: "S{stepNumber:02d}/TASK.md" },
+    { name: "decisions", file: "S{stepNumber:02d}/DECISIONS.md" },
+    { name: "completion-summary", file: "COMPLETION_SUMMARY.md" },
+    { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+  ],
+};
+
 describe("dispatch — evolve-plan → revise-plan", () => {
   let tempDir: string;
   let goalDir: string;
@@ -972,12 +982,28 @@ describe("dispatch — evolve-plan → revise-plan", () => {
     tempDir = createTempDir();
     goalDir = createGoalTree(tempDir, "feat");
     writePlanWithFrontmatter(goalDir, 4);
+    // Register test CONTRACT with "revise-plan" output so tryResolveOutput works
+    setDiscoveredContracts({
+      "create-plan": createPlanContract,
+      "evolve-plan": evolvePlanContractWithRevisePlan,
+      "review-task": reviewTaskContract,
+      "execute-task": executeTaskContract,
+    });
   });
 
-  afterEach(() => cleanup(tempDir));
+  afterEach(() => {
+    // Restore original contracts
+    setDiscoveredContracts({
+      "create-plan": createPlanContract,
+      "evolve-plan": evolvePlanContract,
+      "review-task": reviewTaskContract,
+      "execute-task": executeTaskContract,
+    });
+    cleanup(tempDir);
+  });
 
-  it("routes to revise-plan when REVISE_PLAN_NEEDED marker exists", () => {
-    writeRevisePlanNeeded(goalDir, 4);
+  it("routes to revise-plan when REVISE_PLAN_NEEDED.md exists at workspace root", () => {
+    writeRevisePlanNeeded(goalDir);
 
     const results = dispatch(
       goalDrivenDevelopment,
@@ -991,11 +1017,30 @@ describe("dispatch — evolve-plan → revise-plan", () => {
     expect((results[0] as any).initialMessage).toContain(
       "Revise the plan for goal",
     );
+    expect((results[0] as any).initialMessage).toContain(
+      "REVISE_PLAN_NEEDED.md at the workspace root",
+    );
     expect(results[0].params?.workspacePrefix).toBe("goals/feat");
   });
 
-  it("includes revisionTriggerStep set to current step number", () => {
-    writeRevisePlanNeeded(goalDir, 4);
+  it("routes to revise-plan without stepNumber (completion-triggered revision)", () => {
+    writeRevisePlanNeeded(goalDir);
+
+    const results = dispatch(
+      goalDrivenDevelopment,
+      "evolve-plan",
+      ctx(tempDir, "feat"),
+      { queueKey: "feat" },
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("revise-plan");
+    // stepNumber is absent from params when not provided
+    expect(results[0].params?.stepNumber).toBeUndefined();
+  });
+
+  it("passes stepNumber to revise-plan params when present", () => {
+    writeRevisePlanNeeded(goalDir);
 
     const results = dispatch(
       goalDrivenDevelopment,
@@ -1005,11 +1050,13 @@ describe("dispatch — evolve-plan → revise-plan", () => {
     );
 
     expect(results).toHaveLength(1);
-    expect(results[0].params?.revisionTriggerStep).toBe(4);
+    expect(results[0].params?.stepNumber).toBe(4);
+    // revisionTriggerStep should NOT be present
+    expect(results[0].params?.revisionTriggerStep).toBeUndefined();
   });
 
   it("preserves queueKey in revise-plan params", () => {
-    writeRevisePlanNeeded(goalDir, 4);
+    writeRevisePlanNeeded(goalDir);
 
     const results = dispatch(
       goalDrivenDevelopment,
@@ -1022,19 +1069,9 @@ describe("dispatch — evolve-plan → revise-plan", () => {
     expect(results[0].params?.queueKey).toBe("my-feature");
   });
 
-  it("falls through to execute-task when REVISE_PLAN_NEEDED does not exist", () => {
-    const results = dispatch(
-      goalDrivenDevelopment,
-      "evolve-plan",
-      ctx(tempDir, "feat"),
-      { queueKey: "feat", stepNumber: 4 },
-    );
-
-    expect(results).toHaveLength(1);
-    expect(results[0].capability).toBe("execute-task");
-  });
-
-  it("falls through to finalize-goal when COMPLETION_SUMMARY.md exists and no revision needed", () => {
+  it("finalize-goal guard: revision takes priority over completion", () => {
+    // Both files exist — revision should win
+    writeRevisePlanNeeded(goalDir);
     writeCompletionSummary(goalDir);
 
     const results = dispatch(
@@ -1045,20 +1082,34 @@ describe("dispatch — evolve-plan → revise-plan", () => {
     );
 
     expect(results).toHaveLength(1);
-    expect(results[0].capability).toBe("finalize-goal");
+    expect(results[0].capability).toBe("revise-plan");
   });
 
-  it("returns empty array when stepNumber is missing from params (throws — wiring error)", () => {
+  it("completion-triggered n+1 scenario: stepNumber > totalSteps with marker", () => {
+    writeRevisePlanNeeded(goalDir);
+
     const results = dispatch(
       goalDrivenDevelopment,
       "evolve-plan",
       ctx(tempDir, "feat"),
-      { queueKey: "feat" },
+      { queueKey: "feat", stepNumber: 5 },
     );
 
-    // resolveEvolvePlanToExecuteTask throws when stepNumber is missing.
-    // dispatch() catches the error and logs a warning; no transitions fire.
-    expect(results).toHaveLength(0);
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("revise-plan");
+    expect(results[0].params?.stepNumber).toBe(5);
+  });
+
+  it("falls through to execute-task when neither marker exists", () => {
+    const results = dispatch(
+      goalDrivenDevelopment,
+      "evolve-plan",
+      ctx(tempDir, "feat"),
+      { queueKey: "feat", stepNumber: 4 },
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("execute-task");
   });
 });
 
@@ -1083,7 +1134,7 @@ describe("dispatch — revise-plan → evolve-plan", () => {
       goalDrivenDevelopment,
       "revise-plan",
       ctx(tempDir, "feat"),
-      { queueKey: "feat" },
+      { queueKey: "feat", stepNumber: 3 },
     );
 
     expect(results).toHaveLength(1);
@@ -1091,6 +1142,7 @@ describe("dispatch — revise-plan → evolve-plan", () => {
     expect((results[0] as any).initialMessage).toContain(
       "Plan revision complete",
     );
+    expect((results[0] as any).initialMessage).toContain("Step 3");
   });
 
   it("preserves queueKey in evolve-plan params", () => {
@@ -1098,45 +1150,27 @@ describe("dispatch — revise-plan → evolve-plan", () => {
       goalDrivenDevelopment,
       "revise-plan",
       ctx(tempDir, "feat"),
-      { queueKey: "my-feature" },
+      { queueKey: "my-feature", stepNumber: 2 },
     );
 
     expect(results).toHaveLength(1);
     expect(results[0].params?.queueKey).toBe("my-feature");
   });
 
-  it("discovers next step number using discoverNextStep (returns 1 when no step folders exist)", () => {
+  it("uses stepNumber from params (not filesystem discovery)", () => {
     const results = dispatch(
       goalDrivenDevelopment,
       "revise-plan",
       ctx(tempDir, "feat"),
-      { queueKey: "feat" },
+      { queueKey: "feat", stepNumber: 5 },
     );
 
     expect(results).toHaveLength(1);
-    expect(results[0].params?.stepNumber).toBe(1);
+    expect(results[0].params?.stepNumber).toBe(5);
   });
 
-  it("discovers next step number after some steps are complete (TASK.md + TEST.md present)", () => {
-    // S01 has TASK.md + TEST.md (complete), S02 has only TASK.md (incomplete)
-    createGoalTree(tempDir, "feat", [
-      { number: 1, files: { "TASK.md": "# Task 1", "TEST.md": "# Tests 1" } },
-      { number: 2, files: { "TASK.md": "# Task 2" } },
-    ]);
-
-    const results = dispatch(
-      goalDrivenDevelopment,
-      "revise-plan",
-      ctx(tempDir, "feat"),
-      { queueKey: "feat" },
-    );
-
-    expect(results).toHaveLength(1);
-    expect(results[0].params?.stepNumber).toBe(2);
-  });
-
-  it("discovers next step number when all steps are complete", () => {
-    // Both S01 and S02 have TASK.md + TEST.md (both complete)
+  it("uses stepNumber from params regardless of existing step folders", () => {
+    // S01 and S02 exist on disk — stepNumber from params takes precedence
     createGoalTree(tempDir, "feat", [
       { number: 1, files: { "TASK.md": "# Task 1", "TEST.md": "# Tests 1" } },
       { number: 2, files: { "TASK.md": "# Task 2", "TEST.md": "# Tests 2" } },
@@ -1146,23 +1180,37 @@ describe("dispatch — revise-plan → evolve-plan", () => {
       goalDrivenDevelopment,
       "revise-plan",
       ctx(tempDir, "feat"),
-      { queueKey: "feat" },
+      { queueKey: "feat", stepNumber: 4 },
     );
 
     expect(results).toHaveLength(1);
-    expect(results[0].params?.stepNumber).toBe(3);
+    // Uses stepNumber from params (4), not filesystem-discovered value (3)
+    expect(results[0].params?.stepNumber).toBe(4);
   });
 
-  it("preserves revisionTriggerStep if present in params", () => {
+  it("does NOT include revisionTriggerStep in returned params", () => {
     const results = dispatch(
       goalDrivenDevelopment,
       "revise-plan",
       ctx(tempDir, "feat"),
-      { queueKey: "feat", revisionTriggerStep: 4 },
+      { queueKey: "feat", stepNumber: 4 },
     );
 
     expect(results).toHaveLength(1);
-    expect(results[0].params?.revisionTriggerStep).toBe(4);
+    expect(results[0].params?.revisionTriggerStep).toBeUndefined();
+  });
+
+  it("throws when stepNumber is missing from params (wiring error)", () => {
+    const results = dispatch(
+      goalDrivenDevelopment,
+      "revise-plan",
+      ctx(tempDir, "feat"),
+      { queueKey: "feat" },
+    );
+
+    // resolveRevisePlanToEvolvePlan throws when stepNumber is missing.
+    // dispatch() catches the error and logs a warning; no transitions fire.
+    expect(results).toHaveLength(0);
   });
 });
 

@@ -1,6 +1,8 @@
+import * as fs from "node:fs";
+
 import type { ExecutionSummaryOutputs } from "../capabilities/execute-task/schemas";
 import type { ReviewOutputs } from "../capabilities/review-task/schemas";
-import { discoverNextStep, stepFolderName } from "../fs-utils";
+import { stepFolderName } from "../fs-utils";
 import type { ResolverResult, StateMachine } from "../state-machines";
 import { registerMachine } from "../state-machines";
 import { getCapState } from "./utils";
@@ -120,34 +122,40 @@ function resolveCreatePlanToEvolvePlan(
   };
 }
 
-/** evolve-plan → revise-plan: fires when current step signals revision is needed. */
+/** evolve-plan → revise-plan: fires when workspace-root REVISE_PLAN_NEEDED.md exists. */
 function resolveEvolvePlanToRevisePlan(
   ctx: { workspaceDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult | undefined {
   const goalName = requireGoalName("resolveEvolvePlanToRevisePlan", params);
-  const explicitStepNumber = extractStepNumber(params);
-
   const prefix = workspacePrefix(goalName);
 
-  if (explicitStepNumber != null) {
-    // ctx.workspaceDir is already the resolved directory — no additional prefix needed
-    const evolveState = getCapState("evolve-plan", ctx.workspaceDir, {
-      stepNumber: explicitStepNumber,
-    });
-    const revisePlanPath = `${stepFolderName(explicitStepNumber)}/REVISE_PLAN_NEEDED`;
-    if (evolveState.undeclared(revisePlanPath).exists()) {
-      return {
-        capability: "revise-plan",
-        initialMessage: `Revise the plan for goal "${goalName}". Revision triggered at Step ${explicitStepNumber}. Read REVISE_PLAN_NEEDED in ${stepFolderName(explicitStepNumber)}/ for the reason, check PLAN_ARCHIVE/ for previous plans, and read GOAL.md for scope boundaries. Write a fresh PLAN.md.`,
-        sessionName: sessionName(goalName, "revise-plan"),
-        params: {
-          revisionTriggerStep: explicitStepNumber,
-          workspacePrefix: prefix,
-          queueKey: goalName,
-        },
-      };
-    }
+  // ctx.workspaceDir is the resolved goal directory — no additional prefix needed
+  const evolveState = getCapState("evolve-plan", ctx.workspaceDir, {});
+
+  // Check workspace-root REVISE_PLAN_NEEDED.md via contract output name.
+  // Use tryResolveOutput (non-throwing) — "revise-plan" is added to the contract by Step 5.
+  // Before Step 5: returns undefined → no transition. After Step 5: resolves path → checks existence.
+  const revisePlan = evolveState.tryResolveOutput("revise-plan");
+
+  // Grab stepNumber from params for downstream threading to revise-plan → evolve-plan.
+  // Every other edge to a step-aware capability already passes stepNumber in params —
+  // this just makes revise-plan consistent. At completion-triggered revision (step n+1),
+  // stepNumber may be absent — handled by the guard: without stepNumber,
+  // resolveRevisePlanToEvolvePlan will throw (dispatch catches it as wiring error).
+  const stepNumber = extractStepNumber(params);
+
+  if (revisePlan && fs.existsSync(revisePlan.path)) {
+    return {
+      capability: "revise-plan",
+      initialMessage: `Revise the plan for goal "${goalName}". Read REVISE_PLAN_NEEDED.md at the workspace root for the reason, check PLAN_ARCHIVE/ for previous plans, and read GOAL.md for scope boundaries. Write a fresh PLAN.md.`,
+      sessionName: sessionName(goalName, "revise-plan"),
+      params: {
+        workspacePrefix: prefix,
+        queueKey: goalName,
+        ...(stepNumber != null && { stepNumber }),
+      },
+    };
   }
 
   return undefined;
@@ -173,6 +181,13 @@ function resolveEvolvePlanToFinalizeGoal(
   const prefix = workspacePrefix(goalName);
   // ctx.workspaceDir is already the resolved directory — no additional prefix needed
   const evolveState = getCapState("evolve-plan", ctx.workspaceDir, {});
+
+  // Guard: if REVISE_PLAN_NEEDED.md exists, revision takes priority over completion.
+  // Both files are mutually exclusive by convention — this is defense-in-depth.
+  const revisePlan = evolveState.tryResolveOutput("revise-plan");
+  if (revisePlan && fs.existsSync(revisePlan.path)) {
+    return undefined;
+  }
 
   if (evolveState.output("completion-summary").exists()) {
     return {
@@ -206,12 +221,10 @@ function resolveEvolvePlanToExecuteTask(
     return undefined;
   }
 
-  // Guard: if the current step signals revision, that edge should have fired instead.
-  const evolveWithStep = getCapState("evolve-plan", ctx.workspaceDir, {
-    stepNumber,
-  });
-  const revisePlanPath = `${stepFolderName(stepNumber)}/REVISE_PLAN_NEEDED`;
-  if (evolveWithStep.undeclared(revisePlanPath).exists()) {
+  // Guard: if workspace-root REVISE_PLAN_NEEDED.md exists, that edge should have fired.
+  const evolveStateRoot = getCapState("evolve-plan", ctx.workspaceDir, {});
+  const revisePlan = evolveStateRoot.tryResolveOutput("revise-plan");
+  if (revisePlan && fs.existsSync(revisePlan.path)) {
     return undefined;
   }
 
@@ -290,7 +303,7 @@ function resolveExecuteTaskToEvolvePlan(
 
   return {
     capability: "evolve-plan",
-    initialMessage: `Step ${stepNumber} is blocked (execute-task). Your workspace is the step directory (${stepFolderName(stepNumber)}/). Read SUMMARY.md for blocker details, then evaluate whether the task can be adapted to work around the blocker or if structural plan changes are needed (write REVISE_PLAN_NEEDED if so).`,
+    initialMessage: `Step ${stepNumber} is blocked (execute-task). Your workspace is the step directory (${stepFolderName(stepNumber)}/). Read SUMMARY.md for blocker details, then evaluate whether the task can be adapted to work around the blocker or if structural plan changes are needed (write REVISE_PLAN_NEEDED.md at workspace root if so).`,
     sessionName: sessionName(goalName, "evolve-plan", stepNumber),
     params: {
       stepNumber,
@@ -334,7 +347,7 @@ function resolveReviewTaskToEvolvePlan(
   if (reviewData?.decision === "BLOCKED") {
     return {
       capability: "evolve-plan",
-      initialMessage: `Step ${stepNumber} is blocked (review-task). Your workspace is the step directory (${stepFolderName(stepNumber)}/). Read REVIEW.md for blocker details, then evaluate whether the task can be adapted to work around the blocker or if structural plan changes are needed (write REVISE_PLAN_NEEDED if so).`,
+      initialMessage: `Step ${stepNumber} is blocked (review-task). Your workspace is the step directory (${stepFolderName(stepNumber)}/). Read REVIEW.md for blocker details, then evaluate whether the task can be adapted to work around the blocker or if structural plan changes are needed (write REVISE_PLAN_NEEDED.md at workspace root if so).`,
       sessionName: sessionName(goalName, "evolve-plan", stepNumber),
       params: {
         stepNumber,
@@ -381,33 +394,24 @@ function resolveReviewTaskToExecuteTask(
   return undefined;
 }
 
-/** revise-plan → evolve-plan: always fires, discover next step number. */
+/** revise-plan → evolve-plan: always fires, use stepNumber from params. */
 function resolveRevisePlanToEvolvePlan(
-  ctx: { workspaceDir: string },
+  _ctx: { workspaceDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult {
   const goalName = requireGoalName("resolveRevisePlanToEvolvePlan", params);
+  const stepNumber = requireStepNumber("resolveRevisePlanToEvolvePlan", params);
 
   const prefix = workspacePrefix(goalName);
-  // ctx.workspaceDir is already the resolved goal directory — no prefix needed
-  const revisionTriggerStep =
-    typeof params?.revisionTriggerStep === "number"
-      ? params.revisionTriggerStep
-      : undefined;
-
-  // discoverNextStep still needed — revise-plan deletes non-APPROVED step folders via postExecute,
-  // so the next step number can only be determined by scanning the filesystem.
-  const nextStep = discoverNextStep(ctx.workspaceDir);
 
   return {
     capability: "evolve-plan",
-    initialMessage: `Plan revision complete. Generate the specification for Step ${nextStep}. Read PLAN.md — locate \`### Step ${nextStep}:\`, review its description, then write TASK.md in ${stepFolderName(nextStep)}/.`,
-    sessionName: sessionName(goalName, "evolve-plan", nextStep),
+    initialMessage: `Plan revision complete. Generate the specification for Step ${stepNumber}. Read PLAN.md — locate \`### Step ${stepNumber}:\`, review its description, then write TASK.md in ${stepFolderName(stepNumber)}/.`,
+    sessionName: sessionName(goalName, "evolve-plan", stepNumber),
     params: {
-      stepNumber: nextStep,
+      stepNumber,
       workspacePrefix: prefix,
       queueKey: goalName,
-      ...(revisionTriggerStep != null && { revisionTriggerStep }),
     },
   };
 }

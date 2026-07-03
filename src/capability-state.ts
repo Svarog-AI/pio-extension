@@ -3,7 +3,7 @@ import type { TSchema } from "typebox";
 import { resolveContractPath } from "./capability-config";
 import { extractFrontmatter, validateAndCoerce } from "./frontmatter";
 import type { CapabilityContract, MarkdownFileSpec } from "./types";
-import { isMarkdownFileSpec } from "./types";
+import { isArrayOutput, isMarkdownFileSpec } from "./types";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -188,6 +188,37 @@ export class CapState {
   }
 
   /**
+   * Recursively register a single output entry in the lookup maps.
+   * Handles MarkdownFileSpec (leaf), OneOfGroup (recurse into files),
+   * and bare arrays (implicit AND-groups, recurse into elements).
+   */
+  private registerOutputEntry(
+    entry: import("./types").OutputEntry,
+    outputNames: Map<string, MarkdownFileSpec>,
+    allNames: Set<string>,
+  ): void {
+    if (isMarkdownFileSpec(entry)) {
+      if (allNames.has(entry.name)) {
+        throw new Error(
+          `Duplicate file name '${entry.name}' in contract. Names must be unique across inputs and outputs.`,
+        );
+      }
+      allNames.add(entry.name);
+      outputNames.set(entry.name, entry);
+    } else if (isArrayOutput(entry)) {
+      // Bare array — implicit AND-group, recurse into each element
+      for (const sub of entry) {
+        this.registerOutputEntry(sub, outputNames, allNames);
+      }
+    } else {
+      // OneOfGroup — recurse into files[]
+      for (const sub of entry.files) {
+        this.registerOutputEntry(sub, outputNames, allNames);
+      }
+    }
+  }
+
+  /**
    * Build lookup maps for named accessors: inputNames (name→MarkdownFileSpec),
    * outputNames (name→MarkdownFileSpec).
    * Enforces unique names across inputs and outputs — throws on collision.
@@ -211,30 +242,9 @@ export class CapState {
       inputNames.set(entry.name, entry);
     }
 
-    // Process outputs (handle OneOfGroup)
+    // Process outputs (recursive traversal of the full OutputEntry tree)
     for (const entry of this._contract.outputs) {
-      if (isMarkdownFileSpec(entry)) {
-        if (allNames.has(entry.name)) {
-          throw new Error(
-            `Duplicate file name '${entry.name}' in contract. Names must be unique across inputs and outputs.`,
-          );
-        }
-        allNames.add(entry.name);
-        outputNames.set(entry.name, entry);
-      } else if ("files" in entry && Array.isArray(entry.files)) {
-        // OneOfGroup — recurse into files
-        for (const fileEntry of entry.files) {
-          if (isMarkdownFileSpec(fileEntry)) {
-            if (allNames.has(fileEntry.name)) {
-              throw new Error(
-                `Duplicate file name '${fileEntry.name}' in contract. Names must be unique across inputs and outputs.`,
-              );
-            }
-            allNames.add(fileEntry.name);
-            outputNames.set(fileEntry.name, fileEntry);
-          }
-        }
-      }
+      this.registerOutputEntry(entry, outputNames, allNames);
     }
 
     return { inputNames, outputNames };

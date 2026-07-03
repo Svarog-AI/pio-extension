@@ -1119,6 +1119,159 @@ describe("Entry maps store MarkdownFileSpec references", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Recursive output lookup (OutputEntry triple union)
+// ---------------------------------------------------------------------------
+
+describe("Recursive output lookup", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("finds a spec nested inside a bare array within a OneOfGroup", () => {
+    // { files: [[{ name: "x", file: "X.md" }]] } → output("x") works
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        {
+          files: [[{ name: "x", file: "X.md" }]],
+        },
+      ],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "X.md", { value: 1 });
+    expect(capState.output("x").exists()).toBe(true);
+  });
+
+  it("finds a spec at arbitrary nesting depth: OneOfGroup > OneOfGroup > spec", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        {
+          files: [
+            {
+              files: [{ name: "deep", file: "DEEP.md" }],
+            },
+          ],
+        },
+      ],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "DEEP.md", { level: 3 });
+    expect(capState.output("deep").exists()).toBe(true);
+  });
+
+  it("finds specs in mixed nesting: bare array + OneOfGroup + bare array", () => {
+    // Top-level: [spec, OneOfGroup([bareArray([spec])])]
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "top", file: "TOP.md" },
+        {
+          files: [[[{ name: "nested", file: "NESTED.md" }]]],
+        },
+      ],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "TOP.md", {});
+    writeWithFrontmatter(tempDir, "NESTED.md", {});
+    expect(capState.output("top").exists()).toBe(true);
+    expect(capState.output("nested").exists()).toBe(true);
+  });
+
+  it("handles empty arrays and empty groups without error", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { files: [] }, // empty OneOfGroup
+        [], // empty bare array (implicit AND)
+        { name: "real", file: "REAL.md" },
+      ],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "REAL.md", {});
+    expect(capState.output("real").exists()).toBe(true);
+  });
+
+  it("detects duplicate names across nested and flat entries", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "dup", file: "A.md" },
+        {
+          files: [[{ name: "dup", file: "B.md" }]],
+        },
+      ],
+    };
+    expect(() => createCapState(contract, tempDir)).toThrow(
+      "Duplicate file name 'dup' in contract",
+    );
+  });
+
+  it("detects duplicate names across deeply nested entries", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        {
+          files: [
+            { files: [{ name: "dup", file: "A.md" }] },
+            { files: [{ name: "dup", file: "B.md" }] },
+          ],
+        },
+      ],
+    };
+    expect(() => createCapState(contract, tempDir)).toThrow(
+      "Duplicate file name 'dup' in contract",
+    );
+  });
+
+  it("backward compatible — flat output still works", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "plan", file: "PLAN.md" }],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "PLAN.md", { totalSteps: 2 });
+    expect(capState.output("plan").exists()).toBe(true);
+  });
+
+  it("backward compatible — single-level OneOfGroup still works", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        {
+          files: [
+            { name: "a", file: "A.md" },
+            { name: "b", file: "B.md" },
+          ],
+        },
+      ],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "A.md", {});
+    expect(capState.output("a").exists()).toBe(true);
+    expect(capState.output("b").exists()).toBe(false);
+  });
+
+  it("inputs are unaffected — input() still works as before", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "goal", file: "GOAL.md" }],
+      outputs: [
+        {
+          files: [[{ name: "x", file: "X.md" }]],
+        },
+      ],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "GOAL.md", { title: "Goal" });
+    expect(capState.input("goal").exists()).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Concrete test — real create-plan CONTRACT
 // ---------------------------------------------------------------------------
 

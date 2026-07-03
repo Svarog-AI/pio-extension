@@ -104,20 +104,49 @@ function evaluateOutputEntry(
   }
 
   if (isArrayOutput(entry)) {
-    // Bare array — implicit AND: all sub-entries must succeed
-    const allIssues: string[] = [];
-    let allSuccess = true;
-    for (const sub of entry) {
-      const result = evaluateOutputEntry(sub, capState, params);
-      if (!result.success) {
-        allSuccess = false;
-        allIssues.push(...result.issues);
-      }
-    }
-    return { success: allSuccess, issues: allIssues };
+    return evaluateBareArray(entry, capState, params);
   }
 
-  // OneOfGroup — exactly one sub-entry must succeed
+  return evaluateOneOfGroup(entry, capState, params);
+}
+
+/**
+ * Evaluate a bare array (implicit AND-group): all sub-entries must succeed.
+ * Collects issues from all children.
+ */
+function evaluateBareArray(
+  entries: OutputEntry[],
+  capState: CapState,
+  params?: Record<string, unknown>,
+): { success: boolean; issues: string[] } {
+  const allIssues: string[] = [];
+  let allSuccess = true;
+
+  for (const sub of entries) {
+    const result = evaluateOutputEntry(sub, capState, params);
+    if (!result.success) {
+      allSuccess = false;
+      allIssues.push(...result.issues);
+    }
+  }
+
+  return { success: allSuccess, issues: allIssues };
+}
+
+/**
+ * Evaluate a OneOfGroup: exactly one sub-entry must succeed.
+ * - 0 successes → failure listing all missing options
+ * - >1 success → failure listing conflicting files
+ * - Exactly 1 → success
+ *
+ * Checks `requiredWhen` predicate first — if false, skip entire subtree.
+ */
+function evaluateOneOfGroup(
+  entry: import("../types").OneOfGroup,
+  capState: CapState,
+  params?: Record<string, unknown>,
+): { success: boolean; issues: string[] } {
+  // Check requiredWhen predicate — skip entire subtree if false
   if (
     entry.requiredWhen !== undefined &&
     !entry.requiredWhen(params, capState)

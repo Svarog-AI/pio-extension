@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import type { CapState } from "../../capability-state";
 import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
 import { stepFolderName } from "../../fs-utils";
 import {
@@ -17,8 +18,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const PLAN_ARCHIVE_DIR = "PLAN_ARCHIVE";
-export const REVISE_PLAN_MARKER = "REVISE_PLAN_NEEDED";
-const STEP_FOLDER_RE = /^S(\d+)$/;
+export const REVISE_PLAN_REQUEST_FILE = "REVISE_PLAN_NEEDED.md";
 
 // ---------------------------------------------------------------------------
 // prepareSession — archive PLAN.md before the agent starts
@@ -26,8 +26,8 @@ const STEP_FOLDER_RE = /^S(\d+)$/;
 
 /**
  * Archives current PLAN.md to PLAN_ARCHIVE/ with a timestamped filename.
- * Step folder deletion is deferred to cleanupIncompleteSteps (postExecute)
- * so the Plan Revision Agent can inspect trigger step content.
+ * Document cleanup is deferred to cleanupRevisionRequest (postExecute)
+ * so the Plan Revision Agent can inspect the revision request document.
  */
 export async function prepareSession(
   workspaceDir: string,
@@ -49,49 +49,25 @@ export async function prepareSession(
 }
 
 // ---------------------------------------------------------------------------
-// cleanupIncompleteSteps — postExecute cleanup after the agent completes
+// cleanupRevisionRequest — postExecute cleanup after the agent completes
 // ---------------------------------------------------------------------------
 
 /**
- * Deletes non-APPROVED S{NN}/ step folders and cleans up the REVISE_PLAN_NEEDED marker.
+ * Deletes the workspace-root REVISE_PLAN_NEEDED.md document.
  * Runs as postExecute after pio_mark_complete — the agent has already finished reading.
  *
- * Scans disk for S{NN}/ folders rather than relying on PLAN.md frontmatter,
- * since the revision agent may have written a new PLAN.md with a different step list.
+ * Single-file deletion: no disk scanning, no folder deletion.
+ * Uses `existsSync()` guard for idempotent behavior — silently skips missing files.
  */
-export async function cleanupIncompleteSteps(
+export async function cleanupRevisionRequest(
   workspaceDir: string,
-  params?: Record<string, unknown>,
+  _params?: Record<string, unknown>,
+  _capState?: CapState,
 ): Promise<void> {
-  // Scan disk for S{NN}/ folders
-  const entries = fs.readdirSync(workspaceDir, { withFileTypes: true });
-
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    if (!STEP_FOLDER_RE.test(entry.name)) continue;
-
-    const stepDir = path.join(workspaceDir, entry.name);
-    const approvedPath = path.join(stepDir, "APPROVED");
-
-    if (!fs.existsSync(approvedPath)) {
-      // Non-APPROVED folder — delete entirely
-      fs.rmSync(stepDir, { recursive: true, force: true });
-    }
-  }
-
-  // Clean up REVISE_PLAN_NEEDED marker from trigger step folder if it still exists
-  const revisionTriggerStep =
-    typeof params?.revisionTriggerStep === "number"
-      ? params.revisionTriggerStep
-      : undefined;
-
-  if (revisionTriggerStep != null) {
-    const folderName = stepFolderName(revisionTriggerStep);
-    const markerPath = path.join(workspaceDir, folderName, REVISE_PLAN_MARKER);
-    // Use force: true to handle case where folder was already deleted
-    if (fs.existsSync(markerPath)) {
-      fs.unlinkSync(markerPath);
-    }
+  // Clean up workspace-root REVISE_PLAN_NEEDED.md unconditionally
+  const revisePlanPath = path.join(workspaceDir, REVISE_PLAN_REQUEST_FILE);
+  if (fs.existsSync(revisePlanPath)) {
+    fs.unlinkSync(revisePlanPath);
   }
 }
 

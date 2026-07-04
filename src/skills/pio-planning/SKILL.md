@@ -155,7 +155,7 @@ When a plan is rewritten after some steps are already completed, multiple source
 
 **Revision notes > archived PLAN.md > GOAL.md**
 
-- **Revision notes** — from `REVISE_PLAN_NEEDED`, the trigger step's `TASK.md` and `DECISIONS.md`. These specify required changes and override everything.
+- **Revision notes** — from workspace-root `REVISE_PLAN_NEEDED.md`, the trigger step's `TASK.md` and `DECISIONS.md`. These specify required changes and override everything.
 - **Archived PLAN.md** — primary reference for implementation details, formatting decisions, and architectural choices already made by the planning agent. Preserve all decisions from the archived plan unless revision notes explicitly require a change.
 - **GOAL.md** — provides scope boundaries and high-level context. Use it to understand *what* should be built, but do not let its high-level description override specific *how* decisions already encoded in the archived plan.
 
@@ -167,7 +167,7 @@ When a plan is rewritten after some steps are already completed, multiple source
 
 You may modify decisions from the archived plan under exactly three conditions:
 
-1. **Changes explicitly required by revision notes.** The `REVISE_PLAN_NEEDED` marker, trigger step's `TASK.md`, or `DECISIONS.md` specify a change that makes the old plan infeasible.
+1. **Changes explicitly required by revision notes.** Workspace-root `REVISE_PLAN_NEEDED.md`, trigger step's `TASK.md`, or `DECISIONS.md` specify a change that makes the old plan infeasible.
 2. **New steps required for gaps discovered during specification.** Specification revealed that the original plan omitted a necessary step or misjudged complexity.
 3. **Re-numbering after completed steps.** Step numbers must continue sequentially from the last completed step.
 

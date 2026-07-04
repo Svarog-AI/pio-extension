@@ -6,6 +6,7 @@ import { Type } from "typebox";
 import { beforeEach, vi } from "vitest";
 import { CapState } from "../capability-state";
 import type { CapabilityContract } from "../types";
+import { OneOfGroup } from "../types";
 import {
   __testSetFileProtectionState,
   setupValidation,
@@ -162,24 +163,384 @@ describe("validateOutputs with CapabilityContract", () => {
     expect(result).toEqual({ success: true });
   });
 
-  it("OneOfGroup entries treated as no-ops (deferred)", () => {
+  // -----------------------------------------------------------------------
+  // Recursive OneOfGroup validation
+  // -----------------------------------------------------------------------
+
+  it("OneOfGroup — exactly one match → success", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
         { name: "plan", file: "PLAN.md" },
-        {
-          files: [
-            { name: "approved", file: "APPROVED" },
-            { name: "rejected", file: "REJECTED" },
-          ],
-        }, // OneOfGroup
+        new OneOfGroup([
+          { name: "approved", file: "APPROVED" },
+          { name: "rejected", file: "REJECTED" },
+        ]),
       ],
     };
 
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
-    // Neither APPROVED nor REJECTED exists — should still pass (OneOfGroup is no-op)
+    fs.writeFileSync(path.join(tempDir, "APPROVED"), "", "utf-8");
+    // REJECTED does not exist — exactly one match
 
     const capState = makeCapState(contract, tempDir);
+    const result = validateOutputs(capState);
+    expect(result).toEqual({ success: true });
+  });
+
+  it("OneOfGroup — no matches → failure listing options", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "plan", file: "PLAN.md" },
+        new OneOfGroup([
+          { name: "approved", file: "APPROVED" },
+          { name: "rejected", file: "REJECTED" },
+        ]),
+      ],
+    };
+
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+    // Neither APPROVED nor REJECTED exists
+
+    const capState = makeCapState(contract, tempDir);
+    const result = validateOutputs(capState);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("approved");
+    expect(result.message).toContain("rejected");
+  });
+
+  it("OneOfGroup — multiple matches → failure listing conflicts", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "plan", file: "PLAN.md" },
+        new OneOfGroup([
+          { name: "approved", file: "APPROVED" },
+          { name: "rejected", file: "REJECTED" },
+        ]),
+      ],
+    };
+
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "APPROVED"), "", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "REJECTED"), "", "utf-8");
+    // Both exist — conflict
+
+    const capState = makeCapState(contract, tempDir);
+    const result = validateOutputs(capState);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("approved");
+    expect(result.message).toContain("rejected");
+  });
+
+  it("OneOfGroup — empty files array → failure", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "plan", file: "PLAN.md" }, new OneOfGroup([])],
+    };
+
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+
+    const capState = makeCapState(contract, tempDir);
+    const result = validateOutputs(capState);
+    expect(result.success).toBe(false);
+  });
+
+  it("OneOfGroup — requiredWhen returns false → skip entire group", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "plan", file: "PLAN.md" },
+        new OneOfGroup(
+          [
+            { name: "approved", file: "APPROVED" },
+            { name: "rejected", file: "REJECTED" },
+          ],
+          (params) =>
+            typeof params?.stepNumber === "number" && params.stepNumber > 2,
+        ),
+      ],
+    };
+
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+    // Neither APPROVED nor REJECTED exists, but group is skipped
+
+    const capState = makeCapState(contract, tempDir, { stepNumber: 1 });
+    const result = validateOutputs(capState);
+    expect(result).toEqual({ success: true });
+  });
+
+  it("OneOfGroup — requiredWhen returns true → group evaluated", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "plan", file: "PLAN.md" },
+        new OneOfGroup(
+          [
+            { name: "approved", file: "APPROVED" },
+            { name: "rejected", file: "REJECTED" },
+          ],
+          (params) =>
+            typeof params?.stepNumber === "number" && params.stepNumber > 2,
+        ),
+      ],
+    };
+
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+    // Neither exists, group is active (stepNumber > 2) — should fail
+
+    const capState = makeCapState(contract, tempDir, { stepNumber: 3 });
+    const result = validateOutputs(capState);
+    expect(result.success).toBe(false);
+  });
+
+  it("Nested OneOfGroup — group inside group evaluates correctly", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup([
+          // Option A: a nested group where exactly one must match
+          new OneOfGroup([
+            { name: "a1", file: "A1" },
+            { name: "a2", file: "A2" },
+          ]),
+          // Option B: a single file
+          { name: "b", file: "B" },
+        ]),
+      ],
+    };
+
+    // A1 exists (nested group matches), B does not → outer group has exactly 1 success
+    fs.writeFileSync(path.join(tempDir, "A1"), "", "utf-8");
+
+    const capState = makeCapState(contract, tempDir);
+    const result = validateOutputs(capState);
+    expect(result).toEqual({ success: true });
+  });
+
+  it("Bare array inside OneOfGroup — implicit AND (all must pass for option to succeed)", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup([
+          // Option A: bare array — both files must exist for this option to succeed
+          [
+            { name: "a1", file: "A1" },
+            { name: "a2", file: "A2" },
+          ],
+          // Option B: single file
+          { name: "b", file: "B" },
+        ]),
+      ],
+    };
+
+    // Both A1 and A2 exist → bare array succeeds → exactly one group option succeeds
+    fs.writeFileSync(path.join(tempDir, "A1"), "", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "A2"), "", "utf-8");
+    // B does not exist
+
+    const capState = makeCapState(contract, tempDir);
+    const result = validateOutputs(capState);
+    expect(result).toEqual({ success: true });
+  });
+
+  it("Bare array inside OneOfGroup — one missing → option fails", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup([
+          [
+            { name: "a1", file: "A1" },
+            { name: "a2", file: "A2" },
+          ],
+          { name: "b", file: "B" },
+        ]),
+      ],
+    };
+
+    // Only A1 exists, A2 missing → bare array fails → option A fails
+    // B also missing → no options succeed → failure
+    fs.writeFileSync(path.join(tempDir, "A1"), "", "utf-8");
+
+    const capState = makeCapState(contract, tempDir);
+    const result = validateOutputs(capState);
+    expect(result.success).toBe(false);
+  });
+
+  it("Mixed nesting — top-level AND with OneOfGroup OR and bare array AND", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        // Top-level entry 1: flat spec (AND)
+        { name: "plan", file: "PLAN.md" },
+        // Top-level entry 2: OneOfGroup (OR — exactly one must succeed)
+        new OneOfGroup([
+          { name: "approved", file: "APPROVED" },
+          { name: "rejected", file: "REJECTED" },
+        ]),
+        // Top-level entry 3: bare array (AND — all must succeed)
+        [
+          { name: "summary", file: "SUMMARY.md" },
+          { name: "test", file: "TEST.md" },
+        ],
+      ],
+    };
+
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "APPROVED"), "", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "SUMMARY.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "TEST.md"), "content", "utf-8");
+
+    const capState = makeCapState(contract, tempDir);
+    const result = validateOutputs(capState);
+    expect(result).toEqual({ success: true });
+  });
+
+  it("Mixed nesting — bare array at top level fails when one element missing", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "plan", file: "PLAN.md" },
+        [
+          { name: "summary", file: "SUMMARY.md" },
+          { name: "test", file: "TEST.md" },
+        ],
+      ],
+    };
+
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+    fs.writeFileSync(path.join(tempDir, "SUMMARY.md"), "content", "utf-8");
+    // TEST.md missing → bare array fails
+
+    const capState = makeCapState(contract, tempDir);
+    const result = validateOutputs(capState);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("TEST.md");
+  });
+
+  it("OneOfGroup error message — missing options lists what was expected", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup([
+          { name: "completion-summary", file: "COMPLETION_SUMMARY.md" },
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+        ]),
+      ],
+    };
+
+    // Neither file exists
+    const capState = makeCapState(contract, tempDir);
+    const result = validateOutputs(capState);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("completion-summary");
+    expect(result.message).toContain("revise-plan");
+  });
+
+  it("OneOfGroup error message — conflicting outputs lists which files matched", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup([
+          { name: "completion-summary", file: "COMPLETION_SUMMARY.md" },
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+        ]),
+      ],
+    };
+
+    fs.writeFileSync(
+      path.join(tempDir, "COMPLETION_SUMMARY.md"),
+      "content",
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(tempDir, "REVISE_PLAN_NEEDED.md"),
+      "content",
+      "utf-8",
+    );
+
+    const capState = makeCapState(contract, tempDir);
+    const result = validateOutputs(capState);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("completion-summary");
+    expect(result.message).toContain("revise-plan");
+  });
+
+  it("OneOfGroup — match with frontmatter schema validation", () => {
+    const schema = Type.Object({ status: Type.String() });
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup([
+          {
+            name: "completion-summary",
+            file: "COMPLETION_SUMMARY.md",
+            schema,
+          },
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+        ]),
+      ],
+    };
+
+    // COMPLETION_SUMMARY.md exists with valid frontmatter
+    fs.writeFileSync(
+      path.join(tempDir, "COMPLETION_SUMMARY.md"),
+      "---\nstatus: complete\n---\n# Complete\n",
+      "utf-8",
+    );
+
+    const capState = makeCapState(contract, tempDir);
+    const result = validateOutputs(capState);
+    expect(result).toEqual({ success: true });
+  });
+
+  it("OneOfGroup — match with invalid frontmatter → failure", () => {
+    const schema = Type.Object({ status: Type.String() });
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup([
+          {
+            name: "completion-summary",
+            file: "COMPLETION_SUMMARY.md",
+            schema,
+          },
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+        ]),
+      ],
+    };
+
+    // COMPLETION_SUMMARY.md exists but has invalid frontmatter
+    fs.writeFileSync(
+      path.join(tempDir, "COMPLETION_SUMMARY.md"),
+      "---\nstatus: 123\n---\n# Complete\n",
+      "utf-8",
+    );
+
+    const capState = makeCapState(contract, tempDir);
+    const result = validateOutputs(capState);
+    expect(result.success).toBe(false);
+  });
+
+  it("Placeholder resolution works inside OneOfGroup", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup([
+          {
+            name: "task",
+            file: "S{stepNumber:02d}/TASK.md",
+          },
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+        ]),
+      ],
+    };
+
+    fs.mkdirSync(path.join(tempDir, "S03"), { recursive: true });
+    fs.writeFileSync(path.join(tempDir, "S03", "TASK.md"), "content", "utf-8");
+
+    const capState = makeCapState(contract, tempDir, { stepNumber: 3 });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -767,7 +1128,7 @@ steps:
     expect(result.message).toContain("PLAN.md");
   });
 
-  it("excluded REVISE_PLAN_NEEDED exists → failure", async () => {
+  it("REVISE_PLAN_NEEDED.md at step > totalSteps satisfies Group 2 (not excluded)", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
     fs.writeFileSync(
       path.join(tempDir, "PLAN.md"),
@@ -783,16 +1144,12 @@ steps:
 `,
       "utf-8",
     );
-    fs.mkdirSync(path.join(tempDir, "S03"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tempDir, "S03", "REVISE_PLAN_NEEDED"),
-      "",
-      "utf-8",
-    );
+    // REVISE_PLAN_NEEDED.md is no longer excluded — it's a valid output option in both OneOfGroups
+    fs.writeFileSync(path.join(tempDir, "REVISE_PLAN_NEEDED.md"), "", "utf-8");
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 3 });
-    const result = validateInputs(capState);
-    expect(result.success).toBe(false);
-    expect(result.message).toContain("REVISE_PLAN_NEEDED");
+    // stepNumber 3 > totalSteps 2 → Group 2 active, REVISE_PLAN_NEEDED.md satisfies it
+    const result = validateOutputs(capState);
+    expect(result).toEqual({ success: true });
   });
 });
 
@@ -893,6 +1250,11 @@ describe("CONTRACT integration — revise-plan", () => {
     const { CONTRACT } = await import("../capabilities/revise-plan/config");
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "REVISE_PLAN_NEEDED.md"),
+      "content",
+      "utf-8",
+    );
     const capState = makeCapState(CONTRACT, tempDir);
     const result = validateInputs(capState);
     expect(result).toEqual({ success: true });
@@ -1137,7 +1499,8 @@ steps:
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 2 });
     const result = validateOutputs(capState);
     expect(result.success).toBe(false);
-    expect(result.message).toContain("TASK.md");
+    // Error mentions OneOfGroup option names ("task + decisions" / "revise-plan")
+    expect(result.message).toMatch(/task|decisions|revise-plan/);
   });
 
   it("missing DECISIONS.md (step > 1) → failure naming S03/DECISIONS.md", async () => {
@@ -1175,7 +1538,8 @@ skills:
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 3 });
     const result = validateOutputs(capState);
     expect(result.success).toBe(false);
-    expect(result.message).toContain("DECISIONS.md");
+    // Error mentions OneOfGroup option names ("task + decisions" / "revise-plan")
+    expect(result.message).toMatch(/task|decisions|revise-plan/);
   });
 });
 

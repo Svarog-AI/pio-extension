@@ -40,20 +40,63 @@ export interface MarkdownFileSpec {
 }
 
 /**
- * A group where exactly one file must be present (e.g., APPROVED xor REJECTED).
+ * A group where exactly one file (or group of files) must be present.
+ *
+ * Supports recursive nesting: `files` can contain `MarkdownFileSpec`, other
+ * `OneOfGroup`s, or bare arrays (`OutputEntry[]`) that act as implicit AND-groups.
+ *
+ * Uses a literal `kind` discriminant (`"one-of"`) for TypeScript exhaustive
+ * narrowing via `instanceof OneOfGroup` or `switch (entry.kind)`.
+ *
+ * Example — mutual exclusion at step n+1:
+ * ```ts
+ * new OneOfGroup(
+ *   [
+ *     { name: "completion-summary", file: "COMPLETION_SUMMARY.md" },
+ *     { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+ *   ],
+ *   (params, capState) => stepNumber > totalSteps,
+ * )
+ * ```
  */
-export interface OneOfGroup {
-  files: MarkdownFileSpec[];
+export class OneOfGroup {
+  readonly kind = "one-of" as const;
+
+  constructor(
+    public files: OutputEntry[],
+    public requiredWhen?: (
+      params?: Record<string, unknown>,
+      capState?: CapState,
+    ) => boolean,
+  ) {}
 }
 
-/** An output entry: either a single file spec or a one-of group. */
-export type OutputEntry = MarkdownFileSpec | OneOfGroup;
+/**
+ * An output entry: a single file spec, a one-of group, or a bare array
+ * (implicit AND-group where all sub-entries must pass together).
+ *
+ * Recursive nesting enables arbitrary boolean combinations:
+ * - Top-level `outputs[]` — AND (every entry must pass)
+ * - `OneOfGroup` — OR (exactly one sub-entry must succeed)
+ * - Bare `OutputEntry[]` inside a group — implicit AND
+ */
+export type OutputEntry = MarkdownFileSpec | OneOfGroup | OutputEntry[];
 
-/** Type guard: distinguish MarkdownFileSpec from OneOfGroup within OutputEntry[]. */
+/** Type guard: distinguish MarkdownFileSpec from OneOfGroup and bare arrays within OutputEntry. */
 export function isMarkdownFileSpec(
   entry: OutputEntry,
 ): entry is MarkdownFileSpec {
-  return "file" in entry && !("files" in entry);
+  return "file" in entry && !("files" in entry) && !Array.isArray(entry);
+}
+
+/** Type guard: identify bare arrays (implicit AND-groups) within OutputEntry. */
+export function isArrayOutput(entry: OutputEntry): entry is OutputEntry[] {
+  return Array.isArray(entry);
+}
+
+/** Type guard: identify OneOfGroup class instances within OutputEntry. */
+export function isOneOfGroup(entry: OutputEntry): entry is OneOfGroup {
+  return entry instanceof OneOfGroup;
 }
 
 /**
@@ -162,6 +205,7 @@ export type PostValidateCallback = (
 export type PostExecuteCallback = (
   workspaceDir: string,
   params?: Record<string, unknown>,
+  capState?: CapState,
 ) => void | Promise<void>;
 
 // ---------------------------------------------------------------------------

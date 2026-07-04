@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCapState } from "./capability-state";
 import { getCapState, setDiscoveredContracts } from "./state-machines/utils";
 import type { CapabilityContract, MarkdownFileSpec } from "./types";
+import { OneOfGroup } from "./types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -466,12 +467,10 @@ describe("output(name) — lookup by name in contract.outputs", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        {
-          files: [
-            { name: "approved", file: "APPROVED" },
-            { name: "rejected", file: "REJECTED" },
-          ],
-        },
+        new OneOfGroup([
+          { name: "approved", file: "APPROVED" },
+          { name: "rejected", file: "REJECTED" },
+        ]),
       ],
     };
     const capState = createCapState(contract, tempDir);
@@ -550,7 +549,7 @@ describe("Duplicate name detection", () => {
       outputs: [{ name: "plan", file: "PLAN.md" }],
     };
     expect(() => createCapState(contract, tempDir)).toThrow(
-      "Duplicate file name 'plan' in contract. Names must be unique across inputs and outputs.",
+      "Duplicate file name 'plan' in contract: 'GOAL.md' vs 'PLAN.md'. Names must be unique across inputs and outputs.",
     );
   });
 
@@ -563,7 +562,7 @@ describe("Duplicate name detection", () => {
       outputs: [],
     };
     expect(() => createCapState(contract, tempDir)).toThrow(
-      "Duplicate file name 'plan' in contract. Names must be unique across inputs and outputs.",
+      "Duplicate file name 'plan' in contract: 'PLAN.md' vs 'PLAN2.md'. Names must be unique across inputs and outputs.",
     );
   });
 
@@ -576,21 +575,17 @@ describe("Duplicate name detection", () => {
       ],
     };
     expect(() => createCapState(contract, tempDir)).toThrow(
-      "Duplicate file name 'plan' in contract. Names must be unique across inputs and outputs.",
+      "Duplicate file name 'plan' in contract: 'PLAN.md' vs 'PLAN2.md'. Names must be unique across inputs and outputs.",
     );
   });
 
   it("throws when the same name appears in a OneOfGroup and inputs", () => {
     const contract: CapabilityContract = {
       inputs: [{ name: "approved", file: "APPROVED" }],
-      outputs: [
-        {
-          files: [{ name: "approved", file: "REJECTED" }],
-        },
-      ],
+      outputs: [new OneOfGroup([{ name: "approved", file: "REJECTED" }])],
     };
     expect(() => createCapState(contract, tempDir)).toThrow(
-      "Duplicate file name 'approved' in contract. Names must be unique across inputs and outputs.",
+      "Duplicate file name 'approved' in contract: 'APPROVED' vs 'REJECTED'. Names must be unique across inputs and outputs.",
     );
   });
 
@@ -600,6 +595,74 @@ describe("Duplicate name detection", () => {
       outputs: [{ name: "plan", file: "PLAN.md" }],
     };
     expect(() => createCapState(contract, tempDir)).not.toThrow();
+  });
+
+  // --- Same name + same file → silent dedup (no throw) ---
+
+  it("does not throw when same name and same file appear twice in outputs", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "plan", file: "PLAN.md" },
+        { name: "plan", file: "PLAN.md" },
+      ],
+    };
+    expect(() => createCapState(contract, tempDir)).not.toThrow();
+  });
+
+  it("does not throw when same name and same file appear in two OneOfGroups", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup([
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+          { name: "task", file: "TASK.md" },
+        ]),
+        new OneOfGroup([
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+          { name: "summary", file: "SUMMARY.md" },
+        ]),
+      ],
+    };
+    expect(() => createCapState(contract, tempDir)).not.toThrow();
+  });
+
+  it("dedup preserves correct output() lookup", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup([
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+          { name: "task", file: "TASK.md" },
+        ]),
+        new OneOfGroup([
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+          { name: "summary", file: "SUMMARY.md" },
+        ]),
+      ],
+    };
+    const capState = createCapState(contract, tempDir);
+    // All three names should resolve correctly
+    expect(capState.tryResolveOutput("revise-plan")!.entry.file).toBe(
+      "REVISE_PLAN_NEEDED.md",
+    );
+    expect(capState.tryResolveOutput("task")!.entry.file).toBe("TASK.md");
+    expect(capState.tryResolveOutput("summary")!.entry.file).toBe("SUMMARY.md");
+  });
+
+  // --- Same name + different file → still throws ---
+
+  it("throws with both file paths when same name maps to different files", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "plan", file: "PLAN.md" },
+        { name: "plan", file: "PLAN2.md" },
+      ],
+    };
+    expect(() => createCapState(contract, tempDir)).toThrow(
+      "Duplicate file name 'plan' in contract: 'PLAN.md' vs 'PLAN2.md'",
+    );
   });
 });
 
@@ -1013,11 +1076,7 @@ describe("tryResolveOutput / tryResolveInput — non-throwing lookups", () => {
   it("tryResolveOutput resolves OneOfGroup entries", () => {
     const contract: CapabilityContract = {
       inputs: [],
-      outputs: [
-        {
-          files: [{ name: "task", file: "TASK.md" }],
-        },
-      ],
+      outputs: [new OneOfGroup([{ name: "task", file: "TASK.md" }])],
     };
     const capState = createCapState(contract, tempDir);
     const result = capState.tryResolveOutput("task");
@@ -1100,21 +1159,150 @@ describe("Entry maps store MarkdownFileSpec references", () => {
     const contract: CapabilityContract = {
       inputs: [],
       outputs: [
-        {
-          files: [
-            {
-              name: "task",
-              file: "TASK.md",
-              schema: Type.Object({ stepName: Type.String() }),
-            },
-          ],
-        },
+        new OneOfGroup([
+          {
+            name: "task",
+            file: "TASK.md",
+            schema: Type.Object({ stepName: Type.String() }),
+          },
+        ]),
       ],
     };
     const capState = createCapState(contract, tempDir);
     writeWithFrontmatter(tempDir, "TASK.md", { stepName: "Build" });
     const data = capState.output<{ stepName: string }>("task").read();
     expect(data).toEqual({ stepName: "Build" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Recursive output lookup (OutputEntry triple union)
+// ---------------------------------------------------------------------------
+
+describe("Recursive output lookup", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("finds a spec nested inside a bare array within a OneOfGroup", () => {
+    // new OneOfGroup([[{ name: "x", file: "X.md" }]]) → output("x") works
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [new OneOfGroup([[{ name: "x", file: "X.md" }]])],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "X.md", { value: 1 });
+    expect(capState.output("x").exists()).toBe(true);
+  });
+
+  it("finds a spec at arbitrary nesting depth: OneOfGroup > OneOfGroup > spec", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup([new OneOfGroup([{ name: "deep", file: "DEEP.md" }])]),
+      ],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "DEEP.md", { level: 3 });
+    expect(capState.output("deep").exists()).toBe(true);
+  });
+
+  it("finds specs in mixed nesting: bare array + OneOfGroup + bare array", () => {
+    // Top-level: [spec, OneOfGroup([bareArray([spec])])]
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "top", file: "TOP.md" },
+        new OneOfGroup([[[{ name: "nested", file: "NESTED.md" }]]]),
+      ],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "TOP.md", {});
+    writeWithFrontmatter(tempDir, "NESTED.md", {});
+    expect(capState.output("top").exists()).toBe(true);
+    expect(capState.output("nested").exists()).toBe(true);
+  });
+
+  it("handles empty arrays and empty groups without error", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup([]), // empty OneOfGroup
+        [], // empty bare array (implicit AND)
+        { name: "real", file: "REAL.md" },
+      ],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "REAL.md", {});
+    expect(capState.output("real").exists()).toBe(true);
+  });
+
+  it("detects duplicate names across nested and flat entries", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "dup", file: "A.md" },
+        new OneOfGroup([[{ name: "dup", file: "B.md" }]]),
+      ],
+    };
+    expect(() => createCapState(contract, tempDir)).toThrow(
+      "Duplicate file name 'dup' in contract",
+    );
+  });
+
+  it("detects duplicate names across deeply nested entries", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup([
+          new OneOfGroup([{ name: "dup", file: "A.md" }]),
+          new OneOfGroup([{ name: "dup", file: "B.md" }]),
+        ]),
+      ],
+    };
+    expect(() => createCapState(contract, tempDir)).toThrow(
+      "Duplicate file name 'dup' in contract",
+    );
+  });
+
+  it("backward compatible — flat output still works", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "plan", file: "PLAN.md" }],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "PLAN.md", { totalSteps: 2 });
+    expect(capState.output("plan").exists()).toBe(true);
+  });
+
+  it("backward compatible — single-level OneOfGroup still works", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup([
+          { name: "a", file: "A.md" },
+          { name: "b", file: "B.md" },
+        ]),
+      ],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "A.md", {});
+    expect(capState.output("a").exists()).toBe(true);
+    expect(capState.output("b").exists()).toBe(false);
+  });
+
+  it("inputs are unaffected — input() still works as before", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "goal", file: "GOAL.md" }],
+      outputs: [new OneOfGroup([[{ name: "x", file: "X.md" }]])],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "GOAL.md", { title: "Goal" });
+    expect(capState.input("goal").exists()).toBe(true);
   });
 });
 

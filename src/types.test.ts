@@ -4,10 +4,14 @@ import type {
   CapabilityContract,
   CapabilitySkills,
   MarkdownFileSpec,
-  OneOfGroup,
   OutputEntry,
 } from "./types";
-import { isMarkdownFileSpec } from "./types";
+import {
+  isArrayOutput,
+  isMarkdownFileSpec,
+  isOneOfGroup,
+  OneOfGroup,
+} from "./types";
 
 // ---------------------------------------------------------------------------
 // CapabilitySkills — compile-time type verification
@@ -113,25 +117,127 @@ describe("isMarkdownFileSpec", () => {
   });
 
   it("returns false for OneOfGroup entries", () => {
-    const entry: OutputEntry = {
-      files: [
-        { name: "approved", file: "APPROVED" },
-        { name: "rejected", file: "REJECTED" },
-      ],
-    };
+    const entry: OutputEntry = new OneOfGroup([
+      { name: "approved", file: "APPROVED" },
+      { name: "rejected", file: "REJECTED" },
+    ]);
     expect(isMarkdownFileSpec(entry)).toBe(false);
   });
 
   it("narrows type to MarkdownFileSpec (type guard behavior)", () => {
     const entries: OutputEntry[] = [
       { name: "plan", file: "PLAN.md" },
-      { files: [{ name: "approved", file: "APPROVED" }] },
+      new OneOfGroup([{ name: "approved", file: "APPROVED" }]),
     ];
 
     const fileSpecs = entries.filter(isMarkdownFileSpec);
     // TypeScript narrows to MarkdownFileSpec[] — name and file are accessible
     expect(fileSpecs.map((e) => e.name)).toEqual(["plan"]);
     expect(fileSpecs.map((e) => e.file)).toEqual(["PLAN.md"]);
+  });
+
+  it("returns false for bare array entries (OutputEntry[])", () => {
+    const entry: OutputEntry = [
+      { name: "a", file: "A.md" },
+      { name: "b", file: "B.md" },
+    ];
+    expect(isMarkdownFileSpec(entry)).toBe(false);
+  });
+
+  it("correctly distinguishes all three variants in a mixed array", () => {
+    const entries: OutputEntry[] = [
+      { name: "plan", file: "PLAN.md" },
+      new OneOfGroup([{ name: "approved", file: "APPROVED" }]),
+      [{ name: "a", file: "A.md" }],
+    ];
+
+    expect(entries.filter(isMarkdownFileSpec)).toHaveLength(1);
+    expect(
+      entries.filter((e) => !isMarkdownFileSpec(e) && !Array.isArray(e)),
+    ).toHaveLength(1);
+    expect(entries.filter(Array.isArray)).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isArrayOutput — type guard for bare arrays in OutputEntry
+// ---------------------------------------------------------------------------
+
+describe("isArrayOutput", () => {
+  it("returns true for bare array entries", () => {
+    const entry: OutputEntry = [
+      { name: "a", file: "A.md" },
+      { name: "b", file: "B.md" },
+    ];
+    expect(isArrayOutput(entry)).toBe(true);
+  });
+
+  it("returns false for MarkdownFileSpec entries", () => {
+    const entry: OutputEntry = { name: "plan", file: "PLAN.md" };
+    expect(isArrayOutput(entry)).toBe(false);
+  });
+
+  it("returns false for OneOfGroup entries", () => {
+    const entry: OutputEntry = new OneOfGroup([
+      { name: "approved", file: "APPROVED" },
+    ]);
+    expect(isArrayOutput(entry)).toBe(false);
+  });
+
+  it("narrows type to OutputEntry[] (type guard behavior)", () => {
+    const entries: OutputEntry[] = [
+      { name: "plan", file: "PLAN.md" },
+      new OneOfGroup([{ name: "approved", file: "APPROVED" }]),
+      [{ name: "a", file: "A.md" }],
+    ];
+
+    const arrays = entries.filter(isArrayOutput);
+    // TypeScript narrows to OutputEntry[][] — can iterate sub-entries
+    expect(arrays).toHaveLength(1);
+    expect(arrays[0]).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isOneOfGroup — type guard for OneOfGroup class instances
+// ---------------------------------------------------------------------------
+
+describe("isOneOfGroup", () => {
+  it("returns true for instances created via new OneOfGroup", () => {
+    const entry: OutputEntry = new OneOfGroup([{ name: "a", file: "A.md" }]);
+    expect(isOneOfGroup(entry)).toBe(true);
+  });
+
+  it("returns false for MarkdownFileSpec objects", () => {
+    const entry: OutputEntry = { name: "plan", file: "PLAN.md" };
+    expect(isOneOfGroup(entry)).toBe(false);
+  });
+
+  it("returns false for bare arrays (OutputEntry[])", () => {
+    const entry: OutputEntry = [
+      { name: "a", file: "A.md" },
+      { name: "b", file: "B.md" },
+    ];
+    expect(isOneOfGroup(entry)).toBe(false);
+  });
+
+  it("narrows type to OneOfGroup (type guard behavior)", () => {
+    const entries: OutputEntry[] = [
+      { name: "plan", file: "PLAN.md" },
+      new OneOfGroup([{ name: "approved", file: "APPROVED" }]),
+      [{ name: "a", file: "A.md" }],
+    ];
+
+    const groups = entries.filter(isOneOfGroup);
+    // TypeScript narrows to OneOfGroup[] — .files is accessible
+    expect(groups).toHaveLength(1);
+    expect(groups[0].files).toHaveLength(1);
+    expect(groups[0].kind).toBe("one-of");
+  });
+
+  it('kind property is literal "one-of"', () => {
+    const group = new OneOfGroup([{ name: "x", file: "X.md" }]);
+    expect(group.kind).toBe("one-of");
   });
 });
 
@@ -221,12 +327,10 @@ describe("unified contract types", () => {
           requiredWhen: (params) =>
             typeof params?.stepNumber === "number" && params.stepNumber > 1,
         },
-        {
-          files: [
-            { name: "approved", file: "APPROVED" },
-            { name: "rejected", file: "REJECTED" },
-          ],
-        } satisfies OneOfGroup,
+        new OneOfGroup([
+          { name: "approved", file: "APPROVED" },
+          { name: "rejected", file: "REJECTED" },
+        ]),
       ],
     };
 
@@ -249,6 +353,73 @@ describe("unified contract types", () => {
 
     // Assert: contract is set on CapabilityConfig
     expect(config.contract).toBe(contract);
+  });
+
+  it("supports recursive nesting — OneOfGroup containing OneOfGroup and bare arrays", () => {
+    // Arrange: OneOfGroup with nested group and bare array (AND inside OR)
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup(
+          [
+            // Option A: single file
+            { name: "solo", file: "SOLO.md" },
+            // Option B: nested OneOfGroup (either X or Y)
+            new OneOfGroup([
+              { name: "x", file: "X.md" },
+              { name: "y", file: "Y.md" },
+            ]),
+            // Option C: bare array (both C1 and C2 — implicit AND)
+            [
+              { name: "c1", file: "C1.md" },
+              { name: "c2", file: "C2.md" },
+            ],
+          ],
+          () => true,
+        ),
+      ],
+    };
+
+    // Assert: TypeScript accepts the recursive nesting
+    const group = contract.outputs[0] as OneOfGroup;
+    expect(group.files).toHaveLength(3);
+    expect(group.kind).toBe("one-of");
+    expect(group.requiredWhen?.()).toBe(true);
+
+    // Assert: nested OneOfGroup is at index 1
+    const nestedGroup = group.files[1] as OneOfGroup;
+    expect(nestedGroup.kind).toBe("one-of");
+    expect(nestedGroup.files).toHaveLength(2);
+
+    // Assert: bare array is at index 2
+    const bareArray = group.files[2] as OutputEntry[];
+    expect(Array.isArray(bareArray)).toBe(true);
+    expect(bareArray).toHaveLength(2);
+  });
+
+  it("OneOfGroup requiredWhen predicate receives params and capState", () => {
+    // Arrange
+    const group = new OneOfGroup(
+      [
+        { name: "completion-summary", file: "COMPLETION_SUMMARY.md" },
+        { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+      ],
+      (params) => {
+        const stepNum = params?.stepNumber as number | undefined;
+        const total = params?.totalSteps as number | undefined;
+        return (
+          typeof stepNum === "number" &&
+          typeof total === "number" &&
+          stepNum > total
+        );
+      },
+    );
+
+    // Assert: requiredWhen fires only when stepNumber > totalSteps
+    expect(group.requiredWhen?.({ stepNumber: 4, totalSteps: 3 })).toBe(true);
+    expect(group.requiredWhen?.({ stepNumber: 2, totalSteps: 3 })).toBe(false);
+    expect(group.requiredWhen?.({ stepNumber: 3, totalSteps: 3 })).toBe(false);
+    expect(group.requiredWhen?.()).toBe(false);
   });
 });
 

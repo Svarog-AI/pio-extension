@@ -64,7 +64,7 @@ Shared modules:
 create-goal ──GOAL.md──→ create-plan ──PLAN.md──→ evolve-plan ──S01/TASK.md──→ execute-task ──S01/SUMMARY.md(frontmatter)→auto-COMPLETED──→ review-code ──(goal complete)──→ finalize-goal
                                     ↑                                                      │                                  │         ↑
                                     │           (significant divergence,                   │         APPROVED                 │         │
-                                    │            REVISE_PLAN_NEEDED written)               │                              ↓         │
+                                    │            REVISE_PLAN_NEEDED.md at workspace root)  │                              ↓         │
                                     └──── revise-plan ←──────── evolve-plan ←──────────────┘                       S01/APPROVED  │
                                                                                                             REJECTED → re-exec │
 ```

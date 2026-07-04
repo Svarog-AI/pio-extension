@@ -549,7 +549,7 @@ describe("Duplicate name detection", () => {
       outputs: [{ name: "plan", file: "PLAN.md" }],
     };
     expect(() => createCapState(contract, tempDir)).toThrow(
-      "Duplicate file name 'plan' in contract. Names must be unique across inputs and outputs.",
+      "Duplicate file name 'plan' in contract: 'GOAL.md' vs 'PLAN.md'. Names must be unique across inputs and outputs.",
     );
   });
 
@@ -562,7 +562,7 @@ describe("Duplicate name detection", () => {
       outputs: [],
     };
     expect(() => createCapState(contract, tempDir)).toThrow(
-      "Duplicate file name 'plan' in contract. Names must be unique across inputs and outputs.",
+      "Duplicate file name 'plan' in contract: 'PLAN.md' vs 'PLAN2.md'. Names must be unique across inputs and outputs.",
     );
   });
 
@@ -575,7 +575,7 @@ describe("Duplicate name detection", () => {
       ],
     };
     expect(() => createCapState(contract, tempDir)).toThrow(
-      "Duplicate file name 'plan' in contract. Names must be unique across inputs and outputs.",
+      "Duplicate file name 'plan' in contract: 'PLAN.md' vs 'PLAN2.md'. Names must be unique across inputs and outputs.",
     );
   });
 
@@ -585,7 +585,7 @@ describe("Duplicate name detection", () => {
       outputs: [new OneOfGroup([{ name: "approved", file: "REJECTED" }])],
     };
     expect(() => createCapState(contract, tempDir)).toThrow(
-      "Duplicate file name 'approved' in contract. Names must be unique across inputs and outputs.",
+      "Duplicate file name 'approved' in contract: 'APPROVED' vs 'REJECTED'. Names must be unique across inputs and outputs.",
     );
   });
 
@@ -595,6 +595,74 @@ describe("Duplicate name detection", () => {
       outputs: [{ name: "plan", file: "PLAN.md" }],
     };
     expect(() => createCapState(contract, tempDir)).not.toThrow();
+  });
+
+  // --- Same name + same file → silent dedup (no throw) ---
+
+  it("does not throw when same name and same file appear twice in outputs", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "plan", file: "PLAN.md" },
+        { name: "plan", file: "PLAN.md" },
+      ],
+    };
+    expect(() => createCapState(contract, tempDir)).not.toThrow();
+  });
+
+  it("does not throw when same name and same file appear in two OneOfGroups", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup([
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+          { name: "task", file: "TASK.md" },
+        ]),
+        new OneOfGroup([
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+          { name: "summary", file: "SUMMARY.md" },
+        ]),
+      ],
+    };
+    expect(() => createCapState(contract, tempDir)).not.toThrow();
+  });
+
+  it("dedup preserves correct output() lookup", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        new OneOfGroup([
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+          { name: "task", file: "TASK.md" },
+        ]),
+        new OneOfGroup([
+          { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+          { name: "summary", file: "SUMMARY.md" },
+        ]),
+      ],
+    };
+    const capState = createCapState(contract, tempDir);
+    // All three names should resolve correctly
+    expect(capState.tryResolveOutput("revise-plan")!.entry.file).toBe(
+      "REVISE_PLAN_NEEDED.md",
+    );
+    expect(capState.tryResolveOutput("task")!.entry.file).toBe("TASK.md");
+    expect(capState.tryResolveOutput("summary")!.entry.file).toBe("SUMMARY.md");
+  });
+
+  // --- Same name + different file → still throws ---
+
+  it("throws with both file paths when same name maps to different files", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [
+        { name: "plan", file: "PLAN.md" },
+        { name: "plan", file: "PLAN2.md" },
+      ],
+    };
+    expect(() => createCapState(contract, tempDir)).toThrow(
+      "Duplicate file name 'plan' in contract: 'PLAN.md' vs 'PLAN2.md'",
+    );
   });
 });
 

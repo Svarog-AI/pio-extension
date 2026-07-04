@@ -209,24 +209,31 @@ export class CapState {
     entry: import("./types").OutputEntry,
     outputNames: Map<string, MarkdownFileSpec>,
     allNames: Set<string>,
+    allFiles: Map<string, string>,
   ): void {
     if (isMarkdownFileSpec(entry)) {
       if (allNames.has(entry.name)) {
+        const existingFile = allFiles.get(entry.name);
+        if (existingFile === entry.file) {
+          // Same name + same file path → silently deduplicate
+          return;
+        }
         throw new Error(
-          `Duplicate file name '${entry.name}' in contract. Names must be unique across inputs and outputs.`,
+          `Duplicate file name '${entry.name}' in contract: '${existingFile ?? "?"}' vs '${entry.file}'. Names must be unique across inputs and outputs.`,
         );
       }
       allNames.add(entry.name);
+      allFiles.set(entry.name, entry.file);
       outputNames.set(entry.name, entry);
     } else if (isArrayOutput(entry)) {
       // Bare array — implicit AND-group, recurse into each element
       for (const sub of entry) {
-        this.registerOutputEntry(sub, outputNames, allNames);
+        this.registerOutputEntry(sub, outputNames, allNames, allFiles);
       }
     } else if (entry instanceof OneOfGroup) {
       // OneOfGroup — recurse into files[]
       for (const sub of entry.files) {
-        this.registerOutputEntry(sub, outputNames, allNames);
+        this.registerOutputEntry(sub, outputNames, allNames, allFiles);
       }
     }
   }
@@ -243,21 +250,23 @@ export class CapState {
     const inputNames = new Map<string, MarkdownFileSpec>();
     const outputNames = new Map<string, MarkdownFileSpec>();
     const allNames = new Set<string>();
+    const allFiles = new Map<string, string>();
 
     // Process inputs
     for (const entry of this._contract.inputs) {
       if (allNames.has(entry.name)) {
         throw new Error(
-          `Duplicate file name '${entry.name}' in contract. Names must be unique across inputs and outputs.`,
+          `Duplicate file name '${entry.name}' in contract: '${allFiles.get(entry.name)}' vs '${entry.file}'. Names must be unique across inputs and outputs.`,
         );
       }
       allNames.add(entry.name);
+      allFiles.set(entry.name, entry.file);
       inputNames.set(entry.name, entry);
     }
 
     // Process outputs (recursive traversal of the full OutputEntry tree)
     for (const entry of this._contract.outputs) {
-      this.registerOutputEntry(entry, outputNames, allNames);
+      this.registerOutputEntry(entry, outputNames, allNames, allFiles);
     }
 
     return { inputNames, outputNames };

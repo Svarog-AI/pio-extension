@@ -360,13 +360,20 @@ describe("resolveCapabilityConfig — step-dependent callback resolution", () =>
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    expect(result?.contract.outputs).toContainEqual(
-      expect.objectContaining({ file: "S{stepNumber:02d}/TASK.md" }),
-    );
-    const hasTest = result?.contract.outputs.some(
-      (e: any) => "file" in e && e.file.includes("TEST.md"),
-    );
-    expect(hasTest).toBe(false);
+    // TASK.md is nested inside Group 1's inner AND-group — search recursively
+    const outputs = result!.contract.outputs;
+    const findFile = (entries: any[], pattern: string): boolean =>
+      entries.some((e: any) =>
+        "file" in e
+          ? e.file.includes(pattern)
+          : Array.isArray(e)
+            ? findFile(e, pattern)
+            : e.files
+              ? findFile(e.files, pattern)
+              : false,
+      );
+    expect(findFile(outputs, "TASK.md")).toBe(true);
+    expect(findFile(outputs, "TEST.md")).toBe(false);
   });
 
   it("invokes evolve-plan writeAllowlist callback with correct stepNumber", async () => {

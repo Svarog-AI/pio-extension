@@ -302,23 +302,32 @@ describe("REVISE_PLAN_NEEDED.md marker filename", () => {
 // CONTRACT.outputs — OneOfGroup construction and mutual exclusion
 // ---------------------------------------------------------------------------
 
-describe("CONTRACT.outputs — OneOfGroup mutual exclusion", () => {
-  it("outputs contain a OneOfGroup instance for completion/revision", () => {
-    // Find the OneOfGroup in outputs
-    const oneOfGroup = CONTRACT.outputs.find(isOneOfGroup);
-    expect(oneOfGroup).toBeDefined();
-    expect(oneOfGroup instanceof OneOfGroup).toBe(true);
+describe("CONTRACT.outputs — Two OneOfGroups", () => {
+  it("outputs contain exactly two OneOfGroup instances", () => {
+    const oneOfGroups = CONTRACT.outputs.filter(isOneOfGroup);
+    expect(oneOfGroups.length).toBe(2);
+    expect(oneOfGroups.every((g) => g instanceof OneOfGroup)).toBe(true);
   });
 
-  it("OneOfGroup contains completion-summary and revise-plan entries", () => {
-    const oneOfGroup = CONTRACT.outputs.find(isOneOfGroup);
-    expect(oneOfGroup).toBeDefined();
-
-    const completionEntry = findOutput(
-      oneOfGroup!.files,
-      "COMPLETION_SUMMARY.md",
+  it("Group 1 (index 0) contains inner AND-group and revise-plan", () => {
+    const group1 = CONTRACT.outputs[0] as OneOfGroup;
+    expect(group1.files.length).toBe(2);
+    // Option A: bare array (AND-group) with task + decisions
+    expect(Array.isArray(group1.files[0])).toBe(true);
+    expect((group1.files[0] as OutputEntry[]).length).toBe(2);
+    // Option B: revise-plan
+    expect(isMarkdownFileSpec(group1.files[1])).toBe(true);
+    expect((group1.files[1] as MarkdownFileSpec).name).toBe("revise-plan");
+    expect((group1.files[1] as MarkdownFileSpec).file).toBe(
+      "REVISE_PLAN_NEEDED.md",
     );
-    const reviseEntry = findOutput(oneOfGroup!.files, "REVISE_PLAN_NEEDED.md");
+  });
+
+  it("Group 2 (index 1) contains completion-summary and revise-plan", () => {
+    const group2 = CONTRACT.outputs[1] as OneOfGroup;
+
+    const completionEntry = findOutput(group2.files, "COMPLETION_SUMMARY.md");
+    const reviseEntry = findOutput(group2.files, "REVISE_PLAN_NEEDED.md");
 
     expect(completionEntry).toBeDefined();
     expect(completionEntry?.name).toBe("completion-summary");
@@ -326,15 +335,26 @@ describe("CONTRACT.outputs — OneOfGroup mutual exclusion", () => {
     expect(reviseEntry?.name).toBe("revise-plan");
   });
 
-  it("OneOfGroup requiredWhen is active only when stepNumber > totalSteps", () => {
-    const oneOfGroup = CONTRACT.outputs.find(isOneOfGroup);
-    expect(oneOfGroup).toBeDefined();
-    expect(oneOfGroup?.requiredWhen).toBeDefined();
+  it("Group 1 requiredWhen is active only when stepNumber <= totalSteps", () => {
+    const group1 = CONTRACT.outputs[0] as OneOfGroup;
+    expect(group1.requiredWhen).toBeDefined();
 
-    // stepNumber > totalSteps → active
-    expect(oneOfGroup?.requiredWhen?.({ stepNumber: 4 }, undefined)).toBe(
-      false,
-    ); // totalSteps can't be read without capState
+    // Without capState (totalSteps null) → inactive
+    expect(group1.requiredWhen?.({ stepNumber: 1 }, undefined)).toBe(false);
+  });
+
+  it("Group 2 requiredWhen is active only when stepNumber > totalSteps", () => {
+    const group2 = CONTRACT.outputs[1] as OneOfGroup;
+    expect(group2.requiredWhen).toBeDefined();
+
+    // Without capState (totalSteps null) → inactive
+    expect(group2.requiredWhen?.({ stepNumber: 4 }, undefined)).toBe(false);
+  });
+
+  it("TASK.md has no individual requiredWhen (predicate is at group level)", () => {
+    const taskEntry = findOutput(CONTRACT.outputs, "TASK.md");
+    expect(taskEntry).toBeDefined();
+    expect(taskEntry?.requiredWhen).toBeUndefined();
   });
 });
 
@@ -665,149 +685,107 @@ describe("evolve-plan CONTRACT predicates", () => {
   afterEach(() => cleanup(tempDir));
 
   describe("predicate logic table", () => {
-    it("step 1 of 3: TASK.md required, DECISIONS.md not required, OneOfGroup not required", () => {
+    it("step 1 of 3: Group 1 active, Group 2 inactive, DECISIONS.md not required", () => {
       const capState = makeCapStateWithPlan(tempDir, 3, { stepNumber: 1 });
 
-      const taskEntry = findOutput(CONTRACT.outputs, "TASK.md");
       const decisionsEntry = findOutput(CONTRACT.outputs, "DECISIONS.md");
-      const oneOfGroup = CONTRACT.outputs.find(isOneOfGroup);
+      const group1 = CONTRACT.outputs[0] as OneOfGroup;
+      const group2 = CONTRACT.outputs[1] as OneOfGroup;
 
-      expect(taskEntry?.requiredWhen?.({ stepNumber: 1 }, capState)).toBe(true);
-      expect(decisionsEntry?.requiredWhen?.({ stepNumber: 1 }, capState)).toBe(
-        false,
-      );
-      // OneOfGroup requiredWhen: stepNumber > totalSteps → false for step 1 of 3
-      expect(oneOfGroup?.requiredWhen?.({ stepNumber: 1 }, capState)).toBe(
-        false,
-      );
+      // Group 1: stepNumber <= totalSteps → active
+      expect(group1.requiredWhen?.({ stepNumber: 1 }, capState)).toBe(true);
+      // Group 2: stepNumber > totalSteps → inactive
+      expect(group2.requiredWhen?.({ stepNumber: 1 }, capState)).toBe(false);
+      // DECISIONS.md individual requiredWhen: stepNumber > 1 → false for step 1
+      expect(decisionsEntry?.requiredWhen?.({ stepNumber: 1 })).toBe(false);
     });
 
-    it("step 2 of 3: TASK.md required, DECISIONS.md required, OneOfGroup not required", () => {
+    it("step 2 of 3: Group 1 active, Group 2 inactive, DECISIONS.md required", () => {
       const capState = makeCapStateWithPlan(tempDir, 3, { stepNumber: 2 });
 
-      const taskEntry = findOutput(CONTRACT.outputs, "TASK.md");
       const decisionsEntry = findOutput(CONTRACT.outputs, "DECISIONS.md");
-      const oneOfGroup = CONTRACT.outputs.find(isOneOfGroup);
+      const group1 = CONTRACT.outputs[0] as OneOfGroup;
+      const group2 = CONTRACT.outputs[1] as OneOfGroup;
 
-      expect(taskEntry?.requiredWhen?.({ stepNumber: 2 }, capState)).toBe(true);
-      expect(decisionsEntry?.requiredWhen?.({ stepNumber: 2 }, capState)).toBe(
-        true,
-      );
-      expect(oneOfGroup?.requiredWhen?.({ stepNumber: 2 }, capState)).toBe(
-        false,
-      );
+      expect(group1.requiredWhen?.({ stepNumber: 2 }, capState)).toBe(true);
+      expect(group2.requiredWhen?.({ stepNumber: 2 }, capState)).toBe(false);
+      expect(decisionsEntry?.requiredWhen?.({ stepNumber: 2 })).toBe(true);
     });
 
-    it("step 3 of 3 (last step): TASK.md required, DECISIONS.md required, OneOfGroup not required", () => {
+    it("step 3 of 3 (last step): Group 1 active, Group 2 inactive, DECISIONS.md required", () => {
       const capState = makeCapStateWithPlan(tempDir, 3, { stepNumber: 3 });
 
-      const taskEntry = findOutput(CONTRACT.outputs, "TASK.md");
       const decisionsEntry = findOutput(CONTRACT.outputs, "DECISIONS.md");
-      const oneOfGroup = CONTRACT.outputs.find(isOneOfGroup);
+      const group1 = CONTRACT.outputs[0] as OneOfGroup;
+      const group2 = CONTRACT.outputs[1] as OneOfGroup;
 
-      expect(taskEntry?.requiredWhen?.({ stepNumber: 3 }, capState)).toBe(true);
-      expect(decisionsEntry?.requiredWhen?.({ stepNumber: 3 }, capState)).toBe(
-        true,
-      );
-      expect(oneOfGroup?.requiredWhen?.({ stepNumber: 3 }, capState)).toBe(
-        false,
-      );
+      expect(group1.requiredWhen?.({ stepNumber: 3 }, capState)).toBe(true);
+      expect(group2.requiredWhen?.({ stepNumber: 3 }, capState)).toBe(false);
+      expect(decisionsEntry?.requiredWhen?.({ stepNumber: 3 })).toBe(true);
     });
 
-    it("step 4 of 3 (beyond totalSteps): TASK.md not required, DECISIONS.md not required, OneOfGroup required", () => {
+    it("step 4 of 3 (beyond totalSteps): Group 1 inactive, Group 2 active", () => {
       const capState = makeCapStateWithPlan(tempDir, 3, { stepNumber: 4 });
 
-      const taskEntry = findOutput(CONTRACT.outputs, "TASK.md");
-      const decisionsEntry = findOutput(CONTRACT.outputs, "DECISIONS.md");
-      const oneOfGroup = CONTRACT.outputs.find(isOneOfGroup);
+      const group1 = CONTRACT.outputs[0] as OneOfGroup;
+      const group2 = CONTRACT.outputs[1] as OneOfGroup;
 
-      expect(taskEntry?.requiredWhen?.({ stepNumber: 4 }, capState)).toBe(
-        false,
-      );
-      expect(decisionsEntry?.requiredWhen?.({ stepNumber: 4 }, capState)).toBe(
-        false,
-      );
-      // OneOfGroup is required when stepNumber > totalSteps
-      expect(oneOfGroup?.requiredWhen?.({ stepNumber: 4 }, capState)).toBe(
-        true,
-      );
+      // Group 1: stepNumber <= totalSteps → inactive (4 > 3)
+      expect(group1.requiredWhen?.({ stepNumber: 4 }, capState)).toBe(false);
+      // Group 2: stepNumber > totalSteps → active (4 > 3)
+      expect(group2.requiredWhen?.({ stepNumber: 4 }, capState)).toBe(true);
     });
 
-    it("step 5 of 3 (well beyond totalSteps): only OneOfGroup required", () => {
+    it("step 5 of 3 (well beyond totalSteps): Group 1 inactive, Group 2 active", () => {
       const capState = makeCapStateWithPlan(tempDir, 3, { stepNumber: 5 });
 
-      const taskEntry = findOutput(CONTRACT.outputs, "TASK.md");
-      const decisionsEntry = findOutput(CONTRACT.outputs, "DECISIONS.md");
-      const oneOfGroup = CONTRACT.outputs.find(isOneOfGroup);
+      const group1 = CONTRACT.outputs[0] as OneOfGroup;
+      const group2 = CONTRACT.outputs[1] as OneOfGroup;
 
-      expect(taskEntry?.requiredWhen?.({ stepNumber: 5 }, capState)).toBe(
-        false,
-      );
-      expect(decisionsEntry?.requiredWhen?.({ stepNumber: 5 }, capState)).toBe(
-        false,
-      );
-      expect(oneOfGroup?.requiredWhen?.({ stepNumber: 5 }, capState)).toBe(
-        true,
-      );
+      expect(group1.requiredWhen?.({ stepNumber: 5 }, capState)).toBe(false);
+      expect(group2.requiredWhen?.({ stepNumber: 5 }, capState)).toBe(true);
     });
   });
 
   describe("defensive null handling (PLAN.md missing)", () => {
-    it("TASK.md required by default when PLAN.md can't be read", () => {
+    it("neither Group 1 nor Group 2 active when PLAN.md can't be read", () => {
       const { capState, tempDir: dir } = makeCapStateWithoutPlan({
         stepNumber: 1,
       });
 
-      const taskEntry = findOutput(CONTRACT.outputs, "TASK.md");
+      const group1 = CONTRACT.outputs[0] as OneOfGroup;
+      const group2 = CONTRACT.outputs[1] as OneOfGroup;
       try {
-        expect(taskEntry?.requiredWhen?.({ stepNumber: 1 }, capState)).toBe(
-          true,
-        );
+        // Both groups return false when totalSteps is null
+        expect(group1.requiredWhen?.({ stepNumber: 1 }, capState)).toBe(false);
+        expect(group2.requiredWhen?.({ stepNumber: 1 }, capState)).toBe(false);
       } finally {
         cleanup(dir);
       }
     });
 
-    it("DECISIONS.md falls back to old behavior (stepNumber > 1) when PLAN.md can't be read", () => {
-      const { capState, tempDir: dir } = makeCapStateWithoutPlan({
+    it("DECISIONS.md requiredWhen still works (stepNumber > 1) regardless of PLAN.md", () => {
+      const { tempDir: dir } = makeCapStateWithoutPlan({
         stepNumber: 2,
       });
 
       const decisionsEntry = findOutput(CONTRACT.outputs, "DECISIONS.md");
       try {
-        expect(
-          decisionsEntry?.requiredWhen?.({ stepNumber: 2 }, capState),
-        ).toBe(true);
+        // DECISIONS.md individual requiredWhen doesn't depend on capState
+        expect(decisionsEntry?.requiredWhen?.({ stepNumber: 2 })).toBe(true);
       } finally {
         cleanup(dir);
       }
     });
 
-    it("DECISIONS.md not required for step 1 when PLAN.md can't be read", () => {
-      const { capState, tempDir: dir } = makeCapStateWithoutPlan({
+    it("DECISIONS.md not required for step 1 regardless of PLAN.md", () => {
+      const { tempDir: dir } = makeCapStateWithoutPlan({
         stepNumber: 1,
       });
 
       const decisionsEntry = findOutput(CONTRACT.outputs, "DECISIONS.md");
       try {
-        expect(
-          decisionsEntry?.requiredWhen?.({ stepNumber: 1 }, capState),
-        ).toBe(false);
-      } finally {
-        cleanup(dir);
-      }
-    });
-
-    it("OneOfGroup never required when PLAN.md can't be read", () => {
-      const { capState, tempDir: dir } = makeCapStateWithoutPlan({
-        stepNumber: 99,
-      });
-
-      const oneOfGroup = CONTRACT.outputs.find(isOneOfGroup);
-      try {
-        expect(oneOfGroup?.requiredWhen?.({ stepNumber: 99 }, capState)).toBe(
-          false,
-        );
+        expect(decisionsEntry?.requiredWhen?.({ stepNumber: 1 })).toBe(false);
       } finally {
         cleanup(dir);
       }
@@ -971,12 +949,13 @@ describe("validateOutputs — COMPLETION_SUMMARY.md and REVISE_PLAN_NEEDED.md vi
       "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task\n",
       "utf-8",
     );
-    // DECISIONS.md is missing
+    // DECISIONS.md is missing — inner AND-group fails, revise-plan also fails
 
     const capState = new CapState(CONTRACT, tempDir, { stepNumber: 2 });
     const result = validateOutputs(capState);
     expect(result.success).toBe(false);
-    expect(result.message).toContain("DECISIONS.md");
+    // Error mentions the OneOfGroup option names ("task + decisions" / "revise-plan")
+    expect(result.message).toMatch(/task|decisions|revise-plan/);
   });
 
   it("step beyond totalSteps does NOT require DECISIONS.md", () => {

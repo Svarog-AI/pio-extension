@@ -35,31 +35,42 @@ function getTotalSteps(capState?: CapState): number | null {
 
 export const CONTRACT: CapabilityContract = {
   inputs: [{ name: "plan", file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
-  excludedFiles: ["REVISE_PLAN_NEEDED.md"],
   outputs: [
-    {
-      name: "task",
-      file: "S{stepNumber:02d}/TASK.md",
-      schema: TASK_FRONTMATTER_SCHEMA,
-      requiredWhen: (params, capState) => {
+    // Group 1: during plan execution (steps ≤ n) — normal output OR revision request
+    new OneOfGroup(
+      [
+        // Option A: inner AND-group (bare array) — normal step output
+        [
+          {
+            name: "task",
+            file: "S{stepNumber:02d}/TASK.md",
+            schema: TASK_FRONTMATTER_SCHEMA,
+          },
+          {
+            name: "decisions",
+            file: "S{stepNumber:02d}/DECISIONS.md",
+            requiredWhen: (params) => {
+              const stepNumber =
+                typeof params?.stepNumber === "number"
+                  ? params.stepNumber
+                  : NaN;
+              return stepNumber > 1;
+            },
+          },
+        ],
+        // Option B: plan revision request — available at any step ≤ n
+        { name: "revise-plan", file: "REVISE_PLAN_NEEDED.md" },
+      ],
+      (params, capState) => {
         const stepNumber =
           typeof params?.stepNumber === "number" ? params.stepNumber : NaN;
         const totalSteps = getTotalSteps(capState);
-        if (totalSteps == null) return true;
+        if (totalSteps == null) return false;
         return stepNumber <= totalSteps;
       },
-    },
-    {
-      name: "decisions",
-      file: "S{stepNumber:02d}/DECISIONS.md",
-      requiredWhen: (params, capState) => {
-        const stepNumber =
-          typeof params?.stepNumber === "number" ? params.stepNumber : NaN;
-        const totalSteps = getTotalSteps(capState);
-        if (totalSteps == null) return stepNumber > 1;
-        return stepNumber > 1 && stepNumber <= totalSteps;
-      },
-    },
+    ),
+
+    // Group 2: beyond plan (step > n) — completion OR revision
     new OneOfGroup(
       [
         {

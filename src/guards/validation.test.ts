@@ -1128,7 +1128,7 @@ steps:
     expect(result.message).toContain("PLAN.md");
   });
 
-  it("excluded REVISE_PLAN_NEEDED.md exists → failure", async () => {
+  it("REVISE_PLAN_NEEDED.md at step > totalSteps satisfies Group 2 (not excluded)", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
     fs.writeFileSync(
       path.join(tempDir, "PLAN.md"),
@@ -1144,12 +1144,12 @@ steps:
 `,
       "utf-8",
     );
-    // REVISE_PLAN_NEEDED.md is now at workspace root (not inside S{NN}/)
+    // REVISE_PLAN_NEEDED.md is no longer excluded — it's a valid output option in both OneOfGroups
     fs.writeFileSync(path.join(tempDir, "REVISE_PLAN_NEEDED.md"), "", "utf-8");
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 3 });
-    const result = validateInputs(capState);
-    expect(result.success).toBe(false);
-    expect(result.message).toContain("REVISE_PLAN_NEEDED");
+    // stepNumber 3 > totalSteps 2 → Group 2 active, REVISE_PLAN_NEEDED.md satisfies it
+    const result = validateOutputs(capState);
+    expect(result).toEqual({ success: true });
   });
 });
 
@@ -1499,7 +1499,8 @@ steps:
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 2 });
     const result = validateOutputs(capState);
     expect(result.success).toBe(false);
-    expect(result.message).toContain("TASK.md");
+    // Error mentions OneOfGroup option names ("task + decisions" / "revise-plan")
+    expect(result.message).toMatch(/task|decisions|revise-plan/);
   });
 
   it("missing DECISIONS.md (step > 1) → failure naming S03/DECISIONS.md", async () => {
@@ -1537,7 +1538,8 @@ skills:
     const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 3 });
     const result = validateOutputs(capState);
     expect(result.success).toBe(false);
-    expect(result.message).toContain("DECISIONS.md");
+    // Error mentions OneOfGroup option names ("task + decisions" / "revise-plan")
+    expect(result.message).toMatch(/task|decisions|revise-plan/);
   });
 });
 

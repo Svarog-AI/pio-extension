@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import type { CapState } from "../../capability-state";
 import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
 import { stepFolderName } from "../../fs-utils";
 import {
@@ -17,7 +18,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const PLAN_ARCHIVE_DIR = "PLAN_ARCHIVE";
-export const REVISE_PLAN_MARKER = "REVISE_PLAN_NEEDED.md";
+export const REVISE_PLAN_REQUEST_FILE = "REVISE_PLAN_NEEDED.md";
 
 // ---------------------------------------------------------------------------
 // prepareSession — archive PLAN.md before the agent starts
@@ -25,7 +26,7 @@ export const REVISE_PLAN_MARKER = "REVISE_PLAN_NEEDED.md";
 
 /**
  * Archives current PLAN.md to PLAN_ARCHIVE/ with a timestamped filename.
- * Marker file cleanup is deferred to cleanupRevisionRequest (postExecute)
+ * Document cleanup is deferred to cleanupRevisionRequest (postExecute)
  * so the Plan Revision Agent can inspect the revision request document.
  */
 export async function prepareSession(
@@ -61,11 +62,13 @@ export async function prepareSession(
 export async function cleanupRevisionRequest(
   workspaceDir: string,
   _params?: Record<string, unknown>,
-  _capState?: import("../../capability-state").CapState,
+  _capState?: CapState,
 ): Promise<void> {
   // Clean up workspace-root REVISE_PLAN_NEEDED.md unconditionally
-  const revisePlanPath = path.join(workspaceDir, REVISE_PLAN_MARKER);
-  fs.rmSync(revisePlanPath, { force: true });
+  const revisePlanPath = path.join(workspaceDir, REVISE_PLAN_REQUEST_FILE);
+  if (fs.existsSync(revisePlanPath)) {
+    fs.unlinkSync(revisePlanPath);
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -264,7 +264,7 @@ APPROVED, REJECTED, or BLOCKED
 - What has been attempted so far
 - What would be needed to unblock the step
 
-This information is read by evolve-plan during spec revision — it is critical context for deciding whether to adapt TASK.md or trigger REVISE_PLAN_NEEDED.
+This information is read by evolve-plan during spec revision — it is critical context for deciding whether to adapt TASK.md or trigger \`REVISE_PLAN_NEEDED.md\` at the workspace root.
 \`\`\``,
   },
   {

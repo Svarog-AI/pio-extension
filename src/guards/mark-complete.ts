@@ -333,7 +333,11 @@ export const markCompleteTool = defineTool({
     // 4b. PostExecute hook — runs after transitions, errors are non-fatal
     if (config.postExecute) {
       try {
-        const postExecuteResult = config.postExecute(dir, sessionParams);
+        const postExecuteResult = config.postExecute(
+          dir,
+          sessionParams,
+          capState,
+        );
         if (postExecuteResult instanceof Promise) {
           await postExecuteResult;
         }

@@ -586,6 +586,64 @@ describe("mark-complete (setupMarkComplete)", () => {
     warnSpy.mockRestore();
   });
 
+  it("postExecute receives CapState as third argument", async () => {
+    mockValidateOutputs.mockReturnValue({ success: true });
+    mockDispatch.mockReturnValue([]);
+
+    let receivedCapState: any;
+    const postExecuteMock = vi
+      .fn()
+      .mockImplementation((_dir, _params, capState) => {
+        receivedCapState = capState;
+      });
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "execute-task",
+      workspaceDir: goalDir,
+      contract: {
+        inputs: [],
+        outputs: [{ name: "summary", file: "SUMMARY.md" }],
+      },
+      sessionParams: {
+        goalName: "test-goal",
+        stepNumber: 1,
+        queueKey: "test-goal",
+      },
+      postExecute: postExecuteMock,
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              sessionParams: {
+                goalName: "test-goal",
+                stepNumber: 1,
+                queueKey: "test-goal",
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    await registeredTool?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
+
+    expect(postExecuteMock).toHaveBeenCalled();
+    expect(receivedCapState).toBeDefined();
+    expect(receivedCapState.contract).toBeDefined();
+  });
+
   it("cleanup deletes files in fileCleanup", async () => {
     mockValidateOutputs.mockReturnValue({ success: true });
     mockDispatch.mockReturnValue([

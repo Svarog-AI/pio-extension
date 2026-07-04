@@ -1250,6 +1250,11 @@ describe("CONTRACT integration — revise-plan", () => {
     const { CONTRACT } = await import("../capabilities/revise-plan/config");
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
+    fs.writeFileSync(
+      path.join(tempDir, "REVISE_PLAN_NEEDED.md"),
+      "content",
+      "utf-8",
+    );
     const capState = makeCapState(CONTRACT, tempDir);
     const result = validateInputs(capState);
     expect(result).toEqual({ success: true });

@@ -31,7 +31,7 @@ Also note any prerequisites listed at the top of the plan.
 
 **Important — check if this step exists in the plan:** Search PLAN.md for your assigned step number (e.g., look for "Step 3" or "### Step 3"). If you **cannot find** your assigned step in PLAN.md, it means all steps have already been specified. In that case:
 
-1. **First, assess whether a plan revision is needed:** Review the completed work — were there scope items missed? Do decisions from completed steps require additional plan steps? If additional steps are needed, write \`REVISE_PLAN_NEEDED.md\` at the workspace root (next to \`PLAN.md\`) with YAML frontmatter including \`reason\` (required) and \`decisions\` (optional), followed by a body explaining the context. **Do NOT also write \`COMPLETION_SUMMARY.md\`** — these two files must never coexist.
+1. **First, assess whether a plan revision is needed:** Review the completed work — were there scope items missed? Do decisions from completed steps require additional plan steps? If additional steps are needed, write \`REVISE_PLAN_NEEDED.md\` at the workspace root (next to \`PLAN.md\`) as a plain markdown document with a title describing the revision reason and a body explaining the context. **Do NOT also write \`COMPLETION_SUMMARY.md\`** — these two files must never coexist.
 2. If no revision is needed, write \`COMPLETION_SUMMARY.md\` in the goal workspace root (next to \`PLAN.md\`). Include YAML frontmatter with \`status: "complete"\` and a markdown body explaining why the goal is considered complete (e.g., "all N steps have been approved").
 3. Call \`pio_mark_complete\` and stop — you are done.
 
@@ -122,7 +122,7 @@ Write a \`REVISE_PLAN_NEEDED.md\` marker file at the workspace root (next to \`P
 
 Do **not** write the marker when only minor descriptive changes are needed in a single future step, or all steps stay roughly the same with minor additions or removals.
 
-Write \`REVISE_PLAN_NEEDED.md\` as a markdown file with YAML frontmatter including \`reason\` and \`decisions\` fields, followed by a markdown body explaining the context.`,
+Write \`REVISE_PLAN_NEEDED.md\` as a plain markdown document at the workspace root (next to \`PLAN.md\`) — a title describing the revision reason and a body explaining the context.`,
   },
   {
     id: "signal-completion",

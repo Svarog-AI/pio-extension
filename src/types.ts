@@ -205,6 +205,7 @@ export type PostValidateCallback = (
 export type PostExecuteCallback = (
   workspaceDir: string,
   params?: Record<string, unknown>,
+  capState?: CapState,
 ) => void | Promise<void>;
 
 // ---------------------------------------------------------------------------

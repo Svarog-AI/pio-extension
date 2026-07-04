@@ -26,6 +26,7 @@ export const CONTRACT: CapabilityContract = {
   inputs: [
     { name: "goal", file: "GOAL.md" },
     { name: "existing-plan", file: "PLAN.md" },
+    { name: "revise-plan-request", file: "REVISE_PLAN_NEEDED.md" },
   ],
   outputs: [{ name: "plan", file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
 };

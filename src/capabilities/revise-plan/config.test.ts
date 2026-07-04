@@ -117,6 +117,19 @@ function createGoalTree(
 // ---------------------------------------------------------------------------
 
 describe("config structure", () => {
+  it("contract inputs includes GOAL.md, PLAN.md, and REVISE_PLAN_NEEDED.md", () => {
+    const inputs = config.contract.inputs;
+    expect(inputs.length).toBe(3);
+    const names = inputs.map((i) => i.name);
+    expect(names).toContain("goal");
+    expect(names).toContain("existing-plan");
+    expect(names).toContain("revise-plan-request");
+    const revisePlanInput = inputs.find(
+      (i) => i.name === "revise-plan-request",
+    )!;
+    expect(revisePlanInput.file).toBe("REVISE_PLAN_NEEDED.md");
+  });
+
   it("contract outputs includes PLAN.md with schema", () => {
     expect(config.contract.outputs.length).toBe(1);
     const output = config.contract

@@ -25,8 +25,8 @@ export const REVISE_PLAN_MARKER = "REVISE_PLAN_NEEDED.md";
 
 /**
  * Archives current PLAN.md to PLAN_ARCHIVE/ with a timestamped filename.
- * Step folder deletion is deferred to cleanupIncompleteSteps (postExecute)
- * so the Plan Revision Agent can inspect trigger step content.
+ * Marker file cleanup is deferred to cleanupRevisionRequest (postExecute)
+ * so the Plan Revision Agent can inspect the revision request document.
  */
 export async function prepareSession(
   workspaceDir: string,
@@ -48,7 +48,7 @@ export async function prepareSession(
 }
 
 // ---------------------------------------------------------------------------
-// cleanupIncompleteSteps — postExecute cleanup after the agent completes
+// cleanupRevisionRequest — postExecute cleanup after the agent completes
 // ---------------------------------------------------------------------------
 
 /**
@@ -61,6 +61,7 @@ export async function prepareSession(
 export async function cleanupRevisionRequest(
   workspaceDir: string,
   _params?: Record<string, unknown>,
+  _capState?: import("../../capability-state").CapState,
 ): Promise<void> {
   // Clean up workspace-root REVISE_PLAN_NEEDED.md unconditionally
   const revisePlanPath = path.join(workspaceDir, REVISE_PLAN_MARKER);

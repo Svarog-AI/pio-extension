@@ -12,7 +12,7 @@ import { enqueueTask } from "../../queues";
 import type { CapabilityContract } from "../../types";
 import { PLAN_FRONTMATTER_SCHEMA } from "../create-plan/schemas";
 import {
-  cleanupIncompleteSteps,
+  cleanupRevisionRequest,
   prepareSession,
   resolveReviseReadOnlyFiles,
   resolveReviseWriteAllowlist,
@@ -50,7 +50,7 @@ const capabilityConfig = {
   },
   defaultInitialMessage: () => "Ready.",
   prepareSession,
-  postExecute: cleanupIncompleteSteps,
+  postExecute: cleanupRevisionRequest,
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;

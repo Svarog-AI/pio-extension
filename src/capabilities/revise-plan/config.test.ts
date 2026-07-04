@@ -33,7 +33,6 @@ function createGoalTree(
     stepFolders?: Array<{
       stepNumber: number;
       approved: boolean;
-      withRevisionRequest?: boolean;
     }>;
     withArchive?: boolean;
   },
@@ -62,15 +61,6 @@ function createGoalTree(
 
     if (step.approved) {
       fs.writeFileSync(path.join(stepDir, "APPROVED"), "", "utf-8");
-    }
-
-    if (step.withRevisionRequest) {
-      // Workspace-root REVISE_PLAN_NEEDED.md (unified location)
-      fs.writeFileSync(
-        path.join(goalDir, "REVISE_PLAN_NEEDED.md"),
-        "# Revision needed\n",
-        "utf-8",
-      );
     }
 
     // Add some content files to make folders realistic

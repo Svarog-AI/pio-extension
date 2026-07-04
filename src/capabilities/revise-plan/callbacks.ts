@@ -57,7 +57,7 @@ export async function prepareSession(
  * Runs as postExecute after pio_mark_complete — the agent has already finished reading.
  *
  * Single-file deletion: no disk scanning, no folder deletion.
- * The `force: true` flag makes this idempotent — silently ignores missing files.
+ * Uses `existsSync()` guard for idempotent behavior — silently skips missing files.
  */
 export async function cleanupRevisionRequest(
   workspaceDir: string,

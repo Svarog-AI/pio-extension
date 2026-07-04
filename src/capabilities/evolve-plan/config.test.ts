@@ -979,3 +979,206 @@ describe("validateOutputs — COMPLETION_SUMMARY.md and REVISE_PLAN_NEEDED.md vi
     expect(result).toEqual({ success: true });
   });
 });
+
+// ---------------------------------------------------------------------------
+// validateOutputs — mid-plan revision scenarios (Group 1)
+// ---------------------------------------------------------------------------
+
+describe("validateOutputs — mid-plan revision (Group 1)", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  // Helper: create PLAN.md with totalSteps: 3
+  function writePlan() {
+    const stepsYaml = [
+      "  - name: step-1\n    complexity: task",
+      "  - name: step-2\n    complexity: task",
+      "  - name: step-3\n    complexity: task",
+    ].join("\n");
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---\ntotalSteps: 3\nsteps:\n${stepsYaml}\n---\n# Plan\n`,
+      "utf-8",
+    );
+  }
+
+  // Helper: create minimal TASK.md with valid frontmatter
+  function writeTask(stepNumber: number) {
+    const folder = `S${String(stepNumber).padStart(2, "0")}`;
+    fs.mkdirSync(path.join(tempDir, folder), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempDir, folder, "TASK.md"),
+      "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task\n",
+      "utf-8",
+    );
+  }
+
+  // Helper: create DECISIONS.md
+  function writeDecisions(stepNumber: number) {
+    const folder = `S${String(stepNumber).padStart(2, "0")}`;
+    fs.mkdirSync(path.join(tempDir, folder), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempDir, folder, "DECISIONS.md"),
+      "content",
+      "utf-8",
+    );
+  }
+
+  // Helper: create REVISE_PLAN_NEEDED.md at workspace root
+  function writeRevisePlan() {
+    fs.writeFileSync(path.join(tempDir, "REVISE_PLAN_NEEDED.md"), "", "utf-8");
+  }
+
+  it("REVISE_PLAN_NEEDED.md only at step 1 → pass (Group 1, option B)", () => {
+    writePlan();
+    writeRevisePlan();
+
+    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 1 });
+    const result = validateOutputs(capState);
+    expect(result).toEqual({ success: true });
+  });
+
+  it("REVISE_PLAN_NEEDED.md only at step 2 → pass (Group 1, option B)", () => {
+    writePlan();
+    writeRevisePlan();
+
+    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 2 });
+    const result = validateOutputs(capState);
+    expect(result).toEqual({ success: true });
+  });
+
+  it("REVISE_PLAN_NEEDED.md only at step 3 (last step) → pass (Group 1, option B)", () => {
+    writePlan();
+    writeRevisePlan();
+
+    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 3 });
+    const result = validateOutputs(capState);
+    expect(result).toEqual({ success: true });
+  });
+
+  it("TASK.md + REVISE_PLAN_NEEDED.md at step 1 → fail (mutual exclusion)", () => {
+    writePlan();
+    writeTask(1);
+    writeRevisePlan();
+
+    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 1 });
+    const result = validateOutputs(capState);
+    expect(result.success).toBe(false);
+  });
+
+  it("TASK + DECISIONS + REVISE_PLAN_NEEDED at step 2 → fail (mutual exclusion)", () => {
+    writePlan();
+    writeTask(2);
+    writeDecisions(2);
+    writeRevisePlan();
+
+    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 2 });
+    const result = validateOutputs(capState);
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateOutputs — Group 2 mutual exclusion
+// ---------------------------------------------------------------------------
+
+describe("validateOutputs — Group 2 mutual exclusion", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("both COMPLETION_SUMMARY.md and REVISE_PLAN_NEEDED.md at step n+1 → fail", () => {
+    const stepsYaml = `  - name: step-1\n    complexity: task\n  - name: step-2\n    complexity: task`;
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---\ntotalSteps: 2\nsteps:\n${stepsYaml}\n---\n# Plan\n`,
+      "utf-8",
+    );
+
+    // Both files exist — Group 2 should fail (more than one option satisfied)
+    fs.writeFileSync(
+      path.join(tempDir, "COMPLETION_SUMMARY.md"),
+      "---\nstatus: complete\n---\n# Complete\n",
+      "utf-8",
+    );
+    fs.writeFileSync(path.join(tempDir, "REVISE_PLAN_NEEDED.md"), "", "utf-8");
+
+    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 3 });
+    const result = validateOutputs(capState);
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CapState — duplicate name dedup smoke test (full CONTRACT)
+// ---------------------------------------------------------------------------
+
+describe("CapState — duplicate name dedup with full CONTRACT", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("new CapState(CONTRACT) does not throw for step 1 (both OneOfGroups register revise-plan)", () => {
+    const stepsYaml = [
+      "  - name: step-1\n    complexity: task",
+      "  - name: step-2\n    complexity: task",
+      "  - name: step-3\n    complexity: task",
+    ].join("\n");
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---\ntotalSteps: 3\nsteps:\n${stepsYaml}\n---\n# Plan\n`,
+      "utf-8",
+    );
+
+    expect(
+      () => new CapState(CONTRACT, tempDir, { stepNumber: 1 }),
+    ).not.toThrow();
+  });
+
+  it("new CapState(CONTRACT) does not throw for step 2", () => {
+    const stepsYaml = [
+      "  - name: step-1\n    complexity: task",
+      "  - name: step-2\n    complexity: task",
+      "  - name: step-3\n    complexity: task",
+    ].join("\n");
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---\ntotalSteps: 3\nsteps:\n${stepsYaml}\n---\n# Plan\n`,
+      "utf-8",
+    );
+
+    expect(
+      () => new CapState(CONTRACT, tempDir, { stepNumber: 2 }),
+    ).not.toThrow();
+  });
+
+  it("new CapState(CONTRACT) does not throw for step 4 (beyond totalSteps)", () => {
+    const stepsYaml = [
+      "  - name: step-1\n    complexity: task",
+      "  - name: step-2\n    complexity: task",
+      "  - name: step-3\n    complexity: task",
+    ].join("\n");
+    fs.writeFileSync(
+      path.join(tempDir, "PLAN.md"),
+      `---\ntotalSteps: 3\nsteps:\n${stepsYaml}\n---\n# Plan\n`,
+      "utf-8",
+    );
+
+    expect(
+      () => new CapState(CONTRACT, tempDir, { stepNumber: 4 }),
+    ).not.toThrow();
+  });
+});

@@ -1677,6 +1677,25 @@ describe("dispatch — quality-gate → revise-plan", () => {
 
     expect(results).toHaveLength(0);
   });
+
+  it("returns empty array when QUALITY_GATE.md has invalid status", () => {
+    // Write QUALITY_GATE.md with an unrecognized status value.
+    // TypeBox validation rejects it — both outgoing edges should return undefined.
+    const content = `---
+status: "pending"
+---
+# Quality Gate\n\nInvalid status.`;
+    fs.writeFileSync(path.join(goalDir, "QUALITY_GATE.md"), content, "utf-8");
+
+    const results = dispatch(
+      goalDrivenDevelopment,
+      "quality-gate",
+      ctx(tempDir, "feat"),
+      { queueKey: "feat" },
+    );
+
+    expect(results).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -945,12 +945,13 @@ describe("resolveCapabilityConfig — postValidate/postExecute passthrough", () 
 /**
  * These tests verify the end-to-end interaction between state machine transition
  * output (Step 2) and capability config resolution (Step 3).
- * They simulate the params shape that resolveEvolvePlanToFinalizeGoal() returns for a
- * completed goal and verify resolveCapabilityConfig() handles it correctly.
+ * They simulate the params shape that the previous evolve-plan→finalize-goal edge returned
+ * for a completed goal and verify resolveCapabilityConfig() handles it correctly.
+ * (That edge was replaced by evolve-plan→quality-gate; finalize-goal is now reached via quality-gate.)
  */
 describe("resolveCapabilityConfig — finalize-goal auto-transition integration", () => {
   it("finalize-goal auto-transition params default workspaceDir to .pio/", async () => {
-    // Arrange: simulate the params shape that resolveEvolvePlanToFinalizeGoal() returns
+    // Arrange: simulate the params shape that the previous evolve-plan→finalize-goal edge returned
     // for a completed goal: { goalName, goalDir } (no workspaceDir)
     const cwd = "/tmp/auto-transition-proj";
     const params = {
@@ -980,7 +981,7 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
   });
 
   it("finalize-goal initial message is non-empty (defaultInitialMessage)", async () => {
-    // Arrange: same params shape as resolveEvolvePlanToFinalizeGoal() for a completed goal
+    // Arrange: same params shape as the previous evolve-plan→finalize-goal edge for a completed goal
     const cwd = "/tmp/auto-transition-proj";
     const params = {
       capability: "finalize-goal" as string,

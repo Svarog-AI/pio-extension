@@ -260,4 +260,121 @@ describe("finalizeGoalTool.execute", () => {
     expect(task).toBeDefined();
     expect(task?.capability).toBe("finalize-goal");
   });
+
+  it("forwards goalFile to enqueued task params when provided", async () => {
+    createGoalTree(tempDir, "goal-file-test", {
+      withPlan: true,
+      withQualityGate: true,
+    });
+
+    const tool = getTool();
+    await tool.execute(
+      "test-call-id",
+      { workspacePrefix: "goals/goal-file-test", goalFile: "GOAL.md" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "goal-file-test");
+    expect(task?.params?.goalFile).toBe("GOAL.md");
+  });
+
+  it("omits goalFile from enqueued task params when not provided", async () => {
+    createGoalTree(tempDir, "no-goal-file", {
+      withPlan: true,
+      withQualityGate: true,
+    });
+
+    const tool = getTool();
+    await tool.execute(
+      "test-call-id",
+      { workspacePrefix: "goals/no-goal-file" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "no-goal-file");
+    expect(task?.params?.goalFile).toBeUndefined();
+  });
+
+  it("forwards planFile to enqueued task params when provided", async () => {
+    createGoalTree(tempDir, "plan-file-test", {
+      withPlan: true,
+      withQualityGate: true,
+    });
+
+    const tool = getTool();
+    await tool.execute(
+      "test-call-id",
+      { workspacePrefix: "goals/plan-file-test", planFile: "PLAN.md" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "plan-file-test");
+    expect(task?.params?.planFile).toBe("PLAN.md");
+  });
+
+  it("omits planFile from enqueued task params when not provided", async () => {
+    createGoalTree(tempDir, "no-plan-file", {
+      withPlan: true,
+      withQualityGate: true,
+    });
+
+    const tool = getTool();
+    await tool.execute(
+      "test-call-id",
+      { workspacePrefix: "goals/no-plan-file" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "no-plan-file");
+    expect(task?.params?.planFile).toBeUndefined();
+  });
+
+  it("forwards qualityGateFile to enqueued task params when provided", async () => {
+    createGoalTree(tempDir, "quality-gate-file-test", {
+      withPlan: true,
+      withQualityGate: true,
+    });
+
+    const tool = getTool();
+    await tool.execute(
+      "test-call-id",
+      {
+        workspacePrefix: "goals/quality-gate-file-test",
+        qualityGateFile: "QUALITY_GATE.md",
+      },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "quality-gate-file-test");
+    expect(task?.params?.qualityGateFile).toBe("QUALITY_GATE.md");
+  });
+
+  it("omits qualityGateFile from enqueued task params when not provided", async () => {
+    createGoalTree(tempDir, "no-quality-gate-file", {
+      withPlan: true,
+      withQualityGate: true,
+    });
+
+    const tool = getTool();
+    await tool.execute(
+      "test-call-id",
+      { workspacePrefix: "goals/no-quality-gate-file" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "no-quality-gate-file");
+    expect(task?.params?.qualityGateFile).toBeUndefined();
+  });
 });

@@ -426,6 +426,117 @@ describe("revisePlanTool.execute", () => {
     expect(task?.params).toHaveProperty("initialMessage");
     expect(task?.params?.initialMessage).toBe("test message");
   });
+
+  it("forwards goalFile to enqueued task params when provided", async () => {
+    createGoalTree(tempDir, "goal-file-test", {
+      withGoal: true,
+      withPlan: true,
+    });
+
+    const tool = getTool();
+    await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/goal-file-test", goalFile: "GOAL.md" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "goal-file-test");
+    expect(task?.params?.goalFile).toBe("GOAL.md");
+  });
+
+  it("omits goalFile from enqueued task params when not provided", async () => {
+    createGoalTree(tempDir, "no-goal-file", { withGoal: true, withPlan: true });
+
+    const tool = getTool();
+    await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/no-goal-file" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "no-goal-file");
+    expect(task?.params?.goalFile).toBeUndefined();
+  });
+
+  it("forwards planFile to enqueued task params when provided", async () => {
+    createGoalTree(tempDir, "plan-file-test", {
+      withGoal: true,
+      withPlan: true,
+    });
+
+    const tool = getTool();
+    await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/plan-file-test", planFile: "PLAN.md" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "plan-file-test");
+    expect(task?.params?.planFile).toBe("PLAN.md");
+  });
+
+  it("omits planFile from enqueued task params when not provided", async () => {
+    createGoalTree(tempDir, "no-plan-file", { withGoal: true, withPlan: true });
+
+    const tool = getTool();
+    await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/no-plan-file" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "no-plan-file");
+    expect(task?.params?.planFile).toBeUndefined();
+  });
+
+  it("forwards revisionContextFile to enqueued task params when provided", async () => {
+    createGoalTree(tempDir, "revision-ctx-test", {
+      withGoal: true,
+      withPlan: true,
+    });
+
+    const tool = getTool();
+    await tool.execute(
+      "test-id",
+      {
+        workspacePrefix: "goals/revision-ctx-test",
+        revisionContextFile: "REVISE_PLAN_NEEDED.md",
+      },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "revision-ctx-test");
+    expect(task?.params?.revisionContextFile).toBe("REVISE_PLAN_NEEDED.md");
+  });
+
+  it("omits revisionContextFile from enqueued task params when not provided", async () => {
+    createGoalTree(tempDir, "no-revision-ctx", {
+      withGoal: true,
+      withPlan: true,
+    });
+
+    const tool = getTool();
+    await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/no-revision-ctx" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "no-revision-ctx");
+    expect(task?.params?.revisionContextFile).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

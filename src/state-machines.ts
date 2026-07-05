@@ -15,7 +15,8 @@ import * as path from "node:path";
 
 /**
  * Result of resolving a transition: the next capability to run,
- * the state machine that produced this result, and optional adjusted params.
+ * the state machine that produced this result, optional adjusted params,
+ * and optional cleanup instructions.
  *
  * The `stateMachineId` identifies which state machine produced the result
  * so downstream code knows which machine config to use for subsequent dispatch calls.
@@ -23,6 +24,9 @@ import * as path from "node:path";
  *
  * `sessionName` and `initialMessage` are required — every resolve function must provide
  * them so downstream sessions get a proper identity and meaningful kickoff message.
+ * `cleanup` is an optional list of input spec names to delete as a consequence of
+ * this transition firing. Resolved by mark-complete through the completing session's CapState.
+ *
  * `dispatch()` spreads these from `ResolverResult` into every `TransitionResult`.
  */
 export interface TransitionResult {
@@ -36,6 +40,8 @@ export interface TransitionResult {
   sessionName: string;
   /** Kickoff message for the next session. Required — propagated by mark-complete into enqueued task params. */
   initialMessage: string;
+  /** Optional list of input spec names from the completing capability's contract to delete as a consequence of this transition firing. Resolved by mark-complete through the completing session's CapState. */
+  cleanup?: string[];
 }
 
 /**

@@ -2018,3 +2018,518 @@ describe("applyMarkers integration (mark-complete flow)", () => {
     expect(completedIdx).toBeGreaterThan(postExecuteIdx);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Resolver-declared cleanup — deletes input files consumed by transitions
+// ---------------------------------------------------------------------------
+
+describe("resolver-declared cleanup", () => {
+  let tempDir: string;
+  let goalDir: string;
+  let registeredTool: any;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    goalDir = path.join(tempDir, ".pio", "goals", "test-goal");
+    fs.mkdirSync(goalDir, { recursive: true });
+
+    mockValidateOutputs.mockClear().mockReturnValue({ success: true });
+    mockDispatch.mockClear();
+    mockGetMachine.mockClear();
+    mockRecordTransition.mockClear();
+    mockEnqueueTask.mockClear();
+    mockResolveCapabilityConfigMC.mockClear();
+
+    registeredTool = undefined;
+
+    const mod = await import("./mark-complete");
+
+    const mockPi = {
+      registerTool: (tool: any) => {
+        registeredTool = tool;
+      },
+      on: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+
+    mod.setupMarkComplete(mockPi as any);
+  });
+
+  afterEach(() => {
+    cleanup(tempDir);
+  });
+
+  it("deletes input files listed in transition cleanup", async () => {
+    // Create the input file that will be cleaned up
+    const inputFilePath = path.join(goalDir, "COMPLETION_SUMMARY.md");
+    fs.writeFileSync(inputFilePath, "summary content", "utf-8");
+
+    mockDispatch.mockReturnValue([
+      {
+        capability: "quality-gate",
+        stateMachineId: "goal-driven-development",
+        params: { goalName: "test-goal" },
+        sessionName: "quality gate",
+        initialMessage: "msg",
+        cleanup: ["requirements"],
+      },
+    ]);
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "evolve-plan",
+      workspaceDir: goalDir,
+      contract: {
+        inputs: [{ name: "requirements", file: "COMPLETION_SUMMARY.md" }],
+        outputs: [],
+      },
+      sessionParams: {
+        goalName: "test-goal",
+        queueKey: "test-goal",
+      },
+      postValidate: vi.fn().mockReturnValue({ success: true }),
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "evolve-plan",
+              sessionParams: {
+                goalName: "test-goal",
+                queueKey: "test-goal",
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    await registeredTool?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
+
+    // File should be deleted
+    expect(fs.existsSync(inputFilePath)).toBe(false);
+  });
+
+  it("warns and continues when cleanup spec name not found in contract", async () => {
+    const warnSpy = vi.spyOn(console, "warn");
+    warnSpy.mockImplementation(() => {});
+
+    mockDispatch.mockReturnValue([
+      {
+        capability: "quality-gate",
+        stateMachineId: "goal-driven-development",
+        params: {},
+        sessionName: "quality gate",
+        initialMessage: "msg",
+        cleanup: ["nonexistent-spec"],
+      },
+    ]);
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "evolve-plan",
+      workspaceDir: goalDir,
+      contract: {
+        inputs: [{ name: "requirements", file: "GOAL.md" }],
+        outputs: [],
+      },
+      sessionParams: {
+        goalName: "test-goal",
+        queueKey: "test-goal",
+      },
+      postValidate: vi.fn().mockReturnValue({ success: true }),
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "evolve-plan",
+              sessionParams: {
+                goalName: "test-goal",
+                queueKey: "test-goal",
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    const result = await registeredTool?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
+
+    // Should warn about missing spec but still complete
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("'nonexistent-spec' not found"),
+    );
+    expect(result.terminate).toBe(true);
+
+    warnSpy.mockRestore();
+  });
+
+  it("handles missing file gracefully (force:true)", async () => {
+    const warnSpy = vi.spyOn(console, "warn");
+    warnSpy.mockImplementation(() => {});
+
+    mockDispatch.mockReturnValue([
+      {
+        capability: "quality-gate",
+        stateMachineId: "goal-driven-development",
+        params: {},
+        sessionName: "quality gate",
+        initialMessage: "msg",
+        cleanup: ["requirements"],
+      },
+    ]);
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "evolve-plan",
+      workspaceDir: goalDir,
+      contract: {
+        inputs: [{ name: "requirements", file: "MISSING.md" }],
+        outputs: [],
+      },
+      sessionParams: {
+        goalName: "test-goal",
+        queueKey: "test-goal",
+      },
+      postValidate: vi.fn().mockReturnValue({ success: true }),
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "evolve-plan",
+              sessionParams: {
+                goalName: "test-goal",
+                queueKey: "test-goal",
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    const result = await registeredTool?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
+
+    // Should not throw — force:true handles missing files
+    expect(result.terminate).toBe(true);
+    // Should not warn about deletion failure (rmSync with force:true is silent)
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("failed to clean up"),
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it("skips cleanup when transition result has no cleanup field", async () => {
+    const inputFilePath = path.join(goalDir, "GOAL.md");
+    fs.writeFileSync(inputFilePath, "goal content", "utf-8");
+
+    mockDispatch.mockReturnValue([
+      {
+        capability: "finalize-goal",
+        stateMachineId: "goal-driven-development",
+        params: {},
+        sessionName: "finalize",
+        initialMessage: "msg",
+        // No cleanup field
+      },
+    ]);
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "quality-gate",
+      workspaceDir: goalDir,
+      contract: {
+        inputs: [{ name: "requirements", file: "GOAL.md" }],
+        outputs: [],
+      },
+      sessionParams: {
+        goalName: "test-goal",
+        queueKey: "test-goal",
+      },
+      postValidate: vi.fn().mockReturnValue({ success: true }),
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "quality-gate",
+              sessionParams: {
+                goalName: "test-goal",
+                queueKey: "test-goal",
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    await registeredTool?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
+
+    // File should still exist — no cleanup declared
+    expect(fs.existsSync(inputFilePath)).toBe(true);
+  });
+
+  it("skips cleanup when multiple transitions fire", async () => {
+    const inputFilePath = path.join(goalDir, "COMPLETION_SUMMARY.md");
+    fs.writeFileSync(inputFilePath, "summary", "utf-8");
+
+    mockDispatch.mockReturnValue([
+      {
+        capability: "quality-gate",
+        stateMachineId: "goal-driven-development",
+        params: {},
+        sessionName: "qg",
+        initialMessage: "msg",
+        cleanup: ["requirements"],
+      },
+      {
+        capability: "finalize-goal",
+        stateMachineId: "goal-driven-development",
+        params: {},
+        sessionName: "fg",
+        initialMessage: "msg",
+      },
+    ]);
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "evolve-plan",
+      workspaceDir: goalDir,
+      contract: {
+        inputs: [{ name: "requirements", file: "COMPLETION_SUMMARY.md" }],
+        outputs: [],
+      },
+      sessionParams: {
+        goalName: "test-goal",
+        queueKey: "test-goal",
+      },
+      postValidate: vi.fn().mockReturnValue({ success: true }),
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "evolve-plan",
+              sessionParams: {
+                goalName: "test-goal",
+                queueKey: "test-goal",
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    await registeredTool?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
+
+    // File should still exist — cleanup skipped for multiple transitions
+    expect(fs.existsSync(inputFilePath)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// previousCapability in enriched params
+// ---------------------------------------------------------------------------
+
+describe("previousCapability in enriched params", () => {
+  let tempDir: string;
+  let goalDir: string;
+  let registeredTool: any;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    goalDir = path.join(tempDir, ".pio", "goals", "test-goal");
+    fs.mkdirSync(goalDir, { recursive: true });
+
+    mockValidateOutputs.mockClear().mockReturnValue({ success: true });
+    mockDispatch.mockClear();
+    mockGetMachine.mockClear();
+    mockRecordTransition.mockClear();
+    mockEnqueueTask.mockClear();
+    mockResolveCapabilityConfigMC.mockClear();
+
+    registeredTool = undefined;
+
+    const mod = await import("./mark-complete");
+
+    const mockPi = {
+      registerTool: (tool: any) => {
+        registeredTool = tool;
+      },
+      on: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+
+    mod.setupMarkComplete(mockPi as any);
+  });
+
+  afterEach(() => {
+    cleanup(tempDir);
+  });
+
+  it("includes previousCapability in enqueued task params", async () => {
+    mockDispatch.mockReturnValue([
+      {
+        capability: "quality-gate",
+        stateMachineId: "goal-driven-development",
+        params: { goalName: "test-goal" },
+        sessionName: "quality gate",
+        initialMessage: "msg",
+      },
+    ]);
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "evolve-plan",
+      workspaceDir: goalDir,
+      contract: { inputs: [], outputs: [] },
+      sessionParams: {
+        goalName: "test-goal",
+        queueKey: "test-goal",
+      },
+      postValidate: vi.fn().mockReturnValue({ success: true }),
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "evolve-plan",
+              sessionParams: {
+                goalName: "test-goal",
+                queueKey: "test-goal",
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    await registeredTool?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
+
+    // enqueueTask should have been called with previousCapability in params
+    expect(mockEnqueueTask).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        capability: "quality-gate",
+        params: expect.objectContaining({
+          previousCapability: "evolve-plan",
+        }),
+      }),
+    );
+  });
+
+  it("includes previousCapability in recordTransition enriched params", async () => {
+    mockDispatch.mockReturnValue([
+      {
+        capability: "quality-gate",
+        stateMachineId: "goal-driven-development",
+        params: { goalName: "test-goal" },
+        sessionName: "quality gate",
+        initialMessage: "msg",
+      },
+    ]);
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "evolve-plan",
+      workspaceDir: goalDir,
+      contract: { inputs: [], outputs: [] },
+      sessionParams: {
+        goalName: "test-goal",
+        queueKey: "test-goal",
+      },
+      postValidate: vi.fn().mockReturnValue({ success: true }),
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "evolve-plan",
+              sessionParams: {
+                goalName: "test-goal",
+                queueKey: "test-goal",
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    await registeredTool?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
+
+    // recordTransition should have been called with enriched params containing previousCapability
+    expect(mockRecordTransition).toHaveBeenCalledTimes(1);
+    const callArgs = mockRecordTransition.mock.calls[0];
+    expect(callArgs.length).toBe(4);
+    const enrichedParams = callArgs[3];
+    expect(enrichedParams).toHaveProperty("previousCapability", "evolve-plan");
+  });
+});

@@ -99,7 +99,7 @@ function writeCompletionSummary(goalDir: string): void {
   );
 }
 
-/** Write a REVISE_PLAN_NEEDED.md marker file at the workspace root. */
+/** Write a REVISE_PLAN_NEEDED.md document at the workspace root. */
 function writeRevisePlanNeeded(goalDir: string): void {
   fs.writeFileSync(path.join(goalDir, "REVISE_PLAN_NEEDED.md"), "", "utf-8");
 }

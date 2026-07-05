@@ -1,6 +1,6 @@
 # Project Overview
 
-**pio-extension** is an extension for the [pi](https://github.com/earendil-works/pi-coding-agent) coding agent framework that provides a goal-driven project management workflow. It enables developers and AI agents to break complex work into structured sub-sessions with validation gates, prompt templates, and explicit output requirements. Each workflow step (goal definition → planning → specification → implementation → review → finalization) runs in its own isolated sub-session, ensuring focused execution and verifiable outputs. A plan revision cycle (`evolve-plan → revise-plan → evolve-plan`) branches off when the specification writer detects significant divergence from the plan.
+**pio-extension** is an extension for the [pi](https://github.com/earendil-works/pi-coding-agent) coding agent framework that provides a goal-driven project management workflow. It enables developers and AI agents to break complex work into structured sub-sessions with validation gates, prompt templates, and explicit output requirements. Each workflow step (goal definition → planning → specification → implementation → review → quality gate → finalization) runs in its own isolated sub-session, ensuring focused execution and verifiable outputs. A plan revision cycle (`evolve-plan → revise-plan → evolve-plan`) branches off when the specification writer detects significant divergence from the plan. Before finalization, a quality-gate checkpoint requires explicit user approval of E2E testing and code review.
 
 Developed by Svarog AI. Licensed under MIT. Repository: `github.com:Svarog-AI/pio-extension`.
 
@@ -25,7 +25,7 @@ The `src/prompts/` directory was removed — prompts are now component files ins
 pio-extension/
 ├── src/
 │   ├── capabilities/          # AI-driven capability directory packages + direct tools
-│   │   ├── <name>/            # 9 capability packages (create-goal, create-plan, evolve-plan, etc.)
+│   │   ├── <name>/            # 10 capability packages (create-goal, create-plan, evolve-plan, quality-gate, etc.)
 │   │   │   ├── config.ts        — CapabilityPackageConfig default export + register(pi) named export
 │   │   │   ├── role.md          — Role description (prompt component)
 │   │   │   ├── workflow.ts      — WorkflowStep[] with per-step skill declarations
@@ -45,8 +45,8 @@ pio-extension/
 │   │   ├── test-driven-development/SKILL.md — TDD methodology guide
 │   │   ├── pio-project-knowledge/SKILL.md  — Canonical knowledge source for .pio/PROJECT/ files
 │   │   ├── pio-planning/SKILL.md  — Shared planning methodology (step structure, acceptance criteria, research)
-│   │   ├── pio-git/SKILL.md       — Git operations for pio agents (convention lookup, staged commits, branch checkout, PR creation)
-│   │   │   └── REFERENCE.md       — Edge case tables for branch checkout and PR creation protocols (progressive disclosure)
+│   │   ├── pio-git/SKILL.md       — Git operations for pio agents (convention lookup, staged commits, branch checkout, push, PR creation)
+│   │   │   └── REFERENCE.md       — Edge case tables for branch checkout, push, and PR creation protocols (progressive disclosure)
 │   │   ├── pio-jira/SKILL.md      — Jira operations via Atlassian CLI (auth, pull/push issues, JQL search, error handling)
 │   │   │   ├── REFERENCE.md       — Execution reference with acli command strings, field mapping, edge case tables
 │   │   │   └── scripts/

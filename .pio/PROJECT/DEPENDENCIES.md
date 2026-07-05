@@ -61,17 +61,19 @@ Shared modules:
 ### pio Workflow Pipeline (data flow)
 
 ```
-create-goal ──GOAL.md──→ create-plan ──PLAN.md──→ evolve-plan ──S01/TASK.md──→ execute-task ──S01/SUMMARY.md(frontmatter)→auto-COMPLETED──→ review-code ──(goal complete)──→ finalize-goal
-                                    ↑                                                      │                                  │         ↑
-                                    │           (significant divergence,                   │         APPROVED                 │         │
-                                    │            REVISE_PLAN_NEEDED.md at workspace root)  │                              ↓         │
-                                    └──── revise-plan ←──────── evolve-plan ←──────────────┘                       S01/APPROVED  │
-                                                                                                            REJECTED → re-exec │
+create-goal ──GOAL.md──→ create-plan ──PLAN.md──→ evolve-plan ──S01/TASK.md──→ execute-task ──S01/SUMMARY.md──→ review-task ──(goal complete)──→ quality-gate ──QUALITY_GATE.md(approved)──→ finalize-goal
+                                    ↑                                                      │                              │          │     ↑
+                                    │           (significant divergence,                    │    APPROVED                │     rejected  │
+                                    │            REVISE_PLAN_NEEDED.md at workspace root)   ├──────────────┐             ↓              │
+                                    └──── revise-plan ←──────── evolve-plan ←───────────────┘        revise-plan ◄────┘
 ```
+
+**Quality-gate:** Sits between review-task completion and finalize-goal. Requires explicit user approval of E2E testing and code review. On rejection, routes to revise-plan with QUALITY_GATE.md as revision context. PR creation (if configured) occurs in quality-gate before the manual gates.
 
 **Blocked-step transitions** (additional paths, not shown in diagram for clarity):
 - `execute-task → evolve-plan` — when SUMMARY.md `status: "blocked"`, routes back to evolve-plan for the same step number so the spec can be adapted
-- `review-code → evolve-plan` — when REVIEW.md `decision: "BLOCKED"`, routes back to evolve-plan for the same step number (shared edge with APPROVED transition, differentiated by resolver logic)
+- `review-task → evolve-plan` — when REVIEW.md `decision: "BLOCKED"`, routes back to evolve-plan for the same step number (shared edge with APPROVED transition, differentiated by resolver logic)
+- `evolve-plan → quality-gate` — fires when all plan steps are complete (COMPLETION_SUMMARY.md exists); replaced the old direct `evolve-plan → finalize-goal` edge
 
 ### Session Queue Flow (control flow)
 

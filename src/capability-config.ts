@@ -109,42 +109,61 @@ export function resolvePaths(
  * Resolve a contract file path through the workspace prefix layer.
  *
  * Resolution order:
- * 1. Placeholder resolution via resolvePaths() (if params provided)
- * 2. Project-relative paths (`projectRelative: true`) join with global pioRootDir
- * 3. Prefixed paths join baseDir + workspacePrefix + contractPath
- * 4. Unprefixed paths join baseDir + contractPath
+ * 1. If `contractPath` is provided, use it; otherwise read from `params[paramKey]`
+ * 2. Placeholder resolution via resolvePaths() (if params provided)
+ * 3. Project-relative paths (`projectRelative: true`) join with global pioRootDir
+ * 4. Prefixed paths join baseDir + workspacePrefix + contractPath
+ * 5. Unprefixed paths join baseDir + contractPath
  *
- * @param contractPath - Path from capability contract (may contain {key} placeholders)
+ * @param contractPath - Path from capability contract (may contain {key} placeholders). Optional when `paramKey` is provided.
  * @param baseDir - Base directory for path resolution
  * @param workspacePrefix - Optional prefix string (e.g., "goals/my-feature")
- * @param params - Optional session params for placeholder resolution
+ * @param params - Optional session params for placeholder resolution and paramKey lookup
  * @param projectRelative - When true, resolves from pioRootDir (`.pio/`) bypassing workspace prefix
+ * @param paramKey - When present and `contractPath` is undefined, reads the file path from `params[paramKey]`
  * @returns Fully resolved filesystem path
  */
 export function resolveContractPath(
-  contractPath: string,
+  contractPath: string | undefined,
   baseDir: string,
   workspacePrefix?: string,
   params?: Record<string, unknown>,
   projectRelative?: boolean,
+  paramKey?: string,
 ): string {
-  // 1. Placeholder resolution — always run through resolvePaths
+  // 1. Resolve actual path: static file takes precedence, then paramKey, then error
+  let resolved: string;
+  if (contractPath !== undefined) {
+    resolved = contractPath;
+  } else if (
+    paramKey &&
+    typeof params?.[paramKey] === "string" &&
+    params[paramKey]
+  ) {
+    resolved = params[paramKey] as string;
+  } else {
+    throw new Error(
+      `Cannot resolve path: 'file' is undefined and param '${paramKey ?? "(none)"}' is not set in session params.`,
+    );
+  }
+
+  // 2. Placeholder resolution — always run through resolvePaths
   // Paths without placeholders pass through unchanged; paths with placeholders
   // throw if keys are missing (consistent with resolvePaths existing behavior).
-  const resolved = resolvePaths([contractPath], params ?? {})[0];
+  const substituted = resolvePaths([resolved], params ?? {})[0];
 
-  // 2. Project-relative path: resolve from global pioRootDir, ignoring baseDir and prefix
+  // 3. Project-relative path: resolve from global pioRootDir, ignoring baseDir and prefix
   if (projectRelative) {
-    return join(pioRootDir, resolved);
+    return join(pioRootDir, substituted);
   }
 
-  // 3. Prefixed path: baseDir + workspacePrefix + contractPath
+  // 4. Prefixed path: baseDir + workspacePrefix + contractPath
   if (workspacePrefix) {
-    return join(baseDir, workspacePrefix, resolved);
+    return join(baseDir, workspacePrefix, substituted);
   }
 
-  // 4. No prefix: baseDir + contractPath
-  return join(baseDir, resolved);
+  // 5. No prefix: baseDir + contractPath
+  return join(baseDir, substituted);
 }
 
 /**

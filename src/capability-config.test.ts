@@ -1189,6 +1189,109 @@ describe("resolvePaths", () => {
 // resolveContractPath — workspace prefix resolution layer
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// resolveContractPath — paramKey support (dynamic inputs)
+// ---------------------------------------------------------------------------
+
+describe("resolveContractPath — paramKey support", () => {
+  const baseDir = "/proj/.pio";
+
+  it("resolves from params[paramKey] when contractPath is undefined", () => {
+    const result = resolveContractPath(
+      undefined,
+      baseDir,
+      "goals/my-feature",
+      { requirementsFile: "CUSTOM_REQUIREMENTS.md" },
+      false,
+      "requirementsFile",
+    );
+    expect(result).toBe("/proj/.pio/goals/my-feature/CUSTOM_REQUIREMENTS.md");
+  });
+
+  it("uses static contractPath when provided (backward compatible)", () => {
+    const result = resolveContractPath(
+      "GOAL.md",
+      baseDir,
+      "goals/my-feature",
+      { requirementsFile: "CUSTOM.md" },
+      false,
+      "requirementsFile",
+    );
+    expect(result).toBe("/proj/.pio/goals/my-feature/GOAL.md");
+  });
+
+  it("falls back to static contractPath when paramKey is set but param value is missing", () => {
+    const result = resolveContractPath(
+      "GOAL.md",
+      baseDir,
+      undefined,
+      {},
+      false,
+      "requirementsFile",
+    );
+    expect(result).toBe("/proj/.pio/GOAL.md");
+  });
+
+  it("falls back to static contractPath when paramKey is set but param value is empty string", () => {
+    const result = resolveContractPath(
+      "GOAL.md",
+      baseDir,
+      undefined,
+      { requirementsFile: "" },
+      false,
+      "requirementsFile",
+    );
+    expect(result).toBe("/proj/.pio/GOAL.md");
+  });
+
+  it("throws when both contractPath and paramKey value are missing", () => {
+    expect(() =>
+      resolveContractPath(
+        undefined,
+        baseDir,
+        undefined,
+        {},
+        false,
+        "requirementsFile",
+      ),
+    ).toThrow(/Cannot resolve path/);
+  });
+
+  it("throws when contractPath is undefined and params is undefined", () => {
+    expect(() =>
+      resolveContractPath(
+        undefined,
+        baseDir,
+        undefined,
+        undefined,
+        false,
+        "requirementsFile",
+      ),
+    ).toThrow(/Cannot resolve path/);
+  });
+
+  it("paramKey value goes through placeholder resolution", () => {
+    const result = resolveContractPath(
+      undefined,
+      baseDir,
+      "goals/my-feature",
+      { requirementsFile: "S{stepNumber:02d}/TASK.md", stepNumber: 3 },
+      false,
+      "requirementsFile",
+    );
+    expect(result).toBe("/proj/.pio/goals/my-feature/S03/TASK.md");
+  });
+
+  it("works without paramKey (backward compatible — existing callers omit paramKey)", () => {
+    const result = resolveContractPath("GOAL.md", baseDir, "goals/my-feature");
+    expect(result).toBe("/proj/.pio/goals/my-feature/GOAL.md");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveContractPath — workspace prefix resolution layer
+// ---------------------------------------------------------------------------
+
 describe("resolveContractPath", () => {
   const baseDir = "/proj/.pio";
 

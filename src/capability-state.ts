@@ -113,6 +113,7 @@ export class CapState {
       this.workspacePrefix,
       this.params,
       entry.projectRelative,
+      entry.paramKey,
     );
   }
 
@@ -209,21 +210,27 @@ export class CapState {
     entry: import("./types").OutputEntry,
     outputNames: Map<string, MarkdownFileSpec>,
     allNames: Set<string>,
-    allFiles: Map<string, string>,
+    allFiles: Map<string, string | null>,
   ): void {
     if (isMarkdownFileSpec(entry)) {
+      if (!entry.file && !entry.paramKey) {
+        throw new Error(
+          `Contract output '${entry.name}' must specify either 'file' or 'paramKey'.`,
+        );
+      }
       if (allNames.has(entry.name)) {
         const existingFile = allFiles.get(entry.name);
-        if (existingFile === entry.file) {
+        const currentFile = entry.file ?? null;
+        if (existingFile === currentFile) {
           // Same name + same file path → silently deduplicate
           return;
         }
         throw new Error(
-          `Duplicate file name '${entry.name}' in contract: '${existingFile ?? "?"}' vs '${entry.file}'. Names must be unique across inputs and outputs.`,
+          `Duplicate file name '${entry.name}' in contract: '${existingFile ?? "(paramKey)"}' vs '${currentFile ?? "(paramKey)"}'. Names must be unique across inputs and outputs.`,
         );
       }
       allNames.add(entry.name);
-      allFiles.set(entry.name, entry.file);
+      allFiles.set(entry.name, entry.file ?? null);
       outputNames.set(entry.name, entry);
     } else if (isArrayOutput(entry)) {
       // Bare array — implicit AND-group, recurse into each element
@@ -250,17 +257,24 @@ export class CapState {
     const inputNames = new Map<string, MarkdownFileSpec>();
     const outputNames = new Map<string, MarkdownFileSpec>();
     const allNames = new Set<string>();
-    const allFiles = new Map<string, string>();
+    const allFiles = new Map<string, string | null>();
 
     // Process inputs
     for (const entry of this._contract.inputs) {
-      if (allNames.has(entry.name)) {
+      if (!entry.file && !entry.paramKey) {
         throw new Error(
-          `Duplicate file name '${entry.name}' in contract: '${allFiles.get(entry.name)}' vs '${entry.file}'. Names must be unique across inputs and outputs.`,
+          `Contract input '${entry.name}' must specify either 'file' or 'paramKey'.`,
+        );
+      }
+      if (allNames.has(entry.name)) {
+        const existingFile = allFiles.get(entry.name);
+        const currentFile = entry.file ?? null;
+        throw new Error(
+          `Duplicate file name '${entry.name}' in contract: '${existingFile ?? "(paramKey)"}' vs '${currentFile ?? "(paramKey)"}'. Names must be unique across inputs and outputs.`,
         );
       }
       allNames.add(entry.name);
-      allFiles.set(entry.name, entry.file);
+      allFiles.set(entry.name, entry.file ?? null);
       inputNames.set(entry.name, entry);
     }
 

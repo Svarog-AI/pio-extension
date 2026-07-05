@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCapState } from "./capability-state";
 import { getCapState, setDiscoveredContracts } from "./state-machines/utils";
 import type { CapabilityContract, MarkdownFileSpec } from "./types";
-import { OneOfGroup } from "./types";
+import { isMarkdownFileSpec, OneOfGroup } from "./types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1338,5 +1338,175 @@ describe("Concrete test — real create-plan CONTRACT", () => {
     expect((data as any).steps).toEqual([
       { name: "step-one", complexity: "task" },
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// paramKey support — dynamic input resolution
+// ---------------------------------------------------------------------------
+
+describe("paramKey support — dynamic input resolution", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("resolves input path from params[paramKey]", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "requirements", paramKey: "requirementsFile" }],
+      outputs: [],
+    };
+    const capState = createCapState(contract, tempDir, {
+      requirementsFile: "CUSTOM.md",
+    });
+    writeWithFrontmatter(tempDir, "CUSTOM.md", { title: "Custom" });
+    expect(capState.input("requirements").exists()).toBe(true);
+  });
+
+  it("resolves input path from params[paramKey] with workspace prefix", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "requirements", paramKey: "requirementsFile" }],
+      outputs: [],
+    };
+    const capState = createCapState(
+      contract,
+      tempDir,
+      { requirementsFile: "CUSTOM.md" },
+      "goals/my-feature",
+    );
+    writeWithFrontmatter(tempDir, "goals/my-feature/CUSTOM.md", {
+      title: "Custom",
+    });
+    expect(capState.input("requirements").exists()).toBe(true);
+  });
+
+  it("input() resolves paramKey value through placeholder substitution", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "task", paramKey: "taskFile" }],
+      outputs: [],
+    };
+    const capState = createCapState(contract, tempDir, {
+      taskFile: "S{stepNumber:02d}/TASK.md",
+      stepNumber: 5,
+    });
+    const taskPath = path.join(tempDir, "S05", "TASK.md");
+    fs.mkdirSync(path.dirname(taskPath), { recursive: true });
+    fs.writeFileSync(taskPath, "# Task", "utf-8");
+    expect(capState.input("task").exists()).toBe(true);
+  });
+
+  it("throws when paramKey is set but param value is missing", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "requirements", paramKey: "requirementsFile" }],
+      outputs: [],
+    };
+    const capState = createCapState(contract, tempDir, {});
+    expect(() => capState.input("requirements").exists()).toThrow(
+      /Cannot resolve path/,
+    );
+  });
+
+  it("throws when entry has neither file nor paramKey", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "broken" } as any],
+      outputs: [],
+    };
+    expect(() => createCapState(contract, tempDir)).toThrow(
+      /must specify either 'file' or 'paramKey'/,
+    );
+  });
+
+  it("throws when output entry has neither file nor paramKey", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "broken" } as any],
+    };
+    expect(() => createCapState(contract, tempDir)).toThrow(
+      /must specify either 'file' or 'paramKey'/,
+    );
+  });
+
+  it("static file still works (backward compatible)", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "goal", file: "GOAL.md" }],
+      outputs: [],
+    };
+    const capState = createCapState(contract, tempDir);
+    writeWithFrontmatter(tempDir, "GOAL.md", { title: "Goal" });
+    expect(capState.input("goal").exists()).toBe(true);
+  });
+
+  it("tryResolveInput works with paramKey entries", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "requirements", paramKey: "requirementsFile" }],
+      outputs: [],
+    };
+    const capState = createCapState(contract, tempDir, {
+      requirementsFile: "CUSTOM.md",
+    });
+    const result = capState.tryResolveInput("requirements");
+    expect(result).toBeDefined();
+    expect(result!.entry.name).toBe("requirements");
+    expect(result!.path).toBe(path.join(tempDir, "CUSTOM.md"));
+  });
+
+  it("duplicate detection works with paramKey entries (same name, no file)", () => {
+    const contract: CapabilityContract = {
+      inputs: [
+        { name: "req", paramKey: "reqFileA" },
+        { name: "req", paramKey: "reqFileB" },
+      ],
+      outputs: [],
+    };
+    expect(() => createCapState(contract, tempDir)).toThrow(
+      "Duplicate file name 'req' in contract",
+    );
+  });
+
+  it("paramKey entry and static file entry with same name are caught as duplicates", () => {
+    const contract: CapabilityContract = {
+      inputs: [
+        { name: "req", file: "A.md" },
+        { name: "req", paramKey: "reqFile" },
+      ],
+      outputs: [],
+    };
+    expect(() => createCapState(contract, tempDir)).toThrow(
+      "Duplicate file name 'req' in contract",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isMarkdownFileSpec — updated guard (paramKey-only entries)
+// ---------------------------------------------------------------------------
+
+describe("isMarkdownFileSpec — paramKey-only entries", () => {
+  it("identifies paramKey-only entry as MarkdownFileSpec", () => {
+    const entry = { name: "req", paramKey: "reqFile" };
+    expect(isMarkdownFileSpec(entry as any)).toBe(true);
+  });
+
+  it("identifies file-only entry as MarkdownFileSpec", () => {
+    const entry = { name: "goal", file: "GOAL.md" };
+    expect(isMarkdownFileSpec(entry as any)).toBe(true);
+  });
+
+  it("identifies entry with both file and paramKey as MarkdownFileSpec", () => {
+    const entry = { name: "goal", file: "GOAL.md", paramKey: "goalFile" };
+    expect(isMarkdownFileSpec(entry as any)).toBe(true);
+  });
+
+  it("rejects OneOfGroup", () => {
+    const group = new OneOfGroup([{ name: "a", file: "A.md" }]);
+    expect(isMarkdownFileSpec(group as any)).toBe(false);
+  });
+
+  it("rejects bare array", () => {
+    const arr: any[] = [{ name: "a", file: "A.md" }];
+    expect(isMarkdownFileSpec(arr as any)).toBe(false);
   });
 });

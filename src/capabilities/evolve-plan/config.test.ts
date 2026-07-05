@@ -73,7 +73,8 @@ function findOutput(
   pattern: string,
 ): MarkdownFileSpec | undefined {
   for (const entry of outputs) {
-    if (isMarkdownFileSpec(entry) && entry.file.includes(pattern)) return entry;
+    if (isMarkdownFileSpec(entry) && entry.file?.includes(pattern))
+      return entry;
     if (isArrayOutput(entry)) {
       const found = findOutput(entry, pattern);
       if (found) return found;

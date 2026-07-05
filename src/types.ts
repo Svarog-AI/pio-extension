@@ -26,8 +26,10 @@ import type { CapState } from "./capability-state";
 export interface MarkdownFileSpec {
   /** Short unique identifier for named accessor lookup (e.g. "task", "review", "plan"). Required — used by input()/output() accessors. */
   name: string;
-  /** Relative file path with `{key}` / `{key:format}` placeholder support */
-  file: string;
+  /** Relative file path with `{key}` / `{key:format}` placeholder support. Optional when `paramKey` is provided — at least one of `file` or `paramKey` must be present. */
+  file?: string;
+  /** When present, resolves the file path from `params[paramKey]` at runtime. Takes precedence over `file` when both are set and the param value is a non-empty string. */
+  paramKey?: string;
   /** Optional TypeBox schema for YAML frontmatter validation — plain existence check when absent */
   schema?: TSchema;
   /** Optional predicate to determine if this file is required. Receives session params. If absent, file is always required. */
@@ -82,11 +84,16 @@ export class OneOfGroup {
  */
 export type OutputEntry = MarkdownFileSpec | OneOfGroup | OutputEntry[];
 
-/** Type guard: distinguish MarkdownFileSpec from OneOfGroup and bare arrays within OutputEntry. */
+/** Type guard: distinguish MarkdownFileSpec from OneOfGroup and bare arrays within OutputEntry.
+
+ Uses elimination logic: OutputEntry = MarkdownFileSpec | OneOfGroup | OutputEntry[].
+ After excluding arrays and OneOfGroup instances, only MarkdownFileSpec remains.
+ This works regardless of whether `file` is present (paramKey-only entries are still MarkdownFileSpecs).
+ */
 export function isMarkdownFileSpec(
   entry: OutputEntry,
 ): entry is MarkdownFileSpec {
-  return "file" in entry && !("files" in entry) && !Array.isArray(entry);
+  return !Array.isArray(entry) && !(entry instanceof OneOfGroup);
 }
 
 /** Type guard: identify bare arrays (implicit AND-groups) within OutputEntry. */

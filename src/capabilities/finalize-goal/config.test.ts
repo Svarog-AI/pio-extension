@@ -24,7 +24,7 @@ function cleanup(tempDir: string): void {
 function createGoalTree(
   tempDir: string,
   goalName: string,
-  options?: { withCompletionSummary?: boolean; withPlan?: boolean },
+  options?: { withQualityGate?: boolean; withPlan?: boolean },
 ): string {
   const goalDir = path.join(tempDir, ".pio", "goals", goalName);
   fs.mkdirSync(goalDir, { recursive: true });
@@ -45,11 +45,11 @@ function createGoalTree(
     );
   }
 
-  // Optionally create COMPLETION_SUMMARY.md
-  if (options?.withCompletionSummary) {
+  // Optionally create QUALITY_GATE.md
+  if (options?.withQualityGate) {
     fs.writeFileSync(
-      path.join(goalDir, "COMPLETION_SUMMARY.md"),
-      "---\nstatus: complete\n---\n# Goal Complete\n\nAll steps approved.",
+      path.join(goalDir, "QUALITY_GATE.md"),
+      "---\nstatus: approved\n---\n# Quality Gate\n\nAll gates passed.",
       "utf-8",
     );
   }
@@ -225,10 +225,10 @@ describe("finalizeGoalTool.execute", () => {
   }
 
   it("enqueues task with workspacePrefix and other params when goal is complete", async () => {
-    // Arrange: create completed goal
+    // Arrange: create completed goal with quality gate passed
     createGoalTree(tempDir, "my-goal", {
       withPlan: true,
-      withCompletionSummary: true,
+      withQualityGate: true,
     });
 
     const tool = getTool();
@@ -282,10 +282,10 @@ describe("finalizeGoalTool.execute", () => {
   });
 
   it("enqueues task when goal is not complete (validation deferred to launch)", async () => {
-    // Arrange: create goal with PLAN.md but without COMPLETION_SUMMARY.md
+    // Arrange: create goal with PLAN.md but without QUALITY_GATE.md
     createGoalTree(tempDir, "incomplete", {
       withPlan: true,
-      withCompletionSummary: false,
+      withQualityGate: false,
     });
 
     const tool = getTool();
@@ -397,10 +397,10 @@ describe("handleFinalizeGoal", () => {
   });
 
   it("launches session when workspace exists", async () => {
-    // Arrange: create completed goal
+    // Arrange: create completed goal with quality gate passed
     createGoalTree(tempDir, "completed-goal", {
       withPlan: true,
-      withCompletionSummary: true,
+      withQualityGate: true,
     });
 
     const handler = getHandler();
@@ -430,10 +430,10 @@ describe("handleFinalizeGoal", () => {
   });
 
   it("shows error when goal is not complete (validation at launch time)", async () => {
-    // Arrange: create goal with PLAN.md but without COMPLETION_SUMMARY.md
+    // Arrange: create goal with PLAN.md but without QUALITY_GATE.md
     createGoalTree(tempDir, "incomplete", {
       withPlan: true,
-      withCompletionSummary: false,
+      withQualityGate: false,
     });
 
     const handler = getHandler();
@@ -445,7 +445,7 @@ describe("handleFinalizeGoal", () => {
     // Assert: launchCapability validates inputs and throws on missing files;
     // command handler catches and notifies
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringMatching(/missing|COMPLETION_SUMMARY/i),
+      expect.stringMatching(/missing|QUALITY_GATE/i),
       "error",
     );
   });

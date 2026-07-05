@@ -19,7 +19,7 @@ export const CONTRACT: CapabilityContract = {
   inputs: [
     { name: "goal", file: "GOAL.md" },
     { name: "plan", file: "PLAN.md" },
-    { name: "completion-summary", file: "COMPLETION_SUMMARY.md" },
+    { name: "quality-gate", file: "QUALITY_GATE.md" },
   ],
   outputs: [
     {
@@ -75,7 +75,7 @@ const capabilityConfig = {
   capability: "finalize-goal",
   contract: CONTRACT,
   skills: {
-    mandatory: ["pio-project-knowledge", "pio-git"],
+    mandatory: ["pio-project-knowledge"],
   },
   defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
@@ -159,7 +159,7 @@ async function handleFinalizeGoal(
     sessionName: `${queueKey} finalize-goal`,
     queueKey,
     initialMessage:
-      "All plan steps are complete. Read COMPLETION_SUMMARY.md, then update .pio/PROJECT/ documentation with accumulated decisions.",
+      "All plan steps are complete. Read QUALITY_GATE.md, then update .pio/PROJECT/ documentation with accumulated decisions.",
   });
   if (!config) {
     ctx.ui.notify("Failed to resolve finalize-goal config.", "error");

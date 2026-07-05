@@ -105,15 +105,9 @@ If a finding doesn't map to any update rule, skip it.`,
 If no updates were warranted, explicitly state: "No PROJECT file updates were warranted. All decisions from this goal were implementation-specific or locally scoped, and none mapped to project-wide patterns, conventions, or structural changes."`,
   },
   {
-    id: "create-pr",
-    title: "Create a pull request",
-    instructions: `After producing the summary, you **must** create a pull request for this goal's changes. Follow the PR Creation Protocol from the pio-git skill. Pass the goal name and workspace path as context so the skill can derive the PR title and body. This step is required before calling \`pio_mark_complete\`. Graceful failure semantics apply: if PR creation fails due to missing prerequisites (no \`gh\` CLI, not authenticated, no remote, etc.), log a warning and continue — do not block completion. However, skipping this step without attempting is not permitted. The PR description should summarize all commits in the branch and the change as part of the delivered goal. Not explain intermediate decision or changes of plan within the scope of the goal. Make sure this is true.`,
-    skills: { mandatory: ["pio-git"] },
-  },
-  {
     id: "signal-completion",
     title: "Signal completion",
-    instructions: `After producing the summary **and** after Step 10 (PR creation) has been attempted, call \`pio_mark_complete\` to signal that your work is done. You must call \`pio_mark_complete\` only after both the summary output and the PR creation attempt are complete.`,
+    instructions: `After producing the summary, call \`pio_mark_complete\` to signal that your work is done. You must call \`pio_mark_complete\` only after the summary output is complete.`,
   },
 ];
 

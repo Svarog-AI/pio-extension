@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { vi } from "vitest";
 import { readPendingTask } from "../../queues";
-import { cleanupRevisionRequest, prepareSession } from "./callbacks";
+import { prepareSession } from "./callbacks";
 import config, { register } from "./config";
 import workflowSteps from "./workflow";
 
@@ -107,17 +107,17 @@ function createGoalTree(
 // ---------------------------------------------------------------------------
 
 describe("config structure", () => {
-  it("contract inputs includes GOAL.md, PLAN.md, and REVISE_PLAN_NEEDED.md", () => {
+  it("contract inputs includes GOAL.md, PLAN.md, and dynamic revision-context", () => {
     const inputs = config.contract.inputs;
     expect(inputs.length).toBe(3);
     const names = inputs.map((i) => i.name);
     expect(names).toContain("goal");
     expect(names).toContain("existing-plan");
-    expect(names).toContain("revise-plan-request");
-    const revisePlanInput = inputs.find(
-      (i) => i.name === "revise-plan-request",
+    expect(names).toContain("revision-context");
+    const revisionContextInput = inputs.find(
+      (i) => i.name === "revision-context",
     )!;
-    expect(revisePlanInput.file).toBe("REVISE_PLAN_NEEDED.md");
+    expect(revisionContextInput.paramKey).toBe("revisionContextFile");
   });
 
   it("contract outputs includes PLAN.md with schema", () => {
@@ -132,8 +132,8 @@ describe("config structure", () => {
     expect(typeof config.prepareSession).toBe("function");
   });
 
-  it("postExecute is defined and references cleanupRevisionRequest", () => {
-    expect(config.postExecute).toBe(cleanupRevisionRequest);
+  it("postExecute is absent (cleanup handled by resolver-based cleanup)", () => {
+    expect((config as any).postExecute).toBeUndefined();
   });
 });
 
@@ -145,8 +145,8 @@ describe("config wiring consistency", () => {
   it("all lifecycle hooks point to the correct exported functions", () => {
     // prepareSession must be the exported prepareSession
     expect(config.prepareSession).toBe(prepareSession);
-    // postExecute must be the exported cleanupRevisionRequest
-    expect(config.postExecute).toBe(cleanupRevisionRequest);
+    // postExecute is absent — cleanup handled by resolver-based cleanup
+    expect((config as any).postExecute).toBeUndefined();
   });
 
   it("readOnlyFiles is a function callback", () => {
@@ -338,177 +338,6 @@ describe("prepareSession — cleanup", () => {
     expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
     expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(true);
     expect(fs.existsSync(path.join(goalDir, "S03"))).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Integration — end-to-end prepareSession workflow
-// ---------------------------------------------------------------------------
-
-describe("end-to-end lifecycle: prepareSession then cleanupRevisionRequest", () => {
-  let tempDir: string;
-  let goalDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("prepareSession archives plan and preserves all folders; cleanupRevisionRequest deletes workspace-root document", async () => {
-    const planContent =
-      "---\ntotalSteps: 5\nsteps:\n  - name: step-1\n    complexity: task\n  - name: step-2\n    complexity: task\n  - name: step-3\n    complexity: task\n  - name: step-4\n    complexity: task\n  - name: step-5\n    complexity: task\n---\n# Original Plan\n\n## Step 1: Done\n## Step 2: In progress\n## Step 3: Pending\n";
-
-    goalDir = createGoalTree(tempDir, "full-lifecycle", {
-      withGoal: true,
-      withPlan: true,
-      planContent: planContent,
-      stepFolders: [
-        { stepNumber: 1, approved: true },
-        { stepNumber: 2, approved: false },
-        { stepNumber: 3, approved: false },
-      ],
-    });
-
-    // Create workspace-root REVISE_PLAN_NEEDED.md manually
-    fs.writeFileSync(
-      path.join(goalDir, "REVISE_PLAN_NEEDED.md"),
-      "# Revision needed\n",
-      "utf-8",
-    );
-
-    // Add SUMMARY.md to S03 to make it more realistic
-    fs.writeFileSync(
-      path.join(goalDir, "S03", "SUMMARY.md"),
-      "# Summary\n",
-      "utf-8",
-    );
-
-    // Phase 1: prepareSession — archive only, preserve all folders
-    await prepareSession(goalDir);
-
-    // PLAN_ARCHIVE/ has one timestamped file with correct content
-    const archiveDir = path.join(goalDir, "PLAN_ARCHIVE");
-    expect(fs.existsSync(archiveDir)).toBe(true);
-    const archiveFiles = fs
-      .readdirSync(archiveDir)
-      .filter((f) => /^PLAN-.*\.md$/.test(f));
-    expect(archiveFiles.length).toBe(1);
-    const archivedContent = fs.readFileSync(
-      path.join(archiveDir, archiveFiles[0]),
-      "utf-8",
-    );
-    expect(archivedContent).toBe(planContent);
-
-    // Original PLAN.md is preserved (copy-only behavior)
-    expect(fs.existsSync(path.join(goalDir, "PLAN.md"))).toBe(true);
-
-    // All step folders should still exist after prepareSession
-    expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
-    expect(fs.existsSync(path.join(goalDir, "S01", "APPROVED"))).toBe(true);
-    expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(true);
-    expect(fs.existsSync(path.join(goalDir, "S03"))).toBe(true);
-
-    // Workspace-root document should still exist after prepareSession
-    expect(fs.existsSync(path.join(goalDir, "REVISE_PLAN_NEEDED.md"))).toBe(
-      true,
-    );
-
-    // Phase 2: cleanupRevisionRequest — delete workspace-root document only
-    await cleanupRevisionRequest(goalDir);
-
-    // Workspace-root document should be deleted
-    expect(fs.existsSync(path.join(goalDir, "REVISE_PLAN_NEEDED.md"))).toBe(
-      false,
-    );
-
-    // All step folders should still exist (no folder deletion)
-    expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
-    expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(true);
-    expect(fs.existsSync(path.join(goalDir, "S03"))).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// cleanupRevisionRequest — single-file deletion
-// ---------------------------------------------------------------------------
-
-describe("cleanupRevisionRequest", () => {
-  let tempDir: string;
-  let goalDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  it("deletes workspace-root REVISE_PLAN_NEEDED.md when it exists", async () => {
-    goalDir = createGoalTree(tempDir, "cleanup-test", {
-      withGoal: true,
-      withPlan: true,
-      stepFolders: [{ stepNumber: 1, approved: true }],
-    });
-
-    // Create the document at workspace root
-    fs.writeFileSync(
-      path.join(goalDir, "REVISE_PLAN_NEEDED.md"),
-      "# Revision needed\n",
-      "utf-8",
-    );
-    expect(fs.existsSync(path.join(goalDir, "REVISE_PLAN_NEEDED.md"))).toBe(
-      true,
-    );
-
-    await cleanupRevisionRequest(goalDir);
-
-    // Document should be deleted
-    expect(fs.existsSync(path.join(goalDir, "REVISE_PLAN_NEEDED.md"))).toBe(
-      false,
-    );
-  });
-
-  it("does nothing when document does not exist (force: true)", async () => {
-    goalDir = createGoalTree(tempDir, "no-doc", {
-      withGoal: true,
-      withPlan: true,
-    });
-
-    // Should not throw — force: true silently ignores missing files
-    await expect(cleanupRevisionRequest(goalDir)).resolves.toBeUndefined();
-  });
-
-  it("preserves non-APPROVED S{NN}/ folders (no folder deletion)", async () => {
-    goalDir = createGoalTree(tempDir, "preserves-folders", {
-      withGoal: true,
-      withPlan: true,
-      stepFolders: [
-        { stepNumber: 1, approved: true },
-        { stepNumber: 2, approved: false },
-        { stepNumber: 3, approved: false },
-      ],
-    });
-
-    // Create the document at workspace root
-    fs.writeFileSync(
-      path.join(goalDir, "REVISE_PLAN_NEEDED.md"),
-      "# Revision needed\n",
-      "utf-8",
-    );
-
-    await cleanupRevisionRequest(goalDir);
-
-    // Document should be deleted
-    expect(fs.existsSync(path.join(goalDir, "REVISE_PLAN_NEEDED.md"))).toBe(
-      false,
-    );
-    // All step folders should still exist (no folder deletion)
-    expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
-    expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(true);
-    expect(fs.existsSync(path.join(goalDir, "S03"))).toBe(true);
-    // S02 and S03 content should be intact
-    expect(fs.existsSync(path.join(goalDir, "S02", "TASK.md"))).toBe(true);
-    expect(fs.existsSync(path.join(goalDir, "S03", "TASK.md"))).toBe(true);
   });
 });
 

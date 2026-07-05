@@ -478,6 +478,7 @@ function resolveRevisePlanToEvolvePlan(
       workspacePrefix: prefix,
       queueKey: goalName,
     },
+    cleanup: ["revision-context"],
   };
 }
 

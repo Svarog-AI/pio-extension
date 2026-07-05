@@ -263,7 +263,7 @@ describe("prepareSession — cleanup", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("preserves non-APPROVED step folders (cleanup deferred to postExecute)", async () => {
+  it("preserves non-APPROVED step folders (cleanup handled by resolver-based cleanup)", async () => {
     goalDir = createGoalTree(tempDir, "mixed-steps", {
       withGoal: true,
       withPlan: true,
@@ -275,7 +275,7 @@ describe("prepareSession — cleanup", () => {
 
     await prepareSession(goalDir);
 
-    // S01 should still exist — cleanup is deferred to postExecute
+    // S01 should still exist — cleanup is handled by resolver-based cleanup
     expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
     // S01 content should be intact
     expect(fs.existsSync(path.join(goalDir, "S01", "TASK.md"))).toBe(true);
@@ -303,7 +303,7 @@ describe("prepareSession — cleanup", () => {
     expect(fs.existsSync(path.join(goalDir, "S02", "APPROVED"))).toBe(true);
   });
 
-  it("preserves multiple non-APPROVED folders (cleanup deferred to postExecute)", async () => {
+  it("preserves multiple non-APPROVED folders (cleanup handled by resolver-based cleanup)", async () => {
     goalDir = createGoalTree(tempDir, "multi-cleanup", {
       withGoal: true,
       withPlan: true,
@@ -316,7 +316,7 @@ describe("prepareSession — cleanup", () => {
 
     await prepareSession(goalDir);
 
-    // All folders should still exist — cleanup is deferred to postExecute
+    // All folders should still exist — cleanup is handled by resolver-based cleanup
     expect(fs.existsSync(path.join(goalDir, "S01"))).toBe(true);
     expect(fs.existsSync(path.join(goalDir, "S02"))).toBe(true);
     expect(fs.existsSync(path.join(goalDir, "S03"))).toBe(true);

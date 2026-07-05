@@ -12,7 +12,7 @@ import { enqueueTask } from "../../queues";
 import type { CapabilityContract } from "../../types";
 
 // ---------------------------------------------------------------------------
-// Contract (single source of truth — imported by callbacks)
+// Contract (single source of truth)
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {

@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import type { CapState } from "../../capability-state";
 import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
 import { stepFolderName } from "../../fs-utils";
 import {
@@ -18,7 +17,6 @@ import {
 // ---------------------------------------------------------------------------
 
 const PLAN_ARCHIVE_DIR = "PLAN_ARCHIVE";
-export const REVISE_PLAN_REQUEST_FILE = "REVISE_PLAN_NEEDED.md";
 
 // ---------------------------------------------------------------------------
 // prepareSession — archive PLAN.md before the agent starts
@@ -26,8 +24,8 @@ export const REVISE_PLAN_REQUEST_FILE = "REVISE_PLAN_NEEDED.md";
 
 /**
  * Archives current PLAN.md to PLAN_ARCHIVE/ with a timestamped filename.
- * Document cleanup is deferred to cleanupRevisionRequest (postExecute)
- * so the Plan Revision Agent can inspect the revision request document.
+ * Revision context file cleanup is handled by resolver-based cleanup
+ * (revise-plan → evolve-plan edge returns `cleanup: ["revision-context"]`).
  */
 export async function prepareSession(
   workspaceDir: string,
@@ -45,29 +43,6 @@ export async function prepareSession(
 
     // Copy to archive — leave original PLAN.md in place for reference
     fs.copyFileSync(planPath, archivePath);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// cleanupRevisionRequest — postExecute cleanup after the agent completes
-// ---------------------------------------------------------------------------
-
-/**
- * Deletes the workspace-root REVISE_PLAN_NEEDED.md document.
- * Runs as postExecute after pio_mark_complete — the agent has already finished reading.
- *
- * Single-file deletion: no disk scanning, no folder deletion.
- * Uses `existsSync()` guard for idempotent behavior — silently skips missing files.
- */
-export async function cleanupRevisionRequest(
-  workspaceDir: string,
-  _params?: Record<string, unknown>,
-  _capState?: CapState,
-): Promise<void> {
-  // Clean up workspace-root REVISE_PLAN_NEEDED.md unconditionally
-  const revisePlanPath = path.join(workspaceDir, REVISE_PLAN_REQUEST_FILE);
-  if (fs.existsSync(revisePlanPath)) {
-    fs.unlinkSync(revisePlanPath);
   }
 }
 

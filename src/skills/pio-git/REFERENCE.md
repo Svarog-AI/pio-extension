@@ -24,3 +24,14 @@ Detailed edge cases for the protocols in [SKILL.md](SKILL.md). Split from the ma
 | Existing PR | `gh pr list` finds open PR → report URL, skip creation. If closed/merged (re-finalize): create new one |
 | Not a GitHub repo | `gh pr create` fails → skip silently, warn |
 | Interrupted workflow (re-finalize) | Check for existing PR first. If found and open, report URL. If closed/merged, create new one |
+
+## Push Protocol — Edge Cases
+
+| Edge Case | Handling |
+|-----------|----------|
+| No git repository | `git rev-parse --show-toplevel` fails → skip, warn |
+| Detached HEAD | `git symbolic-ref --short HEAD` fails → skip, warn |
+| Remote branch doesn't exist yet | Push creates it. If push fails (no remote configured), skip and warn |
+| No remote configured | `git push origin <branch>` fails with "could not resolve host" or similar → skip, warn |
+| Network failure | Push exits non-zero → skip, warn |
+| No unpushed commits | `git cherry -v` returns empty or all merges → push still attempted (no-op or fast-forward), harmless |

@@ -68,6 +68,18 @@ Create a pull request when a goal is finalized. Follow these steps in order:
 
 **Edge cases:** See [REFERENCE.md](REFERENCE.md) — covers `gh` not installed, not authenticated, network failure, branch not pushed, no changes, existing PR, not a GitHub repo, re-finalize.
 
+## Push Protocol
+
+Push commits to the remote repository. Used by execute-task (after commit) and quality-gate (before PR creation). Follow these steps in order:
+
+1. **Subgoal detection** — if the goal workspace path contains `/subgoals/`, skip this protocol entirely.
+2. **Verify git repository** — `git rev-parse --show-toplevel`. On failure: warn and skip.
+3. **Get current branch** — `git symbolic-ref --short HEAD`. On failure (detached HEAD): warn and skip.
+4. **Check for unpushed commits** — `git cherry -v origin/<branch>` lists commits not on the remote tracking branch. If output is empty or the command fails (remote doesn't exist), proceed to push anyway.
+5. **Push to remote** — `git push origin <branch>` (non-tracking push, doesn't require `-u` since the branch may already be tracked from a prior push). On failure: warn and proceed.
+
+**Edge cases:** See [REFERENCE.md](REFERENCE.md) — covers no git repo, detached HEAD, remote branch doesn't exist, no remote configured, network failure, no unpushed commits.
+
 ## Graceful Failure Semantics
 
 If any git command fails, log a warning and proceed — **never block workflow completion**. Git operations may fail due to no git repository, missing git config, permission issues, or no changes to commit.

@@ -18,6 +18,7 @@ import { setDiscoveredContracts } from "./utils";
 import { CONTRACT as createPlanContract } from "../capabilities/create-plan/config";
 import { CONTRACT as evolvePlanContract } from "../capabilities/evolve-plan/config";
 import { CONTRACT as executeTaskContract } from "../capabilities/execute-task/config";
+import { CONTRACT as qualityGateContract } from "../capabilities/quality-gate/config";
 import { CONTRACT as reviewTaskContract } from "../capabilities/review-task/config";
 
 // Populate the contract cache once at module load time.
@@ -26,6 +27,7 @@ setDiscoveredContracts({
   "evolve-plan": evolvePlanContract,
   "review-task": reviewTaskContract,
   "execute-task": executeTaskContract,
+  "quality-gate": qualityGateContract,
 });
 
 // ---------------------------------------------------------------------------
@@ -102,6 +104,20 @@ function writeCompletionSummary(goalDir: string): void {
 /** Write a REVISE_PLAN_NEEDED.md document at the workspace root. */
 function writeRevisePlanNeeded(goalDir: string): void {
   fs.writeFileSync(path.join(goalDir, "REVISE_PLAN_NEEDED.md"), "", "utf-8");
+}
+
+/** Write a QUALITY_GATE.md with YAML frontmatter. */
+function writeQualityGate(
+  goalDir: string,
+  status: "approved" | "rejected",
+): void {
+  const content = `---
+status: "${status}"
+---
+# Quality Gate
+
+Quality gate content.`;
+  fs.writeFileSync(path.join(goalDir, "QUALITY_GATE.md"), content, "utf-8");
 }
 
 /** Context object for dispatch calls — workspaceDir is the resolved goal directory.
@@ -330,10 +346,10 @@ describe("dispatch — evolve-plan → execute-task", () => {
 });
 
 // ---------------------------------------------------------------------------
-// dispatch — full transition chain: review → evolve → finalize
+// dispatch — full transition chain: review → evolve → quality-gate
 // ---------------------------------------------------------------------------
 
-describe("dispatch — review→evolve→finalize chain", () => {
+describe("dispatch — review→evolve→quality-gate chain", () => {
   let tempDir: string;
   let goalDir: string;
 
@@ -345,7 +361,7 @@ describe("dispatch — review→evolve→finalize chain", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("review-task approval leads to evolve-plan which routes to finalize-goal when complete", () => {
+  it("review-task approval leads to evolve-plan which routes to quality-gate when complete", () => {
     // Arrange: step 3 has APPROVED REVIEW.md
     writeReview(goalDir, 3, "APPROVED");
 
@@ -376,7 +392,7 @@ describe("dispatch — review→evolve→finalize chain", () => {
     // Arrange step 2: goal is complete (COMPLETION_SUMMARY.md exists)
     writeCompletionSummary(goalDir);
 
-    // Act step 2: evolve-plan with COMPLETION_SUMMARY.md → finalize-goal
+    // Act step 2: evolve-plan with COMPLETION_SUMMARY.md → quality-gate
     const evolveResults = dispatch(
       goalDrivenDevelopment,
       "evolve-plan",
@@ -384,16 +400,18 @@ describe("dispatch — review→evolve→finalize chain", () => {
       { queueKey: "feat", stepNumber: 4 },
     );
 
-    // Assert step 2: routes to finalize-goal with workspacePrefix (no goalDir)
+    // Assert step 2: routes to quality-gate with requirementsFile param
     expect(evolveResults).toHaveLength(1);
     expect(evolveResults[0]).toEqual({
-      capability: "finalize-goal",
+      capability: "quality-gate",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Finalize goal "feat" — all plan steps are complete. Read COMPLETION_SUMMARY.md, then update .pio/PROJECT/ documentation with accumulated decisions.`,
-      sessionName: "feat finalize-goal",
+      initialMessage: `All plan steps for goal "feat" are complete. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
+      sessionName: "feat quality-gate",
       params: {
         workspacePrefix: "goals/feat",
         queueKey: "feat",
+        requirementsFile: "COMPLETION_SUMMARY.md",
+        stepNumber: 4,
       },
     });
   });
@@ -415,7 +433,7 @@ describe("dispatch — evolve-plan completion detection", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("routes to finalize-goal when COMPLETION_SUMMARY.md exists", () => {
+  it("routes to quality-gate when COMPLETION_SUMMARY.md exists", () => {
     writeCompletionSummary(goalDir);
 
     const results = dispatch(
@@ -427,18 +445,19 @@ describe("dispatch — evolve-plan completion detection", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
-      capability: "finalize-goal",
+      capability: "quality-gate",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Finalize goal "feat" — all plan steps are complete. Read COMPLETION_SUMMARY.md, then update .pio/PROJECT/ documentation with accumulated decisions.`,
-      sessionName: "feat finalize-goal",
+      initialMessage: `All plan steps for goal "feat" are complete. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
+      sessionName: "feat quality-gate",
       params: {
         workspacePrefix: "goals/feat",
         queueKey: "feat",
+        requirementsFile: "COMPLETION_SUMMARY.md",
       },
     });
   });
 
-  it("propagates queueKey in finalize-goal params", () => {
+  it("propagates queueKey and requirementsFile in quality-gate params", () => {
     writeCompletionSummary(goalDir);
 
     const results = dispatch(
@@ -449,9 +468,11 @@ describe("dispatch — evolve-plan completion detection", () => {
     );
 
     expect(results).toHaveLength(1);
-    expect(results[0].capability).toBe("finalize-goal");
+    expect(results[0].capability).toBe("quality-gate");
     expect(results[0].params?.workspacePrefix).toBe("goals/feat");
     expect(results[0].params?.queueKey).toBe("feat");
+    expect(results[0].params?.requirementsFile).toBe("COMPLETION_SUMMARY.md");
+    expect(results[0].params?.stepNumber).toBe(5);
     expect(results[0].params?.goalDir).toBeUndefined();
     expect(results[0].params?.baseDir).toBeUndefined();
   });
@@ -930,8 +951,8 @@ describe("TransitionResult shape consistency", () => {
     expect(results[0].stateMachineId).toBe("goal-driven-development");
   });
 
-  it("state machine has 12 edges (11 original + execute-task → evolve-plan for blocked)", () => {
-    expect(goalDrivenDevelopment.edges.length).toBe(12);
+  it("state machine has 14 edges (12 original - evolve-plan→finalize-goal + evolve-plan→quality-gate + quality-gate→finalize-goal + quality-gate→revise-plan)", () => {
+    expect(goalDrivenDevelopment.edges.length).toBe(14);
   });
 
   it("edge resolve functions return TransitionResult directly (not double-wrapped)", () => {
@@ -1069,7 +1090,7 @@ describe("dispatch — evolve-plan → revise-plan", () => {
     expect(results[0].params?.queueKey).toBe("my-feature");
   });
 
-  it("finalize-goal guard: revision takes priority over completion", () => {
+  it("quality-gate guard: revision takes priority over completion", () => {
     // Both files exist — revision should win
     writeRevisePlanNeeded(goalDir);
     writeCompletionSummary(goalDir);
@@ -1501,5 +1522,226 @@ describe("dispatch — backward compatibility", () => {
     expect(results[0].capability).toBe("execute-task");
     expect(results[0].params?.stepNumber).toBe(3);
     expect(results[0].params?.workspacePrefix).toBe("goals/feat/S03");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dispatch — quality-gate → finalize-goal (approved)
+// ---------------------------------------------------------------------------
+
+describe("dispatch — quality-gate → finalize-goal", () => {
+  let tempDir: string;
+  let goalDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+    goalDir = createGoalTree(tempDir, "feat");
+    writePlanWithFrontmatter(goalDir, 3);
+    // Register quality-gate contract so getCapState("quality-gate", ...) works
+    setDiscoveredContracts({
+      "create-plan": createPlanContract,
+      "evolve-plan": evolvePlanContract,
+      "review-task": reviewTaskContract,
+      "execute-task": executeTaskContract,
+      "quality-gate": qualityGateContract,
+    });
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("routes to finalize-goal when QUALITY_GATE.md status is approved", () => {
+    writeQualityGate(goalDir, "approved");
+
+    const results = dispatch(
+      goalDrivenDevelopment,
+      "quality-gate",
+      ctx(tempDir, "feat"),
+      { queueKey: "feat" },
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("finalize-goal");
+    expect(results[0].params?.workspacePrefix).toBe("goals/feat");
+    expect(results[0].params?.queueKey).toBe("feat");
+    expect(results[0].cleanup).toEqual(["requirements"]);
+  });
+
+  it("does not fire when QUALITY_GATE.md status is rejected (revise-plan fires instead)", () => {
+    writeQualityGate(goalDir, "rejected");
+
+    const results = dispatch(
+      goalDrivenDevelopment,
+      "quality-gate",
+      ctx(tempDir, "feat"),
+      { queueKey: "feat" },
+    );
+
+    // finalize-goal edge should not fire — revise-plan edge fires instead
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("revise-plan");
+  });
+
+  it("returns empty array when QUALITY_GATE.md is missing", () => {
+    const results = dispatch(
+      goalDrivenDevelopment,
+      "quality-gate",
+      ctx(tempDir, "feat"),
+      { queueKey: "feat" },
+    );
+
+    expect(results).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dispatch — quality-gate → revise-plan (rejected)
+// ---------------------------------------------------------------------------
+
+describe("dispatch — quality-gate → revise-plan", () => {
+  let tempDir: string;
+  let goalDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+    goalDir = createGoalTree(tempDir, "feat");
+    writePlanWithFrontmatter(goalDir, 3);
+    // Register quality-gate contract so getCapState("quality-gate", ...) works
+    setDiscoveredContracts({
+      "create-plan": createPlanContract,
+      "evolve-plan": evolvePlanContract,
+      "review-task": reviewTaskContract,
+      "execute-task": executeTaskContract,
+      "quality-gate": qualityGateContract,
+    });
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("routes to revise-plan when QUALITY_GATE.md status is rejected", () => {
+    writeQualityGate(goalDir, "rejected");
+
+    const results = dispatch(
+      goalDrivenDevelopment,
+      "quality-gate",
+      ctx(tempDir, "feat"),
+      { queueKey: "feat" },
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("revise-plan");
+    expect(results[0].params?.workspacePrefix).toBe("goals/feat");
+    expect(results[0].params?.queueKey).toBe("feat");
+    expect(results[0].params?.revisionContextFile).toBe("QUALITY_GATE.md");
+    expect(results[0].cleanup).toEqual(["requirements"]);
+  });
+
+  it("does not fire when QUALITY_GATE.md status is approved (finalize-goal fires instead)", () => {
+    writeQualityGate(goalDir, "approved");
+
+    const results = dispatch(
+      goalDrivenDevelopment,
+      "quality-gate",
+      ctx(tempDir, "feat"),
+      { queueKey: "feat" },
+    );
+
+    // revise-plan edge should not fire — finalize-goal edge fires instead
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("finalize-goal");
+  });
+
+  it("threads stepNumber through params when present", () => {
+    writeQualityGate(goalDir, "rejected");
+
+    const results = dispatch(
+      goalDrivenDevelopment,
+      "quality-gate",
+      ctx(tempDir, "feat"),
+      { queueKey: "feat", stepNumber: 4 },
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].params?.stepNumber).toBe(4);
+  });
+
+  it("returns empty array when QUALITY_GATE.md is missing", () => {
+    const results = dispatch(
+      goalDrivenDevelopment,
+      "quality-gate",
+      ctx(tempDir, "feat"),
+      { queueKey: "feat" },
+    );
+
+    expect(results).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dispatch — evolve-plan → quality-gate
+// ---------------------------------------------------------------------------
+
+describe("dispatch — evolve-plan → quality-gate", () => {
+  let tempDir: string;
+  let goalDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+    goalDir = createGoalTree(tempDir, "feat");
+    writePlanWithFrontmatter(goalDir, 3);
+    // Register quality-gate contract so getCapState("quality-gate", ...) works
+    setDiscoveredContracts({
+      "create-plan": createPlanContract,
+      "evolve-plan": evolvePlanContract,
+      "review-task": reviewTaskContract,
+      "execute-task": executeTaskContract,
+      "quality-gate": qualityGateContract,
+    });
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("routes to quality-gate when COMPLETION_SUMMARY.md exists", () => {
+    writeCompletionSummary(goalDir);
+
+    const results = dispatch(
+      goalDrivenDevelopment,
+      "evolve-plan",
+      ctx(tempDir, "feat"),
+      { queueKey: "feat" },
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("quality-gate");
+    expect(results[0].params?.requirementsFile).toBe("COMPLETION_SUMMARY.md");
+  });
+
+  it("threads stepNumber through params when present", () => {
+    writeCompletionSummary(goalDir);
+
+    const results = dispatch(
+      goalDrivenDevelopment,
+      "evolve-plan",
+      ctx(tempDir, "feat"),
+      { queueKey: "feat", stepNumber: 4 },
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].capability).toBe("quality-gate");
+    expect(results[0].params?.stepNumber).toBe(4);
+    expect(results[0].params?.requirementsFile).toBe("COMPLETION_SUMMARY.md");
+  });
+
+  it("returns no cleanup on the ingress edge", () => {
+    writeCompletionSummary(goalDir);
+
+    const results = dispatch(
+      goalDrivenDevelopment,
+      "evolve-plan",
+      ctx(tempDir, "feat"),
+      { queueKey: "feat" },
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].cleanup).toBeUndefined();
   });
 });

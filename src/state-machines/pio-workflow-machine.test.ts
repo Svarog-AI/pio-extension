@@ -1059,6 +1059,8 @@ describe("dispatch — evolve-plan → revise-plan", () => {
       "REVISE_PLAN_NEEDED.md at the workspace root",
     );
     expect(results[0].params?.workspacePrefix).toBe("goals/feat");
+    expect(results[0].params?.goalFile).toBe("GOAL.md");
+    expect(results[0].params?.planFile).toBe("PLAN.md");
     expect(results[0].params?.revisionContextFile).toBe(
       "REVISE_PLAN_NEEDED.md",
     );
@@ -1196,6 +1198,7 @@ describe("dispatch — revise-plan → evolve-plan", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0].params?.queueKey).toBe("my-feature");
+    expect(results[0].params?.planFile).toBe("PLAN.md");
   });
 
   it("uses stepNumber from params (not filesystem discovery)", () => {
@@ -1370,6 +1373,7 @@ describe("dispatch — finalize-goal completion propagation", () => {
     expect(results[0].params?.queueKey).toBe("parent");
     expect(results[0].params?.stepNumber).toBe(4);
     expect(results[0].params?.workspacePrefix).toBe("goals/parent");
+    expect(results[0].params?.planFile).toBe("PLAN.md");
   });
 
   it("uses parentGoalName as the queueKey in returned params", () => {
@@ -1504,6 +1508,7 @@ describe("dispatch — subgoal lifecycle", () => {
     expect(results[0].params?.parentGoalName).toBeUndefined();
     expect(results[0].params?.subgoalType).toBeUndefined();
     expect(results[0].params?.workspacePrefix).toBe("goals/parent");
+    expect(results[0].params?.planFile).toBe("PLAN.md");
   });
 });
 
@@ -1546,6 +1551,7 @@ describe("dispatch — backward compatibility", () => {
     expect(results[0].capability).toBe("execute-task");
     expect(results[0].params?.stepNumber).toBe(3);
     expect(results[0].params?.workspacePrefix).toBe("goals/feat/S03");
+    expect(results[0].params?.taskFile).toBe("TASK.md");
   });
 });
 

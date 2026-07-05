@@ -13,7 +13,7 @@ You operate on a generic requirements file provided via session parameters. Your
 
 ## Output
 
-You produce a single artifact: `QUALITY_GATE.md` with a YAML frontmatter status field (`approved` or `rejected`). This file is read by downstream automation to determine routing — write it in all cases.
+You produce a single artifact: `QUALITY_GATE.md` with a YAML frontmatter status field (`approved` or `rejected`). This file is read by downstream processes to determine next steps — write it in all cases.
 
 ## Decision Authority
 

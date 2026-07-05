@@ -47,7 +47,25 @@ skills:
   {
     id: "manual-testing-gate",
     title: "Manual E2E testing gate",
-    instructions: `Construct an E2E testing checklist based on the requirements file content read earlier. Extract key features, user flows, and acceptance criteria into testable items.
+    instructions: `Construct an E2E testing checklist focused on **end-user impact scenarios** — how the changes affect real users of the product.
+
+**Use available context.** Draw from whatever context is available in your session (requirements file, instructions in the session preamble, etc.) to understand what was changed. Build scenarios answering:
+- "Can the user still do X?"
+- "Does the new feature work from their perspective?"
+
+Do NOT reference specific delivery mechanisms or hardcode knowledge of how context arrives — the capability must stay generic.
+
+**Prohibited from the E2E checklist:** Programmatic checks such as \`npx tsc\`, \`npm test\`, linting, type checking, or framework self-tests. These belong in CI/CD pipelines, not the manual testing gate.
+
+**Good examples (user-facing behaviors):**
+- "user can still authenticate after API migration"
+- "button click opens the modal"
+- "form submits and shows confirmation"
+
+**Bad examples (build/internal checks):**
+- "\`npx tsc --noEmit\` passes"
+- "\`npm test\` passes with no regressions"
+- "CSS lint clean"
 
 Present the checklist to the user via \`ask_user\` with \`displayMode: "inline"\`. The question should list the checklist items and ask for explicit confirmation that all tests have passed.
 
@@ -61,7 +79,7 @@ Example \`ask_user\` call:
 \`\`\`ts
 ask_user({
   question: "Please confirm all E2E tests have passed:",
-  context: "1. Feature A works as expected\\n2. Feature B handles edge cases\\n3. ...",
+  context: "1. User can still authenticate after API migration\\n2. New feature X works from user perspective\\n3. ...",
   options: ["All tests passed", "Tests failed"],
   displayMode: "inline",
   allowComment: true,

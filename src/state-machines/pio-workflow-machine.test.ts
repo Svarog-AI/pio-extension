@@ -201,7 +201,11 @@ describe("dispatch — create-goal → create-plan", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Create an implementation plan for goal "my-feature". Read GOAL.md to understand current state and target, then produce PLAN.md.`,
       sessionName: "my-feature create-plan",
-      params: { workspacePrefix: "goals/my-feature", queueKey: "my-feature" },
+      params: {
+        workspacePrefix: "goals/my-feature",
+        queueKey: "my-feature",
+        goalFile: "GOAL.md",
+      },
     });
   });
 
@@ -253,6 +257,7 @@ describe("dispatch — create-plan → evolve-plan", () => {
         stepNumber: 1,
         workspacePrefix: "goals/my-feature",
         queueKey: "my-feature",
+        planFile: "PLAN.md",
       },
     });
   });
@@ -305,6 +310,7 @@ describe("dispatch — evolve-plan → execute-task", () => {
         stepNumber: 3,
         workspacePrefix: "goals/feat/S03",
         queueKey: "feat",
+        taskFile: "TASK.md",
       },
     });
   });
@@ -340,6 +346,7 @@ describe("dispatch — evolve-plan → execute-task", () => {
         stepNumber: 2,
         workspacePrefix: "goals/feat/S02",
         queueKey: "feat",
+        taskFile: "TASK.md",
       },
     });
   });
@@ -386,6 +393,7 @@ describe("dispatch — review→evolve→quality-gate chain", () => {
         stepNumber: 4,
         workspacePrefix: "goals/feat",
         queueKey: "feat",
+        planFile: "PLAN.md",
       },
     });
 
@@ -508,6 +516,7 @@ describe("dispatch — evolve-plan completion detection", () => {
         stepNumber: 2,
         workspacePrefix: "goals/feat/S02",
         queueKey: "feat",
+        taskFile: "TASK.md",
       },
     });
   });
@@ -549,6 +558,9 @@ describe("dispatch — execute-task → review-task", () => {
         stepNumber: 5,
         workspacePrefix: "goals/feat/S05",
         queueKey: "feat",
+        completedMarker: "COMPLETED",
+        summaryFile: "SUMMARY.md",
+        taskFile: "TASK.md",
       },
     });
   });
@@ -573,6 +585,7 @@ describe("dispatch — execute-task → review-task", () => {
         stepNumber: 5,
         workspacePrefix: "goals/feat",
         queueKey: "feat",
+        planFile: "PLAN.md",
       },
     });
   });
@@ -649,6 +662,7 @@ describe("dispatch — review-task approval", () => {
         stepNumber: 4,
         workspacePrefix: "goals/feat",
         queueKey: "feat",
+        planFile: "PLAN.md",
       },
     });
   });
@@ -723,6 +737,7 @@ describe("dispatch — review-task rejection", () => {
         stepNumber: 3,
         workspacePrefix: "goals/feat/S03",
         queueKey: "feat",
+        taskFile: "TASK.md",
       },
     });
   });
@@ -788,6 +803,7 @@ describe("dispatch — review-task blocked", () => {
         stepNumber: 3,
         workspacePrefix: "goals/feat",
         queueKey: "feat",
+        planFile: "PLAN.md",
       },
     });
   });
@@ -973,6 +989,7 @@ describe("TransitionResult shape consistency", () => {
         stepNumber: 1,
         workspacePrefix: "goals/feat/S01",
         queueKey: "feat",
+        taskFile: "TASK.md",
       },
     });
   });
@@ -1277,7 +1294,11 @@ describe("recordTransition isolation", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Create an implementation plan for goal "test". Read GOAL.md to understand current state and target, then produce PLAN.md.`,
       sessionName: "test create-plan",
-      params: { workspacePrefix: "goals/test", queueKey: "test" },
+      params: {
+        workspacePrefix: "goals/test",
+        queueKey: "test",
+        goalFile: "GOAL.md",
+      },
     });
   });
 });

@@ -1,14 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { launchCapability } from "../../capability-session";
 import { CapState } from "../../capability-state";
 import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import { extractFrontmatter, validateAndCoerce } from "../../frontmatter";
@@ -168,7 +163,10 @@ const createPlanTool = defineTool({
     "Create a detailed implementation plan (PLAN.md) for an existing workspace. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet:
     "Create an implementation plan (PLAN.md) for an existing workspace.",
-  parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
+  parameters: Type.Object({
+    ...BASE_TOOL_PARAMS,
+    goalFile: Type.Optional(Type.String()),
+  }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
     const queueKey = deriveQueueKey(params.workspacePrefix);
@@ -179,6 +177,7 @@ const createPlanTool = defineTool({
         sessionName: params.sessionName ?? `${queueKey} create-plan`,
         queueKey,
         initialMessage: params.initialMessage,
+        goalFile: params.goalFile,
       },
     });
 
@@ -195,71 +194,9 @@ const createPlanTool = defineTool({
 });
 
 // ---------------------------------------------------------------------------
-// Command
-// ---------------------------------------------------------------------------
-
-async function handleCreatePlan(
-  args: string | undefined,
-  ctx: ExtensionCommandContext,
-) {
-  if (!args?.trim()) {
-    ctx.ui.notify(
-      "Usage: /pio-create-plan --workspace-prefix <prefix>",
-      "warning",
-    );
-    return;
-  }
-
-  const tokens = args.trim().split(/\s+/);
-  let workspacePrefix: string | undefined;
-  for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i] === "--workspace-prefix" && tokens[i + 1]) {
-      workspacePrefix = tokens[++i];
-    }
-  }
-  if (!workspacePrefix) {
-    ctx.ui.notify(
-      "--workspace-prefix is required. Usage: /pio-create-plan --workspace-prefix <prefix>",
-      "error",
-    );
-    return;
-  }
-
-  // launchCapability calls ctx.newSession() — after this, ctx is stale.
-  // All ctx-dependent work must happen before this line.
-  const queueKey = deriveQueueKey(workspacePrefix);
-  const config = await resolveCapabilityConfig(ctx.cwd, {
-    capability: "create-plan",
-    workspacePrefix,
-    sessionName: `${queueKey} create-plan`,
-    queueKey,
-    initialMessage:
-      "Create an implementation plan. Read GOAL.md to understand current state and target, then produce PLAN.md.",
-  });
-  if (!config) {
-    ctx.ui.notify("Failed to resolve create-plan config.", "error");
-    return;
-  }
-  try {
-    await launchCapability(ctx, config);
-  } catch (err) {
-    ctx.ui.notify(
-      `Failed to start ${config.capability}: ${err instanceof Error ? err.message : String(err)}`,
-      "error",
-    );
-    return;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Setup (registers tool and command)
+// Setup (registers tool)
 // ---------------------------------------------------------------------------
 
 export function register(pi: ExtensionAPI) {
   pi.registerTool(createPlanTool);
-  pi.registerCommand("pio-create-plan", {
-    description:
-      "Create an implementation plan for a workspace and launch a create-plan session",
-    handler: handleCreatePlan,
-  });
 }

@@ -675,6 +675,46 @@ describe("create-plan tool execute — pre-launch validation", () => {
     expect(task?.params).toHaveProperty("initialMessage");
     expect(task?.params?.initialMessage).toBe("test message");
   });
+
+  it("forwards goalFile to enqueued task params when provided", async () => {
+    // Arrange: goal dir with GOAL.md
+    const goalDir = path.join(tempDir, ".pio", "goals", "goal-file-test");
+    fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
+
+    const tool = getTool();
+    await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/goal-file-test", goalFile: "GOAL.md" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    // Assert: task params include goalFile
+    const task = readPendingTask(tempDir, "goal-file-test");
+    expect(task?.params?.goalFile).toBe("GOAL.md");
+  });
+
+  it("omits goalFile from enqueued task params when not provided", async () => {
+    // Arrange: goal dir with GOAL.md
+    const goalDir = path.join(tempDir, ".pio", "goals", "no-goal-file");
+    fs.mkdirSync(goalDir, { recursive: true });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
+
+    const tool = getTool();
+    await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/no-goal-file" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    // Assert: task params do not include goalFile (or it is undefined)
+    const task = readPendingTask(tempDir, "no-goal-file");
+    expect(task?.params?.goalFile).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

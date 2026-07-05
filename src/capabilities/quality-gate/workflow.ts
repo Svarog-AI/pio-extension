@@ -33,6 +33,8 @@ Follow the Push Protocol steps:
 
 The protocol handles: verifying git repo, checking \`gh\` CLI availability, determining target branch, checking for existing PRs, pushing if needed, and creating the PR with title and body.
 
+**PR body should be outcome-focused.** The pio-git skill's PR Creation Protocol (step 10) instructs the agent to construct an outcome-focused PR body — summarize what the changes do from a user or product perspective, not internal implementation details. Reinforce this: the PR body should answer "what does this change for the user?" in a short paragraph, not list plan steps or file changes.
+
 **Graceful failure semantics:** If PR creation fails (no \`gh\` CLI, not authenticated, network failure), log a warning and proceed — never block workflow completion. The quality gate must still complete even if PR creation is unavailable.
 
 \`\`\`yaml

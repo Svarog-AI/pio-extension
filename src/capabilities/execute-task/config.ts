@@ -98,7 +98,7 @@ const executeTaskTool = defineTool({
         sessionName,
         queueKey,
         initialMessage: params.initialMessage,
-        ...(params.taskFile !== undefined && { taskFile: params.taskFile }),
+        taskFile: params.taskFile,
       },
     });
 

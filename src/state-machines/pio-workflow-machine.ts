@@ -199,7 +199,8 @@ function resolveEvolvePlanToQualityGate(
     const stepNumber = extractStepNumber(params);
     return {
       capability: "quality-gate",
-      initialMessage: `All plan steps for goal "${goalName}" are complete. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
+      initialMessage: `All plan steps for goal "${goalName}" are complete. Goal description: read \`GOAL.md\` in your workspace for details on what was changed. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
+
       sessionName: sessionName(goalName, "quality-gate"),
       params: {
         workspacePrefix: prefix,

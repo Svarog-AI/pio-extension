@@ -413,7 +413,7 @@ describe("dispatch — review→evolve→quality-gate chain", () => {
     expect(evolveResults[0]).toEqual({
       capability: "quality-gate",
       stateMachineId: "goal-driven-development",
-      initialMessage: `All plan steps for goal "feat" are complete. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
+      initialMessage: `All plan steps for goal "feat" are complete. Goal description: read \`GOAL.md\` in your workspace for details on what was changed. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
       sessionName: "feat quality-gate",
       params: {
         workspacePrefix: "goals/feat",
@@ -455,7 +455,7 @@ describe("dispatch — evolve-plan completion detection", () => {
     expect(results[0]).toEqual({
       capability: "quality-gate",
       stateMachineId: "goal-driven-development",
-      initialMessage: `All plan steps for goal "feat" are complete. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
+      initialMessage: `All plan steps for goal "feat" are complete. Goal description: read \`GOAL.md\` in your workspace for details on what was changed. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
       sessionName: "feat quality-gate",
       params: {
         workspacePrefix: "goals/feat",
@@ -463,6 +463,20 @@ describe("dispatch — evolve-plan completion detection", () => {
         requirementsFile: "COMPLETION_SUMMARY.md",
       },
     });
+  });
+
+  it("initialMessage references GOAL.md for goal context", () => {
+    writeCompletionSummary(goalDir);
+
+    const results = dispatch(
+      goalDrivenDevelopment,
+      "evolve-plan",
+      ctx(tempDir, "feat"),
+      { queueKey: "feat" },
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].initialMessage).toContain("GOAL.md");
   });
 
   it("propagates queueKey and requirementsFile in quality-gate params", () => {

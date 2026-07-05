@@ -249,7 +249,7 @@ describe("resolveEvolveWriteAllowlist with REVISE_PLAN_NEEDED.md", () => {
     expect(result?.writeAllowlist).toContain("REVISE_PLAN_NEEDED.md");
   });
 
-  it("marker path is at workspace root (not inside step folder)", async () => {
+  it("path is at workspace root (not inside step folder)", async () => {
     // Arrange: resolve evolve-plan config with stepNumber 3
     const params = {
       capability: "evolve-plan" as string,
@@ -261,23 +261,23 @@ describe("resolveEvolveWriteAllowlist with REVISE_PLAN_NEEDED.md", () => {
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: no step-folder-prefixed marker path
+    // Assert: no step-folder-prefixed path
     expect(result?.writeAllowlist).not.toContain("S03/REVISE_PLAN_NEEDED.md");
     expect(result?.writeAllowlist).not.toContain("S03/REVISE_PLAN_NEEDED");
     // Only the workspace-root version should exist
-    const markerPaths = result?.writeAllowlist?.filter((p) =>
+    const revisePaths = result?.writeAllowlist?.filter((p) =>
       p.includes("REVISE_PLAN_NEEDED"),
     );
-    expect(markerPaths).toEqual(["REVISE_PLAN_NEEDED.md"]);
+    expect(revisePaths).toEqual(["REVISE_PLAN_NEEDED.md"]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// REVISE_PLAN_NEEDED.md marker filename consistency
+// REVISE_PLAN_NEEDED.md filename consistency
 // ---------------------------------------------------------------------------
 
-describe("REVISE_PLAN_NEEDED.md marker filename", () => {
-  it("marker filename in evolve-plan writeAllowlist has .md extension", async () => {
+describe("REVISE_PLAN_NEEDED.md filename", () => {
+  it("filename in evolve-plan writeAllowlist has .md extension", async () => {
     // Arrange: resolve evolve-plan config for step 2
     const params = {
       capability: "evolve-plan" as string,
@@ -289,12 +289,12 @@ describe("REVISE_PLAN_NEEDED.md marker filename", () => {
     // Act
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // Assert: extract the marker path from writeAllowlist
-    const markerPath = result?.writeAllowlist?.find((p) =>
+    // Assert: extract the path from writeAllowlist
+    const revisePath = result?.writeAllowlist?.find((p) =>
       p.includes("REVISE_PLAN_NEEDED"),
     );
-    expect(markerPath).toBeDefined();
-    expect(markerPath).toBe("REVISE_PLAN_NEEDED.md");
+    expect(revisePath).toBeDefined();
+    expect(revisePath).toBe("REVISE_PLAN_NEEDED.md");
   });
 });
 

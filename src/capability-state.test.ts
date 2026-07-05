@@ -512,9 +512,9 @@ describe("undeclared(path) — marker files not in any contract", () => {
 
   it("works with subdirectory paths", () => {
     const capState = createCapState(minimalContract, tempDir);
-    const markerPath = path.join(tempDir, "S03", "REVISE_PLAN_NEEDED");
-    fs.mkdirSync(path.dirname(markerPath), { recursive: true });
-    fs.writeFileSync(markerPath, "", "utf-8");
+    const filePath = path.join(tempDir, "S03", "REVISE_PLAN_NEEDED");
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, "", "utf-8");
     expect(capState.undeclared("S03/REVISE_PLAN_NEEDED").exists()).toBe(true);
   });
 

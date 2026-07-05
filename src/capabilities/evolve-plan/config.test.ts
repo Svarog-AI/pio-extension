@@ -619,6 +619,46 @@ describe("evolvePlanTool.execute", () => {
     expect(task?.params).toHaveProperty("initialMessage");
     expect(task?.params?.initialMessage).toBe("test message");
   });
+
+  it("forwards planFile to enqueued task params when provided", async () => {
+    // Arrange: goal dir with PLAN.md
+    createGoalTreeWithFrontmatter(tempDir, "plan-file-test", 3);
+
+    const tool = getTool();
+    await tool.execute(
+      "test-id",
+      {
+        workspacePrefix: "goals/plan-file-test",
+        stepNumber: 1,
+        planFile: "PLAN.md",
+      },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    // Assert: task params include planFile
+    const task = readPendingTask(tempDir, "plan-file-test");
+    expect(task?.params?.planFile).toBe("PLAN.md");
+  });
+
+  it("omits planFile from enqueued task params when not provided", async () => {
+    // Arrange: goal dir with PLAN.md
+    createGoalTreeWithFrontmatter(tempDir, "no-plan-file", 3);
+
+    const tool = getTool();
+    await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/no-plan-file", stepNumber: 1 },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    // Assert: task params do not include planFile (or it is undefined)
+    const task = readPendingTask(tempDir, "no-plan-file");
+    expect(task?.params?.planFile).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

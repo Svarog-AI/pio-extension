@@ -1,12 +1,8 @@
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { launchCapability, setMergedSkills } from "../../capability-session";
+import { setMergedSkills } from "../../capability-session";
 import { CapState } from "../../capability-state";
 import {
   BASE_TOOL_PARAMS,
@@ -96,7 +92,12 @@ const reviewTaskTool = defineTool({
   description:
     "Review the implementation of a plan step. Reads TASK.md, TEST.md, SUMMARY.md and implementation files. Writes REVIEW.md with categorized issues and approves or rejects. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Review code implementation for a plan step (approve/reject).",
-  parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
+  parameters: Type.Object({
+    ...BASE_TOOL_PARAMS,
+    completedMarker: Type.Optional(Type.String()),
+    summaryFile: Type.Optional(Type.String()),
+    taskFile: Type.Optional(Type.String()),
+  }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
     const queueKey = deriveQueueKey(params.workspacePrefix);
@@ -108,6 +109,9 @@ const reviewTaskTool = defineTool({
         sessionName,
         queueKey,
         initialMessage: params.initialMessage,
+        completedMarker: params.completedMarker,
+        summaryFile: params.summaryFile,
+        taskFile: params.taskFile,
       },
     });
 
@@ -124,71 +128,9 @@ const reviewTaskTool = defineTool({
 });
 
 // ---------------------------------------------------------------------------
-// Command
-// ---------------------------------------------------------------------------
-
-async function handleReviewTask(
-  args: string | undefined,
-  ctx: ExtensionCommandContext,
-) {
-  if (!args || args.trim().length === 0) {
-    ctx.ui.notify(
-      "Usage: /pio-review-task --workspace-prefix <prefix>",
-      "warning",
-    );
-    return;
-  }
-  const tokens = args.trim().split(/\s+/);
-  let workspacePrefix: string | undefined;
-  for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i] === "--workspace-prefix" && tokens[i + 1]) {
-      workspacePrefix = tokens[++i];
-    }
-  }
-  if (!workspacePrefix) {
-    ctx.ui.notify(
-      "--workspace-prefix is required. Usage: /pio-review-task --workspace-prefix <prefix>",
-      "error",
-    );
-    return;
-  }
-
-  // launchCapability calls ctx.newSession() — after this, ctx is stale.
-  // All ctx-dependent work must happen before this line.
-  const queueKey = deriveQueueKey(workspacePrefix);
-  const config = await resolveCapabilityConfig(ctx.cwd, {
-    capability: "review-task",
-    workspacePrefix,
-    sessionName: `${queueKey} review-task`,
-    queueKey,
-    initialMessage:
-      "Read TASK.md for the specification, SUMMARY.md for what was implemented, and verify against acceptance criteria. Write REVIEW.md.",
-  });
-  if (!config) {
-    ctx.ui.notify("Failed to resolve review-task config.", "error");
-    return;
-  }
-
-  try {
-    await launchCapability(ctx, config);
-  } catch (err) {
-    ctx.ui.notify(
-      `Failed to start ${config.capability}: ${err instanceof Error ? err.message : String(err)}`,
-      "error",
-    );
-    return;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Setup (registers tool and command)
+// Setup (registers tool)
 // ---------------------------------------------------------------------------
 
 export function register(pi: ExtensionAPI) {
   pi.registerTool(reviewTaskTool);
-  pi.registerCommand("pio-review-task", {
-    description:
-      "Review the implementation of a plan step (approve or reject based on code quality)",
-    handler: handleReviewTask,
-  });
 }

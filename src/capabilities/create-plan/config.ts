@@ -128,7 +128,7 @@ export function postValidateCreatePlan(workspaceDir: string): {
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ name: "goal", file: "GOAL.md" }],
+  inputs: [{ name: "goal", paramKey: "goalFile" }],
   excludedFiles: ["PLAN.md"],
   outputs: [{ name: "plan", file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
 };
@@ -140,7 +140,7 @@ export const CONTRACT: CapabilityContract = {
 const capabilityConfig = {
   capability: "create-plan",
   contract: CONTRACT,
-  readOnlyFiles: ["GOAL.md"],
+
   writeAllowlist: ["PLAN.md"],
   skills: {
     mandatory: ["pio-planning", "grill-me"],

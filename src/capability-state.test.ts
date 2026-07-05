@@ -1321,7 +1321,7 @@ describe("Concrete test — real create-plan CONTRACT", () => {
 
   it("works with real create-plan CONTRACT", async () => {
     const { CONTRACT } = await import("./capabilities/create-plan/config");
-    const capState = createCapState(CONTRACT, tempDir);
+    const capState = createCapState(CONTRACT, tempDir, { goalFile: "GOAL.md" });
 
     // GOAL.md is an input without schema
     writeWithFrontmatter(tempDir, "GOAL.md", { title: "Test Goal" });

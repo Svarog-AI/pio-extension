@@ -29,9 +29,9 @@ import { REVIEW_OUTPUT_SCHEMA } from "./schemas";
 
 export const CONTRACT: CapabilityContract = {
   inputs: [
-    { name: "completed", file: "COMPLETED" },
-    { name: "summary", file: "SUMMARY.md" },
-    { name: "task", file: "TASK.md", schema: TASK_FRONTMATTER_SCHEMA },
+    { name: "completed", paramKey: "completedMarker" },
+    { name: "summary", paramKey: "summaryFile" },
+    { name: "task", paramKey: "taskFile", schema: TASK_FRONTMATTER_SCHEMA },
   ],
   outputs: [
     { name: "review", file: "REVIEW.md", schema: REVIEW_OUTPUT_SCHEMA },

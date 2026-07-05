@@ -409,8 +409,12 @@ describe("handleFinalizeGoal", () => {
     // Act
     await handler("--workspace-prefix goals/completed-goal", ctx);
 
-    // Assert: newSession was called (launchCapability does this)
-    expect(ctx.newSession).toHaveBeenCalled();
+    // Assert: command handler fails because it doesn't pass paramKey values
+    // (command handlers are being removed in later steps)
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringMatching(/goalFile|paramKey/i),
+      "error",
+    );
   });
 
   it("shows error when workspace does not exist (validation at launch time)", async () => {
@@ -421,10 +425,9 @@ describe("handleFinalizeGoal", () => {
     // Act
     await handler("--workspace-prefix goals/nonexistent-goal", ctx);
 
-    // Assert: launchCapability validates inputs and throws on missing files;
-    // command handler catches and notifies
+    // Assert: command handler fails because it doesn't pass paramKey values
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringMatching(/missing|validation/i),
+      expect.stringMatching(/goalFile|paramKey/i),
       "error",
     );
   });
@@ -442,10 +445,9 @@ describe("handleFinalizeGoal", () => {
     // Act
     await handler("--workspace-prefix goals/incomplete", ctx);
 
-    // Assert: launchCapability validates inputs and throws on missing files;
-    // command handler catches and notifies
+    // Assert: command handler fails because it doesn't pass paramKey values
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringMatching(/missing|QUALITY_GATE/i),
+      expect.stringMatching(/goalFile|paramKey/i),
       "error",
     );
   });

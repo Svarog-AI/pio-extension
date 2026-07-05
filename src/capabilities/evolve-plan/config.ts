@@ -34,7 +34,9 @@ function getTotalSteps(capState?: CapState): number | null {
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ name: "plan", file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
+  inputs: [
+    { name: "plan", paramKey: "planFile", schema: PLAN_FRONTMATTER_SCHEMA },
+  ],
   outputs: [
     // Group 1: during plan execution (steps ≤ n) — normal output OR revision request
     new OneOfGroup(

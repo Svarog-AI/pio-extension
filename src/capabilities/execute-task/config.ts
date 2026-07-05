@@ -16,7 +16,7 @@ import {
 import { enqueueTask } from "../../queues";
 import type { CapabilityContract } from "../../types";
 import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
-import { resolveExecuteReadOnlyFiles } from "./callbacks";
+
 import { EXECUTION_SUMMARY_SCHEMA } from "./schemas";
 
 // ---------------------------------------------------------------------------
@@ -24,7 +24,9 @@ import { EXECUTION_SUMMARY_SCHEMA } from "./schemas";
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ name: "task", file: "TASK.md", schema: TASK_FRONTMATTER_SCHEMA }],
+  inputs: [
+    { name: "task", paramKey: "taskFile", schema: TASK_FRONTMATTER_SCHEMA },
+  ],
   excludedFiles: ["REVISE_PLAN_NEEDED"],
   outputs: [
     { name: "test", file: "TEST.md" },
@@ -46,7 +48,7 @@ export const CONTRACT: CapabilityContract = {
 const capabilityConfig = {
   capability: "execute-task",
   contract: CONTRACT,
-  readOnlyFiles: resolveExecuteReadOnlyFiles,
+
   prepareSession: prepareExecuteSession,
   allowProjectWrites: true,
   skills: {

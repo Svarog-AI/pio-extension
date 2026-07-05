@@ -160,7 +160,7 @@ describe("config.prepareSession", () => {
 
     // Act & Assert: should not throw
     expect(() => {
-      config.prepareSession?.(stepDir, { stepNumber: 1 });
+      config.prepareSession?.(stepDir, { stepNumber: 1, taskFile: "TASK.md" });
     }).not.toThrow();
 
     cleanup(tempDir);

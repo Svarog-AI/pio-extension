@@ -2,7 +2,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { vi } from "vitest";
-import { resolveCapabilityConfig } from "../../capability-config";
 import { stepFolderName } from "../../fs-utils";
 import { readPendingTask } from "../../queues";
 import config, { register } from "./config";
@@ -94,28 +93,6 @@ describe("stepFolderName", () => {
   it("no extra padding for two-digit numbers S10+", () => {
     expect(stepFolderName(10)).toBe("S10");
     expect(stepFolderName(25)).toBe("S25");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// resolveExecuteReadOnlyFiles — TASK.md only
-// ---------------------------------------------------------------------------
-
-describe("resolveExecuteReadOnlyFiles", () => {
-  it("returns TASK.md only, not TEST.md", async () => {
-    // Arrange: resolve execute-task config
-    const params = {
-      capability: "execute-task" as string,
-      goalName: "test-goal",
-      sessionName: "test",
-    };
-
-    // Act
-    const result = await resolveCapabilityConfig("/tmp/proj", params);
-
-    // Assert: read-only files contain only TASK.md (plain name — workspacePrefix handles step folder)
-    expect(result?.readOnlyFiles).toEqual(["TASK.md"]);
-    expect(result?.readOnlyFiles).not.toContain("TEST.md");
   });
 });
 

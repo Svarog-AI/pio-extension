@@ -1053,7 +1053,7 @@ describe("CONTRACT integration — create-plan", () => {
   it("all inputs present → success", async () => {
     const { CONTRACT } = await import("../capabilities/create-plan/config");
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
-    const capState = makeCapState(CONTRACT, tempDir);
+    const capState = makeCapState(CONTRACT, tempDir, { goalFile: "GOAL.md" });
     const result = validateInputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -1061,7 +1061,7 @@ describe("CONTRACT integration — create-plan", () => {
   it("missing GOAL.md → failure naming GOAL.md", async () => {
     const { CONTRACT } = await import("../capabilities/create-plan/config");
     // GOAL.md is missing
-    const capState = makeCapState(CONTRACT, tempDir);
+    const capState = makeCapState(CONTRACT, tempDir, { goalFile: "GOAL.md" });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
     expect(result.message).toContain("GOAL.md");
@@ -1071,7 +1071,7 @@ describe("CONTRACT integration — create-plan", () => {
     const { CONTRACT } = await import("../capabilities/create-plan/config");
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
-    const capState = makeCapState(CONTRACT, tempDir);
+    const capState = makeCapState(CONTRACT, tempDir, { goalFile: "GOAL.md" });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
     expect(result.message).toContain("PLAN.md");
@@ -1102,14 +1102,20 @@ steps:
 `,
       "utf-8",
     );
-    const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 3 });
+    const capState = makeCapState(CONTRACT, tempDir, {
+      stepNumber: 3,
+      planFile: "PLAN.md",
+    });
     const result = validateInputs(capState);
     expect(result).toEqual({ success: true });
   });
 
   it("missing PLAN.md → failure naming PLAN.md", async () => {
     const { CONTRACT } = await import("../capabilities/evolve-plan/config");
-    const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 3 });
+    const capState = makeCapState(CONTRACT, tempDir, {
+      stepNumber: 3,
+      planFile: "PLAN.md",
+    });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
     expect(result.message).toContain("PLAN.md");
@@ -1122,7 +1128,10 @@ steps:
       "# Plan\n\nNo frontmatter.",
       "utf-8",
     );
-    const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 3 });
+    const capState = makeCapState(CONTRACT, tempDir, {
+      stepNumber: 3,
+      planFile: "PLAN.md",
+    });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
     expect(result.message).toContain("PLAN.md");
@@ -1146,7 +1155,10 @@ steps:
     );
     // REVISE_PLAN_NEEDED.md is no longer excluded — it's a valid output option in both OneOfGroups
     fs.writeFileSync(path.join(tempDir, "REVISE_PLAN_NEEDED.md"), "", "utf-8");
-    const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 3 });
+    const capState = makeCapState(CONTRACT, tempDir, {
+      stepNumber: 3,
+      planFile: "PLAN.md",
+    });
     // stepNumber 3 > totalSteps 2 → Group 2 active, REVISE_PLAN_NEEDED.md satisfies it
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
@@ -1169,7 +1181,10 @@ describe("CONTRACT integration — execute-task", () => {
       "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task",
       "utf-8",
     );
-    const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 2 });
+    const capState = makeCapState(CONTRACT, tempDir, {
+      stepNumber: 2,
+      taskFile: "TASK.md",
+    });
     const result = validateInputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -1177,7 +1192,10 @@ describe("CONTRACT integration — execute-task", () => {
   it("missing TASK.md → failure naming TASK.md", async () => {
     const { CONTRACT } = await import("../capabilities/execute-task/config");
     // TASK.md is missing
-    const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 2 });
+    const capState = makeCapState(CONTRACT, tempDir, {
+      stepNumber: 2,
+      taskFile: "TASK.md",
+    });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
     expect(result.message).toContain("TASK.md");
@@ -1202,7 +1220,12 @@ describe("CONTRACT integration — review-task", () => {
       "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task",
       "utf-8",
     );
-    const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 1 });
+    const capState = makeCapState(CONTRACT, tempDir, {
+      stepNumber: 1,
+      completedMarker: "COMPLETED",
+      summaryFile: "SUMMARY.md",
+      taskFile: "TASK.md",
+    });
     const result = validateInputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -1216,7 +1239,12 @@ describe("CONTRACT integration — review-task", () => {
       "utf-8",
     );
     // COMPLETED is missing
-    const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 1 });
+    const capState = makeCapState(CONTRACT, tempDir, {
+      stepNumber: 1,
+      completedMarker: "COMPLETED",
+      summaryFile: "SUMMARY.md",
+      taskFile: "TASK.md",
+    });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
     expect(result.message).toContain("COMPLETED");
@@ -1231,7 +1259,12 @@ describe("CONTRACT integration — review-task", () => {
       "utf-8",
     );
     // SUMMARY.md is missing
-    const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 1 });
+    const capState = makeCapState(CONTRACT, tempDir, {
+      stepNumber: 1,
+      completedMarker: "COMPLETED",
+      summaryFile: "SUMMARY.md",
+      taskFile: "TASK.md",
+    });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
     expect(result.message).toContain("SUMMARY.md");
@@ -1256,6 +1289,8 @@ describe("CONTRACT integration — revise-plan", () => {
       "utf-8",
     );
     const capState = makeCapState(CONTRACT, tempDir, {
+      goalFile: "GOAL.md",
+      planFile: "PLAN.md",
       revisionContextFile: "REVISE_PLAN_NEEDED.md",
     });
     const result = validateInputs(capState);
@@ -1265,7 +1300,11 @@ describe("CONTRACT integration — revise-plan", () => {
   it("missing GOAL.md → failure naming GOAL.md", async () => {
     const { CONTRACT } = await import("../capabilities/revise-plan/config");
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
-    const capState = makeCapState(CONTRACT, tempDir);
+    const capState = makeCapState(CONTRACT, tempDir, {
+      goalFile: "GOAL.md",
+      planFile: "PLAN.md",
+      revisionContextFile: "REVISE_PLAN_NEEDED.md",
+    });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
     expect(result.message).toContain("GOAL.md");
@@ -1274,7 +1313,11 @@ describe("CONTRACT integration — revise-plan", () => {
   it("missing PLAN.md → failure naming PLAN.md", async () => {
     const { CONTRACT } = await import("../capabilities/revise-plan/config");
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
-    const capState = makeCapState(CONTRACT, tempDir);
+    const capState = makeCapState(CONTRACT, tempDir, {
+      goalFile: "GOAL.md",
+      planFile: "PLAN.md",
+      revisionContextFile: "REVISE_PLAN_NEEDED.md",
+    });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
     expect(result.message).toContain("PLAN.md");
@@ -1298,7 +1341,11 @@ describe("CONTRACT integration — finalize-goal", () => {
       "---\nstatus: approved\n---\n# Quality Gate",
       "utf-8",
     );
-    const capState = makeCapState(CONTRACT, tempDir);
+    const capState = makeCapState(CONTRACT, tempDir, {
+      goalFile: "GOAL.md",
+      planFile: "PLAN.md",
+      qualityGateFile: "QUALITY_GATE.md",
+    });
     const result = validateInputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -1306,7 +1353,11 @@ describe("CONTRACT integration — finalize-goal", () => {
   it("missing GOAL.md → failure naming GOAL.md", async () => {
     const { CONTRACT } = await import("../capabilities/finalize-goal/config");
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
-    const capState = makeCapState(CONTRACT, tempDir);
+    const capState = makeCapState(CONTRACT, tempDir, {
+      goalFile: "GOAL.md",
+      planFile: "PLAN.md",
+      qualityGateFile: "QUALITY_GATE.md",
+    });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
     expect(result.message).toContain("GOAL.md");
@@ -1315,7 +1366,11 @@ describe("CONTRACT integration — finalize-goal", () => {
   it("missing PLAN.md → failure naming PLAN.md", async () => {
     const { CONTRACT } = await import("../capabilities/finalize-goal/config");
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
-    const capState = makeCapState(CONTRACT, tempDir);
+    const capState = makeCapState(CONTRACT, tempDir, {
+      goalFile: "GOAL.md",
+      planFile: "PLAN.md",
+      qualityGateFile: "QUALITY_GATE.md",
+    });
     const result = validateInputs(capState);
     expect(result.success).toBe(false);
     expect(result.message).toContain("PLAN.md");
@@ -1432,7 +1487,10 @@ skills:
       "utf-8",
     );
     // stepNumber = 1 → DECISIONS.md not required (requiredWhen returns false)
-    const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 1 });
+    const capState = makeCapState(CONTRACT, tempDir, {
+      stepNumber: 1,
+      planFile: "PLAN.md",
+    });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -1473,7 +1531,10 @@ skills:
       "content",
       "utf-8",
     );
-    const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 3 });
+    const capState = makeCapState(CONTRACT, tempDir, {
+      stepNumber: 3,
+      planFile: "PLAN.md",
+    });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -1498,7 +1559,10 @@ steps:
       "utf-8",
     );
     // S02/TASK.md is missing
-    const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 2 });
+    const capState = makeCapState(CONTRACT, tempDir, {
+      stepNumber: 2,
+      planFile: "PLAN.md",
+    });
     const result = validateOutputs(capState);
     expect(result.success).toBe(false);
     // Error mentions OneOfGroup option names ("task + decisions" / "revise-plan")
@@ -1537,7 +1601,10 @@ skills:
       "utf-8",
     );
     // S03/DECISIONS.md is missing but required (stepNumber > 1)
-    const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 3 });
+    const capState = makeCapState(CONTRACT, tempDir, {
+      stepNumber: 3,
+      planFile: "PLAN.md",
+    });
     const result = validateOutputs(capState);
     expect(result.success).toBe(false);
     // Error mentions OneOfGroup option names ("task + decisions" / "revise-plan")
@@ -1694,7 +1761,10 @@ describe("CONTRACT outputs integration — COMPLETION_SUMMARY.md via contract", 
       "---\nstatus: complete\n---\n# Complete\n",
       "utf-8",
     );
-    const capState = makeCapState(CONTRACT, tempDir, { stepNumber: 3 });
+    const capState = makeCapState(CONTRACT, tempDir, {
+      stepNumber: 3,
+      planFile: "PLAN.md",
+    });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -1791,7 +1861,7 @@ describe("validateOutputs — COMPLETION_SUMMARY.md with workspacePrefix", () =>
     const capState = new CapState(
       CONTRACT,
       tempDir,
-      { stepNumber: 3 },
+      { stepNumber: 3, planFile: "PLAN.md" },
       "goals/test-goal",
     );
     const result = validateOutputs(capState);

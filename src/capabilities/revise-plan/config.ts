@@ -23,8 +23,8 @@ import {
 
 export const CONTRACT: CapabilityContract = {
   inputs: [
-    { name: "goal", file: "GOAL.md" },
-    { name: "existing-plan", file: "PLAN.md" },
+    { name: "goal", paramKey: "goalFile" },
+    { name: "existing-plan", paramKey: "planFile" },
     { name: "revision-context", paramKey: "revisionContextFile" },
   ],
   outputs: [{ name: "plan", file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],

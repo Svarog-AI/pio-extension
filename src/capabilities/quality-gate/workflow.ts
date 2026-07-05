@@ -47,7 +47,7 @@ skills:
   {
     id: "manual-testing-gate",
     title: "Manual E2E testing gate",
-    instructions: `Construct an E2E testing checklist based on the requirements file content from Step 1. Extract key features, user flows, and acceptance criteria into testable items.
+    instructions: `Construct an E2E testing checklist based on the requirements file content read earlier. Extract key features, user flows, and acceptance criteria into testable items.
 
 Present the checklist to the user via \`ask_user\` with \`displayMode: "inline"\`. The question should list the checklist items and ask for explicit confirmation that all tests have passed.
 

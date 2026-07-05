@@ -280,7 +280,7 @@ function resolveEvolvePlanToExecuteTask(
   );
   const goalName = requireGoalName("resolveEvolvePlanToExecuteTask", params);
 
-  // Guard: if all plan steps are complete, finalize-goal edge should have fired.
+  // Guard: if all plan steps are complete, quality-gate edge should have fired.
   // ctx.workspaceDir is already the resolved directory — no additional prefix needed
   const evolveState = getCapState("evolve-plan", ctx.workspaceDir, {});
   if (evolveState.output("completion-summary").exists()) {

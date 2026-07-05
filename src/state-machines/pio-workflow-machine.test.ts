@@ -1042,6 +1042,9 @@ describe("dispatch — evolve-plan → revise-plan", () => {
       "REVISE_PLAN_NEEDED.md at the workspace root",
     );
     expect(results[0].params?.workspacePrefix).toBe("goals/feat");
+    expect(results[0].params?.revisionContextFile).toBe(
+      "REVISE_PLAN_NEEDED.md",
+    );
   });
 
   it("routes to revise-plan without stepNumber (completion-triggered revision)", () => {

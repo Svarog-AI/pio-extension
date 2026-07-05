@@ -35,17 +35,14 @@ See [REFERENCE.md](REFERENCE.md) for the execution code block.
 
 Checkout a dedicated branch when a goal workspace is created. Follow these steps in order:
 
-1. **Subgoal detection** — if the goal workspace path contains `/subgoals/`, skip this protocol entirely.
-2. **Verify git repository** — `git rev-parse --show-toplevel`. On failure: warn and skip.
-3. **Verify git user config** — `git config user.name` and `git config user.email`. On failure: warn and skip.
-4. **Convention lookup** — read `.pio/PROJECT/GIT.md` for branch naming patterns (e.g., `feat/<feature-name>`). Fallback: `feat/<goal-name>`.
-5. **Construct branch name** — apply the pattern with the goal name: lowercase, spaces to hyphens (e.g., `Implement Git Lifecycle` → `feat/implement-git-lifecycle`).
-6. **Detect current branch** — `git symbolic-ref --short HEAD`. On failure (detached HEAD): warn and skip.
-7. **Non-main branch handling** — if current branch is not the main branch (from GIT.md or default `main`), use it as the base for the new branch. Note this branch as the PR target for downstream PR creation.
-8. **Branch collision resolution** — `git rev-parse --verify <branch>`. If the branch exists:
-   - **Top-level goals:** call `ask_user` with three options: (a) Reuse existing branch — `git checkout <branch>`, (b) Create suffixed branch — append `-2`, `-3`, etc. until free, (c) Cancel branching — skip and continue on current branch.
-   - **Subgoals:** auto-suffix without prompting (`-2`, `-3`, etc.).
-9. **Checkout the branch** — `git checkout -b <branch>` (or `git checkout -b <branch> <current-branch>` for non-main base).
+1. **Verify git repository** — `git rev-parse --show-toplevel`. On failure: warn and skip.
+2. **Verify git user config** — `git config user.name` and `git config user.email`. On failure: warn and skip.
+3. **Convention lookup** — read `.pio/PROJECT/GIT.md` for branch naming patterns (e.g., `feat/<feature-name>`). Fallback: `feat/<goal-name>`.
+4. **Construct branch name** — apply the pattern with the goal name: lowercase, spaces to hyphens (e.g., `Implement Git Lifecycle` → `feat/implement-git-lifecycle`).
+5. **Detect current branch** — `git symbolic-ref --short HEAD`. On failure (detached HEAD): warn and skip.
+6. **Non-main branch handling** — if current branch is not the main branch (from GIT.md or default `main`), use it as the base for the new branch. Note this branch as the PR target for downstream PR creation.
+7. **Branch collision resolution** — `git rev-parse --verify <branch>`. If the branch exists: call `ask_user` with three options: (a) Reuse existing branch — `git checkout <branch>`, (b) Create suffixed branch — append `-2`, `-3`, etc. until free, (c) Cancel branching — skip and continue on current branch.
+8. **Checkout the branch** — `git checkout -b <branch>` (or `git checkout -b <branch> <current-branch>` for non-main base).
 
 **Edge cases:** See [REFERENCE.md](REFERENCE.md) — covers no git repo, detached HEAD, uncommitted changes, shallow clone.
 
@@ -53,20 +50,30 @@ Checkout a dedicated branch when a goal workspace is created. Follow these steps
 
 Create a pull request when a goal is finalized. Follow these steps in order:
 
-1. **Subgoal detection** — if the goal workspace path contains `/subgoals/`, skip this protocol entirely.
-2. **Verify git repository** — `git rev-parse --show-toplevel`. On failure: warn and skip.
-3. **Verify `gh` CLI available** — `command -v gh`. On failure: warn and skip.
-4. **Verify `gh` authentication** — `gh auth status`. On failure: warn and skip.
-5. **Determine target branch** — read `.pio/PROJECT/GIT.md` for main branch name, fallback `main`, or use the base branch recorded during Branch Checkout Protocol (non-main branch handling).
-6. **Get current branch** — `git symbolic-ref --short HEAD`. On failure: warn and skip.
-7. **Check for existing PR** — `gh pr list --head <branch> --base <target>`. If found and open: report URL and skip. If closed/merged (re-finalize): proceed to create a new one.
-8. **Check for changes** — `git diff --shortstat <target>...<head>`. If empty: warn and skip.
-9. **Push branch to remote** — `git push -u origin <branch>`. On failure: warn and skip.
-10. **Construct PR title** — follow GIT.md Conventional Commits format. Pick type from observed types (`feat`, `fix`, `refactor`, etc.) based on goal name/summary. Fallback: short descriptive one-liner.
-11. **Construct PR body** — if GIT.md specifies a PR body template, follow it. Otherwise construct from: GOAL.md summary, PLAN.md step list, per-step SUMMARY.md files (files changed).
-12. **Create the PR** — `gh pr create --title "<title>" --body "<body>" --base <target> --head <branch>`.
+1. **Verify git repository** — `git rev-parse --show-toplevel`. On failure: warn and skip.
+2. **Verify `gh` CLI available** — `command -v gh`. On failure: warn and skip.
+3. **Verify `gh` authentication** — `gh auth status`. On failure: warn and skip.
+4. **Determine target branch** — read `.pio/PROJECT/GIT.md` for main branch name, fallback `main`, or use the base branch recorded during Branch Checkout Protocol (non-main branch handling).
+5. **Get current branch** — `git symbolic-ref --short HEAD`. On failure: warn and skip.
+6. **Check for existing PR** — `gh pr list --head <branch> --base <target>`. If found and open: report URL and skip. If closed/merged (re-finalize): proceed to create a new one.
+7. **Check for changes** — `git diff --shortstat <target>...<head>`. If empty: warn and skip.
+8. **Push branch to remote** — `git push -u origin <branch>`. On failure: warn and skip.
+9. **Construct PR title** — follow GIT.md Conventional Commits format. Pick type from observed types (`feat`, `fix`, `refactor`, etc.) based on goal name/summary. Fallback: short descriptive one-liner.
+10. **Construct PR body** — if GIT.md specifies a PR body template, follow it. Otherwise construct from: GOAL.md summary, PLAN.md step list, per-step SUMMARY.md files (files changed).
+11. **Create the PR** — `gh pr create --title "<title>" --body "<body>" --base <target> --head <branch>`.
 
 **Edge cases:** See [REFERENCE.md](REFERENCE.md) — covers `gh` not installed, not authenticated, network failure, branch not pushed, no changes, existing PR, not a GitHub repo, re-finalize.
+
+## Push Protocol
+
+Push commits to the remote repository. Used by execute-task (after commit) and quality-gate (before PR creation). Follow these steps in order:
+
+1. **Verify git repository** — `git rev-parse --show-toplevel`. On failure: warn and skip.
+2. **Get current branch** — `git symbolic-ref --short HEAD`. On failure (detached HEAD): warn and skip.
+3. **Check for unpushed commits** — `git cherry -v origin/<branch>` lists commits not on the remote tracking branch. If output is empty or the command fails (remote doesn't exist), proceed to push anyway.
+4. **Push to remote** — `git push origin <branch>` (non-tracking push, doesn't require `-u` since the branch may already be tracked from a prior push). On failure: warn and proceed.
+
+**Edge cases:** See [REFERENCE.md](REFERENCE.md) — covers no git repo, detached HEAD, remote branch doesn't exist, no remote configured, network failure, no unpushed commits.
 
 ## Graceful Failure Semantics
 

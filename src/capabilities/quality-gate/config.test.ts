@@ -3,57 +3,33 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readPendingTask } from "../../queues";
-import config, { register } from "./config";
+import config, { CONTRACT, register } from "./config";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
 // ---------------------------------------------------------------------------
 
 function createTempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "pio-finalize-test-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "pio-quality-gate-test-"));
 }
 
 function cleanup(tempDir: string): void {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
 
-/**
- * Create a minimal goal workspace tree.
- * Options control which files are present.
- */
-function createGoalTree(
+function createWorkspace(
   tempDir: string,
   goalName: string,
-  options?: { withQualityGate?: boolean; withPlan?: boolean },
+  requirementsFile: string,
+  requirementsContent = "# Requirements\n\nTest requirements.",
 ): string {
   const goalDir = path.join(tempDir, ".pio", "goals", goalName);
   fs.mkdirSync(goalDir, { recursive: true });
-
-  // GOAL.md is required for goal workspace validity
   fs.writeFileSync(
-    path.join(goalDir, "GOAL.md"),
-    "# Goal\n\nTest goal.",
+    path.join(goalDir, requirementsFile),
+    requirementsContent,
     "utf-8",
   );
-
-  // Optionally create PLAN.md
-  if (options?.withPlan) {
-    fs.writeFileSync(
-      path.join(goalDir, "PLAN.md"),
-      "---\ntotalSteps: 1\nsteps:\n  - name: step-1\n    complexity: task\n---\n# Plan\n\n### Step 1: Test\n",
-      "utf-8",
-    );
-  }
-
-  // Optionally create QUALITY_GATE.md
-  if (options?.withQualityGate) {
-    fs.writeFileSync(
-      path.join(goalDir, "QUALITY_GATE.md"),
-      "---\nstatus: approved\n---\n# Quality Gate\n\nAll gates passed.",
-      "utf-8",
-    );
-  }
-
   return goalDir;
 }
 
@@ -62,45 +38,34 @@ function createGoalTree(
 // ---------------------------------------------------------------------------
 
 describe("config", () => {
-  it("writeAllowlist is absent (auto-derived from CONTRACT.outputs)", () => {
-    expect("writeAllowlist" in config).toBe(false);
+  it("capability is quality-gate", () => {
+    expect(config.capability).toBe("quality-gate");
   });
 
-  it("CONTRACT.outputs declares 7 PROJECT files with projectRelative: true", () => {
-    expect(config.contract.outputs).toHaveLength(7);
-    const expectedFiles = [
-      "PROJECT/OVERVIEW.md",
-      "PROJECT/DEVELOPMENT.md",
-      "PROJECT/CONVENTIONS.md",
-      "PROJECT/GIT.md",
-      "PROJECT/ARCHITECTURE.md",
-      "PROJECT/DEPENDENCIES.md",
-      "PROJECT/GLOSSARY.md",
-    ];
-    const outputFiles = config.contract.outputs.map((o: any) => o.file);
-    for (const f of expectedFiles) {
-      expect(outputFiles).toContain(f);
-    }
+  it("contract inputs declares requirements with paramKey", () => {
+    const input = CONTRACT.inputs.find((i) => i.name === "requirements");
+    expect(input).toBeDefined();
+    expect(input?.paramKey).toBe("requirementsFile");
   });
 
-  it("CONTRACT.outputs all have projectRelative: true", () => {
-    for (const entry of config.contract.outputs) {
-      if ("file" in entry) {
-        expect((entry as any).projectRelative).toBe(true);
-      }
-    }
+  it("contract outputs declares quality-gate-report with QUALITY_GATE.md", () => {
+    const output = Array.isArray(CONTRACT.outputs)
+      ? CONTRACT.outputs.find((o: any) => o.name === "quality-gate-report")
+      : undefined;
+    expect(output).toBeDefined();
+    expect((output as any)?.file).toBe("QUALITY_GATE.md");
   });
 
-  it("CONTRACT.outputs have requiredWhen returning false (optional outputs)", () => {
-    for (const entry of config.contract.outputs) {
-      if ("requiredWhen" in entry && entry.requiredWhen) {
-        expect(entry.requiredWhen()).toBe(false);
-      }
-    }
+  it("contract outputs have schema defined", () => {
+    const output = Array.isArray(CONTRACT.outputs)
+      ? CONTRACT.outputs.find((o: any) => o.name === "quality-gate-report")
+      : undefined;
+    expect((output as any)?.schema).toBeDefined();
   });
 
-  it("validation is undefined (no file validation)", () => {
-    expect((config as any).validation).toBeUndefined();
+  it("skills mandatory includes pio-git and ask-user", () => {
+    expect(config.skills?.mandatory).toContain("pio-git");
+    expect(config.skills?.mandatory).toContain("ask-user");
   });
 });
 
@@ -109,7 +74,7 @@ describe("config", () => {
 // ---------------------------------------------------------------------------
 
 describe("register", () => {
-  it("registers a tool named pio_finalize_goal", () => {
+  it("registers a tool named pio_quality_gate", () => {
     const registeredTools: Array<{ name: string }> = [];
 
     const mockPi = {
@@ -121,11 +86,11 @@ describe("register", () => {
 
     register(mockPi as any);
 
-    const tool = registeredTools.find((t) => t.name === "pio_finalize_goal");
+    const tool = registeredTools.find((t) => t.name === "pio_quality_gate");
     expect(tool).toBeDefined();
   });
 
-  it("registers a command named pio-finalize-goal", () => {
+  it("registers a command named pio-quality-gate", () => {
     const registeredCommands: Array<{
       name: string;
       options: { description: string };
@@ -143,12 +108,12 @@ describe("register", () => {
     register(mockPi as any);
 
     const command = registeredCommands.find(
-      (c) => c.name === "pio-finalize-goal",
+      (c) => c.name === "pio-quality-gate",
     );
     expect(command).toBeDefined();
   });
 
-  it("command description references PROJECT documentation or finalization", () => {
+  it("command description references quality gate", () => {
     const registeredCommands: Array<{
       name: string;
       options: { description: string };
@@ -166,19 +131,19 @@ describe("register", () => {
     register(mockPi as any);
 
     const command = registeredCommands.find(
-      (c) => c.name === "pio-finalize-goal",
+      (c) => c.name === "pio-quality-gate",
     );
     expect(command).toBeDefined();
     const desc = command?.options.description.toLowerCase();
-    expect(desc).toMatch(/project|finalize|\.pio\/project/i);
+    expect(desc).toMatch(/quality.?gate/i);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Tool execute — pio_finalize_goal
+// Tool execute — pio_quality_gate
 // ---------------------------------------------------------------------------
 
-describe("finalizeGoalTool.execute", () => {
+describe("qualityGateTool.execute", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -187,10 +152,6 @@ describe("finalizeGoalTool.execute", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  /**
-   * Access the tool definition from the module.
-   * finalizeGoalTool is not exported, but we can access it via register's registration.
-   */
   function getTool() {
     const registeredTools: Array<any> = [];
     const mockPi = {
@@ -201,7 +162,6 @@ describe("finalizeGoalTool.execute", () => {
     return registeredTools[0];
   }
 
-  /** Minimal ExtensionContext mock — only cwd is needed for the tool execute flow. */
   function makeCtx(cwd: string) {
     return {
       cwd,
@@ -224,16 +184,11 @@ describe("finalizeGoalTool.execute", () => {
     };
   }
 
-  it("enqueues task with workspacePrefix and other params when goal is complete", async () => {
-    // Arrange: create completed goal with quality gate passed
-    createGoalTree(tempDir, "my-goal", {
-      withPlan: true,
-      withQualityGate: true,
-    });
+  it("enqueues task with workspacePrefix and other params", async () => {
+    createWorkspace(tempDir, "my-goal", "COMPLETION_SUMMARY.md");
 
     const tool = getTool();
 
-    // Act: call execute
     const result = await tool.execute(
       "test-call-id",
       { workspacePrefix: "goals/my-goal", initialMessage: "test message" },
@@ -242,27 +197,22 @@ describe("finalizeGoalTool.execute", () => {
       makeCtx(tempDir),
     );
 
-    // Assert: result is success message
     const text = result.content[0].text;
     expect(text).toContain("queued");
 
-    // Assert: task was enqueued with correct params
     const task = readPendingTask(tempDir, "my-goal");
     expect(task).toBeDefined();
-    expect(task?.capability).toBe("finalize-goal");
+    expect(task?.capability).toBe("quality-gate");
     expect(task?.params).toHaveProperty("workspacePrefix", "goals/my-goal");
-    expect(task?.params).toHaveProperty("sessionName", "my-goal finalize-goal");
+    expect(task?.params).toHaveProperty("sessionName", "my-goal quality-gate");
     expect(task?.params).toHaveProperty("queueKey", "my-goal");
     expect(task?.params).toHaveProperty("initialMessage");
     expect(task?.params?.initialMessage).toBe("test message");
-    expect(task?.params).not.toHaveProperty("goalDir");
   });
 
-  it("enqueues task when workspace does not exist (validation deferred to launch)", async () => {
-    // Arrange: no goal created
+  it("enqueues task when workspace does not exist", async () => {
     const tool = getTool();
 
-    // Act
     const result = await tool.execute(
       "test-call-id",
       { workspacePrefix: "goals/nonexistent" },
@@ -271,50 +221,20 @@ describe("finalizeGoalTool.execute", () => {
       makeCtx(tempDir),
     );
 
-    // Assert: task was enqueued (pre-validation removed, launch validates)
     const text = result.content[0].text;
     expect(text).toContain("queued");
 
-    // Assert: task was enqueued
     const task = readPendingTask(tempDir, "nonexistent");
     expect(task).toBeDefined();
-    expect(task?.capability).toBe("finalize-goal");
-  });
-
-  it("enqueues task when goal is not complete (validation deferred to launch)", async () => {
-    // Arrange: create goal with PLAN.md but without QUALITY_GATE.md
-    createGoalTree(tempDir, "incomplete", {
-      withPlan: true,
-      withQualityGate: false,
-    });
-
-    const tool = getTool();
-
-    // Act
-    const result = await tool.execute(
-      "test-call-id",
-      { workspacePrefix: "goals/incomplete" },
-      undefined,
-      undefined,
-      makeCtx(tempDir),
-    );
-
-    // Assert: task was enqueued (pre-validation removed, launch validates)
-    const text = result.content[0].text;
-    expect(text).toContain("queued");
-
-    // Assert: task was enqueued
-    const task = readPendingTask(tempDir, "incomplete");
-    expect(task).toBeDefined();
-    expect(task?.capability).toBe("finalize-goal");
+    expect(task?.capability).toBe("quality-gate");
   });
 });
 
 // ---------------------------------------------------------------------------
-// Command handler — /pio-finalize-goal
+// Command handler — /pio-quality-gate
 // ---------------------------------------------------------------------------
 
-describe("handleFinalizeGoal", () => {
+describe("handleQualityGate", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -323,7 +243,6 @@ describe("handleFinalizeGoal", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  /** Capture the command handler from register registration. */
   function getHandler() {
     let capturedHandler: Function | undefined;
     const mockPi = {
@@ -338,7 +257,6 @@ describe("handleFinalizeGoal", () => {
     return capturedHandler!;
   }
 
-  /** Minimal ExtensionCommandContext mock. */
   function makeCtx(cwd: string) {
     const notifyMock = vi.fn();
     return {
@@ -367,14 +285,11 @@ describe("handleFinalizeGoal", () => {
   }
 
   it("shows usage message when no arguments provided", async () => {
-    // Arrange
     const handler = getHandler();
     const ctx = makeCtx(tempDir);
 
-    // Act
     await handler(undefined, ctx);
 
-    // Assert
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringMatching(/usage|Usage/i),
       "warning",
@@ -382,70 +297,25 @@ describe("handleFinalizeGoal", () => {
   });
 
   it("shows usage message when empty arguments provided", async () => {
-    // Arrange
     const handler = getHandler();
     const ctx = makeCtx(tempDir);
 
-    // Act
     await handler("   ", ctx);
 
-    // Assert
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringMatching(/usage|Usage/i),
       "warning",
     );
   });
 
-  it("launches session when workspace exists", async () => {
-    // Arrange: create completed goal with quality gate passed
-    createGoalTree(tempDir, "completed-goal", {
-      withPlan: true,
-      withQualityGate: true,
-    });
-
+  it("shows error when workspace does not exist", async () => {
     const handler = getHandler();
     const ctx = makeCtx(tempDir);
 
-    // Act
-    await handler("--workspace-prefix goals/completed-goal", ctx);
-
-    // Assert: newSession was called (launchCapability does this)
-    expect(ctx.newSession).toHaveBeenCalled();
-  });
-
-  it("shows error when workspace does not exist (validation at launch time)", async () => {
-    // Arrange
-    const handler = getHandler();
-    const ctx = makeCtx(tempDir);
-
-    // Act
     await handler("--workspace-prefix goals/nonexistent-goal", ctx);
 
-    // Assert: launchCapability validates inputs and throws on missing files;
-    // command handler catches and notifies
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringMatching(/missing|validation/i),
-      "error",
-    );
-  });
-
-  it("shows error when goal is not complete (validation at launch time)", async () => {
-    // Arrange: create goal with PLAN.md but without QUALITY_GATE.md
-    createGoalTree(tempDir, "incomplete", {
-      withPlan: true,
-      withQualityGate: false,
-    });
-
-    const handler = getHandler();
-    const ctx = makeCtx(tempDir);
-
-    // Act
-    await handler("--workspace-prefix goals/incomplete", ctx);
-
-    // Assert: launchCapability validates inputs and throws on missing files;
-    // command handler catches and notifies
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringMatching(/missing|QUALITY_GATE/i),
       "error",
     );
   });

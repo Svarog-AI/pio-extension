@@ -12,7 +12,6 @@ import { enqueueTask } from "../../queues";
 import type { CapabilityContract } from "../../types";
 import { PLAN_FRONTMATTER_SCHEMA } from "../create-plan/schemas";
 import {
-  cleanupRevisionRequest,
   prepareSession,
   resolveReviseReadOnlyFiles,
   resolveReviseWriteAllowlist,
@@ -26,7 +25,7 @@ export const CONTRACT: CapabilityContract = {
   inputs: [
     { name: "goal", file: "GOAL.md" },
     { name: "existing-plan", file: "PLAN.md" },
-    { name: "revise-plan-request", file: "REVISE_PLAN_NEEDED.md" },
+    { name: "revision-context", paramKey: "revisionContextFile" },
   ],
   outputs: [{ name: "plan", file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
 };
@@ -51,7 +50,6 @@ const capabilityConfig = {
   },
   defaultInitialMessage: () => "Ready.",
   prepareSession,
-  postExecute: cleanupRevisionRequest,
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;

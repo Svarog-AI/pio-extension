@@ -246,7 +246,7 @@ function evaluateMarkdownFileSpec(
 /** Get a human-readable label for an OutputEntry (name if available, otherwise file path). */
 function getEntryLabel(entry: OutputEntry): string {
   if (isMarkdownFileSpec(entry)) {
-    return entry.name || entry.file;
+    return entry.name || (entry.file ?? "");
   }
   if (isArrayOutput(entry)) {
     return entry.map(getEntryLabel).join(" + ");

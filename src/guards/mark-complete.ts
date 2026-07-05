@@ -293,11 +293,13 @@ export const markCompleteTool = defineTool({
         // Enriched params: same object passed to both enqueueTask and recordTransition
         // so transitions.json accurately reflects what was actually dispatched.
         // sessionName and initialMessage are required on TransitionResult — propagate unconditionally.
+        // previousCapability identifies the completing capability for downstream resolvers.
         const enrichedParams = {
           ...adjustedParams,
           stateMachineId: nextTask.stateMachineId,
           sessionName: nextTask.sessionName,
           initialMessage: nextTask.initialMessage,
+          previousCapability: capability,
         };
 
         // Queue key for scheduling: use adjustedParams.queueKey if set (e.g. subgoal → parent),
@@ -318,6 +320,27 @@ export const markCompleteTool = defineTool({
         notification = `\n\nNext task enqueued: ${nextTask.capability}. Use \`/pio-next-task\` to start the sub-session.`;
       } catch (err) {
         console.warn(`pio: failed to enqueue next task: ${err}`);
+      }
+
+      // Apply resolver-declared cleanup — delete input files consumed by this transition
+      if (Array.isArray(nextTask.cleanup) && nextTask.cleanup.length > 0) {
+        for (const specName of nextTask.cleanup) {
+          const resolved = capState.tryResolveInput(specName);
+          if (!resolved) {
+            console.warn(
+              `pio: cleanup — input '${specName}' not found in capability "${capability}" contract`,
+            );
+            continue;
+          }
+          try {
+            fs.rmSync(resolved.path, { force: true });
+            console.log(
+              `pio: cleaned up transition artifact: ${resolved.path}`,
+            );
+          } catch (err) {
+            console.warn(`pio: failed to clean up '${resolved.path}': ${err}`);
+          }
+        }
       }
     } else if (capability && results.length > 1) {
       const capabilities = results.map((r) => r.capability).join(", ");

@@ -10,59 +10,19 @@ import { launchCapability } from "../../capability-session";
 import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import { enqueueTask } from "../../queues";
 import type { CapabilityContract } from "../../types";
+import { QUALITY_GATE_SCHEMA } from "./schemas";
 
 // ---------------------------------------------------------------------------
-// Contract (single source of truth)
+// Contract (single source of truth — imported by callbacks)
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [
-    { name: "goal", file: "GOAL.md" },
-    { name: "plan", file: "PLAN.md" },
-    { name: "quality-gate", file: "QUALITY_GATE.md" },
-  ],
+  inputs: [{ name: "requirements", paramKey: "requirementsFile" }],
   outputs: [
     {
-      name: "overview",
-      file: "PROJECT/OVERVIEW.md",
-      projectRelative: true,
-      requiredWhen: () => false,
-    },
-    {
-      name: "development",
-      file: "PROJECT/DEVELOPMENT.md",
-      projectRelative: true,
-      requiredWhen: () => false,
-    },
-    {
-      name: "conventions",
-      file: "PROJECT/CONVENTIONS.md",
-      projectRelative: true,
-      requiredWhen: () => false,
-    },
-    {
-      name: "git",
-      file: "PROJECT/GIT.md",
-      projectRelative: true,
-      requiredWhen: () => false,
-    },
-    {
-      name: "architecture",
-      file: "PROJECT/ARCHITECTURE.md",
-      projectRelative: true,
-      requiredWhen: () => false,
-    },
-    {
-      name: "dependencies",
-      file: "PROJECT/DEPENDENCIES.md",
-      projectRelative: true,
-      requiredWhen: () => false,
-    },
-    {
-      name: "glossary",
-      file: "PROJECT/GLOSSARY.md",
-      projectRelative: true,
-      requiredWhen: () => false,
+      name: "quality-gate-report",
+      file: "QUALITY_GATE.md",
+      schema: QUALITY_GATE_SCHEMA,
     },
   ],
 };
@@ -72,10 +32,10 @@ export const CONTRACT: CapabilityContract = {
 // ---------------------------------------------------------------------------
 
 const capabilityConfig = {
-  capability: "finalize-goal",
+  capability: "quality-gate",
   contract: CONTRACT,
   skills: {
-    mandatory: ["pio-project-knowledge"],
+    mandatory: ["pio-git", "ask-user"],
   },
   defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
@@ -86,22 +46,22 @@ export default capabilityConfig;
 // Tool
 // ---------------------------------------------------------------------------
 
-const finalizeGoalTool = defineTool({
-  name: "pio_finalize_goal",
-  label: "Pio Finalize Goal",
+const qualityGateTool = defineTool({
+  name: "pio_quality_gate",
+  label: "Pio Quality Gate",
   description:
-    "Finalize a completed workspace by updating .pio/PROJECT/ documentation based on accumulated decisions. Use this tool directly — no bash commands or manual file creation needed. The user can run `/pio-next-task` to start the sub-session.",
+    "Perform a quality gate with manual E2E testing and code review checkpoints. Produces QUALITY_GATE.md with approved or rejected status. Use this tool directly — no bash commands or manual file creation needed. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet:
-    "Finalize a completed workspace and update project documentation.",
+    "Run quality gate (E2E testing + code review) before finalization.",
   parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
     const queueKey = deriveQueueKey(params.workspacePrefix);
     enqueueTask(ctx.cwd, queueKey, {
-      capability: "finalize-goal",
+      capability: "quality-gate",
       params: {
         workspacePrefix: params.workspacePrefix,
-        sessionName: params.sessionName ?? `${queueKey} finalize-goal`,
+        sessionName: params.sessionName ?? `${queueKey} quality-gate`,
         queueKey,
         initialMessage: params.initialMessage,
       },
@@ -111,7 +71,7 @@ const finalizeGoalTool = defineTool({
       content: [
         {
           type: "text",
-          text: `Task queued for workspace "${params.workspacePrefix}". Use \`/pio-next-task\` to start the sub-session.`,
+          text: `Quality gate task queued for workspace "${params.workspacePrefix}". Use \`/pio-next-task\` to start the sub-session.`,
         },
       ],
       details: {},
@@ -123,13 +83,13 @@ const finalizeGoalTool = defineTool({
 // Command
 // ---------------------------------------------------------------------------
 
-async function handleFinalizeGoal(
+async function handleQualityGate(
   args: string | undefined,
   ctx: ExtensionCommandContext,
 ) {
   if (!args?.trim()) {
     ctx.ui.notify(
-      "Usage: /pio-finalize-goal --workspace-prefix <prefix>",
+      "Usage: /pio-quality-gate --workspace-prefix <prefix>",
       "warning",
     );
     return;
@@ -144,7 +104,7 @@ async function handleFinalizeGoal(
   }
   if (!workspacePrefix) {
     ctx.ui.notify(
-      "--workspace-prefix is required. Usage: /pio-finalize-goal --workspace-prefix <prefix>",
+      "--workspace-prefix is required. Usage: /pio-quality-gate --workspace-prefix <prefix>",
       "error",
     );
     return;
@@ -154,15 +114,15 @@ async function handleFinalizeGoal(
   // All ctx-dependent work must happen before this line.
   const queueKey = deriveQueueKey(workspacePrefix);
   const config = await resolveCapabilityConfig(ctx.cwd, {
-    capability: "finalize-goal",
+    capability: "quality-gate",
     workspacePrefix,
-    sessionName: `${queueKey} finalize-goal`,
+    sessionName: `${queueKey} quality-gate`,
     queueKey,
     initialMessage:
-      "All plan steps are complete. Read QUALITY_GATE.md, then update .pio/PROJECT/ documentation with accumulated decisions.",
+      "Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.",
   });
   if (!config) {
-    ctx.ui.notify("Failed to resolve finalize-goal config.", "error");
+    ctx.ui.notify("Failed to resolve quality-gate config.", "error");
     return;
   }
 
@@ -182,10 +142,10 @@ async function handleFinalizeGoal(
 // ---------------------------------------------------------------------------
 
 export function register(pi: ExtensionAPI) {
-  pi.registerTool(finalizeGoalTool);
-  pi.registerCommand("pio-finalize-goal", {
+  pi.registerTool(qualityGateTool);
+  pi.registerCommand("pio-quality-gate", {
     description:
-      "Update .pio/PROJECT/ documentation based on completed workspace decisions",
-    handler: handleFinalizeGoal,
+      "Run quality gate with E2E testing and code review checkpoints",
+    handler: handleQualityGate,
   });
 }

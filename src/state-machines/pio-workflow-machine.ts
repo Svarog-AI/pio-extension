@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 
 import type { ExecutionSummaryOutputs } from "../capabilities/execute-task/schemas";
+import type { QualityGateOutputs } from "../capabilities/quality-gate/schemas";
 import type { ReviewOutputs } from "../capabilities/review-task/schemas";
 import { stepFolderName } from "../fs-utils";
 import type { ResolverResult, StateMachine } from "../state-machines";
@@ -153,6 +154,7 @@ function resolveEvolvePlanToRevisePlan(
       params: {
         workspacePrefix: prefix,
         queueKey: goalName,
+        revisionContextFile: "REVISE_PLAN_NEEDED.md",
         ...(stepNumber != null && { stepNumber }),
       },
     };
@@ -171,12 +173,12 @@ function resolveEvolvePlanToCreateGoal(
   return undefined;
 }
 
-/** evolve-plan → finalize-goal: fires when all plan steps are complete. */
-function resolveEvolvePlanToFinalizeGoal(
+/** evolve-plan → quality-gate: fires when all plan steps are complete. */
+function resolveEvolvePlanToQualityGate(
   ctx: { workspaceDir: string },
   params?: Record<string, unknown>,
 ): ResolverResult | undefined {
-  const goalName = requireGoalName("resolveEvolvePlanToFinalizeGoal", params);
+  const goalName = requireGoalName("resolveEvolvePlanToQualityGate", params);
 
   const prefix = workspacePrefix(goalName);
   // ctx.workspaceDir is already the resolved directory — no additional prefix needed
@@ -190,15 +192,81 @@ function resolveEvolvePlanToFinalizeGoal(
   }
 
   if (evolveState.output("completion-summary").exists()) {
+    const stepNumber = extractStepNumber(params);
     return {
-      capability: "finalize-goal",
-      initialMessage: `Finalize goal "${goalName}" — all plan steps are complete. Read COMPLETION_SUMMARY.md, then update .pio/PROJECT/ documentation with accumulated decisions.`,
-      sessionName: sessionName(goalName, "finalize-goal"),
-      params: { workspacePrefix: prefix, queueKey: goalName },
+      capability: "quality-gate",
+      initialMessage: `All plan steps for goal "${goalName}" are complete. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
+      sessionName: sessionName(goalName, "quality-gate"),
+      params: {
+        workspacePrefix: prefix,
+        queueKey: goalName,
+        requirementsFile: "COMPLETION_SUMMARY.md",
+        ...(stepNumber != null && { stepNumber }),
+      },
     };
   }
 
   return undefined;
+}
+
+/** quality-gate → finalize-goal: fires when QUALITY_GATE.md status is "approved". */
+function resolveQualityGateToFinalizeGoal(
+  ctx: { workspaceDir: string },
+  params?: Record<string, unknown>,
+): ResolverResult | undefined {
+  const goalName = requireGoalName("resolveQualityGateToFinalizeGoal", params);
+
+  const prefix = workspacePrefix(goalName);
+  // ctx.workspaceDir is already the resolved directory — no additional prefix needed
+  const gateState = getCapState("quality-gate", ctx.workspaceDir, {});
+  const gateData = gateState
+    .output<QualityGateOutputs>("quality-gate-report")
+    .read();
+
+  if (gateData?.status !== "approved") {
+    return undefined;
+  }
+
+  return {
+    capability: "finalize-goal",
+    initialMessage: `Quality gate approved for goal "${goalName}". Update .pio/PROJECT/ documentation with accumulated decisions.`,
+    sessionName: sessionName(goalName, "finalize-goal"),
+    params: { workspacePrefix: prefix, queueKey: goalName },
+    cleanup: ["requirements"],
+  };
+}
+
+/** quality-gate → revise-plan: fires when QUALITY_GATE.md status is "rejected". */
+function resolveQualityGateToRevisePlan(
+  ctx: { workspaceDir: string },
+  params?: Record<string, unknown>,
+): ResolverResult | undefined {
+  const goalName = requireGoalName("resolveQualityGateToRevisePlan", params);
+
+  const prefix = workspacePrefix(goalName);
+  // ctx.workspaceDir is already the resolved directory — no additional prefix needed
+  const gateState = getCapState("quality-gate", ctx.workspaceDir, {});
+  const gateData = gateState
+    .output<QualityGateOutputs>("quality-gate-report")
+    .read();
+
+  if (gateData?.status !== "rejected") {
+    return undefined;
+  }
+
+  const stepNumber = extractStepNumber(params);
+  return {
+    capability: "revise-plan",
+    initialMessage: `Quality gate rejected for goal "${goalName}". Read QUALITY_GATE.md for rejection reasons, check PLAN_ARCHIVE/ for previous plans, and read GOAL.md for scope boundaries. Write a fresh PLAN.md.`,
+    sessionName: sessionName(goalName, "revise-plan"),
+    params: {
+      workspacePrefix: prefix,
+      queueKey: goalName,
+      revisionContextFile: "QUALITY_GATE.md",
+      ...(stepNumber != null && { stepNumber }),
+    },
+    cleanup: ["requirements"],
+  };
 }
 
 /** evolve-plan → execute-task: fallback — fires only when no higher-priority edge matched. */
@@ -212,7 +280,7 @@ function resolveEvolvePlanToExecuteTask(
   );
   const goalName = requireGoalName("resolveEvolvePlanToExecuteTask", params);
 
-  // Guard: if all plan steps are complete, finalize-goal edge should have fired.
+  // Guard: if all plan steps are complete, quality-gate edge should have fired.
   // ctx.workspaceDir is already the resolved directory — no additional prefix needed
   const evolveState = getCapState("evolve-plan", ctx.workspaceDir, {});
   if (evolveState.output("completion-summary").exists()) {
@@ -410,6 +478,7 @@ function resolveRevisePlanToEvolvePlan(
       workspacePrefix: prefix,
       queueKey: goalName,
     },
+    cleanup: ["revision-context"],
   };
 }
 
@@ -476,8 +545,8 @@ export const goalDrivenDevelopment: StateMachine<{ workspaceDir: string }> = {
     },
     {
       from: "evolve-plan",
-      to: "finalize-goal",
-      resolve: resolveEvolvePlanToFinalizeGoal,
+      to: "quality-gate",
+      resolve: resolveEvolvePlanToQualityGate,
     },
     {
       from: "evolve-plan",
@@ -513,6 +582,16 @@ export const goalDrivenDevelopment: StateMachine<{ workspaceDir: string }> = {
       from: "finalize-goal",
       to: "evolve-plan",
       resolve: resolveFinalizeGoalToEvolvePlan,
+    },
+    {
+      from: "quality-gate",
+      to: "finalize-goal",
+      resolve: resolveQualityGateToFinalizeGoal,
+    },
+    {
+      from: "quality-gate",
+      to: "revise-plan",
+      resolve: resolveQualityGateToRevisePlan,
     },
   ],
 };

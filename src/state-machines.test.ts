@@ -289,6 +289,47 @@ describe("dispatch — single machine", () => {
     // dispatch() auto-injects the correct machine ID, overriding the resolver value
     expect(results[0].stateMachineId).toBe("inject-test");
   });
+
+  it("propagates cleanup field from resolver result through dispatch", () => {
+    const machine = makeMachine("test", [
+      {
+        from: "a",
+        to: "b",
+        resolve: () => ({
+          capability: "b",
+          initialMessage: "msg",
+          sessionName: "s",
+          stateMachineId: "test",
+          cleanup: ["requirements", "completion-summary"],
+        }),
+      },
+    ]);
+
+    const results = dispatch(machine, "a", { mode: "x" });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].cleanup).toEqual(["requirements", "completion-summary"]);
+  });
+
+  it("omits cleanup field when resolver does not return it", () => {
+    const machine = makeMachine("test", [
+      {
+        from: "a",
+        to: "b",
+        resolve: () => ({
+          capability: "b",
+          initialMessage: "msg",
+          sessionName: "s",
+          stateMachineId: "test",
+        }),
+      },
+    ]);
+
+    const results = dispatch(machine, "a", { mode: "x" });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].cleanup).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

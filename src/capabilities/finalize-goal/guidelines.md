@@ -1,4 +1,4 @@
-- **File modifications target `.pio/PROJECT/` only.** The allowed write targets are: `.pio/PROJECT/OVERVIEW.md`, `.pio/PROJECT/DEVELOPMENT.md`, `.pio/PROJECT/CONVENTIONS.md`, `.pio/PROJECT/GIT.md`, `.pio/PROJECT/ARCHITECTURE.md`, `.pio/PROJECT/DEPENDENCIES.md`, `.pio/PROJECT/GLOSSARY.md`. Workflow actions — including git operations (commits, branch checkout, PR creation) — are permitted and do not count as file modifications.
+- **File modifications target `.pio/PROJECT/` only.** The allowed write targets are: `.pio/PROJECT/OVERVIEW.md`, `.pio/PROJECT/DEVELOPMENT.md`, `.pio/PROJECT/CONVENTIONS.md`, `.pio/PROJECT/GIT.md`, `.pio/PROJECT/ARCHITECTURE.md`, `.pio/PROJECT/DEPENDENCIES.md`, `.pio/PROJECT/GLOSSARY.md`.
 - **Preserve existing content.** Never overwrite or delete existing sections. Insert updates at appropriate positions.
 - **Be concise.** Each update should be a few lines at most — dense and actionable, not narrative.
 - **Reference the skill, don't duplicate it.** Use the `pio-project-knowledge` skill for update rules and section structure. Do not re-encode this knowledge inline.

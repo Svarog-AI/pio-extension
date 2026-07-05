@@ -126,10 +126,21 @@ When \`status: blocked\`, the SUMMARY.md body must include a structured section 
 After the frontmatter closing \`---\`, write the human-readable markdown body. For successful steps, include: Status, Files Created, Files Modified, Files Deleted, Decisions Made, User-Requested Changes, and Test Coverage sections. For blocked steps, include the structured blocker documentation described above.
 
 Then follow these steps:
-1. **Commit changes using the \`pio-git\` skill** — load the \`pio-git\` skill and commit the changes. If git fails, log a warning and proceed — never block workflow completion.
-2. **Call \`pio_mark_complete\`** to validate outputs and signal completion.`,
+1. **Commit changes using the \`pio-git\` skill** — load the \`pio-git\` skill and commit the changes. If git fails, log a warning and proceed — never block workflow completion.`,
     skills: {
       mandatory: ["pio-git"],
     },
+  },
+  {
+    id: "push-to-remote",
+    title: "Push commits to remote",
+    instructions: `Push the committed changes to the remote repository using the **Push Protocol** from the \`pio-git\` skill. Load the \`pio-git\` skill and follow the Push Protocol section: verify the git repository, check for unpushed commits, and push if needed.
+
+**Graceful failure is expected in some environments:** not all goals have remotes configured, and network issues may occur. If push fails (no remote, no authentication, network error), log a warning and proceed — never block workflow completion. This matches the existing behavior for the commit step.`,
+  },
+  {
+    id: "signal-completion",
+    title: "Signal completion",
+    instructions: `After producing the summary, committing changes, and pushing to remote, call \`pio_mark_complete\` to validate that all expected outputs have been produced and signal completion.`,
   },
 ] satisfies WorkflowStep[];

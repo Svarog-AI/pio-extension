@@ -42,7 +42,7 @@ These folders will be cleaned up automatically after the session completes.`,
 1. Read \`.pio/PROJECT/OVERVIEW.md\` if it exists — this is the project's entry point.
 2. Read implementation files from completed steps — check \`S{NN}/SUMMARY.md\` for what was built, and read the actual source files to understand current state.
 3. Understand what decisions were made during completed steps — check \`S{NN}/DECISIONS.md\` if it exists.
-4. **Check the workspace root for revision context:** Read \`REVISE_PLAN_NEEDED.md\` at the workspace root (next to \`PLAN.md\`) to understand why revision was triggered (the file contains a description of the revision reason). Read the trigger step's \`TASK.md\` and \`DECISIONS.md\` from incomplete step folders for context on what decisions led to the revision request.
+4. **Check the workspace root for revision context:** The filename of the revision context document is provided in your session parameters. Read this file to understand why revision was triggered. Read the trigger step's \`TASK.md\` and \`DECISIONS.md\` from incomplete step folders for context on what decisions led to the revision request.
 5. Identify any new context that wasn't known when the original plan was written.
 
 This research ensures your new steps are grounded in the actual state of the codebase, not just the archived plan.`,

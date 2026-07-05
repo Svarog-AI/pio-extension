@@ -1255,7 +1255,9 @@ describe("CONTRACT integration — revise-plan", () => {
       "content",
       "utf-8",
     );
-    const capState = makeCapState(CONTRACT, tempDir);
+    const capState = makeCapState(CONTRACT, tempDir, {
+      revisionContextFile: "REVISE_PLAN_NEEDED.md",
+    });
     const result = validateInputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -1292,8 +1294,8 @@ describe("CONTRACT integration — finalize-goal", () => {
     fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
     fs.writeFileSync(path.join(tempDir, "PLAN.md"), "content", "utf-8");
     fs.writeFileSync(
-      path.join(tempDir, "COMPLETION_SUMMARY.md"),
-      "---\nstatus: complete\n---\n# Complete",
+      path.join(tempDir, "QUALITY_GATE.md"),
+      "---\nstatus: approved\n---\n# Quality Gate",
       "utf-8",
     );
     const capState = makeCapState(CONTRACT, tempDir);

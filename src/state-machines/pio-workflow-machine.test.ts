@@ -1587,6 +1587,9 @@ describe("dispatch — quality-gate → finalize-goal", () => {
     expect(results[0].capability).toBe("finalize-goal");
     expect(results[0].params?.workspacePrefix).toBe("goals/feat");
     expect(results[0].params?.queueKey).toBe("feat");
+    expect(results[0].params?.goalFile).toBe("GOAL.md");
+    expect(results[0].params?.planFile).toBe("PLAN.md");
+    expect(results[0].params?.qualityGateFile).toBe("QUALITY_GATE.md");
     expect(results[0].cleanup).toEqual(["requirements"]);
   });
 
@@ -1655,6 +1658,8 @@ describe("dispatch — quality-gate → revise-plan", () => {
     expect(results[0].capability).toBe("revise-plan");
     expect(results[0].params?.workspacePrefix).toBe("goals/feat");
     expect(results[0].params?.queueKey).toBe("feat");
+    expect(results[0].params?.goalFile).toBe("GOAL.md");
+    expect(results[0].params?.planFile).toBe("PLAN.md");
     expect(results[0].params?.revisionContextFile).toBe("QUALITY_GATE.md");
     expect(results[0].cleanup).toEqual(["requirements"]);
   });

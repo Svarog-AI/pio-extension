@@ -267,22 +267,4 @@ describe("capability registration", () => {
     );
     expect(revisePlanToolCall).toBeDefined();
   });
-
-  it("auto-discovery registers pio-revise-plan command", async () => {
-    // Arrange
-    const mod = await import("./index");
-    const extensionFactory = mod.default;
-
-    const { mockPi } = makeMockPi();
-
-    // Act: register the extension
-    await extensionFactory(mockPi as any);
-
-    // Assert: pio-revise-plan command was registered (command names don't include leading /)
-    const commandCalls = mockPi.registerCommand.mock.calls;
-    const revisePlanCommandCall = commandCalls.find(
-      (call: any[]) => call[0] === "pio-revise-plan",
-    );
-    expect(revisePlanCommandCall).toBeDefined();
-  });
 });

@@ -89,54 +89,6 @@ describe("register", () => {
     const tool = registeredTools.find((t) => t.name === "pio_quality_gate");
     expect(tool).toBeDefined();
   });
-
-  it("registers a command named pio-quality-gate", () => {
-    const registeredCommands: Array<{
-      name: string;
-      options: { description: string };
-    }> = [];
-
-    const mockPi = {
-      registerTool: vi.fn(),
-      registerCommand: vi.fn(
-        (name: string, options: { description: string; handler: Function }) => {
-          registeredCommands.push({ name, options });
-        },
-      ),
-    };
-
-    register(mockPi as any);
-
-    const command = registeredCommands.find(
-      (c) => c.name === "pio-quality-gate",
-    );
-    expect(command).toBeDefined();
-  });
-
-  it("command description references quality gate", () => {
-    const registeredCommands: Array<{
-      name: string;
-      options: { description: string };
-    }> = [];
-
-    const mockPi = {
-      registerTool: vi.fn(),
-      registerCommand: vi.fn(
-        (name: string, options: { description: string; handler: Function }) => {
-          registeredCommands.push({ name, options });
-        },
-      ),
-    };
-
-    register(mockPi as any);
-
-    const command = registeredCommands.find(
-      (c) => c.name === "pio-quality-gate",
-    );
-    expect(command).toBeDefined();
-    const desc = command?.options.description.toLowerCase();
-    expect(desc).toMatch(/quality.?gate/i);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -231,10 +183,10 @@ describe("qualityGateTool.execute", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Command handler — /pio-quality-gate
+// Tool execute — requirementsFile forwarding
 // ---------------------------------------------------------------------------
 
-describe("handleQualityGate", () => {
+describe("qualityGateTool.execute — requirementsFile forwarding", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -243,27 +195,25 @@ describe("handleQualityGate", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  function getHandler() {
-    let capturedHandler: Function | undefined;
+  function getTool() {
+    const registeredTools: Array<any> = [];
     const mockPi = {
-      registerTool: vi.fn(),
-      registerCommand: vi.fn(
-        (_name: string, options: { handler: Function }) => {
-          capturedHandler = options.handler;
-        },
-      ),
+      registerTool: vi.fn((tool: any) => registeredTools.push(tool)),
+      registerCommand: vi.fn(),
     };
     register(mockPi as any);
-    return capturedHandler!;
+    return registeredTools[0];
   }
 
   function makeCtx(cwd: string) {
-    const notifyMock = vi.fn();
     return {
       cwd,
-      ui: { notify: notifyMock },
+      ui: { notify: vi.fn() },
       hasUI: false,
-      sessionManager: { getSessionFile: vi.fn(() => "") },
+      sessionManager: {
+        getSessionFile: vi.fn(() => ""),
+        getEntries: vi.fn(() => []),
+      },
       modelRegistry: {},
       model: undefined,
       isIdle: vi.fn(() => true),
@@ -274,49 +224,43 @@ describe("handleQualityGate", () => {
       getContextUsage: vi.fn(),
       compact: vi.fn(),
       getSystemPrompt: vi.fn(() => ""),
-      waitForIdle: vi.fn().mockResolvedValue(undefined),
-      newSession: vi.fn().mockResolvedValue({ cancelled: false }),
-      fork: vi.fn().mockResolvedValue({ cancelled: false }),
-      navigateTree: vi.fn().mockResolvedValue({ cancelled: false }),
-      switchSession: vi.fn().mockResolvedValue({ cancelled: false }),
-      reload: vi.fn().mockResolvedValue(undefined),
-      _notify: notifyMock,
     };
   }
 
-  it("shows usage message when no arguments provided", async () => {
-    const handler = getHandler();
-    const ctx = makeCtx(tempDir);
+  it("forwards requirementsFile to enqueued task params when provided", async () => {
+    createWorkspace(tempDir, "my-goal", "COMPLETION_SUMMARY.md");
 
-    await handler(undefined, ctx);
+    const tool = getTool();
 
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringMatching(/usage|Usage/i),
-      "warning",
+    await tool.execute(
+      "test-call-id",
+      {
+        workspacePrefix: "goals/my-goal",
+        requirementsFile: "CUSTOM_REQUIREMENTS.md",
+      },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
     );
+
+    const task = readPendingTask(tempDir, "my-goal");
+    expect(task?.params?.requirementsFile).toBe("CUSTOM_REQUIREMENTS.md");
   });
 
-  it("shows usage message when empty arguments provided", async () => {
-    const handler = getHandler();
-    const ctx = makeCtx(tempDir);
+  it("omits requirementsFile from enqueued task params when not provided", async () => {
+    createWorkspace(tempDir, "my-goal", "COMPLETION_SUMMARY.md");
 
-    await handler("   ", ctx);
+    const tool = getTool();
 
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringMatching(/usage|Usage/i),
-      "warning",
+    await tool.execute(
+      "test-call-id",
+      { workspacePrefix: "goals/my-goal" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
     );
-  });
 
-  it("shows error when workspace does not exist", async () => {
-    const handler = getHandler();
-    const ctx = makeCtx(tempDir);
-
-    await handler("--workspace-prefix goals/nonexistent-goal", ctx);
-
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringMatching(/missing|validation/i),
-      "error",
-    );
+    const task = readPendingTask(tempDir, "my-goal");
+    expect(task?.params?.requirementsFile).toBeUndefined();
   });
 });

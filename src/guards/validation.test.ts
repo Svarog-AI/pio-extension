@@ -1020,6 +1020,63 @@ skills: not-an-array
 });
 
 // ---------------------------------------------------------------------------
+// validateInputs — error message formatting
+// ---------------------------------------------------------------------------
+
+describe("validateInputs — error message formatting", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("missing paramKey produces user-friendly error message", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "goal", paramKey: "goalFile" }],
+      outputs: [],
+    };
+
+    // goalFile is not provided in params — resolveContractPath throws
+    const capState = makeCapState(contract, tempDir, {});
+    const result = validateInputs(capState);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("Input validation failed");
+    expect(result.message).toContain("goalFile");
+    expect(result.message).not.toContain("Cannot resolve path");
+    expect(result.message).not.toContain("'file' is undefined");
+  });
+
+  it("missing paramKey error mentions tool parameter hint", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "plan", paramKey: "planFile" }],
+      outputs: [],
+    };
+
+    const capState = makeCapState(contract, tempDir, {});
+    const result = validateInputs(capState);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("planFile");
+    expect(result.message).toContain("tool parameter");
+  });
+
+  it("non-resolve-path errors pass through unchanged", () => {
+    const contract: CapabilityContract = {
+      inputs: [{ name: "goal", file: "GOAL.md" }],
+      outputs: [],
+    };
+
+    // GOAL.md exists — no error from resolveContractPath
+    // This test verifies non-resolve-path errors are not reformatted
+    fs.writeFileSync(path.join(tempDir, "GOAL.md"), "content", "utf-8");
+    const capState = makeCapState(contract, tempDir);
+    const result = validateInputs(capState);
+    expect(result).toEqual({ success: true });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // CONTRACT integration tests — real capability contracts through validateInputs()
 // These exercise each real CONTRACT to catch typos in file paths, wrong placeholder
 // syntax, or missing entries. Each capability gets one "all present → pass" and

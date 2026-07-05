@@ -217,6 +217,57 @@ describe("executeTaskTool.execute", () => {
     expect(task?.params).toHaveProperty("initialMessage");
     expect(task?.params?.initialMessage).toBe("test message");
   });
+
+  it("forwards taskFile to enqueued task params when provided", async () => {
+    const { goalDir, stepDir } = createGoalTree(tempDir, "my-feature", {
+      stepNumber: 1,
+    });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
+    fs.writeFileSync(
+      path.join(stepDir, "TASK.md"),
+      "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task",
+      "utf-8",
+    );
+
+    const tool = getTool();
+    await tool.execute(
+      "test-id",
+      {
+        workspacePrefix: "goals/my-feature/S01",
+        taskFile: "TASK.md",
+      },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "S01");
+    expect(task?.params?.taskFile).toBe("TASK.md");
+  });
+
+  it("omits taskFile from enqueued task params when not provided", async () => {
+    const { goalDir, stepDir } = createGoalTree(tempDir, "my-feature", {
+      stepNumber: 1,
+    });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
+    fs.writeFileSync(
+      path.join(stepDir, "TASK.md"),
+      "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task",
+      "utf-8",
+    );
+
+    const tool = getTool();
+    await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/my-feature/S01" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "S01");
+    expect(task?.params?.taskFile).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

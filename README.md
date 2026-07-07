@@ -2,20 +2,29 @@
 
 A [pi](https://github.com/earendil-works/pi-coding-agent) extension that provides a goal-driven project management workflow using sub-sessions, validation gates, and prompt templates.
 
-## Capabilities
+## Tools
 
-| Command | Tool | Description |
-|---------|------|-------------|
-| `/pio-init` | `pio_init` | Initialize a new pio project (`.pio/`) |
-| `/pio-create-goal <name>` | `pio_create_goal` | Create a goal workspace and launch a definition session |
-| `/pio-delete-goal <name>` | — (command only) | Delete a goal workspace |
-| `/pio-create-plan <name>` | `pio_create_plan` | Generate `PLAN.md` for an existing goal |
-| `/pio-evolve-plan <name>` | `pio_evolve_plan` | Generate `TASK.md` + `TEST.md` for the next plan step |
-| `/pio-next-task` | — | Process the next queued task from `.pio/session-queue/` |
-| `/pio-project-context` | `pio_create_project_context` | Analyze project files and generate `.pio/PROJECT.md` |
-| `/pio-parent` | — | Switch back to the parent session |
+| Tool | Description |
+|------|-------------|
+| `pio_init` | Initialize a new pio project (`.pio/`) |
+| `pio_create_goal` | Create a goal workspace and queue a definition session |
+| `pio_delete_goal` | Delete a goal workspace |
+| `pio_create_plan` | Generate `PLAN.md` for an existing goal |
+| `pio_evolve_plan` | Generate `TASK.md` for the next plan step |
+| `pio_execute_task` | Execute a plan step with test-driven development |
+| `pio_review_task` | Review a completed plan step |
+| `pio_revise_plan` | Archive the current plan and queue a fresh planning session |
+| `pio_quality_gate` | Run quality gate with E2E testing and code review checkpoints |
+| `pio_finalize_goal` | Finalize a completed goal and update project documentation |
+| `pio_create_project_context` | Analyze project files and generate `.pio/PROJECT/` context files |
+| `pio_mark_complete` | Validate output files and signal session completion |
 
-Shared tool: `pio_mark_complete` (validates output files on completion)
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `/pio-next-task` | Process the next queued task from `.pio/session-queue/` |
+| `/pio-parent` | Switch back to the parent session |
 
 ## Workflow
 

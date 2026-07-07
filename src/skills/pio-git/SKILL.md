@@ -59,7 +59,7 @@ Create a pull request when a goal is finalized. Follow these steps in order:
 7. **Check for changes** — `git diff --shortstat <target>...<head>`. If empty: warn and skip.
 8. **Push branch to remote** — `git push -u origin <branch>`. On failure: warn and skip.
 9. **Construct PR title** — follow GIT.md Conventional Commits format. Pick type from observed types (`feat`, `fix`, `refactor`, etc.) based on goal name/summary. Fallback: short descriptive one-liner.
-10. **Construct PR body** — if GIT.md specifies a PR body template, follow it. Otherwise construct from: GOAL.md summary, PLAN.md step list, per-step SUMMARY.md files (files changed).
+10. **Construct PR body** — if GIT.md specifies a PR body template, follow it. Otherwise construct an outcome-focused description summarizing what the changes do from a user or product perspective. Use the commit messages as context for understanding what was changed (they follow GIT.md conventions per the Staged Commit Protocol). Focus on *what* and *why*, not *how* — avoid plan steps, step numbers, file lists, or internal implementation details. Keep it concise — one short paragraph is sufficient. **Note:** GOAL.md, PLAN.md, and per-step SUMMARY.md are internal pio framework documents — do not reference them in PR bodies. The PR should read like a normal project PR, not an internal pio status report.
 11. **Create the PR** — `gh pr create --title "<title>" --body "<body>" --base <target> --head <branch>`.
 
 **Edge cases:** See [REFERENCE.md](REFERENCE.md) — covers `gh` not installed, not authenticated, network failure, branch not pushed, no changes, existing PR, not a GitHub repo, re-finalize.

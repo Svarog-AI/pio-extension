@@ -1,12 +1,7 @@
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { launchCapability } from "../../capability-session";
 import { BASE_TOOL_PARAMS } from "../../capability-utils";
 import { enqueueTask } from "../../queues";
 
@@ -79,36 +74,9 @@ const projectContextTool = defineTool({
 });
 
 // ---------------------------------------------------------------------------
-// Command: /pio-project-context
-// ---------------------------------------------------------------------------
-
-async function handleProjectContext(
-  _args: string | undefined,
-  ctx: ExtensionCommandContext,
-) {
-  const config = await resolveCapabilityConfig(ctx.cwd, {
-    capability: "project-context",
-    sessionName: "project-context",
-    queueKey: "project-context",
-    initialMessage:
-      "Analyze the project and generate .pio/PROJECT/ context files.",
-  });
-  if (!config) {
-    ctx.ui.notify("Failed to resolve project-context config.", "error");
-    return;
-  }
-  await launchCapability(ctx, config);
-}
-
-// ---------------------------------------------------------------------------
-// Setup (registers command)
+// Setup (registers tool)
 // ---------------------------------------------------------------------------
 
 export function register(pi: ExtensionAPI) {
   pi.registerTool(projectContextTool);
-  pi.registerCommand("pio-project-context", {
-    description:
-      "Analyze project files and generate .pio/PROJECT/ context files for session context injection",
-    handler: handleProjectContext,
-  });
 }

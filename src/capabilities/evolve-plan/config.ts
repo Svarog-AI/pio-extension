@@ -1,15 +1,9 @@
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { launchCapability } from "../../capability-session";
 import type { CapState } from "../../capability-state";
 import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
-import { stepFolderName } from "../../fs-utils";
 import { enqueueTask } from "../../queues";
 import type { CapabilityContract } from "../../types";
 import { OneOfGroup } from "../../types";
@@ -34,7 +28,9 @@ function getTotalSteps(capState?: CapState): number | null {
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ name: "plan", file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
+  inputs: [
+    { name: "plan", paramKey: "planFile", schema: PLAN_FRONTMATTER_SCHEMA },
+  ],
   outputs: [
     // Group 1: during plan execution (steps ≤ n) — normal output OR revision request
     new OneOfGroup(
@@ -119,6 +115,7 @@ const evolvePlanTool = defineTool({
   promptSnippet: "Generate TASK.md for the next plan step.",
   parameters: Type.Object({
     ...BASE_TOOL_PARAMS,
+    planFile: Type.Optional(Type.String()),
     stepNumber: Type.Number({ description: "Step number to evolve" }),
   }),
 
@@ -133,6 +130,7 @@ const evolvePlanTool = defineTool({
         queueKey,
         stepNumber: params.stepNumber,
         initialMessage: params.initialMessage,
+        planFile: params.planFile,
       },
     });
 
@@ -149,82 +147,9 @@ const evolvePlanTool = defineTool({
 });
 
 // ---------------------------------------------------------------------------
-// Command
-// ---------------------------------------------------------------------------
-
-async function handleEvolvePlan(
-  args: string | undefined,
-  ctx: ExtensionCommandContext,
-) {
-  if (!args?.trim()) {
-    ctx.ui.notify(
-      "Usage: /pio-evolve-plan --workspace-prefix <prefix> --step-number <n>",
-      "warning",
-    );
-    return;
-  }
-
-  const tokens = args.trim().split(/\s+/);
-  let workspacePrefix: string | undefined;
-  let stepNumber: number | undefined;
-  for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i] === "--workspace-prefix" && tokens[i + 1]) {
-      workspacePrefix = tokens[++i];
-    } else if (tokens[i] === "--step-number" && tokens[i + 1]) {
-      stepNumber = parseInt(tokens[++i], 10);
-    }
-  }
-  if (!workspacePrefix) {
-    ctx.ui.notify(
-      "--workspace-prefix is required. Usage: /pio-evolve-plan --workspace-prefix <prefix> --step-number <n>",
-      "error",
-    );
-    return;
-  }
-  if (stepNumber === undefined || Number.isNaN(stepNumber)) {
-    ctx.ui.notify(
-      "--step-number is required. Usage: /pio-evolve-plan --workspace-prefix <prefix> --step-number <n>",
-      "error",
-    );
-    return;
-  }
-
-  // launchCapability calls ctx.newSession() — after this, ctx is stale.
-  // All ctx-dependent work must happen before this line.
-  const queueKey = deriveQueueKey(workspacePrefix);
-  const config = await resolveCapabilityConfig(ctx.cwd, {
-    capability: "evolve-plan",
-    workspacePrefix,
-    sessionName: `${queueKey} evolve-plan s${stepNumber}`,
-    queueKey,
-    stepNumber,
-    initialMessage: `Generate the specification for Step ${stepNumber}. Read PLAN.md — locate the step heading, review its description and acceptance criteria, then write TASK.md in ${stepFolderName(stepNumber)}/.`,
-  });
-  if (!config) {
-    ctx.ui.notify("Failed to resolve evolve-plan config.", "error");
-    return;
-  }
-
-  try {
-    await launchCapability(ctx, config);
-  } catch (err) {
-    ctx.ui.notify(
-      `Failed to start ${config.capability}: ${err instanceof Error ? err.message : String(err)}`,
-      "error",
-    );
-    return;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Setup (registers tool and command)
+// Setup (registers tool)
 // ---------------------------------------------------------------------------
 
 export function register(pi: ExtensionAPI) {
   pi.registerTool(evolvePlanTool);
-  pi.registerCommand("pio-evolve-plan", {
-    description:
-      "Generate a step specification for the next step in an existing plan",
-    handler: handleEvolvePlan,
-  });
 }

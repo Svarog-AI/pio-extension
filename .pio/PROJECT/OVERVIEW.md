@@ -82,5 +82,5 @@ pio-extension/
 ├── lefthook.yml               # lefthook pre-commit hook config (Biome on staged .ts/.json)
 ├── vitest.config.ts           # Vitest config: Node.js env, globals, src/**/*.test.ts
 ├── LICENSE                    # MIT (c) 2026 Svarog AI
-└── README.md                  # Project documentation with command reference
+└── README.md                  # Project documentation with tools and commands reference
 ```

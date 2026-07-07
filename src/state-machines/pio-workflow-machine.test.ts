@@ -201,7 +201,11 @@ describe("dispatch — create-goal → create-plan", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Create an implementation plan for goal "my-feature". Read GOAL.md to understand current state and target, then produce PLAN.md.`,
       sessionName: "my-feature create-plan",
-      params: { workspacePrefix: "goals/my-feature", queueKey: "my-feature" },
+      params: {
+        workspacePrefix: "goals/my-feature",
+        queueKey: "my-feature",
+        goalFile: "GOAL.md",
+      },
     });
   });
 
@@ -253,6 +257,7 @@ describe("dispatch — create-plan → evolve-plan", () => {
         stepNumber: 1,
         workspacePrefix: "goals/my-feature",
         queueKey: "my-feature",
+        planFile: "PLAN.md",
       },
     });
   });
@@ -305,6 +310,7 @@ describe("dispatch — evolve-plan → execute-task", () => {
         stepNumber: 3,
         workspacePrefix: "goals/feat/S03",
         queueKey: "feat",
+        taskFile: "TASK.md",
       },
     });
   });
@@ -340,6 +346,7 @@ describe("dispatch — evolve-plan → execute-task", () => {
         stepNumber: 2,
         workspacePrefix: "goals/feat/S02",
         queueKey: "feat",
+        taskFile: "TASK.md",
       },
     });
   });
@@ -386,6 +393,7 @@ describe("dispatch — review→evolve→quality-gate chain", () => {
         stepNumber: 4,
         workspacePrefix: "goals/feat",
         queueKey: "feat",
+        planFile: "PLAN.md",
       },
     });
 
@@ -405,7 +413,7 @@ describe("dispatch — review→evolve→quality-gate chain", () => {
     expect(evolveResults[0]).toEqual({
       capability: "quality-gate",
       stateMachineId: "goal-driven-development",
-      initialMessage: `All plan steps for goal "feat" are complete. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
+      initialMessage: `All plan steps for goal "feat" are complete. Goal description: read \`GOAL.md\` in your workspace for details on what was changed. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
       sessionName: "feat quality-gate",
       params: {
         workspacePrefix: "goals/feat",
@@ -447,7 +455,7 @@ describe("dispatch — evolve-plan completion detection", () => {
     expect(results[0]).toEqual({
       capability: "quality-gate",
       stateMachineId: "goal-driven-development",
-      initialMessage: `All plan steps for goal "feat" are complete. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
+      initialMessage: `All plan steps for goal "feat" are complete. Goal description: read \`GOAL.md\` in your workspace for details on what was changed. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
       sessionName: "feat quality-gate",
       params: {
         workspacePrefix: "goals/feat",
@@ -455,6 +463,20 @@ describe("dispatch — evolve-plan completion detection", () => {
         requirementsFile: "COMPLETION_SUMMARY.md",
       },
     });
+  });
+
+  it("initialMessage references GOAL.md for goal context", () => {
+    writeCompletionSummary(goalDir);
+
+    const results = dispatch(
+      goalDrivenDevelopment,
+      "evolve-plan",
+      ctx(tempDir, "feat"),
+      { queueKey: "feat" },
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].initialMessage).toContain("GOAL.md");
   });
 
   it("propagates queueKey and requirementsFile in quality-gate params", () => {
@@ -508,6 +530,7 @@ describe("dispatch — evolve-plan completion detection", () => {
         stepNumber: 2,
         workspacePrefix: "goals/feat/S02",
         queueKey: "feat",
+        taskFile: "TASK.md",
       },
     });
   });
@@ -549,6 +572,9 @@ describe("dispatch — execute-task → review-task", () => {
         stepNumber: 5,
         workspacePrefix: "goals/feat/S05",
         queueKey: "feat",
+        completedMarker: "COMPLETED",
+        summaryFile: "SUMMARY.md",
+        taskFile: "TASK.md",
       },
     });
   });
@@ -573,6 +599,7 @@ describe("dispatch — execute-task → review-task", () => {
         stepNumber: 5,
         workspacePrefix: "goals/feat",
         queueKey: "feat",
+        planFile: "PLAN.md",
       },
     });
   });
@@ -649,6 +676,7 @@ describe("dispatch — review-task approval", () => {
         stepNumber: 4,
         workspacePrefix: "goals/feat",
         queueKey: "feat",
+        planFile: "PLAN.md",
       },
     });
   });
@@ -723,6 +751,7 @@ describe("dispatch — review-task rejection", () => {
         stepNumber: 3,
         workspacePrefix: "goals/feat/S03",
         queueKey: "feat",
+        taskFile: "TASK.md",
       },
     });
   });
@@ -788,6 +817,7 @@ describe("dispatch — review-task blocked", () => {
         stepNumber: 3,
         workspacePrefix: "goals/feat",
         queueKey: "feat",
+        planFile: "PLAN.md",
       },
     });
   });
@@ -973,6 +1003,7 @@ describe("TransitionResult shape consistency", () => {
         stepNumber: 1,
         workspacePrefix: "goals/feat/S01",
         queueKey: "feat",
+        taskFile: "TASK.md",
       },
     });
   });
@@ -1042,6 +1073,8 @@ describe("dispatch — evolve-plan → revise-plan", () => {
       "REVISE_PLAN_NEEDED.md at the workspace root",
     );
     expect(results[0].params?.workspacePrefix).toBe("goals/feat");
+    expect(results[0].params?.goalFile).toBe("GOAL.md");
+    expect(results[0].params?.planFile).toBe("PLAN.md");
     expect(results[0].params?.revisionContextFile).toBe(
       "REVISE_PLAN_NEEDED.md",
     );
@@ -1179,6 +1212,7 @@ describe("dispatch — revise-plan → evolve-plan", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0].params?.queueKey).toBe("my-feature");
+    expect(results[0].params?.planFile).toBe("PLAN.md");
   });
 
   it("uses stepNumber from params (not filesystem discovery)", () => {
@@ -1277,7 +1311,11 @@ describe("recordTransition isolation", () => {
       stateMachineId: "goal-driven-development",
       initialMessage: `Create an implementation plan for goal "test". Read GOAL.md to understand current state and target, then produce PLAN.md.`,
       sessionName: "test create-plan",
-      params: { workspacePrefix: "goals/test", queueKey: "test" },
+      params: {
+        workspacePrefix: "goals/test",
+        queueKey: "test",
+        goalFile: "GOAL.md",
+      },
     });
   });
 });
@@ -1349,6 +1387,7 @@ describe("dispatch — finalize-goal completion propagation", () => {
     expect(results[0].params?.queueKey).toBe("parent");
     expect(results[0].params?.stepNumber).toBe(4);
     expect(results[0].params?.workspacePrefix).toBe("goals/parent");
+    expect(results[0].params?.planFile).toBe("PLAN.md");
   });
 
   it("uses parentGoalName as the queueKey in returned params", () => {
@@ -1483,6 +1522,7 @@ describe("dispatch — subgoal lifecycle", () => {
     expect(results[0].params?.parentGoalName).toBeUndefined();
     expect(results[0].params?.subgoalType).toBeUndefined();
     expect(results[0].params?.workspacePrefix).toBe("goals/parent");
+    expect(results[0].params?.planFile).toBe("PLAN.md");
   });
 });
 
@@ -1525,6 +1565,7 @@ describe("dispatch — backward compatibility", () => {
     expect(results[0].capability).toBe("execute-task");
     expect(results[0].params?.stepNumber).toBe(3);
     expect(results[0].params?.workspacePrefix).toBe("goals/feat/S03");
+    expect(results[0].params?.taskFile).toBe("TASK.md");
   });
 });
 
@@ -1566,6 +1607,9 @@ describe("dispatch — quality-gate → finalize-goal", () => {
     expect(results[0].capability).toBe("finalize-goal");
     expect(results[0].params?.workspacePrefix).toBe("goals/feat");
     expect(results[0].params?.queueKey).toBe("feat");
+    expect(results[0].params?.goalFile).toBe("GOAL.md");
+    expect(results[0].params?.planFile).toBe("PLAN.md");
+    expect(results[0].params?.qualityGateFile).toBe("QUALITY_GATE.md");
     expect(results[0].cleanup).toEqual(["requirements"]);
   });
 
@@ -1634,6 +1678,8 @@ describe("dispatch — quality-gate → revise-plan", () => {
     expect(results[0].capability).toBe("revise-plan");
     expect(results[0].params?.workspacePrefix).toBe("goals/feat");
     expect(results[0].params?.queueKey).toBe("feat");
+    expect(results[0].params?.goalFile).toBe("GOAL.md");
+    expect(results[0].params?.planFile).toBe("PLAN.md");
     expect(results[0].params?.revisionContextFile).toBe("QUALITY_GATE.md");
     expect(results[0].cleanup).toEqual(["requirements"]);
   });

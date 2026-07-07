@@ -619,6 +619,46 @@ describe("evolvePlanTool.execute", () => {
     expect(task?.params).toHaveProperty("initialMessage");
     expect(task?.params?.initialMessage).toBe("test message");
   });
+
+  it("forwards planFile to enqueued task params when provided", async () => {
+    // Arrange: goal dir with PLAN.md
+    createGoalTreeWithFrontmatter(tempDir, "plan-file-test", 3);
+
+    const tool = getTool();
+    await tool.execute(
+      "test-id",
+      {
+        workspacePrefix: "goals/plan-file-test",
+        stepNumber: 1,
+        planFile: "PLAN.md",
+      },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    // Assert: task params include planFile
+    const task = readPendingTask(tempDir, "plan-file-test");
+    expect(task?.params?.planFile).toBe("PLAN.md");
+  });
+
+  it("omits planFile from enqueued task params when not provided", async () => {
+    // Arrange: goal dir with PLAN.md
+    createGoalTreeWithFrontmatter(tempDir, "no-plan-file", 3);
+
+    const tool = getTool();
+    await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/no-plan-file", stepNumber: 1 },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    // Assert: task params do not include planFile (or it is undefined)
+    const task = readPendingTask(tempDir, "no-plan-file");
+    expect(task?.params?.planFile).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -825,7 +865,10 @@ describe("validateOutputs — COMPLETION_SUMMARY.md and REVISE_PLAN_NEEDED.md vi
     );
 
     // stepNumber: 3 > totalSteps: 2 → OneOfGroup is required, COMPLETION_SUMMARY.md satisfies it
-    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 3 });
+    const capState = new CapState(CONTRACT, tempDir, {
+      stepNumber: 3,
+      planFile: "PLAN.md",
+    });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -847,7 +890,10 @@ describe("validateOutputs — COMPLETION_SUMMARY.md and REVISE_PLAN_NEEDED.md vi
     );
 
     // stepNumber: 3 > totalSteps: 2 → OneOfGroup is required, REVISE_PLAN_NEEDED.md satisfies it
-    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 3 });
+    const capState = new CapState(CONTRACT, tempDir, {
+      stepNumber: 3,
+      planFile: "PLAN.md",
+    });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -862,7 +908,10 @@ describe("validateOutputs — COMPLETION_SUMMARY.md and REVISE_PLAN_NEEDED.md vi
     );
     // Neither COMPLETION_SUMMARY.md nor REVISE_PLAN_NEEDED.md exists
 
-    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 3 });
+    const capState = new CapState(CONTRACT, tempDir, {
+      stepNumber: 3,
+      planFile: "PLAN.md",
+    });
     const result = validateOutputs(capState);
     expect(result.success).toBe(false);
     // Error should mention the OneOfGroup option names
@@ -885,7 +934,10 @@ describe("validateOutputs — COMPLETION_SUMMARY.md and REVISE_PLAN_NEEDED.md vi
       "utf-8",
     );
 
-    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 1 });
+    const capState = new CapState(CONTRACT, tempDir, {
+      stepNumber: 1,
+      planFile: "PLAN.md",
+    });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -906,7 +958,10 @@ describe("validateOutputs — COMPLETION_SUMMARY.md and REVISE_PLAN_NEEDED.md vi
     );
     // No DECISIONS.md — should still pass for step 1
 
-    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 1 });
+    const capState = new CapState(CONTRACT, tempDir, {
+      stepNumber: 1,
+      planFile: "PLAN.md",
+    });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -931,7 +986,10 @@ describe("validateOutputs — COMPLETION_SUMMARY.md and REVISE_PLAN_NEEDED.md vi
       "utf-8",
     );
 
-    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 2 });
+    const capState = new CapState(CONTRACT, tempDir, {
+      stepNumber: 2,
+      planFile: "PLAN.md",
+    });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -952,7 +1010,10 @@ describe("validateOutputs — COMPLETION_SUMMARY.md and REVISE_PLAN_NEEDED.md vi
     );
     // DECISIONS.md is missing — inner AND-group fails, revise-plan also fails
 
-    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 2 });
+    const capState = new CapState(CONTRACT, tempDir, {
+      stepNumber: 2,
+      planFile: "PLAN.md",
+    });
     const result = validateOutputs(capState);
     expect(result.success).toBe(false);
     // Error mentions the OneOfGroup option names ("task + decisions" / "revise-plan")
@@ -975,7 +1036,10 @@ describe("validateOutputs — COMPLETION_SUMMARY.md and REVISE_PLAN_NEEDED.md vi
       "utf-8",
     );
 
-    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 3 });
+    const capState = new CapState(CONTRACT, tempDir, {
+      stepNumber: 3,
+      planFile: "PLAN.md",
+    });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -1039,7 +1103,10 @@ describe("validateOutputs — mid-plan revision (Group 1)", () => {
     writePlan();
     writeRevisePlan();
 
-    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 1 });
+    const capState = new CapState(CONTRACT, tempDir, {
+      stepNumber: 1,
+      planFile: "PLAN.md",
+    });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -1048,7 +1115,10 @@ describe("validateOutputs — mid-plan revision (Group 1)", () => {
     writePlan();
     writeRevisePlan();
 
-    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 2 });
+    const capState = new CapState(CONTRACT, tempDir, {
+      stepNumber: 2,
+      planFile: "PLAN.md",
+    });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
   });
@@ -1057,7 +1127,10 @@ describe("validateOutputs — mid-plan revision (Group 1)", () => {
     writePlan();
     writeRevisePlan();
 
-    const capState = new CapState(CONTRACT, tempDir, { stepNumber: 3 });
+    const capState = new CapState(CONTRACT, tempDir, {
+      stepNumber: 3,
+      planFile: "PLAN.md",
+    });
     const result = validateOutputs(capState);
     expect(result).toEqual({ success: true });
   });

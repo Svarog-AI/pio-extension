@@ -98,6 +98,7 @@ function resolveCreateGoalToCreatePlan(
     params: {
       workspacePrefix: workspacePrefix(goalName),
       queueKey: goalName,
+      goalFile: "GOAL.md",
       ...(parentGoalName != null && { parentGoalName }),
       ...(parentStepNumber != null && { parentStepNumber }),
     },
@@ -119,6 +120,7 @@ function resolveCreatePlanToEvolvePlan(
       stepNumber: 1,
       workspacePrefix: workspacePrefix(goalName),
       queueKey: goalName,
+      planFile: "PLAN.md",
     },
   };
 }
@@ -154,6 +156,8 @@ function resolveEvolvePlanToRevisePlan(
       params: {
         workspacePrefix: prefix,
         queueKey: goalName,
+        goalFile: "GOAL.md",
+        planFile: "PLAN.md",
         revisionContextFile: "REVISE_PLAN_NEEDED.md",
         ...(stepNumber != null && { stepNumber }),
       },
@@ -195,7 +199,8 @@ function resolveEvolvePlanToQualityGate(
     const stepNumber = extractStepNumber(params);
     return {
       capability: "quality-gate",
-      initialMessage: `All plan steps for goal "${goalName}" are complete. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
+      initialMessage: `All plan steps for goal "${goalName}" are complete. Goal description: read \`GOAL.md\` in your workspace for details on what was changed. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
+
       sessionName: sessionName(goalName, "quality-gate"),
       params: {
         workspacePrefix: prefix,
@@ -231,7 +236,13 @@ function resolveQualityGateToFinalizeGoal(
     capability: "finalize-goal",
     initialMessage: `Quality gate approved for goal "${goalName}". Update .pio/PROJECT/ documentation with accumulated decisions.`,
     sessionName: sessionName(goalName, "finalize-goal"),
-    params: { workspacePrefix: prefix, queueKey: goalName },
+    params: {
+      workspacePrefix: prefix,
+      queueKey: goalName,
+      goalFile: "GOAL.md",
+      planFile: "PLAN.md",
+      qualityGateFile: "QUALITY_GATE.md",
+    },
     cleanup: ["requirements"],
   };
 }
@@ -262,6 +273,8 @@ function resolveQualityGateToRevisePlan(
     params: {
       workspacePrefix: prefix,
       queueKey: goalName,
+      goalFile: "GOAL.md",
+      planFile: "PLAN.md",
       revisionContextFile: "QUALITY_GATE.md",
       ...(stepNumber != null && { stepNumber }),
     },
@@ -301,6 +314,7 @@ function resolveEvolvePlanToExecuteTask(
       stepNumber,
       workspacePrefix: stepWorkspacePrefix(goalName, stepNumber),
       queueKey: goalName,
+      taskFile: "TASK.md",
     },
   };
 }
@@ -338,6 +352,9 @@ function resolveExecuteTaskToReviewTask(
       stepNumber,
       workspacePrefix: stepWorkspacePrefix(goalName, stepNumber),
       queueKey: goalName,
+      completedMarker: "COMPLETED",
+      summaryFile: "SUMMARY.md",
+      taskFile: "TASK.md",
     },
   };
 }
@@ -374,6 +391,7 @@ function resolveExecuteTaskToEvolvePlan(
       stepNumber,
       workspacePrefix: workspacePrefix(goalName),
       queueKey: goalName,
+      planFile: "PLAN.md",
     },
   };
 }
@@ -405,6 +423,7 @@ function resolveReviewTaskToEvolvePlan(
         stepNumber: nextStep,
         workspacePrefix: prefix,
         queueKey: goalName,
+        planFile: "PLAN.md",
       },
     };
   }
@@ -418,6 +437,7 @@ function resolveReviewTaskToEvolvePlan(
         stepNumber,
         workspacePrefix: prefix,
         queueKey: goalName,
+        planFile: "PLAN.md",
       },
     };
   }
@@ -452,6 +472,7 @@ function resolveReviewTaskToExecuteTask(
         stepNumber,
         workspacePrefix: stepWorkspacePrefix(goalName, stepNumber),
         queueKey: goalName,
+        taskFile: "TASK.md",
       },
     };
   }
@@ -477,6 +498,7 @@ function resolveRevisePlanToEvolvePlan(
       stepNumber,
       workspacePrefix: prefix,
       queueKey: goalName,
+      planFile: "PLAN.md",
     },
     cleanup: ["revision-context"],
   };
@@ -507,6 +529,7 @@ function resolveFinalizeGoalToEvolvePlan(
         stepNumber: nextStep,
         workspacePrefix: prefix,
         queueKey: parentGoalName,
+        planFile: "PLAN.md",
       },
     };
   }

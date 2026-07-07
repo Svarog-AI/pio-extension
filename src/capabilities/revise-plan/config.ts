@@ -1,12 +1,7 @@
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { launchCapability } from "../../capability-session";
 import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import { enqueueTask } from "../../queues";
 import type { CapabilityContract } from "../../types";
@@ -23,8 +18,8 @@ import {
 
 export const CONTRACT: CapabilityContract = {
   inputs: [
-    { name: "goal", file: "GOAL.md" },
-    { name: "existing-plan", file: "PLAN.md" },
+    { name: "goal", paramKey: "goalFile" },
+    { name: "existing-plan", paramKey: "planFile" },
     { name: "revision-context", paramKey: "revisionContextFile" },
   ],
   outputs: [{ name: "plan", file: "PLAN.md", schema: PLAN_FRONTMATTER_SCHEMA }],
@@ -64,7 +59,12 @@ const revisePlanTool = defineTool({
   description:
     "Archive the current PLAN.md, clean up incomplete step folders, and queue a planning session to write a fresh plan for remaining work. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Archive current plan and queue a fresh planning session.",
-  parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
+  parameters: Type.Object({
+    ...BASE_TOOL_PARAMS,
+    goalFile: Type.Optional(Type.String()),
+    planFile: Type.Optional(Type.String()),
+    revisionContextFile: Type.Optional(Type.String()),
+  }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
     const queueKey = deriveQueueKey(params.workspacePrefix);
@@ -75,6 +75,9 @@ const revisePlanTool = defineTool({
         sessionName: params.sessionName ?? `${queueKey} revise-plan`,
         queueKey,
         initialMessage: params.initialMessage,
+        goalFile: params.goalFile,
+        planFile: params.planFile,
+        revisionContextFile: params.revisionContextFile,
       },
     });
 
@@ -91,72 +94,9 @@ const revisePlanTool = defineTool({
 });
 
 // ---------------------------------------------------------------------------
-// Command
-// ---------------------------------------------------------------------------
-
-async function handleRevisePlan(
-  args: string | undefined,
-  ctx: ExtensionCommandContext,
-) {
-  if (!args?.trim()) {
-    ctx.ui.notify(
-      "Usage: /pio-revise-plan --workspace-prefix <prefix>",
-      "warning",
-    );
-    return;
-  }
-
-  const tokens = args.trim().split(/\s+/);
-  let workspacePrefix: string | undefined;
-  for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i] === "--workspace-prefix" && tokens[i + 1]) {
-      workspacePrefix = tokens[++i];
-    }
-  }
-  if (!workspacePrefix) {
-    ctx.ui.notify(
-      "--workspace-prefix is required. Usage: /pio-revise-plan --workspace-prefix <prefix>",
-      "error",
-    );
-    return;
-  }
-
-  // launchCapability calls ctx.newSession() — after this, ctx is stale.
-  // All ctx-dependent work must happen before this line.
-  const queueKey = deriveQueueKey(workspacePrefix);
-  const config = await resolveCapabilityConfig(ctx.cwd, {
-    capability: "revise-plan",
-    workspacePrefix,
-    sessionName: `${queueKey} revise-plan`,
-    queueKey,
-    initialMessage:
-      "Revise the plan. Read PLAN_ARCHIVE/ for previous plans, GOAL.md for scope boundaries, and write a fresh PLAN.md.",
-  });
-  if (!config) {
-    ctx.ui.notify("Failed to resolve revise-plan config.", "error");
-    return;
-  }
-
-  try {
-    await launchCapability(ctx, config);
-  } catch (err) {
-    ctx.ui.notify(
-      `Failed to start ${config.capability}: ${err instanceof Error ? err.message : String(err)}`,
-      "error",
-    );
-    return;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Setup (registers tool and command)
+// Setup (registers tool)
 // ---------------------------------------------------------------------------
 
 export function register(pi: ExtensionAPI) {
   pi.registerTool(revisePlanTool);
-  pi.registerCommand("pio-revise-plan", {
-    description:
-      "Archive the current plan and launch a session to write a fresh plan",
-    handler: handleRevisePlan,
-  });
 }

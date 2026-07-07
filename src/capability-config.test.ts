@@ -166,8 +166,8 @@ describe("resolveCapabilityConfig — workspacePrefix resolution", () => {
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    // After Step 10, readOnlyFiles returns plain "TASK.md" (workspacePrefix handles step folder)
-    expect(result?.readOnlyFiles).toContain("TASK.md");
+    // After Step 11, execute-task has no readOnlyFiles (input protection via paramKey/validateInputs)
+    expect(result?.readOnlyFiles).toBeUndefined();
     // workspaceDir is the resolved directory
     expect(result?.workspaceDir).toBe(
       path.join(cwd, ".pio", "goals", "my-feature"),
@@ -409,7 +409,7 @@ describe("resolveCapabilityConfig — step-dependent callback resolution", () =>
     );
   });
 
-  it("invokes execute-task readOnlyFiles callback (plain file names)", async () => {
+  it("execute-task has no readOnlyFiles (input protection via paramKey/validateInputs)", async () => {
     const params = {
       capability: "execute-task" as string,
       goalName: "my-feature",
@@ -419,9 +419,8 @@ describe("resolveCapabilityConfig — step-dependent callback resolution", () =>
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
 
-    // After Step 10, readOnlyFiles returns plain "TASK.md"
-    expect(result?.readOnlyFiles).toContain("TASK.md");
-    expect(result?.readOnlyFiles).not.toContain("TEST.md");
+    // After Step 11, readOnlyFiles removed — input protection via paramKey/validateInputs
+    expect(result?.readOnlyFiles).toBeUndefined();
   });
 
   it("invokes review-task writeAllowlist callback (plain REVIEW.md)", async () => {

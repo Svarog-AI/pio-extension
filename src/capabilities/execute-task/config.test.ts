@@ -2,7 +2,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { vi } from "vitest";
-import { resolveCapabilityConfig } from "../../capability-config";
 import { stepFolderName } from "../../fs-utils";
 import { readPendingTask } from "../../queues";
 import config, { register } from "./config";
@@ -94,28 +93,6 @@ describe("stepFolderName", () => {
   it("no extra padding for two-digit numbers S10+", () => {
     expect(stepFolderName(10)).toBe("S10");
     expect(stepFolderName(25)).toBe("S25");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// resolveExecuteReadOnlyFiles — TASK.md only
-// ---------------------------------------------------------------------------
-
-describe("resolveExecuteReadOnlyFiles", () => {
-  it("returns TASK.md only, not TEST.md", async () => {
-    // Arrange: resolve execute-task config
-    const params = {
-      capability: "execute-task" as string,
-      goalName: "test-goal",
-      sessionName: "test",
-    };
-
-    // Act
-    const result = await resolveCapabilityConfig("/tmp/proj", params);
-
-    // Assert: read-only files contain only TASK.md (plain name — workspacePrefix handles step folder)
-    expect(result?.readOnlyFiles).toEqual(["TASK.md"]);
-    expect(result?.readOnlyFiles).not.toContain("TEST.md");
   });
 });
 
@@ -239,6 +216,57 @@ describe("executeTaskTool.execute", () => {
     expect(task?.params).toHaveProperty("queueKey", "S01");
     expect(task?.params).toHaveProperty("initialMessage");
     expect(task?.params?.initialMessage).toBe("test message");
+  });
+
+  it("forwards taskFile to enqueued task params when provided", async () => {
+    const { goalDir, stepDir } = createGoalTree(tempDir, "my-feature", {
+      stepNumber: 1,
+    });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
+    fs.writeFileSync(
+      path.join(stepDir, "TASK.md"),
+      "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task",
+      "utf-8",
+    );
+
+    const tool = getTool();
+    await tool.execute(
+      "test-id",
+      {
+        workspacePrefix: "goals/my-feature/S01",
+        taskFile: "TASK.md",
+      },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "S01");
+    expect(task?.params?.taskFile).toBe("TASK.md");
+  });
+
+  it("omits taskFile from enqueued task params when not provided", async () => {
+    const { goalDir, stepDir } = createGoalTree(tempDir, "my-feature", {
+      stepNumber: 1,
+    });
+    fs.writeFileSync(path.join(goalDir, "GOAL.md"), "# Goal", "utf-8");
+    fs.writeFileSync(
+      path.join(stepDir, "TASK.md"),
+      "---\nskills:\n  mandatory:\n    - tdd\n---\n# Task",
+      "utf-8",
+    );
+
+    const tool = getTool();
+    await tool.execute(
+      "test-id",
+      { workspacePrefix: "goals/my-feature/S01" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "S01");
+    expect(task?.params?.taskFile).toBeUndefined();
   });
 });
 

@@ -1,12 +1,8 @@
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { launchCapability, setMergedSkills } from "../../capability-session";
+import { setMergedSkills } from "../../capability-session";
 import { CapState } from "../../capability-state";
 import {
   BASE_TOOL_PARAMS,
@@ -16,7 +12,7 @@ import {
 import { enqueueTask } from "../../queues";
 import type { CapabilityContract } from "../../types";
 import { TASK_FRONTMATTER_SCHEMA } from "../evolve-plan/schemas";
-import { resolveExecuteReadOnlyFiles } from "./callbacks";
+
 import { EXECUTION_SUMMARY_SCHEMA } from "./schemas";
 
 // ---------------------------------------------------------------------------
@@ -24,7 +20,9 @@ import { EXECUTION_SUMMARY_SCHEMA } from "./schemas";
 // ---------------------------------------------------------------------------
 
 export const CONTRACT: CapabilityContract = {
-  inputs: [{ name: "task", file: "TASK.md", schema: TASK_FRONTMATTER_SCHEMA }],
+  inputs: [
+    { name: "task", paramKey: "taskFile", schema: TASK_FRONTMATTER_SCHEMA },
+  ],
   excludedFiles: ["REVISE_PLAN_NEEDED"],
   outputs: [
     { name: "test", file: "TEST.md" },
@@ -46,7 +44,7 @@ export const CONTRACT: CapabilityContract = {
 const capabilityConfig = {
   capability: "execute-task",
   contract: CONTRACT,
-  readOnlyFiles: resolveExecuteReadOnlyFiles,
+
   prepareSession: prepareExecuteSession,
   allowProjectWrites: true,
   skills: {
@@ -85,7 +83,10 @@ const executeTaskTool = defineTool({
   description:
     "Execute a single plan step using an iterative TDD workflow. Reads TASK.md, applies tracer-bullet development via the tdd skill, and produces implementation with post-hoc TEST.md. Use this tool directly — no bash commands or manual file creation needed. Queues the task. The user can run `/pio-next-task` to start the sub-session.",
   promptSnippet: "Execute a single plan step (test-first implementation).",
-  parameters: Type.Object({ ...BASE_TOOL_PARAMS }),
+  parameters: Type.Object({
+    ...BASE_TOOL_PARAMS,
+    taskFile: Type.Optional(Type.String()),
+  }),
 
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
     const queueKey = deriveQueueKey(params.workspacePrefix);
@@ -97,6 +98,7 @@ const executeTaskTool = defineTool({
         sessionName,
         queueKey,
         initialMessage: params.initialMessage,
+        taskFile: params.taskFile,
       },
     });
 
@@ -113,71 +115,9 @@ const executeTaskTool = defineTool({
 });
 
 // ---------------------------------------------------------------------------
-// Command
-// ---------------------------------------------------------------------------
-
-async function handleExecuteTask(
-  args: string | undefined,
-  ctx: ExtensionCommandContext,
-) {
-  if (!args || args.trim().length === 0) {
-    ctx.ui.notify(
-      "Usage: /pio-execute-task --workspace-prefix <prefix>",
-      "warning",
-    );
-    return;
-  }
-  const tokens = args.trim().split(/\s+/);
-  let workspacePrefix: string | undefined;
-  for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i] === "--workspace-prefix" && tokens[i + 1]) {
-      workspacePrefix = tokens[++i];
-    }
-  }
-  if (!workspacePrefix) {
-    ctx.ui.notify(
-      "--workspace-prefix is required. Usage: /pio-execute-task --workspace-prefix <prefix>",
-      "error",
-    );
-    return;
-  }
-
-  // launchCapability calls ctx.newSession() — after this, ctx is stale.
-  // All ctx-dependent work must happen before this line.
-  const queueKey = deriveQueueKey(workspacePrefix);
-  const config = await resolveCapabilityConfig(ctx.cwd, {
-    capability: "execute-task",
-    workspacePrefix,
-    sessionName: `${queueKey} execute-task`,
-    queueKey,
-    initialMessage:
-      "Read TASK.md for the specification and acceptance criteria, then implement the changes.",
-  });
-  if (!config) {
-    ctx.ui.notify("Failed to resolve execute-task config.", "error");
-    return;
-  }
-
-  try {
-    await launchCapability(ctx, config);
-  } catch (err) {
-    ctx.ui.notify(
-      `Failed to start ${config.capability}: ${err instanceof Error ? err.message : String(err)}`,
-      "error",
-    );
-    return;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Setup (registers tool and command)
+// Setup (registers tool)
 // ---------------------------------------------------------------------------
 
 export function register(pi: ExtensionAPI) {
   pi.registerTool(executeTaskTool);
-  pi.registerCommand("pio-execute-task", {
-    description:
-      "Execute a single plan step using an iterative TDD workflow (tracer bullet → incremental RED→GREEN cycles)",
-    handler: handleExecuteTask,
-  });
 }

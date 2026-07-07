@@ -330,9 +330,21 @@ export function validateInputs(capState: CapState): {
       }
     }
   } catch (err) {
+    const rawMessage = err instanceof Error ? err.message : String(err);
+    // Reformat internal "Cannot resolve path" errors into user-friendly messages
+    if (rawMessage.includes("Cannot resolve path")) {
+      const match = rawMessage.match(/param '([^']+)'/);
+      const paramKey = match?.[1];
+      if (paramKey) {
+        return {
+          success: false,
+          message: `Input validation failed: parameter '${paramKey}' is required but was not provided. Provide it as a tool parameter.`,
+        };
+      }
+    }
     return {
       success: false,
-      message: err instanceof Error ? err.message : String(err),
+      message: rawMessage,
     };
   }
 

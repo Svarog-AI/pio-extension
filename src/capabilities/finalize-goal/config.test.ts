@@ -124,54 +124,6 @@ describe("register", () => {
     const tool = registeredTools.find((t) => t.name === "pio_finalize_goal");
     expect(tool).toBeDefined();
   });
-
-  it("registers a command named pio-finalize-goal", () => {
-    const registeredCommands: Array<{
-      name: string;
-      options: { description: string };
-    }> = [];
-
-    const mockPi = {
-      registerTool: vi.fn(),
-      registerCommand: vi.fn(
-        (name: string, options: { description: string; handler: Function }) => {
-          registeredCommands.push({ name, options });
-        },
-      ),
-    };
-
-    register(mockPi as any);
-
-    const command = registeredCommands.find(
-      (c) => c.name === "pio-finalize-goal",
-    );
-    expect(command).toBeDefined();
-  });
-
-  it("command description references PROJECT documentation or finalization", () => {
-    const registeredCommands: Array<{
-      name: string;
-      options: { description: string };
-    }> = [];
-
-    const mockPi = {
-      registerTool: vi.fn(),
-      registerCommand: vi.fn(
-        (name: string, options: { description: string; handler: Function }) => {
-          registeredCommands.push({ name, options });
-        },
-      ),
-    };
-
-    register(mockPi as any);
-
-    const command = registeredCommands.find(
-      (c) => c.name === "pio-finalize-goal",
-    );
-    expect(command).toBeDefined();
-    const desc = command?.options.description.toLowerCase();
-    expect(desc).toMatch(/project|finalize|\.pio\/project/i);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -308,145 +260,121 @@ describe("finalizeGoalTool.execute", () => {
     expect(task).toBeDefined();
     expect(task?.capability).toBe("finalize-goal");
   });
-});
 
-// ---------------------------------------------------------------------------
-// Command handler — /pio-finalize-goal
-// ---------------------------------------------------------------------------
-
-describe("handleFinalizeGoal", () => {
-  let tempDir: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-  });
-
-  afterEach(() => cleanup(tempDir));
-
-  /** Capture the command handler from register registration. */
-  function getHandler() {
-    let capturedHandler: Function | undefined;
-    const mockPi = {
-      registerTool: vi.fn(),
-      registerCommand: vi.fn(
-        (_name: string, options: { handler: Function }) => {
-          capturedHandler = options.handler;
-        },
-      ),
-    };
-    register(mockPi as any);
-    return capturedHandler!;
-  }
-
-  /** Minimal ExtensionCommandContext mock. */
-  function makeCtx(cwd: string) {
-    const notifyMock = vi.fn();
-    return {
-      cwd,
-      ui: { notify: notifyMock },
-      hasUI: false,
-      sessionManager: { getSessionFile: vi.fn(() => "") },
-      modelRegistry: {},
-      model: undefined,
-      isIdle: vi.fn(() => true),
-      signal: undefined,
-      abort: vi.fn(),
-      hasPendingMessages: vi.fn(() => false),
-      shutdown: vi.fn(),
-      getContextUsage: vi.fn(),
-      compact: vi.fn(),
-      getSystemPrompt: vi.fn(() => ""),
-      waitForIdle: vi.fn().mockResolvedValue(undefined),
-      newSession: vi.fn().mockResolvedValue({ cancelled: false }),
-      fork: vi.fn().mockResolvedValue({ cancelled: false }),
-      navigateTree: vi.fn().mockResolvedValue({ cancelled: false }),
-      switchSession: vi.fn().mockResolvedValue({ cancelled: false }),
-      reload: vi.fn().mockResolvedValue(undefined),
-      _notify: notifyMock,
-    };
-  }
-
-  it("shows usage message when no arguments provided", async () => {
-    // Arrange
-    const handler = getHandler();
-    const ctx = makeCtx(tempDir);
-
-    // Act
-    await handler(undefined, ctx);
-
-    // Assert
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringMatching(/usage|Usage/i),
-      "warning",
-    );
-  });
-
-  it("shows usage message when empty arguments provided", async () => {
-    // Arrange
-    const handler = getHandler();
-    const ctx = makeCtx(tempDir);
-
-    // Act
-    await handler("   ", ctx);
-
-    // Assert
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringMatching(/usage|Usage/i),
-      "warning",
-    );
-  });
-
-  it("launches session when workspace exists", async () => {
-    // Arrange: create completed goal with quality gate passed
-    createGoalTree(tempDir, "completed-goal", {
+  it("forwards goalFile to enqueued task params when provided", async () => {
+    createGoalTree(tempDir, "goal-file-test", {
       withPlan: true,
       withQualityGate: true,
     });
 
-    const handler = getHandler();
-    const ctx = makeCtx(tempDir);
-
-    // Act
-    await handler("--workspace-prefix goals/completed-goal", ctx);
-
-    // Assert: newSession was called (launchCapability does this)
-    expect(ctx.newSession).toHaveBeenCalled();
-  });
-
-  it("shows error when workspace does not exist (validation at launch time)", async () => {
-    // Arrange
-    const handler = getHandler();
-    const ctx = makeCtx(tempDir);
-
-    // Act
-    await handler("--workspace-prefix goals/nonexistent-goal", ctx);
-
-    // Assert: launchCapability validates inputs and throws on missing files;
-    // command handler catches and notifies
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringMatching(/missing|validation/i),
-      "error",
+    const tool = getTool();
+    await tool.execute(
+      "test-call-id",
+      { workspacePrefix: "goals/goal-file-test", goalFile: "GOAL.md" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
     );
+
+    const task = readPendingTask(tempDir, "goal-file-test");
+    expect(task?.params?.goalFile).toBe("GOAL.md");
   });
 
-  it("shows error when goal is not complete (validation at launch time)", async () => {
-    // Arrange: create goal with PLAN.md but without QUALITY_GATE.md
-    createGoalTree(tempDir, "incomplete", {
+  it("omits goalFile from enqueued task params when not provided", async () => {
+    createGoalTree(tempDir, "no-goal-file", {
       withPlan: true,
-      withQualityGate: false,
+      withQualityGate: true,
     });
 
-    const handler = getHandler();
-    const ctx = makeCtx(tempDir);
-
-    // Act
-    await handler("--workspace-prefix goals/incomplete", ctx);
-
-    // Assert: launchCapability validates inputs and throws on missing files;
-    // command handler catches and notifies
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringMatching(/missing|QUALITY_GATE/i),
-      "error",
+    const tool = getTool();
+    await tool.execute(
+      "test-call-id",
+      { workspacePrefix: "goals/no-goal-file" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
     );
+
+    const task = readPendingTask(tempDir, "no-goal-file");
+    expect(task?.params?.goalFile).toBeUndefined();
+  });
+
+  it("forwards planFile to enqueued task params when provided", async () => {
+    createGoalTree(tempDir, "plan-file-test", {
+      withPlan: true,
+      withQualityGate: true,
+    });
+
+    const tool = getTool();
+    await tool.execute(
+      "test-call-id",
+      { workspacePrefix: "goals/plan-file-test", planFile: "PLAN.md" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "plan-file-test");
+    expect(task?.params?.planFile).toBe("PLAN.md");
+  });
+
+  it("omits planFile from enqueued task params when not provided", async () => {
+    createGoalTree(tempDir, "no-plan-file", {
+      withPlan: true,
+      withQualityGate: true,
+    });
+
+    const tool = getTool();
+    await tool.execute(
+      "test-call-id",
+      { workspacePrefix: "goals/no-plan-file" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "no-plan-file");
+    expect(task?.params?.planFile).toBeUndefined();
+  });
+
+  it("forwards qualityGateFile to enqueued task params when provided", async () => {
+    createGoalTree(tempDir, "quality-gate-file-test", {
+      withPlan: true,
+      withQualityGate: true,
+    });
+
+    const tool = getTool();
+    await tool.execute(
+      "test-call-id",
+      {
+        workspacePrefix: "goals/quality-gate-file-test",
+        qualityGateFile: "QUALITY_GATE.md",
+      },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "quality-gate-file-test");
+    expect(task?.params?.qualityGateFile).toBe("QUALITY_GATE.md");
+  });
+
+  it("omits qualityGateFile from enqueued task params when not provided", async () => {
+    createGoalTree(tempDir, "no-quality-gate-file", {
+      withPlan: true,
+      withQualityGate: true,
+    });
+
+    const tool = getTool();
+    await tool.execute(
+      "test-call-id",
+      { workspacePrefix: "goals/no-quality-gate-file" },
+      undefined,
+      undefined,
+      makeCtx(tempDir),
+    );
+
+    const task = readPendingTask(tempDir, "no-quality-gate-file");
+    expect(task?.params?.qualityGateFile).toBeUndefined();
   });
 });

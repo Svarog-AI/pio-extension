@@ -33,6 +33,8 @@ Follow the Push Protocol steps:
 
 The protocol handles: verifying git repo, checking \`gh\` CLI availability, determining target branch, checking for existing PRs, pushing if needed, and creating the PR with title and body.
 
+**PR body should be outcome-focused.** The pio-git skill's PR Creation Protocol (step 10) instructs the agent to construct an outcome-focused PR body — summarize what the changes do from a user or product perspective, not internal implementation details. Reinforce this: the PR body should answer "what does this change for the user?" in a short paragraph, not list plan steps or file changes.
+
 **Graceful failure semantics:** If PR creation fails (no \`gh\` CLI, not authenticated, network failure), log a warning and proceed — never block workflow completion. The quality gate must still complete even if PR creation is unavailable.
 
 \`\`\`yaml
@@ -47,7 +49,27 @@ skills:
   {
     id: "manual-testing-gate",
     title: "Manual E2E testing gate",
-    instructions: `Construct an E2E testing checklist based on the requirements file content read earlier. Extract key features, user flows, and acceptance criteria into testable items.
+    instructions: `Construct an E2E testing checklist focused on **end-user impact scenarios** — how the changes affect real users of the product.
+
+**Use available context.** Draw from whatever context is available in your session (requirements file, instructions in the session preamble, etc.) to understand what was changed. Build scenarios answering:
+- "Can the user still do X?"
+- "Does the new feature work from their perspective?"
+
+If you don't have enough information to create scenarios, or have contradictions and unresolved questions, get information from the user using the ask_user tool.
+
+Do NOT reference specific delivery mechanisms or hardcode knowledge of how context arrives — the capability must stay generic.
+
+**Prohibited from the E2E checklist:** Programmatic checks such as \`npx tsc\`, \`npm test\`, linting, type checking, or framework self-tests. These belong in CI/CD pipelines, not the manual testing gate.
+
+**Good examples (user-facing behaviors):**
+- "user can still authenticate after API migration"
+- "button click opens the modal"
+- "form submits and shows confirmation"
+
+**Bad examples (build/internal checks):**
+- "\`npx tsc --noEmit\` passes"
+- "\`npm test\` passes with no regressions"
+- "CSS lint clean"
 
 Present the checklist to the user via \`ask_user\` with \`displayMode: "inline"\`. The question should list the checklist items and ask for explicit confirmation that all tests have passed.
 
@@ -61,7 +83,7 @@ Example \`ask_user\` call:
 \`\`\`ts
 ask_user({
   question: "Please confirm all E2E tests have passed:",
-  context: "1. Feature A works as expected\\n2. Feature B handles edge cases\\n3. ...",
+  context: "1. User can still authenticate after API migration\\n2. New feature X works from user perspective\\n3. ...",
   options: ["All tests passed", "Tests failed"],
   displayMode: "inline",
   allowComment: true,

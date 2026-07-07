@@ -1,14 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { resolveCapabilityConfig } from "../../capability-config";
 import type { CapabilityPackageConfig } from "../../capability-package";
-import { launchCapability } from "../../capability-session";
 import { BASE_TOOL_PARAMS, deriveQueueKey } from "../../capability-utils";
 import { enqueueTask } from "../../queues";
 import type { CapabilityContract } from "../../types";
@@ -99,81 +94,9 @@ const createGoalTool = defineTool({
 });
 
 // ---------------------------------------------------------------------------
-// Command
-// ---------------------------------------------------------------------------
-
-async function handleCreateGoal(
-  args: string | undefined,
-  ctx: ExtensionCommandContext,
-) {
-  if (!args?.trim()) {
-    ctx.ui.notify(
-      "Usage: /pio-create-goal --workspace-prefix <prefix>",
-      "warning",
-    );
-    return;
-  }
-
-  const tokens = args.trim().split(/\s+/);
-  let workspacePrefix: string | undefined;
-  for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i] === "--workspace-prefix" && tokens[i + 1]) {
-      workspacePrefix = tokens[++i];
-    }
-  }
-  if (!workspacePrefix) {
-    ctx.ui.notify(
-      "--workspace-prefix is required. Usage: /pio-create-goal --workspace-prefix <prefix>",
-      "error",
-    );
-    return;
-  }
-
-  // Resolve workspace directory
-  const workspaceDir = path.join(ctx.cwd, ".pio", workspacePrefix);
-  if (fs.existsSync(workspaceDir)) {
-    ctx.ui.notify(
-      `Workspace at "${workspacePrefix}" already exists. Pick a new name, reuse the existing one, or run /pio-delete-goal to remove it.`,
-      "warning",
-    );
-    return;
-  }
-  fs.mkdirSync(workspaceDir, { recursive: true });
-
-  // launchCapability calls ctx.newSession() — after this, ctx is stale.
-  // All ctx-dependent work must happen before this line.
-  const queueKey = deriveQueueKey(workspacePrefix);
-  const config = await resolveCapabilityConfig(ctx.cwd, {
-    capability: "create-goal",
-    workspacePrefix,
-    sessionName: `${queueKey} create-goal`,
-    queueKey,
-    initialMessage:
-      "Create a goal definition. Interview about scope and constraints, then write GOAL.md.",
-  });
-  if (!config) {
-    ctx.ui.notify("Failed to resolve create-goal config.", "error");
-    return;
-  }
-  try {
-    await launchCapability(ctx, config);
-  } catch (err) {
-    ctx.ui.notify(
-      `Failed to start ${config.capability}: ${err instanceof Error ? err.message : String(err)}`,
-      "error",
-    );
-    return;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Setup (registers tool, command, and session capability handlers)
+// Setup (registers tool)
 // ---------------------------------------------------------------------------
 
 export function register(pi: ExtensionAPI) {
   pi.registerTool(createGoalTool);
-  pi.registerCommand("pio-create-goal", {
-    description: "Create a workspace and launch a create-goal session",
-    handler: handleCreateGoal,
-  });
 }

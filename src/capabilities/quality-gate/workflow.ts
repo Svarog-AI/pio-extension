@@ -55,6 +55,8 @@ skills:
 - "Can the user still do X?"
 - "Does the new feature work from their perspective?"
 
+If you don't have enough information to create scenarios, or have contradictions and unresolved questions, get information from the user using the ask_user tool.
+
 Do NOT reference specific delivery mechanisms or hardcode knowledge of how context arrives — the capability must stay generic.
 
 **Prohibited from the E2E checklist:** Programmatic checks such as \`npx tsc\`, \`npm test\`, linting, type checking, or framework self-tests. These belong in CI/CD pipelines, not the manual testing gate.

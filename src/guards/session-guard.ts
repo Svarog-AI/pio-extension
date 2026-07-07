@@ -135,9 +135,19 @@ function getAssistantContent(
 const RECOVERY_PROMPT =
   "Your last response contained only thinking blocks. If you need clarification to proceed, call `ask_user`. Otherwise, provide a visible response or take an action.";
 
-/** Warning sent when a pio sub-session ends without calling pio_mark_complete. */
+/**
+ * Post-hoc warning sent when a pio sub-session ends without calling `pio_mark_complete`.
+ *
+ * Fires from the `agent_end` handler after three guard checks pass:
+ * 1. `isActivePioSession` — only pio sub-sessions
+ * 2. `markCompleteCalled` — only if `pio_mark_complete` was never called during the run
+ * 3. `lastMessage?.stopReason !== "aborted"` — skip user-initiated aborts
+ *
+ * Covers all non-aborted session endings: `stop`, `length`, `error`.
+ * Delivered via `pi.sendUserMessage(..., { deliverAs: "followUp" })`.
+ */
 const AGENT_END_WARNING =
-  "This session ended without calling pio_mark_complete. If you need clarification before completing work, call `ask_user`. Otherwise, output files were not validated against expected outputs, and next task in the workflow may not be scheduled.";
+  "This session ended without calling `pio_mark_complete`. As a result, output files were not validated against expected outputs, and the next workflow task was not scheduled. In the next session attempt, call `pio_mark_complete` when your work is done to validate outputs and schedule the next step. If you need clarification before completing work, call `ask_user` instead.";
 
 /**
  * Register session guard handlers.

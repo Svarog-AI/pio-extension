@@ -957,6 +957,93 @@ describe("turn_count — refinement loop nudge", () => {
 // agent_end handler — warning when pio_mark_complete was not called
 // ---------------------------------------------------------------------------
 
+describe("agent_end handler — warning content", () => {
+  beforeEach(() => {
+    __testSetActiveSession(false);
+    __testSetMarkCompleteCalled(false);
+  });
+
+  it("warning mentions pio_mark_complete", async () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetMarkCompleteCalled(false);
+    setupSessionGuard(pi);
+
+    // Act
+    const agentEndHandlers = handlers.get("agent_end");
+    const mockCtx = {} as any;
+    const event = { type: "agent_end" as const, messages: [] };
+    for (const handler of agentEndHandlers!) {
+      await handler(event, mockCtx);
+    }
+
+    // Assert
+    const content = sendUserMessageCalls[0].content;
+    expect(content).toContain("pio_mark_complete");
+  });
+
+  it("warning states consequences (outputs not validated, next task not scheduled)", async () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetMarkCompleteCalled(false);
+    setupSessionGuard(pi);
+
+    // Act
+    const agentEndHandlers = handlers.get("agent_end");
+    const mockCtx = {} as any;
+    const event = { type: "agent_end" as const, messages: [] };
+    for (const handler of agentEndHandlers!) {
+      await handler(event, mockCtx);
+    }
+
+    // Assert
+    const content = sendUserMessageCalls[0].content.toLowerCase();
+    expect(content).toMatch(/not validated|not scheduled/);
+  });
+
+  it("warning mentions ask_user as alternative", async () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetMarkCompleteCalled(false);
+    setupSessionGuard(pi);
+
+    // Act
+    const agentEndHandlers = handlers.get("agent_end");
+    const mockCtx = {} as any;
+    const event = { type: "agent_end" as const, messages: [] };
+    for (const handler of agentEndHandlers!) {
+      await handler(event, mockCtx);
+    }
+
+    // Assert
+    const content = sendUserMessageCalls[0].content;
+    expect(content).toContain("ask_user");
+  });
+
+  it("warning provides remediation guidance", async () => {
+    // Arrange
+    const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    __testSetActiveSession(true);
+    __testSetMarkCompleteCalled(false);
+    setupSessionGuard(pi);
+
+    // Act
+    const agentEndHandlers = handlers.get("agent_end");
+    const mockCtx = {} as any;
+    const event = { type: "agent_end" as const, messages: [] };
+    for (const handler of agentEndHandlers!) {
+      await handler(event, mockCtx);
+    }
+
+    // Assert: message contains remediation language ("should", "must", "call", etc.)
+    const content = sendUserMessageCalls[0].content.toLowerCase();
+    expect(content).toMatch(/should|must|call.*when|next.*attempt/);
+  });
+});
+
 describe("agent_end handler", () => {
   // Reset state before each test to ensure isolation
   beforeEach(() => {

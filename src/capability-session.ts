@@ -43,6 +43,15 @@ export function setMergedSkills(
 // Global mandatory skills — always injected regardless of capability config
 const GLOBAL_MANDATORY_SKILLS = ["pio", "ask-user"];
 
+// Session completion mandate — injected into every pio sub-session system prompt.
+// Placed between SKILL LOADING INSTRUCTIONS and YOUR INSTRUCTIONS for maximum visibility.
+export const SESSION_COMPLETION_MANDATE = `At the end of your session, you MUST call one of the following tools:
+
+- \`pio_mark_complete\` — when your work is complete and output files are ready for validation. This validates outputs against expected outputs and schedules the next workflow task.
+- \`ask_user\` — when you need clarification or a decision from the user before completing work.
+
+Failing to call one of these tools means your outputs will not be validated and the next workflow task may not be scheduled.`;
+
 /** Resolve the path to the project context overview file.
  * Returns `.pio/PROJECT/OVERVIEW.md` relative to the given working directory.
  * Exported for testing; used internally by the `before_agent_start` handler.
@@ -314,6 +323,9 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
     if (skillLoadingSection) {
       prompts.push(skillLoadingSection);
     }
+
+    // Session completion mandate — always injected, regardless of other sections
+    prompts.push(`--- SESSION COMPLETION ---\n\n${SESSION_COMPLETION_MANDATE}`);
 
     // Capability-specific prompt from compiled sections (role → workflow → guidelines)
     if (compiledSections) {

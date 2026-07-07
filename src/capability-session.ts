@@ -50,6 +50,8 @@ export const SESSION_COMPLETION_MANDATE = `At the end of your session, you MUST 
 - \`pio_mark_complete\` — when your work is complete and output files are ready for validation. This validates outputs against expected outputs and schedules the next workflow task.
 - \`ask_user\` — when you need clarification or a decision from the user before completing work.
 
+This requirement applies at every session boundary, not just once per conversation. Even if \`pio_mark_complete\` was already called successfully earlier in the conversation, you must call it again before ending each session attempt. The system validates at every session boundary, not just once.
+
 Failing to call one of these tools means your outputs will not be validated and the next workflow task may not be scheduled.`;
 
 /** Resolve the path to the project context overview file.

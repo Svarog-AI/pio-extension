@@ -1714,6 +1714,221 @@ describe("step nudging integration — setupSessionInfrastructure", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Session completion mandate — before_agent_start injection
+// ---------------------------------------------------------------------------
+
+describe("session completion mandate — before_agent_start injection", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    mockCompilePrompt.mockClear();
+    mockCompilePrompt.mockResolvedValue({
+      role: "## Role\n\nTest role content.",
+      workflow: "## Workflow\n\n1. Test step",
+      guidelines: "## Guidelines\n\nTest guidelines.",
+      mergedSkills: { mandatory: ["pio", "ask-user"] },
+    });
+  });
+
+  afterEach(() => {
+    cleanup(tempDir);
+  });
+
+  it("given before_agent_start when the handler runs then the system prompt contains the SESSION COMPLETION mandate section", async () => {
+    const pioSkillBody = "# PIO Skill";
+    const pioFilePath = writeSkillFile(tempDir, "pio", pioSkillBody);
+    const pioBaseDir = path.dirname(pioFilePath);
+
+    const registry = [makeSkill("pio", pioFilePath, pioBaseDir)];
+
+    const registeredHandlers: Record<string, Function> = {};
+
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
+      setModel: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+
+    const mod = await import("./capability-session");
+    mod.setupSessionInfrastructure(mockPi as any);
+
+    // Trigger resources_discover
+    const rdHandler = registeredHandlers.resources_discover;
+    if (rdHandler) {
+      await rdHandler(
+        {
+          type: "resources_discover",
+          cwd: process.cwd(),
+          reason: "startup" as const,
+        },
+        {
+          sessionManager: {
+            getEntries: () => [
+              {
+                type: "custom",
+                customType: "pio-config",
+                data: { capability: "test-cap", sessionParams: {} },
+              },
+            ],
+          },
+        },
+      );
+    }
+
+    // Trigger before_agent_start
+    const handler = registeredHandlers.before_agent_start;
+    if (!handler) throw new Error("before_agent_start handler not registered");
+    const result = await handler(
+      {
+        type: "before_agent_start",
+        prompt: "test",
+        systemPrompt: "",
+        systemPromptOptions: { skills: registry, cwd: process.cwd() },
+      } as any,
+      {} as any,
+    );
+
+    expect(typeof result.systemPrompt).toBe("string");
+    expect(result.systemPrompt).toContain("--- SESSION COMPLETION ---");
+    expect(result.systemPrompt).toContain("pio_mark_complete");
+    expect(result.systemPrompt).toContain("ask_user");
+  });
+
+  it("given before_agent_start when the handler runs then section ordering is SKILL LOADING INSTRUCTIONS before SESSION COMPLETION before YOUR INSTRUCTIONS", async () => {
+    const pioSkillBody = "# PIO Skill";
+    const pioFilePath = writeSkillFile(tempDir, "pio", pioSkillBody);
+    const pioBaseDir = path.dirname(pioFilePath);
+
+    const registry = [makeSkill("pio", pioFilePath, pioBaseDir)];
+
+    const registeredHandlers: Record<string, Function> = {};
+
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
+      setModel: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+
+    const mod = await import("./capability-session");
+    mod.setupSessionInfrastructure(mockPi as any);
+
+    // Trigger resources_discover
+    const rdHandler = registeredHandlers.resources_discover;
+    if (rdHandler) {
+      await rdHandler(
+        {
+          type: "resources_discover",
+          cwd: process.cwd(),
+          reason: "startup" as const,
+        },
+        {
+          sessionManager: {
+            getEntries: () => [
+              {
+                type: "custom",
+                customType: "pio-config",
+                data: { capability: "test-cap", sessionParams: {} },
+              },
+            ],
+          },
+        },
+      );
+    }
+
+    // Trigger before_agent_start
+    const handler = registeredHandlers.before_agent_start;
+    if (!handler) throw new Error("before_agent_start handler not registered");
+    const result = await handler(
+      {
+        type: "before_agent_start",
+        prompt: "test",
+        systemPrompt: "",
+        systemPromptOptions: { skills: registry, cwd: process.cwd() },
+      } as any,
+      {} as any,
+    );
+
+    const skillIdx = result.systemPrompt.indexOf(
+      "--- SKILL LOADING INSTRUCTIONS ---",
+    );
+    const mandateIdx = result.systemPrompt.indexOf(
+      "--- SESSION COMPLETION ---",
+    );
+    const yourIdx = result.systemPrompt.indexOf("--- YOUR INSTRUCTIONS ---");
+
+    expect(skillIdx).toBeGreaterThan(-1);
+    expect(mandateIdx).toBeGreaterThan(-1);
+    expect(yourIdx).toBeGreaterThan(-1);
+    expect(skillIdx).toBeLessThan(mandateIdx);
+    expect(mandateIdx).toBeLessThan(yourIdx);
+  });
+
+  it("given before_agent_start with no skills and no project context when the handler runs then the mandate section is still injected", async () => {
+    const registeredHandlers: Record<string, Function> = {};
+
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
+      setModel: vi.fn(),
+      setSessionName: vi.fn(),
+    };
+
+    const mod = await import("./capability-session");
+    mod.setupSessionInfrastructure(mockPi as any);
+
+    // Trigger resources_discover
+    const rdHandler = registeredHandlers.resources_discover;
+    if (rdHandler) {
+      await rdHandler(
+        {
+          type: "resources_discover",
+          cwd: process.cwd(),
+          reason: "startup" as const,
+        },
+        {
+          sessionManager: {
+            getEntries: () => [
+              {
+                type: "custom",
+                customType: "pio-config",
+                data: { capability: "test-cap", sessionParams: {} },
+              },
+            ],
+          },
+        },
+      );
+    }
+
+    // Trigger before_agent_start with no skills and no project context
+    const handler = registeredHandlers.before_agent_start;
+    if (!handler) throw new Error("before_agent_start handler not registered");
+    const result = await handler(
+      {
+        type: "before_agent_start",
+        prompt: "test",
+        systemPrompt: "",
+        systemPromptOptions: { skills: [], cwd: process.cwd() },
+      } as any,
+      {} as any,
+    );
+
+    // Mandate should still be present even without skills or project context
+    expect(result).toBeDefined();
+    expect(result.systemPrompt).toContain("--- SESSION COMPLETION ---");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Prompt assembly order — before_agent_start uses compiled sections
 // ---------------------------------------------------------------------------
 

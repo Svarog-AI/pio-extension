@@ -34,6 +34,8 @@ Prompts are **compiled at runtime** by `prompt-compiler.ts` (`compilePrompt()`) 
 
 **Registration:** `discoverCapabilities()` auto-discovers directory packages; `registerCapability(pi, descriptor)` calls the `register(pi)` named export from each `config.ts`. No hardcoded per-capability imports in `index.ts`.
 
+**Tool-only architecture (no command handlers):** All capability command handlers (`handleCreatePlan`, `handleEvolvePlan`, etc.) were removed. Capabilities register tools via `defineTool()` only — no `registerCommand()` calls remain in any capability `config.ts`. The removed imports (`ExtensionCommandContext`, `resolveCapabilityConfig`, `launchCapability` from command contexts) eliminated an entire class of code duplication between commands and tools. Users interact with pio exclusively through `pio_*` tools (agent-callable) or TUI-only commands (`/pio-next-task`, `/pio-parent`, etc.). Direct tool invocation is the canonical interface; state machine transitions provide params automatically.
+
 **Project-scoped capabilities:** Capabilities that read/write `.pio/PROJECT/*.md` files (e.g., `project-context`, `finalize-goal`) use `projectRelative: true` on `MarkdownFileSpec` entries. This flag resolves paths from the global `pioRootDir` (`<cwd>/.pio/`) instead of the capability's workspace directory. Combined with the validation guard's `allowProjectWrites` opt-in, these capabilities can freely write to PROJECT files without workarounds.
 
 ### Sub-Session Lifecycle

@@ -3,8 +3,8 @@ import type { WorkflowStep } from "../../capability-package";
 const steps: WorkflowStep[] = [
   {
     id: "read-goal",
-    title: "Read GOAL.md",
-    instructions: `Read the \`GOAL.md\` file from the goal workspace directory. This is your contract — it defines what "current state" means and what "done" looks like.
+    title: "Read the `goal` input",
+    instructions: `Read the \`goal\` input from the goal workspace directory. This is your contract — it defines what "current state" means and what "done" looks like.
 
 Internalize:
 - The **Current State** section — what existed when the goal was created
@@ -14,18 +14,18 @@ Internalize:
   {
     id: "read-archived-plans",
     title: "Read archived plans",
-    instructions: `The old \`PLAN.md\` has been archived. Find the most recent archived plan in \`PLAN_ARCHIVE/\` (files are named \`PLAN-{YYYYMMDDTHHMMSSZ}.md\`, sorted by timestamp in the filename). **This archived plan is your primary authority on implementation details** — formatting decisions, architectural choices, and specific approaches already made by the planning agent. GOAL.md defines scope boundaries (*what* to build); the archived plan defines implementation decisions (*how* to build it). When resolving conflicts between sources, follow the priority hierarchy documented in the \`pio-planning\` skill.
+    instructions: `The old \`PLAN.md\` has been archived. Find the most recent archived plan in \`PLAN_ARCHIVE/\` (files are named \`PLAN-{YYYYMMDDTHHMMSSZ}.md\`, sorted by timestamp in the filename). **This archived plan is your primary authority on implementation details** — formatting decisions, architectural choices, and specific approaches already made by the planning agent. The \`goal\` input defines scope boundaries (*what* to build); the archived plan defines implementation decisions (*how* to build it). When resolving conflicts between sources, follow the priority hierarchy documented in the \`pio-planning\` skill.
 
 If there are multiple archived plans, read all of them — they show the revision history and can reveal why previous plans needed changes. The most recent archive is your primary reference; earlier archives provide context on how the plan evolved.`,
   },
   {
     id: "identify-completed-steps",
     title: "Identify completed steps",
-    instructions: `Scan the remaining \`S{NN}/\` folders in the goal workspace. A step is **completed** if its folder contains an \`APPROVED\` marker file. Completed steps are immutable — their implementations are done and should not be modified.
+    instructions: `Scan the completed step folders in the goal workspace. A step is **completed** if its folder contains an \`APPROVED\` marker file. Completed steps are immutable — their implementations are done and should not be modified.
 
 For each completed step:
 - Record the step number (from the folder name, e.g., \`S01\` = Step 1)
-- Determine the step title — read \`S{NN}/TASK.md\` if it exists, or infer from the archived plan
+- Determine the step title — read \`TASK.md\` from the step folder if it exists, or infer from the archived plan
 - Note that these steps are historical anchors in the new plan
 
 Incomplete step folders (without an \`APPROVED\` marker) are **preserved** for the duration of the session so you can inspect them for context. Key files to inspect in incomplete step folders include:
@@ -40,8 +40,8 @@ These folders will be cleaned up automatically after the session completes.`,
     instructions: `Use your tools (\`read\`, \`bash\`) to understand the current state of the codebase:
 
 1. Read \`.pio/PROJECT/OVERVIEW.md\` if it exists — this is the project's entry point.
-2. Read implementation files from completed steps — check \`S{NN}/SUMMARY.md\` for what was built, and read the actual source files to understand current state.
-3. Understand what decisions were made during completed steps — check \`S{NN}/DECISIONS.md\` if it exists.
+2. Read implementation files from completed steps — check \`SUMMARY.md\` from completed step folders for what was built, and read the actual source files to understand current state.
+3. Understand what decisions were made during completed steps — check \`DECISIONS.md\` from completed step folders if it exists.
 4. **Check the workspace root for revision context:** The filename of the revision context document is provided in your session parameters. Read this file to understand why revision was triggered. Read the trigger step's \`TASK.md\` and \`DECISIONS.md\` from incomplete step folders for context on what decisions led to the revision request.
 5. Identify any new context that wasn't known when the original plan was written.
 
@@ -81,7 +81,7 @@ If any dimension cannot be answered from research or user input, ask before proc
 **Guiding principles:**
 - New steps should be concrete, ordered, and sized for a single executor session
 - Steps must reflect real implementation order — dependencies on earlier steps must be clear
-- Stay within GOAL.md scope — do not add unrelated refactoring or improvements
+- Stay within the \`goal\` input's scope — do not add unrelated refactoring or improvements
 - No source code in PLAN.md — describe changes in natural language only
 - When modifying archived plan decisions, follow the priority hierarchy rules defined in the \`pio-planning\` skill`,
   },
@@ -104,7 +104,7 @@ totalSteps: 7
 ---
 # Plan: <Goal Name>
 
-<One-line summary referencing GOAL.md for context.>
+<One-line summary referencing the \`goal\` input for context.>
 
 ## Prerequisites
 

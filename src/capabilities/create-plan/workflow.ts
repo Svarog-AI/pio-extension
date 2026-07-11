@@ -3,8 +3,8 @@ import type { WorkflowStep } from "../../capability-package";
 export default [
   {
     id: "read-goal",
-    title: "Read GOAL.md",
-    instructions: `Read the \`GOAL.md\` file from the goal workspace directory. This is your contract — it defines what "current state" means and what "done" looks like. If \`GOAL.md\` does not exist, tell the user that they need to create a goal first.
+    title: "Read the `goal` input",
+    instructions: `Read the \`goal\` input from the goal workspace directory. This is your contract — it defines what "current state" means and what "done" looks like. If it does not exist, tell the user that they need to create a goal first.
 
 Internalize:
 - The **Current State** section (point A)
@@ -14,7 +14,7 @@ Internalize:
   {
     id: "deep-research",
     title: "Deep research",
-    instructions: `Conduct thorough research using your tools (\`read\`, \`bash\`). Follow the research process documented in the \`pio-planning\` skill — read \`.pio/PROJECT/OVERVIEW.md\`, every file referenced in \`GOAL.md\`, trace dependencies, understand existing patterns and test setup, and identify hidden complexity.
+    instructions: `Conduct thorough research using your tools (\`read\`, \`bash\`). Follow the research process documented in the \`pio-planning\` skill — read \`.pio/PROJECT/OVERVIEW.md\`, every file referenced in the \`goal\` input, trace dependencies, understand existing patterns and test setup, and identify hidden complexity.
 
 **This is where deep research belongs.** You need to be confident about implementation details before writing the plan. If a step's acceptance criteria can't be made programmatic because you don't understand the test setup, go learn the test setup.
 
@@ -31,13 +31,13 @@ As part of the deep research step, leverage the user as an authorative source on
 **Verify dimensions before designing steps:** Before designing steps, verify the following dimensions. Follow the \`grill-me\` skill for probing technique — walk decision trees, follow implications, and one question at a time.
 
 - **Feasibility:** Can the proposed approach actually work? Are there hidden dependencies, tooling gaps, or architectural constraints that make the plan infeasible?
-- **Scope completeness:** Does GOAL.md cover all necessary changes, or are hard decisions deferred that will bite during implementation?
+- **Scope completeness:** Does the \`goal\` input cover all necessary changes, or are hard decisions deferred that will bite during implementation?
 - **Constraints from existing code:** What conventions, patterns, or shared utilities must the plan respect to stay consistent with the codebase?
 - **Downstream impact on consumers:** Who consumes the output of this work? What breaks if we get it wrong?
 
 If any dimension cannot be answered from research or user input, ask before proceeding.
 
-**Present findings:** Summarize what your research uncovered — key files and modules, dependencies discovered, hidden complexity, and any risks or constraints. Keep this concise — the user already knows their goal from GOAL.md. Focus on what's *new* or *surprising*.
+**Present findings:** Summarize what your research uncovered — key files and modules, dependencies discovered, hidden complexity, and any risks or constraints. Keep this concise — the user already knows their goal. Focus on what's *new* or *surprising*.
 
 **Architecture decisions:** When multiple valid approaches exist, present options with trade-offs using \`ask_user\`. Ask one decision at a time. Follow the ask-user skill protocol: gather context first, present 2-5 clear choices, max 2 attempts per boundary.
 

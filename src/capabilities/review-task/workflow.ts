@@ -3,14 +3,10 @@ import type { WorkflowStep } from "../../capability-package";
 export default [
   {
     id: "step-1",
-    title: "Read GOAL.md and PLAN.md for context",
-    instructions: `Read the \`GOAL.md\` file in the goal workspace directory. Internalize:
+    title: "Get project context",
+    instructions: `Review the project context for background on this goal. Check \`.pio/PROJECT/OVERVIEW.md\` if available and any other project documentation.
 
-- The **Current State** section — what exists today
-- The **To-Be State** section — the target outcome
-- Any constraints, architectural decisions, or external references
-
-Then read \`PLAN.md\` from the same directory. Find your assigned step and understand:
+Then review the plan file in the workspace to understand:
 
 - What this step is supposed to deliver
 - How it fits into the overall plan
@@ -19,12 +15,12 @@ Then read \`PLAN.md\` from the same directory. Find your assigned step and under
   {
     id: "step-2",
     title: "Read TASK.md, TEST.md, SUMMARY.md, and DECISIONS.md",
-    instructions: `Read all files from \`S{NN}/\` (your step folder):
+    instructions: `Read all files from your step folder:
 
 - **TASK.md** — the focused specification of what was built. Contains code components, approach decisions, files affected, and acceptance criteria.
 - **TEST.md** — the test record documenting what was tested during implementation. Contains "Given/when/then" test case summaries and programmatic verification commands.
 - **SUMMARY.md** — the changelog written by the implementation agent. Lists status (\`COMPLETED\`), files created/modified/deleted, decisions made, and test coverage notes.
-- **DECISIONS.md** — may exist for Step 2+ (will not exist for Step 1 / \`S01/\`). Contains accumulated architectural decisions from preceding steps — file placement changes, departures from the original plan, interface choices. Treat it as supplementary context for evaluating whether implementation aligns with actual decisions made during the goal lifecycle. For Step 1 (\`S01/\`), this file will not exist; proceed using only \`TASK.md\`.
+- **DECISIONS.md** — may exist for Step 2+ (will not exist for Step 1). Contains accumulated architectural decisions from preceding steps — file placement changes, departures from the original plan, interface choices. Treat it as supplementary context for evaluating whether implementation aligns with actual decisions made during the goal lifecycle. For Step 1, this file will not exist; proceed using only \`TASK.md\`.
 
 **User-Requested Changes:** \`SUMMARY.md\` includes a **User-Requested Changes** section recording explicit user feedback during implementation (e.g., "can you also do X", "merge this file into another"). When present, treat these listed changes as explicit user-approved scope extensions. The reviewer should NOT flag files or behaviors introduced by these changes as unauthorized modifications (HIGH severity). Instead, verify they were applied correctly and note them in the review.
 
@@ -32,9 +28,9 @@ Then read \`PLAN.md\` from the same directory. Find your assigned step and under
 
 1. **User-Requested Changes** (\`SUMMARY.md\`) — user-approved scope extensions always take precedence
 2. **Decisions** (\`DECISIONS.md\`) — architectural decisions and plan deviations override the original plan
-3. **Task** (\`TASK.md\`) and **Plan** (\`PLAN.md\`) — formal specification; TASK elaborates PLAN
+3. **Task** (\`TASK.md\`) and **Plan** (the plan file) — formal specification; TASK elaborates the plan
 4. **Test Record** (\`TEST.md\`) — summary of what was tested during implementation; verifies TASK was covered
-5. **Goal** (\`GOAL.md\`) — high-level target outcome; superseded by everything above
+5. **Goal** (the requirements document) — high-level target outcome; superseded by everything above
 
 When implementation follows a higher-authority source but deviates from a lower one, this is not an issue. Flag deviations only when they violate a source at its own authority level without justification from a higher source.`,
   },
@@ -79,7 +75,7 @@ When implementation follows a higher-authority source but deviates from a lower 
 - **TASK ↔ DECISIONS**: Verify that architectural decisions and plan deviations documented in \`DECISIONS.md\` are respected by the implementation.
 - **TASK ↔ User-Requested Changes**: When \`SUMMARY.md\`'s "User-Requested Changes" section lists changes, treat those as explicit scope extensions approved by the user. Do not flag files or behaviors introduced solely by user-requested changes as "accidental changes to unrelated files" (HIGH) or scope creep. Instead, verify correctness and document in the review.
 
-**How the hierarchy resolves conflicts:** When you find a deviation from \`TASK.md\` or \`PLAN.md\`, check \`DECISIONS.md\` and \`SUMMARY.md\` before flagging an issue. A deviation is justified if it appears in either source at a higher authority level.`,
+**How the hierarchy resolves conflicts:** When you find a deviation from \`TASK.md\` or the plan file, check \`DECISIONS.md\` and \`SUMMARY.md\` before flagging an issue. A deviation is justified if it appears in either source at a higher authority level.`,
   },
   {
     id: "step-5",
@@ -196,7 +192,7 @@ Only after confirming all three conditions above, write: **Therefore: APPROVED**
   {
     id: "step-7",
     title: "Write REVIEW.md with YAML frontmatter",
-    instructions: `Write \`S{NN}/REVIEW.md\` starting with a YAML frontmatter block at the very top of the file, before any markdown headings. The frontmatter provides structured outcome data for automation:
+    instructions: `Write \`REVIEW.md\` in your step folder starting with a YAML frontmatter block at the very top of the file, before any markdown headings. The frontmatter provides structured outcome data for automation:
 
 \`\`\`yaml
 ---

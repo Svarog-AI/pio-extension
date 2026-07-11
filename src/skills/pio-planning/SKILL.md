@@ -13,7 +13,7 @@ This skill covers:
 3. **Acceptance Criteria Guidelines** — how to specify verifiable completion checks
 4. **Research Process** — what to investigate before designing steps
 5. **Scope Discipline** — boundaries and constraints on plan content
-6. **Priority Hierarchy for Plan Revision** — resolving conflicts between GOAL.md, archived plans, and revision notes
+6. **Priority Hierarchy for Plan Revision** — resolving conflicts between the `goal` input, archived plans, and revision notes
 7. **Subgoal Decomposition** — when and how to nest subgoals within plan steps
 8. **User Interaction Protocol** — how to gather decisions during planning
 
@@ -39,7 +39,7 @@ Immediately after the frontmatter, the document title follows the format:
 # Plan: <Goal Name>
 ```
 
-Below the title, include a one-line summary of what the plan achieves, referencing GOAL.md for context.
+Below the title, include a one-line summary of what the plan achieves, referencing the `goal` input for context.
 
 ### Required Sections
 
@@ -135,7 +135,7 @@ A criterion is too vague if an executor could disagree about whether it's met. W
 Before designing steps, conduct thorough research using available tools (`read`, `bash`):
 
 1. **Read `.pio/PROJECT/OVERVIEW.md`** if it exists — this is the project's entry point and explains structure.
-2. **Read every file referenced in `GOAL.md`.** Trace dependencies, imports, and related code that will be affected by the change.
+2. **Read every file referenced in the `goal` input.** Trace dependencies, imports, and related code that will be affected by the change.
 3. **Understand existing patterns:** conventions, testing setup, build configuration, and CI pipeline.
 4. **Identify hidden complexity:** shared utilities, circular dependencies, migration requirements, backwards-compatibility concerns.
 5. **Look at existing tests** — understand how things are tested today so you can specify proper acceptance criteria.
@@ -144,24 +144,24 @@ This is where deep research belongs. You need to be confident about implementati
 
 ## Scope Discipline
 
-- **Stay within GOAL.md scope.** Do not add steps for refactoring unrelated code, fixing style issues, or "while you're at it" improvements. Those belong in separate goals.
-- **`GOAL.md` is read-only during planning.** Never modify it. Your output is `PLAN.md` only — no source code creation.
+- **Stay within the `goal` input's scope.** Do not add steps for refactoring unrelated code, fixing style issues, or "while you're at it" improvements. Those belong in separate goals.
+- **The `goal` input is read-only during planning.** Never modify it. Your output is `PLAN.md` only — no source code creation.
 - **Reference real files only.** Every path in PLAN.md should correspond to a file you actually read or confirmed exists. Don't guess paths.
 - **No source code in PLAN.md.** This is a planning document, not an implementation draft. Describe every step in natural language or high-level pseudocode. You may write a short interface signature (type stub) if it clarifies a contract — never full function bodies or class implementations. If you find yourself writing `if`/`for`/`while` blocks, stop and rewrite that section as a description.
 
 ## Priority Hierarchy for Plan Revision
 
-When a plan is rewritten after some steps are already completed, multiple sources of truth can conflict: `GOAL.md`, the archived `PLAN.md`, and revision notes from the trigger step. Resolve conflicts using this priority hierarchy for implementation details:
+When a plan is rewritten after some steps are already completed, multiple sources of truth can conflict: the `goal` input, the archived `PLAN.md`, and revision notes from the trigger step. Resolve conflicts using this priority hierarchy for implementation details:
 
-**Revision notes > archived PLAN.md > GOAL.md**
+**Revision notes > archived PLAN.md > `goal` input**
 
 - **Revision notes** — from workspace-root `REVISE_PLAN_NEEDED.md`, the trigger step's `TASK.md` and `DECISIONS.md`. These specify required changes and override everything.
 - **Archived PLAN.md** — primary reference for implementation details, formatting decisions, and architectural choices already made by the planning agent. Preserve all decisions from the archived plan unless revision notes explicitly require a change.
-- **GOAL.md** — provides scope boundaries and high-level context. Use it to understand *what* should be built, but do not let its high-level description override specific *how* decisions already encoded in the archived plan.
+- **`goal` input** — provides scope boundaries and high-level context. Use it to understand *what* should be built, but do not let its high-level description override specific *how* decisions already encoded in the archived plan.
 
 ### Scope vs. Implementation
 
-`GOAL.md` defines *what* should be built and the scope boundaries. The archived `PLAN.md` defines *how* it should be built. During revision, preserve the *how* — the concrete implementation decisions, step decomposition, and formatting choices already made by the planning agent.
+The *`goal` input* defines *what* should be built and the scope boundaries. The archived `PLAN.md` defines *how* it should be built. During revision, preserve the *how* — the concrete implementation decisions, step decomposition, and formatting choices already made by the planning agent.
 
 ### When Modifying Archived Plan Decisions Is Permitted
 
@@ -235,5 +235,5 @@ When planning requires user input, follow these guidelines:
 - **Use `ask_user` for architecture choices.** Present structured options with 2-5 clear choices and trade-off descriptions. Ask one decision at a time.
 - **Max 2 attempts per boundary decision.** Don't loop indefinitely on a single question.
 - **Summarize plan structure before writing.** After all questions are answered and steps are designed, present the planned step count and high-level step titles to the user before committing to PLAN.md. Confirm this is what they expect, then proceed.
-- **Don't over-interview.** The user already documented their intent in GOAL.md — only ask when research genuinely revealed something unclear or when multiple valid paths exist. Keep to 2-3 exchange rounds total. If the path is clear, present findings briefly and move on.
-- **If GOAL.md is too vague to plan against**, tell the user and suggest what needs clarification. Don't fill in blanks yourself — a vague goal produces a vague plan.
+- **Don't over-interview.** The user already documented their intent in the `goal` input — only ask when research genuinely revealed something unclear or when multiple valid paths exist. Keep to 2-3 exchange rounds total. If the path is clear, present findings briefly and move on.
+- **If the `goal` input is too vague to plan against**, tell the user and suggest what needs clarification. Don't fill in blanks yourself — a vague goal produces a vague plan.

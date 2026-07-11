@@ -3,52 +3,50 @@ import type { WorkflowStep } from "../../capability-package";
 const steps: WorkflowStep[] = [
   {
     id: "read-plan",
-    title: "Read PLAN.md for overall scope",
-    instructions: `Read \`PLAN.md\` from the goal workspace root. This tells you:
+    title: "Read the `plan` input for overall scope",
+    instructions: `Read the \`plan\` input from the goal workspace root. This tells you:
 
 - What was planned to change (intent and scope)
 - Which files were targeted
 - The overall architecture or capability being built
 
-Use this to identify new capabilities, modules, or architectural changes that may warrant PROJECT file updates — even if they don't appear in \`DECISIONS.md\`.`,
+Use this to identify new capabilities, modules, or architectural changes that may warrant PROJECT file updates.`,
   },
   {
     id: "read-summaries",
-    title: "Read per-step SUMMARY.md files",
-    instructions: `Scan the goal workspace for step folders (\`S01/\`, \`S02/\`, etc.). Read \`SUMMARY.md\` from each one that exists. These provide ground truth of what was actually built:
+    title: "Read per-step completion summaries",
+    instructions: `Scan the subdirectories in the goal workspace. Read completion summaries from each one that exists. These provide ground truth of what was actually built:
 
 - Files created, modified, or deleted per step
 - Decisions made during implementation
 - Test coverage details
-- Technical decisions not captured in \`DECISIONS.md\`
 
-If a step folder has no \`SUMMARY.md\`, skip it gracefully.
+If a subdirectory has no completion summary, skip it gracefully.
 
-**Subgoal-aware reading:** When scanning step folders, check for a \`subgoals/\` subdirectory inside each \`S{NN}/\` folder (e.g., \`S03/subgoals/\`). If present, this step spawned nested subgoals. For each subgoal workspace under \`subgoals/<name>/\`:
+**Subgoal-aware reading:** When scanning subdirectories, check for a \`subgoals/\` subdirectory inside each one. If present, this step spawned nested subgoals. For each subgoal workspace under \`subgoals/<name>/\`:
 
-- Read the subgoal's \`GOAL.md\` for context on what was built
-- Read the subgoal's final \`DECISIONS.md\` (from the highest-numbered sub-step folder) for accumulated decisions
-- Read per-sub-step \`SUMMARY.md\` files from the subgoal workspace
+- Read the subgoal's requirements file for context on what was built
+- Read per-sub-step completion summaries from the subgoal workspace
 
-Treat the subgoal as a single unit — don't confuse subgoal step folders (e.g., \`S03/subgoals/nested-feature/S01/\`) with parent step folders. The subgoal's \`COMPLETED\` marker signals that the parent step is complete.`,
+Treat the subgoal as a single unit — don't confuse subgoal subdirectories with parent subdirectories. The subgoal's completion marker signals that the parent step is complete.`,
   },
   {
     id: "read-decisions",
-    title: "Read the final DECISIONS.md",
-    instructions: `Read \`DECISIONS.md\` from the path provided in the initial user message. This is the accumulated decisions file from the highest-numbered step folder. It contains explicit architectural decisions, file placement changes, and prompt reference mappings captured during the goal lifecycle.
+    title: "Read additional context if provided",
+    instructions: `If the initial user message provides a path to an accumulated decisions file, read it for explicit architectural decisions, file placement changes, and prompt reference mappings captured during the goal lifecycle.
 
-**DECISIONS.md may be missing, empty, or incomplete.** If it doesn't exist or has no relevant content, proceed using only \`PLAN.md\` and \`SUMMARY.md\` files. Note this in your final summary.`,
+**The decisions file may be missing, empty, or incomplete.** If it doesn't exist or has no relevant content, proceed using only the \`plan\` input and completion summaries. Note this in your final summary.`,
   },
   {
     id: "synthesize",
     title: "Synthesize a complete picture",
-    instructions: `Combine insights from all three sources:
+    instructions: `Combine insights from all available sources:
 
-- **PLAN.md** — intent: what was planned and targeted
-- **SUMMARY.md files** — ground truth: what was actually built, files changed, decisions made per step
-- **DECISIONS.md** — explicit decisions: captured architectural choices and patterns
+- **\`plan\` input** — intent: what was planned and targeted
+- **Completion summaries** — ground truth: what was actually built, files changed, decisions made per step
+- **Decisions file** (if provided) — explicit decisions: captured architectural choices and patterns
 
-Cross-reference all three: if \`PLAN.md\` mentions a new capability module that a \`SUMMARY.md\` confirms was created, but \`DECISIONS.md\` doesn't mention it, still evaluate it for PROJECT file updates. Do not rely on \`DECISIONS.md\` alone.`,
+Cross-reference all available sources: if the \`plan\` input mentions a new capability module that a completion summary confirms was created, still evaluate it for PROJECT file updates. Do not rely on any single source alone.`,
   },
   {
     id: "filter-decisions",
@@ -99,8 +97,8 @@ If a finding doesn't map to any update rule, skip it.`,
 
 - **Files modified:** List each \`.pio/PROJECT/*.md\` file that was changed
 - **Changes made:** Brief description of what was added or modified in each file
-- **Triggering sources:** Which \`DECISIONS.md\` entry, \`SUMMARY.md\` finding, or \`PLAN.md\` item triggered each change
-- **Sources available:** Note which sources were read (\`PLAN.md\`, \`DECISIONS.md\`, per-step \`SUMMARY.md\` files) and which were missing or empty
+- **Triggering sources:** Which decisions entry, completion summary finding, or \`plan\` input item triggered each change
+- **Sources available:** Note which sources were read (the \`plan\` input, decisions file, per-step completion summaries) and which were missing or empty
 
 If no updates were warranted, explicitly state: "No PROJECT file updates were warranted. All decisions from this goal were implementation-specific or locally scoped, and none mapped to project-wide patterns, conventions, or structural changes."`,
   },

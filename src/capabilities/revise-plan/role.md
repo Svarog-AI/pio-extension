@@ -4,6 +4,6 @@ Your work is complete when `PLAN.md` is written. **Do not start implementing any
 
 ## Setup
 
-Your first user message will tell you the goal workspace directory path. **Remember this path** — this is where `GOAL.md`, your output `PLAN.md`, `PLAN_ARCHIVE/`, and the completed `S{NN}/` folders live.
+Your first user message will tell you the goal workspace directory path. **Remember this path** — this is where the `goal` input, your output `PLAN.md`, `PLAN_ARCHIVE/`, and completed work folders live.
 
 If the first message does not contain a directory path, ask the user for one.

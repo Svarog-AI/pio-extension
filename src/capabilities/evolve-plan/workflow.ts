@@ -7,19 +7,15 @@ import type { WorkflowStep } from "../../capability-package";
 export default [
   {
     id: "read-goal",
-    title: "Read GOAL.md for context",
-    instructions: `Read the \`GOAL.md\` file in the goal workspace directory. Internalize:
+    title: "Get project context",
+    instructions: `Review the project context for background on this goal. Check \`.pio/PROJECT/OVERVIEW.md\` if available and any other project documentation to understand the broader picture.
 
-- The **Current State** section — what exists today
-- The **To-Be State** section — the target outcome
-- Any constraints, references, or external documents mentioned
-
-This gives you the big picture. You will narrow your focus to one step next.`,
+This gives you the big picture before narrowing your focus.`,
   },
   {
     id: "read-plan-and-locate-step",
-    title: "Read PLAN.md and locate your step",
-    instructions: `Read the \`PLAN.md\` file in the goal workspace directory. Find the step assigned to you (e.g., "Step 3"). Study:
+    title: "Read the `plan` input and locate your step",
+    instructions: `Read the \`plan\` input in the goal workspace directory. Find the step assigned to you (e.g., "Step 3"). Study:
 
 - The step's **Description** — what exactly changes
 - The step's **Acceptance criteria** — what must be verifiable for completion
@@ -29,13 +25,13 @@ This gives you the big picture. You will narrow your focus to one step next.`,
 
 Also note any prerequisites listed at the top of the plan.
 
-**Important — check if this step exists in the plan:** Search PLAN.md for your assigned step number (e.g., look for "Step 3" or "### Step 3"). If you **cannot find** your assigned step in PLAN.md, it means all steps have already been specified. In that case:
+**Important — check if this step exists in the plan:** Search the plan file for your assigned step number (e.g., look for "Step 3" or "### Step 3"). If you **cannot find** your assigned step in the plan file, it means all steps have already been specified. In that case:
 
-1. **First, assess whether a plan revision is needed:** Review the completed work — were there scope items missed? Do decisions from completed steps require additional plan steps? If additional steps are needed, write \`REVISE_PLAN_NEEDED.md\` at the workspace root (next to \`PLAN.md\`) as a plain markdown document with a title describing the revision reason and a body explaining the context. **Do NOT also write \`COMPLETION_SUMMARY.md\`** — these two files must never coexist.
+1. **First, assess whether a plan revision is needed:** Review the completed work — were there scope items missed? Do decisions from completed steps require additional plan steps? If additional steps are needed, write \`REVISE_PLAN_NEEDED.md\` at the workspace root as a plain markdown document with a title describing the revision reason and a body explaining the context. **Do NOT also write \`COMPLETION_SUMMARY.md\`** — these two files must never coexist.
 
 **Writing this document _is_ how to signal plan revision from evolve-plan.** Do NOT call \`pio_revise_plan\` — just produce the output file defined by the capability contract. Exception: if the human user explicitly asks you to start a revise-plan session, calling the tool is fine.
 
-2. If no revision is needed, write \`COMPLETION_SUMMARY.md\` in the goal workspace root (next to \`PLAN.md\`). Include YAML frontmatter with \`status: "complete"\` and a markdown body explaining why the goal is considered complete (e.g., "all N steps have been approved").
+2. If no revision is needed, write \`COMPLETION_SUMMARY.md\` in the goal workspace root. Include YAML frontmatter with \`status: "complete"\` and a markdown body explaining why the goal is considered complete (e.g., "all N steps have been approved").
 3. Call \`pio_mark_complete\` and stop — you are done.
 
 If the step **does** exist, continue with the normal process below.`,
@@ -45,10 +41,10 @@ If the step **does** exist, continue with the normal process below.`,
     title: "Read previous step context (optional enrichment)",
     instructions: `If you are working on Step N and N > 1, read outputs from the previous step for background context:
 
-1. Check if \`S{NN-1}/SUMMARY.md\` exists (e.g., \`S02/SUMMARY.md\` when writing Step 3). If it does, read it — it describes what was built in that step. Pay special attention to the "Decisions Made" section.
-2. Check if \`S{NN-1}/REVIEW.md\` exists. If it does, read it — it contains the review feedback on that step's implementation.
-3. Check if \`S{NN-1}/DECISIONS.md\` exists. If it does, read it — it contains accumulated architectural decisions from all steps before N-1. **Important:** for Step 2 (N=2), \`S01/DECISIONS.md\` does not exist — Step 1 produces no DECISIONS.md. Handle this gracefully: proceed using only \`SUMMARY.md\` and \`REVIEW.md\`. This is expected, not an error.
-4. Also look for any other files in the previous step folder (e.g., implementation files referenced in SUMMARY.md) that might help you understand the code changes made.
+1. Check if the previous step folder's completion summary exists. If it does, read it — it describes what was built in that step. Pay special attention to the "Decisions Made" section.
+2. Check if the previous step folder's review document exists. If it does, read it — it contains the review feedback on that step's implementation.
+3. Check if the previous step folder's \`DECISIONS.md\` exists. If it does, read it — it contains accumulated architectural decisions from all steps before N-1. **Important:** for Step 2, the previous step folder will have no \`DECISIONS.md\` — Step 1 produces no DECISIONS.md. Handle this gracefully: proceed using only the completion summary and review document. This is expected, not an error.
+4. Also look for any other files in the previous step folder (e.g., implementation files referenced in the completion summary) that might help you understand the code changes made.
 
 This is **optional enrichment only**. Proceed gracefully if these files don't exist or are empty — never treat them as prerequisites. If there is no previous step (you are Step 1), skip this section entirely.`,
   },
@@ -57,16 +53,16 @@ This is **optional enrichment only**. Proceed gracefully if these files don't ex
     title: "Write DECISIONS.md (Step 2+)",
     instructions: `For Step 1, skip this step entirely — there are no prior decisions to carry forward.
 
-For Step 2+, produce \`S{NN}/DECISIONS.md\` by merging accumulated decisions with new ones. This file serves as the accumulating decision log for all downstream steps. Follow these rules:
+For Step 2+, produce \`DECISIONS.md\` in your step folder by merging accumulated decisions with new ones. This file serves as the accumulating decision log for all downstream steps. Follow these rules:
 
-- **Read inputs:** Extract "Decisions Made" from the previous step's \`SUMMARY.md\`. Read accumulated decisions from the previous step's \`DECISIONS.md\` (if it exists — for Step 2, only SUMMARY.md is available).
+- **Read inputs:** Extract "Decisions Made" from the previous step's completion summary. Read accumulated decisions from the previous step's \`DECISIONS.md\` (if it exists — for Step 2, only the completion summary is available).
 - **Selective accumulation — forward-looking only:** Include only decisions that may impact future steps. Exclude implementation-only details, local design choices with no downstream consequences, and one-off decisions already fully applied in the completed step.
 - **Deduplication:** If the same decision appears across multiple prior steps, keep exactly one entry — do not repeat the same decision under different headings. Merge related decisions where they express the same underlying choice.
-- **Plan deviations are high-priority must-carry decisions:** If a step adjusted or changed the original \`PLAN.md\` (e.g., moved a function to a different file than planned, chose a different architecture), this is critical context for downstream agents. Mark these clearly — group them under a "Plan Deviations" section or flag them explicitly.
+- **Plan deviations are high-priority must-carry decisions:** If a step adjusted or changed the original plan file (e.g., moved a function to a different file than planned, chose a different architecture), this is critical context for downstream agents. Mark these clearly — group them under a "Plan Deviations" section or flag them explicitly.
 - **Rephrase for context:** Don't just append verbatim — rephrase decisions to fit the current step's context and make them actionable for downstream consumers. Group related decisions logically rather than listing them chronologically.
 - **Be brief and concise:** Each decision entry should be 1–2 sentences: state the decision, the affected files/areas, and downstream impact. Do not overexplain.
 
-Write \`S{NN}/DECISIONS.md\` as a structured markdown document with a heading per decision category (e.g., "Plan Deviations", "Architecture Decisions", "File Placement").`,
+Write \`DECISIONS.md\` in your step folder as a structured markdown document with a heading per decision category (e.g., "Plan Deviations", "Architecture Decisions", "File Placement").`,
   },
   {
     id: "research-context",
@@ -90,14 +86,14 @@ Be thorough — this research ensures your specification is grounded in reality 
 - **Plan deviation assessment:** Do specification decisions diverge from the original plan in ways that affect completed work or require revision? Should \`REVISE_PLAN_NEEDED.md\` be written?
 - **Skill relevance:** Have all relevant skills been identified for the execute-task agent? Review \`<available_skills>\` for both bundled skills (from \`src/skills/\`) and external skills. Does the frontmatter \`skills\` block cover what the executor will need?
 
-If any dimension raises doubts, you **must research further or ask the user before proceeding**. This ensures TASK.md is a truly actionable specification, not a restatement of PLAN.md with surface-level detail.`,
+If any dimension raises doubts, you **must research further or ask the user before proceeding**. This ensures TASK.md is a truly actionable specification, not a restatement of the plan file with surface-level detail.`,
   },
   {
     id: "write-task",
     title: "Write TASK.md",
-    instructions: `**Existing TASK.md — read before writing:** Before writing TASK.md, check if it already exists in the current step folder (\`S{NN}/TASK.md\`). If it does, this means evolve-plan has been rerun on a previously-specified step. Read the existing TASK.md to understand what was previously specified. Use its content as context for adapting the task: keep parts that don't conflict with new requirements, modify only what is necessary.
+    instructions: `**Existing TASK.md — read before writing:** Before writing TASK.md, check if it already exists in the current step folder. If it does, this means evolve-plan has been rerun on a previously-specified step. Read the existing TASK.md to understand what was previously specified. Use its content as context for adapting the task: keep parts that don't conflict with new requirements, modify only what is necessary.
 
-Write \`TASK.md\` into the \`S{NN}/\` folder. This file is a focused, actionable specification of exactly what needs to be built in this step.
+Write \`TASK.md\` into your step folder. This file is a focused, actionable specification of exactly what needs to be built in this step.
 
 **YAML frontmatter (required):** TASK.md begins with a YAML frontmatter block delimited by \`---\`. This block is always present — even when empty. It provides machine-readable data consumed at runtime by execute-task and review-task sessions. The frontmatter may include an optional \`skills\` block:
 
@@ -115,7 +111,7 @@ Follow the TASK.md template with sections: Title, Context, What to Build, Code C
     title: "Assess if plan revision is needed",
     instructions: `After writing \`TASK.md\`, evaluate whether your specification decisions require a plan revision.
 
-Write a \`REVISE_PLAN_NEEDED.md\` document at the workspace root (next to \`PLAN.md\`) if **any** of the following conditions are met:
+Write a \`REVISE_PLAN_NEEDED.md\` document at the workspace root if **any** of the following conditions are met:
 
 1. **Impossible future steps:** Decisions made during specification make at least one future step impossible as-planned.
 2. **Requires completed changes:** Decisions require changes to implementations in already-completed previous steps.
@@ -125,7 +121,7 @@ Write a \`REVISE_PLAN_NEEDED.md\` document at the workspace root (next to \`PLAN
 
 Do **not** write the document when only minor descriptive changes are needed in a single future step, or all steps stay roughly the same with minor additions or removals.
 
-Write \`REVISE_PLAN_NEEDED.md\` as a plain markdown document at the workspace root (next to \`PLAN.md\`) — a title describing the revision reason and a body explaining the context.
+Write \`REVISE_PLAN_NEEDED.md\` as a plain markdown document at the workspace root — a title describing the revision reason and a body explaining the context.
 
 **Writing this document _is_ how to signal plan revision from evolve-plan.** Do NOT call \`pio_revise_plan\` — just produce the output file defined by the capability contract. Exception: if the human user explicitly asks you to start a revise-plan session, calling the tool is fine.`,
   },

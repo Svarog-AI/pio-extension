@@ -7,6 +7,7 @@ import type {
   Skill,
 } from "@earendil-works/pi-coding-agent";
 import { stripFrontmatter } from "@earendil-works/pi-coding-agent";
+import { resolveContractPath } from "./capability-config";
 import type { CompiledPromptSections } from "./capability-package";
 import { CapState } from "./capability-state";
 import { getSessionConfig } from "./capability-utils";
@@ -192,6 +193,55 @@ export function buildSkillLoadingSection(
 }
 
 // ---------------------------------------------------------------------------
+// Session inputs — builds the --- SESSION INPUTS --- section
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a markdown section listing the workspace directory and resolved contract inputs.
+ * Returns an empty string when there are no inputs or no params to resolve.
+ *
+ * For each contract input:
+ * - Calls resolveContractPath() with workspacePrefix = undefined (same convention as CapState)
+ * - On success: includes the full filesystem path in the output
+ * - On failure (throws): skips the input gracefully
+ */
+export function buildSessionInputsSection(
+  config: CapabilityConfig,
+  workspaceDir: string,
+  params?: Record<string, unknown>,
+): string {
+  const inputs = config?.contract?.inputs;
+  if (!inputs || inputs.length === 0) return "";
+
+  const lines: string[] = [];
+
+  for (const entry of inputs) {
+    try {
+      const fullPath = resolveContractPath(
+        entry.file,
+        workspaceDir,
+        undefined,
+        params,
+        entry.projectRelative,
+        entry.paramKey,
+      );
+      lines.push(`- ${entry.name}: \`${fullPath}\``);
+    } catch {
+      // Skip unresolvable inputs gracefully (missing params, non-string values, etc.)
+    }
+  }
+
+  if (lines.length === 0) return "";
+
+  return (
+    `--- SESSION INPUTS ---\n\n` +
+    `Workspace directory: ${workspaceDir}\n\n` +
+    `Your capability was invoked with these inputs:\n` +
+    lines.join("\n")
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Setup — registers session infrastructure event handlers
 // ---------------------------------------------------------------------------
 
@@ -324,6 +374,18 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
     // Skill-loading instructions (dynamically generated) — injected between project context and capability prompt
     if (skillLoadingSection) {
       prompts.push(skillLoadingSection);
+    }
+
+    // Session inputs — injected between skill loading and session completion
+    if (currentConfig) {
+      const inputsSection = buildSessionInputsSection(
+        currentConfig,
+        currentConfig.workspaceDir ?? ".",
+        enrichedSessionParams,
+      );
+      if (inputsSection) {
+        prompts.push(inputsSection);
+      }
     }
 
     // Session completion mandate — always injected, regardless of other sections

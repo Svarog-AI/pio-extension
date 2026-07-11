@@ -19,13 +19,11 @@ Then review the plan file in the workspace to understand:
 This gives you the big picture before narrowing to your task.`,
   },
   {
-    id: "read-task-and-decisions",
-    title: "Read TASK.md and (if needed) DECISIONS.md",
-    instructions: `Read files from your step folder:
+    id: "read-task",
+    title: "Read TASK.md",
+    instructions: `Read \`TASK.md\` from the workspace:
 
-- **TASK.md** — the focused specification of what to build, including code components, approach decisions, files affected, and acceptance criteria.
-
-**DECISIONS.md (Step 2+):** \`DECISIONS.md\` may also exist alongside these files. It contains accumulated architectural decisions from all preceding steps (e.g., file placement changes, departures from the original plan). Treat it as supplementary context — read it if present but never treat it as a prerequisite. The primary source of truth for what to implement remains \`TASK.md\`. For Step 1, this file will not exist; proceed using only \`TASK.md\`.`,
+- **TASK.md** — the focused specification of what to build, including code components, approach decisions, files affected, and acceptance criteria.`,
   },
   {
     id: "research-context",
@@ -44,7 +42,7 @@ Be thorough — this research ensures your implementation matches the project's 
     title: "Iterative TDD",
     instructions: `Apply the \`tdd\` skill for the iterative development cycle (tracer bullet → incremental RED→GREEN → refactor). The skill contains all methodology details.
 
-After all tests pass and refactoring is done, create \`TEST.md\` in your step folder as a post-hoc summary record of what was actually tested. Use the "Given ____ when ____ then ____" format for test case descriptions.
+After all tests pass and refactoring is done, create \`TEST.md\` in the workspace as a post-hoc summary record of what was actually tested. Use the "Given ____ when ____ then ____" format for test case descriptions.
 
 **TEST.md format:** Start with a single short paragraph describing what is tested. Then list test cases as single sentences following the "Given/when/then" pattern. List programmatic verification commands below unit tests using the same pattern.
 
@@ -88,7 +86,7 @@ This ensures \`SUMMARY.md\` always reflects the final state of all files, regard
   {
     id: "write-completion-artifacts",
     title: "Write completion artifacts",
-    instructions: `Write \`SUMMARY.md\` in your step folder starting with a YAML frontmatter block at the very top of the file, before any markdown headings. The frontmatter provides structured outcome data for automation:
+    instructions: `Write \`SUMMARY.md\` in the workspace starting with a YAML frontmatter block at the very top of the file, before any markdown headings. The frontmatter provides structured outcome data for automation:
 
 \`\`\`yaml
 ---

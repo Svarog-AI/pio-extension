@@ -14,23 +14,21 @@ Then review the plan file in the workspace to understand:
   },
   {
     id: "step-2",
-    title: "Read TASK.md, TEST.md, SUMMARY.md, and DECISIONS.md",
-    instructions: `Read all files from your step folder:
+    title: "Read TASK.md, TEST.md, and SUMMARY.md",
+    instructions: `Read all files from the workspace:
 
 - **TASK.md** — the focused specification of what was built. Contains code components, approach decisions, files affected, and acceptance criteria.
 - **TEST.md** — the test record documenting what was tested during implementation. Contains "Given/when/then" test case summaries and programmatic verification commands.
 - **SUMMARY.md** — the changelog written by the implementation agent. Lists status (\`COMPLETED\`), files created/modified/deleted, decisions made, and test coverage notes.
-- **DECISIONS.md** — may exist for Step 2+ (will not exist for Step 1). Contains accumulated architectural decisions from preceding steps — file placement changes, departures from the original plan, interface choices. Treat it as supplementary context for evaluating whether implementation aligns with actual decisions made during the goal lifecycle. For Step 1, this file will not exist; proceed using only \`TASK.md\`.
 
 **User-Requested Changes:** \`SUMMARY.md\` includes a **User-Requested Changes** section recording explicit user feedback during implementation (e.g., "can you also do X", "merge this file into another"). When present, treat these listed changes as explicit user-approved scope extensions. The reviewer should NOT flag files or behaviors introduced by these changes as unauthorized modifications (HIGH severity). Instead, verify they were applied correctly and note them in the review.
 
 **Authority Hierarchy:** When resolving conflicts between specification sources, use this hierarchy from highest to lowest authority:
 
 1. **User-Requested Changes** (\`SUMMARY.md\`) — user-approved scope extensions always take precedence
-2. **Decisions** (\`DECISIONS.md\`) — architectural decisions and plan deviations override the original plan
-3. **Task** (\`TASK.md\`) and **Plan** (the plan file) — formal specification; TASK elaborates the plan
-4. **Test Record** (\`TEST.md\`) — summary of what was tested during implementation; verifies TASK was covered
-5. **Goal** (the requirements document) — high-level target outcome; superseded by everything above
+2. **Task** (\`TASK.md\`) and **Plan** (the plan file) — formal specification; TASK elaborates the plan
+3. **Test Record** (\`TEST.md\`) — summary of what was tested during implementation; verifies TASK was covered
+4. **Goal** (the requirements document) — high-level target outcome; superseded by everything above
 
 When implementation follows a higher-authority source but deviates from a lower one, this is not an issue. Flag deviations only when they violate a source at its own authority level without justification from a higher source.`,
   },
@@ -72,10 +70,9 @@ When implementation follows a higher-authority source but deviates from a lower 
 - **PLAN ↔ TASK**: Does the task spec faithfully represent the plan step?
 - **TASK ↔ TESTS**: Do tests cover all acceptance criteria?
 - **TASK ↔ Implementation**: Does code match the task spec?
-- **TASK ↔ DECISIONS**: Verify that architectural decisions and plan deviations documented in \`DECISIONS.md\` are respected by the implementation.
 - **TASK ↔ User-Requested Changes**: When \`SUMMARY.md\`'s "User-Requested Changes" section lists changes, treat those as explicit scope extensions approved by the user. Do not flag files or behaviors introduced solely by user-requested changes as "accidental changes to unrelated files" (HIGH) or scope creep. Instead, verify correctness and document in the review.
 
-**How the hierarchy resolves conflicts:** When you find a deviation from \`TASK.md\` or the plan file, check \`DECISIONS.md\` and \`SUMMARY.md\` before flagging an issue. A deviation is justified if it appears in either source at a higher authority level.`,
+**How the hierarchy resolves conflicts:** When you find a deviation from \`TASK.md\` or the plan file, check \`SUMMARY.md\` before flagging an issue. A deviation is justified if it appears in a source at a higher authority level.`,
   },
   {
     id: "step-5",
@@ -192,7 +189,7 @@ Only after confirming all three conditions above, write: **Therefore: APPROVED**
   {
     id: "step-7",
     title: "Write REVIEW.md with YAML frontmatter",
-    instructions: `Write \`REVIEW.md\` in your step folder starting with a YAML frontmatter block at the very top of the file, before any markdown headings. The frontmatter provides structured outcome data for automation:
+    instructions: `Write \`REVIEW.md\` in the workspace starting with a YAML frontmatter block at the very top of the file, before any markdown headings. The frontmatter provides structured outcome data for automation:
 
 \`\`\`yaml
 ---

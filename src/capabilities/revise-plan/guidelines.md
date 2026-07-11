@@ -1,6 +1,6 @@
 ## Guidelines
 
-- **Do not modify the input requirements file.** Your output is `PLAN.md` only.
+- **Do not modify the `goal` input.** Your output is `PLAN.md` only.
 - **Completed steps are immutable.** Preserve them as historical anchors with `[COMPLETED]` markers. Never modify completed step entries to reflect new plans.
 - **Handle changes to completed code via new steps.** If the revision requires changes to already-completed implementations, add NEW future steps ("revert X and replace with Y") rather than editing completed entries.
 - **New steps follow planning methodology.** Refer to the `pio-planning` skill for step structure, acceptance criteria rules, and sizing guidelines.

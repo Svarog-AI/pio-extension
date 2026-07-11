@@ -14,28 +14,28 @@ Use this to identify new capabilities, modules, or architectural changes that ma
   },
   {
     id: "read-summaries",
-    title: "Read per-step SUMMARY.md files",
-    instructions: `Scan the subdirectories in the goal workspace. Read \`SUMMARY.md\` from each one that exists. These provide ground truth of what was actually built:
+    title: "Read per-step completion summaries",
+    instructions: `Scan the subdirectories in the goal workspace. Read completion summaries from each one that exists. These provide ground truth of what was actually built:
 
 - Files created, modified, or deleted per step
 - Decisions made during implementation
 - Test coverage details
 
-If a subdirectory has no \`SUMMARY.md\`, skip it gracefully.
+If a subdirectory has no completion summary, skip it gracefully.
 
 **Subgoal-aware reading:** When scanning subdirectories, check for a \`subgoals/\` subdirectory inside each one. If present, this step spawned nested subgoals. For each subgoal workspace under \`subgoals/<name>/\`:
 
 - Read the subgoal's requirements file for context on what was built
-- Read per-sub-step \`SUMMARY.md\` files from the subgoal workspace
+- Read per-sub-step completion summaries from the subgoal workspace
 
-Treat the subgoal as a single unit — don't confuse subgoal subdirectories with parent subdirectories. The subgoal's \`COMPLETED\` marker signals that the parent step is complete.`,
+Treat the subgoal as a single unit — don't confuse subgoal subdirectories with parent subdirectories. The subgoal's completion marker signals that the parent step is complete.`,
   },
   {
     id: "read-decisions",
     title: "Read additional context if provided",
     instructions: `If the initial user message provides a path to an accumulated decisions file, read it for explicit architectural decisions, file placement changes, and prompt reference mappings captured during the goal lifecycle.
 
-**The decisions file may be missing, empty, or incomplete.** If it doesn't exist or has no relevant content, proceed using only the \`plan\` input and \`SUMMARY.md\` files. Note this in your final summary.`,
+**The decisions file may be missing, empty, or incomplete.** If it doesn't exist or has no relevant content, proceed using only the \`plan\` input and completion summaries. Note this in your final summary.`,
   },
   {
     id: "synthesize",
@@ -43,10 +43,10 @@ Treat the subgoal as a single unit — don't confuse subgoal subdirectories with
     instructions: `Combine insights from all available sources:
 
 - **\`plan\` input** — intent: what was planned and targeted
-- **SUMMARY.md files** — ground truth: what was actually built, files changed, decisions made per step
+- **Completion summaries** — ground truth: what was actually built, files changed, decisions made per step
 - **Decisions file** (if provided) — explicit decisions: captured architectural choices and patterns
 
-Cross-reference all available sources: if the \`plan\` input mentions a new capability module that a \`SUMMARY.md\` confirms was created, still evaluate it for PROJECT file updates. Do not rely on any single source alone.`,
+Cross-reference all available sources: if the \`plan\` input mentions a new capability module that a completion summary confirms was created, still evaluate it for PROJECT file updates. Do not rely on any single source alone.`,
   },
   {
     id: "filter-decisions",
@@ -97,8 +97,8 @@ If a finding doesn't map to any update rule, skip it.`,
 
 - **Files modified:** List each \`.pio/PROJECT/*.md\` file that was changed
 - **Changes made:** Brief description of what was added or modified in each file
-- **Triggering sources:** Which decisions entry, \`SUMMARY.md\` finding, or \`plan\` input item triggered each change
-- **Sources available:** Note which sources were read (the \`plan\` input, decisions file, per-step \`SUMMARY.md\` files) and which were missing or empty
+- **Triggering sources:** Which decisions entry, completion summary finding, or \`plan\` input item triggered each change
+- **Sources available:** Note which sources were read (the \`plan\` input, decisions file, per-step completion summaries) and which were missing or empty
 
 If no updates were warranted, explicitly state: "No PROJECT file updates were warranted. All decisions from this goal were implementation-specific or locally scoped, and none mapped to project-wide patterns, conventions, or structural changes."`,
   },

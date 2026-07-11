@@ -41,10 +41,10 @@ If the step **does** exist, continue with the normal process below.`,
     title: "Read previous step context (optional enrichment)",
     instructions: `If you are working on Step N and N > 1, read outputs from the previous step for background context:
 
-1. Check if the previous step folder's \`SUMMARY.md\` exists. If it does, read it — it describes what was built in that step. Pay special attention to the "Decisions Made" section.
-2. Check if the previous step folder's \`REVIEW.md\` exists. If it does, read it — it contains the review feedback on that step's implementation.
-3. Check if the previous step folder's \`DECISIONS.md\` exists. If it does, read it — it contains accumulated architectural decisions from all steps before N-1. **Important:** for Step 2, the previous step folder will have no \`DECISIONS.md\` — Step 1 produces no DECISIONS.md. Handle this gracefully: proceed using only \`SUMMARY.md\` and \`REVIEW.md\`. This is expected, not an error.
-4. Also look for any other files in the previous step folder (e.g., implementation files referenced in SUMMARY.md) that might help you understand the code changes made.
+1. Check if the previous step folder's completion summary exists. If it does, read it — it describes what was built in that step. Pay special attention to the "Decisions Made" section.
+2. Check if the previous step folder's review document exists. If it does, read it — it contains the review feedback on that step's implementation.
+3. Check if the previous step folder's \`DECISIONS.md\` exists. If it does, read it — it contains accumulated architectural decisions from all steps before N-1. **Important:** for Step 2, the previous step folder will have no \`DECISIONS.md\` — Step 1 produces no DECISIONS.md. Handle this gracefully: proceed using only the completion summary and review document. This is expected, not an error.
+4. Also look for any other files in the previous step folder (e.g., implementation files referenced in the completion summary) that might help you understand the code changes made.
 
 This is **optional enrichment only**. Proceed gracefully if these files don't exist or are empty — never treat them as prerequisites. If there is no previous step (you are Step 1), skip this section entirely.`,
   },
@@ -55,7 +55,7 @@ This is **optional enrichment only**. Proceed gracefully if these files don't ex
 
 For Step 2+, produce \`DECISIONS.md\` in your step folder by merging accumulated decisions with new ones. This file serves as the accumulating decision log for all downstream steps. Follow these rules:
 
-- **Read inputs:** Extract "Decisions Made" from the previous step's \`SUMMARY.md\`. Read accumulated decisions from the previous step's \`DECISIONS.md\` (if it exists — for Step 2, only SUMMARY.md is available).
+- **Read inputs:** Extract "Decisions Made" from the previous step's completion summary. Read accumulated decisions from the previous step's \`DECISIONS.md\` (if it exists — for Step 2, only the completion summary is available).
 - **Selective accumulation — forward-looking only:** Include only decisions that may impact future steps. Exclude implementation-only details, local design choices with no downstream consequences, and one-off decisions already fully applied in the completed step.
 - **Deduplication:** If the same decision appears across multiple prior steps, keep exactly one entry — do not repeat the same decision under different headings. Merge related decisions where they express the same underlying choice.
 - **Plan deviations are high-priority must-carry decisions:** If a step adjusted or changed the original plan file (e.g., moved a function to a different file than planned, chose a different architecture), this is critical context for downstream agents. Mark these clearly — group them under a "Plan Deviations" section or flag them explicitly.

@@ -14,20 +14,20 @@ Then review the plan file in the workspace to understand:
   },
   {
     id: "step-2",
-    title: "Read TASK.md, TEST.md, and SUMMARY.md",
+    title: "Read `task`, `summary`, and the test record",
     instructions: `Read all files from the workspace:
 
-- **TASK.md** — the focused specification of what was built. Contains code components, approach decisions, files affected, and acceptance criteria.
-- **TEST.md** — the test record documenting what was tested during implementation. Contains "Given/when/then" test case summaries and programmatic verification commands.
-- **SUMMARY.md** — the changelog written by the implementation agent. Lists status (\`COMPLETED\`), files created/modified/deleted, decisions made, and test coverage notes.
+- **\`task\` input** — the focused specification of what was built. Contains code components, approach decisions, files affected, and acceptance criteria.
+- **The test record** — documenting what was tested during implementation. Contains "Given/when/then" test case summaries and programmatic verification commands.
+- **\`summary\` input** — the changelog written by the implementation agent. Lists status (\`completed\`), files created/modified/deleted, decisions made, and test coverage notes.
 
-**User-Requested Changes:** \`SUMMARY.md\` includes a **User-Requested Changes** section recording explicit user feedback during implementation (e.g., "can you also do X", "merge this file into another"). When present, treat these listed changes as explicit user-approved scope extensions. The reviewer should NOT flag files or behaviors introduced by these changes as unauthorized modifications (HIGH severity). Instead, verify they were applied correctly and note them in the review.
+**User-Requested Changes:** The \`summary\` input includes a **User-Requested Changes** section recording explicit user feedback during implementation (e.g., "can you also do X", "merge this file into another"). When present, treat these listed changes as explicit user-approved scope extensions. The reviewer should NOT flag files or behaviors introduced by these changes as unauthorized modifications (HIGH severity). Instead, verify they were applied correctly and note them in the review.
 
 **Authority Hierarchy:** When resolving conflicts between specification sources, use this hierarchy from highest to lowest authority:
 
-1. **User-Requested Changes** (\`SUMMARY.md\`) — user-approved scope extensions always take precedence
-2. **Task** (\`TASK.md\`) and **Plan** (the plan file) — formal specification; TASK elaborates the plan
-3. **Test Record** (\`TEST.md\`) — summary of what was tested during implementation; verifies TASK was covered
+1. **User-Requested Changes** (the \`summary\` input) — user-approved scope extensions always take precedence
+2. **Task** (the \`task\` input) and **Plan** (the plan file) — formal specification; TASK elaborates the plan
+3. **Test Record** (the test record) — summary of what was tested during implementation; verifies the \`task\` input was covered
 4. **Goal** (the requirements document) — high-level target outcome; superseded by everything above
 
 When implementation follows a higher-authority source but deviates from a lower one, this is not an issue. Flag deviations only when they violate a source at its own authority level without justification from a higher source.`,
@@ -35,11 +35,11 @@ When implementation follows a higher-authority source but deviates from a lower 
   {
     id: "step-3",
     title: "Read implementation files",
-    instructions: `Use \`SUMMARY.md\`'s "Files Created" and "Files Modified" sections to locate every file touched during implementation. Read each one fully:
+    instructions: `Use the \`summary\` input's "Files Created" and "Files Modified" sections to locate every file touched during implementation. Read each one fully:
 
-1. **New files** — verify the structure, interfaces, and exports match what TASK.md described.
+1. **New files** — verify the structure, interfaces, and exports match what the \`task\` input described.
 2. **Modified files** — check that changes are localized, follow existing patterns, and don't introduce regressions.
-3. Cross-reference: does every acceptance criterion from TASK.md have a corresponding change?`,
+3. Cross-reference: does every acceptance criterion from the \`task\` input have a corresponding change?`,
   },
   {
     id: "step-4",
@@ -47,13 +47,13 @@ When implementation follows a higher-authority source but deviates from a lower 
     instructions: `Evaluate the implementation across these dimensions:
 
 #### Test Coverage vs Requirements
-- Does TEST.md's verification plan actually cover all acceptance criteria from TASK.md?
+- Does the test record's verification plan actually cover all acceptance criteria from the \`task\` input?
 - Are there gaps where a criterion has no test or programmatic check?
-- Were tests actually written (or are they only described in TEST.md)?
+- Were tests actually written (or are they only described in the test record)?
 - Are there any missing tests that are important for the coverage?
 
 #### Implementation Correctness
-- Does the code actually implement what TASK.md specified?
+- Does the code actually implement what the \`task\` input specified?
 - Are interfaces, types, and signatures correct?
 - Do integration points (imports, exports, wiring) work as expected?
 - Does the implementation follow best practices?
@@ -70,9 +70,9 @@ When implementation follows a higher-authority source but deviates from a lower 
 - **PLAN ↔ TASK**: Does the task spec faithfully represent the plan step?
 - **TASK ↔ TESTS**: Do tests cover all acceptance criteria?
 - **TASK ↔ Implementation**: Does code match the task spec?
-- **TASK ↔ User-Requested Changes**: When \`SUMMARY.md\`'s "User-Requested Changes" section lists changes, treat those as explicit scope extensions approved by the user. Do not flag files or behaviors introduced solely by user-requested changes as "accidental changes to unrelated files" (HIGH) or scope creep. Instead, verify correctness and document in the review.
+- **\`task\` input ↔ User-Requested Changes**: When the \`summary\` input's "User-Requested Changes" section lists changes, treat those as explicit scope extensions approved by the user. Do not flag files or behaviors introduced solely by user-requested changes as "accidental changes to unrelated files" (HIGH) or scope creep. Instead, verify correctness and document in the review.
 
-**How the hierarchy resolves conflicts:** When you find a deviation from \`TASK.md\` or the plan file, check \`SUMMARY.md\` before flagging an issue. A deviation is justified if it appears in a source at a higher authority level.`,
+**How the hierarchy resolves conflicts:** When you find a deviation from the \`task\` input or the plan file, check the \`summary\` input before flagging an issue. A deviation is justified if it appears in a source at a higher authority level.`,
   },
   {
     id: "step-5",
@@ -81,8 +81,8 @@ When implementation follows a higher-authority source but deviates from a lower 
 
 #### CRITICAL — Mandatory REJECT
 
-- **Fundamentally wrong implementation.** The code is broken, produces incorrect results, or fails to implement what TASK.md specified.
-- **Test quality deviations.** Tests that fail to cover important behavior described in TASK.md acceptance criteria. Good tests covering important behavior are mandatory.
+- **Fundamentally wrong implementation.** The code is broken, produces incorrect results, or fails to implement what the \`task\` input specified.
+- **Test quality deviations.** Tests that fail to cover important behavior described in the \`task\` input's acceptance criteria. Good tests covering important behavior are mandatory.
 - **Meaningless tests.** Tests that don't actually verify behavior: checking cosmetic properties, presence of text lines, trivial assertions that prove nothing.
 - **Tests that don't make sense for the domain.** Tests that verify irrelevant properties or use incorrect assertions for the domain being tested.
 - **Absence of tests covering important behavior.** When the task requires tests, their absence is critical. Good tests covering important behavior are mandatory.
@@ -92,7 +92,7 @@ When implementation follows a higher-authority source but deviates from a lower 
 
 - **Code smells and unnecessary complexity.** Over-engineering, unnecessary abstractions, dead code (unused functions, unreachable branches), and overly complex implementations when simpler solutions satisfy the requirements.
 - **Security risks.** Injection vulnerabilities, improper input validation, exposed credentials or secrets, unsafe deserialization, path traversal, and any other security risk you identify. Flag any security concern — the list above is illustrative, not exhaustive.
-- **Accidental changes to unrelated files.** Modifications to files or behavior unrelated to the task scope as defined in TASK.md. Compare SUMMARY.md's "Files Modified" list against what TASK.md says should change. Flag any unauthorized modifications.
+- **Accidental changes to unrelated files.** Modifications to files or behavior unrelated to the task scope as defined in the \`task\` input. Compare the \`summary\` input's "Files Modified" list against what the \`task\` input says should change. Flag any unauthorized modifications.
 
 #### MEDIUM — Requires user confirmation
 
@@ -109,7 +109,7 @@ When implementation follows a higher-authority source but deviates from a lower 
 | Pattern | Severity | Action |
 |---------|----------|--------|
 | Fundamentally wrong implementation | CRITICAL | REJECT |
-| Test deviations from TEST.md | CRITICAL | REJECT |
+| Test deviations from the test record | CRITICAL | REJECT |
 | Meaningless or absent tests | CRITICAL | REJECT |
 | Code smells / over-engineering | HIGH | REJECT |
 | Security risks | HIGH | REJECT |
@@ -174,8 +174,8 @@ If an issue matches a HIGH or CRITICAL bullet in the classification rules, it is
 Only after confirming all three conditions above, write: **Therefore: APPROVED**.
 
 **Mandatory REJECT:** If any **CRITICAL** or **HIGH** issues exist, the decision is **REJECTED**. This is mandatory — no discretion allowed. The following conditions also mandate REJECT:
-- Acceptance criteria from TASK.md are not met
-- Test coverage has significant gaps or tests deviate from TEST.md
+- Acceptance criteria from the \`task\` input are not met
+- Test coverage has significant gaps or tests deviate from the test record
 - The implementation deviates substantially from the task spec
 
 **Medium issues require \`ask_user\`:**
@@ -257,7 +257,7 @@ APPROVED, REJECTED, or BLOCKED
 - What has been attempted so far
 - What would be needed to unblock the step
 
-This information is read by evolve-plan during spec revision — it is critical context for deciding whether to adapt TASK.md or trigger \`REVISE_PLAN_NEEDED.md\` at the workspace root.
+This information is read by evolve-plan during spec revision — it is critical context for deciding whether to adapt the \`task\` input or trigger \`REVISE_PLAN_NEEDED.md\` at the workspace root.
 \`\`\``,
   },
   {

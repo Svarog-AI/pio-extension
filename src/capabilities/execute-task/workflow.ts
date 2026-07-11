@@ -20,17 +20,17 @@ This gives you the big picture before narrowing to your task.`,
   },
   {
     id: "read-task",
-    title: "Read TASK.md",
-    instructions: `Read \`TASK.md\` from the workspace:
+    title: "Read the `task` input",
+    instructions: `Read the \`task\` input from the workspace:
 
-- **TASK.md** — the focused specification of what to build, including code components, approach decisions, files affected, and acceptance criteria.`,
+- **\`task\` input** — the focused specification of what to build, including code components, approach decisions, files affected, and acceptance criteria.`,
   },
   {
     id: "research-context",
     title: "Research supporting context",
     instructions: `Use your tools (\`read\`, \`bash\`) to understand the codebase areas your task touches:
 
-1. Read the files listed in TASK.md's "Files affected" section — understand existing patterns, conventions, and interfaces.
+1. Read the files listed in the \`task\` input's "Files affected" section — understand existing patterns, conventions, and interfaces.
 2. Trace imports and dependencies — what modules will be affected? Are there shared utilities or types that need updating?
 3. Understand the testing setup: how are things tested today? What tools (TypeScript compiler, linters, test runners) are available?
 4. Look at similar code in the project to follow existing patterns.
@@ -57,12 +57,12 @@ After all tests pass and refactoring is done, create \`TEST.md\` in the workspac
     instructions: `Execute every verification systematically:
 
 1. **Run formal tests** — execute the test suite and confirm all pass.
-2. **Run programmatic checks** — execute each command from TASK.md acceptance criteria (e.g., \`npm run check\`, \`grep -c 'setupXxx' src/index.ts\`).
+2. **Run programmatic checks** — execute each command from the \`task\` input's acceptance criteria (e.g., \`npm run check\`, \`grep -c 'setupXxx' src/index.ts\`).
 3. **Perform manual checks** if specified, following the step-by-step instructions.
 
 If any check fails, go back to the Iterative TDD step and iterate until all pass.
 
-**Handling user-requested changes:** After initial implementation is complete (from this step onward), you may receive user messages requesting changes — for example: "can you also do X", "change this approach", "merge this with another file". Treat these as **user-requested changes**, distinct from the original \`TASK.md\` scope.
+**Handling user-requested changes:** After initial implementation is complete (from this step onward), you may receive user messages requesting changes — for example: "can you also do X", "change this approach", "merge this with another file". Treat these as **user-requested changes**, distinct from the original \`task\` input scope.
 
 If code changes are requested, make sure to keep using the \`tdd\` skill methodology. Using this is **CRITICAL**!
 
@@ -76,7 +76,7 @@ This ensures \`SUMMARY.md\` always reflects the final state of all files, regard
   {
     id: "verify-acceptance-criteria",
     title: "Verify non-test acceptance criteria",
-    instructions: `Cross-reference TASK.md's acceptance criteria with your implementation:
+    instructions: `Cross-reference the \`task\` input's acceptance criteria with your implementation:
 
 - Are all listed files created, modified, or deleted as specified?
 - Do integration points (imports, exports, wiring) work correctly?
@@ -100,7 +100,7 @@ Use \`status: completed\` when all tests pass and all criteria are met. Use \`st
 
 - **External dependencies not yet available** — a third-party API has not been deployed, a service endpoint is unreachable, or a dependency library is missing from the project.
 - **Environmental constraints outside pio's control** — missing infrastructure (databases, message queues), missing permissions or credentials, or platform-level restrictions.
-- **Ambiguous specifications requiring human clarification** — TASK.md is unclear on a critical decision and there is no reasonable default or convention to follow.
+- **Ambiguous specifications requiring human clarification** — the \`task\` input is unclear on a critical decision and there is no reasonable default or convention to follow.
 
 **When \`status: blocked\` is NOT appropriate:**
 

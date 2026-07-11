@@ -25,11 +25,11 @@ If there are multiple archived plans, read all of them — they show the revisio
 
 For each completed step:
 - Record the step number (from the directory name)
-- Determine the step title — read \`TASK.md\` from the directory if it exists, or infer from the archived plan
+- Determine the step title — read the task specification from the directory if it exists, or infer from the archived plan
 - Note that these steps are historical anchors in the new plan
 
 Incomplete work directories (without an \`APPROVED\` marker) are **preserved** for the duration of the session so you can inspect them for context. Key files to inspect in incomplete work directories include:
-- \`TASK.md\` — what was specified for the step
+- The task specification — what was specified for the step
 
 These directories will be cleaned up automatically after the session completes.`,
   },
@@ -39,9 +39,9 @@ These directories will be cleaned up automatically after the session completes.`
     instructions: `Use your tools (\`read\`, \`bash\`) to understand the current state of the codebase:
 
 1. Read \`.pio/PROJECT/OVERVIEW.md\` if it exists — this is the project's entry point.
-2. Read implementation files from completed steps — check \`SUMMARY.md\` from completed work directories for what was built, and read the actual source files to understand current state.
-3. Understand what decisions were made during completed steps — review \`SUMMARY.md" files for "Decisions Made" sections.
-4. **Check the workspace root for revision context:** The filename of the revision context document is provided in your session parameters. Read this file to understand why revision was triggered. Read the trigger step's \`TASK.md\` from incomplete work directories for context on what decisions led to the revision request.
+2. Read implementation files from completed steps — check completion summaries from completed work directories for what was built, and read the actual source files to understand current state.
+3. Understand what decisions were made during completed steps — review completion summary files for "Decisions Made" sections.
+4. **Check the workspace root for revision context:** The filename of the revision context document is provided in your session parameters. Read this file to understand why revision was triggered. Read the trigger step's task specification from incomplete work directories for context on what decisions led to the revision request.
 5. Identify any new context that wasn't known when the original plan was written.
 
 This research ensures your new steps are grounded in the actual state of the codebase, not just the archived plan.`,

@@ -301,6 +301,315 @@ describe("DEFAULT_TURN_THRESHOLD", () => {
 });
 
 // ---------------------------------------------------------------------------
+// DEFAULT_MAX_ITERATIONS
+// ---------------------------------------------------------------------------
+
+describe("DEFAULT_MAX_ITERATIONS", () => {
+  it("equals 15", async () => {
+    vi.resetModules();
+    const mod = await import("./model-config");
+    expect(mod.DEFAULT_MAX_ITERATIONS).toBe(15);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readLoopConfig — valid values
+// ---------------------------------------------------------------------------
+
+describe("readLoopConfig — valid values", () => {
+  let tempDir: string;
+  const origEnv = process.env.PIO_CONFIG_TEST_HOME;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    process.env.PIO_CONFIG_TEST_HOME = tempDir;
+  });
+
+  afterEach(() => {
+    process.env.PIO_CONFIG_TEST_HOME = origEnv;
+    cleanup(tempDir);
+  });
+
+  it("returns loop config when loop.maxIterations is a positive integer", async () => {
+    writeConfig(tempDir, ["loop:", "  maxIterations: 10"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readLoopConfig()).toEqual({ maxIterations: 10 });
+  });
+
+  it("returns loop config alongside other config keys", async () => {
+    writeConfig(
+      tempDir,
+      [
+        "default:",
+        "  provider: j6000",
+        "  modelId: general",
+        "loop:",
+        "  maxIterations: 20",
+      ].join("\n"),
+    );
+
+    const mod = await import("./model-config");
+    expect(mod.readLoopConfig()).toEqual({ maxIterations: 20 });
+  });
+
+  it("returns loop config with only loop block (no other keys)", async () => {
+    writeConfig(tempDir, ["loop:", "  maxIterations: 8"].join("\n"));
+
+    const mod = await import("./model-config");
+    const result = mod.readLoopConfig();
+    expect(result).toEqual({ maxIterations: 8 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readLoopConfig — fallback and invalid values
+// ---------------------------------------------------------------------------
+
+describe("readLoopConfig — fallback and invalid values", () => {
+  let tempDir: string;
+  const origEnv = process.env.PIO_CONFIG_TEST_HOME;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    process.env.PIO_CONFIG_TEST_HOME = tempDir;
+  });
+
+  afterEach(() => {
+    process.env.PIO_CONFIG_TEST_HOME = origEnv;
+    cleanup(tempDir);
+  });
+
+  it("returns undefined when no config file exists", async () => {
+    const mod = await import("./model-config");
+    expect(mod.readLoopConfig()).toBeUndefined();
+  });
+
+  it("returns undefined when config has no loop block", async () => {
+    writeConfig(tempDir, "default:\n  provider: j6000\n  modelId: general");
+
+    const mod = await import("./model-config");
+    expect(mod.readLoopConfig()).toBeUndefined();
+  });
+
+  it("returns undefined when loop block is empty", async () => {
+    writeConfig(
+      tempDir,
+      ["default:", "  provider: j6000", "  modelId: general", "loop:"].join(
+        "\n",
+      ),
+    );
+
+    const mod = await import("./model-config");
+    expect(mod.readLoopConfig()).toBeUndefined();
+  });
+
+  it("returns undefined when maxIterations is 0", async () => {
+    writeConfig(tempDir, ["loop:", "  maxIterations: 0"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readLoopConfig()).toBeUndefined();
+  });
+
+  it("returns undefined when maxIterations is negative", async () => {
+    writeConfig(tempDir, ["loop:", "  maxIterations: -5"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readLoopConfig()).toBeUndefined();
+  });
+
+  it("returns undefined when maxIterations is a float", async () => {
+    writeConfig(tempDir, ["loop:", "  maxIterations: 3.5"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readLoopConfig()).toBeUndefined();
+  });
+
+  it("returns undefined when maxIterations is a string", async () => {
+    writeConfig(tempDir, ["loop:", '  maxIterations: "ten"'].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readLoopConfig()).toBeUndefined();
+  });
+
+  it("returns undefined when maxIterations is null", async () => {
+    writeConfig(tempDir, ["loop:", "  maxIterations: null"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readLoopConfig()).toBeUndefined();
+  });
+
+  it("returns undefined when loop is an array", async () => {
+    writeConfig(tempDir, ["loop:", "  - maxIterations: 10"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readLoopConfig()).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveMaxIterations — per-step override
+// ---------------------------------------------------------------------------
+
+describe("resolveMaxIterations — per-step override", () => {
+  let tempDir: string;
+  const origEnv = process.env.PIO_CONFIG_TEST_HOME;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    process.env.PIO_CONFIG_TEST_HOME = tempDir;
+  });
+
+  afterEach(() => {
+    process.env.PIO_CONFIG_TEST_HOME = origEnv;
+    cleanup(tempDir);
+  });
+
+  it("per-step override beats global config and default", async () => {
+    writeConfig(tempDir, ["loop:", "  maxIterations: 10"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.resolveMaxIterations(5)).toBe(5);
+  });
+
+  it("per-step override works without config", async () => {
+    const mod = await import("./model-config");
+    expect(mod.resolveMaxIterations(7)).toBe(7);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveMaxIterations — global config
+// ---------------------------------------------------------------------------
+
+describe("resolveMaxIterations — global config", () => {
+  let tempDir: string;
+  const origEnv = process.env.PIO_CONFIG_TEST_HOME;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    process.env.PIO_CONFIG_TEST_HOME = tempDir;
+  });
+
+  afterEach(() => {
+    process.env.PIO_CONFIG_TEST_HOME = origEnv;
+    cleanup(tempDir);
+  });
+
+  it("global config beats built-in default", async () => {
+    writeConfig(tempDir, ["loop:", "  maxIterations: 10"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.resolveMaxIterations()).toBe(10);
+  });
+
+  it("global config works alongside other config keys", async () => {
+    writeConfig(
+      tempDir,
+      [
+        "default:",
+        "  provider: j6000",
+        "  modelId: general",
+        "loop:",
+        "  maxIterations: 20",
+      ].join("\n"),
+    );
+
+    const mod = await import("./model-config");
+    expect(mod.resolveMaxIterations()).toBe(20);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveMaxIterations — fallback to default
+// ---------------------------------------------------------------------------
+
+describe("resolveMaxIterations — fallback to default", () => {
+  let tempDir: string;
+  const origEnv = process.env.PIO_CONFIG_TEST_HOME;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    process.env.PIO_CONFIG_TEST_HOME = tempDir;
+  });
+
+  afterEach(() => {
+    process.env.PIO_CONFIG_TEST_HOME = origEnv;
+    cleanup(tempDir);
+  });
+
+  it("returns DEFAULT_MAX_ITERATIONS when no config exists", async () => {
+    const mod = await import("./model-config");
+    expect(mod.resolveMaxIterations()).toBe(mod.DEFAULT_MAX_ITERATIONS);
+  });
+
+  it("returns DEFAULT_MAX_ITERATIONS when config has no loop block", async () => {
+    writeConfig(tempDir, "default:\n  provider: j6000\n  modelId: general");
+
+    const mod = await import("./model-config");
+    expect(mod.resolveMaxIterations()).toBe(mod.DEFAULT_MAX_ITERATIONS);
+  });
+
+  it("returns DEFAULT_MAX_ITERATIONS when loop block is empty", async () => {
+    writeConfig(tempDir, ["loop:"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.resolveMaxIterations()).toBe(mod.DEFAULT_MAX_ITERATIONS);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveMaxIterations — invalid per-step values fall through
+// ---------------------------------------------------------------------------
+
+describe("resolveMaxIterations — invalid per-step values fall through", () => {
+  let tempDir: string;
+  const origEnv = process.env.PIO_CONFIG_TEST_HOME;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    process.env.PIO_CONFIG_TEST_HOME = tempDir;
+  });
+
+  afterEach(() => {
+    process.env.PIO_CONFIG_TEST_HOME = origEnv;
+    cleanup(tempDir);
+  });
+
+  it("per-step 0 falls through to global config", async () => {
+    writeConfig(tempDir, ["loop:", "  maxIterations: 10"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.resolveMaxIterations(0)).toBe(10);
+  });
+
+  it("per-step negative falls through to global config", async () => {
+    writeConfig(tempDir, ["loop:", "  maxIterations: 10"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.resolveMaxIterations(-3)).toBe(10);
+  });
+
+  it("per-step float falls through to global config", async () => {
+    writeConfig(tempDir, ["loop:", "  maxIterations: 10"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.resolveMaxIterations(3.5)).toBe(10);
+  });
+
+  it("per-step 0 falls through to default when no global config", async () => {
+    const mod = await import("./model-config");
+    expect(mod.resolveMaxIterations(0)).toBe(mod.DEFAULT_MAX_ITERATIONS);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // readTurnThreshold — valid values
 // ---------------------------------------------------------------------------
 

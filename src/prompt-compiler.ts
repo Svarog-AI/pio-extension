@@ -15,14 +15,16 @@ import * as path from "node:path";
 import type {
   CapabilityPackageComponents,
   CapabilitySkills,
-  CompiledPromptSections,
-  WorkflowStep,
 } from "./capability-package";
 import {
   CAPABILITY_GUIDELINES_FILE,
   CAPABILITY_ROLE_FILE,
   CAPABILITY_WORKFLOW_FILE,
 } from "./capability-package";
+import type {
+  CompiledPromptSections,
+  WorkflowStep,
+} from "./runtime/workflow-types";
 
 // ---------------------------------------------------------------------------
 // readWorkflowSteps — loads workflow.ts from a capability package directory

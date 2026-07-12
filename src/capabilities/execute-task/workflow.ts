@@ -1,4 +1,4 @@
-import type { WorkflowStep } from "../../capability-package";
+import type { WorkflowStep } from "../../runtime/workflow-types";
 
 /**
  * Structured workflow steps for the execute-task (Execute Task Agent) capability.

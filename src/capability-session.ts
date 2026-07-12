@@ -8,7 +8,6 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { stripFrontmatter } from "@earendil-works/pi-coding-agent";
 import { resolveContractPath } from "./capability-config";
-import type { CompiledPromptSections } from "./capability-package";
 import { CapState } from "./capability-state";
 import { getSessionConfig } from "./capability-utils";
 import { cleanupMarkers } from "./guards/mark-complete";
@@ -16,6 +15,7 @@ import { setupStepNudging } from "./guards/step-nudging";
 import { validateInputs } from "./guards/validation";
 import { resolveModelForCapability } from "./model-config";
 import { compilePrompt } from "./prompt-compiler";
+import type { CompiledPromptSections } from "./runtime/workflow-types";
 import type { CapabilityConfig } from "./types";
 
 // ESM-compatible __dirname for resolving capability package directories

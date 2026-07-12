@@ -5,9 +5,11 @@
  * `CompiledPromptSections`. Replaces the old freeform `.md` file loading
  * in `capability-session.ts`.
  *
- * This module is a strict leaf: it imports only from `src/capability-package.ts`
- * and Node.js stdlib (`fs`, `path`). It must NOT import from `capability-session`,
- * `capability-discovery`, or any other capability module.
+ * This module is a strict leaf: it imports from `src/capability-package.ts`
+ * (layout constants + package structure types), `src/runtime/workflow-types.ts`
+ * (workflow execution types), and Node.js stdlib (`fs`, `path`). It must NOT
+ * import from `capability-session`, `capability-discovery`, or any other
+ * capability module.
  */
 
 import * as fs from "node:fs";

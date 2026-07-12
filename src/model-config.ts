@@ -276,14 +276,9 @@ export function resolveMaxIterations(perStepOverride?: number): number {
   }
 
   // Priority 2: global config
-  const loopConfig = readLoopConfig();
-  if (
-    loopConfig?.maxIterations != null &&
-    typeof loopConfig.maxIterations === "number" &&
-    Number.isInteger(loopConfig.maxIterations) &&
-    loopConfig.maxIterations > 0
-  ) {
-    return loopConfig.maxIterations;
+  const value = readLoopConfig()?.maxIterations;
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
   }
 
   // Priority 3: built-in default

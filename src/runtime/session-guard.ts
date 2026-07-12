@@ -1,10 +1,10 @@
 import type {
-  AgentEndEvent,
   ExtensionAPI,
   TurnEndEvent,
 } from "@earendil-works/pi-coding-agent";
 import { getSessionConfig } from "../capability-utils";
 import { readTurnThreshold } from "../model-config";
+import { getState, setState } from "./session-state";
 
 // ---------------------------------------------------------------------------
 // Minimal local interfaces for content blocks
@@ -23,28 +23,18 @@ interface ContentBlock {
 }
 
 // ---------------------------------------------------------------------------
-// Module-level state (per-extension-instance, populated by resources_discover)
+// Test-only accessors — delegate to shared session state
 // ---------------------------------------------------------------------------
 
-let isActivePioSession = false;
-
-/** True when any tool call during the current agent run was `pio_mark_complete`. */
-let markCompleteCalled = false;
-
-/** Turn counter for refinement-loop detection. Resets at before_agent_start and after each nudge. */
-let turnCount = 0;
-
 /**
- * Test-only accessor for the internal `isActivePioSession` flag.
+ * Test-only accessor for the internal `isActive` flag.
  *
  * @internal — Do not use in production code. Exists solely to allow unit tests
  * to read and manipulate session state without mocking the full ExtensionAPI.
  */
 export function __testSetActiveSession(value?: boolean): boolean {
-  if (value !== undefined) {
-    isActivePioSession = value;
-  }
-  return isActivePioSession;
+  if (value !== undefined) setState({ isActive: value });
+  return getState().isActive;
 }
 
 /**
@@ -54,10 +44,8 @@ export function __testSetActiveSession(value?: boolean): boolean {
  * to read and manipulate completion-tracking state without mocking the full ExtensionAPI.
  */
 export function __testSetMarkCompleteCalled(value?: boolean): boolean {
-  if (value !== undefined) {
-    markCompleteCalled = value;
-  }
-  return markCompleteCalled;
+  if (value !== undefined) setState({ markCompleteCalled: value });
+  return getState().markCompleteCalled;
 }
 
 /**
@@ -67,10 +55,8 @@ export function __testSetMarkCompleteCalled(value?: boolean): boolean {
  * to read and manipulate turn-count state without mocking the full ExtensionAPI.
  */
 export function __testSetTurnCount(value?: number): number {
-  if (value !== undefined) {
-    turnCount = value;
-  }
-  return turnCount;
+  if (value !== undefined) setState({ turnCount: value });
+  return getState().turnCount;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,29 +122,14 @@ const RECOVERY_PROMPT =
   "Your last response contained only thinking blocks. If you need clarification to proceed, call `ask_user`. Otherwise, provide a visible response or take an action.";
 
 /**
- * Post-hoc warning sent when a pio sub-session ends without calling `pio_mark_complete`.
- *
- * Fires from the `agent_end` handler after three guard checks pass:
- * 1. `isActivePioSession` — only pio sub-sessions
- * 2. `markCompleteCalled` — only if `pio_mark_complete` was never called during the run
- * 3. `lastMessage?.stopReason !== "aborted"` — skip user-initiated aborts
- *
- * Covers all non-aborted session endings: `stop`, `length`, `error`.
- * Delivered via `pi.sendUserMessage(..., { deliverAs: "followUp" })`.
- */
-const AGENT_END_WARNING =
-  "This session ended without calling `pio_mark_complete`. As a result, output files were not validated against expected outputs, and the next workflow task was not scheduled. In the next session attempt, call `pio_mark_complete` when your work is done to validate outputs and schedule the next step. If you need clarification before completing work, call `ask_user` instead.";
-
-/**
  * Register session guard handlers.
  *
- * When called, registers five event handlers on the pi Extension API:
+ * When called, registers four event handlers on the pi Extension API:
  * 1. `resources_discover` — detects pio sub-sessions via `pio-config` custom entry.
  * 2. `turn_end` — inspects each turn; if thinking-only with no tool results,
  *    sends a recovery prompt to nudge the agent forward.
  * 3. `tool_call` — tracks whether `pio_mark_complete` was called during the run.
  * 4. `before_agent_start` — resets the completion flag at the start of each agent run.
- * 5. `agent_end` — warns if the session ended without calling `pio_mark_complete`.
  */
 export function setupSessionGuard(pi: ExtensionAPI) {
   // Read threshold once at setup time — config changes require extension reload
@@ -167,13 +138,13 @@ export function setupSessionGuard(pi: ExtensionAPI) {
   // 1. Detect pio sub-sessions at startup
   pi.on("resources_discover", async (_event, ctx) => {
     const config = await getSessionConfig(ctx);
-    isActivePioSession = !!config;
+    setState({ isActive: !!config });
   });
 
   // 2. Detect dead turns at the end of each turn
   pi.on("turn_end", async (event: TurnEndEvent, _ctx) => {
     // Guard: only run inside pio sub-sessions
-    if (!isActivePioSession) return;
+    if (!getState().isActive) return;
 
     // Skip all processing on aborted turns — agent is shutting down
     if ((event.message as { stopReason?: string }).stopReason === "aborted")
@@ -181,13 +152,13 @@ export function setupSessionGuard(pi: ExtensionAPI) {
 
     // Turn-count tracking for refinement-loop detection
     // Increment on EVERY turn (not just thinking-only) — counts total session activity
-    turnCount++;
-    if (turnCount >= turnThreshold) {
+    setState({ turnCount: getState().turnCount + 1 });
+    if (getState().turnCount >= turnThreshold) {
       pi.sendUserMessage(
         `Are you in a loop? If you need clarification to proceed, call \`ask_user\`. Otherwise, continue.`,
         { deliverAs: "steer" },
       );
-      turnCount = 0;
+      setState({ turnCount: 0 });
     }
 
     // Extract typed content from assistant messages (returns undefined for non-assistant)
@@ -205,26 +176,13 @@ export function setupSessionGuard(pi: ExtensionAPI) {
   // 3. Track pio_mark_complete calls (fires regardless of session type)
   pi.on("tool_call", async (event) => {
     if (event.toolName === "pio_mark_complete") {
-      markCompleteCalled = true;
+      setState({ markCompleteCalled: true });
     }
   });
 
   // 4. Reset completion flag at the start of each agent run (pio sessions only)
   pi.on("before_agent_start", async (_event, _ctx) => {
-    if (!isActivePioSession) return;
-    markCompleteCalled = false;
-    turnCount = 0;
-  });
-
-  // 5. Warn at session end if pio_mark_complete was never called
-  pi.on("agent_end", async (event: AgentEndEvent, _ctx) => {
-    if (!isActivePioSession) return;
-    if (markCompleteCalled) return;
-    const lastMessage = event.messages[event.messages.length - 1] as
-      | { stopReason?: string }
-      | undefined;
-    if (lastMessage?.stopReason === "aborted") return;
-
-    pi.sendUserMessage(AGENT_END_WARNING, { deliverAs: "followUp" });
+    if (!getState().isActive) return;
+    setState({ markCompleteCalled: false, turnCount: 0 });
   });
 }

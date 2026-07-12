@@ -3,6 +3,8 @@ import type {
   TurnEndEvent,
 } from "@earendil-works/pi-coding-agent";
 import { beforeEach, vi } from "vitest";
+// Import the real module to spy on getSessionConfig
+import * as capabilityUtils from "../capability-utils";
 import {
   __testSetActiveSession,
   __testSetMarkCompleteCalled,
@@ -10,37 +12,34 @@ import {
   isThinkingOnlyTurn,
   setupSessionGuard,
 } from "./session-guard";
+import { resetState } from "./session-state";
 
-// Mock resolveCapabilityConfig so getSessionConfig() returns a full config with live functions
-const mockResolveCapabilityConfig = vi.hoisted(() => vi.fn());
-
-vi.mock("../capability-config", () => ({
-  resolveCapabilityConfig: mockResolveCapabilityConfig,
-}));
+vi.spyOn(capabilityUtils, "getSessionConfig").mockResolvedValue({
+  capability: "create-goal",
+  workspaceDir: "/test/.pio/goals/test",
+  sessionParams: {},
+  sessionName: "test-create-goal",
+  allowProjectWrites: false,
+  contract: { inputs: [], outputs: [] },
+});
 
 beforeEach(() => {
-  mockResolveCapabilityConfig.mockClear();
-  mockResolveCapabilityConfig.mockImplementation((_cwd, params) => {
-    const cap =
-      typeof params?.capability === "string" ? params.capability : "unknown";
-    return {
-      capability: cap,
-      workspaceDir: params?.workspaceDir ?? "/test/.pio/goals/test",
-      sessionParams: params ?? {},
-      contract: { inputs: [], outputs: [] },
-    };
+  vi.mocked(capabilityUtils.getSessionConfig).mockClear();
+  vi.mocked(capabilityUtils.getSessionConfig).mockResolvedValue({
+    capability: "create-goal",
+    workspaceDir: "/test/.pio/goals/test",
+    sessionParams: {},
+    sessionName: "test-create-goal",
+    allowProjectWrites: false,
+    contract: { inputs: [], outputs: [] },
   });
+  // Reset shared session state for test isolation
+  resetState();
 });
 
 // ---------------------------------------------------------------------------
 // Helpers — mock ExtensionAPI
 // ---------------------------------------------------------------------------
-
-interface MockEntry {
-  type: string;
-  customType?: string;
-  data?: unknown;
-}
 
 interface SendUserMessageCall {
   content: string;
@@ -207,20 +206,8 @@ describe("isThinkingOnlyTurn", () => {
 describe("setupSessionGuard", () => {
   // "registers resources_discover handler"
   it("registers resources_discover handler", async () => {
-    // Arrange: mock getEntries to return pio-config
+    // Arrange: mock getSessionConfig returns a config (pio sub-session)
     const { pi, handlers } = createMockPi();
-
-    const mockSessionManager = {
-      getEntries(): MockEntry[] {
-        return [
-          {
-            type: "custom",
-            customType: "pio-config",
-            data: { capability: "create-goal", sessionParams: {} },
-          },
-        ];
-      },
-    };
 
     // Act
     setupSessionGuard(pi);
@@ -231,7 +218,7 @@ describe("setupSessionGuard", () => {
     expect(discoverHandlers?.length).toBeGreaterThan(0);
 
     // Invoke the handler with mock context
-    const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
+    const mockCtx = {} as any;
     for (const handler of discoverHandlers!) {
       await handler(
         { type: "resources_discover", cwd: ".", reason: "startup" },
@@ -245,14 +232,9 @@ describe("setupSessionGuard", () => {
 
   // "resources_discover sets flag false when no pio-config"
   it("resources_discover sets flag false when no pio-config", async () => {
-    // Arrange: mock getEntries to return empty array
+    // Arrange: mock getSessionConfig to return null (no pio-config)
     const { pi, handlers } = createMockPi();
-
-    const mockSessionManager = {
-      getEntries(): MockEntry[] {
-        return [];
-      },
-    };
+    vi.mocked(capabilityUtils.getSessionConfig).mockResolvedValue(null);
 
     // Act
     setupSessionGuard(pi);
@@ -261,7 +243,7 @@ describe("setupSessionGuard", () => {
     const discoverHandlers = handlers.get("resources_discover");
     expect(discoverHandlers).toBeDefined();
 
-    const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
+    const mockCtx = {} as any;
     for (const handler of discoverHandlers!) {
       await handler(
         { type: "resources_discover", cwd: ".", reason: "startup" },
@@ -673,20 +655,6 @@ describe("setupSessionGuard — handler registration for new events", () => {
     expect(beforeAgentStartHandlers).toBeDefined();
     expect(beforeAgentStartHandlers?.length).toBeGreaterThan(0);
   });
-
-  // "setupSessionGuard registers agent_end handler"
-  it("setupSessionGuard registers agent_end handler", () => {
-    // Arrange
-    const { pi, handlers } = createMockPi();
-
-    // Act
-    setupSessionGuard(pi);
-
-    // Assert
-    const agentEndHandlers = handlers.get("agent_end");
-    expect(agentEndHandlers).toBeDefined();
-    expect(agentEndHandlers?.length).toBeGreaterThan(0);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -946,242 +914,6 @@ describe("turn_count — refinement loop nudge", () => {
     expect(steerCalls[0].content).toContain("loop");
     // And counter reset, so turn 16 would start fresh
     expect(__testSetTurnCount()).toBe(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// agent_end handler — warning when pio_mark_complete was not called
-// ---------------------------------------------------------------------------
-
-describe("agent_end handler — warning content", () => {
-  beforeEach(() => {
-    __testSetActiveSession(false);
-    __testSetMarkCompleteCalled(false);
-  });
-
-  it("warning mentions pio_mark_complete", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(false);
-    setupSessionGuard(pi);
-
-    // Act
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [] };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert
-    const content = sendUserMessageCalls[0].content;
-    expect(content).toContain("pio_mark_complete");
-  });
-
-  it("warning states consequences (outputs not validated, next task not scheduled)", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(false);
-    setupSessionGuard(pi);
-
-    // Act
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [] };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert
-    const content = sendUserMessageCalls[0].content.toLowerCase();
-    expect(content).toMatch(/not validated|not scheduled/);
-  });
-
-  it("warning mentions ask_user as alternative", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(false);
-    setupSessionGuard(pi);
-
-    // Act
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [] };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert
-    const content = sendUserMessageCalls[0].content;
-    expect(content).toContain("ask_user");
-  });
-
-  it("warning provides remediation guidance", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(false);
-    setupSessionGuard(pi);
-
-    // Act
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [] };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert: message contains remediation language ("should", "must", "call", etc.)
-    const content = sendUserMessageCalls[0].content.toLowerCase();
-    expect(content).toMatch(/should|must|call.*when|next.*attempt/);
-  });
-});
-
-describe("agent_end handler", () => {
-  // Reset state before each test to ensure isolation
-  beforeEach(() => {
-    __testSetActiveSession(false);
-    __testSetMarkCompleteCalled(false);
-  });
-
-  // "agent_end sends warning when markCompleteCalled is false and isActivePioSession is true"
-  it("sends warning when markCompleteCalled is false and isActivePioSession is true", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(false);
-
-    setupSessionGuard(pi);
-
-    // Act: invoke the agent_end handler
-    const agentEndHandlers = handlers.get("agent_end");
-    expect(agentEndHandlers).toBeDefined();
-    const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [] };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert: sendUserMessage was called exactly once with deliverAs: "followUp"
-    expect(sendUserMessageCalls).toHaveLength(1);
-    expect(sendUserMessageCalls[0].content.length).toBeGreaterThan(0);
-    expect(sendUserMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
-  });
-
-  // "agent_end does NOT send warning when markCompleteCalled is true"
-  it("does NOT send warning when markCompleteCalled is true", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(true);
-
-    setupSessionGuard(pi);
-
-    // Act: invoke the agent_end handler
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [] };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert: sendUserMessage was NOT called
-    expect(sendUserMessageCalls).toHaveLength(0);
-  });
-
-  // "agent_end does NOT send warning when isActivePioSession is false"
-  it("does NOT send warning when isActivePioSession is false", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(false);
-    __testSetMarkCompleteCalled(false);
-
-    setupSessionGuard(pi);
-
-    // Act: invoke the agent_end handler
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [] };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert: sendUserMessage was NOT called
-    expect(sendUserMessageCalls).toHaveLength(0);
-  });
-
-  // "agent_end does NOT send warning when last message has stopReason 'aborted'"
-  it("does NOT send warning when last message has stopReason 'aborted'", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(false);
-
-    setupSessionGuard(pi);
-
-    // Act: invoke the agent_end handler with last message having stopReason: "aborted"
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = {
-      type: "agent_end" as const,
-      messages: [{ stopReason: "aborted" }],
-    };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert: sendUserMessage was NOT called (abort detected via stopReason)
-    expect(sendUserMessageCalls).toHaveLength(0);
-  });
-
-  // "agent_end DOES send warning when last message has no stopReason"
-  it("DOES send warning when last message has no stopReason", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(false);
-
-    setupSessionGuard(pi);
-
-    // Act: invoke the agent_end handler with last message having no stopReason
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [{}] };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert: sendUserMessage WAS called (normal operation — warning sent)
-    expect(sendUserMessageCalls).toHaveLength(1);
-    expect(sendUserMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
-  });
-
-  // "agent_end DOES send warning when last message has stopReason 'stop'"
-  it("DOES send warning when last message has stopReason 'stop'", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(false);
-
-    setupSessionGuard(pi);
-
-    // Act: invoke the agent_end handler with last message having stopReason: "stop"
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = {
-      type: "agent_end" as const,
-      messages: [{ stopReason: "stop" }],
-    };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert: sendUserMessage WAS called (normal operation — warning sent)
-    expect(sendUserMessageCalls).toHaveLength(1);
-    expect(sendUserMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
   });
 });
 

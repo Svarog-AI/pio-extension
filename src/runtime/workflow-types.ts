@@ -27,11 +27,44 @@ export interface WorkflowStepSkillDeclarations {
 }
 
 /**
+ * Structured state tracked per iteration of the loop engine.
+ *
+ * Accumulates observable actions during a single agent run so that
+ * termination conditions can inspect what happened and decide whether
+ * to loop (replay the current step) or advance.
+ */
+export interface StepState {
+  /** File paths written during this iteration (from write, edit, vscode_apply_workspace_edit tools) */
+  filesWritten: string[];
+  /** Whether ask_user was called during this iteration */
+  askUserCalled: boolean;
+}
+
+/**
+ * A condition definition for callback-based loop termination.
+ *
+ * When any condition in the `terminateWhen` array returns `true`,
+ * the loop terminates and the engine advances to the next step.
+ * Conditions use OR logic — the first passing condition wins.
+ */
+export interface TerminationCondition {
+  /** Condition type — currently only "callback" is supported; expression-based conditions are deferred */
+  type: "callback";
+  /** Callback that receives the accumulated StepState and returns true to terminate the loop */
+  callback(state: StepState): boolean;
+}
+
+/**
  * Structured workflow step that replaces freeform numbered steps in markdown prompts.
  *
  * Each step defines an id (for step nudging correlation), a display title,
  * and natural language instructions. Skills can be declared per-step and
  * are merged into the session's global skills at prompt compilation time.
+ *
+ * Optional loop fields (`minIterations`, `maxIterations`, `terminateWhen`,
+ * `loopMessage`, `returnTo`) enable the loop engine to control step execution.
+ * When omitted, the step executes once and advances — preserving backward
+ * compatibility with existing capability workflows.
  */
 export interface WorkflowStep {
   /** Step identifier (e.g. "step-1", "understand-goal") — used for step nudging correlation */
@@ -42,6 +75,25 @@ export interface WorkflowStep {
   instructions: string;
   /** Per-step skill declarations — merged into session skills at prompt compilation time */
   skills?: WorkflowStepSkillDeclarations;
+
+  // -----------------------------------------------------------------------
+  // Loop engine fields (all optional — single-iteration steps omit these)
+  // -----------------------------------------------------------------------
+
+  /** Minimum iterations before termination conditions are evaluated. Default behavior (when omitted): step executes once and advances. */
+  minIterations?: number;
+
+  /** Hard limit on iterations regardless of termination conditions. Uses resolveMaxIterations() from model-config for resolution. */
+  maxIterations?: number;
+
+  /** Array of callback-based conditions — any passing condition terminates the loop (OR logic) */
+  terminateWhen?: TerminationCondition[];
+
+  /** Message sent as a follow-up when looping (replaying the current step). Informs the LLM what to focus on for the retry. */
+  loopMessage?: string;
+
+  /** Step number to return to after ad-hoc mode resumption (/return command). Defaults to current step when omitted. */
+  returnTo?: number;
 }
 
 // ---------------------------------------------------------------------------

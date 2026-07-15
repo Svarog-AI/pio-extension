@@ -5,14 +5,8 @@ import type {
 import { beforeEach, vi } from "vitest";
 // Import the real module to spy on getSessionConfig
 import * as capabilityUtils from "../capability-utils";
-import {
-  __testSetActiveSession,
-  __testSetMarkCompleteCalled,
-  __testSetTurnCount,
-  isThinkingOnlyTurn,
-  setupSessionGuard,
-} from "./session-guard";
-import { resetState } from "./session-state";
+import { isThinkingOnlyTurn, setupSessionGuard } from "./session-guard";
+import { getState, resetState, setState } from "./session-state";
 
 vi.spyOn(capabilityUtils, "getSessionConfig").mockResolvedValue({
   capability: "create-goal",
@@ -227,7 +221,7 @@ describe("setupSessionGuard", () => {
     }
 
     // Assert: flag should now be true
-    expect(__testSetActiveSession()).toBe(true);
+    expect(getState().isActive).toBe(true);
   });
 
   // "resources_discover sets flag false when no pio-config"
@@ -252,7 +246,7 @@ describe("setupSessionGuard", () => {
     }
 
     // Assert: flag should be false
-    expect(__testSetActiveSession()).toBe(false);
+    expect(getState().isActive).toBe(false);
   });
 
   // "registers turn_end handler"
@@ -277,7 +271,7 @@ describe("setupSessionGuard", () => {
     setupSessionGuard(pi);
 
     // Set session flag to false (non-pio session)
-    __testSetActiveSession(false);
+    setState({ isActive: false });
 
     // Create a TurnEndEvent with thinking-only content
     const event: TurnEndEvent = {
@@ -322,7 +316,7 @@ describe("setupSessionGuard", () => {
     setupSessionGuard(pi);
 
     // Set session flag to true
-    __testSetActiveSession(true);
+    setState({ isActive: true });
 
     // Create a TurnEndEvent with a user message (not assistant)
     const event: TurnEndEvent = {
@@ -355,7 +349,7 @@ describe("setupSessionGuard", () => {
     setupSessionGuard(pi);
 
     // Set session flag to true
-    __testSetActiveSession(true);
+    setState({ isActive: true });
 
     // Create a TurnEndEvent with thinking-only content + no tool results
     const event: TurnEndEvent = {
@@ -403,7 +397,7 @@ describe("setupSessionGuard", () => {
     setupSessionGuard(pi);
 
     // Set session flag to true
-    __testSetActiveSession(true);
+    setState({ isActive: true });
 
     // Create a TurnEndEvent with thinking + text content
     const event: TurnEndEvent = {
@@ -445,43 +439,43 @@ describe("setupSessionGuard", () => {
 });
 
 // ---------------------------------------------------------------------------
-// __testSetMarkCompleteCalled — accessor
+// session-state — markCompleteCalled via getState/setState
 // ---------------------------------------------------------------------------
 
-describe("__testSetMarkCompleteCalled", () => {
-  // "__testSetMarkCompleteCalled() returns false by default"
-  it("__testSetMarkCompleteCalled() returns false by default", () => {
+describe("session-state — markCompleteCalled via getState/setState", () => {
+  // "getState().markCompleteCalled returns false by default"
+  it("getState().markCompleteCalled returns false by default", () => {
     // Arrange
-    __testSetMarkCompleteCalled(false);
+    setState({ markCompleteCalled: false });
 
     // Act
-    const result = __testSetMarkCompleteCalled();
+    const result = getState().markCompleteCalled;
 
     // Assert
     expect(result).toBe(false);
   });
 
-  // "__testSetMarkCompleteCalled(true) sets the flag, getter returns true"
-  it("__testSetMarkCompleteCalled(true) sets the flag, getter returns true", () => {
+  // "setState({ markCompleteCalled: true }) sets the flag, getState() returns true"
+  it("setState({ markCompleteCalled: true }) sets the flag, getState() returns true", () => {
     // Arrange
-    __testSetMarkCompleteCalled(false);
+    setState({ markCompleteCalled: false });
 
     // Act
-    __testSetMarkCompleteCalled(true);
-    const result = __testSetMarkCompleteCalled();
+    setState({ markCompleteCalled: true });
+    const result = getState().markCompleteCalled;
 
     // Assert
     expect(result).toBe(true);
   });
 
-  // "__testSetMarkCompleteCalled(false) resets the flag, getter returns false"
-  it("__testSetMarkCompleteCalled(false) resets the flag, getter returns false", () => {
+  // "setState({ markCompleteCalled: false }) resets the flag, getState() returns false"
+  it("setState({ markCompleteCalled: false }) resets the flag, getState() returns false", () => {
     // Arrange
-    __testSetMarkCompleteCalled(true);
+    setState({ markCompleteCalled: true });
 
     // Act
-    __testSetMarkCompleteCalled(false);
-    const result = __testSetMarkCompleteCalled();
+    setState({ markCompleteCalled: false });
+    const result = getState().markCompleteCalled;
 
     // Assert
     expect(result).toBe(false);
@@ -497,7 +491,7 @@ describe("tool_call handler — pio_mark_complete tracking", () => {
   it("tool_call sets markCompleteCalled when toolName is pio_mark_complete", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetMarkCompleteCalled(false);
+    setState({ markCompleteCalled: false });
 
     setupSessionGuard(pi);
 
@@ -510,14 +504,14 @@ describe("tool_call handler — pio_mark_complete tracking", () => {
     }
 
     // Assert
-    expect(__testSetMarkCompleteCalled()).toBe(true);
+    expect(getState().markCompleteCalled).toBe(true);
   });
 
   // "tool_call does NOT set markCompleteCalled for toolName read"
   it("tool_call does NOT set markCompleteCalled for toolName read", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetMarkCompleteCalled(false);
+    setState({ markCompleteCalled: false });
 
     setupSessionGuard(pi);
 
@@ -529,14 +523,14 @@ describe("tool_call handler — pio_mark_complete tracking", () => {
     }
 
     // Assert
-    expect(__testSetMarkCompleteCalled()).toBe(false);
+    expect(getState().markCompleteCalled).toBe(false);
   });
 
   // "tool_call does NOT set markCompleteCalled for toolName write"
   it("tool_call does NOT set markCompleteCalled for toolName write", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetMarkCompleteCalled(false);
+    setState({ markCompleteCalled: false });
 
     setupSessionGuard(pi);
 
@@ -551,15 +545,15 @@ describe("tool_call handler — pio_mark_complete tracking", () => {
     }
 
     // Assert
-    expect(__testSetMarkCompleteCalled()).toBe(false);
+    expect(getState().markCompleteCalled).toBe(false);
   });
 
   // "tool_call sets markCompleteCalled regardless of isActivePioSession"
   it("tool_call sets markCompleteCalled regardless of isActivePioSession", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(false);
-    __testSetMarkCompleteCalled(false);
+    setState({ isActive: false });
+    setState({ markCompleteCalled: false });
 
     setupSessionGuard(pi);
 
@@ -571,7 +565,7 @@ describe("tool_call handler — pio_mark_complete tracking", () => {
     }
 
     // Assert
-    expect(__testSetMarkCompleteCalled()).toBe(true);
+    expect(getState().markCompleteCalled).toBe(true);
   });
 });
 
@@ -584,8 +578,8 @@ describe("before_agent_start handler — markCompleteCalled reset", () => {
   it("before_agent_start resets markCompleteCalled when isActivePioSession is true", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(true);
+    setState({ isActive: true });
+    setState({ markCompleteCalled: true });
 
     setupSessionGuard(pi);
 
@@ -598,15 +592,15 @@ describe("before_agent_start handler — markCompleteCalled reset", () => {
     }
 
     // Assert
-    expect(__testSetMarkCompleteCalled()).toBe(false);
+    expect(getState().markCompleteCalled).toBe(false);
   });
 
   // "before_agent_start does NOT reset markCompleteCalled when isActivePioSession is false"
   it("before_agent_start does NOT reset markCompleteCalled when isActivePioSession is false", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(false);
-    __testSetMarkCompleteCalled(true);
+    setState({ isActive: false });
+    setState({ markCompleteCalled: true });
 
     setupSessionGuard(pi);
 
@@ -619,7 +613,7 @@ describe("before_agent_start handler — markCompleteCalled reset", () => {
     }
 
     // Assert: flag should remain true
-    expect(__testSetMarkCompleteCalled()).toBe(true);
+    expect(getState().markCompleteCalled).toBe(true);
   });
 });
 
@@ -664,9 +658,9 @@ describe("setupSessionGuard — handler registration for new events", () => {
 describe("turn_count — refinement loop nudge", () => {
   // Reset state before each test to ensure isolation
   beforeEach(() => {
-    __testSetActiveSession(false);
-    __testSetMarkCompleteCalled(false);
-    __testSetTurnCount(0);
+    setState({ isActive: false });
+    setState({ markCompleteCalled: false });
+    setState({ turnCount: 0 });
   });
 
   // Helper: simulate N turn_end events with assistant text content
@@ -715,36 +709,36 @@ describe("turn_count — refinement loop nudge", () => {
   it("turnCount increments by 1 on each turn_end when isActivePioSession is true", () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate 3 turns
     simulateTurns(handlers, 3);
 
     // Assert
-    expect(__testSetTurnCount()).toBe(3);
+    expect(getState().turnCount).toBe(3);
   });
 
   it("turnCount does NOT increment when isActivePioSession is false", () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(false);
-    __testSetTurnCount(0);
+    setState({ isActive: false });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate 3 turns
     simulateTurns(handlers, 3);
 
     // Assert
-    expect(__testSetTurnCount()).toBe(0);
+    expect(getState().turnCount).toBe(0);
   });
 
   it("sends nudge message when turnCount reaches the threshold", () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate 15 turns (DEFAULT_TURN_THRESHOLD)
@@ -761,22 +755,22 @@ describe("turn_count — refinement loop nudge", () => {
   it("turnCount resets to 0 after the nudge fires", () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate 15 turns (threshold)
     simulateTurns(handlers, 15);
 
     // Assert: counter reset to 0
-    expect(__testSetTurnCount()).toBe(0);
+    expect(getState().turnCount).toBe(0);
   });
 
   it('nudge message uses { deliverAs: "steer" }', () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate 15 turns
@@ -793,8 +787,8 @@ describe("turn_count — refinement loop nudge", () => {
   it("nudge fires again after reset (periodic nudges)", () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate 30 turns (2 x threshold)
@@ -810,8 +804,8 @@ describe("turn_count — refinement loop nudge", () => {
   it("does NOT send nudge when turnCount is below threshold", () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate 14 turns (below threshold of 15)
@@ -824,8 +818,8 @@ describe("turn_count — refinement loop nudge", () => {
   it("before_agent_start resets turnCount when isActivePioSession is true", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(5);
+    setState({ isActive: true });
+    setState({ turnCount: 5 });
     setupSessionGuard(pi);
 
     // Act: invoke before_agent_start
@@ -837,14 +831,14 @@ describe("turn_count — refinement loop nudge", () => {
     }
 
     // Assert
-    expect(__testSetTurnCount()).toBe(0);
+    expect(getState().turnCount).toBe(0);
   });
 
   it("before_agent_start does NOT reset turnCount when isActivePioSession is false", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(false);
-    __testSetTurnCount(5);
+    setState({ isActive: false });
+    setState({ turnCount: 5 });
     setupSessionGuard(pi);
 
     // Act: invoke before_agent_start
@@ -856,41 +850,40 @@ describe("turn_count — refinement loop nudge", () => {
     }
 
     // Assert: turnCount should remain 5
-    expect(__testSetTurnCount()).toBe(5);
+    expect(getState().turnCount).toBe(5);
   });
 
   it("turnCount increments on text-only (non-thinking) turns", () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate 3 turns with text-only content (no thinking blocks)
     simulateTurns(handlers, 3);
 
     // Assert: turnCount incremented despite no thinking blocks
-    expect(__testSetTurnCount()).toBe(3);
+    expect(getState().turnCount).toBe(3);
   });
 
-  it("__testSetTurnCount(value) sets and returns the value", () => {
+  it("setState({ turnCount: value }) sets and getState().turnCount returns the value", () => {
     // Arrange
-    __testSetTurnCount(0);
+    setState({ turnCount: 0 });
 
     // Act
-    const setResult = __testSetTurnCount(7);
+    setState({ turnCount: 7 });
 
     // Assert
-    expect(setResult).toBe(7);
-    expect(__testSetTurnCount()).toBe(7);
+    expect(getState().turnCount).toBe(7);
   });
 
-  it("__testSetTurnCount() returns current value without argument", () => {
+  it("getState().turnCount returns current value", () => {
     // Arrange
-    __testSetTurnCount(42);
+    setState({ turnCount: 42 });
 
     // Act
-    const result = __testSetTurnCount();
+    const result = getState().turnCount;
 
     // Assert
     expect(result).toBe(42);
@@ -899,8 +892,8 @@ describe("turn_count — refinement loop nudge", () => {
   it("nudge fires at the exact threshold boundary (turn 15, not 16)", () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate exactly 15 turns
@@ -913,7 +906,7 @@ describe("turn_count — refinement loop nudge", () => {
     expect(steerCalls).toHaveLength(1);
     expect(steerCalls[0].content).toContain("loop");
     // And counter reset, so turn 16 would start fresh
-    expect(__testSetTurnCount()).toBe(0);
+    expect(getState().turnCount).toBe(0);
   });
 });
 
@@ -924,17 +917,17 @@ describe("turn_count — refinement loop nudge", () => {
 describe("turn_end handler — abort detection via stopReason", () => {
   // Reset state before each test to ensure isolation
   beforeEach(() => {
-    __testSetActiveSession(false);
-    __testSetMarkCompleteCalled(false);
-    __testSetTurnCount(0);
+    setState({ isActive: false });
+    setState({ markCompleteCalled: false });
+    setState({ turnCount: 0 });
   });
 
   // "turn_end returns early on stopReason 'aborted' (turnCount not incremented, no messages sent)"
   it("returns early on stopReason 'aborted' (turnCount not incremented, no messages sent)", () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
 
     setupSessionGuard(pi);
 
@@ -968,7 +961,7 @@ describe("turn_end handler — abort detection via stopReason", () => {
     }
 
     // Assert: handler returned early — turnCount not incremented, no messages sent
-    expect(__testSetTurnCount()).toBe(0);
+    expect(getState().turnCount).toBe(0);
     expect(sendUserMessageCalls).toHaveLength(0);
   });
 
@@ -976,8 +969,8 @@ describe("turn_end handler — abort detection via stopReason", () => {
   it("processes normally when stopReason is not 'aborted' (turnCount increments, thinking-only detection works)", () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
 
     setupSessionGuard(pi);
 
@@ -1011,7 +1004,7 @@ describe("turn_end handler — abort detection via stopReason", () => {
     }
 
     // Assert: turnCount incremented, recovery prompt sent
-    expect(__testSetTurnCount()).toBe(1);
+    expect(getState().turnCount).toBe(1);
     expect(sendUserMessageCalls).toHaveLength(1);
     expect(sendUserMessageCalls[0].options).toEqual({ deliverAs: "steer" });
   });

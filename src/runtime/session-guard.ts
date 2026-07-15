@@ -23,43 +23,6 @@ interface ContentBlock {
 }
 
 // ---------------------------------------------------------------------------
-// Test-only accessors — delegate to shared session state
-// ---------------------------------------------------------------------------
-
-/**
- * Test-only accessor for the internal `isActive` flag.
- *
- * @internal — Do not use in production code. Exists solely to allow unit tests
- * to read and manipulate session state without mocking the full ExtensionAPI.
- */
-export function __testSetActiveSession(value?: boolean): boolean {
-  if (value !== undefined) setState({ isActive: value });
-  return getState().isActive;
-}
-
-/**
- * Test-only accessor for the internal `markCompleteCalled` flag.
- *
- * @internal — Do not use in production code. Exists solely to allow unit tests
- * to read and manipulate completion-tracking state without mocking the full ExtensionAPI.
- */
-export function __testSetMarkCompleteCalled(value?: boolean): boolean {
-  if (value !== undefined) setState({ markCompleteCalled: value });
-  return getState().markCompleteCalled;
-}
-
-/**
- * Test-only accessor for the internal `turnCount` variable.
- *
- * @internal — Do not use in production code. Exists solely to allow unit tests
- * to read and manipulate turn-count state without mocking the full ExtensionAPI.
- */
-export function __testSetTurnCount(value?: number): number {
-  if (value !== undefined) setState({ turnCount: value });
-  return getState().turnCount;
-}
-
-// ---------------------------------------------------------------------------
 // Pure detection logic — extracted for unit testing
 // ---------------------------------------------------------------------------
 

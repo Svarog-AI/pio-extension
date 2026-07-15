@@ -23,6 +23,11 @@ describe("session-state", () => {
       expect(state.currentIteration).toBe(0);
       expect(state.totalSteps).toBe(0);
       expect(state.stepsList).toEqual([]);
+      expect(state.stepState).toEqual({
+        filesWritten: [],
+        askUserCalled: false,
+      });
+      expect(state.engineInitiatedRun).toBe(false);
     });
   });
 
@@ -70,6 +75,8 @@ describe("session-state", () => {
         currentIteration: 2,
         totalSteps: 5,
         stepsList: [{ id: "s1", title: "A", instructions: "I" }],
+        stepState: { filesWritten: ["/some/file"], askUserCalled: true },
+        engineInitiatedRun: true,
       });
 
       resetState();
@@ -82,6 +89,11 @@ describe("session-state", () => {
       expect(state.currentIteration).toBe(0);
       expect(state.totalSteps).toBe(0);
       expect(state.stepsList).toEqual([]);
+      expect(state.stepState).toEqual({
+        filesWritten: [],
+        askUserCalled: false,
+      });
+      expect(state.engineInitiatedRun).toBe(false);
     });
   });
 
@@ -104,6 +116,8 @@ describe("session-state", () => {
           currentIteration: 3,
           totalSteps: 6,
           stepsList: [],
+          stepState: { filesWritten: ["/test/file"], askUserCalled: true },
+          engineInitiatedRun: true,
         };
 
         __testSetState(newState);
@@ -114,6 +128,9 @@ describe("session-state", () => {
         expect(state.currentStep).toBe(4);
         expect(state.currentIteration).toBe(3);
         expect(state.totalSteps).toBe(6);
+        expect(state.stepState.filesWritten).toEqual(["/test/file"]);
+        expect(state.stepState.askUserCalled).toBe(true);
+        expect(state.engineInitiatedRun).toBe(true);
       });
 
       it("returns the current state when called without arguments", () => {

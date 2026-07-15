@@ -10,7 +10,7 @@
  * mutate state through the accessor functions.
  */
 
-import type { WorkflowStep } from "./workflow-types";
+import type { StepState, WorkflowStep } from "./workflow-types";
 
 // ---------------------------------------------------------------------------
 // PioSessionState interface
@@ -43,6 +43,20 @@ export interface PioSessionState {
 
   /** Ordered list of all workflow steps (full objects with loop fields). */
   stepsList: WorkflowStep[];
+
+  /**
+   * Per-iteration step state tracked by the loop engine.
+   * Reset at the start of each new iteration.
+   * Used for termination condition evaluation.
+   */
+  stepState: StepState;
+
+  /**
+   * Flag set at `agent_end` when the engine sends a follow-up message
+   * to trigger the next agent run. Consumed at `before_agent_start` to
+   * distinguish engine-initiated runs from external user messages.
+   */
+  engineInitiatedRun: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -60,6 +74,8 @@ function createInitialState(): PioSessionState {
     currentIteration: 0,
     totalSteps: 0,
     stepsList: [],
+    stepState: { filesWritten: [], askUserCalled: false },
+    engineInitiatedRun: false,
   };
 }
 

@@ -33,8 +33,16 @@ vi.spyOn(capabilitySession, "getSessionParams").mockReturnValue({
 function createMockPi(): {
   pi: ExtensionAPI;
   handlers: Map<string, Array<(...args: unknown[]) => unknown>>;
+  sendUserMessageCalls: Array<{
+    content: string | unknown[];
+    options?: { deliverAs?: string };
+  }>;
 } {
   const handlers = new Map<string, Array<(...args: unknown[]) => unknown>>();
+  const sendUserMessageCalls: Array<{
+    content: string | unknown[];
+    options?: { deliverAs?: string };
+  }> = [];
 
   const pi = {
     on(event: string, handler: (...args: unknown[]) => unknown): void {
@@ -49,7 +57,12 @@ function createMockPi(): {
     },
     registerMessageRenderer(): void {},
     sendMessage(): void {},
-    sendUserMessage(): void {},
+    sendUserMessage(
+      content: string | unknown[],
+      options?: { deliverAs?: string },
+    ): void {
+      sendUserMessageCalls.push({ content, options });
+    },
     appendEntry(): void {},
     setSessionName(): void {},
     getSessionName(): string | undefined {
@@ -81,7 +94,7 @@ function createMockPi(): {
     events: { emit(): void {} },
   } as unknown as ExtensionAPI;
 
-  return { pi, handlers };
+  return { pi, handlers, sendUserMessageCalls };
 }
 
 // ---------------------------------------------------------------------------
@@ -162,7 +175,7 @@ describe("setupLoopEngine — handler registration", () => {
     expect(handlers.has("tool_call")).toBe(true);
   });
 
-  it("registers exactly four event handlers", async () => {
+  it("registers exactly five event handlers", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
@@ -170,12 +183,13 @@ describe("setupLoopEngine — handler registration", () => {
     // Act
     setupLoopEngine(pi);
 
-    // Assert: only resources_discover, input, before_agent_start, tool_call
-    expect(handlers.size).toBe(4);
+    // Assert: resources_discover, input, before_agent_start, tool_call, agent_end
+    expect(handlers.size).toBe(5);
     expect(handlers.has("resources_discover")).toBe(true);
     expect(handlers.has("input")).toBe(true);
     expect(handlers.has("before_agent_start")).toBe(true);
     expect(handlers.has("tool_call")).toBe(true);
+    expect(handlers.has("agent_end")).toBe(true);
   });
 });
 
@@ -760,6 +774,763 @@ describe("PioSessionState as single source of truth", () => {
     const state = getState();
     expect(state.filesWritten).toHaveLength(1);
     expect(state.filesWritten[0]).toContain("test.ts");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// agent_end — termination evaluation and follow-up injection
+// ---------------------------------------------------------------------------
+
+describe("agent_end", () => {
+  async function fireAgentEnd(
+    handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+    messages: unknown[],
+  ) {
+    const handlersList = handlers.get("agent_end");
+    expect(handlersList).toBeDefined();
+    const mockCtx = {} as any;
+    for (const handler of handlersList!) {
+      await handler({ type: "agent_end", messages }, mockCtx);
+    }
+  }
+
+  // ---- Skip cases ----
+
+  describe("skip cases", () => {
+    it("does nothing when last message has stopReason aborted", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+        workflowSteps: [
+          { id: "s1", title: "S1", instructions: "Do A" },
+          { id: "s2", title: "S2", instructions: "Do B" },
+        ],
+        totalWorkflowSteps: 2,
+      });
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1,
+        totalSteps: 2,
+        stepsList: [
+          { id: "s1", title: "S1", instructions: "Do A" },
+          { id: "s2", title: "S2", instructions: "Do B" },
+        ],
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "aborted",
+        },
+      ]);
+
+      expect(sendUserMessageCalls).toHaveLength(0);
+    });
+
+    it("does nothing when last message has stopReason error", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+        workflowSteps: [
+          { id: "s1", title: "S1", instructions: "Do A" },
+          { id: "s2", title: "S2", instructions: "Do B" },
+        ],
+        totalWorkflowSteps: 2,
+      });
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1,
+        totalSteps: 2,
+        stepsList: [
+          { id: "s1", title: "S1", instructions: "Do A" },
+          { id: "s2", title: "S2", instructions: "Do B" },
+        ],
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "error",
+        },
+      ]);
+
+      expect(sendUserMessageCalls).toHaveLength(0);
+    });
+
+    it("does nothing when markCompleteCalled is true", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+        workflowSteps: [{ id: "s1", title: "S1", instructions: "Do A" }],
+        totalWorkflowSteps: 1,
+      });
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1,
+        totalSteps: 1,
+        stepsList: [{ id: "s1", title: "S1", instructions: "Do A" }],
+        markCompleteCalled: true,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      expect(sendUserMessageCalls).toHaveLength(0);
+    });
+
+    it("does nothing when isActive is false", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({ isActive: false });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      expect(sendUserMessageCalls).toHaveLength(0);
+    });
+  });
+
+  // ---- Max iterations hard stop ----
+
+  describe("max iterations hard stop", () => {
+    it("does nothing when currentIteration >= resolved maxIterations", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+        workflowSteps: [
+          {
+            id: "s1",
+            title: "S1",
+            instructions: "Do A",
+            maxIterations: 3,
+            loopMessage: "Retry",
+          },
+        ],
+        totalWorkflowSteps: 1,
+      });
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 3,
+        totalSteps: 1,
+        stepsList: [
+          {
+            id: "s1",
+            title: "S1",
+            instructions: "Do A",
+            maxIterations: 3,
+            loopMessage: "Retry",
+          },
+        ],
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Even though no terminateWhen, max iterations hit → no follow-up
+      expect(sendUserMessageCalls).toHaveLength(0);
+    });
+  });
+
+  // ---- Single-iteration steps (no loop fields) ----
+
+  describe("single-iteration steps", () => {
+    it("advances to next step after one agent run (no loop fields)", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const steps = [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+        workflowSteps: steps,
+        totalWorkflowSteps: 2,
+      });
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1,
+        totalSteps: 2,
+        stepsList: steps,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Should advance: currentStep updated, follow-up sent with next step instructions
+      expect(getState().currentStep).toBe(2);
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].content).toBe("Do B");
+      expect(sendUserMessageCalls[0].options).toEqual({
+        deliverAs: "followUp",
+      });
+    });
+  });
+
+  // ---- Termination condition evaluation ----
+
+  describe("termination conditions", () => {
+    it("loops when currentIteration < minIterations", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const steps = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 3,
+          loopMessage: "Keep going",
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+        workflowSteps: steps,
+        totalWorkflowSteps: 2,
+      });
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 2, // < minIterations (3)
+        totalSteps: 2,
+        stepsList: steps,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Should loop: send follow-up with loopMessage, currentStep unchanged
+      expect(getState().currentStep).toBe(1);
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].content).toBe("Keep going");
+      expect(sendUserMessageCalls[0].options).toEqual({
+        deliverAs: "followUp",
+      });
+    });
+
+    it("advances when terminateWhen callback returns true (OR logic)", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const steps = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 1,
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: (state: any) => state.filesWritten.length > 0,
+            },
+          ],
+          loopMessage: "Retry",
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+        workflowSteps: steps,
+        totalWorkflowSteps: 2,
+      });
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1, // >= minIterations
+        totalSteps: 2,
+        stepsList: steps,
+        markCompleteCalled: false,
+        filesWritten: ["/some/file.ts"],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Callback returns true → advance
+      expect(getState().currentStep).toBe(2);
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].content).toBe("Do B");
+    });
+
+    it("loops when all terminateWhen callbacks return false (OR logic)", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const steps = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 1,
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: (state: any) => state.filesWritten.length > 0,
+            },
+            {
+              type: "callback" as const,
+              callback: (state: any) => state.askUserCalled,
+            },
+          ],
+          loopMessage: "Retry",
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+        workflowSteps: steps,
+        totalWorkflowSteps: 2,
+      });
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1,
+        totalSteps: 2,
+        stepsList: steps,
+        markCompleteCalled: false,
+        filesWritten: [], // Both callbacks return false
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // All false → loop
+      expect(getState().currentStep).toBe(1);
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].content).toBe("Retry");
+    });
+
+    it("advances when second callback returns true (short-circuit OR)", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const steps = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 1,
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: () => false, // First returns false
+            },
+            {
+              type: "callback" as const,
+              callback: (state: any) => state.askUserCalled, // Second returns true
+            },
+          ],
+          loopMessage: "Retry",
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+        workflowSteps: steps,
+        totalWorkflowSteps: 2,
+      });
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1,
+        totalSteps: 2,
+        stepsList: steps,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: true, // Second callback returns true
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Second callback true → advance
+      expect(getState().currentStep).toBe(2);
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].content).toBe("Do B");
+    });
+
+    it("treats callback error as NOT met (fail-safe: keep looping)", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const steps = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 1,
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: () => {
+                throw new Error("boom");
+              },
+            },
+          ],
+          loopMessage: "Retry",
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+        workflowSteps: steps,
+        totalWorkflowSteps: 2,
+      });
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1,
+        totalSteps: 2,
+        stepsList: steps,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Callback threw → fail-safe: loop
+      expect(getState().currentStep).toBe(1);
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].content).toBe("Retry");
+    });
+
+    it("advances when terminateWhen is undefined after minIterations reached", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const steps = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 2,
+          // No terminateWhen
+          loopMessage: "Retry",
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+        workflowSteps: steps,
+        totalWorkflowSteps: 2,
+      });
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 2, // >= minIterations
+        totalSteps: 2,
+        stepsList: steps,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // No terminateWhen + minIterations reached → advance
+      expect(getState().currentStep).toBe(2);
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].content).toBe("Do B");
+    });
+
+    it("advances when terminateWhen is empty array after minIterations reached", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const steps = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 1,
+          terminateWhen: [],
+          loopMessage: "Retry",
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+        workflowSteps: steps,
+        totalWorkflowSteps: 2,
+      });
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1,
+        totalSteps: 2,
+        stepsList: steps,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Empty terminateWhen + minIterations reached → advance
+      expect(getState().currentStep).toBe(2);
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].content).toBe("Do B");
+    });
+  });
+
+  // ---- Loop replay ----
+
+  describe("loop replay", () => {
+    it("sends empty string when loopMessage is undefined", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const steps = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 3,
+          // No loopMessage
+        },
+      ];
+
+      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+        workflowSteps: steps,
+        totalWorkflowSteps: 1,
+      });
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1, // < minIterations
+        totalSteps: 1,
+        stepsList: steps,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].content).toBe("");
+      expect(sendUserMessageCalls[0].options).toEqual({
+        deliverAs: "followUp",
+      });
+    });
+  });
+
+  // ---- Last step boundary ----
+
+  describe("last step boundary", () => {
+    it("does nothing when at last step and conditions met", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const steps = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+        },
+      ];
+
+      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+        workflowSteps: steps,
+        totalWorkflowSteps: 1,
+      });
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1,
+        totalSteps: 1,
+        stepsList: steps,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Last step, conditions met → no follow-up, let session end naturally
+      expect(sendUserMessageCalls).toHaveLength(0);
+      expect(getState().currentStep).toBe(1); // Not advanced
+    });
+  });
+
+  // ---- resolveMaxIterations usage ----
+
+  describe("resolveMaxIterations integration", () => {
+    it("uses resolveMaxIterations with step maxIterations for resolution", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const steps = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          maxIterations: 5,
+          loopMessage: "Retry",
+        },
+      ];
+
+      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+        workflowSteps: steps,
+        totalWorkflowSteps: 1,
+      });
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 4, // < 5 (maxIterations)
+        totalSteps: 1,
+        stepsList: steps,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // currentIteration (4) < maxIterations (5), no terminateWhen, minIterations defaults to 1
+      // So conditions are met (iteration 1 >= minIterations 1, no terminateWhen)
+      // But we're at last step → no follow-up
+      expect(sendUserMessageCalls).toHaveLength(0);
+    });
   });
 });
 

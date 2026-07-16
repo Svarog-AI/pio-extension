@@ -18,8 +18,28 @@ import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getSessionParams } from "../capability-session";
 import { getSessionConfig } from "../capability-utils";
+import { resolveMaxIterations } from "../model-config";
 import { getState, resetState, setState } from "./session-state";
 import type { WorkflowStep } from "./workflow-types";
+
+// ---------------------------------------------------------------------------
+// Type helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Narrows an AgentMessage to access the `stopReason` field on AssistantMessage.
+ *
+ * `AgentMessage` is a union (`Message | CustomAgentMessages`). `stopReason`
+ * lives on `AssistantMessage` (role: "assistant"). This helper safely extracts
+ * the stop reason string when available.
+ */
+function getStopReason(msg: unknown): string | undefined {
+  if (!msg || typeof msg !== "object") return undefined;
+  const obj = msg as Record<string, unknown>;
+  if (obj.role !== "assistant") return undefined;
+  if (typeof obj.stopReason === "string") return obj.stopReason as string;
+  return undefined;
+}
 
 // ---------------------------------------------------------------------------
 // Test accessors
@@ -152,6 +172,111 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // Track ask_user calls
     if (toolName === "ask_user") {
       setState({ askUserCalled: true });
+    }
+  });
+
+  // 5. Termination evaluation and follow-up injection
+  pi.on("agent_end", async (event, _ctx) => {
+    // Guard: only run inside pio sessions
+    if (!getState().isActive) return;
+
+    const state = getState();
+    const messages = event.messages;
+
+    // ---------------------------------------------------------------------------
+    // 1. Skip cases — no follow-up injected
+    // ---------------------------------------------------------------------------
+
+    // User abort: check last message for stopReason === "aborted"
+    const lastMsg = messages[messages.length - 1];
+    if (getStopReason(lastMsg) === "aborted") {
+      return;
+    }
+
+    // Error: check last message for stopReason === "error"
+    if (getStopReason(lastMsg) === "error") {
+      return;
+    }
+
+    // Mark-complete termination: session is ending
+    if (state.markCompleteCalled) {
+      return;
+    }
+
+    // ---------------------------------------------------------------------------
+    // 2. Iteration bounds enforcement
+    // ---------------------------------------------------------------------------
+
+    const currentStepIndex = state.currentStep - 1; // 1-based → 0-based
+    const currentStep = state.stepsList[currentStepIndex];
+    if (!currentStep) return;
+
+    const resolvedMax = resolveMaxIterations(currentStep.maxIterations);
+    if (state.currentIteration >= resolvedMax) {
+      // Hard stop — max iterations reached
+      return;
+    }
+
+    // ---------------------------------------------------------------------------
+    // 3. Termination condition evaluation
+    // ---------------------------------------------------------------------------
+
+    const minIterations = currentStep.minIterations ?? 1;
+    let conditionsMet = false;
+
+    if (state.currentIteration < minIterations) {
+      // Not yet reached min iterations — always loop
+      conditionsMet = false;
+    } else {
+      // Min iterations reached — evaluate termination conditions
+      if (
+        !currentStep.terminateWhen ||
+        currentStep.terminateWhen.length === 0
+      ) {
+        // No conditions defined — treat as "conditions met" (advance)
+        conditionsMet = true;
+      } else {
+        // Evaluate callbacks with OR logic
+        for (const condition of currentStep.terminateWhen) {
+          try {
+            if (condition.callback(state)) {
+              conditionsMet = true;
+              break;
+            }
+          } catch {
+            // Callback threw — fail-safe: treat as NOT met (keep looping)
+          }
+        }
+      }
+    }
+
+    // ---------------------------------------------------------------------------
+    // 4a / 4b. Loop replay vs step advancement
+    // ---------------------------------------------------------------------------
+
+    if (!conditionsMet) {
+      // Loop replay: send follow-up to trigger another agent run for same step
+      pi.sendUserMessage(currentStep.loopMessage ?? "", {
+        deliverAs: "followUp",
+      });
+      return;
+    }
+
+    // Conditions met — advance to next step
+    const nextStepNum = state.currentStep + 1;
+
+    if (nextStepNum > state.totalSteps) {
+      // Last step — let session end naturally
+      return;
+    }
+
+    // Update current step in shared state
+    setState({ currentStep: nextStepNum });
+
+    // Send follow-up with next step's instructions
+    const nextStep = state.stepsList[nextStepNum - 1];
+    if (nextStep) {
+      pi.sendUserMessage(nextStep.instructions, { deliverAs: "followUp" });
     }
   });
 }

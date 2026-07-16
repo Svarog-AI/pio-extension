@@ -2,11 +2,13 @@
  * Runtime workflow execution types.
  *
  * Extracted from `capability-package.ts` so that runtime execution semantics
- * live in the `src/runtime/` package alongside the loop engine. This module
- * is a leaf: it imports only from `src/types.ts` and external packages.
+ * live in the `src/runtime/` package alongside the loop engine.
+ * Imports `PioSessionState` from `./session-state` (type-only cycle) for
+ * the `TerminationCondition` callback signature.
  */
 
 import type { CapabilitySkills } from "../types";
+import type { PioSessionState } from "./session-state";
 
 // ---------------------------------------------------------------------------
 // Workflow step types
@@ -27,31 +29,25 @@ export interface WorkflowStepSkillDeclarations {
 }
 
 /**
- * Structured state tracked per iteration of the loop engine.
- *
- * Accumulates observable actions during a single agent run so that
- * termination conditions can inspect what happened and decide whether
- * to loop (replay the current step) or advance.
- */
-export interface StepState {
-  /** File paths written during this iteration (from write, edit, vscode_apply_workspace_edit tools) */
-  filesWritten: string[];
-  /** Whether ask_user was called during this iteration */
-  askUserCalled: boolean;
-}
-
-/**
  * A condition definition for callback-based loop termination.
  *
  * When any condition in the `terminateWhen` array returns `true`,
  * the loop terminates and the engine advances to the next step.
  * Conditions use OR logic — the first passing condition wins.
+ *
+ * The callback receives the full PioSessionState directly — it reads
+ * whatever fields it needs (`state.filesWritten`, `state.currentIteration`)
+ * and ignores the rest. No projection function needed.
+ *
+ * Note: This creates a type-only cycle between workflow-types.ts and
+ * session-state.ts. Both use `import type`, so there is no runtime
+ * circular dependency — ESM resolves this correctly.
  */
 export interface TerminationCondition {
   /** Condition type — currently only "callback" is supported; expression-based conditions are deferred */
   type: "callback";
-  /** Callback that receives the accumulated StepState and returns true to terminate the loop */
-  callback(state: StepState): boolean;
+  /** Callback that receives the full PioSessionState and returns true to terminate the loop */
+  callback(state: PioSessionState): boolean;
 }
 
 /**

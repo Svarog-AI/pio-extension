@@ -126,6 +126,18 @@ describe("setupLoopEngine — handler registration", () => {
     expect(handlers.has("resources_discover")).toBe(true);
   });
 
+  it("registers input handler", async () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+
+    // Act
+    setupLoopEngine(pi);
+
+    // Assert
+    expect(handlers.has("input")).toBe(true);
+  });
+
   it("registers before_agent_start handler", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
@@ -150,7 +162,7 @@ describe("setupLoopEngine — handler registration", () => {
     expect(handlers.has("tool_call")).toBe(true);
   });
 
-  it("registers exactly three event handlers", async () => {
+  it("registers exactly four event handlers", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
@@ -158,9 +170,10 @@ describe("setupLoopEngine — handler registration", () => {
     // Act
     setupLoopEngine(pi);
 
-    // Assert: only resources_discover, before_agent_start, tool_call
-    expect(handlers.size).toBe(3);
+    // Assert: only resources_discover, input, before_agent_start, tool_call
+    expect(handlers.size).toBe(4);
     expect(handlers.has("resources_discover")).toBe(true);
+    expect(handlers.has("input")).toBe(true);
     expect(handlers.has("before_agent_start")).toBe(true);
     expect(handlers.has("tool_call")).toBe(true);
   });
@@ -196,9 +209,9 @@ describe("resources_discover", () => {
     expect(state.totalSteps).toBe(2);
     expect(state.stepsList).toHaveLength(2);
     expect(state.stepsList[0].id).toBe("step-1");
-    expect(state.engineInitiatedRun).toBe(false);
-    expect(state.stepState.filesWritten).toEqual([]);
-    expect(state.stepState.askUserCalled).toBe(false);
+    expect(state.isAdHocInput).toBe(false);
+    expect(state.filesWritten).toEqual([]);
+    expect(state.askUserCalled).toBe(false);
   });
 
   it("when config is absent: resets state", async () => {
@@ -213,7 +226,7 @@ describe("resources_discover", () => {
       currentStep: 3,
       totalSteps: 5,
       currentIteration: 2,
-      engineInitiatedRun: true,
+      isAdHocInput: true,
     });
 
     setupLoopEngine(pi);
@@ -235,7 +248,7 @@ describe("resources_discover", () => {
     expect(state.currentIteration).toBe(0);
     expect(state.totalSteps).toBe(0);
     expect(state.stepsList).toEqual([]);
-    expect(state.engineInitiatedRun).toBe(false);
+    expect(state.isAdHocInput).toBe(false);
   });
 
   it("handles missing session params gracefully", async () => {
@@ -265,7 +278,69 @@ describe("resources_discover", () => {
 });
 
 // ---------------------------------------------------------------------------
-// before_agent_start — three-way split (first run, engine-initiated, ad-hoc)
+// input handler — ad-hoc mode detection
+// ---------------------------------------------------------------------------
+
+describe("input handler", () => {
+  async function fireInput(
+    handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+    event: { source?: string },
+  ) {
+    const handlersList = handlers.get("input");
+    expect(handlersList).toBeDefined();
+    for (const handler of handlersList!) {
+      await handler(event);
+    }
+  }
+
+  it("when source is interactive AND isActive: sets isAdHocInput to true", async () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({ isActive: true, isAdHocInput: false });
+
+    // Act
+    await fireInput(handlers, { source: "interactive" });
+
+    // Assert
+    expect(getState().isAdHocInput).toBe(true);
+  });
+
+  it("when source is NOT interactive: does nothing", async () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({ isActive: true, isAdHocInput: false });
+
+    // Act
+    await fireInput(handlers, { source: "rpc" });
+
+    // Assert
+    expect(getState().isAdHocInput).toBe(false);
+  });
+
+  it("when isActive is false: does nothing even if source is interactive", async () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({ isActive: false, isAdHocInput: false });
+
+    // Act
+    await fireInput(handlers, { source: "interactive" });
+
+    // Assert
+    expect(getState().isAdHocInput).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// before_agent_start — two-way split (normal run vs ad-hoc mode)
 // ---------------------------------------------------------------------------
 
 describe("before_agent_start", () => {
@@ -280,77 +355,93 @@ describe("before_agent_start", () => {
     }
   }
 
-  it("first run (engineInitiatedRun=false, iteration=0): sets iteration to 1, initializes StepState", async () => {
+  it("normal run (isAdHocInput=false, iteration=0): sets iteration to 1, resets tracking fields", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
 
-    // Simulate first run: engineInitiatedRun defaults to false, currentIteration = 0
-    setState({ isActive: true, currentIteration: 0 });
+    // Simulate first run: isAdHocInput defaults to false, currentIteration = 0
+    setState({ isActive: true, currentIteration: 0, isAdHocInput: false });
 
     // Act: fire before_agent_start
     await fireBeforeAgentStart(handlers);
 
-    // Assert: iteration set to 1, fresh StepState (all via getState)
+    // Assert: iteration set to 1, fresh tracking fields (all via getState)
     const state = getState();
     expect(state.currentIteration).toBe(1);
-    expect(state.stepState.filesWritten).toEqual([]);
-    expect(state.stepState.askUserCalled).toBe(false);
+    expect(state.filesWritten).toEqual([]);
+    expect(state.askUserCalled).toBe(false);
+    expect(state.isAdHocInput).toBe(false);
   });
 
-  it("engine-initiated run (engineInitiatedRun=true): increments iteration, resets StepState, consumes flag", async () => {
+  it("normal run (loop replay, iteration>0): increments iteration, resets tracking fields", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
 
-    // Set up: iteration is 2, engineInitiatedRun = true (Step 7 set it)
+    // Set up: iteration is 2, isAdHocInput = false (engine follow-up replay)
     setState({
       isActive: true,
       currentIteration: 2,
-      engineInitiatedRun: true,
+      isAdHocInput: false,
+      filesWritten: ["/old/file.ts"],
+      askUserCalled: true,
     });
 
     // Act: fire before_agent_start
     await fireBeforeAgentStart(handlers);
 
-    // Assert: iteration incremented to 3, flag consumed, fresh StepState
+    // Assert: iteration incremented to 3, tracking fields reset
     const state = getState();
     expect(state.currentIteration).toBe(3);
-    expect(state.engineInitiatedRun).toBe(false);
-    expect(state.stepState.filesWritten).toEqual([]);
-    expect(state.stepState.askUserCalled).toBe(false);
+    expect(state.isAdHocInput).toBe(false);
+    expect(state.filesWritten).toEqual([]);
+    expect(state.askUserCalled).toBe(false);
   });
 
-  it("ad-hoc mode (engineInitiatedRun=false, iteration>0): does NOT increment or reset", async () => {
+  it("ad-hoc mode (isAdHocInput=true): does NOT increment or reset tracking fields", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
 
-    // Set up: iteration is 1 (active loop), engineInitiatedRun = false (user message)
-    // Pre-populate stepState so we can verify it's not reset
+    // Set up: iteration is 1 (active loop), isAdHocInput = true (user message arrived)
+    // Pre-populate tracking fields so we can verify they're not reset
     setState({
       isActive: true,
       currentIteration: 1,
-      engineInitiatedRun: false,
-      stepState: { filesWritten: ["/some/file.ts"], askUserCalled: true },
+      isAdHocInput: true,
+      filesWritten: ["/some/file.ts"],
+      askUserCalled: true,
     });
-
-    // Capture the stepState reference before the handler
-    const stepStateRef = getState().stepState;
 
     // Act: fire before_agent_start
     await fireBeforeAgentStart(handlers);
 
-    // Assert: iteration NOT changed, StepState NOT reset
+    // Assert: iteration NOT changed, tracking fields NOT reset, flag consumed
     const state = getState();
     expect(state.currentIteration).toBe(1);
-    // stepState should still be the same object (not replaced)
-    expect(state.stepState).toBe(stepStateRef);
-    expect(state.stepState.filesWritten).toEqual(["/some/file.ts"]);
-    expect(state.stepState.askUserCalled).toBe(true);
+    expect(state.isAdHocInput).toBe(false);
+    expect(state.filesWritten).toEqual(["/some/file.ts"]);
+    expect(state.askUserCalled).toBe(true);
+  });
+
+  it("does nothing when isActive is false", async () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({ isActive: false, currentIteration: 5, isAdHocInput: false });
+
+    // Act
+    await fireBeforeAgentStart(handlers);
+
+    // Assert: state unchanged
+    const state = getState();
+    expect(state.currentIteration).toBe(5);
   });
 });
 
@@ -376,12 +467,7 @@ describe("tool_call", () => {
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
 
-    setState({ isActive: true, currentIteration: 1 });
-    // Fire before_agent_start to initialize StepState
-    const beforeHandlers = handlers.get("before_agent_start");
-    for (const h of beforeHandlers!) {
-      await h({ type: "before_agent_start" }, {} as any);
-    }
+    setState({ isActive: true, currentIteration: 1, filesWritten: [] });
 
     // Act: fire tool_call with write tool
     await fireToolCall(handlers, {
@@ -389,10 +475,10 @@ describe("tool_call", () => {
       input: { path: "src/foo.ts", content: "code" },
     });
 
-    // Assert: files tracked in PioSessionState.stepState
+    // Assert: files tracked in flat PioSessionState fields
     const state = getState();
-    expect(state.stepState.filesWritten).toHaveLength(1);
-    expect(state.stepState.filesWritten[0]).toContain("foo.ts");
+    expect(state.filesWritten).toHaveLength(1);
+    expect(state.filesWritten[0]).toContain("foo.ts");
   });
 
   it("tracks edit tool: extracts input.path with path.resolve", async () => {
@@ -401,11 +487,7 @@ describe("tool_call", () => {
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
 
-    setState({ isActive: true, currentIteration: 1 });
-    const beforeHandlers = handlers.get("before_agent_start");
-    for (const h of beforeHandlers!) {
-      await h({ type: "before_agent_start" }, {} as any);
-    }
+    setState({ isActive: true, currentIteration: 1, filesWritten: [] });
 
     // Act
     await fireToolCall(handlers, {
@@ -415,8 +497,8 @@ describe("tool_call", () => {
 
     // Assert
     const state = getState();
-    expect(state.stepState.filesWritten).toHaveLength(1);
-    expect(state.stepState.filesWritten[0]).toContain("bar.ts");
+    expect(state.filesWritten).toHaveLength(1);
+    expect(state.filesWritten[0]).toContain("bar.ts");
   });
 
   it("tracks vscode_apply_workspace_edit: extracts each edit.filePath", async () => {
@@ -425,11 +507,7 @@ describe("tool_call", () => {
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
 
-    setState({ isActive: true, currentIteration: 1 });
-    const beforeHandlers = handlers.get("before_agent_start");
-    for (const h of beforeHandlers!) {
-      await h({ type: "before_agent_start" }, {} as any);
-    }
+    setState({ isActive: true, currentIteration: 1, filesWritten: [] });
 
     // Act
     await fireToolCall(handlers, {
@@ -444,9 +522,9 @@ describe("tool_call", () => {
 
     // Assert
     const state = getState();
-    expect(state.stepState.filesWritten).toHaveLength(2);
-    expect(state.stepState.filesWritten[0]).toContain("a.ts");
-    expect(state.stepState.filesWritten[1]).toContain("b.ts");
+    expect(state.filesWritten).toHaveLength(2);
+    expect(state.filesWritten[0]).toContain("a.ts");
+    expect(state.filesWritten[1]).toContain("b.ts");
   });
 
   it("tracks ask_user: sets askUserCalled to true", async () => {
@@ -455,11 +533,7 @@ describe("tool_call", () => {
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
 
-    setState({ isActive: true, currentIteration: 1 });
-    const beforeHandlers = handlers.get("before_agent_start");
-    for (const h of beforeHandlers!) {
-      await h({ type: "before_agent_start" }, {} as any);
-    }
+    setState({ isActive: true, currentIteration: 1, askUserCalled: false });
 
     // Act
     await fireToolCall(handlers, {
@@ -469,7 +543,7 @@ describe("tool_call", () => {
 
     // Assert
     const state = getState();
-    expect(state.stepState.askUserCalled).toBe(true);
+    expect(state.askUserCalled).toBe(true);
   });
 
   it("does NOT track when isActive is false", async () => {
@@ -478,7 +552,7 @@ describe("tool_call", () => {
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
 
-    setState({ isActive: false });
+    setState({ isActive: false, filesWritten: [] });
 
     // Act
     await fireToolCall(handlers, {
@@ -488,7 +562,104 @@ describe("tool_call", () => {
 
     // Assert: filesWritten should be empty (not tracked)
     const state = getState();
-    expect(state.stepState.filesWritten).toEqual([]);
+    expect(state.filesWritten).toEqual([]);
+  });
+
+  it("cumulative tracking: multiple write calls accumulate filesWritten", async () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({ isActive: true, currentIteration: 1, filesWritten: [] });
+
+    // Act: two write calls
+    await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "src/a.ts", content: "x" },
+    });
+    await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "src/b.ts", content: "y" },
+    });
+
+    // Assert: both files tracked
+    const state = getState();
+    expect(state.filesWritten).toHaveLength(2);
+    expect(state.filesWritten[0]).toContain("a.ts");
+    expect(state.filesWritten[1]).toContain("b.ts");
+  });
+
+  it("cumulative tracking: write followed by ask_user updates both fields", async () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentIteration: 1,
+      filesWritten: [],
+      askUserCalled: false,
+    });
+
+    // Act: write then ask_user
+    await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "src/a.ts", content: "x" },
+    });
+    await fireToolCall(handlers, {
+      toolName: "ask_user",
+      input: { question: "What now?" },
+    });
+
+    // Assert: both fields updated
+    const state = getState();
+    expect(state.filesWritten).toHaveLength(1);
+    expect(state.filesWritten[0]).toContain("a.ts");
+    expect(state.askUserCalled).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Iteration data clearing between iterations
+// ---------------------------------------------------------------------------
+
+describe("iteration data clearing between iterations", () => {
+  async function fireBeforeAgentStart(
+    handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+  ) {
+    const handlersList = handlers.get("before_agent_start");
+    expect(handlersList).toBeDefined();
+    const mockCtx = {} as any;
+    for (const handler of handlersList!) {
+      await handler({ type: "before_agent_start" }, mockCtx);
+    }
+  }
+
+  it("before_agent_start clears previous tracking data on normal run", async () => {
+    // Arrange
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    // Simulate end of iteration 1 with tracking data
+    setState({
+      isActive: true,
+      currentIteration: 1,
+      isAdHocInput: false,
+      filesWritten: ["/old/file.ts"],
+      askUserCalled: true,
+    });
+
+    // Act: fire before_agent_start for next iteration
+    await fireBeforeAgentStart(handlers);
+
+    // Assert: tracking data cleared, iteration incremented
+    const state = getState();
+    expect(state.currentIteration).toBe(2);
+    expect(state.filesWritten).toEqual([]);
+    expect(state.askUserCalled).toBe(false);
   });
 });
 
@@ -522,12 +693,12 @@ describe("PioSessionState as single source of truth", () => {
     expect(state.isActive).toBe(true);
     expect(state.currentIteration).toBe(1);
     expect(state.stepsList).toHaveLength(2);
-    expect(state.stepState.filesWritten).toEqual([]);
-    expect(state.stepState.askUserCalled).toBe(false);
-    expect(state.engineInitiatedRun).toBe(false);
+    expect(state.filesWritten).toEqual([]);
+    expect(state.askUserCalled).toBe(false);
+    expect(state.isAdHocInput).toBe(false);
   });
 
-  it("engineInitiatedRun is stored in PioSessionState", async () => {
+  it("isAdHocInput is stored in PioSessionState and consumed by before_agent_start", async () => {
     const { setupLoopEngine } = await import("./loop-engine");
     const { pi, handlers } = createMockPi();
     setupLoopEngine(pi);
@@ -541,23 +712,23 @@ describe("PioSessionState as single source of truth", () => {
       );
     }
 
-    // Set engineInitiatedRun via setState (simulating Step 7's agent_end)
-    setState({ engineInitiatedRun: true, currentIteration: 1 });
+    // Set isAdHocInput via setState (simulating input handler)
+    setState({ isAdHocInput: true, currentIteration: 1 });
 
     // Verify it's in PioSessionState
-    expect(getState().engineInitiatedRun).toBe(true);
+    expect(getState().isAdHocInput).toBe(true);
 
-    // Fire before_agent_start — should consume the flag
+    // Fire before_agent_start — should consume the flag (ad-hoc mode)
     const beforeHandlers = handlers.get("before_agent_start");
     for (const h of beforeHandlers!) {
       await h({ type: "before_agent_start" }, {} as any);
     }
 
-    expect(getState().engineInitiatedRun).toBe(false);
-    expect(getState().currentIteration).toBe(2);
+    expect(getState().isAdHocInput).toBe(false);
+    expect(getState().currentIteration).toBe(1); // NOT incremented in ad-hoc mode
   });
 
-  it("stepState is stored in PioSessionState", async () => {
+  it("flat tracking fields are stored in PioSessionState", async () => {
     const { setupLoopEngine } = await import("./loop-engine");
     const { pi, handlers } = createMockPi();
     setupLoopEngine(pi);
@@ -585,10 +756,10 @@ describe("PioSessionState as single source of truth", () => {
       });
     }
 
-    // stepState is in PioSessionState
+    // Flat fields are in PioSessionState
     const state = getState();
-    expect(state.stepState.filesWritten).toHaveLength(1);
-    expect(state.stepState.filesWritten[0]).toContain("test.ts");
+    expect(state.filesWritten).toHaveLength(1);
+    expect(state.filesWritten[0]).toContain("test.ts");
   });
 });
 

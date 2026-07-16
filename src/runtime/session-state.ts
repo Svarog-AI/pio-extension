@@ -10,7 +10,7 @@
  * mutate state through the accessor functions.
  */
 
-import type { StepState, WorkflowStep } from "./workflow-types";
+import type { WorkflowStep } from "./workflow-types";
 
 // ---------------------------------------------------------------------------
 // PioSessionState interface
@@ -44,19 +44,17 @@ export interface PioSessionState {
   /** Ordered list of all workflow steps (full objects with loop fields). */
   stepsList: WorkflowStep[];
 
-  /**
-   * Per-iteration step state tracked by the loop engine.
-   * Reset at the start of each new iteration.
-   * Used for termination condition evaluation.
-   */
-  stepState: StepState;
+  /** File paths written during the current iteration (from write, edit, vscode_apply_workspace_edit tools) */
+  filesWritten: string[];
+
+  /** Whether ask_user was called during the current iteration */
+  askUserCalled: boolean;
 
   /**
-   * Flag set at `agent_end` when the engine sends a follow-up message
-   * to trigger the next agent run. Consumed at `before_agent_start` to
-   * distinguish engine-initiated runs from external user messages.
+   * Set by the `input` handler when an interactive user message arrives.
+   * Consumed at `before_agent_start` to detect ad-hoc mode.
    */
-  engineInitiatedRun: boolean;
+  isAdHocInput: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -74,8 +72,9 @@ function createInitialState(): PioSessionState {
     currentIteration: 0,
     totalSteps: 0,
     stepsList: [],
-    stepState: { filesWritten: [], askUserCalled: false },
-    engineInitiatedRun: false,
+    filesWritten: [],
+    askUserCalled: false,
+    isAdHocInput: false,
   };
 }
 

@@ -10,8 +10,8 @@
  * there are no module-level variables. Access everything through
  * `getState()` / `setState()` from session-state.
  *
- * Step 6 registers four handlers: `resources_discover`, `input`,
- * `before_agent_start`, `tool_call`. Step 7 will add `agent_end`.
+ * The engine registers five handlers: `resources_discover`, `input`,
+ * `before_agent_start`, `tool_call`, and `agent_end`.
  */
 
 import * as path from "node:path";
@@ -63,11 +63,12 @@ export function __testSetActiveSession(value?: boolean): void {
 /**
  * Main registration function — installs event handlers on the pi Extension API.
  *
- * Registers exactly four handlers in Step 6:
+ * Registers exactly five handlers:
  * - `resources_discover`: detect pio sessions, load workflow steps
  * - `input`: detect ad-hoc interruption via InputEvent.source
  * - `before_agent_start`: iteration setup and ad-hoc mode detection
  * - `tool_call`: track file writes and ask_user calls
+ * - `agent_end`: termination evaluation and follow-up injection
  */
 export function setupLoopEngine(pi: ExtensionAPI) {
   // 1. Detect pio sub-sessions and initialize loop engine state

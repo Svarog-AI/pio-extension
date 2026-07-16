@@ -931,33 +931,30 @@ describe("agent_end", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
+      // Use totalSteps: 2 so that without the max check, advancement to step 2
+      // would send a follow-up. The assertion (no follow-up) proves max check works.
+      const steps = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          maxIterations: 3,
+          loopMessage: "Retry",
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
       vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
-        workflowSteps: [
-          {
-            id: "s1",
-            title: "S1",
-            instructions: "Do A",
-            maxIterations: 3,
-            loopMessage: "Retry",
-          },
-        ],
-        totalWorkflowSteps: 1,
+        workflowSteps: steps,
+        totalWorkflowSteps: 2,
       });
 
       setState({
         isActive: true,
         currentStep: 1,
-        currentIteration: 3,
-        totalSteps: 1,
-        stepsList: [
-          {
-            id: "s1",
-            title: "S1",
-            instructions: "Do A",
-            maxIterations: 3,
-            loopMessage: "Retry",
-          },
-        ],
+        currentIteration: 3, // >= maxIterations (3) → hard stop
+        totalSteps: 2,
+        stepsList: steps,
         markCompleteCalled: false,
         filesWritten: [],
         askUserCalled: false,
@@ -971,8 +968,11 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Even though no terminateWhen, max iterations hit → no follow-up
+      // Max iterations hit → no follow-up.
+      // Without max check: conditions met (no terminateWhen, iteration >= minIterations 1)
+      // → would advance to step 2 and send "Do B" as follow-up.
       expect(sendUserMessageCalls).toHaveLength(0);
+      expect(getState().currentStep).toBe(1); // Not advanced
     });
   });
 
@@ -1492,6 +1492,8 @@ describe("agent_end", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
+      // Use totalSteps: 2 so that without the max check, advancement to step 2
+      // would send a follow-up. The assertion (no follow-up) proves max check works.
       const steps = [
         {
           id: "s1",
@@ -1500,18 +1502,19 @@ describe("agent_end", () => {
           maxIterations: 5,
           loopMessage: "Retry",
         },
+        { id: "s2", title: "S2", instructions: "Do B" },
       ];
 
       vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
         workflowSteps: steps,
-        totalWorkflowSteps: 1,
+        totalWorkflowSteps: 2,
       });
 
       setState({
         isActive: true,
         currentStep: 1,
-        currentIteration: 4, // < 5 (maxIterations)
-        totalSteps: 1,
+        currentIteration: 5, // >= maxIterations (5) → hard stop
+        totalSteps: 2,
         stepsList: steps,
         markCompleteCalled: false,
         filesWritten: [],
@@ -1526,10 +1529,11 @@ describe("agent_end", () => {
         },
       ]);
 
-      // currentIteration (4) < maxIterations (5), no terminateWhen, minIterations defaults to 1
-      // So conditions are met (iteration 1 >= minIterations 1, no terminateWhen)
-      // But we're at last step → no follow-up
+      // Max iterations hit → no follow-up.
+      // Without max check: conditions met (no terminateWhen, iteration >= minIterations 1)
+      // → would advance to step 2 and send "Do B" as follow-up.
       expect(sendUserMessageCalls).toHaveLength(0);
+      expect(getState().currentStep).toBe(1); // Not advanced
     });
   });
 });

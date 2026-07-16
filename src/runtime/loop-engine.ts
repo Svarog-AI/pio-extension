@@ -86,10 +86,9 @@ export function setupLoopEngine(pi: ExtensionAPI) {
   });
 
   // 2. Ad-hoc mode detection — fires before before_agent_start
-  pi.on("input", async (event) => {
+  pi.on("input", async (event, _ctx) => {
     // Check if this is an interactive user message
-    const source = (event as { source?: string }).source;
-    if (source === "interactive" && getState().isActive) {
+    if (event.source === "interactive" && getState().isActive) {
       setState({ isAdHocInput: true });
     }
   });
@@ -119,7 +118,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
   });
 
   // 4. Track file writes and ask_user calls per iteration
-  pi.on("tool_call", async (event) => {
+  pi.on("tool_call", async (event, _ctx) => {
     // Guard: only track inside pio sessions
     if (!getState().isActive) return;
 

@@ -129,11 +129,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
 
     const state = getState();
 
-    if (state.isAdHocInput) {
-      // Ad-hoc mode: engine pauses iteration tracking.
-      // Do NOT increment counter or reset tracking fields.
-      // Flag persists — only /return clears it.
-    } else {
+    if (!state.isAdHocInput) {
       // Normal run: first run (0→1) or loop replay (N→N+1).
       // Increment iteration, reset tracking fields.
       setState({
@@ -142,6 +138,9 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         askUserCalled: false,
       });
     }
+    // Otherwise (ad-hoc mode): engine pauses iteration tracking.
+    // Do NOT increment counter or reset tracking fields.
+    // Flag persists — only /return clears it.
   });
 
   // 4. Track file writes and ask_user calls per iteration

@@ -37,19 +37,35 @@ function createMockPi(): {
     content: string | unknown[];
     options?: { deliverAs?: string };
   }>;
+  registeredCommands: Map<
+    string,
+    { description?: string; handler: (...args: unknown[]) => unknown }
+  >;
 } {
   const handlers = new Map<string, Array<(...args: unknown[]) => unknown>>();
   const sendUserMessageCalls: Array<{
     content: string | unknown[];
     options?: { deliverAs?: string };
   }> = [];
+  const registeredCommands = new Map<
+    string,
+    { description?: string; handler: (...args: unknown[]) => unknown }
+  >();
 
   const pi = {
     on(event: string, handler: (...args: unknown[]) => unknown): void {
       handlers.set(event, [...(handlers.get(event) ?? []), handler]);
     },
     registerTool(): void {},
-    registerCommand(): void {},
+    registerCommand(
+      name: string,
+      options: {
+        description?: string;
+        handler: (...args: unknown[]) => unknown;
+      },
+    ): void {
+      registeredCommands.set(name, options);
+    },
     registerShortcut(): void {},
     registerFlag(): void {},
     getFlag(): boolean | string | undefined {
@@ -94,7 +110,7 @@ function createMockPi(): {
     events: { emit(): void {} },
   } as unknown as ExtensionAPI;
 
-  return { pi, handlers, sendUserMessageCalls };
+  return { pi, handlers, sendUserMessageCalls, registeredCommands };
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +206,241 @@ describe("setupLoopEngine — handler registration", () => {
     expect(handlers.has("before_agent_start")).toBe(true);
     expect(handlers.has("tool_call")).toBe(true);
     expect(handlers.has("agent_end")).toBe(true);
+  });
+
+  it("registers /return command via pi.registerCommand", async () => {
+    // Arrange
+    const { pi, registeredCommands } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+
+    // Act
+    setupLoopEngine(pi);
+
+    // Assert
+    expect(registeredCommands.has("return")).toBe(true);
+    const cmd = registeredCommands.get("return");
+    expect(cmd).toBeDefined();
+    expect(cmd!.description?.toLowerCase()).toContain("resume");
+  });
+
+  it("exports RETURN_COMMAND constant", async () => {
+    const { RETURN_COMMAND } = await import("./loop-engine");
+    expect(RETURN_COMMAND).toBe("/return");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /return command — ad-hoc resumption
+// ---------------------------------------------------------------------------
+
+describe("/return command", () => {
+  async function fireReturnCommand(
+    registeredCommands: Map<
+      string,
+      { description?: string; handler: (...args: unknown[]) => unknown }
+    >,
+  ) {
+    const cmd = registeredCommands.get("return");
+    expect(cmd).toBeDefined();
+    await cmd!.handler("", {} as any);
+  }
+
+  // ---- Guards ----
+
+  describe("guards", () => {
+    it("does nothing when isActive is false", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({ isActive: false, currentStep: 1 });
+
+      await fireReturnCommand(registeredCommands);
+
+      expect(sendUserMessageCalls).toHaveLength(0);
+      expect(getState().currentIteration).toBe(0); // unchanged
+    });
+
+    it("does nothing when currentStep is 0", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({ isActive: true, currentStep: 0 });
+
+      await fireReturnCommand(registeredCommands);
+
+      expect(sendUserMessageCalls).toHaveLength(0);
+    });
+  });
+
+  // ---- Resumption behavior ----
+
+  describe("resumption", () => {
+    it("resets iteration counter to 0 and clears tracking fields", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 3,
+        totalSteps: 2,
+        stepsList: [
+          { id: "s1", title: "S1", instructions: "Do A" },
+          { id: "s2", title: "S2", instructions: "Do B" },
+        ],
+        filesWritten: ["/old/file.ts"],
+        askUserCalled: true,
+        isAdHocInput: true,
+      });
+
+      await fireReturnCommand(registeredCommands);
+
+      const state = getState();
+      expect(state.currentIteration).toBe(0);
+      expect(state.filesWritten).toEqual([]);
+      expect(state.askUserCalled).toBe(false);
+      expect(state.isAdHocInput).toBe(false);
+    });
+
+    it("sends follow-up with current step's instructions (default returnTo)", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 2,
+        totalSteps: 2,
+        stepsList: [
+          { id: "s1", title: "S1", instructions: "Do A" },
+          { id: "s2", title: "S2", instructions: "Do B" },
+        ],
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireReturnCommand(registeredCommands);
+
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].content).toBe("Do A");
+      expect(sendUserMessageCalls[0].options).toEqual({
+        deliverAs: "followUp",
+      });
+    });
+
+    it("uses returnTo when defined on current WorkflowStep", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      // Step 2 has returnTo: 1, so /return should jump back to step 1
+      setState({
+        isActive: true,
+        currentStep: 2,
+        currentIteration: 1,
+        totalSteps: 2,
+        stepsList: [
+          { id: "s1", title: "S1", instructions: "Do A" },
+          { id: "s2", title: "S2", instructions: "Do B", returnTo: 1 },
+        ],
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireReturnCommand(registeredCommands);
+
+      // Should have jumped to step 1
+      expect(getState().currentStep).toBe(1);
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].content).toBe("Do A");
+    });
+
+    it("defaults to current step when returnTo is omitted", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        currentStep: 2,
+        currentIteration: 1,
+        totalSteps: 2,
+        stepsList: [
+          { id: "s1", title: "S1", instructions: "Do A" },
+          { id: "s2", title: "S2", instructions: "Do B" }, // no returnTo
+        ],
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireReturnCommand(registeredCommands);
+
+      // Should stay on step 2
+      expect(getState().currentStep).toBe(2);
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].content).toBe("Do B");
+    });
+  });
+
+  // ---- Edge cases ----
+
+  describe("edge cases", () => {
+    it("does not crash when stepsList is empty", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1,
+        totalSteps: 0,
+        stepsList: [],
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      // Should not throw
+      await fireReturnCommand(registeredCommands);
+
+      // No follow-up sent (no step found)
+      expect(sendUserMessageCalls).toHaveLength(0);
+    });
+
+    it("does not crash when target step is out of bounds", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      // Step 1 has returnTo: 5, but there are only 2 steps
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1,
+        totalSteps: 2,
+        stepsList: [
+          { id: "s1", title: "S1", instructions: "Do A", returnTo: 5 },
+          { id: "s2", title: "S2", instructions: "Do B" },
+        ],
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      // Should not throw
+      await fireReturnCommand(registeredCommands);
+
+      // No follow-up sent (target step out of bounds)
+      expect(sendUserMessageCalls).toHaveLength(0);
+    });
   });
 });
 

@@ -10,9 +10,17 @@
  * there are no module-level variables. Access everything through
  * `getState()` / `setState()` from session-state.
  *
- * The engine registers five handlers: `resources_discover`, `input`,
+ * The engine registers five event handlers: `resources_discover`, `input`,
  * `before_agent_start`, `tool_call`, and `agent_end`.
+ * Additionally, it registers the `/return` command for ad-hoc resumption.
  */
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Command name for resuming the loop engine after ad-hoc interruption */
+export const RETURN_COMMAND = "/return";
 
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -279,5 +287,39 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     if (nextStep) {
       pi.sendUserMessage(nextStep.instructions, { deliverAs: "followUp" });
     }
+  });
+
+  // 6. /return command — resume loop engine after ad-hoc interruption
+  pi.registerCommand("return", {
+    description: "Resume loop engine after ad-hoc interruption",
+    handler: async (_args, _ctx) => {
+      const state = getState();
+
+      // Guard: only execute when engine is active and a step is loaded
+      if (!state.isActive || state.currentStep === 0) return;
+
+      // Determine return target
+      const currentStepObj = state.stepsList[state.currentStep - 1];
+      const targetStepNum = currentStepObj?.returnTo ?? state.currentStep;
+
+      // State reset: clear iteration counter and tracking fields
+      setState({
+        currentIteration: 0,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      // Advance to target step if different from current
+      if (targetStepNum !== state.currentStep) {
+        setState({ currentStep: targetStepNum });
+      }
+
+      // Queue follow-up with target step's instructions
+      const targetStep = state.stepsList[targetStepNum - 1];
+      if (!targetStep) return;
+
+      pi.sendUserMessage(targetStep.instructions, { deliverAs: "followUp" });
+    },
   });
 }

@@ -666,7 +666,7 @@ describe("before_agent_start", () => {
     expect(state.askUserCalled).toBe(false);
   });
 
-  it("ad-hoc mode (isAdHocInput=true): does NOT increment or reset tracking fields", async () => {
+  it("ad-hoc mode (isAdHocInput=true): does NOT increment or reset tracking fields, flag persists", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
@@ -685,10 +685,10 @@ describe("before_agent_start", () => {
     // Act: fire before_agent_start
     await fireBeforeAgentStart(handlers);
 
-    // Assert: iteration NOT changed, tracking fields NOT reset, flag consumed
+    // Assert: iteration NOT changed, tracking fields NOT reset, flag PERSISTS
     const state = getState();
     expect(state.currentIteration).toBe(1);
-    expect(state.isAdHocInput).toBe(false);
+    expect(state.isAdHocInput).toBe(true);
     expect(state.filesWritten).toEqual(["/some/file.ts"]);
     expect(state.askUserCalled).toBe(true);
   });
@@ -963,7 +963,7 @@ describe("PioSessionState as single source of truth", () => {
     expect(state.isAdHocInput).toBe(false);
   });
 
-  it("isAdHocInput is stored in PioSessionState and consumed by before_agent_start", async () => {
+  it("isAdHocInput is stored in PioSessionState and persists through before_agent_start", async () => {
     const { setupLoopEngine } = await import("./loop-engine");
     const { pi, handlers } = createMockPi();
     setupLoopEngine(pi);
@@ -983,13 +983,13 @@ describe("PioSessionState as single source of truth", () => {
     // Verify it's in PioSessionState
     expect(getState().isAdHocInput).toBe(true);
 
-    // Fire before_agent_start — should consume the flag (ad-hoc mode)
+    // Fire before_agent_start — should NOT consume the flag (flag persists)
     const beforeHandlers = handlers.get("before_agent_start");
     for (const h of beforeHandlers!) {
       await h({ type: "before_agent_start" }, {} as any);
     }
 
-    expect(getState().isAdHocInput).toBe(false);
+    expect(getState().isAdHocInput).toBe(true);
     expect(getState().currentIteration).toBe(1); // NOT incremented in ad-hoc mode
   });
 
@@ -1171,6 +1171,45 @@ describe("agent_end", () => {
       ]);
 
       expect(sendUserMessageCalls).toHaveLength(0);
+    });
+
+    it("does nothing when isAdHocInput is true (ad-hoc pause guard)", async () => {
+      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const steps = [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+        workflowSteps: steps,
+        totalWorkflowSteps: 2,
+      });
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1,
+        totalSteps: 2,
+        stepsList: steps,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: true, // Ad-hoc pause active
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Ad-hoc guard: no follow-up injected, step not advanced
+      expect(sendUserMessageCalls).toHaveLength(0);
+      expect(getState().currentStep).toBe(1);
     });
   });
 

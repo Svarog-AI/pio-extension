@@ -130,10 +130,9 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     const state = getState();
 
     if (state.isAdHocInput) {
-      // Ad-hoc mode: external user message arrived during active loop.
-      // Engine pauses iteration tracking — do NOT increment or reset tracking.
-      // Only consume the flag.
-      setState({ isAdHocInput: false });
+      // Ad-hoc mode: engine pauses iteration tracking.
+      // Do NOT increment counter or reset tracking fields.
+      // Flag persists — only /return clears it.
     } else {
       // Normal run: first run (0→1) or loop replay (N→N+1).
       // Increment iteration, reset tracking fields.
@@ -141,7 +140,6 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         currentIteration: state.currentIteration + 1,
         filesWritten: [],
         askUserCalled: false,
-        isAdHocInput: false,
       });
     }
   });
@@ -191,6 +189,10 @@ export function setupLoopEngine(pi: ExtensionAPI) {
 
     const state = getState();
     const messages = event.messages;
+
+    // Ad-hoc pause: user is in an interactive conversation.
+    // Skip termination evaluation and follow-up injection.
+    if (state.isAdHocInput) return;
 
     // ---------------------------------------------------------------------------
     // 1. Skip cases — no follow-up injected

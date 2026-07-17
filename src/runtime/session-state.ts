@@ -52,7 +52,7 @@ export interface PioSessionState {
 
   /**
    * Set by the `input` handler when an interactive user message arrives.
-   * Consumed at `before_agent_start` to detect ad-hoc mode.
+   * Persists until cleared by the `/return` command.
    */
   isAdHocInput: boolean;
 }

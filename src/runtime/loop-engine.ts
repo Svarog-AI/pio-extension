@@ -152,7 +152,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // Flag persists — only /return clears it.
 
     // -----------------------------------------------------------------------
-    // System prompt injection
+    // CustomMessage injection (replaces systemPrompt for prefix cache stability)
     // -----------------------------------------------------------------------
 
     // Ad-hoc mode: lighter context block (no step instructions)
@@ -161,13 +161,15 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       if (!step) return;
 
       return {
-        systemPrompt:
-          _event.systemPrompt +
-          "\n\n" +
-          `## Workflow Paused (Ad-hoc Mode)\n\n` +
-          `${buildCompletedStepsInfo(state)}\n` +
-          `You were on Step ${state.currentStep} of ${state.totalSteps}: "${step.title}", iteration ${state.currentIteration}.\n\n` +
-          `Workflow execution is paused. You can answer questions or help the user freely.`,
+        message: {
+          customType: "workflow-paused",
+          content:
+            `## Workflow Paused (Ad-hoc Mode)\n\n` +
+            `${buildCompletedStepsInfo(state)}\n` +
+            `You were on Step ${state.currentStep} of ${state.totalSteps}: "${step.title}", iteration ${state.currentIteration}.\n\n` +
+            `Workflow execution is paused. You can answer questions or help the user freely.`,
+          display: false,
+        },
       };
     }
 
@@ -186,7 +188,11 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     }
 
     return {
-      systemPrompt: `${_event.systemPrompt}\n\n## Current Workflow Step\n\n${prompt}`,
+      message: {
+        customType: "workflow-step-instructions",
+        content: prompt,
+        display: false,
+      },
     };
   });
 

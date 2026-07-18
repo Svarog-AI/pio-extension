@@ -721,10 +721,10 @@ describe("before_agent_start", () => {
     expect(state.currentIteration).toBe(5);
   });
 
-  // ---- System prompt injection (normal mode) ----
+  // ---- CustomMessage injection (normal mode) ----
 
-  describe("system prompt injection (normal mode)", () => {
-    it("returns systemPrompt with step instructions on first run of Step 1", async () => {
+  describe("CustomMessage injection (normal mode)", () => {
+    it("returns message with customType workflow-step-instructions on first run of Step 1", async () => {
       const { pi, handlers } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
@@ -749,14 +749,18 @@ describe("before_agent_start", () => {
       });
 
       expect(results).toHaveLength(1);
-      const result = results[0] as { systemPrompt: string };
-      expect(result.systemPrompt).toContain("base prompt");
-      expect(result.systemPrompt).toContain("## Current Workflow Step");
-      expect(result.systemPrompt).toContain("No previous steps completed.");
-      expect(result.systemPrompt).toContain(
+      const result = results[0] as {
+        message: { customType: string; content: string; display: boolean };
+      };
+      expect(result.message.customType).toBe("workflow-step-instructions");
+      expect(result.message.display).toBe(false);
+      // Content should NOT contain the base system prompt
+      expect(result.message.content).not.toContain("base prompt");
+      expect(result.message.content).toContain("No previous steps completed.");
+      expect(result.message.content).toContain(
         "You are on Step 1 of 2, iteration 1.",
       );
-      expect(result.systemPrompt).toContain("Do A");
+      expect(result.message.content).toContain("Do A");
     });
 
     it("includes completed steps info on Step 2", async () => {
@@ -784,9 +788,12 @@ describe("before_agent_start", () => {
         systemPrompt: "base",
       });
 
-      const result = results[0] as { systemPrompt: string };
-      expect(result.systemPrompt).toContain("Steps 1 completed.");
-      expect(result.systemPrompt).toContain(
+      const result = results[0] as {
+        message: { customType: string; content: string; display: boolean };
+      };
+      expect(result.message.customType).toBe("workflow-step-instructions");
+      expect(result.message.content).toContain("Steps 1 completed.");
+      expect(result.message.content).toContain(
         "You are on Step 2 of 3, iteration 1.",
       );
     });
@@ -818,8 +825,10 @@ describe("before_agent_start", () => {
         systemPrompt: "base",
       });
 
-      const result = results[0] as { systemPrompt: string };
-      expect(result.systemPrompt).toContain("Steps 1–3 completed.");
+      const result = results[0] as {
+        message: { customType: string; content: string; display: boolean };
+      };
+      expect(result.message.content).toContain("Steps 1–3 completed.");
     });
 
     it("includes loopMessage as Retry focus on iteration > 1", async () => {
@@ -850,8 +859,10 @@ describe("before_agent_start", () => {
         systemPrompt: "base",
       });
 
-      const result = results[0] as { systemPrompt: string };
-      expect(result.systemPrompt).toContain(
+      const result = results[0] as {
+        message: { customType: string; content: string; display: boolean };
+      };
+      expect(result.message.content).toContain(
         "**Retry focus:** Focus on edge cases",
       );
     });
@@ -884,8 +895,10 @@ describe("before_agent_start", () => {
         systemPrompt: "base",
       });
 
-      const result = results[0] as { systemPrompt: string };
-      expect(result.systemPrompt).not.toContain("Retry focus");
+      const result = results[0] as {
+        message: { customType: string; content: string; display: boolean };
+      };
+      expect(result.message.content).not.toContain("Retry focus");
     });
 
     it("skips injection when stepsList is empty", async () => {
@@ -941,10 +954,10 @@ describe("before_agent_start", () => {
     });
   });
 
-  // ---- System prompt injection (ad-hoc mode) ----
+  // ---- CustomMessage injection (ad-hoc mode) ----
 
-  describe("system prompt injection (ad-hoc mode)", () => {
-    it("returns systemPrompt with Workflow Paused header and step context", async () => {
+  describe("CustomMessage injection (ad-hoc mode)", () => {
+    it("returns message with customType workflow-paused and step context", async () => {
       const { pi, handlers } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
@@ -971,18 +984,25 @@ describe("before_agent_start", () => {
       });
 
       expect(results).toHaveLength(1);
-      const result = results[0] as { systemPrompt: string };
-      expect(result.systemPrompt).toContain("base prompt");
-      expect(result.systemPrompt).toContain("## Workflow Paused (Ad-hoc Mode)");
-      expect(result.systemPrompt).toContain("Steps 1 completed.");
-      expect(result.systemPrompt).toContain(
+      const result = results[0] as {
+        message: { customType: string; content: string; display: boolean };
+      };
+      expect(result.message.customType).toBe("workflow-paused");
+      expect(result.message.display).toBe(false);
+      // Content should NOT contain the base system prompt
+      expect(result.message.content).not.toContain("base prompt");
+      expect(result.message.content).toContain(
+        "## Workflow Paused (Ad-hoc Mode)",
+      );
+      expect(result.message.content).toContain("Steps 1 completed.");
+      expect(result.message.content).toContain(
         'You were on Step 2 of 4: "S2", iteration 3.',
       );
-      expect(result.systemPrompt).toContain(
+      expect(result.message.content).toContain(
         "Workflow execution is paused. You can answer questions or help the user freely.",
       );
       // Should NOT contain step instructions
-      expect(result.systemPrompt).not.toContain("Do B");
+      expect(result.message.content).not.toContain("Do B");
     });
 
     it("skips ad-hoc injection when stepsList is empty", async () => {

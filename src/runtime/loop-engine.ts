@@ -27,8 +27,25 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getSessionParams } from "../capability-session";
 import { getSessionConfig } from "../capability-utils";
 import { resolveMaxIterations } from "../model-config";
+import type { PioSessionState } from "./session-state";
 import { getState, resetState, setState } from "./session-state";
 import type { WorkflowStep } from "./workflow-types";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a one-line summary of completed steps for system prompt injection.
+ *
+ * Returns "No previous steps completed" on Step 1, "Steps 1 completed" on
+ * Step 2, and "Steps 1–N completed" on Step N+1.
+ */
+function buildCompletedStepsInfo(state: PioSessionState): string {
+  return state.currentStep > 1
+    ? `Steps ${state.currentStep > 2 ? `${1}–${state.currentStep - 1}` : "1"} completed.`
+    : "No previous steps completed.";
+}
 
 // ---------------------------------------------------------------------------
 // Type helpers
@@ -150,17 +167,12 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       const step = state.stepsList[state.currentStep - 1];
       if (!step) return;
 
-      const completedBefore =
-        state.currentStep > 1
-          ? `Steps ${state.currentStep > 2 ? `${1}–${state.currentStep - 1}` : "1"} completed.`
-          : "No previous steps completed.";
-
       return {
         systemPrompt:
           _event.systemPrompt +
           "\n\n" +
           `## Workflow Paused (Ad-hoc Mode)\n\n` +
-          `${completedBefore}\n` +
+          `${buildCompletedStepsInfo(state)}\n` +
           `You were on Step ${state.currentStep} of ${state.totalSteps}: "${step.title}", iteration ${state.currentIteration}.\n\n` +
           `Workflow execution is paused. You can answer questions or help the user freely.`,
       };
@@ -170,13 +182,8 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     const step = state.stepsList[state.currentStep - 1];
     if (!step) return; // no step loaded — skip injection
 
-    const completedBefore =
-      state.currentStep > 1
-        ? `Steps ${state.currentStep > 2 ? `${1}–${state.currentStep - 1}` : "1"} completed.`
-        : "No previous steps completed.";
-
     let prompt =
-      `${completedBefore}\n` +
+      `${buildCompletedStepsInfo(state)}\n` +
       `You are on Step ${state.currentStep} of ${state.totalSteps}, iteration ${state.currentIteration}.\n\n` +
       step.instructions;
 

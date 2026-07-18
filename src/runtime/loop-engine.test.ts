@@ -316,7 +316,7 @@ describe("/return command", () => {
       expect(state.isAdHocInput).toBe(false);
     });
 
-    it("sends follow-up with current step's instructions (default returnTo)", async () => {
+    it("sends empty follow-up trigger (default returnTo)", async () => {
       const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);

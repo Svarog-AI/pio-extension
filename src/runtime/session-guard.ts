@@ -87,12 +87,16 @@ const RECOVERY_PROMPT =
 /**
  * Register session guard handlers.
  *
- * When called, registers four event handlers on the pi Extension API:
+ * When called, registers three event handlers on the pi Extension API:
  * 1. `resources_discover` — detects pio sub-sessions via `pio-config` custom entry.
  * 2. `turn_end` — inspects each turn; if thinking-only with no tool results,
  *    sends a recovery prompt to nudge the agent forward.
- * 3. `tool_call` — tracks whether `pio_mark_complete` was called during the run.
- * 4. `before_agent_start` — resets the completion flag at the start of each agent run.
+ * 3. `before_agent_start` — resets the completion flag at the start of each agent run.
+ *
+ * Note: `markCompleteCalled` is no longer set here via a `tool_call` handler.
+ * The `pio_mark_complete` tool sets this flag internally (in `mark-complete.ts`)
+ * only after successful validation, avoiding the race condition where validation
+ * failures still set the flag.
  */
 export function setupSessionGuard(pi: ExtensionAPI) {
   // Read threshold once at setup time — config changes require extension reload
@@ -136,14 +140,7 @@ export function setupSessionGuard(pi: ExtensionAPI) {
     }
   });
 
-  // 3. Track pio_mark_complete calls (fires regardless of session type)
-  pi.on("tool_call", async (event) => {
-    if (event.toolName === "pio_mark_complete") {
-      setState({ markCompleteCalled: true });
-    }
-  });
-
-  // 4. Reset completion flag at the start of each agent run (pio sessions only)
+  // 3. Reset completion flag at the start of each agent run (pio sessions only)
   pi.on("before_agent_start", async (_event, _ctx) => {
     if (!getState().isActive) return;
     setState({ markCompleteCalled: false, turnCount: 0 });

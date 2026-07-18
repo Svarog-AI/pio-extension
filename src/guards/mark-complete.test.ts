@@ -43,6 +43,31 @@ vi.mock("../queues", async (importOriginal) => ({
 
 const mockResolveCapabilityConfigMC = vi.hoisted(() => vi.fn());
 
+// Mock session-state for step-position guard tests
+const mockGetState = vi.hoisted(() =>
+  vi.fn().mockReturnValue({
+    isActive: false,
+    markCompleteCalled: false,
+    turnCount: 0,
+    currentStep: 0,
+    currentIteration: 0,
+    totalSteps: 0,
+    stepsList: [],
+    filesWritten: [],
+    askUserCalled: false,
+    isAdHocInput: false,
+  }),
+);
+const mockSetState = vi.hoisted(() => vi.fn());
+
+vi.mock("../runtime/session-state", () => ({
+  getState: mockGetState,
+  setState: mockSetState,
+  resetState: vi.fn(),
+  __testGetState: mockGetState,
+  __testSetState: vi.fn(),
+}));
+
 vi.mock("../capability-config", () => ({
   resolveCapabilityConfig: mockResolveCapabilityConfigMC,
   resolveContractPath: vi
@@ -88,6 +113,20 @@ describe("mark-complete (setupMarkComplete)", () => {
     mockRecordTransition.mockClear();
     mockEnqueueTask.mockClear();
     mockResolveCapabilityConfigMC.mockClear();
+    mockGetState.mockClear();
+    mockSetState.mockClear();
+    mockGetState.mockReturnValue({
+      isActive: false,
+      markCompleteCalled: false,
+      turnCount: 0,
+      currentStep: 0,
+      currentIteration: 0,
+      totalSteps: 0,
+      stepsList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+    });
     mockResolveCapabilityConfigMC.mockImplementation((_cwd, params) => {
       const cap =
         typeof params?.capability === "string" ? params.capability : "unknown";
@@ -1352,6 +1391,280 @@ describe("mark-complete (setupMarkComplete)", () => {
       }),
     );
   });
+
+  // -----------------------------------------------------------------------
+  // Step-position guard — loop engine awareness
+  // -----------------------------------------------------------------------
+
+  it("returns error without terminate on non-final step (active loop engine)", async () => {
+    mockGetState.mockReturnValue({
+      isActive: true,
+      markCompleteCalled: false,
+      turnCount: 0,
+      currentStep: 1,
+      currentIteration: 0,
+      totalSteps: 7,
+      stepsList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+    });
+
+    mockValidateOutputs.mockReturnValue({ success: true });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              workspaceDir: goalDir,
+              contract: { inputs: [], outputs: [] },
+              sessionParams: {
+                goalName: "test-goal",
+                stepNumber: 1,
+                queueKey: "test-goal",
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    const result = await registeredTool?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
+
+    // Should return error with step info, NOT terminate
+    expect(result.content[0].text).toContain("Step 1 of 7");
+    expect(result.content[0].text).toContain(
+      "Do not call pio_mark_complete yet",
+    );
+    expect(result.terminate).toBeFalsy();
+
+    // Should NOT have proceeded to validation
+    expect(mockValidateOutputs).not.toHaveBeenCalled();
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(mockSetState).not.toHaveBeenCalled();
+  });
+
+  it("proceeds with validation on final step (active loop engine)", async () => {
+    mockGetState.mockReturnValue({
+      isActive: true,
+      markCompleteCalled: false,
+      turnCount: 0,
+      currentStep: 7,
+      currentIteration: 0,
+      totalSteps: 7,
+      stepsList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+    });
+
+    mockValidateOutputs.mockReturnValue({ success: true });
+    mockDispatch.mockReturnValue([
+      {
+        capability: "review-task",
+        stateMachineId: "goal-driven-development",
+        params: { goalName: "test-goal", stepNumber: 1 },
+        sessionName: "test review",
+        initialMessage: "msg",
+      },
+    ]);
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              workspaceDir: goalDir,
+              contract: { inputs: [], outputs: [] },
+              sessionParams: {
+                goalName: "test-goal",
+                stepNumber: 7,
+                queueKey: "test-goal",
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    const result = await registeredTool?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
+
+    // Should proceed normally — validation called, terminate: true
+    expect(mockValidateOutputs).toHaveBeenCalled();
+    expect(mockDispatch).toHaveBeenCalled();
+    expect(result.terminate).toBe(true);
+    expect(result.content[0].text).toContain("Validation passed");
+
+    // markCompleteCalled should be set via setState on success
+    expect(mockSetState).toHaveBeenCalledWith({ markCompleteCalled: true });
+  });
+
+  it("proceeds normally when loop engine is inactive (non-loop-engine session)", async () => {
+    // isActive: false — default mock state
+    mockValidateOutputs.mockReturnValue({ success: true });
+    mockDispatch.mockReturnValue([]);
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              workspaceDir: goalDir,
+              contract: { inputs: [], outputs: [] },
+              sessionParams: {
+                goalName: "test-goal",
+                stepNumber: 1,
+                queueKey: "test-goal",
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    const result = await registeredTool?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
+
+    // Should proceed normally — validation called, terminate: true
+    expect(mockValidateOutputs).toHaveBeenCalled();
+    expect(mockDispatch).toHaveBeenCalled();
+    expect(result.terminate).toBe(true);
+    expect(result.content[0].text).toContain("Validation passed");
+
+    // markCompleteCalled should be set via setState on success
+    expect(mockSetState).toHaveBeenCalledWith({ markCompleteCalled: true });
+  });
+
+  it("does NOT set markCompleteCalled on validation failure", async () => {
+    mockGetState.mockReturnValue({
+      isActive: true,
+      markCompleteCalled: false,
+      turnCount: 0,
+      currentStep: 7,
+      currentIteration: 0,
+      totalSteps: 7,
+      stepsList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+    });
+
+    mockValidateOutputs.mockReturnValue({
+      success: false,
+      message: "Output file 'missing.md' is missing",
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              workspaceDir: goalDir,
+              contract: { inputs: [], outputs: [{ file: "missing.md" }] },
+              sessionParams: {
+                goalName: "test-goal",
+                stepNumber: 7,
+                queueKey: "test-goal",
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    const result = await registeredTool?.execute(
+      "test-id",
+      {},
+      new AbortController(),
+      () => {},
+      mockCtx,
+    );
+
+    expect(result.content[0].text).toContain("Validation failed");
+    expect(result.terminate).toBeFalsy();
+    // markCompleteCalled should NOT be set on validation failure
+    expect(mockSetState).not.toHaveBeenCalled();
+  });
+
+  it("step-position guard runs after queueKey check (queueKey error still thrown)", async () => {
+    mockGetState.mockReturnValue({
+      isActive: true,
+      markCompleteCalled: false,
+      turnCount: 0,
+      currentStep: 1,
+      currentIteration: 0,
+      totalSteps: 7,
+      stepsList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+    });
+
+    mockResolveCapabilityConfigMC.mockReturnValue({
+      capability: "execute-task",
+      workspaceDir: goalDir,
+      contract: { inputs: [], outputs: [] },
+      sessionParams: { goalName: "test-goal", stepNumber: 1 }, // no queueKey
+    });
+
+    const mockCtx = {
+      sessionManager: {
+        getEntries: () => [
+          {
+            type: "custom",
+            customType: "pio-config",
+            data: {
+              capability: "execute-task",
+              sessionParams: { goalName: "test-goal", stepNumber: 1 },
+            },
+          },
+        ],
+      },
+    };
+
+    // queueKey check should still throw before step-position guard
+    await expect(
+      registeredTool?.execute(
+        "test-id",
+        {},
+        new AbortController(),
+        () => {},
+        mockCtx,
+      ),
+    ).rejects.toThrow(
+      "mark-complete: queueKey missing from session params — ensure enqueue provides it",
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1914,6 +2227,20 @@ describe("applyMarkers integration (mark-complete flow)", () => {
     mockRecordTransition.mockClear();
     mockEnqueueTask.mockClear();
     mockResolveCapabilityConfigMC.mockClear();
+    mockGetState.mockClear();
+    mockSetState.mockClear();
+    mockGetState.mockReturnValue({
+      isActive: false,
+      markCompleteCalled: false,
+      turnCount: 0,
+      currentStep: 0,
+      currentIteration: 0,
+      totalSteps: 0,
+      stepsList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+    });
 
     registeredTool = undefined;
 
@@ -2041,6 +2368,20 @@ describe("resolver-declared cleanup", () => {
     mockRecordTransition.mockClear();
     mockEnqueueTask.mockClear();
     mockResolveCapabilityConfigMC.mockClear();
+    mockGetState.mockClear();
+    mockSetState.mockClear();
+    mockGetState.mockReturnValue({
+      isActive: false,
+      markCompleteCalled: false,
+      turnCount: 0,
+      currentStep: 0,
+      currentIteration: 0,
+      totalSteps: 0,
+      stepsList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+    });
 
     registeredTool = undefined;
 
@@ -2397,6 +2738,20 @@ describe("previousCapability in enriched params", () => {
     mockRecordTransition.mockClear();
     mockEnqueueTask.mockClear();
     mockResolveCapabilityConfigMC.mockClear();
+    mockGetState.mockClear();
+    mockSetState.mockClear();
+    mockGetState.mockReturnValue({
+      isActive: false,
+      markCompleteCalled: false,
+      turnCount: 0,
+      currentStep: 0,
+      currentIteration: 0,
+      totalSteps: 0,
+      stepsList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+    });
 
     registeredTool = undefined;
 

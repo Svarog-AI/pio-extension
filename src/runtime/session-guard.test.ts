@@ -483,93 +483,6 @@ describe("session-state — markCompleteCalled via getState/setState", () => {
 });
 
 // ---------------------------------------------------------------------------
-// tool_call handler — pio_mark_complete tracking
-// ---------------------------------------------------------------------------
-
-describe("tool_call handler — pio_mark_complete tracking", () => {
-  // "tool_call sets markCompleteCalled when toolName is pio_mark_complete"
-  it("tool_call sets markCompleteCalled when toolName is pio_mark_complete", async () => {
-    // Arrange
-    const { pi, handlers } = createMockPi();
-    setState({ markCompleteCalled: false });
-
-    setupSessionGuard(pi);
-
-    // Act: invoke the tool_call handler with pio_mark_complete
-    const toolCallHandlers = handlers.get("tool_call");
-    expect(toolCallHandlers).toBeDefined();
-    const event = { toolName: "pio_mark_complete", input: undefined };
-    for (const handler of toolCallHandlers!) {
-      await handler(event);
-    }
-
-    // Assert
-    expect(getState().markCompleteCalled).toBe(true);
-  });
-
-  // "tool_call does NOT set markCompleteCalled for toolName read"
-  it("tool_call does NOT set markCompleteCalled for toolName read", async () => {
-    // Arrange
-    const { pi, handlers } = createMockPi();
-    setState({ markCompleteCalled: false });
-
-    setupSessionGuard(pi);
-
-    // Act
-    const toolCallHandlers = handlers.get("tool_call");
-    const event = { toolName: "read", input: { path: "some-file.ts" } };
-    for (const handler of toolCallHandlers!) {
-      await handler(event);
-    }
-
-    // Assert
-    expect(getState().markCompleteCalled).toBe(false);
-  });
-
-  // "tool_call does NOT set markCompleteCalled for toolName write"
-  it("tool_call does NOT set markCompleteCalled for toolName write", async () => {
-    // Arrange
-    const { pi, handlers } = createMockPi();
-    setState({ markCompleteCalled: false });
-
-    setupSessionGuard(pi);
-
-    // Act
-    const toolCallHandlers = handlers.get("tool_call");
-    const event = {
-      toolName: "write",
-      input: { path: "some-file.ts", content: "code" },
-    };
-    for (const handler of toolCallHandlers!) {
-      await handler(event);
-    }
-
-    // Assert
-    expect(getState().markCompleteCalled).toBe(false);
-  });
-
-  // "tool_call sets markCompleteCalled regardless of isActivePioSession"
-  it("tool_call sets markCompleteCalled regardless of isActivePioSession", async () => {
-    // Arrange
-    const { pi, handlers } = createMockPi();
-    setState({ isActive: false });
-    setState({ markCompleteCalled: false });
-
-    setupSessionGuard(pi);
-
-    // Act
-    const toolCallHandlers = handlers.get("tool_call");
-    const event = { toolName: "pio_mark_complete", input: undefined };
-    for (const handler of toolCallHandlers!) {
-      await handler(event);
-    }
-
-    // Assert
-    expect(getState().markCompleteCalled).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // before_agent_start handler — markCompleteCalled reset
 // ---------------------------------------------------------------------------
 
@@ -622,18 +535,18 @@ describe("before_agent_start handler — markCompleteCalled reset", () => {
 // ---------------------------------------------------------------------------
 
 describe("setupSessionGuard — handler registration for new events", () => {
-  // "setupSessionGuard registers tool_call handler"
-  it("setupSessionGuard registers tool_call handler", () => {
+  // "setupSessionGuard does NOT register tool_call handler (markCompleteCalled is set inside the tool)"
+  it("setupSessionGuard does NOT register tool_call handler", () => {
     // Arrange
     const { pi, handlers } = createMockPi();
 
     // Act
     setupSessionGuard(pi);
 
-    // Assert
+    // Assert: session-guard no longer registers a tool_call handler
+    // (markCompleteCalled is now set inside markCompleteTool.execute())
     const toolCallHandlers = handlers.get("tool_call");
-    expect(toolCallHandlers).toBeDefined();
-    expect(toolCallHandlers?.length).toBeGreaterThan(0);
+    expect(toolCallHandlers).toBeUndefined();
   });
 
   // "setupSessionGuard registers before_agent_start handler"

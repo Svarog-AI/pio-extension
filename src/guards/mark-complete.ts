@@ -7,6 +7,7 @@ import { CapState } from "../capability-state";
 import { getSessionConfig } from "../capability-utils";
 import { extractFrontmatter } from "../frontmatter";
 import { enqueueTask } from "../queues";
+import { getState, setState } from "../runtime/session-state";
 import { dispatch, getMachine, recordTransition } from "../state-machines";
 import type { CapabilityContract } from "../types";
 import { validateOutputs } from "./validation";
@@ -216,6 +217,24 @@ export const markCompleteTool = defineTool({
       );
     }
 
+    // Step-position guard: only proceed on final step or non-loop-engine sessions.
+    // On non-final steps, return an error without terminating — the agent stays
+    // running so the loop engine can advance to the next step via follow-up injection.
+    const loopState = getState();
+    if (loopState.isActive && loopState.currentStep < loopState.totalSteps) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `You are on Step ${loopState.currentStep} of ${loopState.totalSteps}. Do not call pio_mark_complete yet — there are more workflow steps to complete.
+Continue working on the current step or proceed to the next one.`,
+          },
+        ],
+        details: {},
+        // NO terminate — agent stays running
+      };
+    }
+
     // config.workspaceDir is already the resolved directory (includes workspacePrefix).
     // workspacePrefix is stripped from sessionParams during normalization.
     // Use `dir` (= config.workspaceDir) everywhere — it's the resolved workspace directory.
@@ -382,6 +401,11 @@ export const markCompleteTool = defineTool({
         }
       }
     }
+
+    // Mark completion flag — set only on actual success (after validation + transitions).
+    // This ensures the loop engine sees markCompleteCalled: true only when
+    // mark-complete actually succeeded — not on error paths or non-final-step rejections.
+    setState({ markCompleteCalled: true });
 
     return {
       content: [

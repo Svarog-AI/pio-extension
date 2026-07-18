@@ -381,7 +381,7 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
       prompts.push(skillLoadingSection);
     }
 
-    // Session inputs — injected between skill loading and session completion
+    // Session inputs — injected between skill loading and workflow execution
     if (currentConfig) {
       const inputsSection = buildSessionInputsSection(
         currentConfig,

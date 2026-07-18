@@ -22,6 +22,8 @@ export interface PioGuardsConfig {
 export interface PioLoopConfig {
   /** Global default max iterations for all loop engine steps. Overridden by per-step maxIterations in WorkflowStep. */
   maxIterations?: number;
+  /** When true, CustomMessage step instructions are visible in the conversation UI (display: true). Default: false. */
+  debugDisplay?: boolean;
 }
 
 /** Full config shape parsed from ~/.pi/pio-config.yaml. */
@@ -164,13 +166,24 @@ export function readConfig(): PioConfig | undefined {
       !Array.isArray(obj.loop)
     ) {
       const loopObj = obj.loop as Record<string, unknown>;
+      const loopConfig: PioLoopConfig = {};
+
       const maxIterations = loopObj.maxIterations;
       if (
         typeof maxIterations === "number" &&
         Number.isInteger(maxIterations) &&
         maxIterations > 0
       ) {
-        config.loop = { maxIterations };
+        loopConfig.maxIterations = maxIterations;
+      }
+
+      const debugDisplay = loopObj.debugDisplay;
+      if (typeof debugDisplay === "boolean") {
+        loopConfig.debugDisplay = debugDisplay;
+      }
+
+      if (Object.keys(loopConfig).length > 0) {
+        config.loop = loopConfig;
       }
     }
 
@@ -255,6 +268,16 @@ export function readTurnThreshold(): number {
 export function readLoopConfig(): PioLoopConfig | undefined {
   const config = readConfig();
   return config?.loop;
+}
+
+/**
+ * Reads debugDisplay from ~/.pi/pio-config.yaml loop block.
+ * Returns true only when explicitly set to true in config.
+ * Missing, non-boolean, or false values all return false (default).
+ */
+export function readDebugDisplay(): boolean {
+  const config = readConfig();
+  return config?.loop?.debugDisplay === true;
 }
 
 /**

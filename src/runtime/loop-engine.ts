@@ -19,7 +19,7 @@ import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getSessionParams } from "../capability-session";
 import { getSessionConfig } from "../capability-utils";
-import { resolveMaxIterations } from "../model-config";
+import { readDebugDisplay, resolveMaxIterations } from "../model-config";
 import type { PioSessionState } from "./session-state";
 import { getState, resetState, setState } from "./session-state";
 import type { WorkflowStep } from "./workflow-types";
@@ -168,7 +168,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
             `${buildCompletedStepsInfo(state)}\n` +
             `You were on Step ${state.currentStep} of ${state.totalSteps}: "${step.title}", iteration ${state.currentIteration}.\n\n` +
             `Workflow execution is paused. You can answer questions or help the user freely.`,
-          display: false,
+          display: readDebugDisplay(),
         },
       };
     }
@@ -191,7 +191,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       message: {
         customType: "workflow-step-instructions",
         content: prompt,
-        display: false,
+        display: readDebugDisplay(),
       },
     };
   });

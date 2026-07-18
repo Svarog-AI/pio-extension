@@ -660,6 +660,115 @@ describe("readTurnThreshold — valid values", () => {
 });
 
 // ---------------------------------------------------------------------------
+// readDebugDisplay — valid values
+// ---------------------------------------------------------------------------
+
+describe("readDebugDisplay — valid values", () => {
+  let tempDir: string;
+  const origEnv = process.env.PIO_CONFIG_TEST_HOME;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    process.env.PIO_CONFIG_TEST_HOME = tempDir;
+  });
+
+  afterEach(() => {
+    process.env.PIO_CONFIG_TEST_HOME = origEnv;
+    cleanup(tempDir);
+  });
+
+  it("returns true when loop.debugDisplay is true", async () => {
+    writeConfig(tempDir, ["loop:", "  debugDisplay: true"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readDebugDisplay()).toBe(true);
+  });
+
+  it("returns false when loop.debugDisplay is false", async () => {
+    writeConfig(tempDir, ["loop:", "  debugDisplay: false"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readDebugDisplay()).toBe(false);
+  });
+
+  it("works alongside maxIterations — both fields parsed correctly", async () => {
+    writeConfig(
+      tempDir,
+      ["loop:", "  maxIterations: 10", "  debugDisplay: true"].join("\n"),
+    );
+
+    const mod = await import("./model-config");
+    expect(mod.readDebugDisplay()).toBe(true);
+    expect(mod.readLoopConfig()).toEqual({
+      maxIterations: 10,
+      debugDisplay: true,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readDebugDisplay — defaults and invalid values
+// ---------------------------------------------------------------------------
+
+describe("readDebugDisplay — defaults and invalid values", () => {
+  let tempDir: string;
+  const origEnv = process.env.PIO_CONFIG_TEST_HOME;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    process.env.PIO_CONFIG_TEST_HOME = tempDir;
+  });
+
+  afterEach(() => {
+    process.env.PIO_CONFIG_TEST_HOME = origEnv;
+    cleanup(tempDir);
+  });
+
+  it("returns false when no config file exists", async () => {
+    const mod = await import("./model-config");
+    expect(mod.readDebugDisplay()).toBe(false);
+  });
+
+  it("returns false when config has no loop block", async () => {
+    writeConfig(tempDir, "default:\n  provider: j6000\n  modelId: general");
+
+    const mod = await import("./model-config");
+    expect(mod.readDebugDisplay()).toBe(false);
+  });
+
+  it("returns false when loop block has no debugDisplay field", async () => {
+    writeConfig(tempDir, ["loop:", "  maxIterations: 10"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readDebugDisplay()).toBe(false);
+  });
+
+  it('returns false when debugDisplay is a string "true"', async () => {
+    writeConfig(tempDir, ["loop:", '  debugDisplay: "true"'].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readDebugDisplay()).toBe(false);
+  });
+
+  it("returns false when debugDisplay is a number", async () => {
+    writeConfig(tempDir, ["loop:", "  debugDisplay: 1"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readDebugDisplay()).toBe(false);
+  });
+
+  it("debugDisplay alone (no maxIterations) creates valid config.loop", async () => {
+    writeConfig(tempDir, ["loop:", "  debugDisplay: true"].join("\n"));
+
+    const mod = await import("./model-config");
+    expect(mod.readDebugDisplay()).toBe(true);
+    expect(mod.readLoopConfig()).toEqual({ debugDisplay: true });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // readTurnThreshold — fallback to default
 // ---------------------------------------------------------------------------
 

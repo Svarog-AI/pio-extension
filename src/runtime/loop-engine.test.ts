@@ -222,11 +222,6 @@ describe("setupLoopEngine — handler registration", () => {
     expect(cmd).toBeDefined();
     expect(cmd!.description?.toLowerCase()).toContain("resume");
   });
-
-  it("exports RETURN_COMMAND constant", async () => {
-    const { RETURN_COMMAND } = await import("./loop-engine");
-    expect(RETURN_COMMAND).toBe("/return");
-  });
 });
 
 // ---------------------------------------------------------------------------

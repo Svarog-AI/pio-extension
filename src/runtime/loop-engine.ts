@@ -15,13 +15,6 @@
  * Additionally, it registers the `/return` command for ad-hoc resumption.
  */
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-/** Command name for resuming the loop engine after ad-hoc interruption */
-export const RETURN_COMMAND = "/return";
-
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getSessionParams } from "../capability-session";

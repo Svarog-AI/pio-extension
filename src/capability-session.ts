@@ -44,8 +44,6 @@ export function setMergedSkills(
 // Global mandatory skills — always injected regardless of capability config
 const GLOBAL_MANDATORY_SKILLS = ["pio", "ask-user"];
 
-// Session completion mandate — injected into every pio sub-session system prompt.
-// Placed between SKILL LOADING INSTRUCTIONS and YOUR INSTRUCTIONS for maximum visibility.
 // Workflow instructions — injected into the system prompt between the titles-only workflow
 // section and the guidelines section. Explains how step-by-step instruction delivery works.
 export const WORKFLOW_INSTRUCTIONS = `## Workflow Instructions
@@ -58,6 +56,8 @@ You are working through a series of steps defined in this workflow. Here is how 
 
 There is no need to plan ahead across multiple steps or worry about future step details. Just focus on the current step and its instructions.`;
 
+// Session completion mandate — injected into every pio sub-session system prompt.
+// Placed between SKILL LOADING INSTRUCTIONS and YOUR INSTRUCTIONS for maximum visibility.
 export const SESSION_COMPLETION_MANDATE = `At the end of your session, you MUST call one of the following tools:
 
 - \`pio_mark_complete\` — when your work is complete and output files are ready for validation. This validates outputs against expected outputs and schedules the next workflow task.

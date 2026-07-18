@@ -285,7 +285,7 @@ export async function compilePrompt(
   // 4. Attach merged skills
   sections.mergedSkills = mergedSkills;
 
-  // 5. Attach raw steps for step nudging (totalWorkflowSteps, workflowSteps)
+  // 5. Attach raw steps for loop engine injection (totalWorkflowSteps, workflowSteps)
   sections._steps = components.steps;
 
   return sections;

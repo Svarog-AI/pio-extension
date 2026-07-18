@@ -5,7 +5,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveCapabilityConfig } from "../capability-config";
 
-// Mock prompt-compiler and step-nudging so they don't interfere with integration tests
+// Mock prompt-compiler so it doesn't interfere with integration tests
 vi.mock("../prompt-compiler", () => ({
   compilePrompt: vi.fn().mockResolvedValue({
     role: "## Role\n\nTest role.",
@@ -13,10 +13,6 @@ vi.mock("../prompt-compiler", () => ({
     guidelines: "## Guidelines\n\nTest guidelines.",
     mergedSkills: { mandatory: ["pio", "ask-user"] },
   }),
-}));
-
-vi.mock("../guards/step-nudging", () => ({
-  setupStepNudging: vi.fn(),
 }));
 
 // ---------------------------------------------------------------------------

@@ -53,7 +53,7 @@ export interface TerminationCondition {
 /**
  * Structured workflow step that replaces freeform numbered steps in markdown prompts.
  *
- * Each step defines an id (for step nudging correlation), a display title,
+ * Each step defines an id (for loop engine correlation), a display title,
  * and natural language instructions. Skills can be declared per-step and
  * are merged into the session's global skills at prompt compilation time.
  *
@@ -63,7 +63,7 @@ export interface TerminationCondition {
  * compatibility with existing capability workflows.
  */
 export interface WorkflowStep {
-  /** Step identifier (e.g. "step-1", "understand-goal") — used for step nudging correlation */
+  /** Step identifier (e.g. "step-1", "understand-goal") — used for loop engine correlation */
   id: string;
   /** Display title shown to the agent, e.g. "Understand the goal" */
   title: string;
@@ -117,6 +117,6 @@ export interface CompiledPromptSections {
   guidelines?: string;
   /** Merged workflow step skills — carries merged mandatory/recommended skills downstream for skill loading */
   mergedSkills?: CapabilitySkills;
-  /** Raw workflow steps — carried for step nudging (totalWorkflowSteps, workflowSteps). Not rendered in the prompt. */
+  /** Raw workflow steps — carried for loop engine injection (totalWorkflowSteps, workflowSteps). Not rendered in the prompt. */
   _steps?: WorkflowStep[];
 }

@@ -46,6 +46,18 @@ const GLOBAL_MANDATORY_SKILLS = ["pio", "ask-user"];
 
 // Session completion mandate — injected into every pio sub-session system prompt.
 // Placed between SKILL LOADING INSTRUCTIONS and YOUR INSTRUCTIONS for maximum visibility.
+// Workflow instructions — injected into the system prompt between the titles-only workflow
+// section and the guidelines section. Explains how step-by-step instruction delivery works.
+export const WORKFLOW_INSTRUCTIONS = `## Workflow Instructions
+
+You are working through a series of steps defined in this workflow. Here is how step-by-step instruction delivery works:
+
+- Steps are executed sequentially, one at a time. You will receive instructions for each step as you progress through the workflow.
+- Detailed instructions for your current step are delivered dynamically via message injection. The system prompt shows only step titles as a roadmap — don't assume you have full context for all steps upfront.
+- Focus on completing your current step with the instructions provided. When a step is complete, the engine will automatically advance you to the next step and provide its instructions.
+
+There is no need to plan ahead across multiple steps or worry about future step details. Just focus on the current step and its instructions.`;
+
 export const SESSION_COMPLETION_MANDATE = `At the end of your session, you MUST call one of the following tools:
 
 - \`pio_mark_complete\` — when your work is complete and output files are ready for validation. This validates outputs against expected outputs and schedules the next workflow task.
@@ -387,8 +399,10 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
     if (compiledSections) {
       const capabilitySections: string[] = [];
       if (compiledSections.role) capabilitySections.push(compiledSections.role);
-      if (compiledSections.workflow)
+      if (compiledSections.workflow) {
         capabilitySections.push(compiledSections.workflow);
+        capabilitySections.push(WORKFLOW_INSTRUCTIONS);
+      }
       if (compiledSections.guidelines)
         capabilitySections.push(compiledSections.guidelines);
       if (capabilitySections.length > 0) {

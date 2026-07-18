@@ -2006,16 +2006,20 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
     expect(typeof result.systemPrompt).toBe("string");
     expect(result.systemPrompt).toContain("--- YOUR INSTRUCTIONS ---");
 
-    // Verify sections appear in order: role → workflow → guidelines
+    // Verify sections appear in order: role → workflow → WORKFLOW_INSTRUCTIONS → guidelines
     const yourIdx = result.systemPrompt.indexOf("--- YOUR INSTRUCTIONS ---");
     const roleIdx = result.systemPrompt.indexOf("## Role");
     const workflowIdx = result.systemPrompt.indexOf("## Workflow");
+    const workflowInstructionsIdx = result.systemPrompt.indexOf(
+      "## Workflow Instructions",
+    );
     const guidelinesIdx = result.systemPrompt.indexOf("## Guidelines");
 
     expect(yourIdx).toBeGreaterThan(-1);
     expect(roleIdx).toBeGreaterThan(yourIdx);
     expect(workflowIdx).toBeGreaterThan(roleIdx);
-    expect(guidelinesIdx).toBeGreaterThan(workflowIdx);
+    expect(workflowInstructionsIdx).toBeGreaterThan(workflowIdx);
+    expect(guidelinesIdx).toBeGreaterThan(workflowInstructionsIdx);
   });
 
   it("given compiled sections with missing guidelines when before_agent_start runs then only role and workflow sections are included", async () => {
@@ -2081,5 +2085,33 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
     expect(result.systemPrompt).toContain("## Workflow");
     // Guidelines should not appear since it was undefined
     expect(result.systemPrompt).not.toContain("## Guidelines");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WORKFLOW_INSTRUCTIONS constant
+// ---------------------------------------------------------------------------
+
+describe("WORKFLOW_INSTRUCTIONS constant", () => {
+  it("given WORKFLOW_INSTRUCTIONS when exported then it contains key phrases about sequential execution, dynamic delivery, and current-step focus", async () => {
+    const mod = await import("./capability-session");
+
+    expect(mod.WORKFLOW_INSTRUCTIONS).toBeDefined();
+    expect(typeof mod.WORKFLOW_INSTRUCTIONS).toBe("string");
+
+    const content = mod.WORKFLOW_INSTRUCTIONS.toLowerCase();
+    expect(content).toContain("sequentially");
+    expect(content).toContain("message injection");
+    expect(content).toContain("focus on completing your current step");
+  });
+
+  it("given WORKFLOW_INSTRUCTIONS when content is static then it contains no variable or iteration-dependent references", async () => {
+    const mod = await import("./capability-session");
+
+    const content = mod.WORKFLOW_INSTRUCTIONS;
+    // Should not contain placeholders like ${...}, {stepNumber}, iteration numbers, etc.
+    expect(content).not.toMatch(/\$\{.*\}/);
+    expect(content).not.toMatch(/\{stepNumber\}/i);
+    expect(content).not.toMatch(/iteration\s+\d+/i);
   });
 });

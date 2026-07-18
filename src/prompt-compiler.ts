@@ -94,14 +94,17 @@ export async function readWorkflowSteps(
 // ---------------------------------------------------------------------------
 
 /**
- * Render workflow steps into a markdown section.
+ * Render workflow steps into a markdown section (titles-only).
  *
  * Format per step:
  *   ### Step N: <title>
  *
  *   Skills: [skill-a], [skill-b]  (only when mandatory skills exist)
  *
- *   <instructions>
+ * Instructions are intentionally omitted — they are delivered dynamically
+ * via before_agent_start system prompt injection by the loop engine.
+ * The static workflow section serves as a lightweight roadmap showing step
+ * count, order, and skill requirements.
  *
  * This is a pure function — no filesystem access, deterministic output.
  *
@@ -128,9 +131,6 @@ export function renderWorkflowSection(steps: WorkflowStep[]): string {
       parts.push("");
       parts.push(`Skills: ${skillsLine}`);
     }
-
-    parts.push("");
-    parts.push(step.instructions);
   }
 
   return parts.join("\n");

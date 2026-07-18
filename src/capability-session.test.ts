@@ -119,13 +119,13 @@ vi.mock("./prompt-compiler", () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Top-level mock for step-nudging (used by step nudging integration tests)
+// Top-level mock for loop-engine (used by loop engine integration tests)
 // ---------------------------------------------------------------------------
 
-const mockSetupStepNudging = vi.hoisted(() => vi.fn());
+const mockSetupLoopEngine = vi.hoisted(() => vi.fn());
 
-vi.mock("./guards/step-nudging", () => ({
-  setupStepNudging: mockSetupStepNudging,
+vi.mock("./runtime/loop-engine", () => ({
+  setupLoopEngine: mockSetupLoopEngine,
 }));
 
 // ---------------------------------------------------------------------------
@@ -1665,24 +1665,25 @@ describe("workflow steps population — enrichedSessionParams", () => {
     const rawParams = mod.getEnrichedSessionParamsForTesting();
     expect(rawParams).toBeDefined();
     expect(rawParams?.totalWorkflowSteps).toBe(2);
+    // Now passes full WorkflowStep[] objects (not just { id, title } summaries)
     expect(rawParams?.workflowSteps).toEqual([
-      { id: "step-1", title: "Step One" },
-      { id: "step-2", title: "Step Two" },
+      { id: "step-1", title: "Step One", instructions: "Do step one" },
+      { id: "step-2", title: "Step Two", instructions: "Do step two" },
     ]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Step nudging integration — setupStepNudging called from setupSessionInfrastructure
+// Loop engine integration — setupLoopEngine called from setupSessionInfrastructure
 // ---------------------------------------------------------------------------
 
-describe("step nudging integration — setupSessionInfrastructure", () => {
+describe("loop engine integration — setupSessionInfrastructure", () => {
   let tempDir: string;
 
   beforeEach(() => {
     vi.resetModules();
     tempDir = createTempDir();
-    mockSetupStepNudging.mockClear();
+    mockSetupLoopEngine.mockClear();
     mockCompilePrompt.mockClear();
     mockCompilePrompt.mockResolvedValue({
       role: "## Role\n\nTest role.",
@@ -1696,7 +1697,7 @@ describe("step nudging integration — setupSessionInfrastructure", () => {
     cleanup(tempDir);
   });
 
-  it("given setupSessionInfrastructure is called when the function runs then setupStepNudging is called with the pi instance", async () => {
+  it("given setupSessionInfrastructure is called when the function runs then setupLoopEngine is called with the pi instance", async () => {
     const mockPi = {
       registerTool: vi.fn(),
       on: vi.fn(),
@@ -1707,9 +1708,9 @@ describe("step nudging integration — setupSessionInfrastructure", () => {
     const mod = await import("./capability-session");
     mod.setupSessionInfrastructure(mockPi as any);
 
-    // Assert: setupStepNudging was called with the pi instance
-    expect(mockSetupStepNudging).toHaveBeenCalledTimes(1);
-    expect(mockSetupStepNudging).toHaveBeenCalledWith(mockPi);
+    // Assert: setupLoopEngine was called with the pi instance
+    expect(mockSetupLoopEngine).toHaveBeenCalledTimes(1);
+    expect(mockSetupLoopEngine).toHaveBeenCalledWith(mockPi);
   });
 });
 

@@ -122,12 +122,11 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     }
   });
 
-  // 3. Iteration setup at the start of each agent run
+  // 3. Iteration setup at the start of each agent run + system prompt injection
   pi.on("before_agent_start", async (_event, _ctx) => {
     // Guard: only run inside pio sessions
-    if (!getState().isActive) return;
-
     const state = getState();
+    if (!state.isActive) return;
 
     if (!state.isAdHocInput) {
       // Normal run: first run (0→1) or loop replay (N→N+1).
@@ -141,6 +140,54 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // Otherwise (ad-hoc mode): engine pauses iteration tracking.
     // Do NOT increment counter or reset tracking fields.
     // Flag persists — only /return clears it.
+
+    // -----------------------------------------------------------------------
+    // System prompt injection
+    // -----------------------------------------------------------------------
+
+    // Ad-hoc mode: lighter context block (no step instructions)
+    if (state.isAdHocInput) {
+      const step = state.stepsList[state.currentStep - 1];
+      if (!step) return;
+
+      const completedBefore =
+        state.currentStep > 1
+          ? `Steps ${state.currentStep > 2 ? `${1}–${state.currentStep - 1}` : "1"} completed.`
+          : "No previous steps completed.";
+
+      return {
+        systemPrompt:
+          _event.systemPrompt +
+          "\n\n" +
+          `## Workflow Paused (Ad-hoc Mode)\n\n` +
+          `${completedBefore}\n` +
+          `You were on Step ${state.currentStep} of ${state.totalSteps}: "${step.title}", iteration ${state.currentIteration}.\n\n` +
+          `Workflow execution is paused. You can answer questions or help the user freely.`,
+      };
+    }
+
+    // Normal mode: inject step instructions
+    const step = state.stepsList[state.currentStep - 1];
+    if (!step) return; // no step loaded — skip injection
+
+    const completedBefore =
+      state.currentStep > 1
+        ? `Steps ${state.currentStep > 2 ? `${1}–${state.currentStep - 1}` : "1"} completed.`
+        : "No previous steps completed.";
+
+    let prompt =
+      `${completedBefore}\n` +
+      `You are on Step ${state.currentStep} of ${state.totalSteps}, iteration ${state.currentIteration}.\n\n` +
+      step.instructions;
+
+    // Loop replay: include loopMessage as additional per-retry context
+    if (state.currentIteration > 1 && step.loopMessage) {
+      prompt += `\n\n**Retry focus:** ${step.loopMessage}`;
+    }
+
+    return {
+      systemPrompt: `${_event.systemPrompt}\n\n## Current Workflow Step\n\n${prompt}`,
+    };
   });
 
   // 4. Track file writes and ask_user calls per iteration
@@ -266,9 +313,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
 
     if (!conditionsMet) {
       // Loop replay: send follow-up to trigger another agent run for same step
-      pi.sendUserMessage(currentStep.loopMessage ?? "", {
-        deliverAs: "followUp",
-      });
+      pi.sendUserMessage("", { deliverAs: "followUp" });
       return;
     }
 
@@ -283,10 +328,10 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // Update current step in shared state
     setState({ currentStep: nextStepNum });
 
-    // Send follow-up with next step's instructions
+    // Send follow-up to trigger next step (content via system prompt injection)
     const nextStep = state.stepsList[nextStepNum - 1];
     if (nextStep) {
-      pi.sendUserMessage(nextStep.instructions, { deliverAs: "followUp" });
+      pi.sendUserMessage("", { deliverAs: "followUp" });
     }
   });
 
@@ -296,8 +341,8 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     handler: async (_args, _ctx) => {
       const state = getState();
 
-      // Guard: only execute when engine is active and a step is loaded
-      if (!state.isActive || state.currentStep === 0) return;
+      // Guard: only execute when engine is active
+      if (!state.isActive) return;
 
       // Determine return target
       const currentStepObj = state.stepsList[state.currentStep - 1];
@@ -316,11 +361,11 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         setState({ currentStep: targetStepNum });
       }
 
-      // Queue follow-up with target step's instructions
+      // Queue follow-up to trigger target step (content via system prompt injection)
       const targetStep = state.stepsList[targetStepNum - 1];
       if (!targetStep) return;
 
-      pi.sendUserMessage(targetStep.instructions, { deliverAs: "followUp" });
+      pi.sendUserMessage("", { deliverAs: "followUp" });
     },
   });
 }

@@ -11,10 +11,10 @@ import { resolveContractPath } from "./capability-config";
 import { CapState } from "./capability-state";
 import { getSessionConfig } from "./capability-utils";
 import { cleanupMarkers } from "./guards/mark-complete";
-import { setupStepNudging } from "./guards/step-nudging";
 import { validateInputs } from "./guards/validation";
 import { resolveModelForCapability } from "./model-config";
 import { compilePrompt } from "./prompt-compiler";
+import { setupLoopEngine } from "./runtime/loop-engine";
 import type { CompiledPromptSections } from "./runtime/workflow-types";
 import type { CapabilityConfig } from "./types";
 
@@ -251,9 +251,6 @@ export function buildSessionInputsSection(
  *   before_agent_start → apply systemPrompt (persistent for all turns)
  */
 export function setupSessionInfrastructure(pi: ExtensionAPI) {
-  // Register step nudging tools and handlers
-  setupStepNudging(pi);
-
   // 1. Read config at startup — consume immediately
   pi.on("resources_discover", async (_event, ctx) => {
     // Reset compiled sections to prevent stale state from previous sessions
@@ -319,12 +316,7 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
       if (compiledSections?._steps) {
         enrichedSessionParams.totalWorkflowSteps =
           compiledSections._steps.length;
-        enrichedSessionParams.workflowSteps = compiledSections._steps.map(
-          (s) => ({
-            id: s.id,
-            title: s.title,
-          }),
-        );
+        enrichedSessionParams.workflowSteps = compiledSections._steps;
       }
     } catch (err) {
       console.warn(
@@ -448,6 +440,12 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
 
     return result;
   });
+
+  // Register loop engine AFTER before_agent_start so its handler runs second.
+  // Pi chains handlers sequentially via registration order — capability-session
+  // injects project overview, skills, and instructions first, then loop-engine
+  // receives all that content in _event.systemPrompt and appends step instructions.
+  setupLoopEngine(pi);
 }
 
 // ---------------------------------------------------------------------------

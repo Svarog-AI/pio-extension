@@ -261,16 +261,27 @@ describe("/return command", () => {
       expect(getState().currentIteration).toBe(0); // unchanged
     });
 
-    it("does nothing when currentStep is 0", async () => {
+    it("executes when currentStep is 1 (no dead guard)", async () => {
       const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
-      setState({ isActive: true, currentStep: 0 });
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1,
+        totalSteps: 1,
+        stepsList: [{ id: "s1", title: "S1", instructions: "Do A" }],
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
 
       await fireReturnCommand(registeredCommands);
 
-      expect(sendUserMessageCalls).toHaveLength(0);
+      // Should execute (not blocked by dead guard), send empty follow-up
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].content).toBe("");
     });
   });
 
@@ -327,7 +338,7 @@ describe("/return command", () => {
       await fireReturnCommand(registeredCommands);
 
       expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("Do A");
+      expect(sendUserMessageCalls[0].content).toBe("");
       expect(sendUserMessageCalls[0].options).toEqual({
         deliverAs: "followUp",
       });
@@ -358,7 +369,7 @@ describe("/return command", () => {
       // Should have jumped to step 1
       expect(getState().currentStep).toBe(1);
       expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("Do A");
+      expect(sendUserMessageCalls[0].content).toBe("");
     });
 
     it("defaults to current step when returnTo is omitted", async () => {
@@ -385,7 +396,7 @@ describe("/return command", () => {
       // Should stay on step 2
       expect(getState().currentStep).toBe(2);
       expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("Do B");
+      expect(sendUserMessageCalls[0].content).toBe("");
     });
   });
 
@@ -611,13 +622,19 @@ describe("input handler", () => {
 describe("before_agent_start", () => {
   async function fireBeforeAgentStart(
     handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+    event: { type?: string; systemPrompt?: string } = {
+      type: "before_agent_start",
+    },
   ) {
     const handlersList = handlers.get("before_agent_start");
     expect(handlersList).toBeDefined();
     const mockCtx = {} as any;
+    const results: unknown[] = [];
     for (const handler of handlersList!) {
-      await handler({ type: "before_agent_start" }, mockCtx);
+      const result = await handler(event, mockCtx);
+      if (result) results.push(result);
     }
+    return results;
   }
 
   it("normal run (isAdHocInput=false, iteration=0): sets iteration to 1, resets tracking fields", async () => {
@@ -707,6 +724,295 @@ describe("before_agent_start", () => {
     // Assert: state unchanged
     const state = getState();
     expect(state.currentIteration).toBe(5);
+  });
+
+  // ---- System prompt injection (normal mode) ----
+
+  describe("system prompt injection (normal mode)", () => {
+    it("returns systemPrompt with step instructions on first run of Step 1", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 0, // first run
+        totalSteps: 2,
+        stepsList: [
+          { id: "s1", title: "S1", instructions: "Do A" },
+          { id: "s2", title: "S2", instructions: "Do B" },
+        ],
+        isAdHocInput: false,
+        filesWritten: [],
+        askUserCalled: false,
+      });
+
+      const results = await fireBeforeAgentStart(handlers, {
+        type: "before_agent_start",
+        systemPrompt: "base prompt",
+      });
+
+      expect(results).toHaveLength(1);
+      const result = results[0] as { systemPrompt: string };
+      expect(result.systemPrompt).toContain("base prompt");
+      expect(result.systemPrompt).toContain("## Current Workflow Step");
+      expect(result.systemPrompt).toContain("No previous steps completed.");
+      expect(result.systemPrompt).toContain(
+        "You are on Step 1 of 2, iteration 1.",
+      );
+      expect(result.systemPrompt).toContain("Do A");
+    });
+
+    it("includes completed steps info on Step 2", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        currentStep: 2,
+        currentIteration: 0,
+        totalSteps: 3,
+        stepsList: [
+          { id: "s1", title: "S1", instructions: "Do A" },
+          { id: "s2", title: "S2", instructions: "Do B" },
+          { id: "s3", title: "S3", instructions: "Do C" },
+        ],
+        isAdHocInput: false,
+        filesWritten: [],
+        askUserCalled: false,
+      });
+
+      const results = await fireBeforeAgentStart(handlers, {
+        type: "before_agent_start",
+        systemPrompt: "base",
+      });
+
+      const result = results[0] as { systemPrompt: string };
+      expect(result.systemPrompt).toContain("Steps 1 completed.");
+      expect(result.systemPrompt).toContain(
+        "You are on Step 2 of 3, iteration 1.",
+      );
+    });
+
+    it("includes completed steps range on Step 4", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        currentStep: 4,
+        currentIteration: 0,
+        totalSteps: 5,
+        stepsList: [
+          { id: "s1", title: "S1", instructions: "A" },
+          { id: "s2", title: "S2", instructions: "B" },
+          { id: "s3", title: "S3", instructions: "C" },
+          { id: "s4", title: "S4", instructions: "D" },
+          { id: "s5", title: "S5", instructions: "E" },
+        ],
+        isAdHocInput: false,
+        filesWritten: [],
+        askUserCalled: false,
+      });
+
+      const results = await fireBeforeAgentStart(handlers, {
+        type: "before_agent_start",
+        systemPrompt: "base",
+      });
+
+      const result = results[0] as { systemPrompt: string };
+      expect(result.systemPrompt).toContain("Steps 1–3 completed.");
+    });
+
+    it("includes loopMessage as Retry focus on iteration > 1", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1, // will become 2
+        totalSteps: 1,
+        stepsList: [
+          {
+            id: "s1",
+            title: "S1",
+            instructions: "Do A",
+            loopMessage: "Focus on edge cases",
+          },
+        ],
+        isAdHocInput: false,
+        filesWritten: [],
+        askUserCalled: false,
+      });
+
+      const results = await fireBeforeAgentStart(handlers, {
+        type: "before_agent_start",
+        systemPrompt: "base",
+      });
+
+      const result = results[0] as { systemPrompt: string };
+      expect(result.systemPrompt).toContain(
+        "**Retry focus:** Focus on edge cases",
+      );
+    });
+
+    it("does NOT include loopMessage on first iteration", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 0, // first run → iteration 1
+        totalSteps: 1,
+        stepsList: [
+          {
+            id: "s1",
+            title: "S1",
+            instructions: "Do A",
+            loopMessage: "Focus on edge cases",
+          },
+        ],
+        isAdHocInput: false,
+        filesWritten: [],
+        askUserCalled: false,
+      });
+
+      const results = await fireBeforeAgentStart(handlers, {
+        type: "before_agent_start",
+        systemPrompt: "base",
+      });
+
+      const result = results[0] as { systemPrompt: string };
+      expect(result.systemPrompt).not.toContain("Retry focus");
+    });
+
+    it("skips injection when stepsList is empty", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 0,
+        totalSteps: 0,
+        stepsList: [],
+        isAdHocInput: false,
+        filesWritten: [],
+        askUserCalled: false,
+      });
+
+      const results = await fireBeforeAgentStart(handlers, {
+        type: "before_agent_start",
+        systemPrompt: "base",
+      });
+
+      // No system prompt returned (early return)
+      expect(results).toHaveLength(0);
+    });
+
+    it("skips injection when currentStep is out of bounds", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        currentStep: 99,
+        currentIteration: 0,
+        totalSteps: 2,
+        stepsList: [
+          { id: "s1", title: "S1", instructions: "A" },
+          { id: "s2", title: "S2", instructions: "B" },
+        ],
+        isAdHocInput: false,
+        filesWritten: [],
+        askUserCalled: false,
+      });
+
+      const results = await fireBeforeAgentStart(handlers, {
+        type: "before_agent_start",
+        systemPrompt: "base",
+      });
+
+      expect(results).toHaveLength(0);
+    });
+  });
+
+  // ---- System prompt injection (ad-hoc mode) ----
+
+  describe("system prompt injection (ad-hoc mode)", () => {
+    it("returns systemPrompt with Workflow Paused header and step context", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        currentStep: 2,
+        currentIteration: 3,
+        totalSteps: 4,
+        stepsList: [
+          { id: "s1", title: "S1", instructions: "Do A" },
+          { id: "s2", title: "S2", instructions: "Do B" },
+          { id: "s3", title: "S3", instructions: "Do C" },
+          { id: "s4", title: "S4", instructions: "Do D" },
+        ],
+        isAdHocInput: true,
+        filesWritten: [],
+        askUserCalled: false,
+      });
+
+      const results = await fireBeforeAgentStart(handlers, {
+        type: "before_agent_start",
+        systemPrompt: "base prompt",
+      });
+
+      expect(results).toHaveLength(1);
+      const result = results[0] as { systemPrompt: string };
+      expect(result.systemPrompt).toContain("base prompt");
+      expect(result.systemPrompt).toContain("## Workflow Paused (Ad-hoc Mode)");
+      expect(result.systemPrompt).toContain("Steps 1 completed.");
+      expect(result.systemPrompt).toContain(
+        'You were on Step 2 of 4: "S2", iteration 3.',
+      );
+      expect(result.systemPrompt).toContain(
+        "Workflow execution is paused. You can answer questions or help the user freely.",
+      );
+      // Should NOT contain step instructions
+      expect(result.systemPrompt).not.toContain("Do B");
+    });
+
+    it("skips ad-hoc injection when stepsList is empty", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        currentStep: 1,
+        currentIteration: 1,
+        totalSteps: 0,
+        stepsList: [],
+        isAdHocInput: true,
+        filesWritten: [],
+        askUserCalled: false,
+      });
+
+      const results = await fireBeforeAgentStart(handlers, {
+        type: "before_agent_start",
+        systemPrompt: "base",
+      });
+
+      expect(results).toHaveLength(0);
+    });
   });
 });
 
@@ -1303,10 +1609,10 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Should advance: currentStep updated, follow-up sent with next step instructions
+      // Should advance: currentStep updated, follow-up sent (empty string, content via system prompt)
       expect(getState().currentStep).toBe(2);
       expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("Do B");
+      expect(sendUserMessageCalls[0].content).toBe("");
       expect(sendUserMessageCalls[0].options).toEqual({
         deliverAs: "followUp",
       });
@@ -1356,10 +1662,10 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Should loop: send follow-up with loopMessage, currentStep unchanged
+      // Should loop: send follow-up (empty string, content via system prompt), currentStep unchanged
       expect(getState().currentStep).toBe(1);
       expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("Keep going");
+      expect(sendUserMessageCalls[0].content).toBe("");
       expect(sendUserMessageCalls[0].options).toEqual({
         deliverAs: "followUp",
       });
@@ -1414,7 +1720,7 @@ describe("agent_end", () => {
       // Callback returns true → advance
       expect(getState().currentStep).toBe(2);
       expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("Do B");
+      expect(sendUserMessageCalls[0].content).toBe("");
     });
 
     it("loops when all terminateWhen callbacks return false (OR logic)", async () => {
@@ -1470,7 +1776,7 @@ describe("agent_end", () => {
       // All false → loop
       expect(getState().currentStep).toBe(1);
       expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("Retry");
+      expect(sendUserMessageCalls[0].content).toBe("");
     });
 
     it("advances when second callback returns true (short-circuit OR)", async () => {
@@ -1526,7 +1832,7 @@ describe("agent_end", () => {
       // Second callback true → advance
       expect(getState().currentStep).toBe(2);
       expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("Do B");
+      expect(sendUserMessageCalls[0].content).toBe("");
     });
 
     it("treats callback error as NOT met (fail-safe: keep looping)", async () => {
@@ -1580,7 +1886,7 @@ describe("agent_end", () => {
       // Callback threw → fail-safe: loop
       expect(getState().currentStep).toBe(1);
       expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("Retry");
+      expect(sendUserMessageCalls[0].content).toBe("");
     });
 
     it("advances when terminateWhen is undefined after minIterations reached", async () => {
@@ -1627,7 +1933,7 @@ describe("agent_end", () => {
       // No terminateWhen + minIterations reached → advance
       expect(getState().currentStep).toBe(2);
       expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("Do B");
+      expect(sendUserMessageCalls[0].content).toBe("");
     });
 
     it("advances when terminateWhen is empty array after minIterations reached", async () => {
@@ -1674,7 +1980,7 @@ describe("agent_end", () => {
       // Empty terminateWhen + minIterations reached → advance
       expect(getState().currentStep).toBe(2);
       expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("Do B");
+      expect(sendUserMessageCalls[0].content).toBe("");
     });
   });
 

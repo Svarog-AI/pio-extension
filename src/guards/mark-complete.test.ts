@@ -1597,6 +1597,7 @@ describe("cleanupMarkers integration (session startup)", () => {
         }
       }),
       setSessionName: vi.fn(),
+      registerCommand: vi.fn(),
     };
 
     mod.setupSessionInfrastructure(mockPi as any);

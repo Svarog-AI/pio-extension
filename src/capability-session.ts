@@ -312,7 +312,7 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
         baseSkills: config.skills,
       });
 
-      // Populate enrichedSessionParams with workflow step info for step nudging
+      // Populate enrichedSessionParams with workflow step info for the loop engine (system prompt injection)
       if (compiledSections?._steps) {
         enrichedSessionParams.totalWorkflowSteps =
           compiledSections._steps.length;
@@ -332,8 +332,8 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
   //    This appends project overview, skill loading instructions, and capability
   //    prompt to pi's base system prompt (_event.systemPrompt). The systemPrompt
   //    persists across turns without accumulating in conversation history.
-  //    We must explicitly prepend _event.systemPrompt — the framework uses
-  //    last-writer-wins (runner.js:728-729: currentSystemPrompt = result.systemPrompt).
+  //    We must explicitly prepend _event.systemPrompt — pi chains before_agent_start
+  //    handlers sequentially, passing accumulated content through _event.systemPrompt.
   pi.on("before_agent_start", async (_event, ctx) => {
     // Discover project context if not yet loaded
     if (projectContext === undefined) {

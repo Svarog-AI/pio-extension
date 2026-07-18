@@ -922,7 +922,7 @@ describe("before_agent_start", () => {
         systemPrompt: "base",
       });
 
-      // No system prompt returned (early return)
+      // No CustomMessage returned (early return)
       expect(results).toHaveLength(0);
     });
 
@@ -1624,7 +1624,7 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Should advance: currentStep updated, follow-up sent (empty string, content via system prompt)
+      // Should advance: currentStep updated, follow-up sent (empty string, content via CustomMessage)
       expect(getState().currentStep).toBe(2);
       expect(sendUserMessageCalls).toHaveLength(1);
       expect(sendUserMessageCalls[0].content).toBe("");
@@ -1677,7 +1677,7 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Should loop: send follow-up (empty string, content via system prompt), currentStep unchanged
+      // Should loop: send follow-up (empty string, content via CustomMessage), currentStep unchanged
       expect(getState().currentStep).toBe(1);
       expect(sendUserMessageCalls).toHaveLength(1);
       expect(sendUserMessageCalls[0].content).toBe("");

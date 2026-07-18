@@ -29,7 +29,7 @@ import type { WorkflowStep } from "./workflow-types";
 // ---------------------------------------------------------------------------
 
 /**
- * Build a one-line summary of completed steps for system prompt injection.
+ * Build a one-line summary of completed steps for CustomMessage injection.
  *
  * Returns "No previous steps completed" on Step 1, "Steps 1 completed" on
  * Step 2, and "Steps 1–N completed" on Step N+1.
@@ -132,7 +132,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     }
   });
 
-  // 3. Iteration setup at the start of each agent run + system prompt injection
+  // 3. Iteration setup at the start of each agent run + CustomMessage injection
   pi.on("before_agent_start", async (_event, _ctx) => {
     // Guard: only run inside pio sessions
     const state = getState();
@@ -334,7 +334,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // Update current step in shared state
     setState({ currentStep: nextStepNum });
 
-    // Send follow-up to trigger next step (content via system prompt injection)
+    // Send follow-up to trigger next step (content via CustomMessage injection)
     const nextStep = state.stepsList[nextStepNum - 1];
     if (nextStep) {
       pi.sendUserMessage("", { deliverAs: "followUp" });
@@ -367,7 +367,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         setState({ currentStep: targetStepNum });
       }
 
-      // Queue follow-up to trigger target step (content via system prompt injection)
+      // Queue follow-up to trigger target step (content via CustomMessage injection)
       const targetStep = state.stepsList[targetStepNum - 1];
       if (!targetStep) return;
 

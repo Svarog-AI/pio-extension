@@ -2083,6 +2083,8 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
     expect(typeof result.systemPrompt).toBe("string");
     expect(result.systemPrompt).toContain("## Role");
     expect(result.systemPrompt).toContain("## Workflow");
+    // WORKFLOW_INSTRUCTIONS should appear because workflow is present
+    expect(result.systemPrompt).toContain("## Workflow Instructions");
     // Guidelines should not appear since it was undefined
     expect(result.systemPrompt).not.toContain("## Guidelines");
   });

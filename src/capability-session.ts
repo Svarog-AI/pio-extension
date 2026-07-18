@@ -395,7 +395,7 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
     // Session completion mandate — always injected, regardless of other sections
     prompts.push(`--- SESSION COMPLETION ---\n\n${SESSION_COMPLETION_MANDATE}`);
 
-    // Capability-specific prompt from compiled sections (role → workflow → guidelines)
+    // Capability-specific prompt from compiled sections (role → workflow → WORKFLOW_INSTRUCTIONS → guidelines)
     if (compiledSections) {
       const capabilitySections: string[] = [];
       if (compiledSections.role) capabilitySections.push(compiledSections.role);

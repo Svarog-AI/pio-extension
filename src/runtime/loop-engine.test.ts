@@ -3,6 +3,7 @@ import { beforeEach, vi } from "vitest";
 import * as capabilitySession from "../capability-session";
 // Import the real modules to spy on them
 import * as capabilityUtils from "../capability-utils";
+import * as modelConfig from "../model-config";
 import { getState, resetState, setState } from "./session-state";
 
 // ---------------------------------------------------------------------------
@@ -1027,6 +1028,114 @@ describe("before_agent_start", () => {
       });
 
       expect(results).toHaveLength(0);
+    });
+
+    // ---- debugDisplay: true — display field verification ----
+
+    describe("debugDisplay enabled (readDebugDisplay returns true)", () => {
+      it("normal mode: CustomMessage has display: true when debugDisplay is enabled", async () => {
+        const { pi, handlers } = createMockPi();
+        const spy = vi
+          .spyOn(modelConfig, "readDebugDisplay")
+          .mockReturnValue(true);
+        const { setupLoopEngine } = await import("./loop-engine");
+        setupLoopEngine(pi);
+
+        setState({
+          isActive: true,
+          currentStep: 1,
+          currentIteration: 0,
+          totalSteps: 2,
+          stepsList: [
+            { id: "s1", title: "S1", instructions: "Do A" },
+            { id: "s2", title: "S2", instructions: "Do B" },
+          ],
+          isAdHocInput: false,
+          filesWritten: [],
+          askUserCalled: false,
+        });
+
+        const results = await fireBeforeAgentStart(handlers, {
+          type: "before_agent_start",
+          systemPrompt: "base",
+        });
+
+        expect(results).toHaveLength(1);
+        const result = results[0] as {
+          message: { customType: string; content: string; display: boolean };
+        };
+        expect(result.message.customType).toBe("workflow-step-instructions");
+        expect(result.message.display).toBe(true);
+
+        spy.mockRestore();
+      });
+
+      it("ad-hoc mode: CustomMessage has display: true when debugDisplay is enabled", async () => {
+        const { pi, handlers } = createMockPi();
+        const spy = vi
+          .spyOn(modelConfig, "readDebugDisplay")
+          .mockReturnValue(true);
+        const { setupLoopEngine } = await import("./loop-engine");
+        setupLoopEngine(pi);
+
+        setState({
+          isActive: true,
+          currentStep: 2,
+          currentIteration: 3,
+          totalSteps: 4,
+          stepsList: [
+            { id: "s1", title: "S1", instructions: "Do A" },
+            { id: "s2", title: "S2", instructions: "Do B" },
+            { id: "s3", title: "S3", instructions: "Do C" },
+            { id: "s4", title: "S4", instructions: "Do D" },
+          ],
+          isAdHocInput: true,
+          filesWritten: [],
+          askUserCalled: false,
+        });
+
+        const results = await fireBeforeAgentStart(handlers, {
+          type: "before_agent_start",
+          systemPrompt: "base",
+        });
+
+        expect(results).toHaveLength(1);
+        const result = results[0] as {
+          message: { customType: string; content: string; display: boolean };
+        };
+        expect(result.message.customType).toBe("workflow-paused");
+        expect(result.message.display).toBe(true);
+
+        spy.mockRestore();
+      });
+
+      it("verifies readDebugDisplay is actually called (not hardcoded false)", async () => {
+        const { pi, handlers } = createMockPi();
+        const spy = vi
+          .spyOn(modelConfig, "readDebugDisplay")
+          .mockReturnValue(true);
+        const { setupLoopEngine } = await import("./loop-engine");
+        setupLoopEngine(pi);
+
+        setState({
+          isActive: true,
+          currentStep: 1,
+          currentIteration: 0,
+          totalSteps: 1,
+          stepsList: [{ id: "s1", title: "S1", instructions: "Do A" }],
+          isAdHocInput: false,
+          filesWritten: [],
+          askUserCalled: false,
+        });
+
+        await fireBeforeAgentStart(handlers, {
+          type: "before_agent_start",
+        });
+
+        expect(spy).toHaveBeenCalled();
+
+        spy.mockRestore();
+      });
     });
   });
 });

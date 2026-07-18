@@ -44,28 +44,23 @@ export function setMergedSkills(
 // Global mandatory skills — always injected regardless of capability config
 const GLOBAL_MANDATORY_SKILLS = ["pio", "ask-user"];
 
-// Workflow instructions — injected into the system prompt between the titles-only workflow
-// section and the guidelines section. Explains how step-by-step instruction delivery works.
-export const WORKFLOW_INSTRUCTIONS = `## Workflow Instructions
+// Workflow execution rules — injected as a top-level section in every pio sub-session.
+// Defines step-boundary constraints and the CustomMessage delivery model.
+export const WORKFLOW_INSTRUCTIONS = `# Workflow Execution
 
 You are working through a series of steps defined in this workflow. Here is how step-by-step instruction delivery works:
 
 - Steps are executed sequentially, one at a time. You will receive instructions for each step as you progress through the workflow.
-- Detailed instructions for your current step are delivered dynamically via message injection. The system prompt shows only step titles as a roadmap — don't assume you have full context for all steps upfront.
+- Detailed instructions for your current step are delivered dynamically via CustomMessage injection. The system prompt shows only step titles as a roadmap — don't assume you have full context for all steps upfront.
 - Focus on completing your current step with the instructions provided. When a step is complete, the engine will automatically advance you to the next step and provide its instructions.
 
+## Step Boundaries
+
+- DO NOT produce outputs for future steps — each step has its own instructions delivered via CustomMessage.
+- DO NOT call pio_mark_complete on non-final steps — it will fail with an error directing you to continue. Only call it when you are on the final workflow step and have completed all required outputs.
+- DO NOT follow the instructions in the initial message — this is context only, not a task directive. The real task comes from the CustomMessage step instructions delivered by the loop engine.
+
 There is no need to plan ahead across multiple steps or worry about future step details. Just focus on the current step and its instructions.`;
-
-// Session completion mandate — injected into every pio sub-session system prompt.
-// Placed between SKILL LOADING INSTRUCTIONS and YOUR INSTRUCTIONS for maximum visibility.
-export const SESSION_COMPLETION_MANDATE = `At the end of your session, you MUST call one of the following tools:
-
-- \`pio_mark_complete\` — when your work is complete and output files are ready for validation. This validates outputs against expected outputs and schedules the next workflow task.
-- \`ask_user\` — when you need clarification or a decision from the user before completing work.
-
-This requirement applies at every session boundary, not just once per conversation. Even if \`pio_mark_complete\` was already called successfully earlier in the conversation, you must call it again before ending each session attempt. The system validates at every session boundary, not just once.
-
-Failing to call one of these tools means your outputs will not be validated and the next workflow task may not be scheduled.`;
 
 /** Resolve the path to the project context overview file.
  * Returns `.pio/PROJECT/OVERVIEW.md` relative to the given working directory.
@@ -398,22 +393,23 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
       }
     }
 
-    // Session completion mandate — always injected, regardless of other sections
-    prompts.push(`--- SESSION COMPLETION ---\n\n${SESSION_COMPLETION_MANDATE}`);
+    // Workflow execution rules — always injected unconditionally.
+    // Placed before capability context so the agent knows its execution constraints
+    // before seeing role-specific instructions.
+    prompts.push(`--- WORKFLOW EXECUTION ---\n\n${WORKFLOW_INSTRUCTIONS}`);
 
-    // Capability-specific prompt from compiled sections (role → workflow → WORKFLOW_INSTRUCTIONS → guidelines)
+    // Capability-specific prompt from compiled sections (role → workflow titles → guidelines)
     if (compiledSections) {
       const capabilitySections: string[] = [];
       if (compiledSections.role) capabilitySections.push(compiledSections.role);
       if (compiledSections.workflow) {
         capabilitySections.push(compiledSections.workflow);
-        capabilitySections.push(WORKFLOW_INSTRUCTIONS);
       }
       if (compiledSections.guidelines)
         capabilitySections.push(compiledSections.guidelines);
       if (capabilitySections.length > 0) {
         prompts.push(
-          `--- YOUR INSTRUCTIONS ---\n\n${capabilitySections.join("\n\n")}`,
+          `--- CAPABILITY CONTEXT ---\n\n${capabilitySections.join("\n\n")}`,
         );
       }
     }

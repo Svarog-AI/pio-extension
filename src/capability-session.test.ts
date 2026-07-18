@@ -725,7 +725,7 @@ describe("model resolution — backwards compatibility", () => {
     // Assert: prompt injection returned via systemPrompt (from create-goal.md)
     expect(result).toBeDefined();
     expect(typeof result.systemPrompt).toBe("string");
-    expect(result.systemPrompt).toContain("--- YOUR INSTRUCTIONS ---");
+    expect(result.systemPrompt).toContain("--- CAPABILITY CONTEXT ---");
     // Model resolution also ran but didn't call setModel since config is undefined
     expect(setModelMock).not.toHaveBeenCalled();
   });
@@ -1159,7 +1159,7 @@ describe("skill injection — before_agent_start integration", () => {
     expect(result.systemPrompt).toContain('<skill name="test-skill"');
   });
 
-  it("given before_agent_start when the handler runs then delivery order is PROJECT OVERVIEW, then SKILL LOADING INSTRUCTIONS, then YOUR INSTRUCTIONS", async () => {
+  it("given before_agent_start when the handler runs then delivery order is PROJECT OVERVIEW, then SKILL LOADING INSTRUCTIONS, then WORKFLOW EXECUTION, then CAPABILITY CONTEXT", async () => {
     // Populate registry with "pio" (a global mandatory skill) so buildSkillLoadingSection
     // generates the SKILL LOADING INSTRUCTIONS section — all three sections must appear
     const pioSkillBody = "# PIO Skill";
@@ -1221,18 +1221,23 @@ describe("skill injection — before_agent_start integration", () => {
 
     expect(typeof result.systemPrompt).toBe("string");
 
-    // Verify order: PROJECT OVERVIEW before SKILL LOADING before YOUR INSTRUCTIONS
+    // Verify order: PROJECT OVERVIEW < SKILL LOADING < WORKFLOW EXECUTION < CAPABILITY CONTEXT
     const projectIdx = result.systemPrompt.indexOf("--- PROJECT OVERVIEW ---");
     const skillIdx = result.systemPrompt.indexOf(
       "--- SKILL LOADING INSTRUCTIONS ---",
     );
-    const yourIdx = result.systemPrompt.indexOf("--- YOUR INSTRUCTIONS ---");
+    const workflowExecIdx = result.systemPrompt.indexOf(
+      "--- WORKFLOW EXECUTION ---",
+    );
+    const capCtxIdx = result.systemPrompt.indexOf("--- CAPABILITY CONTEXT ---");
 
     expect(projectIdx).toBeGreaterThan(-1);
     expect(skillIdx).toBeGreaterThan(-1);
-    expect(yourIdx).toBeGreaterThan(-1);
+    expect(workflowExecIdx).toBeGreaterThan(-1);
+    expect(capCtxIdx).toBeGreaterThan(-1);
     expect(projectIdx).toBeLessThan(skillIdx);
-    expect(skillIdx).toBeLessThan(yourIdx);
+    expect(skillIdx).toBeLessThan(workflowExecIdx);
+    expect(workflowExecIdx).toBeLessThan(capCtxIdx);
   });
 
   it("given the skill registry is populated via systemPromptOptions.skills when before_agent_start runs then the registry is cached", async () => {
@@ -1366,7 +1371,7 @@ describe("skill injection — before_agent_start integration", () => {
     expect(result.systemPrompt?.startsWith(basePrompt)).toBe(true);
     // Appended content follows after the separator
     expect(result.systemPrompt).toContain("\n\n");
-    expect(result.systemPrompt).toContain("--- YOUR INSTRUCTIONS ---");
+    expect(result.systemPrompt).toContain("--- CAPABILITY CONTEXT ---");
   });
 });
 
@@ -1715,10 +1720,10 @@ describe("loop engine integration — setupSessionInfrastructure", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Session completion mandate — before_agent_start injection
+// Session completion mandate removal — before_agent_start injection
 // ---------------------------------------------------------------------------
 
-describe("session completion mandate — before_agent_start injection", () => {
+describe("session completion mandate removal — before_agent_start injection", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -1737,7 +1742,7 @@ describe("session completion mandate — before_agent_start injection", () => {
     cleanup(tempDir);
   });
 
-  it("given before_agent_start when the handler runs then the system prompt contains the SESSION COMPLETION mandate section", async () => {
+  it("given before_agent_start when the handler runs then SESSION COMPLETION section is absent and SESSION_COMPLETION_MANDATE is no longer exported", async () => {
     const pioSkillBody = "# PIO Skill";
     const pioFilePath = writeSkillFile(tempDir, "pio", pioSkillBody);
     const pioBaseDir = path.dirname(pioFilePath);
@@ -1795,12 +1800,13 @@ describe("session completion mandate — before_agent_start injection", () => {
     );
 
     expect(typeof result.systemPrompt).toBe("string");
-    expect(result.systemPrompt).toContain("--- SESSION COMPLETION ---");
-    expect(result.systemPrompt).toContain("pio_mark_complete");
-    expect(result.systemPrompt).toContain("ask_user");
+    // SESSION COMPLETION section should be absent
+    expect(result.systemPrompt).not.toContain("--- SESSION COMPLETION ---");
+    // WORKFLOW EXECUTION should be present instead
+    expect(result.systemPrompt).toContain("--- WORKFLOW EXECUTION ---");
   });
 
-  it("given before_agent_start when the handler runs then section ordering is SKILL LOADING INSTRUCTIONS before SESSION COMPLETION before YOUR INSTRUCTIONS", async () => {
+  it("given before_agent_start when the handler runs then section ordering is SKILL LOADING before WORKFLOW EXECUTION before CAPABILITY CONTEXT", async () => {
     const pioSkillBody = "# PIO Skill";
     const pioFilePath = writeSkillFile(tempDir, "pio", pioSkillBody);
     const pioBaseDir = path.dirname(pioFilePath);
@@ -1860,19 +1866,21 @@ describe("session completion mandate — before_agent_start injection", () => {
     const skillIdx = result.systemPrompt.indexOf(
       "--- SKILL LOADING INSTRUCTIONS ---",
     );
-    const mandateIdx = result.systemPrompt.indexOf(
-      "--- SESSION COMPLETION ---",
+    const workflowExecIdx = result.systemPrompt.indexOf(
+      "--- WORKFLOW EXECUTION ---",
     );
-    const yourIdx = result.systemPrompt.indexOf("--- YOUR INSTRUCTIONS ---");
+    const capCtxIdx = result.systemPrompt.indexOf("--- CAPABILITY CONTEXT ---");
 
     expect(skillIdx).toBeGreaterThan(-1);
-    expect(mandateIdx).toBeGreaterThan(-1);
-    expect(yourIdx).toBeGreaterThan(-1);
-    expect(skillIdx).toBeLessThan(mandateIdx);
-    expect(mandateIdx).toBeLessThan(yourIdx);
+    expect(workflowExecIdx).toBeGreaterThan(-1);
+    expect(capCtxIdx).toBeGreaterThan(-1);
+    expect(skillIdx).toBeLessThan(workflowExecIdx);
+    expect(workflowExecIdx).toBeLessThan(capCtxIdx);
+    // SESSION COMPLETION should be absent
+    expect(result.systemPrompt).not.toContain("--- SESSION COMPLETION ---");
   });
 
-  it("given before_agent_start with no skills and no project context when the handler runs then the mandate section is still injected", async () => {
+  it("given before_agent_start with no skills and no project context when the handler runs then SESSION COMPLETION is absent but WORKFLOW EXECUTION is present", async () => {
     const registeredHandlers: Record<string, Function> = {};
 
     const mockPi = {
@@ -1923,9 +1931,11 @@ describe("session completion mandate — before_agent_start injection", () => {
       {} as any,
     );
 
-    // Mandate should still be present even without skills or project context
+    // SESSION COMPLETION should be absent even without skills or project context
     expect(result).toBeDefined();
-    expect(result.systemPrompt).toContain("--- SESSION COMPLETION ---");
+    expect(result.systemPrompt).not.toContain("--- SESSION COMPLETION ---");
+    // WORKFLOW EXECUTION should be present (unconditional injection)
+    expect(result.systemPrompt).toContain("--- WORKFLOW EXECUTION ---");
   });
 });
 
@@ -1952,7 +1962,7 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
     cleanup(tempDir);
   });
 
-  it("given compiled sections with role, workflow, and guidelines when before_agent_start runs then sections appear in correct order under YOUR INSTRUCTIONS", async () => {
+  it("given compiled sections with role, workflow, and guidelines when before_agent_start runs then sections appear in correct order under CAPABILITY CONTEXT", async () => {
     const registeredHandlers: Record<string, Function> = {};
 
     const mockPi = {
@@ -2004,22 +2014,28 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
     );
 
     expect(typeof result.systemPrompt).toBe("string");
-    expect(result.systemPrompt).toContain("--- YOUR INSTRUCTIONS ---");
+    expect(result.systemPrompt).toContain("--- CAPABILITY CONTEXT ---");
 
-    // Verify sections appear in order: role → workflow → WORKFLOW_INSTRUCTIONS → guidelines
-    const yourIdx = result.systemPrompt.indexOf("--- YOUR INSTRUCTIONS ---");
+    // Verify capability sections appear in order: role → workflow → guidelines
+    // (WORKFLOW_INSTRUCTIONS is no longer inside the capability block)
+    const capCtxIdx = result.systemPrompt.indexOf("--- CAPABILITY CONTEXT ---");
     const roleIdx = result.systemPrompt.indexOf("## Role");
     const workflowIdx = result.systemPrompt.indexOf("## Workflow");
-    const workflowInstructionsIdx = result.systemPrompt.indexOf(
-      "## Workflow Instructions",
-    );
     const guidelinesIdx = result.systemPrompt.indexOf("## Guidelines");
 
-    expect(yourIdx).toBeGreaterThan(-1);
-    expect(roleIdx).toBeGreaterThan(yourIdx);
+    expect(capCtxIdx).toBeGreaterThan(-1);
+    expect(roleIdx).toBeGreaterThan(capCtxIdx);
     expect(workflowIdx).toBeGreaterThan(roleIdx);
-    expect(workflowInstructionsIdx).toBeGreaterThan(workflowIdx);
-    expect(guidelinesIdx).toBeGreaterThan(workflowInstructionsIdx);
+    expect(guidelinesIdx).toBeGreaterThan(workflowIdx);
+    // WORKFLOW_INSTRUCTIONS ("# Workflow Execution") should NOT appear inside the capability block
+    // It lives in its own top-level WORKFLOW EXECUTION section
+    const capCtxContent = result.systemPrompt.slice(capCtxIdx);
+    const nextSectionIdx = capCtxContent.indexOf("---", 1);
+    const capCtxOnly =
+      nextSectionIdx > 0
+        ? capCtxContent.slice(0, nextSectionIdx)
+        : capCtxContent;
+    expect(capCtxOnly).not.toContain("# Workflow Execution");
   });
 
   it("given compiled sections with missing guidelines when before_agent_start runs then only role and workflow sections are included", async () => {
@@ -2083,8 +2099,16 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
     expect(typeof result.systemPrompt).toBe("string");
     expect(result.systemPrompt).toContain("## Role");
     expect(result.systemPrompt).toContain("## Workflow");
-    // WORKFLOW_INSTRUCTIONS should appear because workflow is present
-    expect(result.systemPrompt).toContain("## Workflow Instructions");
+    // WORKFLOW_INSTRUCTIONS should NOT appear inside the capability block anymore
+    // (it's now a separate top-level WORKFLOW EXECUTION section)
+    const capCtxIdx = result.systemPrompt.indexOf("--- CAPABILITY CONTEXT ---");
+    const capCtxContent = result.systemPrompt.slice(capCtxIdx);
+    const nextSectionIdx = capCtxContent.indexOf("---", 1);
+    const capCtxOnly =
+      nextSectionIdx > 0
+        ? capCtxContent.slice(0, nextSectionIdx)
+        : capCtxContent;
+    expect(capCtxOnly).not.toContain("# Workflow Execution");
     // Guidelines should not appear since it was undefined
     expect(result.systemPrompt).not.toContain("## Guidelines");
   });
@@ -2206,7 +2230,7 @@ describe("launchCapability — withSession sends initial message as CustomMessag
 // ---------------------------------------------------------------------------
 
 describe("WORKFLOW_INSTRUCTIONS constant", () => {
-  it("given WORKFLOW_INSTRUCTIONS when exported then it contains key phrases about sequential execution, dynamic delivery, and current-step focus", async () => {
+  it("given WORKFLOW_INSTRUCTIONS when exported then it contains key phrases about sequential execution, dynamic delivery, current-step focus, and negative constraints", async () => {
     const mod = await import("./capability-session");
 
     expect(mod.WORKFLOW_INSTRUCTIONS).toBeDefined();
@@ -2214,8 +2238,16 @@ describe("WORKFLOW_INSTRUCTIONS constant", () => {
 
     const content = mod.WORKFLOW_INSTRUCTIONS.toLowerCase();
     expect(content).toContain("sequentially");
-    expect(content).toContain("message injection");
+    expect(content).toContain("custommessage");
     expect(content).toContain("focus on completing your current step");
+    // New negative constraints
+    expect(content).toContain("do not produce outputs for future steps");
+    expect(content).toContain(
+      "do not call pio_mark_complete on non-final steps",
+    );
+    expect(content).toContain(
+      "do not follow the instructions in the initial message",
+    );
   });
 
   it("given WORKFLOW_INSTRUCTIONS when content is static then it contains no variable or iteration-dependent references", async () => {

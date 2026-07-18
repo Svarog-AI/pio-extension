@@ -123,10 +123,16 @@ export async function launchCapability(
       });
     },
     withSession: async (_newCtx) => {
-      // Kick off the agent with the initial task (visible as user message)
+      // Step A: inject initial message as passive CustomMessage (appended to history, no turn)
       if (config.initialMessage) {
-        _newCtx.sendUserMessage(config.initialMessage);
+        await _newCtx.sendMessage({
+          customType: "workflow-initial-message",
+          content: config.initialMessage,
+          display: true,
+        });
       }
+      // Step B: kick off first agent run via follow-up (goes through normal prompt() flow → before_agent_start fires)
+      _newCtx.sendUserMessage("");
     },
   });
 }

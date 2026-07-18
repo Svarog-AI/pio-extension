@@ -2094,6 +2094,117 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
 // WORKFLOW_INSTRUCTIONS constant
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// launchCapability — withSession CustomMessage initial message
+// ---------------------------------------------------------------------------
+
+describe("launchCapability — withSession sends initial message as CustomMessage", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    // Unmock launchCapability so we get the real implementation
+    vi.doUnmock("./capability-session");
+  });
+
+  // Build a mock ExtensionCommandContext that captures newSession call
+  function makeMockCtx() {
+    return {
+      sessionManager: {
+        getSessionFile: () => "parent-session.json",
+      },
+      newSession: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  it("given config with initialMessage when withSession runs then sendMessage is called with customType workflow-initial-message", async () => {
+    const mockCtx = makeMockCtx();
+
+    const mod = await import("./capability-session");
+    await mod.launchCapability(mockCtx as any, {
+      capability: "test-cap",
+      initialMessage: "Build the feature",
+      workspaceDir: "/test/.pio/goals/test",
+      contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
+    });
+
+    // Trigger withSession
+    const fakeNewCtx = {
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      sendUserMessage: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const newSessionCall = mockCtx.newSession.mock.calls[0];
+    await newSessionCall[0].withSession(fakeNewCtx);
+
+    // Assert: sendMessage called with correct CustomMessage
+    expect(fakeNewCtx.sendMessage).toHaveBeenCalledTimes(1);
+    expect(fakeNewCtx.sendMessage).toHaveBeenCalledWith({
+      customType: "workflow-initial-message",
+      content: "Build the feature",
+      display: true,
+    });
+  });
+
+  it("given config with initialMessage when withSession runs then empty sendUserMessage follows as trigger", async () => {
+    const mockCtx = makeMockCtx();
+
+    const mod = await import("./capability-session");
+    await mod.launchCapability(mockCtx as any, {
+      capability: "test-cap",
+      initialMessage: "Build the feature",
+      workspaceDir: "/test/.pio/goals/test",
+      contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
+    });
+
+    const fakeNewCtx = {
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      sendUserMessage: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const newSessionCall = mockCtx.newSession.mock.calls[0];
+    await newSessionCall[0].withSession(fakeNewCtx);
+
+    // Assert: sendUserMessage called with empty string after sendMessage
+    expect(fakeNewCtx.sendUserMessage).toHaveBeenCalledTimes(1);
+    expect(fakeNewCtx.sendUserMessage).toHaveBeenCalledWith("");
+    // sendMessage should have been called before sendUserMessage
+    expect(fakeNewCtx.sendMessage).toHaveBeenCalledBefore(
+      fakeNewCtx.sendUserMessage,
+    );
+  });
+
+  it("given config without initialMessage when withSession runs then only empty sendUserMessage is sent", async () => {
+    const mockCtx = makeMockCtx();
+
+    const mod = await import("./capability-session");
+    await mod.launchCapability(mockCtx as any, {
+      capability: "test-cap",
+      workspaceDir: "/test/.pio/goals/test",
+      contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
+    });
+
+    const fakeNewCtx = {
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      sendUserMessage: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const newSessionCall = mockCtx.newSession.mock.calls[0];
+    await newSessionCall[0].withSession(fakeNewCtx);
+
+    // Assert: sendMessage NOT called (no initial message)
+    expect(fakeNewCtx.sendMessage).not.toHaveBeenCalled();
+    // Assert: sendUserMessage still called with empty string (trigger)
+    expect(fakeNewCtx.sendUserMessage).toHaveBeenCalledTimes(1);
+    expect(fakeNewCtx.sendUserMessage).toHaveBeenCalledWith("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WORKFLOW_INSTRUCTIONS constant
+// ---------------------------------------------------------------------------
+
 describe("WORKFLOW_INSTRUCTIONS constant", () => {
   it("given WORKFLOW_INSTRUCTIONS when exported then it contains key phrases about sequential execution, dynamic delivery, and current-step focus", async () => {
     const mod = await import("./capability-session");

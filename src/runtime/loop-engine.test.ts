@@ -16,7 +16,13 @@ vi.spyOn(capabilityUtils, "getSessionConfig").mockResolvedValue({
   sessionParams: {},
   sessionName: "test-create-goal",
   allowProjectWrites: false,
-  contract: { inputs: [], outputs: [] },
+  contract: {
+    inputs: [],
+    outputs: [
+      { name: "goal", file: "GOAL.md" },
+      { name: "plan", file: "PLAN.md" },
+    ],
+  },
 });
 
 vi.spyOn(capabilitySession, "getSessionParams").mockReturnValue({
@@ -150,7 +156,13 @@ beforeEach(() => {
     sessionParams: {},
     sessionName: "test-create-goal",
     allowProjectWrites: false,
-    contract: { inputs: [], outputs: [] },
+    contract: {
+      inputs: [],
+      outputs: [
+        { name: "goal", file: "GOAL.md" },
+        { name: "plan", file: "PLAN.md" },
+      ],
+    },
   });
   vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
     workflowSteps: [
@@ -2478,5 +2490,426 @@ describe("test accessors", () => {
 
     __testSetActiveSession(false);
     expect(getState().isActive).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// tool_call — step-level write gate
+// ---------------------------------------------------------------------------
+
+describe("tool_call — step-level write gate", () => {
+  async function fireToolCall(
+    handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+    event: { toolName: string; input?: unknown },
+  ) {
+    const handlersList = handlers.get("tool_call");
+    expect(handlersList).toBeDefined();
+    for (const handler of handlersList!) {
+      return await handler(event);
+    }
+  }
+
+  // (a) Contract output write blocked when target not in allowlist
+  it("blocks contract output write when target not in allowlist", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    // Set up: Step 1 has write: ["goal"], Step 2 has write: ["plan"]
+    setState({
+      isActive: true,
+      currentStep: 1,
+      currentIteration: 1,
+      totalSteps: 2,
+      stepsList: [
+        { id: "s1", title: "S1", instructions: "A", write: ["goal"] },
+        { id: "s2", title: "S2", instructions: "B", write: ["plan"] },
+      ],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      stepWriteAllowlist: new Map([
+        [
+          1,
+          {
+            allowedPaths: new Set(["/test/.pio/goals/test/GOAL.md"]),
+            allowedNames: ["goal"],
+            allContractOutputs: new Set([
+              "/test/.pio/goals/test/GOAL.md",
+              "/test/.pio/goals/test/PLAN.md",
+            ]),
+          },
+        ],
+        [
+          2,
+          {
+            allowedPaths: new Set(["/test/.pio/goals/test/PLAN.md"]),
+            allowedNames: ["plan"],
+            allContractOutputs: new Set([
+              "/test/.pio/goals/test/GOAL.md",
+              "/test/.pio/goals/test/PLAN.md",
+            ]),
+          },
+        ],
+      ]),
+    });
+
+    // Act: try to write PLAN.md during Step 1 (only goal is allowed)
+    const result = await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "/test/.pio/goals/test/PLAN.md", content: "x" },
+    });
+
+    // Assert: blocked
+    const blocked = result as { block: boolean; reason: string } | undefined;
+    expect(blocked).toEqual({
+      block: true,
+      reason: expect.stringContaining("Writing is restricted"),
+    });
+    expect(blocked!.reason).toContain("Allowed outputs: [goal]");
+    expect(blocked!.reason).toContain("Step 1 of 2");
+  });
+
+  // (b) Contract output write allowed when target is in allowlist
+  it("allows contract output write when target is in allowlist", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentStep: 1,
+      currentIteration: 1,
+      totalSteps: 2,
+      stepsList: [
+        { id: "s1", title: "S1", instructions: "A", write: ["goal"] },
+        { id: "s2", title: "S2", instructions: "B", write: ["plan"] },
+      ],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      stepWriteAllowlist: new Map([
+        [
+          1,
+          {
+            allowedPaths: new Set(["/test/.pio/goals/test/GOAL.md"]),
+            allowedNames: ["goal"],
+            allContractOutputs: new Set([
+              "/test/.pio/goals/test/GOAL.md",
+              "/test/.pio/goals/test/PLAN.md",
+            ]),
+          },
+        ],
+      ]),
+    });
+
+    // Act: write GOAL.md during Step 1 (goal is allowed)
+    const result = await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "/test/.pio/goals/test/GOAL.md", content: "x" },
+    });
+
+    // Assert: not blocked
+    expect(result).toBeUndefined();
+    // File should still be tracked
+    expect(getState().filesWritten).toContain("/test/.pio/goals/test/GOAL.md");
+  });
+
+  // (c) Unrestricted when no write field defined
+  it("is unrestricted when step has no write field defined", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentStep: 1,
+      currentIteration: 1,
+      totalSteps: 1,
+      stepsList: [{ id: "s1", title: "S1", instructions: "A" }], // no write
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      stepWriteAllowlist: new Map(), // empty — no steps have write field
+    });
+
+    // Act: write any contract output
+    const result = await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "/test/.pio/goals/test/GOAL.md", content: "x" },
+    });
+
+    // Assert: not blocked
+    expect(result).toBeUndefined();
+  });
+
+  // (d) Empty write array blocks contract output writes
+  it("empty write array blocks contract output writes", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentStep: 1,
+      currentIteration: 1,
+      totalSteps: 2,
+      stepsList: [
+        { id: "s1", title: "Research", instructions: "A", write: [] },
+        { id: "s2", title: "Write", instructions: "B", write: ["goal"] },
+      ],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      stepWriteAllowlist: new Map([
+        [
+          1,
+          {
+            allowedPaths: new Set(), // empty — write: []
+            allowedNames: [],
+            allContractOutputs: new Set([
+              "/test/.pio/goals/test/GOAL.md",
+              "/test/.pio/goals/test/PLAN.md",
+            ]),
+          },
+        ],
+      ]),
+    });
+
+    // Act: try to write GOAL.md during Step 1 (write: [])
+    const result = await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "/test/.pio/goals/test/GOAL.md", content: "x" },
+    });
+
+    // Assert: blocked with appropriate message
+    const blocked2 = result as { block: boolean; reason: string } | undefined;
+    expect(blocked2).toEqual({
+      block: true,
+      reason: expect.stringContaining("does not produce any contract outputs"),
+    });
+    expect(blocked2!.reason).toContain("Step 1 of 2");
+  });
+
+  // (d cont.) Empty write array passes non-contract paths through
+  it("empty write array passes non-contract paths through", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentStep: 1,
+      currentIteration: 1,
+      totalSteps: 2,
+      stepsList: [
+        { id: "s1", title: "Research", instructions: "A", write: [] },
+      ],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      stepWriteAllowlist: new Map([
+        [
+          1,
+          {
+            allowedPaths: new Set(),
+            allowedNames: [],
+            allContractOutputs: new Set([
+              "/test/.pio/goals/test/GOAL.md",
+              "/test/.pio/goals/test/PLAN.md",
+            ]),
+          },
+        ],
+      ]),
+    });
+
+    // Act: write a non-contract file
+    const result = await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "/some/project/file.ts", content: "x" },
+    });
+
+    // Assert: not blocked (passes to capability-level validation)
+    expect(result).toBeUndefined();
+  });
+
+  // (e) /tmp/ writes always pass through
+  it("/tmp/ writes always pass through", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentStep: 1,
+      currentIteration: 1,
+      totalSteps: 1,
+      stepsList: [{ id: "s1", title: "S1", instructions: "A", write: [] }],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      stepWriteAllowlist: new Map([
+        [
+          1,
+          {
+            allowedPaths: new Set(),
+            allowedNames: [],
+            allContractOutputs: new Set(["/test/.pio/goals/test/GOAL.md"]),
+          },
+        ],
+      ]),
+    });
+
+    // Act: write to /tmp/
+    const result = await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "/tmp/scratch.txt", content: "x" },
+    });
+
+    // Assert: not blocked
+    expect(result).toBeUndefined();
+  });
+
+  // (f) Resolution of undefined output names during resources_discover (skipped silently)
+  it("resources_discover skips undefined output names silently", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    vi.mocked(capabilityUtils.getSessionConfig).mockResolvedValue({
+      capability: "create-goal",
+      workspaceDir: "/test/.pio/goals/test",
+      sessionParams: {},
+      sessionName: "test-create-goal",
+      allowProjectWrites: false,
+      contract: {
+        inputs: [],
+        outputs: [{ name: "goal", file: "GOAL.md" }],
+      },
+    });
+    vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+      workflowSteps: [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "A",
+          write: ["goal", "nonexistent"], // "nonexistent" doesn't exist in contract
+        },
+      ],
+      totalWorkflowSteps: 1,
+    });
+
+    setupLoopEngine(pi);
+
+    // Act: fire resources_discover
+    const discoverHandlers = handlers.get("resources_discover");
+    for (const h of discoverHandlers!) {
+      await h(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        {} as any,
+      );
+    }
+
+    // Assert: stepWriteAllowlist entry exists for step 1
+    const state = getState();
+    const entry = state.stepWriteAllowlist.get(1);
+    expect(entry).toBeDefined();
+    // "goal" resolved, "nonexistent" skipped silently
+    expect(entry!.allowedNames).toContain("goal");
+    expect(entry!.allowedNames).toContain("nonexistent");
+    expect(entry!.allowedPaths.size).toBe(1); // only "goal" resolved
+  });
+
+  // Gate blocks vscode_apply_workspace_edit with disallowed contract output
+  it("blocks vscode_apply_workspace_edit targeting disallowed contract output", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentStep: 1,
+      currentIteration: 1,
+      totalSteps: 2,
+      stepsList: [
+        { id: "s1", title: "S1", instructions: "A", write: ["goal"] },
+      ],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      stepWriteAllowlist: new Map([
+        [
+          1,
+          {
+            allowedPaths: new Set(["/test/.pio/goals/test/GOAL.md"]),
+            allowedNames: ["goal"],
+            allContractOutputs: new Set([
+              "/test/.pio/goals/test/GOAL.md",
+              "/test/.pio/goals/test/PLAN.md",
+            ]),
+          },
+        ],
+      ]),
+    });
+
+    // Act: try to edit PLAN.md during Step 1
+    const result = await fireToolCall(handlers, {
+      toolName: "vscode_apply_workspace_edit",
+      input: {
+        edits: [
+          {
+            filePath: "/test/.pio/goals/test/PLAN.md",
+            range: {},
+            newText: "x",
+          },
+        ],
+      },
+    });
+
+    // Assert: blocked
+    expect(result).toEqual({
+      block: true,
+      reason: expect.stringContaining("Writing is restricted"),
+    });
+  });
+
+  // Files are still tracked even when blocked
+  it("files are still tracked even when write is blocked", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentStep: 1,
+      currentIteration: 1,
+      totalSteps: 2,
+      stepsList: [
+        { id: "s1", title: "S1", instructions: "A", write: ["goal"] },
+      ],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      stepWriteAllowlist: new Map([
+        [
+          1,
+          {
+            allowedPaths: new Set(["/test/.pio/goals/test/GOAL.md"]),
+            allowedNames: ["goal"],
+            allContractOutputs: new Set([
+              "/test/.pio/goals/test/GOAL.md",
+              "/test/.pio/goals/test/PLAN.md",
+            ]),
+          },
+        ],
+      ]),
+    });
+
+    // Act: try to write disallowed PLAN.md
+    await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "/test/.pio/goals/test/PLAN.md", content: "x" },
+    });
+
+    // Assert: file is still tracked (tracking happens before gate)
+    expect(getState().filesWritten).toContain("/test/.pio/goals/test/PLAN.md");
   });
 });

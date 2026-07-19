@@ -90,6 +90,9 @@ export interface WorkflowStep {
 
   /** Step number to return to after ad-hoc mode resumption (/return command). Defaults to current step when omitted. */
   returnTo?: number;
+
+  /** Contract output names this step is allowed to write (resolved during resources_discover). When absent, all writes are unrestricted (backward compat). When defined but empty, all contract output writes are blocked. */
+  write?: string[];
 }
 
 // ---------------------------------------------------------------------------

@@ -18,6 +18,7 @@
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getSessionParams } from "../capability-session";
+import { CapState } from "../capability-state";
 import { getSessionConfig } from "../capability-utils";
 import { readDebugDisplay, resolveMaxIterations } from "../model-config";
 import type { PioSessionState } from "./session-state";
@@ -146,6 +147,44 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         ? sessionParams.totalWorkflowSteps
         : stepsList.length;
 
+    // Resolve step-level write allowlists
+    const capState = new CapState(
+      config.contract,
+      config.workspaceDir ?? ctx.cwd,
+      config.sessionParams,
+    );
+    const allContractOutputs = new Set(
+      capState.getAllOutputPaths().map((p) => path.resolve(p)),
+    );
+
+    const stepWriteAllowlist = new Map<
+      number,
+      {
+        allowedPaths: Set<string>;
+        allowedNames: string[];
+        allContractOutputs: Set<string>;
+      }
+    >();
+    for (let i = 0; i < stepsList.length; i++) {
+      const step = stepsList[i];
+      if (step.write !== undefined) {
+        const allowedPaths = new Set<string>();
+        const allowedNames: string[] = [];
+        for (const name of step.write) {
+          allowedNames.push(name);
+          const resolved = capState.tryResolveOutput(name);
+          if (resolved) {
+            allowedPaths.add(path.resolve(resolved.path));
+          }
+        }
+        stepWriteAllowlist.set(i + 1, {
+          allowedPaths,
+          allowedNames,
+          allContractOutputs: new Set(allContractOutputs),
+        });
+      }
+    }
+
     // Initialize PioSessionState (single source of truth)
     setState({
       isActive: true,
@@ -156,6 +195,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
+      stepWriteAllowlist: stepWriteAllowlist,
     });
   });
 
@@ -231,31 +271,70 @@ export function setupLoopEngine(pi: ExtensionAPI) {
 
     if (!input) return;
 
-    // Track file write tools
+    // Extract target paths (shared for tracking + gating)
+    const targetPaths: string[] = [];
     if (toolName === "write" || toolName === "edit") {
       const filePath = input.path as string | undefined;
       if (typeof filePath === "string") {
-        setState({
-          filesWritten: [...getState().filesWritten, path.resolve(filePath)],
-        });
+        targetPaths.push(path.resolve(filePath));
       }
     } else if (toolName === "vscode_apply_workspace_edit") {
       const edits = input.edits as Array<{ filePath?: string }> | undefined;
       if (Array.isArray(edits)) {
-        const current = getState().filesWritten;
-        const newPaths: string[] = [];
         for (const edit of edits) {
           if (typeof edit.filePath === "string") {
-            newPaths.push(path.resolve(edit.filePath));
+            targetPaths.push(path.resolve(edit.filePath));
           }
         }
-        setState({ filesWritten: [...current, ...newPaths] });
       }
+    }
+
+    // Track file writes
+    if (targetPaths.length > 0) {
+      setState({
+        filesWritten: [...getState().filesWritten, ...targetPaths],
+      });
     }
 
     // Track ask_user calls
     if (toolName === "ask_user") {
       setState({ askUserCalled: true });
+    }
+
+    // --- Step-level write gate ---
+    const state = getState();
+    if (targetPaths.length > 0 && state.isActive) {
+      const entry = state.stepWriteAllowlist.get(state.currentStep);
+      if (entry !== undefined) {
+        const currentStepObj = state.stepsList[state.currentStep - 1];
+        const stepTitle = currentStepObj?.title ?? "unknown";
+
+        for (const tp of targetPaths) {
+          // Always allow /tmp/ writes (consistency with capability-level validation)
+          if (tp.startsWith("/tmp/")) continue;
+
+          if (entry.allowedPaths.size === 0) {
+            // write: [] — block known contract output paths
+            if (entry.allContractOutputs.has(tp)) {
+              return {
+                block: true,
+                reason: `Writing is not allowed during Step ${state.currentStep} of ${state.totalSteps} (${stepTitle}). This step does not produce any contract outputs.`,
+              };
+            }
+          } else {
+            // Populated allowlist — block other contract output paths
+            if (
+              !entry.allowedPaths.has(tp) &&
+              entry.allContractOutputs.has(tp)
+            ) {
+              return {
+                block: true,
+                reason: `Writing is restricted during Step ${state.currentStep} of ${state.totalSteps} (${stepTitle}). Allowed outputs: [${entry.allowedNames.join(", ")}].`,
+              };
+            }
+          }
+        }
+      }
     }
   });
 

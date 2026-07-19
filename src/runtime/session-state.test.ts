@@ -116,6 +116,7 @@ describe("session-state", () => {
           filesWritten: ["/test/file"],
           askUserCalled: true,
           isAdHocInput: false,
+          stepWriteAllowlist: new Map(),
         };
 
         __testSetState(newState);

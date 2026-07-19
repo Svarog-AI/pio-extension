@@ -55,6 +55,16 @@ export interface PioSessionState {
    * Persists until cleared by the `/return` command.
    */
   isAdHocInput: boolean;
+
+  /** Step-level write allowlists: step number (1-based) → { allowedPaths (resolved absolute paths), allowedNames (original output names for error messages), allContractOutputs (all known contract output paths, used by write: [] to block). Populated during resources_discover. */
+  stepWriteAllowlist: Map<
+    number,
+    {
+      allowedPaths: Set<string>;
+      allowedNames: string[];
+      allContractOutputs: Set<string>;
+    }
+  >;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +85,7 @@ function createInitialState(): PioSessionState {
     filesWritten: [],
     askUserCalled: false,
     isAdHocInput: false,
+    stepWriteAllowlist: new Map(),
   };
 }
 

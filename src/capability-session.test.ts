@@ -2199,18 +2199,15 @@ describe("launchCapability — withSession no longer sends initial message as Cu
 // ---------------------------------------------------------------------------
 
 describe("WORKFLOW_INSTRUCTIONS constant", () => {
-  it("given WORKFLOW_INSTRUCTIONS when exported then it declares CustomMessage as the sole source of task directives", async () => {
+  it("given WORKFLOW_INSTRUCTIONS when exported then it declares CustomMessage as the delivery mechanism", async () => {
     const mod = await import("./capability-session");
 
     expect(mod.WORKFLOW_INSTRUCTIONS).toBeDefined();
     expect(typeof mod.WORKFLOW_INSTRUCTIONS).toBe("string");
 
     const content = mod.WORKFLOW_INSTRUCTIONS.toLowerCase();
-    // Should reference CustomMessage as the only source of task directives
+    // Should reference CustomMessage injection
     expect(content).toContain("custommessage");
-    expect(content).toContain("only source of task directives");
-    // Should mention pio_mark_complete for completion
-    expect(content).toContain("pio_mark_complete");
     // Should NOT contain old instruction leaks
     expect(content).not.toContain("step titles as a roadmap");
     expect(content).not.toContain("initial message");
@@ -2229,7 +2226,7 @@ describe("WORKFLOW_INSTRUCTIONS constant", () => {
     expect(content).not.toMatch(/iteration\s+\d+/i);
   });
 
-  it("contains Step Boundaries subsection with two rules", async () => {
+  it("contains Step Boundaries subsection with rules", async () => {
     const mod = await import("./capability-session");
 
     const content = mod.WORKFLOW_INSTRUCTIONS;
@@ -2238,13 +2235,21 @@ describe("WORKFLOW_INSTRUCTIONS constant", () => {
     // Should have a Step Boundaries heading
     expect(content).toContain("## Step Boundaries");
 
-    // Rule 1: do not produce artifacts until the step explicitly asks
+    // Rule 1: do not produce artifacts
     expect(lower).toContain("do not produce artifacts");
-    expect(lower).toContain("step explicitly asks");
 
     // Rule 2: respect negative instructions
     expect(lower).toContain("respect negative instructions");
     expect(lower).toContain("hard constraint");
+
+    // Rule 3: do nothing outside step instructions
+    expect(lower).toContain(
+      "do absolutely nothing outside of the step instructions",
+    );
+
+    // Rule 4: leverage context but stay focused
+    expect(lower).toContain("leverage context");
+    expect(lower).toContain("keep focused on the current step");
   });
 
   it("does not reference capability names or output file names", async () => {

@@ -6,7 +6,7 @@
 
 pio is a **pi extension** — it registers with the pi coding agent framework via `src/index.ts`, which exports an `async` default function `(pi: ExtensionAPI) => void`. This function:
 1. Registers discoverable skills (`resources_discover` event)
-2. Wires shared infrastructure: `setupSessionInfrastructure()`, `setupMarkComplete()`, `setupValidation()`, `setupSessionGuard()`, `setupStepNudging()`, `setupDirectTools()`
+2. Wires shared infrastructure: `setupSessionInfrastructure()`, `setupMarkComplete()`, `setupValidation()`, `setupSessionGuard()`, `setupLoopEngine()`, `setupDirectTools()`
 3. **Auto-discovers** AI-driven capabilities via `discoverCapabilities(__dirname)` which scans `src/capabilities/` for directories containing `config.ts`, then calls `registerCapability(pi, descriptor)` for each
 4. Registers non-AI tools (init, delete-goal, list-goals, parent, create-issue, goal-from-issue) via `setupDirectTools(pi)` — consolidated in `src/direct-tools.ts`
 5. Explicitly imports and registers state machines (e.g., `state-machines/pio-workflow-machine`) to ensure machines are available before mark-complete dispatches transitions
@@ -16,6 +16,8 @@ Test fixtures (`test-*` prefixed directories) are automatically filtered out fro
 ### Skill Auto-Discovery
 
 Skills are auto-discovered from the filesystem — no hardcoded registration list. The `setupSkills()` function in `src/index.ts` scans `SKILLS_DIR` at startup using `fs.readdirSync()`, filtering directories by `SKILL.md` existence. To add a new skill, create its directory and `SKILL.md` file under `src/skills/`; it will be registered automatically on next startup. If `SKILLS_DIR` doesn't exist or is unreadable, the scan silently produces an empty array rather than crashing.
+
+**Active skills:** Only `pio-git` and `test-driven-development` remain in `src/skills/`. The pio-specific skills (`pio`, `pio-planning`, `pio-project-knowledge`, `pio-jira`, `grill-me`, `write-a-skill`) were moved to `src/skills.old/` to prevent auto-discovery — capabilities now declare needed skills via `WorkflowStep.skills` and capability config `skills` fields, making filesystem discovery redundant for workflow-specific guidance.
 
 ### Capability Package Pattern
 
@@ -122,7 +124,16 @@ Mandatory skills are force-injected (content read from disk, frontmatter strippe
 9. **CapState-aware output predicates:** `MarkdownFileSpec.requiredWhen` signature is `(params?, capState?) => boolean`. Predicates can read contract inputs (e.g., PLAN.md frontmatter via `capState.input("plan").read()`) to make output requirements dynamic. Example: evolve-plan uses a `OneOfGroup` with group-level `requiredWhen` (active when `stepNumber > totalSteps`) to require either `COMPLETION_SUMMARY.md` or `REVISE_PLAN_NEEDED.md` — mutual exclusion enforced at validation time.
 9b. **Dynamic revision context:** revise-plan accepts a dynamic input (`{ name: "revision-context", paramKey: "revisionContextFile" }`) instead of hardcoding `REVISE_PLAN_NEEDED.md`. This allows both the old evolve-plan path (passing `REVISE_PLAN_NEEDED.md`) and the new quality-gate path (passing `QUALITY_GATE.md`) to feed revision context through the same input slot. The resolver-declared cleanup (`cleanup: ["revision-context"]` on `revise-plan → evolve-plan`) handles deletion of the context file, replacing the old `postExecute: cleanupRevisionRequest` callback.
 10. **Declarative state machines:** Transition resolution uses the generic `StateMachine<C>` framework (`state-machines.ts`) — edges with `resolve` functions replace imperative `switch` statements. Machine registry backed by `_machinesById` Map with O(1) lookup via `getMachine(id)`. Machines register explicitly via named setup functions from `index.ts`. Mark-complete dispatches against the correct machine by reading `stateMachineId` from session params (multi-machine aware). Fallback to `dispatch(undefined, ...)` for backward compatibility. 
-9. **Step nudging:** `workflow-step-finish` tool + `turn_end` nudge injection guides agents through multi-step workflows. State tracked in `step-nudging.ts`, injected via `pi.sendMessage({ deliverAs: "steer" })`. The `turn_end` handler checks `event.message.stopReason === "aborted"` to skip nudges when the user cancels (Esc/Ctrl+C) — `stopReason` on message objects is the authoritative source, set by the agent loop.
+9. **Runtime Loop Engine:** Replaced prompt-based step nudging with a bounded iteration loop (`src/runtime/loop-engine.ts`). Each workflow step executes as one or more *agent runs* (iterations). The engine enforces:
+- **Iteration bounds:** `minIterations` (per-step, default 1) guarantees minimum agent runs; `maxIterations` (global config > built-in default of 15) is a hard safety cap. Resolution: per-step > global `~/.pi/pio-config.yaml` loop block > built-in default.
+- **Termination conditions:** After each iteration (once min reached), evaluates `terminateWhen` against `StepState` (`filesWritten[]`, `filesEdited[]`, `askUserCalled`). Supports callback functions; OR logic — any passing condition advances the step.
+- **Turn-level tracking:** Dead-turn detection and refinement-loop nudge via `turn_end` handler.
+- **Steering messages:** Delivered via CustomMessage injection at `turn_end` using step-specific `loopMessage`. System prompt is process-aware only (how to work, not what to produce); all step content flows through CustomMessage — KV cache safe across agent runs.
+- **Follow-up messages:** Inter-iteration transitions delivered via `sendUserMessage(..., { deliverAs: "followUp" })` at `agent_end`. Skipped on user abort (`stopReason === "aborted"`), error, or mark-complete termination (detected via `markCompleteCalled` in shared session state).
+- **Ad-hoc mode:** User messages mid-execution pause the step for free conversation. `/return` command exits ad-hoc mode and resumes the workflow from a configurable step.
+- **Write gate (restricted-by-default):** Each capability workflow declares `write: [output-names]` on output-producing steps. Steps without `write` cannot produce contract outputs (source code, tests, docs unaffected). The gate checks against resolved absolute paths during `tool_call` events.
+
+The `workflow-step-finish` tool was removed — advancement is automatic via the engine.
 10. **Abort detection in session guards:** Both `step-nudging.ts` (`turn_end`) and `session-guard.ts` (`turn_end` + `agent_end`) detect user aborts via `stopReason` on event messages instead of `ctx.signal?.aborted` (unreliable — `activeRun` is cleared before events fire). The `turn_end` handler in `session-guard.ts` returns early on abort to skip turn counting and recovery prompts; `agent_end` checks the last message's `stopReason` to suppress completion warnings.
 11. **Prompt compilation:** `compilePrompt()` reads component files (`role.md`, `workflow.ts`, `guidelines.md`) and assembles the final prompt — replaces monolithic `.md` prompts (old `src/prompts/` directory removed)
 12. **Dynamic capability loading:** `resolveCapabilityConfig()` uses dynamic imports to load capability modules at runtime

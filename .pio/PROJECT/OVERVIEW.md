@@ -19,7 +19,7 @@ Developed by Svarog AI. Licensed under MIT. Repository: `github.com:Svarog-AI/pi
 
 ## Repository Structure
 
-The `src/prompts/` directory was removed — prompts are now component files inside each capability directory package (`role.md`, `workflow.ts`, `guidelines.md`). Direct tools (init, delete-goal, list-goals, parent, create-issue, goal-from-issue) are consolidated in `src/direct-tools.ts`. The `src/frontmatter-schemas.ts` module was deleted — schemas now live in capability-local `schemas.ts` files. The `src/goal-state.ts` module was deleted — replaced by `src/capability-state.ts` (CapState, contract-backed lazy file access).
+The `src/prompts/` directory was removed — prompts are now component files inside each capability directory package (`role.md`, `workflow.ts`, `guidelines.md`). Direct tools (init, delete-goal, list-goals, parent, create-issue, goal-from-issue) are consolidated in `src/direct-tools.ts`. The `src/frontmatter-schemas.ts` module was deleted — schemas now live in capability-local `schemas.ts` files. The `src/goal-state.ts` module was deleted — replaced by `src/capability-state.ts` (CapState, contract-backed lazy file access). The `src/guards/step-nudging.ts` module was deleted — replaced by the runtime loop engine (`src/runtime/loop-engine.ts`). Session-guard moved from `src/guards/` to `src/runtime/`. Most pio-specific skills were moved out of auto-discovery to `src/skills.old/`; only `pio-git` and `test-driven-development` remain in active discovery.
 
 ```
 pio-extension/
@@ -28,37 +28,35 @@ pio-extension/
 │   │   ├── <name>/            # 10 capability packages (create-goal, create-plan, evolve-plan, quality-gate, etc.)
 │   │   │   ├── config.ts        — CapabilityPackageConfig default export + register(pi) named export
 │   │   │   ├── role.md          — Role description (prompt component)
-│   │   │   ├── workflow.ts      — WorkflowStep[] with per-step skill declarations
+│   │   │   ├── workflow.ts      — WorkflowStep[] with per-step skill declarations + loop fields (minIterations, maxIterations, terminateWhen, write)
 │   │   │   ├── guidelines.md    — Guidelines (prompt component)
 │   │   │   ├── callbacks.ts     — Lifecycle callbacks (validation, file protections) [optional]
 │   │   │   ├── schemas.ts       — Capability-local frontmatter TypeBox schemas [optional]
 │   │   │   └── config.test.ts   — Colocated tests
 │   │   ├── direct-tools.ts      # Non-AI tools: init, delete-goal, list-goals, parent, create-issue, goal-from-issue
 │   │   └── next-task.ts         # /pio-next-task command (legacy single-file module)
-│   ├── guards/                # Event-handling guards (file protection, session lifecycle, step nudging)
+│   ├── guards/                # Event-handling guards (file protection, session lifecycle)
 │   │   ├── validation.ts        — File protection + frontmatter validation (readOnly/writeAllowlist)
-│   │   ├── mark-complete.ts     — pio_mark_complete tool + setupMarkComplete()
-│   │   ├── session-guard.ts     — Turn recovery + completion tracking
-│   │   └── step-nudging.ts      — workflow-step-finish tool + turn_end nudge injection
-│   ├── skills/                # Discoverable skills for pi's <available_skills> (auto-discovered from filesystem)
-│   │   ├── pio/SKILL.md           — pio workflow reference
-│   │   ├── test-driven-development/SKILL.md — TDD methodology guide
-│   │   ├── pio-project-knowledge/SKILL.md  — Canonical knowledge source for .pio/PROJECT/ files
-│   │   ├── pio-planning/SKILL.md  — Shared planning methodology (step structure, acceptance criteria, research)
-│   │   ├── pio-git/SKILL.md       — Git operations for pio agents (convention lookup, staged commits, branch checkout, push, PR creation)
-│   │   │   └── REFERENCE.md       — Edge case tables for branch checkout, push, and PR creation protocols (progressive disclosure)
-│   │   ├── pio-jira/SKILL.md      — Jira operations via Atlassian CLI (auth, pull/push issues, JQL search, error handling)
-│   │   │   ├── REFERENCE.md       — Execution reference with acli command strings, field mapping, edge case tables
-│   │   │   └── scripts/
-│   │   │       ├── setup-config.sh        — Creates .pio/jira-config.yaml (site, projectKey, defaultType)
-│   │   │       └── setup-config.test.ts   — Tests for setup-config.sh
-│   │   └── write-a-skill/SKILL.md — Skill authoring guide (structure, progressive disclosure, bundled resources)
+│   │   └── mark-complete.ts     — pio_mark_complete tool + setupMarkComplete() (step-aware with terminate: true)
+│   ├── runtime/               # Runtime loop engine + shared session state
+│   │   ├── loop-engine.ts       — Bounded iteration loop: resources_discover, before_agent_start, turn_end, agent_end, input handlers
+│   │   ├── loop-engine.test.ts  — Colocated tests for loop engine
+│   │   ├── session-state.ts     — PioSessionState singleton (markCompleteCalled, currentStep, iteration tracking)
+│   │   ├── session-state.test.ts
+│   │   ├── session-guard.ts     — Turn recovery + dead-turn detection (migrated from guards/)
+│   │   ├── session-guard.test.ts
+│   │   └── workflow-types.ts    — StepState, TerminationCondition types + extended WorkflowStep fields
+│   ├── skills/                # Active discoverable skills (pio-git and test-driven-development only)
+│   │   ├── pio-git/SKILL.md     — Git operations for pio agents
+│   │   └── test-driven-development/SKILL.md — TDD methodology guide
+│   ├── skills.old/            # Archived skills (moved out of auto-discovery, preserved for restoration)
+│   │   ├── pio/, pio-planning/, pio-project-knowledge/, pio-jira/, grill-me/, write-a-skill/
 │   ├── index.ts               # Extension entry point — auto-discovers capabilities via discoverCapabilities()
 │   ├── types.ts               # Shared type definitions (CapabilityConfig, ValidationRule, etc.)
 │   ├── capability-package.ts  # CapabilityPackageConfig, WorkflowStep, FrontmatterSchemaDeclaration types + layout constants
 │   ├── capability-discovery.ts # discoverCapabilities() — scans capabilities/ for directory packages
 │   ├── capability-config.ts   # resolveCapabilityConfig() — resolves config from directory packages
-│   ├── capability-session.ts  # Sub-session orchestration: launch, prompt injection, model switching (was session-capability.ts)
+│   ├── capability-session.ts  # Sub-session orchestration: launch, CustomMessage injection, model switching (was session-capability.ts)
 │   ├── capability-utils.ts    # Leaf utility: mergeCapabilitySkills()
 │   ├── prompt-compiler.ts     # compilePrompt() — assembles prompts from component files (role.md, workflow.ts, guidelines.md)
 │   ├── fs-utils.ts            # Filesystem helpers (resolveGoalDir, stepFolderName, prepareGoal)

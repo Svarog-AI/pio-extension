@@ -1396,7 +1396,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   // Step-position guard — loop engine awareness
   // -----------------------------------------------------------------------
 
-  it("returns silent no-op without terminate on non-final step (active loop engine)", async () => {
+  it("returns terminate on non-final step (markCompleteCalled not set)", async () => {
     mockGetState.mockReturnValue({
       isActive: true,
       markCompleteCalled: false,
@@ -1441,14 +1441,16 @@ describe("mark-complete (setupMarkComplete)", () => {
       mockCtx,
     );
 
-    // Should return empty content — silent no-op, no text injected into conversation
+    // Should return empty content with terminate: true — ends the run,
+    // fires agent_end which handles step advancement normally
     expect(result.content).toEqual([]);
-    expect(result.terminate).toBeFalsy();
+    expect(result.terminate).toBe(true);
 
     // Should NOT have proceeded to validation
     expect(mockValidateOutputs).not.toHaveBeenCalled();
     expect(mockDispatch).not.toHaveBeenCalled();
     // markCompleteCalled should NOT be set on non-final step early return
+    // so agent_end can run its normal advancement flow
     expect(mockSetState).not.toHaveBeenCalled();
   });
 

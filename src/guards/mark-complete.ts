@@ -217,19 +217,17 @@ export const markCompleteTool = defineTool({
       );
     }
 
-    // Step-position guard: on non-final steps, return a silent no-op.
+    // Step-position guard: on non-final steps, end the agent run immediately.
     // Empty content ensures no text is injected into the agent's conversation
     // history — the tool call produces zero visible side effects.
-    // The engine advances naturally via agent_end when the agent stops (stopReason="stop").
-    // Important: do NOT set markCompleteCalled: true on this path — the loop engine
-    // needs to see that markComplete was NOT called so it can continue advancing.
+    // terminate: true ends the run → fires agent_end, which runs its normal flow:
+    // iteration bounds check, termination condition evaluation, step advancement,
+    // and follow-up injection for the next step.
+    // Important: markCompleteCalled is NOT set — so agent_end runs normally and
+    // handles advancement via its existing logic (not an early return).
     const loopState = getState();
     if (loopState.isActive && loopState.currentStep < loopState.totalSteps) {
-      return {
-        content: [],
-        details: {},
-        // NO terminate — agent stays running, engine advances via agent_end
-      };
+      return { content: [], details: {}, terminate: true };
     }
 
     // config.workspaceDir is already the resolved directory (includes workspacePrefix).

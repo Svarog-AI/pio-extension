@@ -42,8 +42,6 @@ export function setMergedSkills(
 }
 
 // Global mandatory skills — always injected regardless of capability config
-// "pio" skill excluded: it is a full reference manual that leaks capability details
-// ("create-goal → GOAL.md"). It remains discoverable via the skill registry.
 const GLOBAL_MANDATORY_SKILLS = ["ask-user"];
 
 // Workflow execution rules — injected as a top-level section in every pio sub-session.

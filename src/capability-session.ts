@@ -125,7 +125,7 @@ export async function launchCapability(
 /**
  * Build the skill-loading section from capability config and the cached skill registry.
  * Mandatory skills are force-injected with full content. Recommended skills are listed as instructions.
- * Global mandatory skills (pio, ask-user) are always included.
+ * Global mandatory skills (ask-user) are always included.
  */
 export function buildSkillLoadingSection(
   config: Pick<CapabilityConfig, "skills">,

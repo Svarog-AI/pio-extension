@@ -1441,12 +1441,8 @@ describe("mark-complete (setupMarkComplete)", () => {
       mockCtx,
     );
 
-    // Should return silent acknowledgment, NOT terminate
-    expect(result.content[0].text).toContain("Step 1 completed");
-    expect(result.content[0].text).toContain("engine will advance");
-    expect(result.content[0].text).not.toContain(
-      "Do not call pio_mark_complete yet",
-    );
+    // Should return empty content — silent no-op, no text injected into conversation
+    expect(result.content).toEqual([]);
     expect(result.terminate).toBeFalsy();
 
     // Should NOT have proceeded to validation

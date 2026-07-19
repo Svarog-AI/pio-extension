@@ -217,20 +217,16 @@ export const markCompleteTool = defineTool({
       );
     }
 
-    // Step-position guard: on non-final steps, return a silent acknowledgment.
-    // This makes pio_mark_complete a general "I'm done" signal — the engine advances
-    // naturally via agent_end when the agent stops (stopReason="stop").
+    // Step-position guard: on non-final steps, return a silent no-op.
+    // Empty content ensures no text is injected into the agent's conversation
+    // history — the tool call produces zero visible side effects.
+    // The engine advances naturally via agent_end when the agent stops (stopReason="stop").
     // Important: do NOT set markCompleteCalled: true on this path — the loop engine
     // needs to see that markComplete was NOT called so it can continue advancing.
     const loopState = getState();
     if (loopState.isActive && loopState.currentStep < loopState.totalSteps) {
       return {
-        content: [
-          {
-            type: "text",
-            text: `Step ${loopState.currentStep} completed. The engine will advance to the next step.`,
-          },
-        ],
+        content: [],
         details: {},
         // NO terminate — agent stays running, engine advances via agent_end
       };

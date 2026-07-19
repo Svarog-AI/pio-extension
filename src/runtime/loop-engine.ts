@@ -167,9 +167,9 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     >();
     for (let i = 0; i < stepsList.length; i++) {
       const step = stepsList[i];
-      if (step.write !== undefined) {
-        const allowedPaths = new Set<string>();
-        const allowedNames: string[] = [];
+      const allowedPaths = new Set<string>();
+      const allowedNames: string[] = [];
+      if (step.write) {
         for (const name of step.write) {
           allowedNames.push(name);
           const resolved = capState.tryResolveOutput(name);
@@ -181,12 +181,13 @@ export function setupLoopEngine(pi: ExtensionAPI) {
             );
           }
         }
-        stepWriteAllowlist.set(i + 1, {
-          allowedPaths,
-          allowedNames,
-          allContractOutputs: new Set(allContractOutputs),
-        });
       }
+      // ALWAYS create entry, even when write is undefined or empty
+      stepWriteAllowlist.set(i + 1, {
+        allowedPaths,
+        allowedNames,
+        allContractOutputs: new Set(allContractOutputs),
+      });
     }
 
     // Initialize PioSessionState (single source of truth)
@@ -338,6 +339,10 @@ export function setupLoopEngine(pi: ExtensionAPI) {
             }
           }
         }
+      } else {
+        console.warn(
+          `[loop-engine] Step ${state.currentStep}: no write allowlist entry found — write gating skipped. This should not happen after resources_discover.`,
+        );
       }
     }
   });

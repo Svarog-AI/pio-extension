@@ -2618,12 +2618,13 @@ describe("tool_call — step-level write gate", () => {
     expect(getState().filesWritten).toContain("/test/.pio/goals/test/GOAL.md");
   });
 
-  // (c) Unrestricted when no write field defined
-  it("is unrestricted when step has no write field defined", async () => {
+  // (c) Restricted-by-default: step without write field blocks contract outputs
+  it("blocks contract output write when step has no write field (restricted-by-default)", async () => {
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
 
+    // Simulates the new behavior: every step gets an entry, even without write
     setState({
       isActive: true,
       currentStep: 1,
@@ -2633,17 +2634,67 @@ describe("tool_call — step-level write gate", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      stepWriteAllowlist: new Map(), // empty — no steps have write field
+      stepWriteAllowlist: new Map([
+        [
+          1,
+          {
+            allowedPaths: new Set(), // empty — no write declared
+            allowedNames: [],
+            allContractOutputs: new Set([
+              "/test/.pio/goals/test/GOAL.md",
+              "/test/.pio/goals/test/PLAN.md",
+            ]),
+          },
+        ],
+      ]),
     });
 
-    // Act: write any contract output
+    // Act: try to write a contract output
     const result = await fireToolCall(handlers, {
       toolName: "write",
       input: { path: "/test/.pio/goals/test/GOAL.md", content: "x" },
     });
 
-    // Assert: not blocked
+    // Assert: blocked with "does not produce any contract outputs"
+    const blocked = result as { block: boolean; reason: string } | undefined;
+    expect(blocked).toEqual({
+      block: true,
+      reason: expect.stringContaining("does not produce any contract outputs"),
+    });
+  });
+
+  // (d) Empty map fallback: when stepWriteAllowlist has no entry, warn and pass through
+  it("emits console.warn when stepWriteAllowlist has no entry for current step", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentStep: 1,
+      currentIteration: 1,
+      totalSteps: 1,
+      stepsList: [{ id: "s1", title: "S1", instructions: "A" }],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      stepWriteAllowlist: new Map(), // empty — no entry for step 1
+    });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // Act: try to write a contract output
+    const result = await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "/test/.pio/goals/test/GOAL.md", content: "x" },
+    });
+
+    // Assert: not blocked (fallback pass-through) but warning emitted
     expect(result).toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("no write allowlist entry found"),
+    );
+    warnSpy.mockRestore();
   });
 
   // (d) Empty write array blocks contract output writes
@@ -2964,5 +3015,133 @@ describe("tool_call — step-level write gate", () => {
     expect(blocked!.reason).toContain(
       "Your target path '/test/.pio/goals/test/PLAN.md' is not in the allowed list",
     );
+  });
+
+  // -----------------------------------------------------------------------
+  // Integration tests: resources_discover → tool_call (restricted-by-default)
+  // -----------------------------------------------------------------------
+
+  it("integration: resources_discover populates stepWriteAllowlist for every step (including steps without write)", async () => {
+    // Arrange: steps without write field
+    vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+      workflowSteps: [
+        { id: "s1", title: "Research", instructions: "Do research" }, // no write
+        {
+          id: "s2",
+          title: "Write",
+          instructions: "Write stuff",
+          write: ["goal"],
+        },
+      ],
+      totalWorkflowSteps: 2,
+    });
+
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    // Act: fire resources_discover
+    const discoverHandlers = handlers.get("resources_discover");
+    for (const h of discoverHandlers!) {
+      await h(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        {} as any,
+      );
+    }
+
+    // Assert: every step has an entry
+    const state = getState();
+    expect(state.stepWriteAllowlist.has(1)).toBe(true); // step without write
+    expect(state.stepWriteAllowlist.has(2)).toBe(true); // step with write
+    // Step 1 (no write): empty allowedPaths, populated allContractOutputs
+    const entry1 = state.stepWriteAllowlist.get(1)!;
+    expect(entry1.allowedPaths.size).toBe(0);
+    expect(entry1.allowedNames).toEqual([]);
+    expect(entry1.allContractOutputs.size).toBeGreaterThan(0);
+    // Step 2 (write: ["goal"]): populated allowedPaths
+    const entry2 = state.stepWriteAllowlist.get(2)!;
+    expect(entry2.allowedPaths.size).toBe(1);
+    expect(entry2.allowedNames).toEqual(["goal"]);
+  });
+
+  it("integration: resources_discover + tool_call — step without write blocks contract output", async () => {
+    // Arrange: steps without write field
+    vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+      workflowSteps: [
+        { id: "s1", title: "Research", instructions: "Do research" }, // no write
+      ],
+      totalWorkflowSteps: 1,
+    });
+
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    // Act: fire resources_discover to populate stepWriteAllowlist
+    const discoverHandlers = handlers.get("resources_discover");
+    for (const h of discoverHandlers!) {
+      await h(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        {} as any,
+      );
+    }
+
+    // Set currentStep to 1 (the step without write)
+    setState({ currentStep: 1, currentIteration: 1 });
+
+    // Fire tool_call to write a contract output
+    const toolHandlers = handlers.get("tool_call");
+    let result: unknown;
+    for (const h of toolHandlers!) {
+      result = await h({
+        toolName: "write",
+        input: { path: "/test/.pio/goals/test/GOAL.md", content: "x" },
+      });
+    }
+
+    // Assert: blocked
+    const blocked = result as { block: boolean; reason: string } | undefined;
+    expect(blocked).toEqual({
+      block: true,
+      reason: expect.stringContaining("does not produce any contract outputs"),
+    });
+  });
+
+  it("integration: resources_discover + tool_call — step without write allows non-contract files", async () => {
+    // Arrange: steps without write field
+    vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+      workflowSteps: [
+        { id: "s1", title: "Research", instructions: "Do research" }, // no write
+      ],
+      totalWorkflowSteps: 1,
+    });
+
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    // Act: fire resources_discover
+    const discoverHandlers = handlers.get("resources_discover");
+    for (const h of discoverHandlers!) {
+      await h(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        {} as any,
+      );
+    }
+
+    setState({ currentStep: 1, currentIteration: 1 });
+
+    // Fire tool_call to write a non-contract file
+    const toolHandlers = handlers.get("tool_call");
+    let result: unknown;
+    for (const h of toolHandlers!) {
+      result = await h({
+        toolName: "write",
+        input: { path: "/some/project/src/foo.ts", content: "x" },
+      });
+    }
+
+    // Assert: not blocked (non-contract files pass through)
+    expect(result).toBeUndefined();
   });
 });

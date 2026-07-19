@@ -175,6 +175,10 @@ export function setupLoopEngine(pi: ExtensionAPI) {
           const resolved = capState.tryResolveOutput(name);
           if (resolved) {
             allowedPaths.add(path.resolve(resolved.path));
+          } else {
+            console.warn(
+              `[loop-engine] Step ${i + 1} (${step.title ?? "unknown"}): output name "${name}" in write[] could not be resolved — it will not be in the allowed list.`,
+            );
           }
         }
         stepWriteAllowlist.set(i + 1, {
@@ -329,7 +333,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
             ) {
               return {
                 block: true,
-                reason: `Writing is restricted during Step ${state.currentStep} of ${state.totalSteps} (${stepTitle}). Allowed outputs: [${entry.allowedNames.join(", ")}].`,
+                reason: `Writing is restricted during Step ${state.currentStep} of ${state.totalSteps} (${stepTitle}). Allowed outputs: [${entry.allowedNames.join(", ")}]. Your target path '${tp}' is not in the allowed list.`,
               };
             }
           }

@@ -2568,6 +2568,9 @@ describe("tool_call — step-level write gate", () => {
     });
     expect(blocked!.reason).toContain("Allowed outputs: [goal]");
     expect(blocked!.reason).toContain("Step 1 of 2");
+    expect(blocked!.reason).toContain(
+      "Your target path '/test/.pio/goals/test/PLAN.md' is not in the allowed list",
+    );
   });
 
   // (b) Contract output write allowed when target is in allowlist
@@ -2911,5 +2914,55 @@ describe("tool_call — step-level write gate", () => {
 
     // Assert: file is still tracked (tracking happens before gate)
     expect(getState().filesWritten).toContain("/test/.pio/goals/test/PLAN.md");
+  });
+
+  // edit tool + write gate
+  it("blocks edit tool targeting disallowed contract output", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentStep: 1,
+      currentIteration: 1,
+      totalSteps: 2,
+      stepsList: [
+        { id: "s1", title: "S1", instructions: "A", write: ["goal"] },
+      ],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      stepWriteAllowlist: new Map([
+        [
+          1,
+          {
+            allowedPaths: new Set(["/test/.pio/goals/test/GOAL.md"]),
+            allowedNames: ["goal"],
+            allContractOutputs: new Set([
+              "/test/.pio/goals/test/GOAL.md",
+              "/test/.pio/goals/test/PLAN.md",
+            ]),
+          },
+        ],
+      ]),
+    });
+
+    // Act: try to edit PLAN.md during Step 1 (only goal is allowed)
+    const result = await fireToolCall(handlers, {
+      toolName: "edit",
+      input: { path: "/test/.pio/goals/test/PLAN.md", edits: [] },
+    });
+
+    // Assert: blocked
+    const blocked = result as { block: boolean; reason: string } | undefined;
+    expect(blocked).toEqual({
+      block: true,
+      reason: expect.stringContaining("Writing is restricted"),
+    });
+    expect(blocked!.reason).toContain("Allowed outputs: [goal]");
+    expect(blocked!.reason).toContain(
+      "Your target path '/test/.pio/goals/test/PLAN.md' is not in the allowed list",
+    );
   });
 });

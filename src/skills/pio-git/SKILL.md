@@ -1,11 +1,11 @@
 ---
 name: pio-git
-description: Perform git operations for pio workflow agents — commit changes, stage files selectively, and construct commit messages. Use when a pio agent needs to commit code changes, stage files for a commit, or perform other git operations during workflow execution.
+description: Perform git operations — commit changes, stage files selectively, and construct commit messages. Use when you need to commit code changes, stage files for a commit, or perform other git operations.
 ---
 
 ## Overview
 
-This skill defines how pio agents perform git operations using shell commands via the `bash` tool. It is capability-agnostic — any pio prompt can invoke these protocols.
+This skill defines how to perform git operations using shell commands via the `bash` tool. It is capability-agnostic — any workflow step can invoke these protocols.
 
 ## Convention Lookup Rule
 
@@ -59,14 +59,14 @@ Create a pull request when a goal is finalized. Follow these steps in order:
 7. **Check for changes** — `git diff --shortstat <target>...<head>`. If empty: warn and skip.
 8. **Push branch to remote** — `git push -u origin <branch>`. On failure: warn and skip.
 9. **Construct PR title** — follow GIT.md Conventional Commits format. Pick type from observed types (`feat`, `fix`, `refactor`, etc.) based on goal name/summary. Fallback: short descriptive one-liner.
-10. **Construct PR body** — if GIT.md specifies a PR body template, follow it. Otherwise construct an outcome-focused description summarizing what the changes do from a user or product perspective. Use the commit messages as context for understanding what was changed (they follow GIT.md conventions per the Staged Commit Protocol). Focus on *what* and *why*, not *how* — avoid plan steps, step numbers, file lists, or internal implementation details. Keep it concise — one short paragraph is sufficient. **Note:** GOAL.md, PLAN.md, and per-step SUMMARY.md are internal pio framework documents — do not reference them in PR bodies. The PR should read like a normal project PR, not an internal pio status report.
+10. **Construct PR body** — if GIT.md specifies a PR body template, follow it. Otherwise construct an outcome-focused description summarizing what the changes do from a user or product perspective. Use the commit messages as context for understanding what was changed (they follow GIT.md conventions per the Staged Commit Protocol). Focus on *what* and *why*, not *how* — avoid plan steps, step numbers, file lists, or internal implementation details. Keep it concise — one short paragraph is sufficient. The PR should read like a normal project PR, not an internal pio status report.
 11. **Create the PR** — `gh pr create --title "<title>" --body "<body>" --base <target> --head <branch>`.
 
 **Edge cases:** See [REFERENCE.md](REFERENCE.md) — covers `gh` not installed, not authenticated, network failure, branch not pushed, no changes, existing PR, not a GitHub repo, re-finalize.
 
 ## Push Protocol
 
-Push commits to the remote repository. Used by execute-task (after commit) and quality-gate (before PR creation). Follow these steps in order:
+Push commits to the remote repository. Used after commit and before PR creation. Follow these steps in order:
 
 1. **Verify git repository** — `git rev-parse --show-toplevel`. On failure: warn and skip.
 2. **Get current branch** — `git symbolic-ref --short HEAD`. On failure (detached HEAD): warn and skip.

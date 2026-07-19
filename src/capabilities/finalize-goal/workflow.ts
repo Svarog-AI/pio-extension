@@ -1,4 +1,4 @@
-import type { WorkflowStep } from "../../capability-package";
+import type { WorkflowStep } from "../../runtime/workflow-types";
 
 const steps: WorkflowStep[] = [
   {
@@ -83,6 +83,15 @@ If a finding doesn't map to any update rule, skip it.`,
   {
     id: "write-updates",
     title: "Write PROJECT file updates",
+    write: [
+      "overview",
+      "development",
+      "conventions",
+      "git",
+      "architecture",
+      "dependencies",
+      "glossary",
+    ],
     instructions: `Apply the updates to \`.pio/PROJECT/*.md\` files. For each update:
 
 - Insert new content at the appropriate section (per the skill's section structure)

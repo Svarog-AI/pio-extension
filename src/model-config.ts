@@ -18,11 +18,20 @@ export interface PioGuardsConfig {
   turnThreshold?: number;
 }
 
+/** Loop-related settings from ~/.pi/pio-config.yaml. */
+export interface PioLoopConfig {
+  /** Global default max iterations for all loop engine steps. Overridden by per-step maxIterations in WorkflowStep. */
+  maxIterations?: number;
+  /** When true, CustomMessage step instructions are visible in the conversation UI (display: true). Default: false. */
+  debugDisplay?: boolean;
+}
+
 /** Full config shape parsed from ~/.pi/pio-config.yaml. */
 export interface PioConfig {
   default?: PioModelEntry;
   capabilities?: Record<string, PioModelEntry>;
   guards?: PioGuardsConfig;
+  loop?: PioLoopConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -31,6 +40,9 @@ export interface PioConfig {
 
 /** Default turn threshold before the refinement-loop nudge fires. */
 export const DEFAULT_TURN_THRESHOLD = 15;
+
+/** Default max iterations for the loop engine when no config or per-step override is specified. */
+export const DEFAULT_MAX_ITERATIONS = 15;
 
 // ---------------------------------------------------------------------------
 // Config path resolution
@@ -147,8 +159,41 @@ export function readConfig(): PioConfig | undefined {
       }
     }
 
+    // Parse loop block
+    if (
+      obj.loop != null &&
+      typeof obj.loop === "object" &&
+      !Array.isArray(obj.loop)
+    ) {
+      const loopObj = obj.loop as Record<string, unknown>;
+      const loopConfig: PioLoopConfig = {};
+
+      const maxIterations = loopObj.maxIterations;
+      if (
+        typeof maxIterations === "number" &&
+        Number.isInteger(maxIterations) &&
+        maxIterations > 0
+      ) {
+        loopConfig.maxIterations = maxIterations;
+      }
+
+      const debugDisplay = loopObj.debugDisplay;
+      if (typeof debugDisplay === "boolean") {
+        loopConfig.debugDisplay = debugDisplay;
+      }
+
+      if (Object.keys(loopConfig).length > 0) {
+        config.loop = loopConfig;
+      }
+    }
+
     // If no recognized entries were found, treat as no config
-    if (!config.default && !config.capabilities && !config.guards) {
+    if (
+      !config.default &&
+      !config.capabilities &&
+      !config.guards &&
+      !config.loop
+    ) {
       _cachedConfig = undefined;
       return undefined;
     }
@@ -210,4 +255,55 @@ export function readTurnThreshold(): number {
   }
 
   return DEFAULT_TURN_THRESHOLD;
+}
+
+// ---------------------------------------------------------------------------
+// Loop config
+// ---------------------------------------------------------------------------
+
+/**
+ * Reads the loop config from ~/.pi/pio-config.yaml.
+ * Returns the parsed loop block, or undefined if the file is missing, empty, or has no loop section.
+ */
+export function readLoopConfig(): PioLoopConfig | undefined {
+  const config = readConfig();
+  return config?.loop;
+}
+
+/**
+ * Reads debugDisplay from ~/.pi/pio-config.yaml loop block.
+ * Returns true only when explicitly set to true in config.
+ * Missing, non-boolean, or false values all return false (default).
+ */
+export function readDebugDisplay(): boolean {
+  const config = readConfig();
+  return config?.loop?.debugDisplay === true;
+}
+
+/**
+ * Resolves the effective max iterations for a step.
+ *
+ * Resolution order (specific beats general):
+ * 1. perStepOverride — from WorkflowStep.maxIterations
+ * 2. Global config — loop.maxIterations in ~/.pi/pio-config.yaml
+ * 3. Built-in default — DEFAULT_MAX_ITERATIONS (15)
+ */
+export function resolveMaxIterations(perStepOverride?: number): number {
+  // Priority 1: per-step override
+  if (
+    typeof perStepOverride === "number" &&
+    Number.isInteger(perStepOverride) &&
+    perStepOverride > 0
+  ) {
+    return perStepOverride;
+  }
+
+  // Priority 2: global config
+  const value = readLoopConfig()?.maxIterations;
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+
+  // Priority 3: built-in default
+  return DEFAULT_MAX_ITERATIONS;
 }

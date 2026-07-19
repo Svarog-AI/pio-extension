@@ -1,4 +1,4 @@
-import type { WorkflowStep } from "../../capability-package";
+import type { WorkflowStep } from "../../runtime/workflow-types";
 
 export default [
   {
@@ -119,6 +119,7 @@ ask_user({
   {
     id: "write-quality-gate-report",
     title: "Write QUALITY_GATE.md",
+    write: ["quality-gate-report"],
     instructions: `Write \`QUALITY_GATE.md\` at the workspace root. Start with a YAML frontmatter block at the very top of the file, before any markdown headings:
 
 \`\`\`yaml

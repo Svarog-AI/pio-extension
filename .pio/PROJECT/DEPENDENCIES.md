@@ -30,13 +30,19 @@ index.ts (async) ──┬── setupSkills()          → skills auto-discover
                    ├── setupSessionInfrastructure() → capability-session.ts (was session-capability.ts)
                    ├── setupMarkComplete()    → guards/mark-complete.ts
                    ├── setupValidation()      → guards/validation.ts
-                   ├── setupSessionGuard()    → guards/session-guard.ts
-                   ├── setupStepNudging()     → guards/step-nudging.ts
+                   ├── setupSessionGuard()    → runtime/session-guard.ts (migrated from guards/)
+                   ├── setupLoopEngine()      → runtime/loop-engine.ts (bounded iteration loop, replaces step nudging)
                    ├── setupDirectTools()     → direct-tools.ts (init, delete-goal, list-goals, parent, create-issue, goal-from-issue)
-                   └── discoverCapabilities() → capability-discovery.ts (auto-discovers 9 directory packages + registers via registerCapability()), followed by setDiscoveredContracts() for runtime contract caching
+                   └── discoverCapabilities() → capability-discovery.ts (auto-discovers 10 directory packages + registers via registerCapability()), followed by setDiscoveredContracts() for runtime contract caching
+
+Runtime package:
+  runtime/loop-engine.ts      — Bounded iteration loop engine: resources_discover, before_agent_start, turn_end, agent_end, input handlers
+  runtime/session-state.ts    — PioSessionState singleton (markCompleteCalled, currentStep, iteration tracking, shared by guard + engine)
+  runtime/session-guard.ts    — Turn recovery + dead-turn detection (migrated from guards/)
+  runtime/workflow-types.ts   — StepState, TerminationCondition types + extended WorkflowStep loop fields
 
 Capability infrastructure:
-  capability-package.ts  — CapabilityPackageConfig, WorkflowStep, FrontmatterSchemaDeclaration types + layout constants
+  capability-package.ts  — CapabilityPackageConfig, WorkflowStep (extended with minIterations, maxIterations, terminateWhen, loopMessage, write), FrontmatterSchemaDeclaration types + layout constants
   capability-discovery.ts — discoverCapabilities(), registerCapability() (scans capabilities/ for config.ts)
   capability-config.ts   — resolveCapabilityConfig() (dynamic imports, prefers default exports from directory packages)
   capability-session.ts  — Sub-session orchestration: launch, prompt injection, model switching (renamed from session-capability.ts)
@@ -54,7 +60,7 @@ Shared modules:
   model-config.ts        — resolveModelForCapability(), readTurnThreshold(). Reads ~/.pi/pio-config.yaml
 ```
 
-**Removed modules:** `src/frontmatter-schemas.ts` (schemas now in capability-local `schemas.ts`), `src/prompts/` directory (prompts are component files inside capability packages).
+**Removed modules:** `src/frontmatter-schemas.ts` (schemas now in capability-local `schemas.ts`), `src/prompts/` directory (prompts are component files inside capability packages), `src/guards/step-nudging.ts` (replaced by `runtime/loop-engine.ts`). `src/guards/session-guard.ts` moved to `runtime/session-guard.ts`. Pio-specific skills (`pio`, `pio-planning`, `pio-project-knowledge`, `pio-jira`, `grill-me`, `write-a-skill`) moved from `src/skills/` to `src/skills.old/` (out of auto-discovery).
 
 ## Data Flow Between Services
 

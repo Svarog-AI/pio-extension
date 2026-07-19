@@ -64,3 +64,5 @@ No release cycle, versioning tags, or packaging pipeline exists. The extension i
   ```
   - **Guard config (optional):** The `guards` block in `~/.pi/pio-config.yaml` supports guard-level settings:
     - `turnThreshold` (`number`, default: 15) — number of turns before the session guard sends a refinement-loop nudge. Must be a positive integer; invalid values fall back to the default.
+  - **Loop config (optional):** The `loop` block in `~/.pi/pio-config.yaml` configures the runtime loop engine:
+    - `maxIterations` (`number`, default: 15) — global safety cap on iterations per step. Per-step `maxIterations` overrides this value. Resolution order: per-step > global config > built-in default (15).

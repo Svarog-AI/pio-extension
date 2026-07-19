@@ -2,7 +2,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CapabilitySkills, WorkflowStep } from "./capability-package";
+import type { CapabilitySkills } from "./capability-package";
+import type { WorkflowStep } from "./runtime/workflow-types";
 
 // ---------------------------------------------------------------------------
 // renderWorkflowSection (pure function — no filesystem)
@@ -33,7 +34,9 @@ describe("renderWorkflowSection", () => {
     const result = renderWorkflowSection(steps);
 
     expect(result).toContain("### Step 1: Understand the goal");
-    expect(result).toContain("Read GOAL.md and internalize the current state.");
+    expect(result).not.toContain(
+      "Read GOAL.md and internalize the current state.",
+    );
     expect(result).not.toContain("Skills:");
   });
 
@@ -51,7 +54,7 @@ describe("renderWorkflowSection", () => {
 
     expect(result).toContain("### Step 1: Implement feature");
     expect(result).toContain("Skills: [tdd], [pio-git]");
-    expect(result).toContain("Write the code.");
+    expect(result).not.toContain("Write the code.");
   });
 
   it("renders multiple steps with mixed skill declarations", () => {
@@ -123,7 +126,7 @@ describe("renderWorkflowSection", () => {
     expect(result).not.toContain("Skills:");
   });
 
-  it("renders steps with multiline instructions", () => {
+  it("renders steps with multiline instructions (titles only)", () => {
     const steps: WorkflowStep[] = [
       {
         id: "step-1",
@@ -135,9 +138,10 @@ describe("renderWorkflowSection", () => {
 
     const result = renderWorkflowSection(steps);
 
-    expect(result).toContain("First, read the file.");
-    expect(result).toContain("Then, write tests.");
-    expect(result).toContain("Finally, implement.");
+    expect(result).toContain("### Step 1: Complex step");
+    expect(result).not.toContain("First, read the file.");
+    expect(result).not.toContain("Then, write tests.");
+    expect(result).not.toContain("Finally, implement.");
   });
 });
 

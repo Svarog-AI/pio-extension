@@ -1,4 +1,4 @@
-import type { WorkflowStep } from "../../capability-package";
+import type { WorkflowStep } from "../../runtime/workflow-types";
 
 /**
  * Structured workflow steps for the evolve-plan (Specification Writer) capability.
@@ -15,6 +15,7 @@ This gives you the big picture before narrowing your focus.`,
   {
     id: "read-plan-and-locate-step",
     title: "Read the `plan` input and locate your step",
+    write: ["completion-summary", "revise-plan"],
     instructions: `Read the \`plan\` input in the goal workspace directory. Find the step assigned to you (e.g., "Step 3"). Study:
 
 - The step's **Description** — what exactly changes
@@ -91,6 +92,7 @@ If any dimension raises doubts, you **must research further or ask the user befo
   {
     id: "write-task",
     title: "Write TASK.md",
+    write: ["task", "decisions"],
     instructions: `**Existing TASK.md — read before writing:** Before writing TASK.md, check if it already exists in the current step folder. If it does, this means evolve-plan has been rerun on a previously-specified step. Read the existing TASK.md to understand what was previously specified. Use its content as context for adapting the task: keep parts that don't conflict with new requirements, modify only what is necessary.
 
 Write \`TASK.md\` into your step folder. This file is a focused, actionable specification of exactly what needs to be built in this step.
@@ -109,6 +111,7 @@ Follow the TASK.md template with sections: Title, Context, What to Build, Code C
   {
     id: "assess-revision",
     title: "Assess if plan revision is needed",
+    write: ["revise-plan"],
     instructions: `After writing \`TASK.md\`, evaluate whether your specification decisions require a plan revision.
 
 Write a \`REVISE_PLAN_NEEDED.md\` document at the workspace root if **any** of the following conditions are met:

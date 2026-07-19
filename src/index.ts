@@ -19,8 +19,8 @@ import { setupSessionInfrastructure } from "./capability-session";
 // Direct tools (non-AI tools/commands registered directly)
 import { setupDirectTools } from "./direct-tools";
 import { setupMarkComplete } from "./guards/mark-complete";
-import { setupSessionGuard } from "./guards/session-guard";
 import { setupValidation } from "./guards/validation";
+import { setupSessionGuard } from "./runtime/session-guard";
 // State machine — explicit registration (no side-effect imports)
 import { setupPioWorkflowMachine } from "./state-machines/pio-workflow-machine";
 import { setDiscoveredContracts } from "./state-machines/utils";

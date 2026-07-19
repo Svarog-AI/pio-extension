@@ -119,13 +119,13 @@ vi.mock("./prompt-compiler", () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Top-level mock for step-nudging (used by step nudging integration tests)
+// Top-level mock for loop-engine (used by loop engine integration tests)
 // ---------------------------------------------------------------------------
 
-const mockSetupStepNudging = vi.hoisted(() => vi.fn());
+const mockSetupLoopEngine = vi.hoisted(() => vi.fn());
 
-vi.mock("./guards/step-nudging", () => ({
-  setupStepNudging: mockSetupStepNudging,
+vi.mock("./runtime/loop-engine", () => ({
+  setupLoopEngine: mockSetupLoopEngine,
 }));
 
 // ---------------------------------------------------------------------------
@@ -722,10 +722,13 @@ describe("model resolution — backwards compatibility", () => {
       {} as any,
     );
 
-    // Assert: prompt injection returned via systemPrompt (from create-goal.md)
+    // Assert: prompt injection returned via systemPrompt
     expect(result).toBeDefined();
     expect(typeof result.systemPrompt).toBe("string");
-    expect(result.systemPrompt).toContain("--- YOUR INSTRUCTIONS ---");
+    // CAPABILITY CONTEXT is no longer injected (instruction leak removal)
+    expect(result.systemPrompt).not.toContain("--- CAPABILITY CONTEXT ---");
+    // WORKFLOW EXECUTION should still be present
+    expect(result.systemPrompt).toContain("--- WORKFLOW EXECUTION ---");
     // Model resolution also ran but didn't call setModel since config is undefined
     expect(setModelMock).not.toHaveBeenCalled();
   });
@@ -913,10 +916,14 @@ describe("buildSkillLoadingSection", () => {
     const mod = await import("./capability-session");
     const result = mod.buildSkillLoadingSection({}, []);
 
-    // No skills in registry — global mandatory skills are attempted but skipped with warnings
+    // No skills in registry — only "ask-user" is global mandatory ("pio" excluded to avoid instruction leakage)
     expect(result).toBeUndefined();
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("pio"));
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("ask-user"));
+    // "pio" should NOT be attempted as a skill name (no longer global mandatory)
+    // (warning messages have "pio:" prefix, so check for skill name specifically)
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('skill "pio"'),
+    );
 
     warnSpy.mockRestore();
   });
@@ -1020,19 +1027,19 @@ describe("buildSkillLoadingSection", () => {
   });
 
   it("given global mandatory skills that overlap with config mandatory skills when buildSkillLoadingSection is called then duplicates are deduplicated", async () => {
-    const skillBody = "# PIO Skill";
-    const filePath = writeSkillFile(tempDir, "pio", skillBody);
+    const skillBody = "# Ask User Skill";
+    const filePath = writeSkillFile(tempDir, "ask-user", skillBody);
     const baseDir = path.dirname(filePath);
 
-    const registry = [makeSkill("pio", filePath, baseDir)];
-    // Config also declares pio as mandatory — should appear only once
-    const config = { skills: { mandatory: ["pio"] } };
+    const registry = [makeSkill("ask-user", filePath, baseDir)];
+    // Config also declares ask-user as mandatory — should appear only once
+    const config = { skills: { mandatory: ["ask-user"] } };
 
     const mod = await import("./capability-session");
     const result = mod.buildSkillLoadingSection(config, registry);
 
     // Count occurrences of the skill XML tag — should be exactly 1
-    const matches = result?.match(/<skill name="pio"/g);
+    const matches = result?.match(/<skill name="ask-user"/g);
     expect(matches?.length).toBe(1);
   });
 
@@ -1066,11 +1073,14 @@ describe("buildSkillLoadingSection", () => {
     const mod = await import("./capability-session");
     const result = mod.buildSkillLoadingSection(config, []);
 
-    // No skills in registry — global skills skipped with warnings, returns undefined
+    // No skills in registry — only "ask-user" global skill skipped with warning
     expect(result).toBeUndefined();
-    // Should have logged warnings for missing global skills
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("pio"));
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("ask-user"));
+    // "pio" should NOT be attempted as a skill name (no longer global mandatory)
+    // (warning messages have "pio:" prefix, so check for skill name specifically)
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('skill "pio"'),
+    );
 
     warnSpy.mockRestore();
   });
@@ -1159,14 +1169,18 @@ describe("skill injection — before_agent_start integration", () => {
     expect(result.systemPrompt).toContain('<skill name="test-skill"');
   });
 
-  it("given before_agent_start when the handler runs then delivery order is PROJECT OVERVIEW, then SKILL LOADING INSTRUCTIONS, then YOUR INSTRUCTIONS", async () => {
-    // Populate registry with "pio" (a global mandatory skill) so buildSkillLoadingSection
-    // generates the SKILL LOADING INSTRUCTIONS section — all three sections must appear
-    const pioSkillBody = "# PIO Skill";
-    const pioFilePath = writeSkillFile(tempDir, "pio", pioSkillBody);
-    const pioBaseDir = path.dirname(pioFilePath);
+  it("given before_agent_start when the handler runs then delivery order is PROJECT OVERVIEW, then SKILL LOADING INSTRUCTIONS, then SESSION INPUTS, then WORKFLOW EXECUTION — CAPABILITY CONTEXT is absent", async () => {
+    // Populate registry with "ask-user" (the only global mandatory skill)
+    // so buildSkillLoadingSection generates the SKILL LOADING INSTRUCTIONS section
+    const askUserSkillBody = "# Ask User Skill";
+    const askUserFilePath = writeSkillFile(
+      tempDir,
+      "ask-user",
+      askUserSkillBody,
+    );
+    const askUserBaseDir = path.dirname(askUserFilePath);
 
-    const registry = [makeSkill("pio", pioFilePath, pioBaseDir)];
+    const registry = [makeSkill("ask-user", askUserFilePath, askUserBaseDir)];
 
     const registeredHandlers: Record<string, Function> = {};
     const setModelMock = vi.fn();
@@ -1183,7 +1197,7 @@ describe("skill injection — before_agent_start integration", () => {
     const mod = await import("./capability-session");
     mod.setupSessionInfrastructure(mockPi as any);
 
-    // Trigger resources_discover
+    // Trigger resources_discover with session params that produce SESSION INPUTS
     const rdHandler = registeredHandlers.resources_discover;
     if (rdHandler) {
       await rdHandler(
@@ -1198,7 +1212,10 @@ describe("skill injection — before_agent_start integration", () => {
               {
                 type: "custom",
                 customType: "pio-config",
-                data: { capability: "test-cap", prompt: "create-goal.md" },
+                data: {
+                  capability: "test-cap",
+                  sessionParams: { workspaceDir: tempDir },
+                },
               },
             ],
           },
@@ -1206,7 +1223,7 @@ describe("skill injection — before_agent_start integration", () => {
       );
     }
 
-    // Trigger before_agent_start with registry containing "pio" skill
+    // Trigger before_agent_start with registry containing "ask-user" skill
     const handler = registeredHandlers.before_agent_start;
     if (!handler) throw new Error("before_agent_start handler not registered");
     const result = await handler(
@@ -1221,18 +1238,20 @@ describe("skill injection — before_agent_start integration", () => {
 
     expect(typeof result.systemPrompt).toBe("string");
 
-    // Verify order: PROJECT OVERVIEW before SKILL LOADING before YOUR INSTRUCTIONS
-    const projectIdx = result.systemPrompt.indexOf("--- PROJECT OVERVIEW ---");
+    // CAPABILITY CONTEXT should be absent (instruction leak removal)
+    expect(result.systemPrompt).not.toContain("--- CAPABILITY CONTEXT ---");
+
+    // Verify order: SKILL LOADING < WORKFLOW EXECUTION
     const skillIdx = result.systemPrompt.indexOf(
       "--- SKILL LOADING INSTRUCTIONS ---",
     );
-    const yourIdx = result.systemPrompt.indexOf("--- YOUR INSTRUCTIONS ---");
+    const workflowExecIdx = result.systemPrompt.indexOf(
+      "--- WORKFLOW EXECUTION ---",
+    );
 
-    expect(projectIdx).toBeGreaterThan(-1);
     expect(skillIdx).toBeGreaterThan(-1);
-    expect(yourIdx).toBeGreaterThan(-1);
-    expect(projectIdx).toBeLessThan(skillIdx);
-    expect(skillIdx).toBeLessThan(yourIdx);
+    expect(workflowExecIdx).toBeGreaterThan(-1);
+    expect(skillIdx).toBeLessThan(workflowExecIdx);
   });
 
   it("given the skill registry is populated via systemPromptOptions.skills when before_agent_start runs then the registry is cached", async () => {
@@ -1303,11 +1322,15 @@ describe("skill injection — before_agent_start integration", () => {
   it("given before_agent_start with a non-empty base systemPrompt when the handler runs then the base prompt is preserved as a prefix", async () => {
     const basePrompt = "This is the base prompt";
 
-    const pioSkillBody = "# PIO Skill";
-    const pioFilePath = writeSkillFile(tempDir, "pio", pioSkillBody);
-    const pioBaseDir = path.dirname(pioFilePath);
+    const askUserSkillBody = "# Ask User Skill";
+    const askUserFilePath = writeSkillFile(
+      tempDir,
+      "ask-user",
+      askUserSkillBody,
+    );
+    const askUserBaseDir = path.dirname(askUserFilePath);
 
-    const registry = [makeSkill("pio", pioFilePath, pioBaseDir)];
+    const registry = [makeSkill("ask-user", askUserFilePath, askUserBaseDir)];
 
     const registeredHandlers: Record<string, Function> = {};
     const setModelMock = vi.fn();
@@ -1339,7 +1362,7 @@ describe("skill injection — before_agent_start integration", () => {
               {
                 type: "custom",
                 customType: "pio-config",
-                data: { capability: "test-cap", prompt: "create-goal.md" },
+                data: { capability: "test-cap", sessionParams: {} },
               },
             ],
           },
@@ -1366,7 +1389,10 @@ describe("skill injection — before_agent_start integration", () => {
     expect(result.systemPrompt?.startsWith(basePrompt)).toBe(true);
     // Appended content follows after the separator
     expect(result.systemPrompt).toContain("\n\n");
-    expect(result.systemPrompt).toContain("--- YOUR INSTRUCTIONS ---");
+    // CAPABILITY CONTEXT should be absent (instruction leak removal)
+    expect(result.systemPrompt).not.toContain("--- CAPABILITY CONTEXT ---");
+    // WORKFLOW EXECUTION should be present
+    expect(result.systemPrompt).toContain("--- WORKFLOW EXECUTION ---");
   });
 });
 
@@ -1665,24 +1691,25 @@ describe("workflow steps population — enrichedSessionParams", () => {
     const rawParams = mod.getEnrichedSessionParamsForTesting();
     expect(rawParams).toBeDefined();
     expect(rawParams?.totalWorkflowSteps).toBe(2);
+    // Now passes full WorkflowStep[] objects (not just { id, title } summaries)
     expect(rawParams?.workflowSteps).toEqual([
-      { id: "step-1", title: "Step One" },
-      { id: "step-2", title: "Step Two" },
+      { id: "step-1", title: "Step One", instructions: "Do step one" },
+      { id: "step-2", title: "Step Two", instructions: "Do step two" },
     ]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Step nudging integration — setupStepNudging called from setupSessionInfrastructure
+// Loop engine integration — setupLoopEngine called from setupSessionInfrastructure
 // ---------------------------------------------------------------------------
 
-describe("step nudging integration — setupSessionInfrastructure", () => {
+describe("loop engine integration — setupSessionInfrastructure", () => {
   let tempDir: string;
 
   beforeEach(() => {
     vi.resetModules();
     tempDir = createTempDir();
-    mockSetupStepNudging.mockClear();
+    mockSetupLoopEngine.mockClear();
     mockCompilePrompt.mockClear();
     mockCompilePrompt.mockResolvedValue({
       role: "## Role\n\nTest role.",
@@ -1696,7 +1723,7 @@ describe("step nudging integration — setupSessionInfrastructure", () => {
     cleanup(tempDir);
   });
 
-  it("given setupSessionInfrastructure is called when the function runs then setupStepNudging is called with the pi instance", async () => {
+  it("given setupSessionInfrastructure is called when the function runs then setupLoopEngine is called with the pi instance", async () => {
     const mockPi = {
       registerTool: vi.fn(),
       on: vi.fn(),
@@ -1707,17 +1734,17 @@ describe("step nudging integration — setupSessionInfrastructure", () => {
     const mod = await import("./capability-session");
     mod.setupSessionInfrastructure(mockPi as any);
 
-    // Assert: setupStepNudging was called with the pi instance
-    expect(mockSetupStepNudging).toHaveBeenCalledTimes(1);
-    expect(mockSetupStepNudging).toHaveBeenCalledWith(mockPi);
+    // Assert: setupLoopEngine was called with the pi instance
+    expect(mockSetupLoopEngine).toHaveBeenCalledTimes(1);
+    expect(mockSetupLoopEngine).toHaveBeenCalledWith(mockPi);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Session completion mandate — before_agent_start injection
+// Session completion mandate removal — before_agent_start injection
 // ---------------------------------------------------------------------------
 
-describe("session completion mandate — before_agent_start injection", () => {
+describe("session completion mandate removal — before_agent_start injection", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -1736,7 +1763,7 @@ describe("session completion mandate — before_agent_start injection", () => {
     cleanup(tempDir);
   });
 
-  it("given before_agent_start when the handler runs then the system prompt contains the SESSION COMPLETION mandate section", async () => {
+  it("given before_agent_start when the handler runs then SESSION COMPLETION section is absent and SESSION_COMPLETION_MANDATE is no longer exported", async () => {
     const pioSkillBody = "# PIO Skill";
     const pioFilePath = writeSkillFile(tempDir, "pio", pioSkillBody);
     const pioBaseDir = path.dirname(pioFilePath);
@@ -1794,17 +1821,22 @@ describe("session completion mandate — before_agent_start injection", () => {
     );
 
     expect(typeof result.systemPrompt).toBe("string");
-    expect(result.systemPrompt).toContain("--- SESSION COMPLETION ---");
-    expect(result.systemPrompt).toContain("pio_mark_complete");
-    expect(result.systemPrompt).toContain("ask_user");
+    // SESSION COMPLETION section should be absent
+    expect(result.systemPrompt).not.toContain("--- SESSION COMPLETION ---");
+    // WORKFLOW EXECUTION should be present instead
+    expect(result.systemPrompt).toContain("--- WORKFLOW EXECUTION ---");
   });
 
-  it("given before_agent_start when the handler runs then section ordering is SKILL LOADING INSTRUCTIONS before SESSION COMPLETION before YOUR INSTRUCTIONS", async () => {
-    const pioSkillBody = "# PIO Skill";
-    const pioFilePath = writeSkillFile(tempDir, "pio", pioSkillBody);
-    const pioBaseDir = path.dirname(pioFilePath);
+  it("given before_agent_start when the handler runs then section ordering is SKILL LOADING before WORKFLOW EXECUTION and CAPABILITY CONTEXT is absent", async () => {
+    const askUserSkillBody = "# Ask User Skill";
+    const askUserFilePath = writeSkillFile(
+      tempDir,
+      "ask-user",
+      askUserSkillBody,
+    );
+    const askUserBaseDir = path.dirname(askUserFilePath);
 
-    const registry = [makeSkill("pio", pioFilePath, pioBaseDir)];
+    const registry = [makeSkill("ask-user", askUserFilePath, askUserBaseDir)];
 
     const registeredHandlers: Record<string, Function> = {};
 
@@ -1859,19 +1891,20 @@ describe("session completion mandate — before_agent_start injection", () => {
     const skillIdx = result.systemPrompt.indexOf(
       "--- SKILL LOADING INSTRUCTIONS ---",
     );
-    const mandateIdx = result.systemPrompt.indexOf(
-      "--- SESSION COMPLETION ---",
+    const workflowExecIdx = result.systemPrompt.indexOf(
+      "--- WORKFLOW EXECUTION ---",
     );
-    const yourIdx = result.systemPrompt.indexOf("--- YOUR INSTRUCTIONS ---");
 
     expect(skillIdx).toBeGreaterThan(-1);
-    expect(mandateIdx).toBeGreaterThan(-1);
-    expect(yourIdx).toBeGreaterThan(-1);
-    expect(skillIdx).toBeLessThan(mandateIdx);
-    expect(mandateIdx).toBeLessThan(yourIdx);
+    expect(workflowExecIdx).toBeGreaterThan(-1);
+    expect(skillIdx).toBeLessThan(workflowExecIdx);
+    // CAPABILITY CONTEXT should be absent (instruction leak removal)
+    expect(result.systemPrompt).not.toContain("--- CAPABILITY CONTEXT ---");
+    // SESSION COMPLETION should be absent
+    expect(result.systemPrompt).not.toContain("--- SESSION COMPLETION ---");
   });
 
-  it("given before_agent_start with no skills and no project context when the handler runs then the mandate section is still injected", async () => {
+  it("given before_agent_start with no skills and no project context when the handler runs then SESSION COMPLETION is absent but WORKFLOW EXECUTION is present", async () => {
     const registeredHandlers: Record<string, Function> = {};
 
     const mockPi = {
@@ -1922,9 +1955,11 @@ describe("session completion mandate — before_agent_start injection", () => {
       {} as any,
     );
 
-    // Mandate should still be present even without skills or project context
+    // SESSION COMPLETION should be absent even without skills or project context
     expect(result).toBeDefined();
-    expect(result.systemPrompt).toContain("--- SESSION COMPLETION ---");
+    expect(result.systemPrompt).not.toContain("--- SESSION COMPLETION ---");
+    // WORKFLOW EXECUTION should be present (unconditional injection)
+    expect(result.systemPrompt).toContain("--- WORKFLOW EXECUTION ---");
   });
 });
 
@@ -1951,7 +1986,7 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
     cleanup(tempDir);
   });
 
-  it("given compiled sections with role, workflow, and guidelines when before_agent_start runs then sections appear in correct order under YOUR INSTRUCTIONS", async () => {
+  it("given compiled sections with role, workflow, and guidelines when before_agent_start runs then CAPABILITY CONTEXT is absent (instruction leak removal)", async () => {
     const registeredHandlers: Record<string, Function> = {};
 
     const mockPi = {
@@ -2003,21 +2038,17 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
     );
 
     expect(typeof result.systemPrompt).toBe("string");
-    expect(result.systemPrompt).toContain("--- YOUR INSTRUCTIONS ---");
-
-    // Verify sections appear in order: role → workflow → guidelines
-    const yourIdx = result.systemPrompt.indexOf("--- YOUR INSTRUCTIONS ---");
-    const roleIdx = result.systemPrompt.indexOf("## Role");
-    const workflowIdx = result.systemPrompt.indexOf("## Workflow");
-    const guidelinesIdx = result.systemPrompt.indexOf("## Guidelines");
-
-    expect(yourIdx).toBeGreaterThan(-1);
-    expect(roleIdx).toBeGreaterThan(yourIdx);
-    expect(workflowIdx).toBeGreaterThan(roleIdx);
-    expect(guidelinesIdx).toBeGreaterThan(workflowIdx);
+    // CAPABILITY CONTEXT is no longer injected (instruction leak removal)
+    expect(result.systemPrompt).not.toContain("--- CAPABILITY CONTEXT ---");
+    // Role, workflow titles, and guidelines should NOT appear in the system prompt
+    expect(result.systemPrompt).not.toContain("## Role");
+    expect(result.systemPrompt).not.toContain("## Workflow");
+    expect(result.systemPrompt).not.toContain("## Guidelines");
+    // WORKFLOW EXECUTION should still be present (process rules)
+    expect(result.systemPrompt).toContain("--- WORKFLOW EXECUTION ---");
   });
 
-  it("given compiled sections with missing guidelines when before_agent_start runs then only role and workflow sections are included", async () => {
+  it("given compiled sections with missing guidelines when before_agent_start runs then CAPABILITY CONTEXT is still absent (instruction leak removal)", async () => {
     mockCompilePrompt.mockResolvedValue({
       role: "## Role\n\nTest role.",
       workflow: "## Workflow\n\n1. Test step",
@@ -2076,9 +2107,179 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
     );
 
     expect(typeof result.systemPrompt).toBe("string");
-    expect(result.systemPrompt).toContain("## Role");
-    expect(result.systemPrompt).toContain("## Workflow");
-    // Guidelines should not appear since it was undefined
-    expect(result.systemPrompt).not.toContain("## Guidelines");
+    // CAPABILITY CONTEXT is no longer injected regardless of compiled sections
+    expect(result.systemPrompt).not.toContain("--- CAPABILITY CONTEXT ---");
+    // WORKFLOW EXECUTION should still be present
+    expect(result.systemPrompt).toContain("--- WORKFLOW EXECUTION ---");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WORKFLOW_INSTRUCTIONS constant
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// launchCapability — withSession CustomMessage initial message
+// ---------------------------------------------------------------------------
+
+describe("launchCapability — withSession no longer sends initial message as CustomMessage", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    // Unmock launchCapability so we get the real implementation
+    vi.doUnmock("./capability-session");
+  });
+
+  // Build a mock ExtensionCommandContext that captures newSession call
+  function makeMockCtx() {
+    return {
+      sessionManager: {
+        getSessionFile: () => "parent-session.json",
+      },
+      newSession: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  it("given config with initialMessage when withSession runs then sendMessage is NOT called (initial message delivery removed)", async () => {
+    const mockCtx = makeMockCtx();
+
+    const mod = await import("./capability-session");
+    await mod.launchCapability(mockCtx as any, {
+      capability: "test-cap",
+      initialMessage: "Build the feature",
+      workspaceDir: "/test/.pio/goals/test",
+      contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
+    });
+
+    // Trigger withSession
+    const fakeNewCtx = {
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      sendUserMessage: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const newSessionCall = mockCtx.newSession.mock.calls[0];
+    await newSessionCall[0].withSession(fakeNewCtx);
+
+    // Assert: sendMessage NOT called (initial message delivery removed)
+    expect(fakeNewCtx.sendMessage).not.toHaveBeenCalled();
+    // Assert: sendUserMessage still called with empty string (trigger)
+    expect(fakeNewCtx.sendUserMessage).toHaveBeenCalledTimes(1);
+    expect(fakeNewCtx.sendUserMessage).toHaveBeenCalledWith("");
+  });
+
+  it("given config without initialMessage when withSession runs then only empty sendUserMessage is sent", async () => {
+    const mockCtx = makeMockCtx();
+
+    const mod = await import("./capability-session");
+    await mod.launchCapability(mockCtx as any, {
+      capability: "test-cap",
+      workspaceDir: "/test/.pio/goals/test",
+      contract: { inputs: [], outputs: [] },
+      allowProjectWrites: false,
+    });
+
+    const fakeNewCtx = {
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      sendUserMessage: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const newSessionCall = mockCtx.newSession.mock.calls[0];
+    await newSessionCall[0].withSession(fakeNewCtx);
+
+    // Assert: sendMessage NOT called (no initial message)
+    expect(fakeNewCtx.sendMessage).not.toHaveBeenCalled();
+    // Assert: sendUserMessage still called with empty string (trigger)
+    expect(fakeNewCtx.sendUserMessage).toHaveBeenCalledTimes(1);
+    expect(fakeNewCtx.sendUserMessage).toHaveBeenCalledWith("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WORKFLOW_INSTRUCTIONS constant
+// ---------------------------------------------------------------------------
+
+describe("WORKFLOW_INSTRUCTIONS constant", () => {
+  it("given WORKFLOW_INSTRUCTIONS when exported then it declares CustomMessage as the delivery mechanism", async () => {
+    const mod = await import("./capability-session");
+
+    expect(mod.WORKFLOW_INSTRUCTIONS).toBeDefined();
+    expect(typeof mod.WORKFLOW_INSTRUCTIONS).toBe("string");
+
+    const content = mod.WORKFLOW_INSTRUCTIONS.toLowerCase();
+    // Should reference CustomMessage injection
+    expect(content).toContain("custommessage");
+    // Should NOT contain old instruction leaks
+    expect(content).not.toContain("step titles as a roadmap");
+    expect(content).not.toContain("initial message");
+    expect(content).not.toContain(
+      "do not call pio_mark_complete on non-final steps",
+    );
+  });
+
+  it("given WORKFLOW_INSTRUCTIONS when content is static then it contains no variable or iteration-dependent references", async () => {
+    const mod = await import("./capability-session");
+
+    const content = mod.WORKFLOW_INSTRUCTIONS;
+    // Should not contain placeholders like ${...}, {stepNumber}, iteration numbers, etc.
+    expect(content).not.toMatch(/\$\{.*\}/);
+    expect(content).not.toMatch(/\{stepNumber\}/i);
+    expect(content).not.toMatch(/iteration\s+\d+/i);
+  });
+
+  it("contains Step Boundaries subsection with rules", async () => {
+    const mod = await import("./capability-session");
+
+    const content = mod.WORKFLOW_INSTRUCTIONS;
+    const lower = content.toLowerCase();
+
+    // Should have a Step Boundaries heading
+    expect(content).toContain("## Step Boundaries");
+
+    // Rule 1: do not produce artifacts
+    expect(lower).toContain("do not produce artifacts");
+
+    // Rule 2: respect negative instructions
+    expect(lower).toContain("respect negative instructions");
+    expect(lower).toContain("hard constraint");
+
+    // Rule 3: do nothing outside step instructions
+    expect(lower).toContain(
+      "do absolutely nothing outside of the step instructions",
+    );
+
+    // Rule 4: leverage context but stay focused
+    expect(lower).toContain("leverage context");
+    expect(lower).toContain("keep focused on the current step");
+  });
+
+  it("does not reference capability names or output file names", async () => {
+    const mod = await import("./capability-session");
+
+    const content = mod.WORKFLOW_INSTRUCTIONS;
+
+    // Should NOT contain capability names
+    const capabilityNames = [
+      "create-goal",
+      "create-plan",
+      "evolve-plan",
+      "execute-task",
+      "review-task",
+      "quality-gate",
+    ];
+    for (const name of capabilityNames) {
+      expect(content).not.toContain(name);
+    }
+
+    // Should NOT contain output file names
+    const outputFiles = [
+      "GOAL.md",
+      "PLAN.md",
+      "TASK.md",
+      "SUMMARY.md",
+      "REVIEW.md",
+    ];
+    for (const name of outputFiles) {
+      expect(content).not.toContain(name);
+    }
   });
 });

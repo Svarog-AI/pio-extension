@@ -8,14 +8,14 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { stripFrontmatter } from "@earendil-works/pi-coding-agent";
 import { resolveContractPath } from "./capability-config";
-import type { CompiledPromptSections } from "./capability-package";
 import { CapState } from "./capability-state";
 import { getSessionConfig } from "./capability-utils";
 import { cleanupMarkers } from "./guards/mark-complete";
-import { setupStepNudging } from "./guards/step-nudging";
 import { validateInputs } from "./guards/validation";
 import { resolveModelForCapability } from "./model-config";
 import { compilePrompt } from "./prompt-compiler";
+import { setupLoopEngine } from "./runtime/loop-engine";
+import type { CompiledPromptSections } from "./runtime/workflow-types";
 import type { CapabilityConfig } from "./types";
 
 // ESM-compatible __dirname for resolving capability package directories
@@ -42,18 +42,23 @@ export function setMergedSkills(
 }
 
 // Global mandatory skills — always injected regardless of capability config
-const GLOBAL_MANDATORY_SKILLS = ["pio", "ask-user"];
+const GLOBAL_MANDATORY_SKILLS = ["ask-user"];
 
-// Session completion mandate — injected into every pio sub-session system prompt.
-// Placed between SKILL LOADING INSTRUCTIONS and YOUR INSTRUCTIONS for maximum visibility.
-export const SESSION_COMPLETION_MANDATE = `At the end of your session, you MUST call one of the following tools:
+// Workflow execution rules — injected as a top-level section in every pio sub-session.
+// Declares CustomMessage as the sole source of task directives.
+export const WORKFLOW_INSTRUCTIONS = `# Workflow Execution
 
-- \`pio_mark_complete\` — when your work is complete and output files are ready for validation. This validates outputs against expected outputs and schedules the next workflow task.
-- \`ask_user\` — when you need clarification or a decision from the user before completing work.
+You are working through a multi-step workflow. Your instructions for each step arrive as messages in the chat via CustomMessage injection from the loop engine.
 
-This requirement applies at every session boundary, not just once per conversation. Even if \`pio_mark_complete\` was already called successfully earlier in the conversation, you must call it again before ending each session attempt. The system validates at every session boundary, not just once.
+## Step Boundaries
 
-Failing to call one of these tools means your outputs will not be validated and the next workflow task may not be scheduled.`;
+You must respect step boundaries strictly. The following rules apply to every step:
+
+- **Do not produce artifacts until the step explicitly asks you to.** Do exactly as the step instructions say. Steps that say "research," "ask questions," "verify," or similar gathering language are not asking you to write files — they are asking you to learn, explore, or confirm understanding. Do not skip ahead and create outputs even if you know what they should be. The framework will stop you from doing that anyway.
+- **Respect negative instructions literally.** If a step says "do not write," "not writing," "no new files," or similar, honor it as a hard constraint. Do not assume the final output is due because you know what capability this session belongs to. Negative instructions exist for a reason — they prevent premature artifact creation that breaks workflow ordering.
+- **Do absolutely nothing outside of the step instructions.** They exist for a reason, and should be obeyed.
+- **Leverage context, but keep focused on the current step.** Context can fill in your knowledge, but never distract you from not following the step.
+`;
 
 /** Resolve the path to the project context overview file.
  * Returns `.pio/PROJECT/OVERVIEW.md` relative to the given working directory.
@@ -111,10 +116,9 @@ export async function launchCapability(
       });
     },
     withSession: async (_newCtx) => {
-      // Kick off the agent with the initial task (visible as user message)
-      if (config.initialMessage) {
-        _newCtx.sendUserMessage(config.initialMessage);
-      }
+      // Initial message is no longer delivered — task directives come from CustomMessage injection only.
+      // Kick off first agent run via follow-up (goes through normal prompt() flow → before_agent_start fires)
+      _newCtx.sendUserMessage("");
     },
   });
 }
@@ -126,7 +130,7 @@ export async function launchCapability(
 /**
  * Build the skill-loading section from capability config and the cached skill registry.
  * Mandatory skills are force-injected with full content. Recommended skills are listed as instructions.
- * Global mandatory skills (pio, ask-user) are always included.
+ * Global mandatory skills (ask-user) are always included.
  */
 export function buildSkillLoadingSection(
   config: Pick<CapabilityConfig, "skills">,
@@ -251,9 +255,6 @@ export function buildSessionInputsSection(
  *   before_agent_start → apply systemPrompt (persistent for all turns)
  */
 export function setupSessionInfrastructure(pi: ExtensionAPI) {
-  // Register step nudging tools and handlers
-  setupStepNudging(pi);
-
   // 1. Read config at startup — consume immediately
   pi.on("resources_discover", async (_event, ctx) => {
     // Reset compiled sections to prevent stale state from previous sessions
@@ -315,16 +316,11 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
         baseSkills: config.skills,
       });
 
-      // Populate enrichedSessionParams with workflow step info for step nudging
+      // Populate enrichedSessionParams with workflow step info for the loop engine (system prompt injection)
       if (compiledSections?._steps) {
         enrichedSessionParams.totalWorkflowSteps =
           compiledSections._steps.length;
-        enrichedSessionParams.workflowSteps = compiledSections._steps.map(
-          (s) => ({
-            id: s.id,
-            title: s.title,
-          }),
-        );
+        enrichedSessionParams.workflowSteps = compiledSections._steps;
       }
     } catch (err) {
       console.warn(
@@ -340,8 +336,8 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
   //    This appends project overview, skill loading instructions, and capability
   //    prompt to pi's base system prompt (_event.systemPrompt). The systemPrompt
   //    persists across turns without accumulating in conversation history.
-  //    We must explicitly prepend _event.systemPrompt — the framework uses
-  //    last-writer-wins (runner.js:728-729: currentSystemPrompt = result.systemPrompt).
+  //    We must explicitly prepend _event.systemPrompt — pi chains before_agent_start
+  //    handlers sequentially, passing accumulated content through _event.systemPrompt.
   pi.on("before_agent_start", async (_event, ctx) => {
     // Discover project context if not yet loaded
     if (projectContext === undefined) {
@@ -376,7 +372,7 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
       prompts.push(skillLoadingSection);
     }
 
-    // Session inputs — injected between skill loading and session completion
+    // Session inputs — injected between skill loading and workflow execution
     if (currentConfig) {
       const inputsSection = buildSessionInputsSection(
         currentConfig,
@@ -388,23 +384,10 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
       }
     }
 
-    // Session completion mandate — always injected, regardless of other sections
-    prompts.push(`--- SESSION COMPLETION ---\n\n${SESSION_COMPLETION_MANDATE}`);
-
-    // Capability-specific prompt from compiled sections (role → workflow → guidelines)
-    if (compiledSections) {
-      const capabilitySections: string[] = [];
-      if (compiledSections.role) capabilitySections.push(compiledSections.role);
-      if (compiledSections.workflow)
-        capabilitySections.push(compiledSections.workflow);
-      if (compiledSections.guidelines)
-        capabilitySections.push(compiledSections.guidelines);
-      if (capabilitySections.length > 0) {
-        prompts.push(
-          `--- YOUR INSTRUCTIONS ---\n\n${capabilitySections.join("\n\n")}`,
-        );
-      }
-    }
+    // Workflow execution rules — always injected unconditionally.
+    // This is the only section telling the agent how to work through steps;
+    // all task-specific directives arrive via CustomMessage from the loop engine.
+    prompts.push(`--- WORKFLOW EXECUTION ---\n\n${WORKFLOW_INSTRUCTIONS}`);
 
     if (prompts.length === 0) return; // no injection needed
 
@@ -448,6 +431,12 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
 
     return result;
   });
+
+  // Register loop engine AFTER before_agent_start so its handler runs second.
+  // Pi chains handlers sequentially via registration order — capability-session
+  // injects project overview, skills, and instructions first, then loop-engine
+  // receives all that content in _event.systemPrompt and appends step instructions.
+  setupLoopEngine(pi);
 }
 
 // ---------------------------------------------------------------------------

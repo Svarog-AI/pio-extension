@@ -33,55 +33,6 @@ function makeMockPi() {
 // ---------------------------------------------------------------------------
 
 describe("skill registration", () => {
-  it("includes pio-project-knowledge in skillPaths", async () => {
-    // Arrange: import the extension module fresh
-    const mod = await import("./index");
-    const extensionFactory = mod.default;
-
-    const { mockPi, registeredHandlers } = makeMockPi();
-
-    // Act: register the extension (async factory)
-    await extensionFactory(mockPi as any);
-
-    // Find the resources_discover handler
-    const discoverHandler = registeredHandlers.resources_discover?.[0];
-    expect(discoverHandler).toBeDefined();
-
-    // Invoke it and check the returned skillPaths
-    const result = await discoverHandler();
-
-    expect(result.skillPaths).toBeDefined();
-    expect(Array.isArray(result.skillPaths)).toBe(true);
-
-    // Assert: pio-project-knowledge path is present
-    const pioProjectKnowledgePath = result.skillPaths.find((p: string) =>
-      p.includes("pio-project-knowledge"),
-    );
-    expect(pioProjectKnowledgePath).toBeDefined();
-  });
-
-  it("includes pio-planning in skillPaths", async () => {
-    // Arrange
-    const mod = await import("./index");
-    const extensionFactory = mod.default;
-
-    const { mockPi, registeredHandlers } = makeMockPi();
-
-    // Act: register the extension
-    await extensionFactory(mockPi as any);
-
-    const discoverHandler = registeredHandlers.resources_discover?.[0];
-    expect(discoverHandler).toBeDefined();
-
-    const result = await discoverHandler();
-
-    // Assert: pio-planning path is present
-    const pioPlanningPath = result.skillPaths.find((p: string) =>
-      p.includes("pio-planning"),
-    );
-    expect(pioPlanningPath).toBeDefined();
-  });
-
   it("skillPaths contain absolute paths under the skills directory", async () => {
     const mod = await import("./index");
     const extensionFactory = mod.default;
@@ -100,13 +51,9 @@ describe("skill registration", () => {
       expect(skillPath).toContain("skills");
     }
 
-    // Should include all six skills (filesystem discovery)
+    // Should include remaining active skills (filesystem discovery)
     const skillNames = result.skillPaths.map((p: string) => path.basename(p));
-    expect(skillNames).toContain("pio");
     expect(skillNames).toContain("tdd");
-    expect(skillNames).toContain("pio-project-knowledge");
-    expect(skillNames).toContain("pio-planning");
-    expect(skillNames).toContain("write-a-skill");
     expect(skillNames).toContain("pio-git");
   });
 

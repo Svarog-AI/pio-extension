@@ -3,44 +3,37 @@ import type {
   TurnEndEvent,
 } from "@earendil-works/pi-coding-agent";
 import { beforeEach, vi } from "vitest";
-import {
-  __testSetActiveSession,
-  __testSetMarkCompleteCalled,
-  __testSetTurnCount,
-  isThinkingOnlyTurn,
-  setupSessionGuard,
-} from "./session-guard";
+// Import the real module to spy on getSessionConfig
+import * as capabilityUtils from "../capability-utils";
+import { isThinkingOnlyTurn, setupSessionGuard } from "./session-guard";
+import { getState, resetState, setState } from "./session-state";
 
-// Mock resolveCapabilityConfig so getSessionConfig() returns a full config with live functions
-const mockResolveCapabilityConfig = vi.hoisted(() => vi.fn());
-
-vi.mock("../capability-config", () => ({
-  resolveCapabilityConfig: mockResolveCapabilityConfig,
-}));
+vi.spyOn(capabilityUtils, "getSessionConfig").mockResolvedValue({
+  capability: "create-goal",
+  workspaceDir: "/test/.pio/goals/test",
+  sessionParams: {},
+  sessionName: "test-create-goal",
+  allowProjectWrites: false,
+  contract: { inputs: [], outputs: [] },
+});
 
 beforeEach(() => {
-  mockResolveCapabilityConfig.mockClear();
-  mockResolveCapabilityConfig.mockImplementation((_cwd, params) => {
-    const cap =
-      typeof params?.capability === "string" ? params.capability : "unknown";
-    return {
-      capability: cap,
-      workspaceDir: params?.workspaceDir ?? "/test/.pio/goals/test",
-      sessionParams: params ?? {},
-      contract: { inputs: [], outputs: [] },
-    };
+  vi.mocked(capabilityUtils.getSessionConfig).mockClear();
+  vi.mocked(capabilityUtils.getSessionConfig).mockResolvedValue({
+    capability: "create-goal",
+    workspaceDir: "/test/.pio/goals/test",
+    sessionParams: {},
+    sessionName: "test-create-goal",
+    allowProjectWrites: false,
+    contract: { inputs: [], outputs: [] },
   });
+  // Reset shared session state for test isolation
+  resetState();
 });
 
 // ---------------------------------------------------------------------------
 // Helpers — mock ExtensionAPI
 // ---------------------------------------------------------------------------
-
-interface MockEntry {
-  type: string;
-  customType?: string;
-  data?: unknown;
-}
 
 interface SendUserMessageCall {
   content: string;
@@ -207,20 +200,8 @@ describe("isThinkingOnlyTurn", () => {
 describe("setupSessionGuard", () => {
   // "registers resources_discover handler"
   it("registers resources_discover handler", async () => {
-    // Arrange: mock getEntries to return pio-config
+    // Arrange: mock getSessionConfig returns a config (pio sub-session)
     const { pi, handlers } = createMockPi();
-
-    const mockSessionManager = {
-      getEntries(): MockEntry[] {
-        return [
-          {
-            type: "custom",
-            customType: "pio-config",
-            data: { capability: "create-goal", sessionParams: {} },
-          },
-        ];
-      },
-    };
 
     // Act
     setupSessionGuard(pi);
@@ -231,7 +212,7 @@ describe("setupSessionGuard", () => {
     expect(discoverHandlers?.length).toBeGreaterThan(0);
 
     // Invoke the handler with mock context
-    const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
+    const mockCtx = {} as any;
     for (const handler of discoverHandlers!) {
       await handler(
         { type: "resources_discover", cwd: ".", reason: "startup" },
@@ -240,19 +221,14 @@ describe("setupSessionGuard", () => {
     }
 
     // Assert: flag should now be true
-    expect(__testSetActiveSession()).toBe(true);
+    expect(getState().isActive).toBe(true);
   });
 
   // "resources_discover sets flag false when no pio-config"
   it("resources_discover sets flag false when no pio-config", async () => {
-    // Arrange: mock getEntries to return empty array
+    // Arrange: mock getSessionConfig to return null (no pio-config)
     const { pi, handlers } = createMockPi();
-
-    const mockSessionManager = {
-      getEntries(): MockEntry[] {
-        return [];
-      },
-    };
+    vi.mocked(capabilityUtils.getSessionConfig).mockResolvedValue(null);
 
     // Act
     setupSessionGuard(pi);
@@ -261,7 +237,7 @@ describe("setupSessionGuard", () => {
     const discoverHandlers = handlers.get("resources_discover");
     expect(discoverHandlers).toBeDefined();
 
-    const mockCtx = { sessionManager: mockSessionManager, cwd: "." } as any;
+    const mockCtx = {} as any;
     for (const handler of discoverHandlers!) {
       await handler(
         { type: "resources_discover", cwd: ".", reason: "startup" },
@@ -270,7 +246,7 @@ describe("setupSessionGuard", () => {
     }
 
     // Assert: flag should be false
-    expect(__testSetActiveSession()).toBe(false);
+    expect(getState().isActive).toBe(false);
   });
 
   // "registers turn_end handler"
@@ -295,7 +271,7 @@ describe("setupSessionGuard", () => {
     setupSessionGuard(pi);
 
     // Set session flag to false (non-pio session)
-    __testSetActiveSession(false);
+    setState({ isActive: false });
 
     // Create a TurnEndEvent with thinking-only content
     const event: TurnEndEvent = {
@@ -340,7 +316,7 @@ describe("setupSessionGuard", () => {
     setupSessionGuard(pi);
 
     // Set session flag to true
-    __testSetActiveSession(true);
+    setState({ isActive: true });
 
     // Create a TurnEndEvent with a user message (not assistant)
     const event: TurnEndEvent = {
@@ -373,7 +349,7 @@ describe("setupSessionGuard", () => {
     setupSessionGuard(pi);
 
     // Set session flag to true
-    __testSetActiveSession(true);
+    setState({ isActive: true });
 
     // Create a TurnEndEvent with thinking-only content + no tool results
     const event: TurnEndEvent = {
@@ -421,7 +397,7 @@ describe("setupSessionGuard", () => {
     setupSessionGuard(pi);
 
     // Set session flag to true
-    __testSetActiveSession(true);
+    setState({ isActive: true });
 
     // Create a TurnEndEvent with thinking + text content
     const event: TurnEndEvent = {
@@ -463,133 +439,46 @@ describe("setupSessionGuard", () => {
 });
 
 // ---------------------------------------------------------------------------
-// __testSetMarkCompleteCalled — accessor
+// session-state — markCompleteCalled via getState/setState
 // ---------------------------------------------------------------------------
 
-describe("__testSetMarkCompleteCalled", () => {
-  // "__testSetMarkCompleteCalled() returns false by default"
-  it("__testSetMarkCompleteCalled() returns false by default", () => {
+describe("session-state — markCompleteCalled via getState/setState", () => {
+  // "getState().markCompleteCalled returns false by default"
+  it("getState().markCompleteCalled returns false by default", () => {
     // Arrange
-    __testSetMarkCompleteCalled(false);
+    setState({ markCompleteCalled: false });
 
     // Act
-    const result = __testSetMarkCompleteCalled();
+    const result = getState().markCompleteCalled;
 
     // Assert
     expect(result).toBe(false);
   });
 
-  // "__testSetMarkCompleteCalled(true) sets the flag, getter returns true"
-  it("__testSetMarkCompleteCalled(true) sets the flag, getter returns true", () => {
+  // "setState({ markCompleteCalled: true }) sets the flag, getState() returns true"
+  it("setState({ markCompleteCalled: true }) sets the flag, getState() returns true", () => {
     // Arrange
-    __testSetMarkCompleteCalled(false);
+    setState({ markCompleteCalled: false });
 
     // Act
-    __testSetMarkCompleteCalled(true);
-    const result = __testSetMarkCompleteCalled();
+    setState({ markCompleteCalled: true });
+    const result = getState().markCompleteCalled;
 
     // Assert
     expect(result).toBe(true);
   });
 
-  // "__testSetMarkCompleteCalled(false) resets the flag, getter returns false"
-  it("__testSetMarkCompleteCalled(false) resets the flag, getter returns false", () => {
+  // "setState({ markCompleteCalled: false }) resets the flag, getState() returns false"
+  it("setState({ markCompleteCalled: false }) resets the flag, getState() returns false", () => {
     // Arrange
-    __testSetMarkCompleteCalled(true);
+    setState({ markCompleteCalled: true });
 
     // Act
-    __testSetMarkCompleteCalled(false);
-    const result = __testSetMarkCompleteCalled();
+    setState({ markCompleteCalled: false });
+    const result = getState().markCompleteCalled;
 
     // Assert
     expect(result).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// tool_call handler — pio_mark_complete tracking
-// ---------------------------------------------------------------------------
-
-describe("tool_call handler — pio_mark_complete tracking", () => {
-  // "tool_call sets markCompleteCalled when toolName is pio_mark_complete"
-  it("tool_call sets markCompleteCalled when toolName is pio_mark_complete", async () => {
-    // Arrange
-    const { pi, handlers } = createMockPi();
-    __testSetMarkCompleteCalled(false);
-
-    setupSessionGuard(pi);
-
-    // Act: invoke the tool_call handler with pio_mark_complete
-    const toolCallHandlers = handlers.get("tool_call");
-    expect(toolCallHandlers).toBeDefined();
-    const event = { toolName: "pio_mark_complete", input: undefined };
-    for (const handler of toolCallHandlers!) {
-      await handler(event);
-    }
-
-    // Assert
-    expect(__testSetMarkCompleteCalled()).toBe(true);
-  });
-
-  // "tool_call does NOT set markCompleteCalled for toolName read"
-  it("tool_call does NOT set markCompleteCalled for toolName read", async () => {
-    // Arrange
-    const { pi, handlers } = createMockPi();
-    __testSetMarkCompleteCalled(false);
-
-    setupSessionGuard(pi);
-
-    // Act
-    const toolCallHandlers = handlers.get("tool_call");
-    const event = { toolName: "read", input: { path: "some-file.ts" } };
-    for (const handler of toolCallHandlers!) {
-      await handler(event);
-    }
-
-    // Assert
-    expect(__testSetMarkCompleteCalled()).toBe(false);
-  });
-
-  // "tool_call does NOT set markCompleteCalled for toolName write"
-  it("tool_call does NOT set markCompleteCalled for toolName write", async () => {
-    // Arrange
-    const { pi, handlers } = createMockPi();
-    __testSetMarkCompleteCalled(false);
-
-    setupSessionGuard(pi);
-
-    // Act
-    const toolCallHandlers = handlers.get("tool_call");
-    const event = {
-      toolName: "write",
-      input: { path: "some-file.ts", content: "code" },
-    };
-    for (const handler of toolCallHandlers!) {
-      await handler(event);
-    }
-
-    // Assert
-    expect(__testSetMarkCompleteCalled()).toBe(false);
-  });
-
-  // "tool_call sets markCompleteCalled regardless of isActivePioSession"
-  it("tool_call sets markCompleteCalled regardless of isActivePioSession", async () => {
-    // Arrange
-    const { pi, handlers } = createMockPi();
-    __testSetActiveSession(false);
-    __testSetMarkCompleteCalled(false);
-
-    setupSessionGuard(pi);
-
-    // Act
-    const toolCallHandlers = handlers.get("tool_call");
-    const event = { toolName: "pio_mark_complete", input: undefined };
-    for (const handler of toolCallHandlers!) {
-      await handler(event);
-    }
-
-    // Assert
-    expect(__testSetMarkCompleteCalled()).toBe(true);
   });
 });
 
@@ -602,8 +491,8 @@ describe("before_agent_start handler — markCompleteCalled reset", () => {
   it("before_agent_start resets markCompleteCalled when isActivePioSession is true", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(true);
+    setState({ isActive: true });
+    setState({ markCompleteCalled: true });
 
     setupSessionGuard(pi);
 
@@ -616,15 +505,15 @@ describe("before_agent_start handler — markCompleteCalled reset", () => {
     }
 
     // Assert
-    expect(__testSetMarkCompleteCalled()).toBe(false);
+    expect(getState().markCompleteCalled).toBe(false);
   });
 
   // "before_agent_start does NOT reset markCompleteCalled when isActivePioSession is false"
   it("before_agent_start does NOT reset markCompleteCalled when isActivePioSession is false", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(false);
-    __testSetMarkCompleteCalled(true);
+    setState({ isActive: false });
+    setState({ markCompleteCalled: true });
 
     setupSessionGuard(pi);
 
@@ -637,7 +526,7 @@ describe("before_agent_start handler — markCompleteCalled reset", () => {
     }
 
     // Assert: flag should remain true
-    expect(__testSetMarkCompleteCalled()).toBe(true);
+    expect(getState().markCompleteCalled).toBe(true);
   });
 });
 
@@ -646,18 +535,18 @@ describe("before_agent_start handler — markCompleteCalled reset", () => {
 // ---------------------------------------------------------------------------
 
 describe("setupSessionGuard — handler registration for new events", () => {
-  // "setupSessionGuard registers tool_call handler"
-  it("setupSessionGuard registers tool_call handler", () => {
+  // "setupSessionGuard does NOT register tool_call handler (markCompleteCalled is set inside the tool)"
+  it("setupSessionGuard does NOT register tool_call handler", () => {
     // Arrange
     const { pi, handlers } = createMockPi();
 
     // Act
     setupSessionGuard(pi);
 
-    // Assert
+    // Assert: session-guard no longer registers a tool_call handler
+    // (markCompleteCalled is now set inside markCompleteTool.execute())
     const toolCallHandlers = handlers.get("tool_call");
-    expect(toolCallHandlers).toBeDefined();
-    expect(toolCallHandlers?.length).toBeGreaterThan(0);
+    expect(toolCallHandlers).toBeUndefined();
   });
 
   // "setupSessionGuard registers before_agent_start handler"
@@ -673,20 +562,6 @@ describe("setupSessionGuard — handler registration for new events", () => {
     expect(beforeAgentStartHandlers).toBeDefined();
     expect(beforeAgentStartHandlers?.length).toBeGreaterThan(0);
   });
-
-  // "setupSessionGuard registers agent_end handler"
-  it("setupSessionGuard registers agent_end handler", () => {
-    // Arrange
-    const { pi, handlers } = createMockPi();
-
-    // Act
-    setupSessionGuard(pi);
-
-    // Assert
-    const agentEndHandlers = handlers.get("agent_end");
-    expect(agentEndHandlers).toBeDefined();
-    expect(agentEndHandlers?.length).toBeGreaterThan(0);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -696,9 +571,9 @@ describe("setupSessionGuard — handler registration for new events", () => {
 describe("turn_count — refinement loop nudge", () => {
   // Reset state before each test to ensure isolation
   beforeEach(() => {
-    __testSetActiveSession(false);
-    __testSetMarkCompleteCalled(false);
-    __testSetTurnCount(0);
+    setState({ isActive: false });
+    setState({ markCompleteCalled: false });
+    setState({ turnCount: 0 });
   });
 
   // Helper: simulate N turn_end events with assistant text content
@@ -747,36 +622,36 @@ describe("turn_count — refinement loop nudge", () => {
   it("turnCount increments by 1 on each turn_end when isActivePioSession is true", () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate 3 turns
     simulateTurns(handlers, 3);
 
     // Assert
-    expect(__testSetTurnCount()).toBe(3);
+    expect(getState().turnCount).toBe(3);
   });
 
   it("turnCount does NOT increment when isActivePioSession is false", () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(false);
-    __testSetTurnCount(0);
+    setState({ isActive: false });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate 3 turns
     simulateTurns(handlers, 3);
 
     // Assert
-    expect(__testSetTurnCount()).toBe(0);
+    expect(getState().turnCount).toBe(0);
   });
 
   it("sends nudge message when turnCount reaches the threshold", () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate 15 turns (DEFAULT_TURN_THRESHOLD)
@@ -793,22 +668,22 @@ describe("turn_count — refinement loop nudge", () => {
   it("turnCount resets to 0 after the nudge fires", () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate 15 turns (threshold)
     simulateTurns(handlers, 15);
 
     // Assert: counter reset to 0
-    expect(__testSetTurnCount()).toBe(0);
+    expect(getState().turnCount).toBe(0);
   });
 
   it('nudge message uses { deliverAs: "steer" }', () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate 15 turns
@@ -825,8 +700,8 @@ describe("turn_count — refinement loop nudge", () => {
   it("nudge fires again after reset (periodic nudges)", () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate 30 turns (2 x threshold)
@@ -842,8 +717,8 @@ describe("turn_count — refinement loop nudge", () => {
   it("does NOT send nudge when turnCount is below threshold", () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate 14 turns (below threshold of 15)
@@ -856,8 +731,8 @@ describe("turn_count — refinement loop nudge", () => {
   it("before_agent_start resets turnCount when isActivePioSession is true", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(5);
+    setState({ isActive: true });
+    setState({ turnCount: 5 });
     setupSessionGuard(pi);
 
     // Act: invoke before_agent_start
@@ -869,14 +744,14 @@ describe("turn_count — refinement loop nudge", () => {
     }
 
     // Assert
-    expect(__testSetTurnCount()).toBe(0);
+    expect(getState().turnCount).toBe(0);
   });
 
   it("before_agent_start does NOT reset turnCount when isActivePioSession is false", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(false);
-    __testSetTurnCount(5);
+    setState({ isActive: false });
+    setState({ turnCount: 5 });
     setupSessionGuard(pi);
 
     // Act: invoke before_agent_start
@@ -888,41 +763,40 @@ describe("turn_count — refinement loop nudge", () => {
     }
 
     // Assert: turnCount should remain 5
-    expect(__testSetTurnCount()).toBe(5);
+    expect(getState().turnCount).toBe(5);
   });
 
   it("turnCount increments on text-only (non-thinking) turns", () => {
     // Arrange
     const { pi, handlers } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate 3 turns with text-only content (no thinking blocks)
     simulateTurns(handlers, 3);
 
     // Assert: turnCount incremented despite no thinking blocks
-    expect(__testSetTurnCount()).toBe(3);
+    expect(getState().turnCount).toBe(3);
   });
 
-  it("__testSetTurnCount(value) sets and returns the value", () => {
+  it("setState({ turnCount: value }) sets and getState().turnCount returns the value", () => {
     // Arrange
-    __testSetTurnCount(0);
+    setState({ turnCount: 0 });
 
     // Act
-    const setResult = __testSetTurnCount(7);
+    setState({ turnCount: 7 });
 
     // Assert
-    expect(setResult).toBe(7);
-    expect(__testSetTurnCount()).toBe(7);
+    expect(getState().turnCount).toBe(7);
   });
 
-  it("__testSetTurnCount() returns current value without argument", () => {
+  it("getState().turnCount returns current value", () => {
     // Arrange
-    __testSetTurnCount(42);
+    setState({ turnCount: 42 });
 
     // Act
-    const result = __testSetTurnCount();
+    const result = getState().turnCount;
 
     // Assert
     expect(result).toBe(42);
@@ -931,8 +805,8 @@ describe("turn_count — refinement loop nudge", () => {
   it("nudge fires at the exact threshold boundary (turn 15, not 16)", () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
     setupSessionGuard(pi);
 
     // Act: simulate exactly 15 turns
@@ -945,243 +819,7 @@ describe("turn_count — refinement loop nudge", () => {
     expect(steerCalls).toHaveLength(1);
     expect(steerCalls[0].content).toContain("loop");
     // And counter reset, so turn 16 would start fresh
-    expect(__testSetTurnCount()).toBe(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// agent_end handler — warning when pio_mark_complete was not called
-// ---------------------------------------------------------------------------
-
-describe("agent_end handler — warning content", () => {
-  beforeEach(() => {
-    __testSetActiveSession(false);
-    __testSetMarkCompleteCalled(false);
-  });
-
-  it("warning mentions pio_mark_complete", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(false);
-    setupSessionGuard(pi);
-
-    // Act
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [] };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert
-    const content = sendUserMessageCalls[0].content;
-    expect(content).toContain("pio_mark_complete");
-  });
-
-  it("warning states consequences (outputs not validated, next task not scheduled)", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(false);
-    setupSessionGuard(pi);
-
-    // Act
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [] };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert
-    const content = sendUserMessageCalls[0].content.toLowerCase();
-    expect(content).toMatch(/not validated|not scheduled/);
-  });
-
-  it("warning mentions ask_user as alternative", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(false);
-    setupSessionGuard(pi);
-
-    // Act
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [] };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert
-    const content = sendUserMessageCalls[0].content;
-    expect(content).toContain("ask_user");
-  });
-
-  it("warning provides remediation guidance", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(false);
-    setupSessionGuard(pi);
-
-    // Act
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [] };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert: message contains remediation language ("should", "must", "call", etc.)
-    const content = sendUserMessageCalls[0].content.toLowerCase();
-    expect(content).toMatch(/should|must|call.*when|next.*attempt/);
-  });
-});
-
-describe("agent_end handler", () => {
-  // Reset state before each test to ensure isolation
-  beforeEach(() => {
-    __testSetActiveSession(false);
-    __testSetMarkCompleteCalled(false);
-  });
-
-  // "agent_end sends warning when markCompleteCalled is false and isActivePioSession is true"
-  it("sends warning when markCompleteCalled is false and isActivePioSession is true", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(false);
-
-    setupSessionGuard(pi);
-
-    // Act: invoke the agent_end handler
-    const agentEndHandlers = handlers.get("agent_end");
-    expect(agentEndHandlers).toBeDefined();
-    const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [] };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert: sendUserMessage was called exactly once with deliverAs: "followUp"
-    expect(sendUserMessageCalls).toHaveLength(1);
-    expect(sendUserMessageCalls[0].content.length).toBeGreaterThan(0);
-    expect(sendUserMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
-  });
-
-  // "agent_end does NOT send warning when markCompleteCalled is true"
-  it("does NOT send warning when markCompleteCalled is true", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(true);
-
-    setupSessionGuard(pi);
-
-    // Act: invoke the agent_end handler
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [] };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert: sendUserMessage was NOT called
-    expect(sendUserMessageCalls).toHaveLength(0);
-  });
-
-  // "agent_end does NOT send warning when isActivePioSession is false"
-  it("does NOT send warning when isActivePioSession is false", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(false);
-    __testSetMarkCompleteCalled(false);
-
-    setupSessionGuard(pi);
-
-    // Act: invoke the agent_end handler
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [] };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert: sendUserMessage was NOT called
-    expect(sendUserMessageCalls).toHaveLength(0);
-  });
-
-  // "agent_end does NOT send warning when last message has stopReason 'aborted'"
-  it("does NOT send warning when last message has stopReason 'aborted'", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(false);
-
-    setupSessionGuard(pi);
-
-    // Act: invoke the agent_end handler with last message having stopReason: "aborted"
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = {
-      type: "agent_end" as const,
-      messages: [{ stopReason: "aborted" }],
-    };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert: sendUserMessage was NOT called (abort detected via stopReason)
-    expect(sendUserMessageCalls).toHaveLength(0);
-  });
-
-  // "agent_end DOES send warning when last message has no stopReason"
-  it("DOES send warning when last message has no stopReason", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(false);
-
-    setupSessionGuard(pi);
-
-    // Act: invoke the agent_end handler with last message having no stopReason
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = { type: "agent_end" as const, messages: [{}] };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert: sendUserMessage WAS called (normal operation — warning sent)
-    expect(sendUserMessageCalls).toHaveLength(1);
-    expect(sendUserMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
-  });
-
-  // "agent_end DOES send warning when last message has stopReason 'stop'"
-  it("DOES send warning when last message has stopReason 'stop'", async () => {
-    // Arrange
-    const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetMarkCompleteCalled(false);
-
-    setupSessionGuard(pi);
-
-    // Act: invoke the agent_end handler with last message having stopReason: "stop"
-    const agentEndHandlers = handlers.get("agent_end");
-    const mockCtx = {} as any;
-    const event = {
-      type: "agent_end" as const,
-      messages: [{ stopReason: "stop" }],
-    };
-    for (const handler of agentEndHandlers!) {
-      await handler(event, mockCtx);
-    }
-
-    // Assert: sendUserMessage WAS called (normal operation — warning sent)
-    expect(sendUserMessageCalls).toHaveLength(1);
-    expect(sendUserMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
+    expect(getState().turnCount).toBe(0);
   });
 });
 
@@ -1192,17 +830,17 @@ describe("agent_end handler", () => {
 describe("turn_end handler — abort detection via stopReason", () => {
   // Reset state before each test to ensure isolation
   beforeEach(() => {
-    __testSetActiveSession(false);
-    __testSetMarkCompleteCalled(false);
-    __testSetTurnCount(0);
+    setState({ isActive: false });
+    setState({ markCompleteCalled: false });
+    setState({ turnCount: 0 });
   });
 
   // "turn_end returns early on stopReason 'aborted' (turnCount not incremented, no messages sent)"
   it("returns early on stopReason 'aborted' (turnCount not incremented, no messages sent)", () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
 
     setupSessionGuard(pi);
 
@@ -1236,7 +874,7 @@ describe("turn_end handler — abort detection via stopReason", () => {
     }
 
     // Assert: handler returned early — turnCount not incremented, no messages sent
-    expect(__testSetTurnCount()).toBe(0);
+    expect(getState().turnCount).toBe(0);
     expect(sendUserMessageCalls).toHaveLength(0);
   });
 
@@ -1244,8 +882,8 @@ describe("turn_end handler — abort detection via stopReason", () => {
   it("processes normally when stopReason is not 'aborted' (turnCount increments, thinking-only detection works)", () => {
     // Arrange
     const { pi, handlers, sendUserMessageCalls } = createMockPi();
-    __testSetActiveSession(true);
-    __testSetTurnCount(0);
+    setState({ isActive: true });
+    setState({ turnCount: 0 });
 
     setupSessionGuard(pi);
 
@@ -1279,7 +917,7 @@ describe("turn_end handler — abort detection via stopReason", () => {
     }
 
     // Assert: turnCount incremented, recovery prompt sent
-    expect(__testSetTurnCount()).toBe(1);
+    expect(getState().turnCount).toBe(1);
     expect(sendUserMessageCalls).toHaveLength(1);
     expect(sendUserMessageCalls[0].options).toEqual({ deliverAs: "steer" });
   });

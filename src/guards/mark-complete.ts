@@ -7,6 +7,7 @@ import { CapState } from "../capability-state";
 import { getSessionConfig } from "../capability-utils";
 import { extractFrontmatter } from "../frontmatter";
 import { enqueueTask } from "../queues";
+import { getState, setState } from "../runtime/session-state";
 import { dispatch, getMachine, recordTransition } from "../state-machines";
 import type { CapabilityContract } from "../types";
 import { validateOutputs } from "./validation";
@@ -216,6 +217,19 @@ export const markCompleteTool = defineTool({
       );
     }
 
+    // Step-position guard: on non-final steps, end the agent run immediately.
+    // Empty content ensures no text is injected into the agent's conversation
+    // history — the tool call produces zero visible side effects.
+    // terminate: true ends the run → fires agent_end, which runs its normal flow:
+    // iteration bounds check, termination condition evaluation, step advancement,
+    // and follow-up injection for the next step.
+    // Important: markCompleteCalled is NOT set — so agent_end runs normally and
+    // handles advancement via its existing logic (not an early return).
+    const loopState = getState();
+    if (loopState.isActive && loopState.currentStep < loopState.totalSteps) {
+      return { content: [], details: {}, terminate: true };
+    }
+
     // config.workspaceDir is already the resolved directory (includes workspacePrefix).
     // workspacePrefix is stripped from sessionParams during normalization.
     // Use `dir` (= config.workspaceDir) everywhere — it's the resolved workspace directory.
@@ -382,6 +396,11 @@ export const markCompleteTool = defineTool({
         }
       }
     }
+
+    // Mark completion flag — set only on actual success (after validation + transitions).
+    // This ensures the loop engine sees markCompleteCalled: true only when
+    // mark-complete actually succeeded — not on error paths or non-final-step rejections.
+    setState({ markCompleteCalled: true });
 
     return {
       content: [

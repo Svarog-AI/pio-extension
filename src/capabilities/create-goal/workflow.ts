@@ -1,4 +1,4 @@
-import type { WorkflowStep } from "../../capability-package";
+import type { WorkflowStep } from "../../runtime/workflow-types";
 
 export default [
   {
@@ -56,6 +56,7 @@ Do not ask questions that your research already answered. Do not ask generic "an
   {
     id: "write-goal",
     title: "Write GOAL.md",
+    write: ["goal"],
     instructions: `When you have enough information, write \`GOAL.md\` into the goal workspace directory. The file must have the following sections, in this order (the fourth section is optional):
 
 \`\`\`markdown

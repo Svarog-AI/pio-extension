@@ -380,8 +380,8 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
     }
 
     // Workflow execution rules — always injected unconditionally.
-    // Placed before capability context so the agent knows its execution constraints
-    // before seeing role-specific instructions.
+    // This is the only section telling the agent how to work through steps;
+    // all task-specific directives arrive via CustomMessage from the loop engine.
     prompts.push(`--- WORKFLOW EXECUTION ---\n\n${WORKFLOW_INSTRUCTIONS}`);
 
     if (prompts.length === 0) return; // no injection needed

@@ -217,21 +217,22 @@ export const markCompleteTool = defineTool({
       );
     }
 
-    // Step-position guard: only proceed on final step or non-loop-engine sessions.
-    // On non-final steps, return an error without terminating — the agent stays
-    // running so the loop engine can advance to the next step via follow-up injection.
+    // Step-position guard: on non-final steps, return a silent acknowledgment.
+    // This makes pio_mark_complete a general "I'm done" signal — the engine advances
+    // naturally via agent_end when the agent stops (stopReason="stop").
+    // Important: do NOT set markCompleteCalled: true on this path — the loop engine
+    // needs to see that markComplete was NOT called so it can continue advancing.
     const loopState = getState();
     if (loopState.isActive && loopState.currentStep < loopState.totalSteps) {
       return {
         content: [
           {
             type: "text",
-            text: `You are on Step ${loopState.currentStep} of ${loopState.totalSteps}. Do not call pio_mark_complete yet — there are more workflow steps to complete.
-Continue working on the current step or proceed to the next one.`,
+            text: `Step ${loopState.currentStep} completed. The engine will advance to the next step.`,
           },
         ],
         details: {},
-        // NO terminate — agent stays running
+        // NO terminate — agent stays running, engine advances via agent_end
       };
     }
 

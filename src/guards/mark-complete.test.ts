@@ -1396,7 +1396,7 @@ describe("mark-complete (setupMarkComplete)", () => {
   // Step-position guard — loop engine awareness
   // -----------------------------------------------------------------------
 
-  it("returns error without terminate on non-final step (active loop engine)", async () => {
+  it("returns silent no-op without terminate on non-final step (active loop engine)", async () => {
     mockGetState.mockReturnValue({
       isActive: true,
       markCompleteCalled: false,
@@ -1441,9 +1441,10 @@ describe("mark-complete (setupMarkComplete)", () => {
       mockCtx,
     );
 
-    // Should return error with step info, NOT terminate
-    expect(result.content[0].text).toContain("Step 1 of 7");
-    expect(result.content[0].text).toContain(
+    // Should return silent acknowledgment, NOT terminate
+    expect(result.content[0].text).toContain("Step 1 completed");
+    expect(result.content[0].text).toContain("engine will advance");
+    expect(result.content[0].text).not.toContain(
       "Do not call pio_mark_complete yet",
     );
     expect(result.terminate).toBeFalsy();
@@ -1451,6 +1452,7 @@ describe("mark-complete (setupMarkComplete)", () => {
     // Should NOT have proceeded to validation
     expect(mockValidateOutputs).not.toHaveBeenCalled();
     expect(mockDispatch).not.toHaveBeenCalled();
+    // markCompleteCalled should NOT be set on non-final step early return
     expect(mockSetState).not.toHaveBeenCalled();
   });
 

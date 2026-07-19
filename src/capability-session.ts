@@ -42,25 +42,18 @@ export function setMergedSkills(
 }
 
 // Global mandatory skills — always injected regardless of capability config
-const GLOBAL_MANDATORY_SKILLS = ["pio", "ask-user"];
+// "pio" skill excluded: it is a full reference manual that leaks capability details
+// ("create-goal → GOAL.md"). It remains discoverable via the skill registry.
+const GLOBAL_MANDATORY_SKILLS = ["ask-user"];
 
 // Workflow execution rules — injected as a top-level section in every pio sub-session.
-// Defines step-boundary constraints and the CustomMessage delivery model.
+// Declares CustomMessage as the sole source of task directives.
 export const WORKFLOW_INSTRUCTIONS = `# Workflow Execution
 
-You are working through a series of steps defined in this workflow. Here is how step-by-step instruction delivery works:
+You are working through a multi-step workflow. Your instructions for each step arrive as messages in the chat via CustomMessage injection from the loop engine.
 
-- Steps are executed sequentially, one at a time. You will receive instructions for each step as you progress through the workflow.
-- Detailed instructions for your current step are delivered dynamically via CustomMessage injection. The system prompt shows only step titles as a roadmap — don't assume you have full context for all steps upfront.
-- Focus on completing your current step with the instructions provided. When a step is complete, the engine will automatically advance you to the next step and provide its instructions.
-
-## Step Boundaries
-
-- DO NOT produce outputs for future steps — each step has its own instructions delivered via CustomMessage.
-- DO NOT call pio_mark_complete on non-final steps — it will fail with an error directing you to continue. Only call it when you are on the final workflow step and have completed all required outputs.
-- DO NOT follow the instructions in the initial message — this is context only, not a task directive. The real task comes from the CustomMessage step instructions delivered by the loop engine.
-
-There is no need to plan ahead across multiple steps or worry about future step details. Just focus on the current step and its instructions.`;
+- Follow the instructions delivered to you step by step. They are your only source of task directives — do not produce outputs mentioned in this system prompt or elsewhere that have not been requested via step instructions.
+- When you have completed all required outputs, call \`pio_mark_complete\` to validate and end the session.`;
 
 /** Resolve the path to the project context overview file.
  * Returns `.pio/PROJECT/OVERVIEW.md` relative to the given working directory.
@@ -118,15 +111,8 @@ export async function launchCapability(
       });
     },
     withSession: async (_newCtx) => {
-      // Step A: inject initial message as passive CustomMessage (appended to history, no turn)
-      if (config.initialMessage) {
-        await _newCtx.sendMessage({
-          customType: "workflow-initial-message",
-          content: config.initialMessage,
-          display: true,
-        });
-      }
-      // Step B: kick off first agent run via follow-up (goes through normal prompt() flow → before_agent_start fires)
+      // Initial message is no longer delivered — task directives come from CustomMessage injection only.
+      // Kick off first agent run via follow-up (goes through normal prompt() flow → before_agent_start fires)
       _newCtx.sendUserMessage("");
     },
   });
@@ -397,22 +383,6 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
     // Placed before capability context so the agent knows its execution constraints
     // before seeing role-specific instructions.
     prompts.push(`--- WORKFLOW EXECUTION ---\n\n${WORKFLOW_INSTRUCTIONS}`);
-
-    // Capability-specific prompt from compiled sections (role → workflow titles → guidelines)
-    if (compiledSections) {
-      const capabilitySections: string[] = [];
-      if (compiledSections.role) capabilitySections.push(compiledSections.role);
-      if (compiledSections.workflow) {
-        capabilitySections.push(compiledSections.workflow);
-      }
-      if (compiledSections.guidelines)
-        capabilitySections.push(compiledSections.guidelines);
-      if (capabilitySections.length > 0) {
-        prompts.push(
-          `--- CAPABILITY CONTEXT ---\n\n${capabilitySections.join("\n\n")}`,
-        );
-      }
-    }
 
     if (prompts.length === 0) return; // no injection needed
 

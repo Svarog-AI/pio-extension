@@ -722,10 +722,13 @@ describe("model resolution — backwards compatibility", () => {
       {} as any,
     );
 
-    // Assert: prompt injection returned via systemPrompt (from create-goal.md)
+    // Assert: prompt injection returned via systemPrompt
     expect(result).toBeDefined();
     expect(typeof result.systemPrompt).toBe("string");
-    expect(result.systemPrompt).toContain("--- CAPABILITY CONTEXT ---");
+    // CAPABILITY CONTEXT is no longer injected (instruction leak removal)
+    expect(result.systemPrompt).not.toContain("--- CAPABILITY CONTEXT ---");
+    // WORKFLOW EXECUTION should still be present
+    expect(result.systemPrompt).toContain("--- WORKFLOW EXECUTION ---");
     // Model resolution also ran but didn't call setModel since config is undefined
     expect(setModelMock).not.toHaveBeenCalled();
   });
@@ -913,10 +916,14 @@ describe("buildSkillLoadingSection", () => {
     const mod = await import("./capability-session");
     const result = mod.buildSkillLoadingSection({}, []);
 
-    // No skills in registry — global mandatory skills are attempted but skipped with warnings
+    // No skills in registry — only "ask-user" is global mandatory ("pio" excluded to avoid instruction leakage)
     expect(result).toBeUndefined();
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("pio"));
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("ask-user"));
+    // "pio" should NOT be attempted as a skill name (no longer global mandatory)
+    // (warning messages have "pio:" prefix, so check for skill name specifically)
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('skill "pio"'),
+    );
 
     warnSpy.mockRestore();
   });
@@ -1020,19 +1027,19 @@ describe("buildSkillLoadingSection", () => {
   });
 
   it("given global mandatory skills that overlap with config mandatory skills when buildSkillLoadingSection is called then duplicates are deduplicated", async () => {
-    const skillBody = "# PIO Skill";
-    const filePath = writeSkillFile(tempDir, "pio", skillBody);
+    const skillBody = "# Ask User Skill";
+    const filePath = writeSkillFile(tempDir, "ask-user", skillBody);
     const baseDir = path.dirname(filePath);
 
-    const registry = [makeSkill("pio", filePath, baseDir)];
-    // Config also declares pio as mandatory — should appear only once
-    const config = { skills: { mandatory: ["pio"] } };
+    const registry = [makeSkill("ask-user", filePath, baseDir)];
+    // Config also declares ask-user as mandatory — should appear only once
+    const config = { skills: { mandatory: ["ask-user"] } };
 
     const mod = await import("./capability-session");
     const result = mod.buildSkillLoadingSection(config, registry);
 
     // Count occurrences of the skill XML tag — should be exactly 1
-    const matches = result?.match(/<skill name="pio"/g);
+    const matches = result?.match(/<skill name="ask-user"/g);
     expect(matches?.length).toBe(1);
   });
 
@@ -1066,11 +1073,14 @@ describe("buildSkillLoadingSection", () => {
     const mod = await import("./capability-session");
     const result = mod.buildSkillLoadingSection(config, []);
 
-    // No skills in registry — global skills skipped with warnings, returns undefined
+    // No skills in registry — only "ask-user" global skill skipped with warning
     expect(result).toBeUndefined();
-    // Should have logged warnings for missing global skills
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("pio"));
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("ask-user"));
+    // "pio" should NOT be attempted as a skill name (no longer global mandatory)
+    // (warning messages have "pio:" prefix, so check for skill name specifically)
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('skill "pio"'),
+    );
 
     warnSpy.mockRestore();
   });
@@ -1159,14 +1169,18 @@ describe("skill injection — before_agent_start integration", () => {
     expect(result.systemPrompt).toContain('<skill name="test-skill"');
   });
 
-  it("given before_agent_start when the handler runs then delivery order is PROJECT OVERVIEW, then SKILL LOADING INSTRUCTIONS, then WORKFLOW EXECUTION, then CAPABILITY CONTEXT", async () => {
-    // Populate registry with "pio" (a global mandatory skill) so buildSkillLoadingSection
-    // generates the SKILL LOADING INSTRUCTIONS section — all three sections must appear
-    const pioSkillBody = "# PIO Skill";
-    const pioFilePath = writeSkillFile(tempDir, "pio", pioSkillBody);
-    const pioBaseDir = path.dirname(pioFilePath);
+  it("given before_agent_start when the handler runs then delivery order is PROJECT OVERVIEW, then SKILL LOADING INSTRUCTIONS, then SESSION INPUTS, then WORKFLOW EXECUTION — CAPABILITY CONTEXT is absent", async () => {
+    // Populate registry with "ask-user" (the only global mandatory skill)
+    // so buildSkillLoadingSection generates the SKILL LOADING INSTRUCTIONS section
+    const askUserSkillBody = "# Ask User Skill";
+    const askUserFilePath = writeSkillFile(
+      tempDir,
+      "ask-user",
+      askUserSkillBody,
+    );
+    const askUserBaseDir = path.dirname(askUserFilePath);
 
-    const registry = [makeSkill("pio", pioFilePath, pioBaseDir)];
+    const registry = [makeSkill("ask-user", askUserFilePath, askUserBaseDir)];
 
     const registeredHandlers: Record<string, Function> = {};
     const setModelMock = vi.fn();
@@ -1183,7 +1197,7 @@ describe("skill injection — before_agent_start integration", () => {
     const mod = await import("./capability-session");
     mod.setupSessionInfrastructure(mockPi as any);
 
-    // Trigger resources_discover
+    // Trigger resources_discover with session params that produce SESSION INPUTS
     const rdHandler = registeredHandlers.resources_discover;
     if (rdHandler) {
       await rdHandler(
@@ -1198,7 +1212,10 @@ describe("skill injection — before_agent_start integration", () => {
               {
                 type: "custom",
                 customType: "pio-config",
-                data: { capability: "test-cap", prompt: "create-goal.md" },
+                data: {
+                  capability: "test-cap",
+                  sessionParams: { workspaceDir: tempDir },
+                },
               },
             ],
           },
@@ -1206,7 +1223,7 @@ describe("skill injection — before_agent_start integration", () => {
       );
     }
 
-    // Trigger before_agent_start with registry containing "pio" skill
+    // Trigger before_agent_start with registry containing "ask-user" skill
     const handler = registeredHandlers.before_agent_start;
     if (!handler) throw new Error("before_agent_start handler not registered");
     const result = await handler(
@@ -1221,23 +1238,20 @@ describe("skill injection — before_agent_start integration", () => {
 
     expect(typeof result.systemPrompt).toBe("string");
 
-    // Verify order: PROJECT OVERVIEW < SKILL LOADING < WORKFLOW EXECUTION < CAPABILITY CONTEXT
-    const projectIdx = result.systemPrompt.indexOf("--- PROJECT OVERVIEW ---");
+    // CAPABILITY CONTEXT should be absent (instruction leak removal)
+    expect(result.systemPrompt).not.toContain("--- CAPABILITY CONTEXT ---");
+
+    // Verify order: SKILL LOADING < WORKFLOW EXECUTION
     const skillIdx = result.systemPrompt.indexOf(
       "--- SKILL LOADING INSTRUCTIONS ---",
     );
     const workflowExecIdx = result.systemPrompt.indexOf(
       "--- WORKFLOW EXECUTION ---",
     );
-    const capCtxIdx = result.systemPrompt.indexOf("--- CAPABILITY CONTEXT ---");
 
-    expect(projectIdx).toBeGreaterThan(-1);
     expect(skillIdx).toBeGreaterThan(-1);
     expect(workflowExecIdx).toBeGreaterThan(-1);
-    expect(capCtxIdx).toBeGreaterThan(-1);
-    expect(projectIdx).toBeLessThan(skillIdx);
     expect(skillIdx).toBeLessThan(workflowExecIdx);
-    expect(workflowExecIdx).toBeLessThan(capCtxIdx);
   });
 
   it("given the skill registry is populated via systemPromptOptions.skills when before_agent_start runs then the registry is cached", async () => {
@@ -1308,11 +1322,15 @@ describe("skill injection — before_agent_start integration", () => {
   it("given before_agent_start with a non-empty base systemPrompt when the handler runs then the base prompt is preserved as a prefix", async () => {
     const basePrompt = "This is the base prompt";
 
-    const pioSkillBody = "# PIO Skill";
-    const pioFilePath = writeSkillFile(tempDir, "pio", pioSkillBody);
-    const pioBaseDir = path.dirname(pioFilePath);
+    const askUserSkillBody = "# Ask User Skill";
+    const askUserFilePath = writeSkillFile(
+      tempDir,
+      "ask-user",
+      askUserSkillBody,
+    );
+    const askUserBaseDir = path.dirname(askUserFilePath);
 
-    const registry = [makeSkill("pio", pioFilePath, pioBaseDir)];
+    const registry = [makeSkill("ask-user", askUserFilePath, askUserBaseDir)];
 
     const registeredHandlers: Record<string, Function> = {};
     const setModelMock = vi.fn();
@@ -1344,7 +1362,7 @@ describe("skill injection — before_agent_start integration", () => {
               {
                 type: "custom",
                 customType: "pio-config",
-                data: { capability: "test-cap", prompt: "create-goal.md" },
+                data: { capability: "test-cap", sessionParams: {} },
               },
             ],
           },
@@ -1371,7 +1389,10 @@ describe("skill injection — before_agent_start integration", () => {
     expect(result.systemPrompt?.startsWith(basePrompt)).toBe(true);
     // Appended content follows after the separator
     expect(result.systemPrompt).toContain("\n\n");
-    expect(result.systemPrompt).toContain("--- CAPABILITY CONTEXT ---");
+    // CAPABILITY CONTEXT should be absent (instruction leak removal)
+    expect(result.systemPrompt).not.toContain("--- CAPABILITY CONTEXT ---");
+    // WORKFLOW EXECUTION should be present
+    expect(result.systemPrompt).toContain("--- WORKFLOW EXECUTION ---");
   });
 });
 
@@ -1806,12 +1827,16 @@ describe("session completion mandate removal — before_agent_start injection", 
     expect(result.systemPrompt).toContain("--- WORKFLOW EXECUTION ---");
   });
 
-  it("given before_agent_start when the handler runs then section ordering is SKILL LOADING before WORKFLOW EXECUTION before CAPABILITY CONTEXT", async () => {
-    const pioSkillBody = "# PIO Skill";
-    const pioFilePath = writeSkillFile(tempDir, "pio", pioSkillBody);
-    const pioBaseDir = path.dirname(pioFilePath);
+  it("given before_agent_start when the handler runs then section ordering is SKILL LOADING before WORKFLOW EXECUTION and CAPABILITY CONTEXT is absent", async () => {
+    const askUserSkillBody = "# Ask User Skill";
+    const askUserFilePath = writeSkillFile(
+      tempDir,
+      "ask-user",
+      askUserSkillBody,
+    );
+    const askUserBaseDir = path.dirname(askUserFilePath);
 
-    const registry = [makeSkill("pio", pioFilePath, pioBaseDir)];
+    const registry = [makeSkill("ask-user", askUserFilePath, askUserBaseDir)];
 
     const registeredHandlers: Record<string, Function> = {};
 
@@ -1869,13 +1894,12 @@ describe("session completion mandate removal — before_agent_start injection", 
     const workflowExecIdx = result.systemPrompt.indexOf(
       "--- WORKFLOW EXECUTION ---",
     );
-    const capCtxIdx = result.systemPrompt.indexOf("--- CAPABILITY CONTEXT ---");
 
     expect(skillIdx).toBeGreaterThan(-1);
     expect(workflowExecIdx).toBeGreaterThan(-1);
-    expect(capCtxIdx).toBeGreaterThan(-1);
     expect(skillIdx).toBeLessThan(workflowExecIdx);
-    expect(workflowExecIdx).toBeLessThan(capCtxIdx);
+    // CAPABILITY CONTEXT should be absent (instruction leak removal)
+    expect(result.systemPrompt).not.toContain("--- CAPABILITY CONTEXT ---");
     // SESSION COMPLETION should be absent
     expect(result.systemPrompt).not.toContain("--- SESSION COMPLETION ---");
   });
@@ -1962,7 +1986,7 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
     cleanup(tempDir);
   });
 
-  it("given compiled sections with role, workflow, and guidelines when before_agent_start runs then sections appear in correct order under CAPABILITY CONTEXT", async () => {
+  it("given compiled sections with role, workflow, and guidelines when before_agent_start runs then CAPABILITY CONTEXT is absent (instruction leak removal)", async () => {
     const registeredHandlers: Record<string, Function> = {};
 
     const mockPi = {
@@ -2014,31 +2038,17 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
     );
 
     expect(typeof result.systemPrompt).toBe("string");
-    expect(result.systemPrompt).toContain("--- CAPABILITY CONTEXT ---");
-
-    // Verify capability sections appear in order: role → workflow → guidelines
-    // (WORKFLOW_INSTRUCTIONS is no longer inside the capability block)
-    const capCtxIdx = result.systemPrompt.indexOf("--- CAPABILITY CONTEXT ---");
-    const roleIdx = result.systemPrompt.indexOf("## Role");
-    const workflowIdx = result.systemPrompt.indexOf("## Workflow");
-    const guidelinesIdx = result.systemPrompt.indexOf("## Guidelines");
-
-    expect(capCtxIdx).toBeGreaterThan(-1);
-    expect(roleIdx).toBeGreaterThan(capCtxIdx);
-    expect(workflowIdx).toBeGreaterThan(roleIdx);
-    expect(guidelinesIdx).toBeGreaterThan(workflowIdx);
-    // WORKFLOW_INSTRUCTIONS ("# Workflow Execution") should NOT appear inside the capability block
-    // It lives in its own top-level WORKFLOW EXECUTION section
-    const capCtxContent = result.systemPrompt.slice(capCtxIdx);
-    const nextSectionIdx = capCtxContent.indexOf("---", 1);
-    const capCtxOnly =
-      nextSectionIdx > 0
-        ? capCtxContent.slice(0, nextSectionIdx)
-        : capCtxContent;
-    expect(capCtxOnly).not.toContain("# Workflow Execution");
+    // CAPABILITY CONTEXT is no longer injected (instruction leak removal)
+    expect(result.systemPrompt).not.toContain("--- CAPABILITY CONTEXT ---");
+    // Role, workflow titles, and guidelines should NOT appear in the system prompt
+    expect(result.systemPrompt).not.toContain("## Role");
+    expect(result.systemPrompt).not.toContain("## Workflow");
+    expect(result.systemPrompt).not.toContain("## Guidelines");
+    // WORKFLOW EXECUTION should still be present (process rules)
+    expect(result.systemPrompt).toContain("--- WORKFLOW EXECUTION ---");
   });
 
-  it("given compiled sections with missing guidelines when before_agent_start runs then only role and workflow sections are included", async () => {
+  it("given compiled sections with missing guidelines when before_agent_start runs then CAPABILITY CONTEXT is still absent (instruction leak removal)", async () => {
     mockCompilePrompt.mockResolvedValue({
       role: "## Role\n\nTest role.",
       workflow: "## Workflow\n\n1. Test step",
@@ -2097,20 +2107,10 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
     );
 
     expect(typeof result.systemPrompt).toBe("string");
-    expect(result.systemPrompt).toContain("## Role");
-    expect(result.systemPrompt).toContain("## Workflow");
-    // WORKFLOW_INSTRUCTIONS should NOT appear inside the capability block anymore
-    // (it's now a separate top-level WORKFLOW EXECUTION section)
-    const capCtxIdx = result.systemPrompt.indexOf("--- CAPABILITY CONTEXT ---");
-    const capCtxContent = result.systemPrompt.slice(capCtxIdx);
-    const nextSectionIdx = capCtxContent.indexOf("---", 1);
-    const capCtxOnly =
-      nextSectionIdx > 0
-        ? capCtxContent.slice(0, nextSectionIdx)
-        : capCtxContent;
-    expect(capCtxOnly).not.toContain("# Workflow Execution");
-    // Guidelines should not appear since it was undefined
-    expect(result.systemPrompt).not.toContain("## Guidelines");
+    // CAPABILITY CONTEXT is no longer injected regardless of compiled sections
+    expect(result.systemPrompt).not.toContain("--- CAPABILITY CONTEXT ---");
+    // WORKFLOW EXECUTION should still be present
+    expect(result.systemPrompt).toContain("--- WORKFLOW EXECUTION ---");
   });
 });
 
@@ -2122,7 +2122,7 @@ describe("prompt assembly — before_agent_start uses compiled sections", () => 
 // launchCapability — withSession CustomMessage initial message
 // ---------------------------------------------------------------------------
 
-describe("launchCapability — withSession sends initial message as CustomMessage", () => {
+describe("launchCapability — withSession no longer sends initial message as CustomMessage", () => {
   beforeEach(() => {
     vi.resetModules();
     // Unmock launchCapability so we get the real implementation
@@ -2139,7 +2139,7 @@ describe("launchCapability — withSession sends initial message as CustomMessag
     };
   }
 
-  it("given config with initialMessage when withSession runs then sendMessage is called with customType workflow-initial-message", async () => {
+  it("given config with initialMessage when withSession runs then sendMessage is NOT called (initial message delivery removed)", async () => {
     const mockCtx = makeMockCtx();
 
     const mod = await import("./capability-session");
@@ -2160,42 +2160,11 @@ describe("launchCapability — withSession sends initial message as CustomMessag
     const newSessionCall = mockCtx.newSession.mock.calls[0];
     await newSessionCall[0].withSession(fakeNewCtx);
 
-    // Assert: sendMessage called with correct CustomMessage
-    expect(fakeNewCtx.sendMessage).toHaveBeenCalledTimes(1);
-    expect(fakeNewCtx.sendMessage).toHaveBeenCalledWith({
-      customType: "workflow-initial-message",
-      content: "Build the feature",
-      display: true,
-    });
-  });
-
-  it("given config with initialMessage when withSession runs then empty sendUserMessage follows as trigger", async () => {
-    const mockCtx = makeMockCtx();
-
-    const mod = await import("./capability-session");
-    await mod.launchCapability(mockCtx as any, {
-      capability: "test-cap",
-      initialMessage: "Build the feature",
-      workspaceDir: "/test/.pio/goals/test",
-      contract: { inputs: [], outputs: [] },
-      allowProjectWrites: false,
-    });
-
-    const fakeNewCtx = {
-      sendMessage: vi.fn().mockResolvedValue(undefined),
-      sendUserMessage: vi.fn().mockResolvedValue(undefined),
-    };
-
-    const newSessionCall = mockCtx.newSession.mock.calls[0];
-    await newSessionCall[0].withSession(fakeNewCtx);
-
-    // Assert: sendUserMessage called with empty string after sendMessage
+    // Assert: sendMessage NOT called (initial message delivery removed)
+    expect(fakeNewCtx.sendMessage).not.toHaveBeenCalled();
+    // Assert: sendUserMessage still called with empty string (trigger)
     expect(fakeNewCtx.sendUserMessage).toHaveBeenCalledTimes(1);
     expect(fakeNewCtx.sendUserMessage).toHaveBeenCalledWith("");
-    // sendMessage should have been called before sendUserMessage
-    expect(fakeNewCtx.sendMessage).toHaveBeenCalledBefore(
-      fakeNewCtx.sendUserMessage,
-    );
   });
 
   it("given config without initialMessage when withSession runs then only empty sendUserMessage is sent", async () => {
@@ -2230,23 +2199,23 @@ describe("launchCapability — withSession sends initial message as CustomMessag
 // ---------------------------------------------------------------------------
 
 describe("WORKFLOW_INSTRUCTIONS constant", () => {
-  it("given WORKFLOW_INSTRUCTIONS when exported then it contains key phrases about sequential execution, dynamic delivery, current-step focus, and negative constraints", async () => {
+  it("given WORKFLOW_INSTRUCTIONS when exported then it declares CustomMessage as the sole source of task directives", async () => {
     const mod = await import("./capability-session");
 
     expect(mod.WORKFLOW_INSTRUCTIONS).toBeDefined();
     expect(typeof mod.WORKFLOW_INSTRUCTIONS).toBe("string");
 
     const content = mod.WORKFLOW_INSTRUCTIONS.toLowerCase();
-    expect(content).toContain("sequentially");
+    // Should reference CustomMessage as the only source of task directives
     expect(content).toContain("custommessage");
-    expect(content).toContain("focus on completing your current step");
-    // New negative constraints
-    expect(content).toContain("do not produce outputs for future steps");
-    expect(content).toContain(
+    expect(content).toContain("only source of task directives");
+    // Should mention pio_mark_complete for completion
+    expect(content).toContain("pio_mark_complete");
+    // Should NOT contain old instruction leaks
+    expect(content).not.toContain("step titles as a roadmap");
+    expect(content).not.toContain("initial message");
+    expect(content).not.toContain(
       "do not call pio_mark_complete on non-final steps",
-    );
-    expect(content).toContain(
-      "do not follow the instructions in the initial message",
     );
   });
 

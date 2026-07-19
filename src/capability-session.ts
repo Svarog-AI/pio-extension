@@ -52,6 +52,13 @@ export const WORKFLOW_INSTRUCTIONS = `# Workflow Execution
 
 You are working through a multi-step workflow. Your instructions for each step arrive as messages in the chat via CustomMessage injection from the loop engine.
 
+## Step Boundaries
+
+You must respect step boundaries strictly. The following rules apply to every step:
+
+- **Do not produce artifacts until the step explicitly asks you to.** Steps that say "research," "ask questions," "verify," or similar gathering language are not asking you to write files — they are asking you to learn, explore, or confirm understanding. Do not skip ahead and create outputs before the step instructs you to do so.
+- **Respect negative instructions literally.** If a step says "do not write," "not writing," "no new files," or similar, honor it as a hard constraint. Do not assume the final output is due because you know what capability this session belongs to. Negative instructions exist for a reason — they prevent premature artifact creation that breaks workflow ordering.
+
 - Follow the instructions delivered to you step by step. They are your only source of task directives — do not produce outputs mentioned in this system prompt or elsewhere that have not been requested via step instructions.
 - When you have completed all required outputs, call \`pio_mark_complete\` to validate and end the session.`;
 

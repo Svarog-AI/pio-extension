@@ -2228,4 +2228,53 @@ describe("WORKFLOW_INSTRUCTIONS constant", () => {
     expect(content).not.toMatch(/\{stepNumber\}/i);
     expect(content).not.toMatch(/iteration\s+\d+/i);
   });
+
+  it("contains Step Boundaries subsection with two rules", async () => {
+    const mod = await import("./capability-session");
+
+    const content = mod.WORKFLOW_INSTRUCTIONS;
+    const lower = content.toLowerCase();
+
+    // Should have a Step Boundaries heading
+    expect(content).toContain("## Step Boundaries");
+
+    // Rule 1: do not produce artifacts until the step explicitly asks
+    expect(lower).toContain("do not produce artifacts");
+    expect(lower).toContain("step explicitly asks");
+
+    // Rule 2: respect negative instructions
+    expect(lower).toContain("respect negative instructions");
+    expect(lower).toContain("hard constraint");
+  });
+
+  it("does not reference capability names or output file names", async () => {
+    const mod = await import("./capability-session");
+
+    const content = mod.WORKFLOW_INSTRUCTIONS;
+
+    // Should NOT contain capability names
+    const capabilityNames = [
+      "create-goal",
+      "create-plan",
+      "evolve-plan",
+      "execute-task",
+      "review-task",
+      "quality-gate",
+    ];
+    for (const name of capabilityNames) {
+      expect(content).not.toContain(name);
+    }
+
+    // Should NOT contain output file names
+    const outputFiles = [
+      "GOAL.md",
+      "PLAN.md",
+      "TASK.md",
+      "SUMMARY.md",
+      "REVIEW.md",
+    ];
+    for (const name of outputFiles) {
+      expect(content).not.toContain(name);
+    }
+  });
 });

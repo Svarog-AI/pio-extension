@@ -40,6 +40,41 @@ function buildCompletedStepsInfo(state: PioSessionState): string {
     : "No previous steps completed.";
 }
 
+/**
+ * Build CustomMessage content for the current step with authority framing.
+ *
+ * Format:
+ *   ## Instructions for Step N
+ *
+ *   Follow the instructions below. Do not do anything outside these instructions.
+ *
+ *   <completed steps info>
+ *   You are on Step N of M, iteration I.
+ *
+ *   ---
+ *
+ *   <step instructions>
+ *
+ *   [optional: **Retry focus:** <loopMessage>]
+ *
+ * @internal — Used by both `before_agent_start` (first run) and `agent_end` (step transitions).
+ */
+export function buildStepInstructions(state: PioSessionState): string {
+  const step = state.stepsList[state.currentStep - 1];
+  let prompt =
+    `## Instructions for Step ${state.currentStep}\n\n` +
+    `Follow the instructions below. Do not do anything outside these instructions.\n\n`;
+  prompt +=
+    `${buildCompletedStepsInfo(state)}\n` +
+    `You are on Step ${state.currentStep} of ${state.totalSteps}, iteration ${state.currentIteration}.\n\n---\n\n` +
+    step.instructions;
+  // Loop replay: include loopMessage as additional per-retry context
+  if (state.currentIteration > 1 && step.loopMessage) {
+    prompt += `\n\n**Retry focus:** ${step.loopMessage}`;
+  }
+  return prompt;
+}
+
 // ---------------------------------------------------------------------------
 // Type helpers
 // ---------------------------------------------------------------------------
@@ -167,30 +202,20 @@ export function setupLoopEngine(pi: ExtensionAPI) {
             `## Workflow Paused (Ad-hoc Mode)\n\n` +
             `${buildCompletedStepsInfo(state)}\n` +
             `You were on Step ${state.currentStep} of ${state.totalSteps}: "${step.title}", iteration ${state.currentIteration}.\n\n` +
-            `Workflow execution is paused. You can answer questions or help the user freely.`,
+            `Workflow execution is paused. Any prior instructions are no longer active — you can answer questions or help the user freely.`,
           display: readDebugDisplay(),
         },
       };
     }
 
-    // Normal mode: inject step instructions
+    // Normal mode: inject step instructions via helper
     const step = state.stepsList[state.currentStep - 1];
     if (!step) return; // no step loaded — skip injection
-
-    let prompt =
-      `${buildCompletedStepsInfo(state)}\n` +
-      `You are on Step ${state.currentStep} of ${state.totalSteps}, iteration ${state.currentIteration}.\n\n` +
-      step.instructions;
-
-    // Loop replay: include loopMessage as additional per-retry context
-    if (state.currentIteration > 1 && step.loopMessage) {
-      prompt += `\n\n**Retry focus:** ${step.loopMessage}`;
-    }
 
     return {
       message: {
         customType: "workflow-step-instructions",
-        content: prompt,
+        content: buildStepInstructions(state),
         display: readDebugDisplay(),
       },
     };
@@ -318,8 +343,15 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // ---------------------------------------------------------------------------
 
     if (!conditionsMet) {
-      // Loop replay: send follow-up to trigger another agent run for same step
-      pi.sendUserMessage("", { deliverAs: "followUp" });
+      // Loop replay: send CustomMessage to trigger another agent run for same step
+      await pi.sendMessage(
+        {
+          customType: "workflow-step-instructions",
+          content: buildStepInstructions(state),
+          display: readDebugDisplay(),
+        },
+        { deliverAs: "followUp" },
+      );
       return;
     }
 
@@ -334,10 +366,17 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // Update current step in shared state
     setState({ currentStep: nextStepNum });
 
-    // Send follow-up to trigger next step (content via CustomMessage injection)
+    // Send CustomMessage with instructions for the next step
     const nextStep = state.stepsList[nextStepNum - 1];
     if (nextStep) {
-      pi.sendUserMessage("", { deliverAs: "followUp" });
+      await pi.sendMessage(
+        {
+          customType: "workflow-step-instructions",
+          content: buildStepInstructions(getState()),
+          display: readDebugDisplay(),
+        },
+        { deliverAs: "followUp" },
+      );
     }
   });
 

@@ -38,6 +38,10 @@ function createMockPi(): {
     content: string | unknown[];
     options?: { deliverAs?: string };
   }>;
+  sendMessageCalls: Array<{
+    message: { customType?: string; content?: string; display?: boolean };
+    options?: { deliverAs?: string };
+  }>;
   registeredCommands: Map<
     string,
     { description?: string; handler: (...args: unknown[]) => unknown }
@@ -46,6 +50,10 @@ function createMockPi(): {
   const handlers = new Map<string, Array<(...args: unknown[]) => unknown>>();
   const sendUserMessageCalls: Array<{
     content: string | unknown[];
+    options?: { deliverAs?: string };
+  }> = [];
+  const sendMessageCalls: Array<{
+    message: { customType?: string; content?: string; display?: boolean };
     options?: { deliverAs?: string };
   }> = [];
   const registeredCommands = new Map<
@@ -73,7 +81,17 @@ function createMockPi(): {
       return undefined;
     },
     registerMessageRenderer(): void {},
-    sendMessage(): void {},
+    sendMessage: vi
+      .fn()
+      .mockImplementation(
+        (
+          message: { customType?: string; content?: string; display?: boolean },
+          options?: { deliverAs?: string },
+        ) => {
+          sendMessageCalls.push({ message, options });
+          return Promise.resolve();
+        },
+      ),
     sendUserMessage(
       content: string | unknown[],
       options?: { deliverAs?: string },
@@ -111,7 +129,13 @@ function createMockPi(): {
     events: { emit(): void {} },
   } as unknown as ExtensionAPI;
 
-  return { pi, handlers, sendUserMessageCalls, registeredCommands };
+  return {
+    pi,
+    handlers,
+    sendUserMessageCalls,
+    sendMessageCalls,
+    registeredCommands,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -135,6 +159,8 @@ beforeEach(() => {
     ],
     totalWorkflowSteps: 2,
   });
+  // Default: debugDisplay is false (tests that need true mock it explicitly)
+  vi.spyOn(modelConfig, "readDebugDisplay").mockReturnValue(false);
   // resetState() resets ALL PioSessionState including loop engine fields
   resetState();
 });
@@ -1000,7 +1026,7 @@ describe("before_agent_start", () => {
         'You were on Step 2 of 4: "S2", iteration 3.',
       );
       expect(result.message.content).toContain(
-        "Workflow execution is paused. You can answer questions or help the user freely.",
+        "Workflow execution is paused. Any prior instructions are no longer active — you can answer questions or help the user freely.",
       );
       // Should NOT contain step instructions
       expect(result.message.content).not.toContain("Do B");
@@ -1700,7 +1726,7 @@ describe("agent_end", () => {
 
   describe("single-iteration steps", () => {
     it("advances to next step after one agent run (no loop fields)", async () => {
-      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
@@ -1733,13 +1759,16 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Should advance: currentStep updated, follow-up sent (empty string, content via CustomMessage)
+      // Should advance: currentStep updated, sendMessage called with CustomMessage
       expect(getState().currentStep).toBe(2);
-      expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("");
-      expect(sendUserMessageCalls[0].options).toEqual({
-        deliverAs: "followUp",
-      });
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(sendMessageCalls[0].message.customType).toBe(
+        "workflow-step-instructions",
+      );
+      expect(sendMessageCalls[0].message.content).toContain(
+        "## Instructions for Step 2",
+      );
+      expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
   });
 
@@ -1747,7 +1776,7 @@ describe("agent_end", () => {
 
   describe("termination conditions", () => {
     it("loops when currentIteration < minIterations", async () => {
-      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
@@ -1786,17 +1815,17 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Should loop: send follow-up (empty string, content via CustomMessage), currentStep unchanged
+      // Should loop: sendMessage called with CustomMessage, currentStep unchanged
       expect(getState().currentStep).toBe(1);
-      expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("");
-      expect(sendUserMessageCalls[0].options).toEqual({
-        deliverAs: "followUp",
-      });
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(sendMessageCalls[0].message.customType).toBe(
+        "workflow-step-instructions",
+      );
+      expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
 
     it("advances when terminateWhen callback returns true (OR logic)", async () => {
-      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
@@ -1841,14 +1870,17 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Callback returns true → advance
+      // Callback returns true → advance via sendMessage
       expect(getState().currentStep).toBe(2);
-      expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("");
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(sendMessageCalls[0].message.customType).toBe(
+        "workflow-step-instructions",
+      );
+      expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
 
     it("loops when all terminateWhen callbacks return false (OR logic)", async () => {
-      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
@@ -1897,14 +1929,17 @@ describe("agent_end", () => {
         },
       ]);
 
-      // All false → loop
+      // All false → loop via sendMessage
       expect(getState().currentStep).toBe(1);
-      expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("");
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(sendMessageCalls[0].message.customType).toBe(
+        "workflow-step-instructions",
+      );
+      expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
 
     it("advances when second callback returns true (short-circuit OR)", async () => {
-      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
@@ -1953,14 +1988,17 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Second callback true → advance
+      // Second callback true → advance via sendMessage
       expect(getState().currentStep).toBe(2);
-      expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("");
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(sendMessageCalls[0].message.customType).toBe(
+        "workflow-step-instructions",
+      );
+      expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
 
     it("treats callback error as NOT met (fail-safe: keep looping)", async () => {
-      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
@@ -2007,14 +2045,17 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Callback threw → fail-safe: loop
+      // Callback threw → fail-safe: loop via sendMessage
       expect(getState().currentStep).toBe(1);
-      expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("");
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(sendMessageCalls[0].message.customType).toBe(
+        "workflow-step-instructions",
+      );
+      expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
 
     it("advances when terminateWhen is undefined after minIterations reached", async () => {
-      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
@@ -2054,14 +2095,17 @@ describe("agent_end", () => {
         },
       ]);
 
-      // No terminateWhen + minIterations reached → advance
+      // No terminateWhen + minIterations reached → advance via sendMessage
       expect(getState().currentStep).toBe(2);
-      expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("");
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(sendMessageCalls[0].message.customType).toBe(
+        "workflow-step-instructions",
+      );
+      expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
 
     it("advances when terminateWhen is empty array after minIterations reached", async () => {
-      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+      const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
@@ -2101,18 +2145,21 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Empty terminateWhen + minIterations reached → advance
+      // Empty terminateWhen + minIterations reached → advance via sendMessage
       expect(getState().currentStep).toBe(2);
-      expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("");
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(sendMessageCalls[0].message.customType).toBe(
+        "workflow-step-instructions",
+      );
+      expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
   });
 
   // ---- Loop replay ----
 
   describe("loop replay", () => {
-    it("sends empty string when loopMessage is undefined", async () => {
-      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    it("sends CustomMessage via sendMessage when loopMessage is undefined", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
@@ -2150,9 +2197,11 @@ describe("agent_end", () => {
         },
       ]);
 
-      expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("");
-      expect(sendUserMessageCalls[0].options).toEqual({
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(sendMessageCalls[0].message.customType).toBe(
+        "workflow-step-instructions",
+      );
+      expect(sendMessageCalls[0].options).toEqual({
         deliverAs: "followUp",
       });
     });
@@ -2255,6 +2304,160 @@ describe("agent_end", () => {
       expect(sendUserMessageCalls).toHaveLength(0);
       expect(getState().currentStep).toBe(1); // Not advanced
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildStepInstructions helper
+// ---------------------------------------------------------------------------
+
+describe("buildStepInstructions", () => {
+  async function getBuildStepInstructions() {
+    const mod = await import("./loop-engine");
+    return mod.buildStepInstructions;
+  }
+
+  it("produces authority header (## Instructions for Step N)", async () => {
+    const build = await getBuildStepInstructions();
+    setState({
+      currentStep: 2,
+      currentIteration: 1,
+      totalSteps: 3,
+      stepsList: [
+        { id: "s1", title: "S1", instructions: "A" },
+        { id: "s2", title: "S2", instructions: "B" },
+        { id: "s3", title: "S3", instructions: "C" },
+      ],
+    });
+    const result = build(getState());
+    expect(result).toContain("## Instructions for Step 2");
+  });
+
+  it("contains authority text without leaking future steps", async () => {
+    const build = await getBuildStepInstructions();
+    setState({
+      currentStep: 1,
+      currentIteration: 1,
+      totalSteps: 2,
+      stepsList: [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ],
+    });
+    const result = build(getState());
+    expect(result).toContain(
+      "Follow the instructions below. Do not do anything outside these instructions.",
+    );
+    expect(result).not.toContain("future steps");
+  });
+
+  it("includes completed steps info via buildCompletedStepsInfo", async () => {
+    const build = await getBuildStepInstructions();
+    setState({
+      currentStep: 3,
+      currentIteration: 1,
+      totalSteps: 5,
+      stepsList: [
+        { id: "s1", title: "S1", instructions: "A" },
+        { id: "s2", title: "S2", instructions: "B" },
+        { id: "s3", title: "S3", instructions: "C" },
+        { id: "s4", title: "S4", instructions: "D" },
+        { id: "s5", title: "S5", instructions: "E" },
+      ],
+    });
+    const result = build(getState());
+    expect(result).toContain("Steps 1–2 completed.");
+  });
+
+  it("includes step position line", async () => {
+    const build = await getBuildStepInstructions();
+    setState({
+      currentStep: 1,
+      currentIteration: 1,
+      totalSteps: 2,
+      stepsList: [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ],
+    });
+    const result = build(getState());
+    expect(result).toContain("You are on Step 1 of 2, iteration 1.");
+  });
+
+  it("includes separator (---) before instructions", async () => {
+    const build = await getBuildStepInstructions();
+    setState({
+      currentStep: 1,
+      currentIteration: 1,
+      totalSteps: 1,
+      stepsList: [{ id: "s1", title: "S1", instructions: "Do A" }],
+    });
+    const result = build(getState());
+    // Verify separator exists on its own line
+    const lines = result.split("\n");
+    expect(lines).toContain("---");
+  });
+
+  it("includes step instructions content", async () => {
+    const build = await getBuildStepInstructions();
+    setState({
+      currentStep: 1,
+      currentIteration: 1,
+      totalSteps: 1,
+      stepsList: [{ id: "s1", title: "S1", instructions: "Do A" }],
+    });
+    const result = build(getState());
+    expect(result).toContain("Do A");
+  });
+
+  it("includes loopMessage as Retry focus when currentIteration > 1", async () => {
+    const build = await getBuildStepInstructions();
+    setState({
+      currentStep: 1,
+      currentIteration: 2,
+      totalSteps: 1,
+      stepsList: [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          loopMessage: "Focus on edge cases",
+        },
+      ],
+    });
+    const result = build(getState());
+    expect(result).toContain("**Retry focus:** Focus on edge cases");
+  });
+
+  it("does NOT include loopMessage on first iteration", async () => {
+    const build = await getBuildStepInstructions();
+    setState({
+      currentStep: 1,
+      currentIteration: 1,
+      totalSteps: 1,
+      stepsList: [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          loopMessage: "Focus on edge cases",
+        },
+      ],
+    });
+    const result = build(getState());
+    expect(result).not.toContain("Retry focus");
+  });
+
+  it("does NOT include loopMessage when step has no loopMessage", async () => {
+    const build = await getBuildStepInstructions();
+    setState({
+      currentStep: 1,
+      currentIteration: 2,
+      totalSteps: 1,
+      stepsList: [{ id: "s1", title: "S1", instructions: "Do A" }],
+    });
+    const result = build(getState());
+    expect(result).not.toContain("Retry focus");
   });
 });
 

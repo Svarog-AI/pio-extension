@@ -40,6 +40,7 @@ Be thorough — this research ensures your implementation matches the project's 
   {
     id: "iterative-tdd",
     title: "Iterative TDD",
+    write: ["test"],
     instructions: `Apply the \`tdd\` skill for the iterative development cycle (tracer bullet → incremental RED→GREEN → refactor). The skill contains all methodology details.
 
 After all tests pass and refactoring is done, create \`TEST.md\` in the workspace as a post-hoc summary record of what was actually tested. Use the "Given ____ when ____ then ____" format for test case descriptions.
@@ -86,6 +87,7 @@ This ensures \`SUMMARY.md\` always reflects the final state of all files, regard
   {
     id: "write-completion-artifacts",
     title: "Write completion artifacts",
+    write: ["summary"],
     instructions: `Write \`SUMMARY.md\` in the workspace starting with a YAML frontmatter block at the very top of the file, before any markdown headings. The frontmatter provides structured outcome data for automation:
 
 \`\`\`yaml

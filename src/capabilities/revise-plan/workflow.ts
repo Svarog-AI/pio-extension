@@ -87,6 +87,7 @@ If any dimension cannot be answered from research or user input, ask before proc
   {
     id: "write-plan",
     title: "Write PLAN.md",
+    write: ["plan"],
     instructions: `Write a fresh \`PLAN.md\` into the goal workspace directory. The file must follow the structure defined in the \`pio-planning\` skill, with one key difference: **completed steps are included as historical anchors.**
 
 **Structure:**

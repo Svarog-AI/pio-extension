@@ -64,6 +64,7 @@ If any dimension cannot be answered from research or user input, ask before proc
   {
     id: "write-plan",
     title: "Write PLAN.md",
+    write: ["plan"],
     instructions: `Write \`PLAN.md\` into the goal workspace directory.
 
 **Follow the PLAN.md structure from the \`pio-planning\` skill:** YAML frontmatter with \`totalSteps\`, document title, Prerequisites section, numbered Steps (each with Description, Acceptance Criteria, and Files Affected), and a Notes section.

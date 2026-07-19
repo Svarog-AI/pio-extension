@@ -189,6 +189,7 @@ Only after confirming all three conditions above, write: **Therefore: APPROVED**
   {
     id: "step-7",
     title: "Write REVIEW.md with YAML frontmatter",
+    write: ["review"],
     instructions: `Write \`REVIEW.md\` in the workspace starting with a YAML frontmatter block at the very top of the file, before any markdown headings. The frontmatter provides structured outcome data for automation:
 
 \`\`\`yaml

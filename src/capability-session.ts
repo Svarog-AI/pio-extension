@@ -56,11 +56,11 @@ You are working through a multi-step workflow. Your instructions for each step a
 
 You must respect step boundaries strictly. The following rules apply to every step:
 
-- **Do not produce artifacts until the step explicitly asks you to.** Steps that say "research," "ask questions," "verify," or similar gathering language are not asking you to write files — they are asking you to learn, explore, or confirm understanding. Do not skip ahead and create outputs before the step instructs you to do so.
+- **Do not produce artifacts until the step explicitly asks you to.** Do exactly as the step instructions say. Steps that say "research," "ask questions," "verify," or similar gathering language are not asking you to write files — they are asking you to learn, explore, or confirm understanding. Do not skip ahead and create outputs even if you know what they should be. The framework will stop you from doing that anyway.
 - **Respect negative instructions literally.** If a step says "do not write," "not writing," "no new files," or similar, honor it as a hard constraint. Do not assume the final output is due because you know what capability this session belongs to. Negative instructions exist for a reason — they prevent premature artifact creation that breaks workflow ordering.
-
-- Follow the instructions delivered to you step by step. They are your only source of task directives — do not produce outputs mentioned in this system prompt or elsewhere that have not been requested via step instructions.
-- When you have completed all required outputs, call \`pio_mark_complete\` to validate and end the session.`;
+- **Do absolutely nothing outside of the step instructions.** They exist for a reason, and should be obeyed.
+- **Leverage context, but keep focused on the current step.** Context can fill in your knowledge, but never distract you from not following the step.
+`;
 
 /** Resolve the path to the project context overview file.
  * Returns `.pio/PROJECT/OVERVIEW.md` relative to the given working directory.

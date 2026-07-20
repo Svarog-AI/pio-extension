@@ -385,7 +385,7 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
     }
 
     // Workflow execution rules — always injected unconditionally.
-    // This is the only section telling the agent how to work through steps;
+    // This is the only section telling the agent how to work through phases;
     // all task-specific directives arrive via CustomMessage from the loop engine.
     prompts.push(`--- WORKFLOW EXECUTION ---\n\n${WORKFLOW_INSTRUCTIONS}`);
 
@@ -435,7 +435,7 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
   // Register loop engine AFTER before_agent_start so its handler runs second.
   // Pi chains handlers sequentially via registration order — capability-session
   // injects project overview, skills, and instructions first, then loop-engine
-  // receives all that content in _event.systemPrompt and appends step instructions.
+  // receives all that content in _event.systemPrompt and appends phase instructions.
   setupLoopEngine(pi);
 }
 

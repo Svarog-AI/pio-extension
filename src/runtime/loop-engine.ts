@@ -58,7 +58,7 @@ function buildCompletedStepsInfo(state: PioSessionState): string {
  *
  *   [optional: **Retry focus:** <loopMessage>]
  *
- * @internal — Used by both `before_agent_start` (first run) and `agent_end` (step transitions).
+ * @internal — Used by both `before_agent_start` (first run) and `agent_end` (phase transitions).
  */
 export function buildStepInstructions(state: PioSessionState): string {
   const step = state.stepsList[state.currentStep - 1];

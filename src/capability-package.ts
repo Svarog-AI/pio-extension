@@ -115,7 +115,7 @@ export interface CapabilityPackageConfig {
   prepareSession?: PrepareSessionCallback;
   postValidate?: PostValidateCallback;
   postExecute?: PostExecuteCallback;
-  /** Capability-level skill declarations. Workflow step skills are merged into these at prompt compilation time. */
+  /** Capability-level skill declarations. Workflow phase skills are merged into these at prompt compilation time. */
   skills?: CapabilitySkills;
   /** Unified capability contract: consolidated inputs, outputs, excluded files, and frontmatter schemas. */
   contract: CapabilityContract;

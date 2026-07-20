@@ -22,7 +22,7 @@ export interface PioGuardsConfig {
 export interface PioLoopConfig {
   /** Global default max iterations for all loop engine phases. Overridden by per-phase maxIterations in WorkflowPhase. */
   maxIterations?: number;
-  /** When true, CustomMessage step instructions are visible in the conversation UI (display: true). Default: false. */
+  /** When true, CustomMessage phase instructions are visible in the conversation UI (display: true). Default: false. */
   debugDisplay?: boolean;
 }
 

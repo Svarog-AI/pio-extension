@@ -241,7 +241,7 @@ export interface CompilePromptOptions {
  * Compile the full `CompiledPromptSections` from a capability package directory.
  *
  * Reads component files (role.md, workflow.ts, guidelines.md), merges workflow
- * step skills into base capability skills, and renders sections in the format
+ * phase skills into base capability skills, and renders sections in the format
  * expected by `capability-session.ts`.
  *
  * Produces: role, workflow, guidelines sections and mergedSkills.

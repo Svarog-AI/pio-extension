@@ -1,7 +1,7 @@
 /**
  * Shared runtime session state.
  *
- * Manages session-level state across all steps during a capability
+ * Manages session-level state across all phases during a capability
  * sub-session lifecycle. Replaces the scattered module-level globals
  * that previously lived in `step-nudging.ts` and `session-guard.ts`.
  *
@@ -17,7 +17,7 @@ import type { WorkflowPhase } from "./workflow-types";
 // ---------------------------------------------------------------------------
 
 /**
- * Shared runtime state persisted across all steps during a PIO session.
+ * Shared runtime state persisted across all phases during a PIO session.
  *
  * Stored between agent runs and turn boundaries but does not clear
  * between turns or iterations on its own — consumers handle resets.
@@ -35,7 +35,7 @@ export interface PioSessionState {
   /** Current workflow phase number (1-based). 0 means inactive. */
   currentStep: number;
 
-  /** Current iteration count within the current step (1-based). 0 means inactive. */
+  /** Current iteration count within the current phase (1-based). 0 means inactive. */
   currentIteration: number;
 
   /** Total number of workflow phases. 0 means inactive. */
@@ -56,7 +56,7 @@ export interface PioSessionState {
    */
   isAdHocInput: boolean;
 
-  /** Step-level write allowlists: step number (1-based) → { allowedPaths (resolved absolute paths), allowedNames (original output names for error messages), allContractOutputs (all known contract output paths, used by write: [] to block). Populated during resources_discover. */
+  /** Phase-level write allowlists: phase number (1-based) → { allowedPaths (resolved absolute paths), allowedNames (original output names for error messages), allContractOutputs (all known contract output paths, used by write: [] to block). Populated during resources_discover. */
   stepWriteAllowlist: Map<
     number,
     {

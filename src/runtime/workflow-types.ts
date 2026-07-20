@@ -32,7 +32,7 @@ export interface WorkflowPhaseSkillDeclarations {
  * A condition definition for callback-based loop termination.
  *
  * When any condition in the `terminateWhen` array returns `true`,
- * the loop terminates and the engine advances to the next step.
+ * the loop terminates and the engine advances to the next phase.
  * Conditions use OR logic — the first passing condition wins.
  *
  * The callback receives the full PioSessionState directly — it reads

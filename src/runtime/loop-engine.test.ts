@@ -378,7 +378,7 @@ describe("/return command", () => {
       });
     });
 
-    it("uses returnTo when defined on current WorkflowStep", async () => {
+    it("uses returnTo when defined on current WorkflowPhase", async () => {
       const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);

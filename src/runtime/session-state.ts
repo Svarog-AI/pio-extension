@@ -10,7 +10,7 @@
  * mutate state through the accessor functions.
  */
 
-import type { WorkflowStep } from "./workflow-types";
+import type { WorkflowPhase } from "./workflow-types";
 
 // ---------------------------------------------------------------------------
 // PioSessionState interface
@@ -41,8 +41,8 @@ export interface PioSessionState {
   /** Total number of workflow steps. 0 means inactive. */
   totalSteps: number;
 
-  /** Ordered list of all workflow steps (full objects with loop fields). */
-  stepsList: WorkflowStep[];
+  /** Ordered list of all workflow phases (full objects with loop fields). */
+  stepsList: WorkflowPhase[];
 
   /** File paths written during the current iteration (from write, edit, vscode_apply_workspace_edit tools) */
   filesWritten: string[];

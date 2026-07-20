@@ -23,7 +23,7 @@ import { getSessionConfig } from "../capability-utils";
 import { readDebugDisplay, resolveMaxIterations } from "../model-config";
 import type { PioSessionState } from "./session-state";
 import { getState, resetState, setState } from "./session-state";
-import type { WorkflowStep } from "./workflow-types";
+import type { WorkflowPhase } from "./workflow-types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -137,9 +137,9 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     }
 
     // Load workflow steps from enriched session params.
-    // capability-session passes full WorkflowStep[] objects (with .instructions, .loopMessage, etc.).
-    // WorkflowStep has all loop fields as optional, so this is safe.
-    const rawSteps = sessionParams.workflowSteps as WorkflowStep[] | undefined;
+    // capability-session passes full WorkflowPhase[] objects (with .instructions, .loopMessage, etc.).
+    // WorkflowPhase has all loop fields as optional, so this is safe.
+    const rawSteps = sessionParams.workflowSteps as WorkflowPhase[] | undefined;
     const stepsList = Array.isArray(rawSteps) ? rawSteps : [];
 
     const totalSteps =

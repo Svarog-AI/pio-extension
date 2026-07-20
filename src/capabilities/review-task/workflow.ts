@@ -1,4 +1,4 @@
-import type { WorkflowStep } from "../../runtime/workflow-types";
+import type { WorkflowPhase } from "../../runtime/workflow-types";
 
 export default [
   {
@@ -269,4 +269,4 @@ This information is read by evolve-plan during spec revision — it is critical 
 1. **Write \`REVIEW.md\`** (completed in Step 7). Ensure the YAML frontmatter is at the very top of the file and the \`decision\` field matches your actual review outcome.
 2. **Call \`pio_mark_complete\`.** This is your final step.`,
   },
-] satisfies WorkflowStep[];
+] satisfies WorkflowPhase[];

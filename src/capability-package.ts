@@ -7,7 +7,7 @@
  *   src/capabilities/<name>/
  *     ├── config.ts        — CapabilityPackageConfig (declarative config)
  *     ├── role.md          — CapabilityRole (structured role description)
- *     ├── workflow.ts      — WorkflowStep[] (structured workflow steps)
+ *     ├── workflow.ts      — WorkflowPhase[] (structured workflow phases)
  *     ├── guidelines.md    — CapabilityGuidelines (constraints/rules)
  *     ├── schemas.ts       — TypeBox schemas (input/output contracts)
  *     └── validators.ts    — Custom validation logic
@@ -29,8 +29,8 @@ import type {
 // Re-export for downstream consumers (prompt-compiler, capability-session, etc.)
 export type { CapabilitySkills } from "./types";
 
-// Import WorkflowStep from runtime package (used by CapabilityPackageComponents.steps)
-import type { WorkflowStep } from "./runtime/workflow-types";
+// Import WorkflowPhase from runtime package (used by CapabilityPackageComponents.phases)
+import type { WorkflowPhase } from "./runtime/workflow-types";
 
 // ---------------------------------------------------------------------------
 // Directory layout constants
@@ -149,8 +149,8 @@ export interface CapabilityPackageDescriptor {
 export interface CapabilityPackageComponents {
   /** Raw markdown content from role.md, or undefined if not present */
   role?: string;
-  /** Ordered workflow steps from workflow.ts */
-  steps: WorkflowStep[];
+  /** Ordered workflow phases from workflow.ts */
+  phases: WorkflowPhase[];
   /** Guidelines content from guidelines.md, or undefined if not present */
   guidelines?: CapabilityGuidelines;
 }

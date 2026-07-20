@@ -3,27 +3,27 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CapabilitySkills } from "./capability-package";
-import type { WorkflowStep } from "./runtime/workflow-types";
+import type { WorkflowPhase } from "./runtime/workflow-types";
 
 // ---------------------------------------------------------------------------
-// renderWorkflowSection (pure function — no filesystem)
+// renderWorkflowPhases (pure function — no filesystem)
 // ---------------------------------------------------------------------------
 
-describe("renderWorkflowSection", () => {
+describe("renderWorkflowPhases", () => {
   // Lazy import to avoid circular deps during test setup
-  let renderWorkflowSection: (steps: WorkflowStep[]) => string;
+  let renderWorkflowPhases: (steps: WorkflowPhase[]) => string;
 
   beforeEach(async () => {
     const mod = await import("./prompt-compiler");
-    renderWorkflowSection = mod.renderWorkflowSection;
+    renderWorkflowPhases = mod.renderWorkflowPhases;
   });
 
   it("returns empty string for empty array", () => {
-    expect(renderWorkflowSection([])).toBe("");
+    expect(renderWorkflowPhases([])).toBe("");
   });
 
-  it("renders a single step without skills", () => {
-    const steps: WorkflowStep[] = [
+  it("renders a single phase without skills", () => {
+    const steps: WorkflowPhase[] = [
       {
         id: "step-1",
         title: "Understand the goal",
@@ -31,9 +31,9 @@ describe("renderWorkflowSection", () => {
       },
     ];
 
-    const result = renderWorkflowSection(steps);
+    const result = renderWorkflowPhases(steps);
 
-    expect(result).toContain("### Step 1: Understand the goal");
+    expect(result).toContain("### Phase 1: Understand the goal");
     expect(result).not.toContain(
       "Read GOAL.md and internalize the current state.",
     );
@@ -41,7 +41,7 @@ describe("renderWorkflowSection", () => {
   });
 
   it("renders a step with mandatory skills", () => {
-    const steps: WorkflowStep[] = [
+    const steps: WorkflowPhase[] = [
       {
         id: "step-1",
         title: "Implement feature",
@@ -50,15 +50,15 @@ describe("renderWorkflowSection", () => {
       },
     ];
 
-    const result = renderWorkflowSection(steps);
+    const result = renderWorkflowPhases(steps);
 
-    expect(result).toContain("### Step 1: Implement feature");
+    expect(result).toContain("### Phase 1: Implement feature");
     expect(result).toContain("Skills: [tdd], [pio-git]");
     expect(result).not.toContain("Write the code.");
   });
 
-  it("renders multiple steps with mixed skill declarations", () => {
-    const steps: WorkflowStep[] = [
+  it("renders multiple phases with mixed skill declarations", () => {
+    const steps: WorkflowPhase[] = [
       {
         id: "step-1",
         title: "Research",
@@ -78,22 +78,22 @@ describe("renderWorkflowSection", () => {
       },
     ];
 
-    const result = renderWorkflowSection(steps);
+    const result = renderWorkflowPhases(steps);
 
-    expect(result).toContain("### Step 1: Research");
+    expect(result).toContain("### Phase 1: Research");
     expect(result).toContain("Skills: [source-research]");
-    expect(result).toContain("### Step 2: Implement");
-    // Step 2 has no skills — no Skills line
+    expect(result).toContain("### Phase 2: Implement");
+    // Phase 2 has no skills — no Skills line
     const step2Section = result
-      .split("### Step 2: Implement")[1]
-      ?.split("### Step 3")[0]!;
+      .split("### Phase 2: Implement")[1]
+      ?.split("### Phase 3")[0]!;
     expect(step2Section).not.toContain("Skills:");
-    expect(result).toContain("### Step 3: Commit");
+    expect(result).toContain("### Phase 3: Commit");
     expect(result).toContain("Skills: [pio-git]");
   });
 
-  it("renders step with both mandatory and recommended skills (only mandatory shown)", () => {
-    const steps: WorkflowStep[] = [
+  it("renders phase with both mandatory and recommended skills (only mandatory shown)", () => {
+    const steps: WorkflowPhase[] = [
       {
         id: "step-1",
         title: "Build",
@@ -105,14 +105,14 @@ describe("renderWorkflowSection", () => {
       },
     ];
 
-    const result = renderWorkflowSection(steps);
+    const result = renderWorkflowPhases(steps);
 
     expect(result).toContain("Skills: [tdd]");
     expect(result).not.toContain("pio-git"); // recommended not shown in Skills line
   });
 
-  it("renders step with empty mandatory skills array (no Skills line)", () => {
-    const steps: WorkflowStep[] = [
+  it("renders phase with empty mandatory skills array (no Skills line)", () => {
+    const steps: WorkflowPhase[] = [
       {
         id: "step-1",
         title: "Simple step",
@@ -121,13 +121,13 @@ describe("renderWorkflowSection", () => {
       },
     ];
 
-    const result = renderWorkflowSection(steps);
+    const result = renderWorkflowPhases(steps);
 
     expect(result).not.toContain("Skills:");
   });
 
-  it("renders steps with multiline instructions (titles only)", () => {
-    const steps: WorkflowStep[] = [
+  it("renders phases with multiline instructions (titles only)", () => {
+    const steps: WorkflowPhase[] = [
       {
         id: "step-1",
         title: "Complex step",
@@ -136,9 +136,9 @@ describe("renderWorkflowSection", () => {
       },
     ];
 
-    const result = renderWorkflowSection(steps);
+    const result = renderWorkflowPhases(steps);
 
-    expect(result).toContain("### Step 1: Complex step");
+    expect(result).toContain("### Phase 1: Complex step");
     expect(result).not.toContain("First, read the file.");
     expect(result).not.toContain("Then, write tests.");
     expect(result).not.toContain("Finally, implement.");
@@ -146,37 +146,37 @@ describe("renderWorkflowSection", () => {
 });
 
 // ---------------------------------------------------------------------------
-// mergeWorkflowStepSkills (pure function)
+// mergeWorkflowPhaseSkills (pure function)
 // ---------------------------------------------------------------------------
 
-describe("mergeWorkflowStepSkills", () => {
-  let mergeWorkflowStepSkills: (
-    steps: WorkflowStep[],
+describe("mergeWorkflowPhaseSkills", () => {
+  let mergeWorkflowPhaseSkills: (
+    steps: WorkflowPhase[],
     base?: CapabilitySkills,
   ) => CapabilitySkills;
 
   beforeEach(async () => {
     const mod = await import("./prompt-compiler");
-    mergeWorkflowStepSkills = mod.mergeWorkflowStepSkills;
+    mergeWorkflowPhaseSkills = mod.mergeWorkflowPhaseSkills;
   });
 
-  it("returns base skills when steps have no skills", () => {
+  it("returns base skills when phases have no skills", () => {
     const base: CapabilitySkills = {
       mandatory: ["pio"],
       recommended: [{ name: "tdd", condition: "always" }],
     };
-    const steps: WorkflowStep[] = [
+    const steps: WorkflowPhase[] = [
       { id: "s1", title: "Step 1", instructions: "Do it." },
     ];
 
-    const result = mergeWorkflowStepSkills(steps, base);
+    const result = mergeWorkflowPhaseSkills(steps, base);
 
     expect(result.mandatory).toEqual(["pio"]);
     expect(result.recommended).toEqual([{ name: "tdd", condition: "always" }]);
   });
 
-  it("returns step skills when base is undefined", () => {
-    const steps: WorkflowStep[] = [
+  it("returns phase skills when base is undefined", () => {
+    const steps: WorkflowPhase[] = [
       {
         id: "s1",
         title: "Step 1",
@@ -185,24 +185,24 @@ describe("mergeWorkflowStepSkills", () => {
       },
     ];
 
-    const result = mergeWorkflowStepSkills(steps);
+    const result = mergeWorkflowPhaseSkills(steps);
 
     expect(result.mandatory).toEqual(["tdd"]);
   });
 
-  it("returns empty object when both base and steps are empty", () => {
-    const steps: WorkflowStep[] = [
+  it("returns empty object when both base and phases are empty", () => {
+    const steps: WorkflowPhase[] = [
       { id: "s1", title: "Step 1", instructions: "Do it." },
     ];
 
-    const result = mergeWorkflowStepSkills(steps);
+    const result = mergeWorkflowPhaseSkills(steps);
 
     expect(result).toEqual({});
   });
 
   it("deduplicates mandatory skills with Set (first-seen wins, preserves order)", () => {
     const base: CapabilitySkills = { mandatory: ["pio", "ask-user"] };
-    const steps: WorkflowStep[] = [
+    const steps: WorkflowPhase[] = [
       {
         id: "s1",
         title: "Step 1",
@@ -217,7 +217,7 @@ describe("mergeWorkflowStepSkills", () => {
       },
     ];
 
-    const result = mergeWorkflowStepSkills(steps, base);
+    const result = mergeWorkflowPhaseSkills(steps, base);
 
     // Order: pio, ask-user (from base), tdd (first seen in s1), pio-git (from s2)
     // ask-user and tdd appear again but are deduplicated
@@ -228,7 +228,7 @@ describe("mergeWorkflowStepSkills", () => {
     const base: CapabilitySkills = {
       recommended: [{ name: "tdd", condition: "always" }],
     };
-    const steps: WorkflowStep[] = [
+    const steps: WorkflowPhase[] = [
       {
         id: "s1",
         title: "Step 1",
@@ -242,7 +242,7 @@ describe("mergeWorkflowStepSkills", () => {
       },
     ];
 
-    const result = mergeWorkflowStepSkills(steps, base);
+    const result = mergeWorkflowPhaseSkills(steps, base);
 
     // tdd from base is kept (first-seen), pio-git is added
     expect(result.recommended).toEqual([
@@ -253,7 +253,7 @@ describe("mergeWorkflowStepSkills", () => {
 
   it("does not mutate input objects", () => {
     const base: CapabilitySkills = { mandatory: ["pio"] };
-    const steps: WorkflowStep[] = [
+    const steps: WorkflowPhase[] = [
       {
         id: "s1",
         title: "Step 1",
@@ -265,7 +265,7 @@ describe("mergeWorkflowStepSkills", () => {
     const baseBefore = JSON.stringify(base);
     const stepsBefore = JSON.stringify(steps);
 
-    mergeWorkflowStepSkills(steps, base);
+    mergeWorkflowPhaseSkills(steps, base);
 
     expect(JSON.stringify(base)).toBe(baseBefore);
     expect(JSON.stringify(steps)).toBe(stepsBefore);
@@ -276,7 +276,7 @@ describe("mergeWorkflowStepSkills", () => {
       mandatory: ["pio"],
       recommended: [{ name: "ask-user", condition: "always" }],
     };
-    const steps: WorkflowStep[] = [
+    const steps: WorkflowPhase[] = [
       {
         id: "s1",
         title: "Step 1",
@@ -288,7 +288,7 @@ describe("mergeWorkflowStepSkills", () => {
       },
     ];
 
-    const result = mergeWorkflowStepSkills(steps, base);
+    const result = mergeWorkflowPhaseSkills(steps, base);
 
     expect(result.mandatory).toEqual(["pio", "tdd"]);
     expect(result.recommended).toEqual([
@@ -299,16 +299,16 @@ describe("mergeWorkflowStepSkills", () => {
 });
 
 // ---------------------------------------------------------------------------
-// readWorkflowSteps (filesystem — uses temp directories)
+// readWorkflowPhases (filesystem — uses temp directories)
 // ---------------------------------------------------------------------------
 
-describe("readWorkflowSteps", () => {
-  let readWorkflowSteps: (dirPath: string) => Promise<WorkflowStep[]>;
+describe("readWorkflowPhases", () => {
+  let readWorkflowPhases: (dirPath: string) => Promise<WorkflowPhase[]>;
   let tempDir: string;
 
   beforeEach(async () => {
     const mod = await import("./prompt-compiler");
-    readWorkflowSteps = mod.readWorkflowSteps;
+    readWorkflowPhases = mod.readWorkflowPhases;
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pio-prompt-test-"));
   });
 
@@ -316,7 +316,7 @@ describe("readWorkflowSteps", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("reads workflow steps from workflow.ts default export", async () => {
+  it("reads workflow phases from workflow.ts default export", async () => {
     const capDir = path.join(tempDir, "test-cap");
     fs.mkdirSync(capDir, { recursive: true });
     fs.writeFileSync(
@@ -327,7 +327,7 @@ describe("readWorkflowSteps", () => {
 ];`,
     );
 
-    const steps = await readWorkflowSteps(capDir);
+    const steps = await readWorkflowPhases(capDir);
 
     expect(steps).toHaveLength(2);
     expect(steps[0].id).toBe("step-1");
@@ -335,7 +335,7 @@ describe("readWorkflowSteps", () => {
     expect(steps[1].id).toBe("step-2");
   });
 
-  it("reads workflow steps with skill declarations", async () => {
+  it("reads workflow phases with skill declarations", async () => {
     const capDir = path.join(tempDir, "test-cap");
     fs.mkdirSync(capDir, { recursive: true });
     fs.writeFileSync(
@@ -350,7 +350,7 @@ describe("readWorkflowSteps", () => {
 ];`,
     );
 
-    const steps = await readWorkflowSteps(capDir);
+    const steps = await readWorkflowPhases(capDir);
 
     expect(steps).toHaveLength(1);
     expect(steps[0].skills?.mandatory).toEqual(["tdd"]);
@@ -365,7 +365,7 @@ describe("readWorkflowSteps", () => {
 
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    await expect(readWorkflowSteps(capDir)).rejects.toThrow();
+    await expect(readWorkflowPhases(capDir)).rejects.toThrow();
 
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
@@ -381,7 +381,7 @@ describe("readWorkflowSteps", () => {
 
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    await expect(readWorkflowSteps(capDir)).rejects.toThrow();
+    await expect(readWorkflowPhases(capDir)).rejects.toThrow();
 
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
@@ -400,7 +400,7 @@ describe("readWorkflowSteps", () => {
 
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    const steps = await readWorkflowSteps(capDir);
+    const steps = await readWorkflowPhases(capDir);
 
     expect(steps).toHaveLength(2);
     expect(steps[0].id).toBe("step-1");
@@ -443,8 +443,8 @@ describe("readPackageComponents", () => {
     const components = await readPackageComponents(capDir);
 
     expect(components.role).toBe("# My Role\n\nI do things.");
-    expect(components.steps).toHaveLength(1);
-    expect(components.steps[0].title).toBe("Step 1");
+    expect(components.phases).toHaveLength(1);
+    expect(components.phases[0].title).toBe("Step 1");
     expect(components.guidelines?.content).toBe(
       "- Be careful\n- Test everything",
     );
@@ -461,7 +461,7 @@ describe("readPackageComponents", () => {
     const components = await readPackageComponents(capDir);
 
     expect(components.role).toBeUndefined();
-    expect(components.steps).toHaveLength(1);
+    expect(components.phases).toHaveLength(1);
   });
 
   it("handles missing guidelines.md gracefully (guidelines is undefined)", async () => {
@@ -525,7 +525,7 @@ describe("compilePrompt", () => {
     expect(result.role).toContain("## Role");
     expect(result.role).toContain("I am the Goal Definition Assistant.");
     expect(result.workflow).toContain("## Workflow");
-    expect(result.workflow).toContain("### Step 1: Understand");
+    expect(result.workflow).toContain("### Phase 1: Understand");
     expect(result.guidelines).toContain("## Guidelines");
     expect(result.guidelines).toContain("- Be thorough");
   });
@@ -600,7 +600,7 @@ describe("compilePrompt", () => {
     await expect(compilePrompt(capDir, {})).rejects.toThrow();
   });
 
-  it("renders skills line for steps with mandatory skills in compiled output", async () => {
+  it("renders skills line for phases with mandatory skills in compiled output", async () => {
     const capDir = path.join(tempDir, "test-cap");
     fs.mkdirSync(capDir, { recursive: true });
     fs.writeFileSync(
@@ -614,8 +614,8 @@ describe("compilePrompt", () => {
     const result = await compilePrompt(capDir, {});
 
     expect(result.workflow).toContain("Skills: [tdd]");
-    // Step B has no skills — verify no Skills line in its section
-    const stepBSection = result.workflow?.split("### Step 2: Step B")[1]!;
+    // Phase 2 has no skills — verify no Skills line in its section
+    const stepBSection = result.workflow?.split("### Phase 2: Step B")[1]!;
     expect(stepBSection).not.toContain("Skills:");
   });
 });

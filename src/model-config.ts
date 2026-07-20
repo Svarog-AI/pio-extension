@@ -20,7 +20,7 @@ export interface PioGuardsConfig {
 
 /** Loop-related settings from ~/.pi/pio-config.yaml. */
 export interface PioLoopConfig {
-  /** Global default max iterations for all loop engine steps. Overridden by per-step maxIterations in WorkflowStep. */
+  /** Global default max iterations for all loop engine phases. Overridden by per-phase maxIterations in WorkflowPhase. */
   maxIterations?: number;
   /** When true, CustomMessage step instructions are visible in the conversation UI (display: true). Default: false. */
   debugDisplay?: boolean;
@@ -281,10 +281,10 @@ export function readDebugDisplay(): boolean {
 }
 
 /**
- * Resolves the effective max iterations for a step.
+ * Resolves the effective max iterations for a phase.
  *
  * Resolution order (specific beats general):
- * 1. perStepOverride — from WorkflowStep.maxIterations
+ * 1. perStepOverride — from WorkflowPhase.maxIterations
  * 2. Global config — loop.maxIterations in ~/.pi/pio-config.yaml
  * 3. Built-in default — DEFAULT_MAX_ITERATIONS (15)
  */

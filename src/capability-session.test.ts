@@ -2226,14 +2226,14 @@ describe("WORKFLOW_INSTRUCTIONS constant", () => {
     expect(content).not.toMatch(/iteration\s+\d+/i);
   });
 
-  it("contains Step Boundaries subsection with rules", async () => {
+  it("contains Phase Boundaries subsection with rules", async () => {
     const mod = await import("./capability-session");
 
     const content = mod.WORKFLOW_INSTRUCTIONS;
     const lower = content.toLowerCase();
 
-    // Should have a Step Boundaries heading
-    expect(content).toContain("## Step Boundaries");
+    // Should have a Phase Boundaries heading
+    expect(content).toContain("## Phase Boundaries");
 
     // Rule 1: do not produce artifacts
     expect(lower).toContain("do not produce artifacts");
@@ -2242,14 +2242,14 @@ describe("WORKFLOW_INSTRUCTIONS constant", () => {
     expect(lower).toContain("respect negative instructions");
     expect(lower).toContain("hard constraint");
 
-    // Rule 3: do nothing outside step instructions
+    // Rule 3: do nothing outside phase instructions
     expect(lower).toContain(
-      "do absolutely nothing outside of the step instructions",
+      "do absolutely nothing outside of the phase instructions",
     );
 
     // Rule 4: leverage context but stay focused
     expect(lower).toContain("leverage context");
-    expect(lower).toContain("keep focused on the current step");
+    expect(lower).toContain("keep focused on the current phase");
   });
 
   it("does not reference capability names or output file names", async () => {

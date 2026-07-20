@@ -48,16 +48,16 @@ const GLOBAL_MANDATORY_SKILLS = ["ask-user"];
 // Declares CustomMessage as the sole source of task directives.
 export const WORKFLOW_INSTRUCTIONS = `# Workflow Execution
 
-You are working through a multi-step workflow. Your instructions for each step arrive as messages in the chat via CustomMessage injection from the loop engine.
+You are working through a multi-phase workflow. Your instructions for each phase arrive as messages in the chat via CustomMessage injection from the loop engine.
 
-## Step Boundaries
+## Phase Boundaries
 
-You must respect step boundaries strictly. The following rules apply to every step:
+You must respect phase boundaries strictly. The following rules apply to every phase:
 
-- **Do not produce artifacts until the step explicitly asks you to.** Do exactly as the step instructions say. Steps that say "research," "ask questions," "verify," or similar gathering language are not asking you to write files — they are asking you to learn, explore, or confirm understanding. Do not skip ahead and create outputs even if you know what they should be. The framework will stop you from doing that anyway.
-- **Respect negative instructions literally.** If a step says "do not write," "not writing," "no new files," or similar, honor it as a hard constraint. Do not assume the final output is due because you know what capability this session belongs to. Negative instructions exist for a reason — they prevent premature artifact creation that breaks workflow ordering.
-- **Do absolutely nothing outside of the step instructions.** They exist for a reason, and should be obeyed.
-- **Leverage context, but keep focused on the current step.** Context can fill in your knowledge, but never distract you from not following the step.
+- **Do not produce artifacts until the phase explicitly asks you to.** Do exactly as the phase instructions say. Phases that say "research," "ask questions," "verify," or similar gathering language are not asking you to write files — they are asking you to learn, explore, or confirm understanding. Do not skip ahead and create outputs even if you know what they should be. The framework will stop you from doing that anyway.
+- **Respect negative instructions literally.** If a phase says "do not write," "not writing," "no new files," or similar, honor it as a hard constraint. Do not assume the final output is due because you know what capability this session belongs to. Negative instructions exist for a reason — they prevent premature artifact creation that breaks workflow ordering.
+- **Do absolutely nothing outside of the phase instructions.** They exist for a reason, and should be obeyed.
+- **Leverage context, but keep focused on the current phase.** Context can fill in your knowledge, but never distract you from not following the phase.
 `;
 
 /** Resolve the path to the project context overview file.

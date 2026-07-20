@@ -1610,10 +1610,10 @@ describe("prompt compiler integration — resources_discover", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Workflow steps population — enrichedSessionParams
+// Workflow phases population — enrichedSessionParams
 // ---------------------------------------------------------------------------
 
-describe("workflow steps population — enrichedSessionParams", () => {
+describe("workflow phases population — enrichedSessionParams", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -1632,7 +1632,7 @@ describe("workflow steps population — enrichedSessionParams", () => {
     cleanup(tempDir);
   });
 
-  it("given compiled sections with workflow steps when resources_discover runs then enrichedSessionParams contains totalWorkflowSteps and workflowSteps", async () => {
+  it("given compiled sections with workflow phases when resources_discover runs then enrichedSessionParams contains totalWorkflowSteps and workflowSteps", async () => {
     // Set up mock to return sections with _steps info
     mockCompilePrompt.mockImplementation(() =>
       Promise.resolve({
@@ -1691,7 +1691,7 @@ describe("workflow steps population — enrichedSessionParams", () => {
     const rawParams = mod.getEnrichedSessionParamsForTesting();
     expect(rawParams).toBeDefined();
     expect(rawParams?.totalWorkflowSteps).toBe(2);
-    // Now passes full WorkflowStep[] objects (not just { id, title } summaries)
+    // Now passes full WorkflowPhase[] objects (not just { id, title } summaries)
     expect(rawParams?.workflowSteps).toEqual([
       { id: "step-1", title: "Step One", instructions: "Do step one" },
       { id: "step-2", title: "Step Two", instructions: "Do step two" },

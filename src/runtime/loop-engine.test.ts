@@ -494,7 +494,7 @@ describe("/return command", () => {
 // ---------------------------------------------------------------------------
 
 describe("resources_discover", () => {
-  it("when config is present: loads workflow steps and initializes PioSessionState", async () => {
+  it("when config is present: loads workflow phases and initializes PioSessionState", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");

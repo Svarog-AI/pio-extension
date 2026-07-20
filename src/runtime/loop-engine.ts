@@ -23,7 +23,6 @@ import { getSessionConfig } from "../capability-utils";
 import { readDebugDisplay, resolveMaxIterations } from "../model-config";
 import type { PioSessionState } from "./session-state";
 import { getState, resetState, setState } from "./session-state";
-import type { WorkflowPhase } from "./workflow-types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -35,7 +34,7 @@ import type { WorkflowPhase } from "./workflow-types";
  * Returns "No previous phases completed" on Phase 1, "Phases 1 completed" on
  * Phase 2, and "Phases 1\u2013N completed" on Phase N+1.
  */
-function buildCompletedStepsInfo(state: PioSessionState): string {
+function buildCompletedPhasesInfo(state: PioSessionState): string {
   return state.currentPhase > 1
     ? `Phases ${state.currentPhase > 2 ? `${1}\u2013${state.currentPhase - 1}` : "1"} completed.`
     : "No previous phases completed.";
@@ -60,13 +59,13 @@ function buildCompletedStepsInfo(state: PioSessionState): string {
  *
  * @internal — Used by both `before_agent_start` (first run) and `agent_end` (phase transitions).
  */
-export function buildStepInstructions(state: PioSessionState): string {
+export function buildPhaseInstructions(state: PioSessionState): string {
   const phase = state.phasesList[state.currentPhase - 1];
   let prompt =
     `## Instructions for Phase ${state.currentPhase}\n\n` +
     `Follow the instructions below. Do not do anything outside these instructions.\n\n`;
   prompt +=
-    `${buildCompletedStepsInfo(state)}\n` +
+    `${buildCompletedPhasesInfo(state)}\n` +
     `You are on Phase ${state.currentPhase} of ${state.totalPhases}, iteration ${state.currentIteration}.\n\n---\n\n` +
     phase.instructions;
   // Loop replay: include loopMessage as additional per-retry context
@@ -237,7 +236,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
           customType: "workflow-paused",
           content:
             `## Workflow Paused (Ad-hoc Mode)\n\n` +
-            `${buildCompletedStepsInfo(state)}\n` +
+            `${buildCompletedPhasesInfo(state)}\n` +
             `You were on Phase ${state.currentPhase} of ${state.totalPhases}: "${phase.title}", iteration ${state.currentIteration}.\n\n` +
             `Workflow execution is paused. Any prior instructions are no longer active — you can answer questions or help the user freely.`,
           display: readDebugDisplay(),
@@ -251,8 +250,8 @@ export function setupLoopEngine(pi: ExtensionAPI) {
 
     return {
       message: {
-        customType: "workflow-step-instructions",
-        content: buildStepInstructions(state),
+        customType: "workflow-phase-instructions",
+        content: buildPhaseInstructions(state),
         display: readDebugDisplay(),
       },
     };
@@ -426,8 +425,8 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       // Loop replay: send CustomMessage to trigger another agent run for same step
       await pi.sendMessage(
         {
-          customType: "workflow-step-instructions",
-          content: buildStepInstructions(state),
+          customType: "workflow-phase-instructions",
+          content: buildPhaseInstructions(state),
           display: readDebugDisplay(),
         },
         { deliverAs: "followUp" },
@@ -451,8 +450,8 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     if (nextPhase) {
       await pi.sendMessage(
         {
-          customType: "workflow-step-instructions",
-          content: buildStepInstructions(getState()),
+          customType: "workflow-phase-instructions",
+          content: buildPhaseInstructions(getState()),
           display: readDebugDisplay(),
         },
         { deliverAs: "followUp" },

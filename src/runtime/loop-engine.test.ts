@@ -760,7 +760,7 @@ describe("before_agent_start", () => {
   // ---- CustomMessage injection (normal mode) ----
 
   describe("CustomMessage injection (normal mode)", () => {
-    it("returns message with customType workflow-step-instructions on first run of Step 1", async () => {
+    it("returns message with customType workflow-phase-instructions on first run of Phase 1", async () => {
       const { pi, handlers } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
@@ -788,7 +788,7 @@ describe("before_agent_start", () => {
       const result = results[0] as {
         message: { customType: string; content: string; display: boolean };
       };
-      expect(result.message.customType).toBe("workflow-step-instructions");
+      expect(result.message.customType).toBe("workflow-phase-instructions");
       expect(result.message.display).toBe(false);
       // Content should NOT contain the base system prompt
       expect(result.message.content).not.toContain("base prompt");
@@ -827,7 +827,7 @@ describe("before_agent_start", () => {
       const result = results[0] as {
         message: { customType: string; content: string; display: boolean };
       };
-      expect(result.message.customType).toBe("workflow-step-instructions");
+      expect(result.message.customType).toBe("workflow-phase-instructions");
       expect(result.message.content).toContain("Phases 1 completed.");
       expect(result.message.content).toContain(
         "You are on Phase 2 of 3, iteration 1.",
@@ -1099,7 +1099,7 @@ describe("before_agent_start", () => {
         const result = results[0] as {
           message: { customType: string; content: string; display: boolean };
         };
-        expect(result.message.customType).toBe("workflow-step-instructions");
+        expect(result.message.customType).toBe("workflow-phase-instructions");
         expect(result.message.display).toBe(true);
 
         spy.mockRestore();
@@ -1762,7 +1762,7 @@ describe("agent_end", () => {
       expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
-        "workflow-step-instructions",
+        "workflow-phase-instructions",
       );
       expect(sendMessageCalls[0].message.content).toContain(
         "## Instructions for Phase 2",
@@ -1817,7 +1817,7 @@ describe("agent_end", () => {
       expect(getState().currentPhase).toBe(1);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
-        "workflow-step-instructions",
+        "workflow-phase-instructions",
       );
       expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
@@ -1871,7 +1871,7 @@ describe("agent_end", () => {
       expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
-        "workflow-step-instructions",
+        "workflow-phase-instructions",
       );
       expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
@@ -1929,7 +1929,7 @@ describe("agent_end", () => {
       expect(getState().currentPhase).toBe(1);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
-        "workflow-step-instructions",
+        "workflow-phase-instructions",
       );
       expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
@@ -1987,7 +1987,7 @@ describe("agent_end", () => {
       expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
-        "workflow-step-instructions",
+        "workflow-phase-instructions",
       );
       expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
@@ -2043,7 +2043,7 @@ describe("agent_end", () => {
       expect(getState().currentPhase).toBe(1);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
-        "workflow-step-instructions",
+        "workflow-phase-instructions",
       );
       expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
@@ -2092,7 +2092,7 @@ describe("agent_end", () => {
       expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
-        "workflow-step-instructions",
+        "workflow-phase-instructions",
       );
       expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
@@ -2141,7 +2141,7 @@ describe("agent_end", () => {
       expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
-        "workflow-step-instructions",
+        "workflow-phase-instructions",
       );
       expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
@@ -2190,7 +2190,7 @@ describe("agent_end", () => {
 
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
-        "workflow-step-instructions",
+        "workflow-phase-instructions",
       );
       expect(sendMessageCalls[0].options).toEqual({
         deliverAs: "followUp",
@@ -2297,17 +2297,17 @@ describe("agent_end", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildStepInstructions helper
+// buildPhaseInstructions helper
 // ---------------------------------------------------------------------------
 
-describe("buildStepInstructions", () => {
-  async function getBuildStepInstructions() {
+describe("buildPhaseInstructions", () => {
+  async function getBuildPhaseInstructions() {
     const mod = await import("./loop-engine");
-    return mod.buildStepInstructions;
+    return mod.buildPhaseInstructions;
   }
 
   it("produces authority header (## Instructions for Phase N)", async () => {
-    const build = await getBuildStepInstructions();
+    const build = await getBuildPhaseInstructions();
     setState({
       currentPhase: 2,
       currentIteration: 1,
@@ -2323,7 +2323,7 @@ describe("buildStepInstructions", () => {
   });
 
   it("contains authority text without leaking future steps", async () => {
-    const build = await getBuildStepInstructions();
+    const build = await getBuildPhaseInstructions();
     setState({
       currentPhase: 1,
       currentIteration: 1,
@@ -2340,8 +2340,8 @@ describe("buildStepInstructions", () => {
     expect(result).not.toContain("future steps");
   });
 
-  it("includes completed steps info via buildCompletedStepsInfo", async () => {
-    const build = await getBuildStepInstructions();
+  it("includes completed phases info via buildCompletedPhasesInfo", async () => {
+    const build = await getBuildPhaseInstructions();
     setState({
       currentPhase: 3,
       currentIteration: 1,
@@ -2359,7 +2359,7 @@ describe("buildStepInstructions", () => {
   });
 
   it("includes step position line", async () => {
-    const build = await getBuildStepInstructions();
+    const build = await getBuildPhaseInstructions();
     setState({
       currentPhase: 1,
       currentIteration: 1,
@@ -2374,7 +2374,7 @@ describe("buildStepInstructions", () => {
   });
 
   it("includes separator (---) before instructions", async () => {
-    const build = await getBuildStepInstructions();
+    const build = await getBuildPhaseInstructions();
     setState({
       currentPhase: 1,
       currentIteration: 1,
@@ -2388,7 +2388,7 @@ describe("buildStepInstructions", () => {
   });
 
   it("includes step instructions content", async () => {
-    const build = await getBuildStepInstructions();
+    const build = await getBuildPhaseInstructions();
     setState({
       currentPhase: 1,
       currentIteration: 1,
@@ -2400,7 +2400,7 @@ describe("buildStepInstructions", () => {
   });
 
   it("includes loopMessage as Retry focus when currentIteration > 1", async () => {
-    const build = await getBuildStepInstructions();
+    const build = await getBuildPhaseInstructions();
     setState({
       currentPhase: 1,
       currentIteration: 2,
@@ -2419,7 +2419,7 @@ describe("buildStepInstructions", () => {
   });
 
   it("does NOT include loopMessage on first iteration", async () => {
-    const build = await getBuildStepInstructions();
+    const build = await getBuildPhaseInstructions();
     setState({
       currentPhase: 1,
       currentIteration: 1,
@@ -2438,7 +2438,7 @@ describe("buildStepInstructions", () => {
   });
 
   it("does NOT include loopMessage when step has no loopMessage", async () => {
-    const build = await getBuildStepInstructions();
+    const build = await getBuildPhaseInstructions();
     setState({
       currentPhase: 1,
       currentIteration: 2,

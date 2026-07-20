@@ -558,7 +558,7 @@ describe("compilePrompt", () => {
     expect(result.workflow).toBeDefined();
   });
 
-  it("populates mergedSkills from workflow step skills and base skills", async () => {
+  it("populates mergedSkills from workflow phase skills and base skills", async () => {
     const capDir = path.join(tempDir, "test-cap");
     fs.mkdirSync(capDir, { recursive: true });
     fs.writeFileSync(

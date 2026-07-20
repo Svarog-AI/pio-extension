@@ -285,7 +285,7 @@ export async function compilePrompt(
   // 4. Attach merged skills
   sections.mergedSkills = mergedSkills;
 
-  // 5. Attach raw phases for loop engine injection (totalWorkflowSteps, workflowSteps)
+  // 5. Attach raw phases for loop engine (accessed via getCompiledWorkflowPhases)
   sections._steps = components.phases;
 
   return sections;

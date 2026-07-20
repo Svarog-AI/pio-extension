@@ -17,7 +17,7 @@
 
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { getSessionParams } from "../capability-session";
+import { getCompiledWorkflowPhases } from "../capability-session";
 import { CapState } from "../capability-state";
 import { getSessionConfig } from "../capability-utils";
 import { readDebugDisplay, resolveMaxIterations } from "../model-config";
@@ -33,11 +33,11 @@ import type { WorkflowPhase } from "./workflow-types";
  * Build a one-line summary of completed phases for CustomMessage injection.
  *
  * Returns "No previous phases completed" on Phase 1, "Phases 1 completed" on
- * Phase 2, and "Phases 1–N completed" on Phase N+1.
+ * Phase 2, and "Phases 1\u2013N completed" on Phase N+1.
  */
 function buildCompletedStepsInfo(state: PioSessionState): string {
-  return state.currentStep > 1
-    ? `Phases ${state.currentStep > 2 ? `${1}–${state.currentStep - 1}` : "1"} completed.`
+  return state.currentPhase > 1
+    ? `Phases ${state.currentPhase > 2 ? `${1}\u2013${state.currentPhase - 1}` : "1"} completed.`
     : "No previous phases completed.";
 }
 
@@ -61,17 +61,17 @@ function buildCompletedStepsInfo(state: PioSessionState): string {
  * @internal — Used by both `before_agent_start` (first run) and `agent_end` (phase transitions).
  */
 export function buildStepInstructions(state: PioSessionState): string {
-  const step = state.stepsList[state.currentStep - 1];
+  const phase = state.phasesList[state.currentPhase - 1];
   let prompt =
-    `## Instructions for Phase ${state.currentStep}\n\n` +
+    `## Instructions for Phase ${state.currentPhase}\n\n` +
     `Follow the instructions below. Do not do anything outside these instructions.\n\n`;
   prompt +=
     `${buildCompletedStepsInfo(state)}\n` +
-    `You are on Phase ${state.currentStep} of ${state.totalSteps}, iteration ${state.currentIteration}.\n\n---\n\n` +
-    step.instructions;
+    `You are on Phase ${state.currentPhase} of ${state.totalPhases}, iteration ${state.currentIteration}.\n\n---\n\n` +
+    phase.instructions;
   // Loop replay: include loopMessage as additional per-retry context
-  if (state.currentIteration > 1 && step.loopMessage) {
-    prompt += `\n\n**Retry focus:** ${step.loopMessage}`;
+  if (state.currentIteration > 1 && phase.loopMessage) {
+    prompt += `\n\n**Retry focus:** ${phase.loopMessage}`;
   }
   return prompt;
 }
@@ -128,24 +128,16 @@ export function setupLoopEngine(pi: ExtensionAPI) {
   // 1. Detect pio sub-sessions and initialize loop engine state
   pi.on("resources_discover", async (_event, ctx) => {
     const config = await getSessionConfig(ctx);
-    const sessionParams = getSessionParams();
-
-    if (!config || !sessionParams) {
+    if (!config) {
       // Not a pio session — reset all state (including loop engine fields)
       resetState();
       return;
     }
 
-    // Load workflow phases from enriched session params.
-    // capability-session passes full WorkflowPhase[] objects (with .instructions, .loopMessage, etc.).
-    // WorkflowPhase has all loop fields as optional, so this is safe.
-    const rawSteps = sessionParams.workflowSteps as WorkflowPhase[] | undefined;
-    const stepsList = Array.isArray(rawSteps) ? rawSteps : [];
-
-    const totalSteps =
-      typeof sessionParams.totalWorkflowSteps === "number"
-        ? sessionParams.totalWorkflowSteps
-        : stepsList.length;
+    // Load workflow phases directly via typed getter.
+    // Missing phases is not an error — empty list means single-pass execution.
+    const phasesList = getCompiledWorkflowPhases() ?? [];
+    const totalPhases = phasesList.length;
 
     // Resolve step-level write allowlists
     const capState = new CapState(
@@ -157,7 +149,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       capState.getAllOutputPaths().map((p) => path.resolve(p)),
     );
 
-    const stepWriteAllowlist = new Map<
+    const phaseWriteAllowlist = new Map<
       number,
       {
         allowedPaths: Set<string>;
@@ -165,25 +157,25 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         allContractOutputs: Set<string>;
       }
     >();
-    for (let i = 0; i < stepsList.length; i++) {
-      const step = stepsList[i];
+    for (let i = 0; i < phasesList.length; i++) {
+      const phase = phasesList[i];
       const allowedPaths = new Set<string>();
       const allowedNames: string[] = [];
-      if (step.write) {
-        for (const name of step.write) {
+      if (phase.write) {
+        for (const name of phase.write) {
           allowedNames.push(name);
           const resolved = capState.tryResolveOutput(name);
           if (resolved) {
             allowedPaths.add(path.resolve(resolved.path));
           } else {
             console.warn(
-              `[loop-engine] Step ${i + 1} (${step.title ?? "unknown"}): output name "${name}" in write[] could not be resolved — it will not be in the allowed list.`,
+              `[loop-engine] Step ${i + 1} (${phase.title ?? "unknown"}): output name "${name}" in write[] could not be resolved — it will not be in the allowed list.`,
             );
           }
         }
       }
       // ALWAYS create entry, even when write is undefined or empty
-      stepWriteAllowlist.set(i + 1, {
+      phaseWriteAllowlist.set(i + 1, {
         allowedPaths,
         allowedNames,
         allContractOutputs: new Set(allContractOutputs),
@@ -193,14 +185,14 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // Initialize PioSessionState (single source of truth)
     setState({
       isActive: true,
-      stepsList: stepsList,
-      totalSteps: totalSteps,
-      currentStep: 1,
+      phasesList: phasesList,
+      totalPhases: totalPhases,
+      currentPhase: 1,
       currentIteration: 0, // Not yet started — before_agent_start will set to 1
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      stepWriteAllowlist: stepWriteAllowlist,
+      phaseWriteAllowlist: phaseWriteAllowlist,
     });
   });
 
@@ -219,7 +211,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     if (!state.isActive) return;
 
     if (!state.isAdHocInput) {
-      // Normal run: first run (0→1) or loop replay (N→N+1).
+      // Normal run: first run (0\u21921) or loop replay (N\u2192N+1).
       // Increment iteration, reset tracking fields.
       setState({
         currentIteration: state.currentIteration + 1,
@@ -237,8 +229,8 @@ export function setupLoopEngine(pi: ExtensionAPI) {
 
     // Ad-hoc mode: lighter context block (no step instructions)
     if (state.isAdHocInput) {
-      const step = state.stepsList[state.currentStep - 1];
-      if (!step) return;
+      const phase = state.phasesList[state.currentPhase - 1];
+      if (!phase) return;
 
       return {
         message: {
@@ -246,7 +238,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
           content:
             `## Workflow Paused (Ad-hoc Mode)\n\n` +
             `${buildCompletedStepsInfo(state)}\n` +
-            `You were on Phase ${state.currentStep} of ${state.totalSteps}: "${step.title}", iteration ${state.currentIteration}.\n\n` +
+            `You were on Phase ${state.currentPhase} of ${state.totalPhases}: "${phase.title}", iteration ${state.currentIteration}.\n\n` +
             `Workflow execution is paused. Any prior instructions are no longer active — you can answer questions or help the user freely.`,
           display: readDebugDisplay(),
         },
@@ -254,8 +246,8 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     }
 
     // Normal mode: inject step instructions via helper
-    const step = state.stepsList[state.currentStep - 1];
-    if (!step) return; // no step loaded — skip injection
+    const phase = state.phasesList[state.currentPhase - 1];
+    if (!phase) return; // no step loaded — skip injection
 
     return {
       message: {
@@ -309,10 +301,10 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // --- Step-level write gate ---
     const state = getState();
     if (targetPaths.length > 0 && state.isActive) {
-      const entry = state.stepWriteAllowlist.get(state.currentStep);
+      const entry = state.phaseWriteAllowlist.get(state.currentPhase);
       if (entry !== undefined) {
-        const currentStepObj = state.stepsList[state.currentStep - 1];
-        const stepTitle = currentStepObj?.title ?? "unknown";
+        const currentPhaseObj = state.phasesList[state.currentPhase - 1];
+        const phaseTitle = currentPhaseObj?.title ?? "unknown";
 
         for (const tp of targetPaths) {
           // Always allow /tmp/ writes (consistency with capability-level validation)
@@ -323,7 +315,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
             if (entry.allContractOutputs.has(tp)) {
               return {
                 block: true,
-                reason: `Writing is not allowed during Phase ${state.currentStep} of ${state.totalSteps} (${stepTitle}). This phase does not produce any contract outputs.`,
+                reason: `Writing is not allowed during Phase ${state.currentPhase} of ${state.totalPhases} (${phaseTitle}). This phase does not produce any contract outputs.`,
               };
             }
           } else {
@@ -334,14 +326,14 @@ export function setupLoopEngine(pi: ExtensionAPI) {
             ) {
               return {
                 block: true,
-                reason: `Writing is restricted during Phase ${state.currentStep} of ${state.totalSteps} (${stepTitle}). Allowed outputs: [${entry.allowedNames.join(", ")}]. Your target path '${tp}' is not in the allowed list.`,
+                reason: `Writing is restricted during Phase ${state.currentPhase} of ${state.totalPhases} (${phaseTitle}). Allowed outputs: [${entry.allowedNames.join(", ")}]. Your target path '${tp}' is not in the allowed list.`,
               };
             }
           }
         }
       } else {
         console.warn(
-          `[loop-engine] Step ${state.currentStep}: no write allowlist entry found — write gating skipped. This should not happen after resources_discover.`,
+          `[loop-engine] Step ${state.currentPhase}: no write allowlist entry found — write gating skipped. This should not happen after resources_discover.`,
         );
       }
     }
@@ -383,11 +375,11 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // 2. Iteration bounds enforcement
     // ---------------------------------------------------------------------------
 
-    const currentStepIndex = state.currentStep - 1; // 1-based → 0-based
-    const currentStep = state.stepsList[currentStepIndex];
-    if (!currentStep) return;
+    const currentPhaseIndex = state.currentPhase - 1; // 1-based \u2192 0-based
+    const currentPhase = state.phasesList[currentPhaseIndex];
+    if (!currentPhase) return;
 
-    const resolvedMax = resolveMaxIterations(currentStep.maxIterations);
+    const resolvedMax = resolveMaxIterations(currentPhase.maxIterations);
     if (state.currentIteration >= resolvedMax) {
       // Hard stop — max iterations reached
       return;
@@ -397,7 +389,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // 3. Termination condition evaluation
     // ---------------------------------------------------------------------------
 
-    const minIterations = currentStep.minIterations ?? 1;
+    const minIterations = currentPhase.minIterations ?? 1;
     let conditionsMet = false;
 
     if (state.currentIteration < minIterations) {
@@ -406,14 +398,14 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     } else {
       // Min iterations reached — evaluate termination conditions
       if (
-        !currentStep.terminateWhen ||
-        currentStep.terminateWhen.length === 0
+        !currentPhase.terminateWhen ||
+        currentPhase.terminateWhen.length === 0
       ) {
         // No conditions defined — treat as "conditions met" (advance)
         conditionsMet = true;
       } else {
         // Evaluate callbacks with OR logic
-        for (const condition of currentStep.terminateWhen) {
+        for (const condition of currentPhase.terminateWhen) {
           try {
             if (condition.callback(state)) {
               conditionsMet = true;
@@ -444,19 +436,19 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     }
 
     // Conditions met — advance to next step
-    const nextStepNum = state.currentStep + 1;
+    const nextPhaseNum = state.currentPhase + 1;
 
-    if (nextStepNum > state.totalSteps) {
+    if (nextPhaseNum > state.totalPhases) {
       // Last step — let session end naturally
       return;
     }
 
     // Update current step in shared state
-    setState({ currentStep: nextStepNum });
+    setState({ currentPhase: nextPhaseNum });
 
     // Send CustomMessage with instructions for the next step
-    const nextStep = state.stepsList[nextStepNum - 1];
-    if (nextStep) {
+    const nextPhase = state.phasesList[nextPhaseNum - 1];
+    if (nextPhase) {
       await pi.sendMessage(
         {
           customType: "workflow-step-instructions",
@@ -478,8 +470,8 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       if (!state.isActive) return;
 
       // Determine return target
-      const currentStepObj = state.stepsList[state.currentStep - 1];
-      const targetStepNum = currentStepObj?.returnTo ?? state.currentStep;
+      const currentPhaseObj = state.phasesList[state.currentPhase - 1];
+      const targetPhaseNum = currentPhaseObj?.returnTo ?? state.currentPhase;
 
       // State reset: clear iteration counter and tracking fields
       setState({
@@ -490,13 +482,13 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       });
 
       // Advance to target step if different from current
-      if (targetStepNum !== state.currentStep) {
-        setState({ currentStep: targetStepNum });
+      if (targetPhaseNum !== state.currentPhase) {
+        setState({ currentPhase: targetPhaseNum });
       }
 
       // Queue follow-up to trigger target step (content via CustomMessage injection)
-      const targetStep = state.stepsList[targetStepNum - 1];
-      if (!targetStep) return;
+      const targetPhase = state.phasesList[targetPhaseNum - 1];
+      if (!targetPhase) return;
 
       pi.sendUserMessage("", { deliverAs: "followUp" });
     },

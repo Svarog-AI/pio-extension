@@ -25,7 +25,7 @@ vi.spyOn(capabilityUtils, "getSessionConfig").mockResolvedValue({
   },
 });
 
-vi.spyOn(capabilitySession, "getSessionParams").mockReturnValue({
+vi.spyOn(capabilitySession, "getCompiledWorkflowPhases").mockReturnValue({
   workflowSteps: [
     { id: "step-1", title: "Step One", instructions: "Do something" },
     { id: "step-2", title: "Step Two", instructions: "Do something else" },
@@ -164,13 +164,11 @@ beforeEach(() => {
       ],
     },
   });
-  vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+  vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
     workflowSteps: [
       { id: "step-1", title: "Step One", instructions: "Do something" },
       { id: "step-2", title: "Step Two", instructions: "Do something else" },
-    ],
-    totalWorkflowSteps: 2,
-  });
+    ]]);
   // Default: debugDisplay is false (tests that need true mock it explicitly)
   vi.spyOn(modelConfig, "readDebugDisplay").mockReturnValue(false);
   // resetState() resets ALL PioSessionState including loop engine fields
@@ -287,7 +285,7 @@ describe("/return command", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
-      setState({ isActive: false, currentStep: 1 });
+      setState({ isActive: false, currentPhase: 1 });
 
       await fireReturnCommand(registeredCommands);
 
@@ -302,10 +300,10 @@ describe("/return command", () => {
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1,
-        totalSteps: 1,
-        stepsList: [{ id: "s1", title: "S1", instructions: "Do A" }],
+        totalPhases: 1,
+        phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
@@ -329,10 +327,10 @@ describe("/return command", () => {
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 3,
-        totalSteps: 2,
-        stepsList: [
+        totalPhases: 2,
+        phasesList: [
           { id: "s1", title: "S1", instructions: "Do A" },
           { id: "s2", title: "S2", instructions: "Do B" },
         ],
@@ -357,10 +355,10 @@ describe("/return command", () => {
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 2,
-        totalSteps: 2,
-        stepsList: [
+        totalPhases: 2,
+        phasesList: [
           { id: "s1", title: "S1", instructions: "Do A" },
           { id: "s2", title: "S2", instructions: "Do B" },
         ],
@@ -386,10 +384,10 @@ describe("/return command", () => {
       // Step 2 has returnTo: 1, so /return should jump back to step 1
       setState({
         isActive: true,
-        currentStep: 2,
+        currentPhase: 2,
         currentIteration: 1,
-        totalSteps: 2,
-        stepsList: [
+        totalPhases: 2,
+        phasesList: [
           { id: "s1", title: "S1", instructions: "Do A" },
           { id: "s2", title: "S2", instructions: "Do B", returnTo: 1 },
         ],
@@ -401,7 +399,7 @@ describe("/return command", () => {
       await fireReturnCommand(registeredCommands);
 
       // Should have jumped to step 1
-      expect(getState().currentStep).toBe(1);
+      expect(getState().currentPhase).toBe(1);
       expect(sendUserMessageCalls).toHaveLength(1);
       expect(sendUserMessageCalls[0].content).toBe("");
     });
@@ -413,10 +411,10 @@ describe("/return command", () => {
 
       setState({
         isActive: true,
-        currentStep: 2,
+        currentPhase: 2,
         currentIteration: 1,
-        totalSteps: 2,
-        stepsList: [
+        totalPhases: 2,
+        phasesList: [
           { id: "s1", title: "S1", instructions: "Do A" },
           { id: "s2", title: "S2", instructions: "Do B" }, // no returnTo
         ],
@@ -428,7 +426,7 @@ describe("/return command", () => {
       await fireReturnCommand(registeredCommands);
 
       // Should stay on step 2
-      expect(getState().currentStep).toBe(2);
+      expect(getState().currentPhase).toBe(2);
       expect(sendUserMessageCalls).toHaveLength(1);
       expect(sendUserMessageCalls[0].content).toBe("");
     });
@@ -444,10 +442,10 @@ describe("/return command", () => {
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1,
-        totalSteps: 0,
-        stepsList: [],
+        totalPhases: 0,
+        phasesList: [],
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
@@ -468,10 +466,10 @@ describe("/return command", () => {
       // Step 1 has returnTo: 5, but there are only 2 steps
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1,
-        totalSteps: 2,
-        stepsList: [
+        totalPhases: 2,
+        phasesList: [
           { id: "s1", title: "S1", instructions: "Do A", returnTo: 5 },
           { id: "s2", title: "S2", instructions: "Do B" },
         ],
@@ -514,11 +512,11 @@ describe("resources_discover", () => {
     // Assert: PioSessionState initialized (single source of truth)
     const state = getState();
     expect(state.isActive).toBe(true);
-    expect(state.currentStep).toBe(1);
+    expect(state.currentPhase).toBe(1);
     expect(state.currentIteration).toBe(0);
-    expect(state.totalSteps).toBe(2);
-    expect(state.stepsList).toHaveLength(2);
-    expect(state.stepsList[0].id).toBe("step-1");
+    expect(state.totalPhases).toBe(2);
+    expect(state.phasesList).toHaveLength(2);
+    expect(state.phasesList[0].id).toBe("step-1");
     expect(state.isAdHocInput).toBe(false);
     expect(state.filesWritten).toEqual([]);
     expect(state.askUserCalled).toBe(false);
@@ -533,8 +531,8 @@ describe("resources_discover", () => {
     // Pre-set some state
     setState({
       isActive: true,
-      currentStep: 3,
-      totalSteps: 5,
+      currentPhase: 3,
+      totalPhases: 5,
       currentIteration: 2,
       isAdHocInput: true,
     });
@@ -554,10 +552,10 @@ describe("resources_discover", () => {
     // Assert: state reset (including loop engine fields)
     const state = getState();
     expect(state.isActive).toBe(false);
-    expect(state.currentStep).toBe(0);
+    expect(state.currentPhase).toBe(0);
     expect(state.currentIteration).toBe(0);
-    expect(state.totalSteps).toBe(0);
-    expect(state.stepsList).toEqual([]);
+    expect(state.totalPhases).toBe(0);
+    expect(state.phasesList).toEqual([]);
     expect(state.isAdHocInput).toBe(false);
   });
 
@@ -565,7 +563,9 @@ describe("resources_discover", () => {
     // Arrange
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
-    vi.mocked(capabilitySession.getSessionParams).mockReturnValue(undefined);
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+      undefined,
+    );
 
     setupLoopEngine(pi);
 
@@ -581,9 +581,9 @@ describe("resources_discover", () => {
 
     // Assert: state reset (no session params = not a valid pio session)
     const state = getState();
-    expect(state.currentStep).toBe(0);
-    expect(state.totalSteps).toBe(0);
-    expect(state.stepsList).toEqual([]);
+    expect(state.currentPhase).toBe(0);
+    expect(state.totalPhases).toBe(0);
+    expect(state.phasesList).toEqual([]);
   });
 });
 
@@ -770,10 +770,10 @@ describe("before_agent_start", () => {
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 0, // first run
-        totalSteps: 2,
-        stepsList: [
+        totalPhases: 2,
+        phasesList: [
           { id: "s1", title: "S1", instructions: "Do A" },
           { id: "s2", title: "S2", instructions: "Do B" },
         ],
@@ -809,10 +809,10 @@ describe("before_agent_start", () => {
 
       setState({
         isActive: true,
-        currentStep: 2,
+        currentPhase: 2,
         currentIteration: 0,
-        totalSteps: 3,
-        stepsList: [
+        totalPhases: 3,
+        phasesList: [
           { id: "s1", title: "S1", instructions: "Do A" },
           { id: "s2", title: "S2", instructions: "Do B" },
           { id: "s3", title: "S3", instructions: "Do C" },
@@ -844,10 +844,10 @@ describe("before_agent_start", () => {
 
       setState({
         isActive: true,
-        currentStep: 4,
+        currentPhase: 4,
         currentIteration: 0,
-        totalSteps: 5,
-        stepsList: [
+        totalPhases: 5,
+        phasesList: [
           { id: "s1", title: "S1", instructions: "A" },
           { id: "s2", title: "S2", instructions: "B" },
           { id: "s3", title: "S3", instructions: "C" },
@@ -877,10 +877,10 @@ describe("before_agent_start", () => {
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1, // will become 2
-        totalSteps: 1,
-        stepsList: [
+        totalPhases: 1,
+        phasesList: [
           {
             id: "s1",
             title: "S1",
@@ -913,10 +913,10 @@ describe("before_agent_start", () => {
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 0, // first run → iteration 1
-        totalSteps: 1,
-        stepsList: [
+        totalPhases: 1,
+        phasesList: [
           {
             id: "s1",
             title: "S1",
@@ -947,10 +947,10 @@ describe("before_agent_start", () => {
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 0,
-        totalSteps: 0,
-        stepsList: [],
+        totalPhases: 0,
+        phasesList: [],
         isAdHocInput: false,
         filesWritten: [],
         askUserCalled: false,
@@ -972,10 +972,10 @@ describe("before_agent_start", () => {
 
       setState({
         isActive: true,
-        currentStep: 99,
+        currentPhase: 99,
         currentIteration: 0,
-        totalSteps: 2,
-        stepsList: [
+        totalPhases: 2,
+        phasesList: [
           { id: "s1", title: "S1", instructions: "A" },
           { id: "s2", title: "S2", instructions: "B" },
         ],
@@ -1003,10 +1003,10 @@ describe("before_agent_start", () => {
 
       setState({
         isActive: true,
-        currentStep: 2,
+        currentPhase: 2,
         currentIteration: 3,
-        totalSteps: 4,
-        stepsList: [
+        totalPhases: 4,
+        phasesList: [
           { id: "s1", title: "S1", instructions: "Do A" },
           { id: "s2", title: "S2", instructions: "Do B" },
           { id: "s3", title: "S3", instructions: "Do C" },
@@ -1051,10 +1051,10 @@ describe("before_agent_start", () => {
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1,
-        totalSteps: 0,
-        stepsList: [],
+        totalPhases: 0,
+        phasesList: [],
         isAdHocInput: true,
         filesWritten: [],
         askUserCalled: false,
@@ -1081,10 +1081,10 @@ describe("before_agent_start", () => {
 
         setState({
           isActive: true,
-          currentStep: 1,
+          currentPhase: 1,
           currentIteration: 0,
-          totalSteps: 2,
-          stepsList: [
+          totalPhases: 2,
+          phasesList: [
             { id: "s1", title: "S1", instructions: "Do A" },
             { id: "s2", title: "S2", instructions: "Do B" },
           ],
@@ -1118,10 +1118,10 @@ describe("before_agent_start", () => {
 
         setState({
           isActive: true,
-          currentStep: 2,
+          currentPhase: 2,
           currentIteration: 3,
-          totalSteps: 4,
-          stepsList: [
+          totalPhases: 4,
+          phasesList: [
             { id: "s1", title: "S1", instructions: "Do A" },
             { id: "s2", title: "S2", instructions: "Do B" },
             { id: "s3", title: "S3", instructions: "Do C" },
@@ -1157,10 +1157,10 @@ describe("before_agent_start", () => {
 
         setState({
           isActive: true,
-          currentStep: 1,
+          currentPhase: 1,
           currentIteration: 0,
-          totalSteps: 1,
-          stepsList: [{ id: "s1", title: "S1", instructions: "Do A" }],
+          totalPhases: 1,
+          phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
           isAdHocInput: false,
           filesWritten: [],
           askUserCalled: false,
@@ -1425,7 +1425,7 @@ describe("PioSessionState as single source of truth", () => {
     const state = getState();
     expect(state.isActive).toBe(true);
     expect(state.currentIteration).toBe(1);
-    expect(state.stepsList).toHaveLength(2);
+    expect(state.phasesList).toHaveLength(2);
     expect(state.filesWritten).toEqual([]);
     expect(state.askUserCalled).toBe(false);
     expect(state.isAdHocInput).toBe(false);
@@ -1521,20 +1521,18 @@ describe("agent_end", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
-      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
         workflowSteps: [
           { id: "s1", title: "S1", instructions: "Do A" },
           { id: "s2", title: "S2", instructions: "Do B" },
-        ],
-        totalWorkflowSteps: 2,
-      });
+        ]]);
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1,
-        totalSteps: 2,
-        stepsList: [
+        totalPhases: 2,
+        phasesList: [
           { id: "s1", title: "S1", instructions: "Do A" },
           { id: "s2", title: "S2", instructions: "Do B" },
         ],
@@ -1559,20 +1557,18 @@ describe("agent_end", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
-      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
         workflowSteps: [
           { id: "s1", title: "S1", instructions: "Do A" },
           { id: "s2", title: "S2", instructions: "Do B" },
-        ],
-        totalWorkflowSteps: 2,
-      });
+        ]]);
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1,
-        totalSteps: 2,
-        stepsList: [
+        totalPhases: 2,
+        phasesList: [
           { id: "s1", title: "S1", instructions: "Do A" },
           { id: "s2", title: "S2", instructions: "Do B" },
         ],
@@ -1597,17 +1593,15 @@ describe("agent_end", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
-      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
-        workflowSteps: [{ id: "s1", title: "S1", instructions: "Do A" }],
-        totalWorkflowSteps: 1,
-      });
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
+        workflowSteps: [{ id: "s1", title: "S1", instructions: "Do A" }]]);
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1,
-        totalSteps: 1,
-        stepsList: [{ id: "s1", title: "S1", instructions: "Do A" }],
+        totalPhases: 1,
+        phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
         markCompleteCalled: true,
         filesWritten: [],
         askUserCalled: false,
@@ -1651,17 +1645,15 @@ describe("agent_end", () => {
         { id: "s2", title: "S2", instructions: "Do B" },
       ];
 
-      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
-        workflowSteps: steps,
-        totalWorkflowSteps: 2,
-      });
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
+        workflowSteps: steps);
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1,
-        totalSteps: 2,
-        stepsList: steps,
+        totalPhases: 2,
+        phasesList: steps,
         markCompleteCalled: false,
         filesWritten: [],
         askUserCalled: false,
@@ -1677,7 +1669,7 @@ describe("agent_end", () => {
 
       // Ad-hoc guard: no follow-up injected, step not advanced
       expect(sendUserMessageCalls).toHaveLength(0);
-      expect(getState().currentStep).toBe(1);
+      expect(getState().currentPhase).toBe(1);
     });
   });
 
@@ -1689,7 +1681,7 @@ describe("agent_end", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
-      // Use totalSteps: 2 so that without the max check, advancement to step 2
+      // Use totalPhases: 2 so that without the max check, advancement to step 2
       // would send a follow-up. The assertion (no follow-up) proves max check works.
       const steps = [
         {
@@ -1702,17 +1694,15 @@ describe("agent_end", () => {
         { id: "s2", title: "S2", instructions: "Do B" },
       ];
 
-      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
-        workflowSteps: steps,
-        totalWorkflowSteps: 2,
-      });
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
+        workflowSteps: steps);
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 3, // >= maxIterations (3) → hard stop
-        totalSteps: 2,
-        stepsList: steps,
+        totalPhases: 2,
+        phasesList: steps,
         markCompleteCalled: false,
         filesWritten: [],
         askUserCalled: false,
@@ -1730,7 +1720,7 @@ describe("agent_end", () => {
       // Without max check: conditions met (no terminateWhen, iteration >= minIterations 1)
       // → would advance to step 2 and send "Do B" as follow-up.
       expect(sendUserMessageCalls).toHaveLength(0);
-      expect(getState().currentStep).toBe(1); // Not advanced
+      expect(getState().currentPhase).toBe(1); // Not advanced
     });
   });
 
@@ -1747,17 +1737,15 @@ describe("agent_end", () => {
         { id: "s2", title: "S2", instructions: "Do B" },
       ];
 
-      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
-        workflowSteps: steps,
-        totalWorkflowSteps: 2,
-      });
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
+        workflowSteps: steps);
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1,
-        totalSteps: 2,
-        stepsList: steps,
+        totalPhases: 2,
+        phasesList: steps,
         markCompleteCalled: false,
         filesWritten: [],
         askUserCalled: false,
@@ -1772,7 +1760,7 @@ describe("agent_end", () => {
       ]);
 
       // Should advance: currentStep updated, sendMessage called with CustomMessage
-      expect(getState().currentStep).toBe(2);
+      expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-step-instructions",
@@ -1803,17 +1791,15 @@ describe("agent_end", () => {
         { id: "s2", title: "S2", instructions: "Do B" },
       ];
 
-      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
-        workflowSteps: steps,
-        totalWorkflowSteps: 2,
-      });
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
+        workflowSteps: steps);
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 2, // < minIterations (3)
-        totalSteps: 2,
-        stepsList: steps,
+        totalPhases: 2,
+        phasesList: steps,
         markCompleteCalled: false,
         filesWritten: [],
         askUserCalled: false,
@@ -1828,7 +1814,7 @@ describe("agent_end", () => {
       ]);
 
       // Should loop: sendMessage called with CustomMessage, currentStep unchanged
-      expect(getState().currentStep).toBe(1);
+      expect(getState().currentPhase).toBe(1);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-step-instructions",
@@ -1858,17 +1844,15 @@ describe("agent_end", () => {
         { id: "s2", title: "S2", instructions: "Do B" },
       ];
 
-      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
-        workflowSteps: steps,
-        totalWorkflowSteps: 2,
-      });
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
+        workflowSteps: steps);
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1, // >= minIterations
-        totalSteps: 2,
-        stepsList: steps,
+        totalPhases: 2,
+        phasesList: steps,
         markCompleteCalled: false,
         filesWritten: ["/some/file.ts"],
         askUserCalled: false,
@@ -1883,7 +1867,7 @@ describe("agent_end", () => {
       ]);
 
       // Callback returns true → advance via sendMessage
-      expect(getState().currentStep).toBe(2);
+      expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-step-instructions",
@@ -1917,17 +1901,15 @@ describe("agent_end", () => {
         { id: "s2", title: "S2", instructions: "Do B" },
       ];
 
-      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
-        workflowSteps: steps,
-        totalWorkflowSteps: 2,
-      });
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
+        workflowSteps: steps);
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1,
-        totalSteps: 2,
-        stepsList: steps,
+        totalPhases: 2,
+        phasesList: steps,
         markCompleteCalled: false,
         filesWritten: [], // Both callbacks return false
         askUserCalled: false,
@@ -1942,7 +1924,7 @@ describe("agent_end", () => {
       ]);
 
       // All false → loop via sendMessage
-      expect(getState().currentStep).toBe(1);
+      expect(getState().currentPhase).toBe(1);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-step-instructions",
@@ -1976,17 +1958,15 @@ describe("agent_end", () => {
         { id: "s2", title: "S2", instructions: "Do B" },
       ];
 
-      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
-        workflowSteps: steps,
-        totalWorkflowSteps: 2,
-      });
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
+        workflowSteps: steps);
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1,
-        totalSteps: 2,
-        stepsList: steps,
+        totalPhases: 2,
+        phasesList: steps,
         markCompleteCalled: false,
         filesWritten: [],
         askUserCalled: true, // Second callback returns true
@@ -2001,7 +1981,7 @@ describe("agent_end", () => {
       ]);
 
       // Second callback true → advance via sendMessage
-      expect(getState().currentStep).toBe(2);
+      expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-step-instructions",
@@ -2033,17 +2013,15 @@ describe("agent_end", () => {
         { id: "s2", title: "S2", instructions: "Do B" },
       ];
 
-      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
-        workflowSteps: steps,
-        totalWorkflowSteps: 2,
-      });
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
+        workflowSteps: steps);
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1,
-        totalSteps: 2,
-        stepsList: steps,
+        totalPhases: 2,
+        phasesList: steps,
         markCompleteCalled: false,
         filesWritten: [],
         askUserCalled: false,
@@ -2058,7 +2036,7 @@ describe("agent_end", () => {
       ]);
 
       // Callback threw → fail-safe: loop via sendMessage
-      expect(getState().currentStep).toBe(1);
+      expect(getState().currentPhase).toBe(1);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-step-instructions",
@@ -2083,17 +2061,15 @@ describe("agent_end", () => {
         { id: "s2", title: "S2", instructions: "Do B" },
       ];
 
-      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
-        workflowSteps: steps,
-        totalWorkflowSteps: 2,
-      });
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
+        workflowSteps: steps);
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 2, // >= minIterations
-        totalSteps: 2,
-        stepsList: steps,
+        totalPhases: 2,
+        phasesList: steps,
         markCompleteCalled: false,
         filesWritten: [],
         askUserCalled: false,
@@ -2108,7 +2084,7 @@ describe("agent_end", () => {
       ]);
 
       // No terminateWhen + minIterations reached → advance via sendMessage
-      expect(getState().currentStep).toBe(2);
+      expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-step-instructions",
@@ -2133,17 +2109,15 @@ describe("agent_end", () => {
         { id: "s2", title: "S2", instructions: "Do B" },
       ];
 
-      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
-        workflowSteps: steps,
-        totalWorkflowSteps: 2,
-      });
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
+        workflowSteps: steps);
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1,
-        totalSteps: 2,
-        stepsList: steps,
+        totalPhases: 2,
+        phasesList: steps,
         markCompleteCalled: false,
         filesWritten: [],
         askUserCalled: false,
@@ -2158,7 +2132,7 @@ describe("agent_end", () => {
       ]);
 
       // Empty terminateWhen + minIterations reached → advance via sendMessage
-      expect(getState().currentStep).toBe(2);
+      expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-step-instructions",
@@ -2185,17 +2159,15 @@ describe("agent_end", () => {
         },
       ];
 
-      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
-        workflowSteps: steps,
-        totalWorkflowSteps: 1,
-      });
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
+        workflowSteps: steps);
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1, // < minIterations
-        totalSteps: 1,
-        stepsList: steps,
+        totalPhases: 1,
+        phasesList: steps,
         markCompleteCalled: false,
         filesWritten: [],
         askUserCalled: false,
@@ -2235,17 +2207,15 @@ describe("agent_end", () => {
         },
       ];
 
-      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
-        workflowSteps: steps,
-        totalWorkflowSteps: 1,
-      });
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
+        workflowSteps: steps);
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 1,
-        totalSteps: 1,
-        stepsList: steps,
+        totalPhases: 1,
+        phasesList: steps,
         markCompleteCalled: false,
         filesWritten: [],
         askUserCalled: false,
@@ -2261,7 +2231,7 @@ describe("agent_end", () => {
 
       // Last step, conditions met → no follow-up, let session end naturally
       expect(sendUserMessageCalls).toHaveLength(0);
-      expect(getState().currentStep).toBe(1); // Not advanced
+      expect(getState().currentPhase).toBe(1); // Not advanced
     });
   });
 
@@ -2273,7 +2243,7 @@ describe("agent_end", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
-      // Use totalSteps: 2 so that without the max check, advancement to step 2
+      // Use totalPhases: 2 so that without the max check, advancement to step 2
       // would send a follow-up. The assertion (no follow-up) proves max check works.
       const steps = [
         {
@@ -2286,17 +2256,15 @@ describe("agent_end", () => {
         { id: "s2", title: "S2", instructions: "Do B" },
       ];
 
-      vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
-        workflowSteps: steps,
-        totalWorkflowSteps: 2,
-      });
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
+        workflowSteps: steps);
 
       setState({
         isActive: true,
-        currentStep: 1,
+        currentPhase: 1,
         currentIteration: 5, // >= maxIterations (5) → hard stop
-        totalSteps: 2,
-        stepsList: steps,
+        totalPhases: 2,
+        phasesList: steps,
         markCompleteCalled: false,
         filesWritten: [],
         askUserCalled: false,
@@ -2314,7 +2282,7 @@ describe("agent_end", () => {
       // Without max check: conditions met (no terminateWhen, iteration >= minIterations 1)
       // → would advance to step 2 and send "Do B" as follow-up.
       expect(sendUserMessageCalls).toHaveLength(0);
-      expect(getState().currentStep).toBe(1); // Not advanced
+      expect(getState().currentPhase).toBe(1); // Not advanced
     });
   });
 });
@@ -2332,10 +2300,10 @@ describe("buildStepInstructions", () => {
   it("produces authority header (## Instructions for Phase N)", async () => {
     const build = await getBuildStepInstructions();
     setState({
-      currentStep: 2,
+      currentPhase: 2,
       currentIteration: 1,
-      totalSteps: 3,
-      stepsList: [
+      totalPhases: 3,
+      phasesList: [
         { id: "s1", title: "S1", instructions: "A" },
         { id: "s2", title: "S2", instructions: "B" },
         { id: "s3", title: "S3", instructions: "C" },
@@ -2348,10 +2316,10 @@ describe("buildStepInstructions", () => {
   it("contains authority text without leaking future steps", async () => {
     const build = await getBuildStepInstructions();
     setState({
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 1,
-      totalSteps: 2,
-      stepsList: [
+      totalPhases: 2,
+      phasesList: [
         { id: "s1", title: "S1", instructions: "Do A" },
         { id: "s2", title: "S2", instructions: "Do B" },
       ],
@@ -2366,10 +2334,10 @@ describe("buildStepInstructions", () => {
   it("includes completed steps info via buildCompletedStepsInfo", async () => {
     const build = await getBuildStepInstructions();
     setState({
-      currentStep: 3,
+      currentPhase: 3,
       currentIteration: 1,
-      totalSteps: 5,
-      stepsList: [
+      totalPhases: 5,
+      phasesList: [
         { id: "s1", title: "S1", instructions: "A" },
         { id: "s2", title: "S2", instructions: "B" },
         { id: "s3", title: "S3", instructions: "C" },
@@ -2384,10 +2352,10 @@ describe("buildStepInstructions", () => {
   it("includes step position line", async () => {
     const build = await getBuildStepInstructions();
     setState({
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 1,
-      totalSteps: 2,
-      stepsList: [
+      totalPhases: 2,
+      phasesList: [
         { id: "s1", title: "S1", instructions: "Do A" },
         { id: "s2", title: "S2", instructions: "Do B" },
       ],
@@ -2399,10 +2367,10 @@ describe("buildStepInstructions", () => {
   it("includes separator (---) before instructions", async () => {
     const build = await getBuildStepInstructions();
     setState({
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 1,
-      totalSteps: 1,
-      stepsList: [{ id: "s1", title: "S1", instructions: "Do A" }],
+      totalPhases: 1,
+      phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
     });
     const result = build(getState());
     // Verify separator exists on its own line
@@ -2413,10 +2381,10 @@ describe("buildStepInstructions", () => {
   it("includes step instructions content", async () => {
     const build = await getBuildStepInstructions();
     setState({
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 1,
-      totalSteps: 1,
-      stepsList: [{ id: "s1", title: "S1", instructions: "Do A" }],
+      totalPhases: 1,
+      phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
     });
     const result = build(getState());
     expect(result).toContain("Do A");
@@ -2425,10 +2393,10 @@ describe("buildStepInstructions", () => {
   it("includes loopMessage as Retry focus when currentIteration > 1", async () => {
     const build = await getBuildStepInstructions();
     setState({
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 2,
-      totalSteps: 1,
-      stepsList: [
+      totalPhases: 1,
+      phasesList: [
         {
           id: "s1",
           title: "S1",
@@ -2444,10 +2412,10 @@ describe("buildStepInstructions", () => {
   it("does NOT include loopMessage on first iteration", async () => {
     const build = await getBuildStepInstructions();
     setState({
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 1,
-      totalSteps: 1,
-      stepsList: [
+      totalPhases: 1,
+      phasesList: [
         {
           id: "s1",
           title: "S1",
@@ -2463,10 +2431,10 @@ describe("buildStepInstructions", () => {
   it("does NOT include loopMessage when step has no loopMessage", async () => {
     const build = await getBuildStepInstructions();
     setState({
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 2,
-      totalSteps: 1,
-      stepsList: [{ id: "s1", title: "S1", instructions: "Do A" }],
+      totalPhases: 1,
+      phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
     });
     const result = build(getState());
     expect(result).not.toContain("Retry focus");
@@ -2518,17 +2486,17 @@ describe("tool_call — step-level write gate", () => {
     // Set up: Step 1 has write: ["goal"], Step 2 has write: ["plan"]
     setState({
       isActive: true,
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 1,
-      totalSteps: 2,
-      stepsList: [
+      totalPhases: 2,
+      phasesList: [
         { id: "s1", title: "S1", instructions: "A", write: ["goal"] },
         { id: "s2", title: "S2", instructions: "B", write: ["plan"] },
       ],
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      stepWriteAllowlist: new Map([
+      phaseWriteAllowlist: new Map([
         [
           1,
           {
@@ -2581,17 +2549,17 @@ describe("tool_call — step-level write gate", () => {
 
     setState({
       isActive: true,
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 1,
-      totalSteps: 2,
-      stepsList: [
+      totalPhases: 2,
+      phasesList: [
         { id: "s1", title: "S1", instructions: "A", write: ["goal"] },
         { id: "s2", title: "S2", instructions: "B", write: ["plan"] },
       ],
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      stepWriteAllowlist: new Map([
+      phaseWriteAllowlist: new Map([
         [
           1,
           {
@@ -2627,14 +2595,14 @@ describe("tool_call — step-level write gate", () => {
     // Simulates the new behavior: every step gets an entry, even without write
     setState({
       isActive: true,
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 1,
-      totalSteps: 1,
-      stepsList: [{ id: "s1", title: "S1", instructions: "A" }], // no write
+      totalPhases: 1,
+      phasesList: [{ id: "s1", title: "S1", instructions: "A" }], // no write
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      stepWriteAllowlist: new Map([
+      phaseWriteAllowlist: new Map([
         [
           1,
           {
@@ -2671,14 +2639,14 @@ describe("tool_call — step-level write gate", () => {
 
     setState({
       isActive: true,
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 1,
-      totalSteps: 1,
-      stepsList: [{ id: "s1", title: "S1", instructions: "A" }],
+      totalPhases: 1,
+      phasesList: [{ id: "s1", title: "S1", instructions: "A" }],
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      stepWriteAllowlist: new Map(), // empty — no entry for step 1
+      phaseWriteAllowlist: new Map(), // empty — no entry for step 1
     });
 
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -2705,17 +2673,17 @@ describe("tool_call — step-level write gate", () => {
 
     setState({
       isActive: true,
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 1,
-      totalSteps: 2,
-      stepsList: [
+      totalPhases: 2,
+      phasesList: [
         { id: "s1", title: "Research", instructions: "A", write: [] },
         { id: "s2", title: "Write", instructions: "B", write: ["goal"] },
       ],
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      stepWriteAllowlist: new Map([
+      phaseWriteAllowlist: new Map([
         [
           1,
           {
@@ -2753,16 +2721,16 @@ describe("tool_call — step-level write gate", () => {
 
     setState({
       isActive: true,
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 1,
-      totalSteps: 2,
-      stepsList: [
+      totalPhases: 2,
+      phasesList: [
         { id: "s1", title: "Research", instructions: "A", write: [] },
       ],
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      stepWriteAllowlist: new Map([
+      phaseWriteAllowlist: new Map([
         [
           1,
           {
@@ -2795,14 +2763,14 @@ describe("tool_call — step-level write gate", () => {
 
     setState({
       isActive: true,
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 1,
-      totalSteps: 1,
-      stepsList: [{ id: "s1", title: "S1", instructions: "A", write: [] }],
+      totalPhases: 1,
+      phasesList: [{ id: "s1", title: "S1", instructions: "A", write: [] }],
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      stepWriteAllowlist: new Map([
+      phaseWriteAllowlist: new Map([
         [
           1,
           {
@@ -2839,7 +2807,7 @@ describe("tool_call — step-level write gate", () => {
         outputs: [{ name: "goal", file: "GOAL.md" }],
       },
     });
-    vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
       workflowSteps: [
         {
           id: "s1",
@@ -2847,9 +2815,7 @@ describe("tool_call — step-level write gate", () => {
           instructions: "A",
           write: ["goal", "nonexistent"], // "nonexistent" doesn't exist in contract
         },
-      ],
-      totalWorkflowSteps: 1,
-    });
+      ]]);
 
     setupLoopEngine(pi);
 
@@ -2864,7 +2830,7 @@ describe("tool_call — step-level write gate", () => {
 
     // Assert: stepWriteAllowlist entry exists for step 1
     const state = getState();
-    const entry = state.stepWriteAllowlist.get(1);
+    const entry = state.phaseWriteAllowlist.get(1);
     expect(entry).toBeDefined();
     // "goal" resolved, "nonexistent" skipped silently
     expect(entry!.allowedNames).toContain("goal");
@@ -2880,16 +2846,16 @@ describe("tool_call — step-level write gate", () => {
 
     setState({
       isActive: true,
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 1,
-      totalSteps: 2,
-      stepsList: [
+      totalPhases: 2,
+      phasesList: [
         { id: "s1", title: "S1", instructions: "A", write: ["goal"] },
       ],
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      stepWriteAllowlist: new Map([
+      phaseWriteAllowlist: new Map([
         [
           1,
           {
@@ -2933,16 +2899,16 @@ describe("tool_call — step-level write gate", () => {
 
     setState({
       isActive: true,
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 1,
-      totalSteps: 2,
-      stepsList: [
+      totalPhases: 2,
+      phasesList: [
         { id: "s1", title: "S1", instructions: "A", write: ["goal"] },
       ],
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      stepWriteAllowlist: new Map([
+      phaseWriteAllowlist: new Map([
         [
           1,
           {
@@ -2975,16 +2941,16 @@ describe("tool_call — step-level write gate", () => {
 
     setState({
       isActive: true,
-      currentStep: 1,
+      currentPhase: 1,
       currentIteration: 1,
-      totalSteps: 2,
-      stepsList: [
+      totalPhases: 2,
+      phasesList: [
         { id: "s1", title: "S1", instructions: "A", write: ["goal"] },
       ],
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      stepWriteAllowlist: new Map([
+      phaseWriteAllowlist: new Map([
         [
           1,
           {
@@ -3023,7 +2989,7 @@ describe("tool_call — step-level write gate", () => {
 
   it("integration: resources_discover populates stepWriteAllowlist for every step (including steps without write)", async () => {
     // Arrange: steps without write field
-    vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
       workflowSteps: [
         { id: "s1", title: "Research", instructions: "Do research" }, // no write
         {
@@ -3032,9 +2998,7 @@ describe("tool_call — step-level write gate", () => {
           instructions: "Write stuff",
           write: ["goal"],
         },
-      ],
-      totalWorkflowSteps: 2,
-    });
+      ]]);
 
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
@@ -3051,27 +3015,25 @@ describe("tool_call — step-level write gate", () => {
 
     // Assert: every step has an entry
     const state = getState();
-    expect(state.stepWriteAllowlist.has(1)).toBe(true); // step without write
-    expect(state.stepWriteAllowlist.has(2)).toBe(true); // step with write
+    expect(state.phaseWriteAllowlist.has(1)).toBe(true); // step without write
+    expect(state.phaseWriteAllowlist.has(2)).toBe(true); // step with write
     // Step 1 (no write): empty allowedPaths, populated allContractOutputs
-    const entry1 = state.stepWriteAllowlist.get(1)!;
+    const entry1 = state.phaseWriteAllowlist.get(1)!;
     expect(entry1.allowedPaths.size).toBe(0);
     expect(entry1.allowedNames).toEqual([]);
     expect(entry1.allContractOutputs.size).toBeGreaterThan(0);
     // Step 2 (write: ["goal"]): populated allowedPaths
-    const entry2 = state.stepWriteAllowlist.get(2)!;
+    const entry2 = state.phaseWriteAllowlist.get(2)!;
     expect(entry2.allowedPaths.size).toBe(1);
     expect(entry2.allowedNames).toEqual(["goal"]);
   });
 
   it("integration: resources_discover + tool_call — step without write blocks contract output", async () => {
     // Arrange: steps without write field
-    vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
       workflowSteps: [
         { id: "s1", title: "Research", instructions: "Do research" }, // no write
-      ],
-      totalWorkflowSteps: 1,
-    });
+      ]]);
 
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
@@ -3087,7 +3049,7 @@ describe("tool_call — step-level write gate", () => {
     }
 
     // Set currentStep to 1 (the step without write)
-    setState({ currentStep: 1, currentIteration: 1 });
+    setState({ currentPhase: 1, currentIteration: 1 });
 
     // Fire tool_call to write a contract output
     const toolHandlers = handlers.get("tool_call");
@@ -3109,12 +3071,10 @@ describe("tool_call — step-level write gate", () => {
 
   it("integration: resources_discover + tool_call — step without write allows non-contract files", async () => {
     // Arrange: steps without write field
-    vi.mocked(capabilitySession.getSessionParams).mockReturnValue({
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue({
       workflowSteps: [
         { id: "s1", title: "Research", instructions: "Do research" }, // no write
-      ],
-      totalWorkflowSteps: 1,
-    });
+      ]]);
 
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
@@ -3129,7 +3089,7 @@ describe("tool_call — step-level write gate", () => {
       );
     }
 
-    setState({ currentStep: 1, currentIteration: 1 });
+    setState({ currentPhase: 1, currentIteration: 1 });
 
     // Fire tool_call to write a non-contract file
     const toolHandlers = handlers.get("tool_call");

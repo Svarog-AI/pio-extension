@@ -1610,10 +1610,10 @@ describe("prompt compiler integration — resources_discover", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Workflow phases population — enrichedSessionParams
+// Workflow phases — getCompiledWorkflowPhases typed getter
 // ---------------------------------------------------------------------------
 
-describe("workflow phases population — enrichedSessionParams", () => {
+describe("workflow phases — getCompiledWorkflowPhases", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -1632,7 +1632,7 @@ describe("workflow phases population — enrichedSessionParams", () => {
     cleanup(tempDir);
   });
 
-  it("given compiled sections with workflow phases when resources_discover runs then enrichedSessionParams contains totalWorkflowSteps and workflowSteps", async () => {
+  it("given compiled sections with workflow phases when resources_discover runs then getCompiledWorkflowPhases returns the phases array", async () => {
     // Set up mock to return sections with _steps info
     mockCompilePrompt.mockImplementation(() =>
       Promise.resolve({
@@ -1687,15 +1687,18 @@ describe("workflow phases population — enrichedSessionParams", () => {
     // Assert: compilePrompt was called
     expect(mockCompilePrompt).toHaveBeenCalled();
 
-    // Verify enrichedSessionParams via internal getter (getSessionParams is mocked at module level)
-    const rawParams = mod.getEnrichedSessionParamsForTesting();
-    expect(rawParams).toBeDefined();
-    expect(rawParams?.totalWorkflowSteps).toBe(2);
-    // Now passes full WorkflowPhase[] objects (not just { id, title } summaries)
-    expect(rawParams?.workflowSteps).toEqual([
+    // Verify getCompiledWorkflowPhases returns the typed array
+    const phases = mod.getCompiledWorkflowPhases();
+    expect(phases).toEqual([
       { id: "step-1", title: "Step One", instructions: "Do step one" },
       { id: "step-2", title: "Step Two", instructions: "Do step two" },
     ]);
+
+    // Verify enrichedSessionParams does NOT contain workflow phase data (bridge removed)
+    const rawParams = mod.getEnrichedSessionParamsForTesting();
+    expect(rawParams).toBeDefined();
+    expect(rawParams?.totalWorkflowSteps).toBeUndefined();
+    expect(rawParams?.workflowSteps).toBeUndefined();
   });
 });
 

@@ -120,6 +120,6 @@ export interface CompiledPromptSections {
   guidelines?: string;
   /** Merged workflow phase skills — carries merged mandatory/recommended skills downstream for skill loading */
   mergedSkills?: CapabilitySkills;
-  /** Raw workflow phases — carried for loop engine injection (totalWorkflowSteps, workflowSteps). Not rendered in the prompt. */
+  /** Raw workflow phases — accessed via getCompiledWorkflowPhases(). Not rendered in the prompt. */
   _steps?: WorkflowPhase[];
 }

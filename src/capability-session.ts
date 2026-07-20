@@ -15,7 +15,10 @@ import { validateInputs } from "./guards/validation";
 import { resolveModelForCapability } from "./model-config";
 import { compilePrompt } from "./prompt-compiler";
 import { setupLoopEngine } from "./runtime/loop-engine";
-import type { CompiledPromptSections } from "./runtime/workflow-types";
+import type {
+  CompiledPromptSections,
+  WorkflowPhase,
+} from "./runtime/workflow-types";
 import type { CapabilityConfig } from "./types";
 
 // ESM-compatible __dirname for resolving capability package directories
@@ -315,13 +318,6 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
       compiledSections = await compilePrompt(capabilityDir, {
         baseSkills: config.skills,
       });
-
-      // Populate enrichedSessionParams with workflow phase info for the loop engine (system prompt injection)
-      if (compiledSections?._steps) {
-        enrichedSessionParams.totalWorkflowSteps =
-          compiledSections._steps.length;
-        enrichedSessionParams.workflowSteps = compiledSections._steps;
-      }
     } catch (err) {
       console.warn(
         `pio: compilePrompt failed for capability "${config.capability}": ${err}`,
@@ -457,4 +453,12 @@ export function getEnrichedSessionParamsForTesting():
   | Record<string, unknown>
   | undefined {
   return enrichedSessionParams;
+}
+
+/**
+ * Return the compiled workflow phases from the prompt compiler.
+ * Provides direct typed access for the loop engine — no Record<string, unknown> indirection.
+ */
+export function getCompiledWorkflowPhases(): WorkflowPhase[] | undefined {
+  return compiledSections?._steps;
 }

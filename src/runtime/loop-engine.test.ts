@@ -2329,7 +2329,7 @@ describe("buildStepInstructions", () => {
     return mod.buildStepInstructions;
   }
 
-  it("produces authority header (## Instructions for Step N)", async () => {
+  it("produces authority header (## Instructions for Phase N)", async () => {
     const build = await getBuildStepInstructions();
     setState({
       currentStep: 2,

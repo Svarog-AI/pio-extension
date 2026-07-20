@@ -1,8 +1,8 @@
 /**
- * Loop engine — bounded iteration control for pio workflow steps.
+ * Loop engine — bounded iteration control for pio workflow phases.
  *
- * Replaces prompt-based step nudging with a hard-coded event-driven loop.
- * Each workflow step executes as one or more agent runs (iterations).
+ * Replaces prompt-based phase nudging with a hard-coded event-driven loop.
+ * Each workflow phase executes as one or more agent runs (iterations).
  * The engine tracks per-iteration state (files written, ask_user calls)
  * and controls iteration advancement through event handlers.
  *
@@ -32,8 +32,8 @@ import type { WorkflowStep } from "./workflow-types";
 /**
  * Build a one-line summary of completed phases for CustomMessage injection.
  *
- * Returns "No previous phases completed" on Step 1, "Phases 1 completed" on
- * Step 2, and "Phases 1–N completed" on Step N+1.
+ * Returns "No previous phases completed" on Phase 1, "Phases 1 completed" on
+ * Phase 2, and "Phases 1–N completed" on Phase N+1.
  */
 function buildCompletedStepsInfo(state: PioSessionState): string {
   return state.currentStep > 1
@@ -42,19 +42,19 @@ function buildCompletedStepsInfo(state: PioSessionState): string {
 }
 
 /**
- * Build CustomMessage content for the current step with authority framing.
+ * Build CustomMessage content for the current phase with authority framing.
  *
  * Format:
  *   ## Instructions for Phase N
  *
  *   Follow the instructions below. Do not do anything outside these instructions.
  *
- *   <completed steps info>
+ *   <completed phases info>
  *   You are on Phase N of M, iteration I.
  *
  *   ---
  *
- *   <step instructions>
+ *   <phase instructions>
  *
  *   [optional: **Retry focus:** <loopMessage>]
  *
@@ -118,7 +118,7 @@ export function __testSetActiveSession(value?: boolean): void {
  * Main registration function — installs event handlers on the pi Extension API.
  *
  * Registers exactly five handlers:
- * - `resources_discover`: detect pio sessions, load workflow steps
+ * - `resources_discover`: detect pio sessions, load workflow phases
  * - `input`: detect ad-hoc interruption via InputEvent.source
  * - `before_agent_start`: iteration setup and ad-hoc mode detection
  * - `tool_call`: track file writes and ask_user calls

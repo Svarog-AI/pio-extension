@@ -136,7 +136,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       return;
     }
 
-    // Load workflow steps from enriched session params.
+    // Load workflow phases from enriched session params.
     // capability-session passes full WorkflowPhase[] objects (with .instructions, .loopMessage, etc.).
     // WorkflowPhase has all loop fields as optional, so this is safe.
     const rawSteps = sessionParams.workflowSteps as WorkflowPhase[] | undefined;

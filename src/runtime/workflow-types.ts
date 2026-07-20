@@ -22,7 +22,7 @@ import type { PioSessionState } from "./session-state";
  * recommended skills are listed as instructions for on-demand loading.
  */
 export interface WorkflowPhaseSkillDeclarations {
-  /** Skills forcefully injected for this step — full SKILL.md content delivered at startup */
+  /** Skills forcefully injected for this phase — full SKILL.md content delivered at startup */
   mandatory?: string[];
   /** Skills listed as instructions, loaded on demand by condition */
   recommended?: { name: string; condition: string }[];
@@ -73,7 +73,7 @@ export interface WorkflowPhase {
   skills?: WorkflowPhaseSkillDeclarations;
 
   // -----------------------------------------------------------------------
-  // Loop engine fields (all optional — single-iteration steps omit these)
+  // Loop engine fields (all optional — single-iteration phases omit these)
   // -----------------------------------------------------------------------
 
   /** Minimum iterations before termination conditions are evaluated. Default behavior (when omitted): phase executes once and advances. */
@@ -85,13 +85,13 @@ export interface WorkflowPhase {
   /** Array of callback-based conditions — any passing condition terminates the loop (OR logic) */
   terminateWhen?: TerminationCondition[];
 
-  /** Message sent as a follow-up when looping (replaying the current step). Informs the LLM what to focus on for the retry. */
+  /** Message sent as a follow-up when looping (replaying the current phase). Informs the LLM what to focus on for the retry. */
   loopMessage?: string;
 
   /** Phase number to return to after ad-hoc mode resumption (/return command). Defaults to current phase when omitted. */
   returnTo?: number;
 
-  /** Contract output names this step is allowed to write (resolved during resources_discover). When absent or empty, all contract output writes are blocked (restricted-by-default). Non-contract files always pass through. */
+  /** Contract output names this phase is allowed to write (resolved during resources_discover). When absent or empty, all contract output writes are blocked (restricted-by-default). Non-contract files always pass through. */
   write?: string[];
 }
 

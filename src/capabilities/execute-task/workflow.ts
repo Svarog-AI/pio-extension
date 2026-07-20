@@ -1,7 +1,7 @@
 import type { WorkflowPhase } from "../../runtime/workflow-types";
 
 /**
- * Structured workflow steps for the execute-task (Execute Task Agent) capability.
+ * Structured workflow phases for the execute-task (Execute Task Agent) capability.
  * Decomposed from the numbered steps in the original execute-task.md prompt.
  */
 export default [

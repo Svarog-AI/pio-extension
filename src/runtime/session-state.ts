@@ -32,13 +32,13 @@ export interface PioSessionState {
   /** Turn counter for refinement-loop detection. Increments on every turn, resets at `before_agent_start`. */
   turnCount: number;
 
-  /** Current workflow step number (1-based). 0 means inactive. */
+  /** Current workflow phase number (1-based). 0 means inactive. */
   currentStep: number;
 
   /** Current iteration count within the current step (1-based). 0 means inactive. */
   currentIteration: number;
 
-  /** Total number of workflow steps. 0 means inactive. */
+  /** Total number of workflow phases. 0 means inactive. */
   totalSteps: number;
 
   /** Ordered list of all workflow phases (full objects with loop fields). */

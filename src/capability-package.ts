@@ -46,7 +46,7 @@ export const CAPABILITY_CONFIG_FILE = "config.ts";
 /** Structured role description file (optional). */
 export const CAPABILITY_ROLE_FILE = "role.md";
 
-/** Structured workflow steps file (required for prompt compilation). */
+/** Structured workflow phases file (required for prompt compilation). */
 export const CAPABILITY_WORKFLOW_FILE = "workflow.ts";
 
 /** Constraints and behavior rules file (optional). */
@@ -77,7 +77,7 @@ export interface CapabilityRole {
 }
 
 /**
- * Constraints and behavior rules separated from workflow steps.
+ * Constraints and behavior rules separated from workflow phases.
  *
  * Loaded from `guidelines.md` in the capability package directory.
  * Renders to the "Guidelines" section of the compiled system prompt.

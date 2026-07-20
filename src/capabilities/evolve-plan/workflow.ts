@@ -1,7 +1,7 @@
 import type { WorkflowPhase } from "../../runtime/workflow-types";
 
 /**
- * Structured workflow steps for the evolve-plan (Specification Writer) capability.
+ * Structured workflow phases for the evolve-plan (Specification Writer) capability.
  * Decomposed from the numbered steps in the original evolve-plan.md prompt.
  */
 export default [

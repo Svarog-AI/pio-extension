@@ -316,7 +316,7 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
         baseSkills: config.skills,
       });
 
-      // Populate enrichedSessionParams with workflow step info for the loop engine (system prompt injection)
+      // Populate enrichedSessionParams with workflow phase info for the loop engine (system prompt injection)
       if (compiledSections?._steps) {
         enrichedSessionParams.totalWorkflowSteps =
           compiledSections._steps.length;

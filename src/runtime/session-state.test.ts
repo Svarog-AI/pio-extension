@@ -51,7 +51,7 @@ describe("session-state", () => {
       expect(getState().turnCount).toBe(3);
     });
 
-    it("can update stepsList", () => {
+    it("can update phasesList", () => {
       const steps = [
         { id: "step-1", title: "Step One", instructions: "Do something" },
       ];

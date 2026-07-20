@@ -795,9 +795,9 @@ describe("before_agent_start", () => {
       expect(result.message.display).toBe(false);
       // Content should NOT contain the base system prompt
       expect(result.message.content).not.toContain("base prompt");
-      expect(result.message.content).toContain("No previous steps completed.");
+      expect(result.message.content).toContain("No previous phases completed.");
       expect(result.message.content).toContain(
-        "You are on Step 1 of 2, iteration 1.",
+        "You are on Phase 1 of 2, iteration 1.",
       );
       expect(result.message.content).toContain("Do A");
     });
@@ -831,9 +831,9 @@ describe("before_agent_start", () => {
         message: { customType: string; content: string; display: boolean };
       };
       expect(result.message.customType).toBe("workflow-step-instructions");
-      expect(result.message.content).toContain("Steps 1 completed.");
+      expect(result.message.content).toContain("Phases 1 completed.");
       expect(result.message.content).toContain(
-        "You are on Step 2 of 3, iteration 1.",
+        "You are on Phase 2 of 3, iteration 1.",
       );
     });
 
@@ -867,7 +867,7 @@ describe("before_agent_start", () => {
       const result = results[0] as {
         message: { customType: string; content: string; display: boolean };
       };
-      expect(result.message.content).toContain("Steps 1–3 completed.");
+      expect(result.message.content).toContain("Phases 1–3 completed.");
     });
 
     it("includes loopMessage as Retry focus on iteration > 1", async () => {
@@ -1033,9 +1033,9 @@ describe("before_agent_start", () => {
       expect(result.message.content).toContain(
         "## Workflow Paused (Ad-hoc Mode)",
       );
-      expect(result.message.content).toContain("Steps 1 completed.");
+      expect(result.message.content).toContain("Phases 1 completed.");
       expect(result.message.content).toContain(
-        'You were on Step 2 of 4: "S2", iteration 3.',
+        'You were on Phase 2 of 4: "S2", iteration 3.',
       );
       expect(result.message.content).toContain(
         "Workflow execution is paused. Any prior instructions are no longer active — you can answer questions or help the user freely.",
@@ -1778,7 +1778,7 @@ describe("agent_end", () => {
         "workflow-step-instructions",
       );
       expect(sendMessageCalls[0].message.content).toContain(
-        "## Instructions for Step 2",
+        "## Instructions for Phase 2",
       );
       expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
@@ -2342,7 +2342,7 @@ describe("buildStepInstructions", () => {
       ],
     });
     const result = build(getState());
-    expect(result).toContain("## Instructions for Step 2");
+    expect(result).toContain("## Instructions for Phase 2");
   });
 
   it("contains authority text without leaking future steps", async () => {
@@ -2378,7 +2378,7 @@ describe("buildStepInstructions", () => {
       ],
     });
     const result = build(getState());
-    expect(result).toContain("Steps 1–2 completed.");
+    expect(result).toContain("Phases 1–2 completed.");
   });
 
   it("includes step position line", async () => {
@@ -2393,7 +2393,7 @@ describe("buildStepInstructions", () => {
       ],
     });
     const result = build(getState());
-    expect(result).toContain("You are on Step 1 of 2, iteration 1.");
+    expect(result).toContain("You are on Phase 1 of 2, iteration 1.");
   });
 
   it("includes separator (---) before instructions", async () => {
@@ -2567,7 +2567,7 @@ describe("tool_call — step-level write gate", () => {
       reason: expect.stringContaining("Writing is restricted"),
     });
     expect(blocked!.reason).toContain("Allowed outputs: [goal]");
-    expect(blocked!.reason).toContain("Step 1 of 2");
+    expect(blocked!.reason).toContain("Phase 1 of 2");
     expect(blocked!.reason).toContain(
       "Your target path '/test/.pio/goals/test/PLAN.md' is not in the allowed list",
     );
@@ -2742,7 +2742,7 @@ describe("tool_call — step-level write gate", () => {
       block: true,
       reason: expect.stringContaining("does not produce any contract outputs"),
     });
-    expect(blocked2!.reason).toContain("Step 1 of 2");
+    expect(blocked2!.reason).toContain("Phase 1 of 2");
   });
 
   // (d cont.) Empty write array passes non-contract paths through

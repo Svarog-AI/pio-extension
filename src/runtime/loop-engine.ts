@@ -30,27 +30,27 @@ import type { WorkflowStep } from "./workflow-types";
 // ---------------------------------------------------------------------------
 
 /**
- * Build a one-line summary of completed steps for CustomMessage injection.
+ * Build a one-line summary of completed phases for CustomMessage injection.
  *
- * Returns "No previous steps completed" on Step 1, "Steps 1 completed" on
- * Step 2, and "Steps 1–N completed" on Step N+1.
+ * Returns "No previous phases completed" on Step 1, "Phases 1 completed" on
+ * Step 2, and "Phases 1–N completed" on Step N+1.
  */
 function buildCompletedStepsInfo(state: PioSessionState): string {
   return state.currentStep > 1
-    ? `Steps ${state.currentStep > 2 ? `${1}–${state.currentStep - 1}` : "1"} completed.`
-    : "No previous steps completed.";
+    ? `Phases ${state.currentStep > 2 ? `${1}–${state.currentStep - 1}` : "1"} completed.`
+    : "No previous phases completed.";
 }
 
 /**
  * Build CustomMessage content for the current step with authority framing.
  *
  * Format:
- *   ## Instructions for Step N
+ *   ## Instructions for Phase N
  *
  *   Follow the instructions below. Do not do anything outside these instructions.
  *
  *   <completed steps info>
- *   You are on Step N of M, iteration I.
+ *   You are on Phase N of M, iteration I.
  *
  *   ---
  *
@@ -63,11 +63,11 @@ function buildCompletedStepsInfo(state: PioSessionState): string {
 export function buildStepInstructions(state: PioSessionState): string {
   const step = state.stepsList[state.currentStep - 1];
   let prompt =
-    `## Instructions for Step ${state.currentStep}\n\n` +
+    `## Instructions for Phase ${state.currentStep}\n\n` +
     `Follow the instructions below. Do not do anything outside these instructions.\n\n`;
   prompt +=
     `${buildCompletedStepsInfo(state)}\n` +
-    `You are on Step ${state.currentStep} of ${state.totalSteps}, iteration ${state.currentIteration}.\n\n---\n\n` +
+    `You are on Phase ${state.currentStep} of ${state.totalSteps}, iteration ${state.currentIteration}.\n\n---\n\n` +
     step.instructions;
   // Loop replay: include loopMessage as additional per-retry context
   if (state.currentIteration > 1 && step.loopMessage) {
@@ -246,7 +246,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
           content:
             `## Workflow Paused (Ad-hoc Mode)\n\n` +
             `${buildCompletedStepsInfo(state)}\n` +
-            `You were on Step ${state.currentStep} of ${state.totalSteps}: "${step.title}", iteration ${state.currentIteration}.\n\n` +
+            `You were on Phase ${state.currentStep} of ${state.totalSteps}: "${step.title}", iteration ${state.currentIteration}.\n\n` +
             `Workflow execution is paused. Any prior instructions are no longer active — you can answer questions or help the user freely.`,
           display: readDebugDisplay(),
         },
@@ -323,7 +323,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
             if (entry.allContractOutputs.has(tp)) {
               return {
                 block: true,
-                reason: `Writing is not allowed during Step ${state.currentStep} of ${state.totalSteps} (${stepTitle}). This step does not produce any contract outputs.`,
+                reason: `Writing is not allowed during Phase ${state.currentStep} of ${state.totalSteps} (${stepTitle}). This phase does not produce any contract outputs.`,
               };
             }
           } else {
@@ -334,7 +334,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
             ) {
               return {
                 block: true,
-                reason: `Writing is restricted during Step ${state.currentStep} of ${state.totalSteps} (${stepTitle}). Allowed outputs: [${entry.allowedNames.join(", ")}]. Your target path '${tp}' is not in the allowed list.`,
+                reason: `Writing is restricted during Phase ${state.currentStep} of ${state.totalSteps} (${stepTitle}). Allowed outputs: [${entry.allowedNames.join(", ")}]. Your target path '${tp}' is not in the allowed list.`,
               };
             }
           }

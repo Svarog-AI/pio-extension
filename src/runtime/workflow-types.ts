@@ -11,18 +11,18 @@ import type { CapabilitySkills } from "../types";
 import type { PioSessionState } from "./session-state";
 
 // ---------------------------------------------------------------------------
-// Workflow step types
+// Workflow phase types
 // ---------------------------------------------------------------------------
 
 /**
- * Per-step skill declarations.
+ * Per-phase skill declarations.
  *
- * Mirrors `CapabilitySkills` but scoped to a single workflow step.
+ * Mirrors `CapabilitySkills` but scoped to a single workflow phase.
  * Mandatory skills are force-injected at prompt compilation time;
  * recommended skills are listed as instructions for on-demand loading.
  */
-export interface WorkflowStepSkillDeclarations {
-  /** Skills forcefully injected for this step — full SKILL.md content delivered at startup */
+export interface WorkflowPhaseSkillDeclarations {
+  /** Skills forcefully injected for this phase — full SKILL.md content delivered at startup */
   mandatory?: string[];
   /** Skills listed as instructions, loaded on demand by condition */
   recommended?: { name: string; condition: string }[];
@@ -32,7 +32,7 @@ export interface WorkflowStepSkillDeclarations {
  * A condition definition for callback-based loop termination.
  *
  * When any condition in the `terminateWhen` array returns `true`,
- * the loop terminates and the engine advances to the next step.
+ * the loop terminates and the engine advances to the next phase.
  * Conditions use OR logic — the first passing condition wins.
  *
  * The callback receives the full PioSessionState directly — it reads
@@ -51,32 +51,32 @@ export interface TerminationCondition {
 }
 
 /**
- * Structured workflow step that replaces freeform numbered steps in markdown prompts.
+ * Structured workflow phase that replaces freeform numbered steps in markdown prompts.
  *
- * Each step defines an id (for loop engine correlation), a display title,
- * and natural language instructions. Skills can be declared per-step and
+ * Each phase defines an id (for loop engine correlation), a display title,
+ * and natural language instructions. Skills can be declared per-phase and
  * are merged into the session's global skills at prompt compilation time.
  *
  * Optional loop fields (`minIterations`, `maxIterations`, `terminateWhen`,
- * `loopMessage`, `returnTo`) enable the loop engine to control step execution.
- * When omitted, the step executes once and advances — preserving backward
+ * `loopMessage`, `returnTo`) enable the loop engine to control phase execution.
+ * When omitted, the phase executes once and advances — preserving backward
  * compatibility with existing capability workflows.
  */
-export interface WorkflowStep {
-  /** Step identifier (e.g. "step-1", "understand-goal") — used for loop engine correlation */
+export interface WorkflowPhase {
+  /** Phase identifier (e.g. "phase-1", "understand-goal") — used for loop engine correlation */
   id: string;
   /** Display title shown to the agent, e.g. "Understand the goal" */
   title: string;
-  /** Natural language instructions for this step. This replaces the freeform numbered-step body in current .md prompts. May contain markdown formatting. */
+  /** Natural language instructions for this phase. This replaces the freeform numbered-step body in current .md prompts. May contain markdown formatting. */
   instructions: string;
-  /** Per-step skill declarations — merged into session skills at prompt compilation time */
-  skills?: WorkflowStepSkillDeclarations;
+  /** Per-phase skill declarations — merged into session skills at prompt compilation time */
+  skills?: WorkflowPhaseSkillDeclarations;
 
   // -----------------------------------------------------------------------
-  // Loop engine fields (all optional — single-iteration steps omit these)
+  // Loop engine fields (all optional — single-iteration phases omit these)
   // -----------------------------------------------------------------------
 
-  /** Minimum iterations before termination conditions are evaluated. Default behavior (when omitted): step executes once and advances. */
+  /** Minimum iterations before termination conditions are evaluated. Default behavior (when omitted): phase executes once and advances. */
   minIterations?: number;
 
   /** Hard limit on iterations regardless of termination conditions. Uses resolveMaxIterations() from model-config for resolution. */
@@ -85,13 +85,13 @@ export interface WorkflowStep {
   /** Array of callback-based conditions — any passing condition terminates the loop (OR logic) */
   terminateWhen?: TerminationCondition[];
 
-  /** Message sent as a follow-up when looping (replaying the current step). Informs the LLM what to focus on for the retry. */
+  /** Message sent as a follow-up when looping (replaying the current phase). Informs the LLM what to focus on for the retry. */
   loopMessage?: string;
 
-  /** Step number to return to after ad-hoc mode resumption (/return command). Defaults to current step when omitted. */
+  /** Phase number to return to after ad-hoc mode resumption (/return command). Defaults to current phase when omitted. */
   returnTo?: number;
 
-  /** Contract output names this step is allowed to write (resolved during resources_discover). When absent or empty, all contract output writes are blocked (restricted-by-default). Non-contract files always pass through. */
+  /** Contract output names this phase is allowed to write (resolved during resources_discover). When absent or empty, all contract output writes are blocked (restricted-by-default). Non-contract files always pass through. */
   write?: string[];
 }
 
@@ -114,12 +114,12 @@ export interface CompiledPromptSections {
   skillLoading?: string;
   /** Role section (from CapabilityRole) */
   role?: string;
-  /** Workflow steps section (rendered from WorkflowStep[]) */
+  /** Workflow phases section (rendered from WorkflowPhase[]) */
   workflow?: string;
   /** Guidelines section (from CapabilityGuidelines) */
   guidelines?: string;
-  /** Merged workflow step skills — carries merged mandatory/recommended skills downstream for skill loading */
+  /** Merged workflow phase skills — carries merged mandatory/recommended skills downstream for skill loading */
   mergedSkills?: CapabilitySkills;
-  /** Raw workflow steps — carried for loop engine injection (totalWorkflowSteps, workflowSteps). Not rendered in the prompt. */
-  _steps?: WorkflowStep[];
+  /** Raw workflow phases — accessed via getCompiledWorkflowPhases(). Not rendered in the prompt. */
+  _steps?: WorkflowPhase[];
 }

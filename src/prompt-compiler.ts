@@ -25,26 +25,26 @@ import {
 } from "./capability-package";
 import type {
   CompiledPromptSections,
-  WorkflowStep,
+  WorkflowPhase,
 } from "./runtime/workflow-types";
 
 // ---------------------------------------------------------------------------
-// readWorkflowSteps — loads workflow.ts from a capability package directory
+// readWorkflowPhases — loads workflow.ts from a capability package directory
 // ---------------------------------------------------------------------------
 
 /**
- * Read workflow steps from `workflow.ts` inside a capability package directory.
+ * Read workflow phases from `workflow.ts` inside a capability package directory.
  *
- * Expects a default export of type `WorkflowStep[]`. Validates each step has
+ * Expects a default export of type `WorkflowPhase[]`. Validates each phase has
  * at least `id`, `title`, and `instructions` fields.
  *
  * @param dirPath - Absolute path to the capability package directory
- * @returns Array of workflow steps
+ * @returns Array of workflow phases
  * @throws When workflow.ts is missing, has no default export, or import fails
  */
-export async function readWorkflowSteps(
+export async function readWorkflowPhases(
   dirPath: string,
-): Promise<WorkflowStep[]> {
+): Promise<WorkflowPhase[]> {
   const workflowPath = path.join(dirPath, CAPABILITY_WORKFLOW_FILE);
 
   if (!fs.existsSync(workflowPath)) {
@@ -70,48 +70,48 @@ export async function readWorkflowSteps(
 
   if (!Array.isArray(steps)) {
     console.warn(
-      `[pio] Prompt compiler: ${CAPABILITY_WORKFLOW_FILE} in "${dirPath}" does not default-export an array — expected WorkflowStep[]`,
+      `[pio] Prompt compiler: ${CAPABILITY_WORKFLOW_FILE} in "${dirPath}" does not default-export an array — expected WorkflowPhase[]`,
     );
     throw new Error(
-      `${CAPABILITY_WORKFLOW_FILE} must default-export a WorkflowStep[] array`,
+      `${CAPABILITY_WORKFLOW_FILE} must default-export a WorkflowPhase[] array`,
     );
   }
 
-  // Validate each step has required fields
-  for (const step of steps) {
-    if (!step.id || !step.title || !step.instructions) {
+  // Validate each phase has required fields
+  for (const phase of steps) {
+    if (!phase.id || !phase.title || !phase.instructions) {
       console.warn(
-        `[pio] Prompt compiler: malformed workflow step in "${dirPath}" — missing id, title, or instructions: ${JSON.stringify(step)}`,
+        `[pio] Prompt compiler: malformed workflow phase in "${dirPath}" — missing id, title, or instructions: ${JSON.stringify(phase)}`,
       );
     }
   }
 
-  return steps as WorkflowStep[];
+  return steps as WorkflowPhase[];
 }
 
 // ---------------------------------------------------------------------------
-// renderWorkflowSection — pure function: WorkflowStep[] → markdown string
+// renderWorkflowPhases — pure function: WorkflowPhase[] → markdown string
 // ---------------------------------------------------------------------------
 
 /**
- * Render workflow steps into a markdown section (titles-only).
+ * Render workflow phases into a markdown section (titles-only).
  *
- * Format per step:
- *   ### Step N: <title>
+ * Format per phase:
+ *   ### Phase N: <title>
  *
  *   Skills: [skill-a], [skill-b]  (only when mandatory skills exist)
  *
  * Instructions are intentionally omitted — they are delivered dynamically
  * via before_agent_start system prompt injection by the loop engine.
- * The static workflow section serves as a lightweight roadmap showing step
+ * The static workflow section serves as a lightweight roadmap showing phase
  * count, order, and skill requirements.
  *
  * This is a pure function — no filesystem access, deterministic output.
  *
- * @param steps - Array of workflow steps to render
+ * @param steps - Array of workflow phases to render
  * @returns Markdown string representing the workflow section
  */
-export function renderWorkflowSection(steps: WorkflowStep[]): string {
+export function renderWorkflowPhases(steps: WorkflowPhase[]): string {
   if (steps.length === 0) {
     return "";
   }
@@ -119,13 +119,13 @@ export function renderWorkflowSection(steps: WorkflowStep[]): string {
   const parts: string[] = [];
 
   for (let i = 0; i < steps.length; i++) {
-    const step = steps[i];
+    const phase = steps[i];
     const lineNumber = i + 1;
 
-    parts.push(`### Step ${lineNumber}: ${step.title}`);
+    parts.push(`### Phase ${lineNumber}: ${phase.title}`);
 
-    // Include Skills line only when step has mandatory skills
-    const mandatorySkills = step.skills?.mandatory;
+    // Include Skills line only when phase has mandatory skills
+    const mandatorySkills = phase.skills?.mandatory;
     if (mandatorySkills && mandatorySkills.length > 0) {
       const skillsLine = mandatorySkills.map((s) => `[${s}]`).join(", ");
       parts.push("");
@@ -137,22 +137,22 @@ export function renderWorkflowSection(steps: WorkflowStep[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// mergeWorkflowStepSkills — pure function: merge step skills into base skills
+// mergeWorkflowPhaseSkills — pure function: merge phase skills into base skills
 // ---------------------------------------------------------------------------
 
 /**
- * Merge workflow step skills into base capability skills.
+ * Merge workflow phase skills into base capability skills.
  *
  * Mandatory skills: concatenated with Set-based deduplication (preserves order, first-seen wins).
  * Recommended skills: concatenated with Map-based dedup by `name` key (first-seen wins).
  * Returns a new `CapabilitySkills` object — never mutates inputs.
  *
- * @param steps - Array of workflow steps with per-step skill declarations
+ * @param steps - Array of workflow phases with per-phase skill declarations
  * @param base - Base capability skills (from config.ts), optional
  * @returns Merged capability skills
  */
-export function mergeWorkflowStepSkills(
-  steps: WorkflowStep[],
+export function mergeWorkflowPhaseSkills(
+  steps: WorkflowPhase[],
   base?: CapabilitySkills,
 ): CapabilitySkills {
   const mandatory = new Set<string>();
@@ -170,15 +170,15 @@ export function mergeWorkflowStepSkills(
     }
   }
 
-  // Merge step-level skills
-  for (const step of steps) {
-    if (step.skills?.mandatory) {
-      for (const name of step.skills.mandatory) {
+  // Merge phase-level skills
+  for (const phase of steps) {
+    if (phase.skills?.mandatory) {
+      for (const name of phase.skills.mandatory) {
         mandatory.add(name);
       }
     }
-    if (step.skills?.recommended) {
-      for (const entry of step.skills.recommended) {
+    if (phase.skills?.recommended) {
+      for (const entry of phase.skills.recommended) {
         if (!recommended.has(entry.name)) {
           recommended.set(entry.name, entry);
         }
@@ -200,11 +200,11 @@ export function mergeWorkflowStepSkills(
  * Read all component files from a capability package directory.
  *
  * - role.md (optional): Read as raw text
- * - workflow.ts (required): Loaded via dynamic import, must default-export WorkflowStep[]
+ * - workflow.ts (required): Loaded via dynamic import, must default-export WorkflowPhase[]
  * - guidelines.md (optional): Read as raw text
  *
  * @param dirPath - Absolute path to the capability package directory
- * @returns Resolved components with role, steps, and guidelines
+ * @returns Resolved components with role, phases, and guidelines
  * @throws When workflow.ts is missing or malformed
  */
 export async function readPackageComponents(
@@ -217,7 +217,7 @@ export async function readPackageComponents(
     : undefined;
 
   // Read workflow.ts (required)
-  const steps = await readWorkflowSteps(dirPath);
+  const steps = await readWorkflowPhases(dirPath);
 
   // Read guidelines.md (optional) — wraps in CapabilityGuidelines shape
   const guidelinesPath = path.join(dirPath, CAPABILITY_GUIDELINES_FILE);
@@ -225,7 +225,7 @@ export async function readPackageComponents(
     ? { content: fs.readFileSync(guidelinesPath, "utf-8") }
     : undefined;
 
-  return { role, steps, guidelines };
+  return { role, phases: steps, guidelines };
 }
 
 // ---------------------------------------------------------------------------
@@ -241,7 +241,7 @@ export interface CompilePromptOptions {
  * Compile the full `CompiledPromptSections` from a capability package directory.
  *
  * Reads component files (role.md, workflow.ts, guidelines.md), merges workflow
- * step skills into base capability skills, and renders sections in the format
+ * phase skills into base capability skills, and renders sections in the format
  * expected by `capability-session.ts`.
  *
  * Produces: role, workflow, guidelines sections and mergedSkills.
@@ -259,9 +259,9 @@ export async function compilePrompt(
   // 1. Read component files
   const components = await readPackageComponents(capabilityDir);
 
-  // 2. Merge workflow step skills into base capability skills
-  const mergedSkills = mergeWorkflowStepSkills(
-    components.steps,
+  // 2. Merge workflow phase skills into base capability skills
+  const mergedSkills = mergeWorkflowPhaseSkills(
+    components.phases,
     options.baseSkills,
   );
 
@@ -274,7 +274,7 @@ export async function compilePrompt(
   }
 
   // Workflow section (always present — workflow is required)
-  const workflowContent = renderWorkflowSection(components.steps);
+  const workflowContent = renderWorkflowPhases(components.phases);
   sections.workflow = `## Workflow\n\n${workflowContent}`;
 
   // Guidelines section (optional)
@@ -285,8 +285,8 @@ export async function compilePrompt(
   // 4. Attach merged skills
   sections.mergedSkills = mergedSkills;
 
-  // 5. Attach raw steps for loop engine injection (totalWorkflowSteps, workflowSteps)
-  sections._steps = components.steps;
+  // 5. Attach raw phases for loop engine (accessed via getCompiledWorkflowPhases)
+  sections._steps = components.phases;
 
   return sections;
 }

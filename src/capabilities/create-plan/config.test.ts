@@ -718,10 +718,10 @@ describe("create-plan tool execute — pre-launch validation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Workflow steps — self-review step exists
+// Workflow phases — self-review step exists
 // ---------------------------------------------------------------------------
 
-describe("create-plan workflow steps", () => {
+describe("create-plan workflow phases", () => {
   it("contains a self-review step between write-plan and signal-completion", () => {
     const ids = workflowSteps.map((s) => s.id);
     const writePlanIdx = ids.indexOf("write-plan");

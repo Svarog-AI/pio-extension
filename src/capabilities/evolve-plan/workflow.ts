@@ -1,7 +1,7 @@
-import type { WorkflowStep } from "../../runtime/workflow-types";
+import type { WorkflowPhase } from "../../runtime/workflow-types";
 
 /**
- * Structured workflow steps for the evolve-plan (Specification Writer) capability.
+ * Structured workflow phases for the evolve-plan (Specification Writer) capability.
  * Decomposed from the numbered steps in the original evolve-plan.md prompt.
  */
 export default [
@@ -133,4 +133,4 @@ Write \`REVISE_PLAN_NEEDED.md\` as a plain markdown document at the workspace ro
     title: "Signal completion",
     instructions: `When \`TASK.md\` is written and confirmed (and \`DECISIONS.md\` for Step 2+, and \`REVISE_PLAN_NEEDED.md\` if applicable), call the \`pio_mark_complete\` tool to validate that all expected outputs have been produced. If validation reports missing files, produce them before calling again. Do not end your work without calling this tool.`,
   },
-] satisfies WorkflowStep[];
+] satisfies WorkflowPhase[];

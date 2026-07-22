@@ -19,10 +19,10 @@ describe("session-state", () => {
       expect(state.isActive).toBe(false);
       expect(state.markCompleteCalled).toBe(false);
       expect(state.turnCount).toBe(0);
-      expect(state.currentStep).toBe(0);
+      expect(state.currentPhase).toBe(0);
       expect(state.currentIteration).toBe(0);
-      expect(state.totalSteps).toBe(0);
-      expect(state.stepsList).toEqual([]);
+      expect(state.totalPhases).toBe(0);
+      expect(state.phasesList).toEqual([]);
       expect(state.filesWritten).toEqual([]);
       expect(state.askUserCalled).toBe(false);
       expect(state.isAdHocInput).toBe(false);
@@ -31,18 +31,18 @@ describe("session-state", () => {
 
   describe("setState", () => {
     it("merges partial updates without overwriting other fields", () => {
-      setState({ isActive: true, totalSteps: 5 });
+      setState({ isActive: true, totalPhases: 5 });
 
       const state = getState();
 
       expect(state.isActive).toBe(true);
-      expect(state.totalSteps).toBe(5);
+      expect(state.totalPhases).toBe(5);
       // Other fields should retain defaults
       expect(state.markCompleteCalled).toBe(false);
       expect(state.turnCount).toBe(0);
-      expect(state.currentStep).toBe(0);
+      expect(state.currentPhase).toBe(0);
       expect(state.currentIteration).toBe(0);
-      expect(state.stepsList).toEqual([]);
+      expect(state.phasesList).toEqual([]);
     });
 
     it("can update a single field", () => {
@@ -51,15 +51,15 @@ describe("session-state", () => {
       expect(getState().turnCount).toBe(3);
     });
 
-    it("can update stepsList", () => {
+    it("can update phasesList", () => {
       const steps = [
         { id: "step-1", title: "Step One", instructions: "Do something" },
       ];
-      setState({ stepsList: steps, totalSteps: 1 });
+      setState({ phasesList: steps, totalPhases: 1 });
 
       const state = getState();
-      expect(state.stepsList).toEqual(steps);
-      expect(state.totalSteps).toBe(1);
+      expect(state.phasesList).toEqual(steps);
+      expect(state.totalPhases).toBe(1);
     });
   });
 
@@ -69,10 +69,10 @@ describe("session-state", () => {
         isActive: true,
         markCompleteCalled: true,
         turnCount: 5,
-        currentStep: 3,
+        currentPhase: 3,
         currentIteration: 2,
-        totalSteps: 5,
-        stepsList: [{ id: "s1", title: "A", instructions: "I" }],
+        totalPhases: 5,
+        phasesList: [{ id: "s1", title: "A", instructions: "I" }],
         filesWritten: ["/some/file"],
         askUserCalled: true,
         isAdHocInput: true,
@@ -84,10 +84,10 @@ describe("session-state", () => {
       expect(state.isActive).toBe(false);
       expect(state.markCompleteCalled).toBe(false);
       expect(state.turnCount).toBe(0);
-      expect(state.currentStep).toBe(0);
+      expect(state.currentPhase).toBe(0);
       expect(state.currentIteration).toBe(0);
-      expect(state.totalSteps).toBe(0);
-      expect(state.stepsList).toEqual([]);
+      expect(state.totalPhases).toBe(0);
+      expect(state.phasesList).toEqual([]);
       expect(state.filesWritten).toEqual([]);
       expect(state.askUserCalled).toBe(false);
       expect(state.isAdHocInput).toBe(false);
@@ -109,14 +109,14 @@ describe("session-state", () => {
           isActive: true,
           markCompleteCalled: false,
           turnCount: 10,
-          currentStep: 4,
+          currentPhase: 4,
           currentIteration: 3,
-          totalSteps: 6,
-          stepsList: [],
+          totalPhases: 6,
+          phasesList: [],
           filesWritten: ["/test/file"],
           askUserCalled: true,
           isAdHocInput: false,
-          stepWriteAllowlist: new Map(),
+          phaseWriteAllowlist: new Map(),
         };
 
         __testSetState(newState);
@@ -124,9 +124,9 @@ describe("session-state", () => {
         const state = getState();
         expect(state.isActive).toBe(true);
         expect(state.turnCount).toBe(10);
-        expect(state.currentStep).toBe(4);
+        expect(state.currentPhase).toBe(4);
         expect(state.currentIteration).toBe(3);
-        expect(state.totalSteps).toBe(6);
+        expect(state.totalPhases).toBe(6);
         expect(state.filesWritten).toEqual(["/test/file"]);
         expect(state.askUserCalled).toBe(true);
         expect(state.isAdHocInput).toBe(false);

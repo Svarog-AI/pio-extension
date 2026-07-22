@@ -1,6 +1,6 @@
-import type { WorkflowStep } from "../../runtime/workflow-types";
+import type { WorkflowPhase } from "../../runtime/workflow-types";
 
-const steps: WorkflowStep[] = [
+const steps: WorkflowPhase[] = [
   {
     id: "read-goal",
     title: "Read the `goal` input",

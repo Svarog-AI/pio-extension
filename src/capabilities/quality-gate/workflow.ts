@@ -1,4 +1,4 @@
-import type { WorkflowStep } from "../../runtime/workflow-types";
+import type { WorkflowPhase } from "../../runtime/workflow-types";
 
 export default [
   {
@@ -173,4 +173,4 @@ APPROVED or REJECTED
 
 **Call \`pio_mark_complete\`.** This validates that QUALITY_GATE.md exists with proper frontmatter and signals the session is done. This must be the last step — \`pio_mark_complete\` terminates the session.`,
   },
-] satisfies WorkflowStep[];
+] satisfies WorkflowPhase[];

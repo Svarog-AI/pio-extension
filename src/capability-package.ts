@@ -7,7 +7,7 @@
  *   src/capabilities/<name>/
  *     ├── config.ts        — CapabilityPackageConfig (declarative config)
  *     ├── role.md          — CapabilityRole (structured role description)
- *     ├── workflow.ts      — WorkflowStep[] (structured workflow steps)
+ *     ├── workflow.ts      — WorkflowPhase[] (structured workflow phases)
  *     ├── guidelines.md    — CapabilityGuidelines (constraints/rules)
  *     ├── schemas.ts       — TypeBox schemas (input/output contracts)
  *     └── validators.ts    — Custom validation logic
@@ -29,8 +29,8 @@ import type {
 // Re-export for downstream consumers (prompt-compiler, capability-session, etc.)
 export type { CapabilitySkills } from "./types";
 
-// Import WorkflowStep from runtime package (used by CapabilityPackageComponents.steps)
-import type { WorkflowStep } from "./runtime/workflow-types";
+// Import WorkflowPhase from runtime package (used by CapabilityPackageComponents.phases)
+import type { WorkflowPhase } from "./runtime/workflow-types";
 
 // ---------------------------------------------------------------------------
 // Directory layout constants
@@ -46,7 +46,7 @@ export const CAPABILITY_CONFIG_FILE = "config.ts";
 /** Structured role description file (optional). */
 export const CAPABILITY_ROLE_FILE = "role.md";
 
-/** Structured workflow steps file (required for prompt compilation). */
+/** Structured workflow phases file (required for prompt compilation). */
 export const CAPABILITY_WORKFLOW_FILE = "workflow.ts";
 
 /** Constraints and behavior rules file (optional). */
@@ -77,7 +77,7 @@ export interface CapabilityRole {
 }
 
 /**
- * Constraints and behavior rules separated from workflow steps.
+ * Constraints and behavior rules separated from workflow phases.
  *
  * Loaded from `guidelines.md` in the capability package directory.
  * Renders to the "Guidelines" section of the compiled system prompt.
@@ -115,7 +115,7 @@ export interface CapabilityPackageConfig {
   prepareSession?: PrepareSessionCallback;
   postValidate?: PostValidateCallback;
   postExecute?: PostExecuteCallback;
-  /** Capability-level skill declarations. Workflow step skills are merged into these at prompt compilation time. */
+  /** Capability-level skill declarations. Workflow phase skills are merged into these at prompt compilation time. */
   skills?: CapabilitySkills;
   /** Unified capability contract: consolidated inputs, outputs, excluded files, and frontmatter schemas. */
   contract: CapabilityContract;
@@ -149,8 +149,8 @@ export interface CapabilityPackageDescriptor {
 export interface CapabilityPackageComponents {
   /** Raw markdown content from role.md, or undefined if not present */
   role?: string;
-  /** Ordered workflow steps from workflow.ts */
-  steps: WorkflowStep[];
+  /** Ordered workflow phases from workflow.ts */
+  phases: WorkflowPhase[];
   /** Guidelines content from guidelines.md, or undefined if not present */
   guidelines?: CapabilityGuidelines;
 }

@@ -1610,10 +1610,10 @@ describe("prompt compiler integration — resources_discover", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Workflow steps population — enrichedSessionParams
+// Workflow phases — getCompiledWorkflowPhases typed getter
 // ---------------------------------------------------------------------------
 
-describe("workflow steps population — enrichedSessionParams", () => {
+describe("workflow phases — getCompiledWorkflowPhases", () => {
   let tempDir: string;
 
   beforeEach(() => {
@@ -1632,7 +1632,7 @@ describe("workflow steps population — enrichedSessionParams", () => {
     cleanup(tempDir);
   });
 
-  it("given compiled sections with workflow steps when resources_discover runs then enrichedSessionParams contains totalWorkflowSteps and workflowSteps", async () => {
+  it("given compiled sections with workflow phases when resources_discover runs then getCompiledWorkflowPhases returns the phases array", async () => {
     // Set up mock to return sections with _steps info
     mockCompilePrompt.mockImplementation(() =>
       Promise.resolve({
@@ -1687,15 +1687,18 @@ describe("workflow steps population — enrichedSessionParams", () => {
     // Assert: compilePrompt was called
     expect(mockCompilePrompt).toHaveBeenCalled();
 
-    // Verify enrichedSessionParams via internal getter (getSessionParams is mocked at module level)
-    const rawParams = mod.getEnrichedSessionParamsForTesting();
-    expect(rawParams).toBeDefined();
-    expect(rawParams?.totalWorkflowSteps).toBe(2);
-    // Now passes full WorkflowStep[] objects (not just { id, title } summaries)
-    expect(rawParams?.workflowSteps).toEqual([
+    // Verify getCompiledWorkflowPhases returns the typed array
+    const phases = mod.getCompiledWorkflowPhases();
+    expect(phases).toEqual([
       { id: "step-1", title: "Step One", instructions: "Do step one" },
       { id: "step-2", title: "Step Two", instructions: "Do step two" },
     ]);
+
+    // Verify enrichedSessionParams does NOT contain workflow phase data (bridge removed)
+    const rawParams = mod.getEnrichedSessionParamsForTesting();
+    expect(rawParams).toBeDefined();
+    expect(rawParams?.totalWorkflowSteps).toBeUndefined();
+    expect(rawParams?.workflowSteps).toBeUndefined();
   });
 });
 
@@ -2226,14 +2229,14 @@ describe("WORKFLOW_INSTRUCTIONS constant", () => {
     expect(content).not.toMatch(/iteration\s+\d+/i);
   });
 
-  it("contains Step Boundaries subsection with rules", async () => {
+  it("contains Phase Boundaries subsection with rules", async () => {
     const mod = await import("./capability-session");
 
     const content = mod.WORKFLOW_INSTRUCTIONS;
     const lower = content.toLowerCase();
 
-    // Should have a Step Boundaries heading
-    expect(content).toContain("## Step Boundaries");
+    // Should have a Phase Boundaries heading
+    expect(content).toContain("## Phase Boundaries");
 
     // Rule 1: do not produce artifacts
     expect(lower).toContain("do not produce artifacts");
@@ -2242,14 +2245,14 @@ describe("WORKFLOW_INSTRUCTIONS constant", () => {
     expect(lower).toContain("respect negative instructions");
     expect(lower).toContain("hard constraint");
 
-    // Rule 3: do nothing outside step instructions
+    // Rule 3: do nothing outside phase instructions
     expect(lower).toContain(
-      "do absolutely nothing outside of the step instructions",
+      "do absolutely nothing outside of the phase instructions",
     );
 
     // Rule 4: leverage context but stay focused
     expect(lower).toContain("leverage context");
-    expect(lower).toContain("keep focused on the current step");
+    expect(lower).toContain("keep focused on the current phase");
   });
 
   it("does not reference capability names or output file names", async () => {

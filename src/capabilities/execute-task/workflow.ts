@@ -1,7 +1,7 @@
-import type { WorkflowStep } from "../../runtime/workflow-types";
+import type { WorkflowPhase } from "../../runtime/workflow-types";
 
 /**
- * Structured workflow steps for the execute-task (Execute Task Agent) capability.
+ * Structured workflow phases for the execute-task (Execute Task Agent) capability.
  * Decomposed from the numbered steps in the original execute-task.md prompt.
  */
 export default [
@@ -139,4 +139,4 @@ Then follow these steps:
     title: "Signal completion",
     instructions: `After producing the summary, committing changes, and pushing to remote, call \`pio_mark_complete\` to validate that all expected outputs have been produced and signal completion.`,
   },
-] satisfies WorkflowStep[];
+] satisfies WorkflowPhase[];

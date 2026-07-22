@@ -1,4 +1,4 @@
-import type { WorkflowStep } from "../../runtime/workflow-types";
+import type { WorkflowPhase } from "../../runtime/workflow-types";
 
 export default [
   {
@@ -97,4 +97,4 @@ After writing and confirming, call \`pio_mark_complete\` to signal completion.`,
     title: "Signal completion",
     instructions: `When GOAL.md has been written and confirmed, call the \`pio_mark_complete\` tool to validate that all expected outputs have been produced. If validation reports missing files, produce them before calling again. Do not end your work without calling this tool.`,
   },
-] satisfies WorkflowStep[];
+] satisfies WorkflowPhase[];

@@ -1,4 +1,4 @@
-import type { WorkflowStep } from "../../runtime/workflow-types";
+import type { WorkflowPhase } from "../../runtime/workflow-types";
 
 export default [
   {
@@ -64,4 +64,4 @@ The skill is the single source of truth for PROJECT file structure. Do not inven
     title: "Phase 5: Signal Completion",
     instructions: `After writing all output files to \`.pio/PROJECT/\`, call \`pio_mark_complete\` to signal that your work is done.`,
   },
-] satisfies WorkflowStep[];
+] satisfies WorkflowPhase[];

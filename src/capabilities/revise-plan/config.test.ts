@@ -540,10 +540,10 @@ describe("revisePlanTool.execute", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Workflow steps — self-review step exists
+// Workflow phases — self-review step exists
 // ---------------------------------------------------------------------------
 
-describe("revise-plan workflow steps", () => {
+describe("revise-plan workflow phases", () => {
   it("contains a self-review step between write-plan and signal-completion", () => {
     const ids = workflowSteps.map((s) => s.id);
     const writePlanIdx = ids.indexOf("write-plan");

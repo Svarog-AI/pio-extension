@@ -1,7 +1,7 @@
 /**
  * Shared runtime session state.
  *
- * Manages session-level state across all steps during a capability
+ * Manages session-level state across all phases during a capability
  * sub-session lifecycle. Replaces the scattered module-level globals
  * that previously lived in `step-nudging.ts` and `session-guard.ts`.
  *
@@ -10,14 +10,14 @@
  * mutate state through the accessor functions.
  */
 
-import type { WorkflowStep } from "./workflow-types";
+import type { WorkflowPhase } from "./workflow-types";
 
 // ---------------------------------------------------------------------------
 // PioSessionState interface
 // ---------------------------------------------------------------------------
 
 /**
- * Shared runtime state persisted across all steps during a PIO session.
+ * Shared runtime state persisted across all phases during a PIO session.
  *
  * Stored between agent runs and turn boundaries but does not clear
  * between turns or iterations on its own — consumers handle resets.
@@ -32,17 +32,17 @@ export interface PioSessionState {
   /** Turn counter for refinement-loop detection. Increments on every turn, resets at `before_agent_start`. */
   turnCount: number;
 
-  /** Current workflow step number (1-based). 0 means inactive. */
-  currentStep: number;
+  /** Current workflow phase number (1-based). 0 means inactive. */
+  currentPhase: number;
 
-  /** Current iteration count within the current step (1-based). 0 means inactive. */
+  /** Current iteration count within the current phase (1-based). 0 means inactive. */
   currentIteration: number;
 
-  /** Total number of workflow steps. 0 means inactive. */
-  totalSteps: number;
+  /** Total number of workflow phases. 0 means inactive. */
+  totalPhases: number;
 
-  /** Ordered list of all workflow steps (full objects with loop fields). */
-  stepsList: WorkflowStep[];
+  /** Ordered list of all workflow phases (full objects with loop fields). */
+  phasesList: WorkflowPhase[];
 
   /** File paths written during the current iteration (from write, edit, vscode_apply_workspace_edit tools) */
   filesWritten: string[];
@@ -56,8 +56,8 @@ export interface PioSessionState {
    */
   isAdHocInput: boolean;
 
-  /** Step-level write allowlists: step number (1-based) → { allowedPaths (resolved absolute paths), allowedNames (original output names for error messages), allContractOutputs (all known contract output paths, used by write: [] to block). Populated during resources_discover. */
-  stepWriteAllowlist: Map<
+  /** Phase-level write allowlists: phase number (1-based) → { allowedPaths (resolved absolute paths), allowedNames (original output names for error messages), allContractOutputs (all known contract output paths, used by write: [] to block). Populated during resources_discover. */
+  phaseWriteAllowlist: Map<
     number,
     {
       allowedPaths: Set<string>;
@@ -78,14 +78,14 @@ function createInitialState(): PioSessionState {
     isActive: false,
     markCompleteCalled: false,
     turnCount: 0,
-    currentStep: 0,
+    currentPhase: 0,
     currentIteration: 0,
-    totalSteps: 0,
-    stepsList: [],
+    totalPhases: 0,
+    phasesList: [],
     filesWritten: [],
     askUserCalled: false,
     isAdHocInput: false,
-    stepWriteAllowlist: new Map(),
+    phaseWriteAllowlist: new Map(),
   };
 }
 

@@ -138,7 +138,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     const phasesList = getCompiledWorkflowPhases() ?? [];
     const totalPhases = phasesList.length;
 
-    // Resolve step-level write allowlists
+    // Resolve phase-level write allowlists
     const capState = new CapState(
       config.contract,
       config.workspaceDir ?? ctx.cwd,
@@ -226,7 +226,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // CustomMessage injection (replaces systemPrompt for prefix cache stability)
     // -----------------------------------------------------------------------
 
-    // Ad-hoc mode: lighter context block (no step instructions)
+    // Ad-hoc mode: lighter context block (no phase instructions)
     if (state.isAdHocInput) {
       const phase = state.phasesList[state.currentPhase - 1];
       if (!phase) return;
@@ -244,9 +244,9 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       };
     }
 
-    // Normal mode: inject step instructions via helper
+    // Normal mode: inject phase instructions via helper
     const phase = state.phasesList[state.currentPhase - 1];
-    if (!phase) return; // no step loaded — skip injection
+    if (!phase) return; // no phase loaded — skip injection
 
     return {
       message: {
@@ -297,7 +297,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       setState({ askUserCalled: true });
     }
 
-    // --- Step-level write gate ---
+    // --- Phase-level write gate ---
     const state = getState();
     if (targetPaths.length > 0 && state.isActive) {
       const entry = state.phaseWriteAllowlist.get(state.currentPhase);
@@ -418,11 +418,11 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     }
 
     // ---------------------------------------------------------------------------
-    // 4a / 4b. Loop replay vs step advancement
+    // 4a / 4b. Loop replay vs phase advancement
     // ---------------------------------------------------------------------------
 
     if (!conditionsMet) {
-      // Loop replay: send CustomMessage to trigger another agent run for same step
+      // Loop replay: send CustomMessage to trigger another agent run for same phase
       await pi.sendMessage(
         {
           customType: "workflow-phase-instructions",
@@ -434,18 +434,18 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       return;
     }
 
-    // Conditions met — advance to next step
+    // Conditions met — advance to next phase
     const nextPhaseNum = state.currentPhase + 1;
 
     if (nextPhaseNum > state.totalPhases) {
-      // Last step — let session end naturally
+      // Last phase — let session end naturally
       return;
     }
 
-    // Update current step in shared state
+    // Update current phase in shared state
     setState({ currentPhase: nextPhaseNum });
 
-    // Send CustomMessage with instructions for the next step
+    // Send CustomMessage with instructions for the next phase
     const nextPhase = state.phasesList[nextPhaseNum - 1];
     if (nextPhase) {
       await pi.sendMessage(
@@ -480,12 +480,12 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         isAdHocInput: false,
       });
 
-      // Advance to target step if different from current
+      // Advance to target phase if different from current
       if (targetPhaseNum !== state.currentPhase) {
         setState({ currentPhase: targetPhaseNum });
       }
 
-      // Queue follow-up to trigger target step (content via CustomMessage injection)
+      // Queue follow-up to trigger target phase (content via CustomMessage injection)
       const targetPhase = state.phasesList[targetPhaseNum - 1];
       if (!targetPhase) return;
 

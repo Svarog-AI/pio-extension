@@ -28,7 +28,7 @@ pio-extension/
 │   │   ├── <name>/            # 10 capability packages (create-goal, create-plan, evolve-plan, quality-gate, etc.)
 │   │   │   ├── config.ts        — CapabilityPackageConfig default export + register(pi) named export
 │   │   │   ├── role.md          — Role description (prompt component)
-│   │   │   ├── workflow.ts      — WorkflowStep[] with per-step skill declarations + loop fields (minIterations, maxIterations, terminateWhen, write)
+│   │   │   ├── workflow.ts      — WorkflowPhase[] with per-phase skill declarations + loop fields (minIterations, maxIterations, terminateWhen, write)
 │   │   │   ├── guidelines.md    — Guidelines (prompt component)
 │   │   │   ├── callbacks.ts     — Lifecycle callbacks (validation, file protections) [optional]
 │   │   │   ├── schemas.ts       — Capability-local frontmatter TypeBox schemas [optional]
@@ -41,11 +41,11 @@ pio-extension/
 │   ├── runtime/               # Runtime loop engine + shared session state
 │   │   ├── loop-engine.ts       — Bounded iteration loop: resources_discover, before_agent_start, turn_end, agent_end, input handlers
 │   │   ├── loop-engine.test.ts  — Colocated tests for loop engine
-│   │   ├── session-state.ts     — PioSessionState singleton (markCompleteCalled, currentStep, iteration tracking)
+│   │   ├── session-state.ts     — PioSessionState singleton (markCompleteCalled, currentPhase, iteration tracking)
 │   │   ├── session-state.test.ts
 │   │   ├── session-guard.ts     — Turn recovery + dead-turn detection (migrated from guards/)
 │   │   ├── session-guard.test.ts
-│   │   └── workflow-types.ts    — StepState, TerminationCondition types + extended WorkflowStep fields
+│   │   └── workflow-types.ts    — StepState, TerminationCondition types + extended WorkflowPhase fields
 │   ├── skills/                # Active discoverable skills (pio-git and test-driven-development only)
 │   │   ├── pio-git/SKILL.md     — Git operations for pio agents
 │   │   └── test-driven-development/SKILL.md — TDD methodology guide
@@ -53,7 +53,7 @@ pio-extension/
 │   │   ├── pio/, pio-planning/, pio-project-knowledge/, pio-jira/, grill-me/, write-a-skill/
 │   ├── index.ts               # Extension entry point — auto-discovers capabilities via discoverCapabilities()
 │   ├── types.ts               # Shared type definitions (CapabilityConfig, ValidationRule, etc.)
-│   ├── capability-package.ts  # CapabilityPackageConfig, WorkflowStep, FrontmatterSchemaDeclaration types + layout constants
+│   ├── capability-package.ts  # CapabilityPackageConfig, WorkflowPhase, FrontmatterSchemaDeclaration types + layout constants
 │   ├── capability-discovery.ts # discoverCapabilities() — scans capabilities/ for directory packages
 │   ├── capability-config.ts   # resolveCapabilityConfig() — resolves config from directory packages
 │   ├── capability-session.ts  # Sub-session orchestration: launch, CustomMessage injection, model switching (was session-capability.ts)

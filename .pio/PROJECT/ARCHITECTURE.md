@@ -17,14 +17,14 @@ Test fixtures (`test-*` prefixed directories) are automatically filtered out fro
 
 Skills are auto-discovered from the filesystem — no hardcoded registration list. The `setupSkills()` function in `src/index.ts` scans `SKILLS_DIR` at startup using `fs.readdirSync()`, filtering directories by `SKILL.md` existence. To add a new skill, create its directory and `SKILL.md` file under `src/skills/`; it will be registered automatically on next startup. If `SKILLS_DIR` doesn't exist or is unreadable, the scan silently produces an empty array rather than crashing.
 
-**Active skills:** Only `pio-git` and `test-driven-development` remain in `src/skills/`. The pio-specific skills (`pio`, `pio-planning`, `pio-project-knowledge`, `pio-jira`, `grill-me`, `write-a-skill`) were moved to `src/skills.old/` to prevent auto-discovery — capabilities now declare needed skills via `WorkflowStep.skills` and capability config `skills` fields, making filesystem discovery redundant for workflow-specific guidance.
+**Active skills:** Only `pio-git` and `test-driven-development` remain in `src/skills/`. The pio-specific skills (`pio`, `pio-planning`, `pio-project-knowledge`, `pio-jira`, `grill-me`, `write-a-skill`) were moved to `src/skills.old/` to prevent auto-discovery — capabilities now declare needed skills via `WorkflowPhase.skills` and capability config `skills` fields, making filesystem discovery redundant for workflow-specific guidance.
 
 ### Capability Package Pattern
 
 Each AI-driven capability is a **directory package** under `src/capabilities/<name>/` with structured component files:
 1. **`config.ts`** — default exports `CapabilityPackageConfig` (session shape: validation, file protections, skills, frontmatterSchemas). Named export `register(pi)` registers tool + command with the pi API
 2. **`role.md`** — Role description (prompt component)
-3. **`workflow.ts`** — default exports `WorkflowStep[]`, each step can declare `skills: { mandatory?: string[], recommended?: ... }`
+3. **`workflow.ts`** — default exports `WorkflowPhase[]`, each phase can declare `skills: { mandatory?: string[], recommended?: ... }`
 4. **`guidelines.md`** — Guidelines (prompt component)
 5. **`callbacks.ts`** *(optional)* — Lifecycle callbacks: validation, file protection resolvers
 6. **`schemas.ts`** *(optional)* — Capability-local TypeBox frontmatter schemas for output validation

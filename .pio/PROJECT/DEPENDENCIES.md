@@ -37,17 +37,17 @@ index.ts (async) ──┬── setupSkills()          → skills auto-discover
 
 Runtime package:
   runtime/loop-engine.ts      — Bounded iteration loop engine: resources_discover, before_agent_start, turn_end, agent_end, input handlers
-  runtime/session-state.ts    — PioSessionState singleton (markCompleteCalled, currentStep, iteration tracking, shared by guard + engine)
+  runtime/session-state.ts    — PioSessionState singleton (markCompleteCalled, currentPhase, iteration tracking, shared by guard + engine)
   runtime/session-guard.ts    — Turn recovery + dead-turn detection (migrated from guards/)
-  runtime/workflow-types.ts   — StepState, TerminationCondition types + extended WorkflowStep loop fields
+  runtime/workflow-types.ts   — StepState, TerminationCondition types + extended WorkflowPhase loop fields
 
 Capability infrastructure:
-  capability-package.ts  — CapabilityPackageConfig, WorkflowStep (extended with minIterations, maxIterations, terminateWhen, loopMessage, write), FrontmatterSchemaDeclaration types + layout constants
+  capability-package.ts  — CapabilityPackageConfig, WorkflowPhase (extended with minIterations, maxIterations, terminateWhen, loopMessage, write), FrontmatterSchemaDeclaration types + layout constants
   capability-discovery.ts — discoverCapabilities(), registerCapability() (scans capabilities/ for config.ts)
   capability-config.ts   — resolveCapabilityConfig() (dynamic imports, prefers default exports from directory packages)
   capability-session.ts  — Sub-session orchestration: launch, prompt injection, model switching (renamed from session-capability.ts)
   capability-utils.ts    — Leaf utility: mergeCapabilitySkills()
-  prompt-compiler.ts     — compilePrompt(), readWorkflowSteps() (assembles prompts from component files)
+  prompt-compiler.ts     — compilePrompt(), readWorkflowPhases() (assembles prompts from component files)
 
 Shared modules:
   fs-utils.ts            — resolveGoalDir, stepFolderName, discoverNextStep, prepareGoal, issues helpers

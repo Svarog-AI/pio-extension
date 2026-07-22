@@ -44,7 +44,7 @@ Each AI-driven capability is a directory package under `src/capabilities/<name>/
 - **`MarkdownFileSpec.projectRelative`** — When `true`, the file resolves from the global `pioRootDir` (`<cwd>/.pio/`) instead of the workspace directory. Used by capabilities like `finalize-goal` and `project-context` to declare `.pio/PROJECT/*.md` files in their contracts without workarounds.
 - **paramKey forwarding convention** — When a contract input declares `paramKey`, the tool schema must include the matching field as `Type.Optional(Type.String())`. In `execute()`, forward via direct assignment (`key: params.key`) — never conditional spread. State machine transitions always provide values; direct callers who omit receive validation errors. Naming: camelCase matching the referenced file (e.g., `goalFile`, `planFile`, `taskFile`).
 - **`role.md`** — Role description text
-- **`workflow.ts`** — default exports `WorkflowStep[]`. Each step may declare `skills: { mandatory?: string[], recommended?: ... }`
+- **`workflow.ts`** — default exports `WorkflowPhase[]`. Each phase may declare `skills: { mandatory?: string[], recommended?: ... }`
 - **`guidelines.md`** — Guidelines text
 - **`callbacks.ts`** *(optional)* — Lifecycle callbacks (validation, file protection resolvers). Was named `validators.ts` before Step 19 convention cleanup
 - **`schemas.ts`** *(optional)* — Capability-local TypeBox frontmatter schemas for output validation. Replaced shared `src/frontmatter-schemas.ts` (deleted)
@@ -58,7 +58,7 @@ Registration is via auto-discovery: `discoverCapabilities()` scans `src/capabili
 
 Each capability declares skills via the `skills` field in its `CapabilityPackageConfig`. Shape: `mandatory?: string[]` (force-injected) and `recommended?: { name: string; condition: string }[]` (instruction-based). Both fields optional — a capability can declare only one, or neither. When no recommended skills exist, omit the key entirely (not empty array).
 
-Skills can also be declared per-step in `workflow.ts` (`WorkflowStep.skills`). At runtime, `buildSkillLoadingSection()` reads base config skills, prepends global defaults (`pio`, `ask-user`), and injects them dynamically into session prompts. Per-step skills are merged via `mergeCapabilitySkills()` from `capability-utils.ts`.
+Skills can also be declared per-phase in `workflow.ts` (`WorkflowPhase.skills`). At runtime, `buildSkillLoadingSection()` reads base config skills, prepends global defaults (`pio`, `ask-user`), and injects them dynamically into session prompts. Per-phase skills are merged via `mergeCapabilitySkills()` from `capability-utils.ts`.
 
 The `_skill-loading.md` file was removed along with the old `src/prompts/` directory — skill loading is now handled entirely at runtime.
 

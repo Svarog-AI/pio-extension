@@ -1,0 +1,7 @@
+- **Report write gate messages verbatim.** When the write gate blocks a file, copy the exact block or reject message into your report. Do not paraphrase — the precise wording matters for validation.
+- **Track loop iteration counts.** State which iteration you are on at the start of each run (e.g., "Iteration 1 of Phase X") and note how many times a phase has replayed before advancing.
+- **Note phase transitions.** When the loop engine ends one phase and starts another, explicitly note the transition in your report. Record which phase ended, which phase started, and any transition messages displayed.
+- **Non-contract files are freely writable.** You can write notes, scratch files, or intermediate reports to any non-contract path for organizing your observations. Only contract output paths (like `PLAYGROUND.md`) are subject to write gate restrictions.
+- **`/return` command available.** The `/return` TUI command is available for manual `returnTo` field testing. If instructed, use `/return` to resume the loop engine at a specific phase.
+- **Do not produce real outputs.** Do not write `COMPLETED` markers, do not call `pio_mark_complete`, and do not treat this as a production workflow step. Your only contract output is `PLAYGROUND.md` — write it only when the final phase instructs you to produce a test report.
+- **Follow phase instructions exactly.** Each phase tells you what to attempt and what to observe. Do not skip steps or add your own tests — the phase instructions are designed to verify specific loop engine behavior.

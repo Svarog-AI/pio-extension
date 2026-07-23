@@ -422,11 +422,18 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // ---------------------------------------------------------------------------
 
     if (!conditionsMet) {
-      // Loop replay: send CustomMessage to trigger another agent run for same phase
+      // Loop replay: increment iteration and reset tracking for next iteration
+      setState({
+        currentIteration: state.currentIteration + 1,
+        filesWritten: [],
+        askUserCalled: false,
+      });
+
+      // Send CustomMessage with updated state (correct iteration number)
       await pi.sendMessage(
         {
           customType: "workflow-phase-instructions",
-          content: buildPhaseInstructions(state),
+          content: buildPhaseInstructions(getState()),
           display: readDebugDisplay(),
         },
         { deliverAs: "followUp" },

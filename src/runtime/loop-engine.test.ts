@@ -2149,6 +2149,181 @@ describe("agent_end", () => {
 
   // ---- Loop replay ----
 
+  // ---- State mutation during loop replay ----
+
+  describe("loop replay state mutation", () => {
+    it("increments currentIteration by 1 during loop replay", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 3,
+        },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1, // < minIterations (3) → loop replay
+        totalPhases: 1,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Loop replay should increment iteration
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("resets filesWritten to empty array during loop replay", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 2,
+        },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1, // < minIterations (2) → loop replay
+        totalPhases: 1,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: ["/some/file.ts"], // pre-populated from iteration 1
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // filesWritten should be reset
+      expect(getState().filesWritten).toEqual([]);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("resets askUserCalled to false during loop replay", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 2,
+        },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1, // < minIterations (2) → loop replay
+        totalPhases: 1,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: true, // was true from iteration 1
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // askUserCalled should be reset
+      expect(getState().askUserCalled).toBe(false);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("follow-up message shows iteration N+1 (uses updated state)", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 3,
+        },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1, // will become 2 after replay
+        totalPhases: 1,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Message should show "iteration 2", not "iteration 1"
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(sendMessageCalls[0].message.content).toContain("iteration 2");
+      expect(sendMessageCalls[0].message.content).not.toContain("iteration 1");
+    });
+  });
+
+  // ---- Existing loop replay tests ----
+
   describe("loop replay", () => {
     it("sends CustomMessage via sendMessage when loopMessage is undefined", async () => {
       const { pi, handlers, sendMessageCalls } = createMockPi();

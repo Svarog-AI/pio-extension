@@ -509,7 +509,7 @@ describe("resources_discover", () => {
     const state = getState();
     expect(state.isActive).toBe(true);
     expect(state.currentPhase).toBe(1);
-    expect(state.currentIteration).toBe(0);
+    expect(state.currentIteration).toBe(1);
     expect(state.totalPhases).toBe(2);
     expect(state.phasesList).toHaveLength(2);
     expect(state.phasesList[0].id).toBe("step-1");
@@ -668,50 +668,30 @@ describe("before_agent_start", () => {
     return results;
   }
 
-  it("normal run (isAdHocInput=false, iteration=0): sets iteration to 1, resets tracking fields", async () => {
+  it("normal run: does NOT modify currentIteration, filesWritten, or askUserCalled (dead increment removed)", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
 
-    // Simulate first run: isAdHocInput defaults to false, currentIteration = 0
-    setState({ isActive: true, currentIteration: 0, isAdHocInput: false });
-
-    // Act: fire before_agent_start
-    await fireBeforeAgentStart(handlers);
-
-    // Assert: iteration set to 1, fresh tracking fields (all via getState)
-    const state = getState();
-    expect(state.currentIteration).toBe(1);
-    expect(state.filesWritten).toEqual([]);
-    expect(state.askUserCalled).toBe(false);
-    expect(state.isAdHocInput).toBe(false);
-  });
-
-  it("normal run (loop replay, iteration>0): increments iteration, resets tracking fields", async () => {
-    // Arrange
-    const { pi, handlers } = createMockPi();
-    const { setupLoopEngine } = await import("./loop-engine");
-    setupLoopEngine(pi);
-
-    // Set up: iteration is 2, isAdHocInput = false (engine follow-up replay)
+    // Pre-populate state with values that should NOT be changed
     setState({
       isActive: true,
-      currentIteration: 2,
+      currentIteration: 1,
       isAdHocInput: false,
-      filesWritten: ["/old/file.ts"],
+      filesWritten: ["/x.ts"],
       askUserCalled: true,
     });
 
     // Act: fire before_agent_start
     await fireBeforeAgentStart(handlers);
 
-    // Assert: iteration incremented to 3, tracking fields reset
+    // Assert: values unchanged (dead increment removed)
     const state = getState();
-    expect(state.currentIteration).toBe(3);
+    expect(state.currentIteration).toBe(1);
+    expect(state.filesWritten).toEqual(["/x.ts"]);
+    expect(state.askUserCalled).toBe(true);
     expect(state.isAdHocInput).toBe(false);
-    expect(state.filesWritten).toEqual([]);
-    expect(state.askUserCalled).toBe(false);
   });
 
   it("ad-hoc mode (isAdHocInput=true): does NOT increment or reset tracking fields, flag persists", async () => {
@@ -768,7 +748,7 @@ describe("before_agent_start", () => {
       setState({
         isActive: true,
         currentPhase: 1,
-        currentIteration: 0, // first run
+        currentIteration: 1, // initialized at 1 in resources_discover
         totalPhases: 2,
         phasesList: [
           { id: "s1", title: "S1", instructions: "Do A" },
@@ -807,7 +787,7 @@ describe("before_agent_start", () => {
       setState({
         isActive: true,
         currentPhase: 2,
-        currentIteration: 0,
+        currentIteration: 1, // initialized at 1 in resources_discover
         totalPhases: 3,
         phasesList: [
           { id: "s1", title: "S1", instructions: "Do A" },
@@ -842,7 +822,7 @@ describe("before_agent_start", () => {
       setState({
         isActive: true,
         currentPhase: 4,
-        currentIteration: 0,
+        currentIteration: 1, // initialized at 1 in resources_discover
         totalPhases: 5,
         phasesList: [
           { id: "s1", title: "S1", instructions: "A" },
@@ -875,7 +855,7 @@ describe("before_agent_start", () => {
       setState({
         isActive: true,
         currentPhase: 1,
-        currentIteration: 1, // will become 2
+        currentIteration: 2, // already > 1 (no increment in before_agent_start)
         totalPhases: 1,
         phasesList: [
           {
@@ -911,7 +891,7 @@ describe("before_agent_start", () => {
       setState({
         isActive: true,
         currentPhase: 1,
-        currentIteration: 0, // first run → iteration 1
+        currentIteration: 1, // first iteration (no increment in before_agent_start)
         totalPhases: 1,
         phasesList: [
           {
@@ -945,7 +925,7 @@ describe("before_agent_start", () => {
       setState({
         isActive: true,
         currentPhase: 1,
-        currentIteration: 0,
+        currentIteration: 1,
         totalPhases: 0,
         phasesList: [],
         isAdHocInput: false,
@@ -970,7 +950,7 @@ describe("before_agent_start", () => {
       setState({
         isActive: true,
         currentPhase: 99,
-        currentIteration: 0,
+        currentIteration: 1,
         totalPhases: 2,
         phasesList: [
           { id: "s1", title: "S1", instructions: "A" },
@@ -1079,7 +1059,7 @@ describe("before_agent_start", () => {
         setState({
           isActive: true,
           currentPhase: 1,
-          currentIteration: 0,
+          currentIteration: 1,
           totalPhases: 2,
           phasesList: [
             { id: "s1", title: "S1", instructions: "Do A" },
@@ -1155,7 +1135,7 @@ describe("before_agent_start", () => {
         setState({
           isActive: true,
           currentPhase: 1,
-          currentIteration: 0,
+          currentIteration: 1,
           totalPhases: 1,
           phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
           isAdHocInput: false,
@@ -1367,7 +1347,7 @@ describe("iteration data clearing between iterations", () => {
     }
   }
 
-  it("before_agent_start clears previous tracking data on normal run", async () => {
+  it("before_agent_start no longer clears tracking data or increments iteration (dead code removed)", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
@@ -1382,14 +1362,14 @@ describe("iteration data clearing between iterations", () => {
       askUserCalled: true,
     });
 
-    // Act: fire before_agent_start for next iteration
+    // Act: fire before_agent_start
     await fireBeforeAgentStart(handlers);
 
-    // Assert: tracking data cleared, iteration incremented
+    // Assert: tracking data NOT cleared, iteration NOT incremented (dead code removed)
     const state = getState();
-    expect(state.currentIteration).toBe(2);
-    expect(state.filesWritten).toEqual([]);
-    expect(state.askUserCalled).toBe(false);
+    expect(state.currentIteration).toBe(1);
+    expect(state.filesWritten).toEqual(["/old/file.ts"]);
+    expect(state.askUserCalled).toBe(true);
   });
 });
 
@@ -2468,6 +2448,233 @@ describe("agent_end", () => {
       expect(sendUserMessageCalls).toHaveLength(0);
       expect(getState().currentPhase).toBe(1); // Not advanced
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase advancement state reset
+// ---------------------------------------------------------------------------
+
+describe("phase advancement state reset", () => {
+  async function fireAgentEnd(
+    handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+    messages: unknown[],
+  ) {
+    const handlersList = handlers.get("agent_end");
+    expect(handlersList).toBeDefined();
+    const mockCtx = {} as any;
+    for (const handler of handlersList!) {
+      await handler({ type: "agent_end", messages }, mockCtx);
+    }
+  }
+
+  it("resets currentIteration to 1 on phase transition", async () => {
+    const { pi, handlers, sendMessageCalls } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    const phases = [
+      { id: "s1", title: "S1", instructions: "Do A" },
+      { id: "s2", title: "S2", instructions: "Do B" },
+    ];
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+      phases,
+    );
+
+    setState({
+      isActive: true,
+      currentPhase: 1,
+      currentIteration: 3, // Phase 1 ran for 3 iterations
+      totalPhases: 2,
+      phasesList: phases,
+      markCompleteCalled: false,
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+    });
+
+    await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+
+    // Phase advanced to 2, iteration reset to 1
+    expect(getState().currentPhase).toBe(2);
+    expect(getState().currentIteration).toBe(1);
+    expect(sendMessageCalls).toHaveLength(1);
+  });
+
+  it("resets filesWritten on phase transition", async () => {
+    const { pi, handlers, sendMessageCalls } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    const phases = [
+      { id: "s1", title: "S1", instructions: "Do A" },
+      { id: "s2", title: "S2", instructions: "Do B" },
+    ];
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+      phases,
+    );
+
+    setState({
+      isActive: true,
+      currentPhase: 1,
+      currentIteration: 1,
+      totalPhases: 2,
+      phasesList: phases,
+      markCompleteCalled: false,
+      filesWritten: ["/a.ts", "/b.ts"],
+      askUserCalled: false,
+      isAdHocInput: false,
+    });
+
+    await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+
+    expect(getState().currentPhase).toBe(2);
+    expect(getState().filesWritten).toEqual([]);
+    expect(sendMessageCalls).toHaveLength(1);
+  });
+
+  it("resets askUserCalled on phase transition", async () => {
+    const { pi, handlers, sendMessageCalls } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    const phases = [
+      { id: "s1", title: "S1", instructions: "Do A" },
+      { id: "s2", title: "S2", instructions: "Do B" },
+    ];
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+      phases,
+    );
+
+    setState({
+      isActive: true,
+      currentPhase: 1,
+      currentIteration: 1,
+      totalPhases: 2,
+      phasesList: phases,
+      markCompleteCalled: false,
+      filesWritten: [],
+      askUserCalled: true,
+      isAdHocInput: false,
+    });
+
+    await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+
+    expect(getState().currentPhase).toBe(2);
+    expect(getState().askUserCalled).toBe(false);
+    expect(sendMessageCalls).toHaveLength(1);
+  });
+
+  it("phase 2 does not immediately skip (iteration reset prevents premature advance)", async () => {
+    // Critical "phase skip" scenario: Phase 1 ran for 3 iterations.
+    // Without iteration reset, Phase 2 would see currentIteration=3,
+    // 3 >= minIterations(1) → true, and advance immediately without running.
+    const { pi, handlers, sendMessageCalls } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    const phases = [
+      { id: "s1", title: "S1", instructions: "Do A" },
+      { id: "s2", title: "S2", instructions: "Do B" },
+      { id: "s3", title: "S3", instructions: "Do C" },
+    ];
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+      phases,
+    );
+
+    setState({
+      isActive: true,
+      currentPhase: 1,
+      currentIteration: 3, // Phase 1 had multiple iterations
+      totalPhases: 3,
+      phasesList: phases,
+      markCompleteCalled: false,
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+    });
+
+    await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+
+    // After advancement: Phase 2, iteration reset to 1 (not 3)
+    expect(getState().currentPhase).toBe(2);
+    expect(getState().currentIteration).toBe(1);
+    // If iteration were not reset (still 3), Phase 2 would have
+    // 3 >= minIterations(1) → advance to Phase 3 immediately.
+    // The fact that currentIteration is 1 proves the reset works.
+    expect(sendMessageCalls).toHaveLength(1);
+  });
+
+  it("next-phase message shows iteration 1", async () => {
+    const { pi, handlers, sendMessageCalls } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    const phases = [
+      { id: "s1", title: "S1", instructions: "Do A" },
+      { id: "s2", title: "S2", instructions: "Do B" },
+    ];
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+      phases,
+    );
+
+    setState({
+      isActive: true,
+      currentPhase: 1,
+      currentIteration: 3, // Phase 1 had multiple iterations
+      totalPhases: 2,
+      phasesList: phases,
+      markCompleteCalled: false,
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+    });
+
+    await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+
+    // Message should show "iteration 1" for Phase 2, not "iteration 3"
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].message.content).toContain("iteration 1");
+    expect(sendMessageCalls[0].message.content).not.toContain("iteration 3");
+  });
+
+  it("before_agent_start no longer increments currentIteration (dead code removed)", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentPhase: 1,
+      currentIteration: 5,
+      totalPhases: 2,
+      phasesList: [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ],
+      isAdHocInput: false,
+      filesWritten: [],
+      askUserCalled: false,
+    });
+
+    // Fire before_agent_start
+    const handlersList = handlers.get("before_agent_start");
+    expect(handlersList).toBeDefined();
+    const mockCtx = {} as any;
+    const results: unknown[] = [];
+    for (const handler of handlersList!) {
+      const result = await handler({ type: "before_agent_start" }, mockCtx);
+      if (result) results.push(result);
+    }
+
+    // currentIteration should still be 5 (not incremented)
+    expect(getState().currentIteration).toBe(5);
+    // CustomMessage injection should still work
+    expect(results).toHaveLength(1);
+    const result = results[0] as {
+      message: { customType: string; content: string; display: boolean };
+    };
+    expect(result.message.customType).toBe("workflow-phase-instructions");
   });
 });
 

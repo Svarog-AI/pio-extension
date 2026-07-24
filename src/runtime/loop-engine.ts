@@ -187,7 +187,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       phasesList: phasesList,
       totalPhases: totalPhases,
       currentPhase: 1,
-      currentIteration: 0, // Not yet started — before_agent_start will set to 1
+      currentIteration: 1, // First run starts at iteration 1
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
@@ -203,24 +203,11 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     }
   });
 
-  // 3. Iteration setup at the start of each agent run + CustomMessage injection
+  // 3. CustomMessage injection via before_agent_start
   pi.on("before_agent_start", async (_event, _ctx) => {
     // Guard: only run inside pio sessions
     const state = getState();
     if (!state.isActive) return;
-
-    if (!state.isAdHocInput) {
-      // Normal run: first run (0\u21921) or loop replay (N\u2192N+1).
-      // Increment iteration, reset tracking fields.
-      setState({
-        currentIteration: state.currentIteration + 1,
-        filesWritten: [],
-        askUserCalled: false,
-      });
-    }
-    // Otherwise (ad-hoc mode): engine pauses iteration tracking.
-    // Do NOT increment counter or reset tracking fields.
-    // Flag persists — only /return clears it.
 
     // -----------------------------------------------------------------------
     // CustomMessage injection (replaces systemPrompt for prefix cache stability)
@@ -422,11 +409,18 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // ---------------------------------------------------------------------------
 
     if (!conditionsMet) {
-      // Loop replay: send CustomMessage to trigger another agent run for same phase
+      // Loop replay: increment iteration and reset tracking for next iteration
+      setState({
+        currentIteration: state.currentIteration + 1,
+        filesWritten: [],
+        askUserCalled: false,
+      });
+
+      // Send CustomMessage with updated state (correct iteration number)
       await pi.sendMessage(
         {
           customType: "workflow-phase-instructions",
-          content: buildPhaseInstructions(state),
+          content: buildPhaseInstructions(getState()),
           display: readDebugDisplay(),
         },
         { deliverAs: "followUp" },
@@ -442,8 +436,13 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       return;
     }
 
-    // Update current phase in shared state
-    setState({ currentPhase: nextPhaseNum });
+    // Advance to next phase — reset iteration and tracking fields
+    setState({
+      currentPhase: nextPhaseNum,
+      currentIteration: 1,
+      filesWritten: [],
+      askUserCalled: false,
+    });
 
     // Send CustomMessage with instructions for the next phase
     const nextPhase = state.phasesList[nextPhaseNum - 1];
@@ -474,7 +473,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
 
       // State reset: clear iteration counter and tracking fields
       setState({
-        currentIteration: 0,
+        currentIteration: 1,
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,

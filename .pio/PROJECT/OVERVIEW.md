@@ -25,7 +25,7 @@ The `src/prompts/` directory was removed — prompts are now component files ins
 pio-extension/
 ├── src/
 │   ├── capabilities/          # AI-driven capability directory packages + direct tools
-│   │   ├── <name>/            # 10 capability packages (create-goal, create-plan, evolve-plan, quality-gate, etc.)
+│   │   ├── <name>/            # 11 capability packages (create-goal, create-plan, evolve-plan, quality-gate, workflow-playground, etc.)
 │   │   │   ├── config.ts        — CapabilityPackageConfig default export + register(pi) named export
 │   │   │   ├── role.md          — Role description (prompt component)
 │   │   │   ├── workflow.ts      — WorkflowPhase[] with per-phase skill declarations + loop fields (minIterations, maxIterations, terminateWhen, write)

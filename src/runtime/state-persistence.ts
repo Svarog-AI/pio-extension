@@ -35,13 +35,10 @@ export function loadLoopEngineState(sessionId: string): {
   isAdHocInput: boolean;
 } | null {
   try {
+    const workspaceDir = readPioWorkspaceDir();
     ensureStateDir();
 
-    const filePath = path.join(
-      readPioWorkspaceDir(),
-      "state",
-      `${sessionId}.json`,
-    );
+    const filePath = path.join(workspaceDir, "state", `${sessionId}.json`);
 
     if (!fs.existsSync(filePath)) {
       return null;
@@ -110,13 +107,10 @@ export function saveLoopEngineState(
   },
 ): void {
   try {
+    const workspaceDir = readPioWorkspaceDir();
     ensureStateDir();
 
-    const filePath = path.join(
-      readPioWorkspaceDir(),
-      "state",
-      `${sessionId}.json`,
-    );
+    const filePath = path.join(workspaceDir, "state", `${sessionId}.json`);
     const tempPath = `${filePath}.tmp`;
 
     const json = JSON.stringify(state, null, 2);

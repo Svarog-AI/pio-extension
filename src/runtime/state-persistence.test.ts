@@ -213,6 +213,126 @@ describe("loadLoopEngineState — error handling", () => {
     warnSpy.mockRestore();
   });
 
+  it("returns null for wrong types (currentIteration is a string)", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const stateDir = getStateDir(tempDir);
+    fs.writeFileSync(
+      path.join(stateDir, "sess-7.json"),
+      JSON.stringify({
+        currentPhase: 1,
+        currentIteration: "one",
+        isAdHocInput: false,
+      }),
+      "utf-8",
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = mod.loadLoopEngineState("sess-7");
+
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("returns null for wrong types (isAdHocInput is a string)", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const stateDir = getStateDir(tempDir);
+    fs.writeFileSync(
+      path.join(stateDir, "sess-8.json"),
+      JSON.stringify({
+        currentPhase: 1,
+        currentIteration: 1,
+        isAdHocInput: "true",
+      }),
+      "utf-8",
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = mod.loadLoopEngineState("sess-8");
+
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("returns null for non-integer numbers (currentPhase is 2.5)", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const stateDir = getStateDir(tempDir);
+    fs.writeFileSync(
+      path.join(stateDir, "sess-9.json"),
+      JSON.stringify({
+        currentPhase: 2.5,
+        currentIteration: 1,
+        isAdHocInput: false,
+      }),
+      "utf-8",
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = mod.loadLoopEngineState("sess-9");
+
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("returns null for zero values (currentPhase is 0)", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const stateDir = getStateDir(tempDir);
+    fs.writeFileSync(
+      path.join(stateDir, "sess-10.json"),
+      JSON.stringify({
+        currentPhase: 0,
+        currentIteration: 0,
+        isAdHocInput: false,
+      }),
+      "utf-8",
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = mod.loadLoopEngineState("sess-10");
+
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("returns null for negative values (currentPhase is -1)", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const stateDir = getStateDir(tempDir);
+    fs.writeFileSync(
+      path.join(stateDir, "sess-11.json"),
+      JSON.stringify({
+        currentPhase: -1,
+        currentIteration: 1,
+        isAdHocInput: false,
+      }),
+      "utf-8",
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = mod.loadLoopEngineState("sess-11");
+
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   it("does not throw on file read error (permission denied)", async () => {
     // Override existsSync to return true (file exists) and readFileSync to throw
     (fs.existsSync as any) = () => true;

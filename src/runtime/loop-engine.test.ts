@@ -316,7 +316,7 @@ describe("/return command", () => {
   // ---- Resumption behavior ----
 
   describe("resumption", () => {
-    it("resets iteration counter to 0 and clears tracking fields", async () => {
+    it("resets iteration counter to 1 and clears tracking fields", async () => {
       const { pi, registeredCommands } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
@@ -338,7 +338,7 @@ describe("/return command", () => {
       await fireReturnCommand(registeredCommands);
 
       const state = getState();
-      expect(state.currentIteration).toBe(0);
+      expect(state.currentIteration).toBe(1);
       expect(state.filesWritten).toEqual([]);
       expect(state.askUserCalled).toBe(false);
       expect(state.isAdHocInput).toBe(false);

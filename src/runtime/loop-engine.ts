@@ -473,7 +473,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
 
       // State reset: clear iteration counter and tracking fields
       setState({
-        currentIteration: 0,
+        currentIteration: 1,
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,

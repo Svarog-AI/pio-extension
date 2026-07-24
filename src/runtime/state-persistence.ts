@@ -15,8 +15,8 @@ import type { PioSessionState } from "./session-state";
  * workspace root and the `state/` subdirectory. Since that function
  * never throws, this is a safe wrapper that always succeeds.
  */
-export function ensureStateDir(): void {
-  readPioWorkspaceDir();
+export function ensureStateDir(): string {
+  return readPioWorkspaceDir();
 }
 
 // ---------------------------------------------------------------------------
@@ -35,8 +35,7 @@ export function loadLoopEngineState(sessionId: string): {
   isAdHocInput: boolean;
 } | null {
   try {
-    const workspaceDir = readPioWorkspaceDir();
-    ensureStateDir();
+    const workspaceDir = ensureStateDir();
 
     const filePath = path.join(workspaceDir, "state", `${sessionId}.json`);
 
@@ -107,8 +106,7 @@ export function saveLoopEngineState(
   },
 ): void {
   try {
-    const workspaceDir = readPioWorkspaceDir();
-    ensureStateDir();
+    const workspaceDir = ensureStateDir();
 
     const filePath = path.join(workspaceDir, "state", `${sessionId}.json`);
     const tempPath = `${filePath}.tmp`;

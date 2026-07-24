@@ -19,7 +19,6 @@ vi.mock("node:fs", async (importActual) => {
 
 // Hold references to real implementations for restore.
 const _realWriteFileSync = fs.writeFileSync;
-const _realRenameSync = fs.renameSync;
 const _realReadFileSync = fs.readFileSync;
 const _realExistsSync = fs.existsSync;
 

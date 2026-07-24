@@ -10,8 +10,8 @@
  * there are no module-level variables. Access everything through
  * `getState()` / `setState()` from session-state.
  *
- * The engine registers five event handlers: `resources_discover`, `input`,
- * `before_agent_start`, `tool_call`, and `agent_end`.
+ * The engine registers six event handlers: `resources_discover`, `input`,
+ * `before_agent_start`, `tool_call`, `agent_end`, and `session_shutdown`.
  * Additionally, it registers the `/return` command for ad-hoc resumption.
  */
 
@@ -23,6 +23,11 @@ import { getSessionConfig } from "../capability-utils";
 import { readDebugDisplay, resolveMaxIterations } from "../model-config";
 import type { PioSessionState } from "./session-state";
 import { getState, resetState, setState } from "./session-state";
+import {
+  extractPersistedState,
+  loadLoopEngineState,
+  saveLoopEngineState,
+} from "./state-persistence";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -181,16 +186,23 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       });
     }
 
+    // Capture session ID for persistence
+    const sessionId = ctx.sessionManager.getSessionId();
+
+    // Attempt to restore state from disk
+    const saved = loadLoopEngineState(sessionId);
+
     // Initialize PioSessionState (single source of truth)
     setState({
       isActive: true,
+      sessionId: sessionId,
       phasesList: phasesList,
       totalPhases: totalPhases,
-      currentPhase: 1,
-      currentIteration: 1, // First run starts at iteration 1
+      currentPhase: saved?.currentPhase ?? 1,
+      currentIteration: saved?.currentIteration ?? 1,
       filesWritten: [],
       askUserCalled: false,
-      isAdHocInput: false,
+      isAdHocInput: saved?.isAdHocInput ?? false,
       phaseWriteAllowlist: phaseWriteAllowlist,
     });
   });
@@ -200,6 +212,11 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // Check if this is an interactive user message
     if (event.source === "interactive" && getState().isActive) {
       setState({ isAdHocInput: true });
+      // Persist ad-hoc mode flag
+      const state = getState();
+      if (state.sessionId) {
+        saveLoopEngineState(state.sessionId, extractPersistedState(state));
+      }
     }
   });
 
@@ -416,6 +433,15 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         askUserCalled: false,
       });
 
+      // Persist incremented iteration
+      const updatedState = getState();
+      if (updatedState.sessionId) {
+        saveLoopEngineState(
+          updatedState.sessionId,
+          extractPersistedState(updatedState),
+        );
+      }
+
       // Send CustomMessage with updated state (correct iteration number)
       await pi.sendMessage(
         {
@@ -444,6 +470,15 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       askUserCalled: false,
     });
 
+    // Persist phase advancement
+    const advancedState = getState();
+    if (advancedState.sessionId) {
+      saveLoopEngineState(
+        advancedState.sessionId,
+        extractPersistedState(advancedState),
+      );
+    }
+
     // Send CustomMessage with instructions for the next phase
     const nextPhase = state.phasesList[nextPhaseNum - 1];
     if (nextPhase) {
@@ -458,7 +493,15 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     }
   });
 
-  // 6. /return command — resume loop engine after ad-hoc interruption
+  // 6. Shutdown handler — flush state on reload/quit
+  pi.on("session_shutdown", async (event, _ctx) => {
+    const state = getState();
+    if (!state.isActive || !state.sessionId) return;
+    if (event.reason !== "reload" && event.reason !== "quit") return;
+    saveLoopEngineState(state.sessionId, extractPersistedState(state));
+  });
+
+  // 7. /return command — resume loop engine after ad-hoc interruption
   pi.registerCommand("return", {
     description: "Resume loop engine after ad-hoc interruption",
     handler: async (_args, _ctx) => {
@@ -478,6 +521,15 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         askUserCalled: false,
         isAdHocInput: false,
       });
+
+      // Persist cleared ad-hoc mode
+      const returnState = getState();
+      if (returnState.sessionId) {
+        saveLoopEngineState(
+          returnState.sessionId,
+          extractPersistedState(returnState),
+        );
+      }
 
       // Advance to target phase if different from current
       if (targetPhaseNum !== state.currentPhase) {

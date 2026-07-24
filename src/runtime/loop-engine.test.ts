@@ -7,6 +7,18 @@ import * as modelConfig from "../model-config";
 import { getState, resetState, setState } from "./session-state";
 
 // ---------------------------------------------------------------------------
+// Persistence module mock
+// ---------------------------------------------------------------------------
+
+vi.mock("./state-persistence", () => ({
+  loadLoopEngineState: vi.fn().mockReturnValue(null),
+  saveLoopEngineState: vi.fn(),
+  extractPersistedState: vi.fn((state: unknown) => state),
+}));
+
+import * as statePersistence from "./state-persistence";
+
+// ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
@@ -29,6 +41,16 @@ vi.spyOn(capabilitySession, "getCompiledWorkflowPhases").mockReturnValue([
   { id: "step-1", title: "Step One", instructions: "Do something" },
   { id: "step-2", title: "Step Two", instructions: "Do something else" },
 ]);
+
+// ---------------------------------------------------------------------------
+// Helpers — shared mock context
+// ---------------------------------------------------------------------------
+
+const mockCtx = {
+  sessionManager: {
+    getSessionId: () => "test-session-id",
+  },
+} as any;
 
 // ---------------------------------------------------------------------------
 // Helpers — mock ExtensionAPI
@@ -224,7 +246,7 @@ describe("setupLoopEngine — handler registration", () => {
     expect(handlers.has("tool_call")).toBe(true);
   });
 
-  it("registers exactly five event handlers", async () => {
+  it("registers exactly six event handlers", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
@@ -232,13 +254,14 @@ describe("setupLoopEngine — handler registration", () => {
     // Act
     setupLoopEngine(pi);
 
-    // Assert: resources_discover, input, before_agent_start, tool_call, agent_end
-    expect(handlers.size).toBe(5);
+    // Assert: resources_discover, input, before_agent_start, tool_call, agent_end, session_shutdown
+    expect(handlers.size).toBe(6);
     expect(handlers.has("resources_discover")).toBe(true);
     expect(handlers.has("input")).toBe(true);
     expect(handlers.has("before_agent_start")).toBe(true);
     expect(handlers.has("tool_call")).toBe(true);
     expect(handlers.has("agent_end")).toBe(true);
+    expect(handlers.has("session_shutdown")).toBe(true);
   });
 
   it("registers /return command via pi.registerCommand", async () => {
@@ -497,7 +520,6 @@ describe("resources_discover", () => {
     // Act: fire resources_discover
     const discoverHandlers = handlers.get("resources_discover");
     expect(discoverHandlers).toBeDefined();
-    const mockCtx = {} as any;
     for (const handler of discoverHandlers!) {
       await handler(
         { type: "resources_discover", cwd: ".", reason: "startup" },
@@ -537,7 +559,6 @@ describe("resources_discover", () => {
 
     // Act: fire resources_discover
     const discoverHandlers = handlers.get("resources_discover");
-    const mockCtx = {} as any;
     for (const handler of discoverHandlers!) {
       await handler(
         { type: "resources_discover", cwd: ".", reason: "startup" },
@@ -567,7 +588,6 @@ describe("resources_discover", () => {
 
     // Act: fire resources_discover
     const discoverHandlers = handlers.get("resources_discover");
-    const mockCtx = {} as any;
     for (const handler of discoverHandlers!) {
       await handler(
         { type: "resources_discover", cwd: ".", reason: "startup" },
@@ -1388,7 +1408,7 @@ describe("PioSessionState as single source of truth", () => {
     for (const h of discoverHandlers!) {
       await h(
         { type: "resources_discover", cwd: ".", reason: "startup" },
-        {} as any,
+        mockCtx,
       );
     }
 
@@ -1418,7 +1438,7 @@ describe("PioSessionState as single source of truth", () => {
     for (const h of discoverHandlers!) {
       await h(
         { type: "resources_discover", cwd: ".", reason: "startup" },
-        {} as any,
+        mockCtx,
       );
     }
 
@@ -1448,7 +1468,7 @@ describe("PioSessionState as single source of truth", () => {
     for (const h of discoverHandlers!) {
       await h(
         { type: "resources_discover", cwd: ".", reason: "startup" },
-        {} as any,
+        mockCtx,
       );
     }
 
@@ -3214,7 +3234,7 @@ describe("tool_call — phase-level write gate", () => {
     for (const h of discoverHandlers!) {
       await h(
         { type: "resources_discover", cwd: ".", reason: "startup" },
-        {} as any,
+        mockCtx,
       );
     }
 
@@ -3398,7 +3418,7 @@ describe("tool_call — phase-level write gate", () => {
     for (const h of discoverHandlers!) {
       await h(
         { type: "resources_discover", cwd: ".", reason: "startup" },
-        {} as any,
+        mockCtx,
       );
     }
 
@@ -3432,7 +3452,7 @@ describe("tool_call — phase-level write gate", () => {
     for (const h of discoverHandlers!) {
       await h(
         { type: "resources_discover", cwd: ".", reason: "startup" },
-        {} as any,
+        mockCtx,
       );
     }
 
@@ -3472,7 +3492,7 @@ describe("tool_call — phase-level write gate", () => {
     for (const h of discoverHandlers!) {
       await h(
         { type: "resources_discover", cwd: ".", reason: "startup" },
-        {} as any,
+        mockCtx,
       );
     }
 
@@ -3490,5 +3510,535 @@ describe("tool_call — phase-level write gate", () => {
 
     // Assert: not blocked (non-contract files pass through)
     expect(result).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Persistence integration tests
+// ---------------------------------------------------------------------------
+
+describe("persistence integration", () => {
+  // -----------------------------------------------------------------------
+  // resources_discover — session ID capture
+  // -----------------------------------------------------------------------
+
+  describe("resources_discover — session ID capture", () => {
+    it("captures session ID from ctx.sessionManager.getSessionId()", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      // Act: fire resources_discover
+      const discoverHandlers = handlers.get("resources_discover");
+      for (const h of discoverHandlers!) {
+        await h(
+          { type: "resources_discover", cwd: ".", reason: "startup" },
+          mockCtx,
+        );
+      }
+
+      // Assert: session ID stored
+      expect(getState().sessionId).toBe("test-session-id");
+    });
+
+    it("getSessionId is called during resources_discover", async () => {
+      const getSessionIdSpy = vi
+        .spyOn(mockCtx.sessionManager, "getSessionId")
+        .mockReturnValue("spy-session-id");
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      // Act
+      const discoverHandlers = handlers.get("resources_discover");
+      for (const h of discoverHandlers!) {
+        await h(
+          { type: "resources_discover", cwd: ".", reason: "startup" },
+          mockCtx,
+        );
+      }
+
+      // Assert
+      expect(getSessionIdSpy).toHaveBeenCalledTimes(1);
+      expect(getState().sessionId).toBe("spy-session-id");
+      getSessionIdSpy.mockRestore();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // resources_discover — state restoration
+  // -----------------------------------------------------------------------
+
+  describe("resources_discover — state restoration", () => {
+    it("restores saved state when loadLoopEngineState returns data", async () => {
+      const savedState = {
+        currentPhase: 3,
+        currentIteration: 2,
+        isAdHocInput: true,
+      };
+      vi.mocked(statePersistence.loadLoopEngineState).mockReturnValue(
+        savedState,
+      );
+
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      // Act
+      const discoverHandlers = handlers.get("resources_discover");
+      for (const h of discoverHandlers!) {
+        await h(
+          { type: "resources_discover", cwd: ".", reason: "startup" },
+          mockCtx,
+        );
+      }
+
+      // Assert: restored values used
+      const state = getState();
+      expect(state.currentPhase).toBe(3);
+      expect(state.currentIteration).toBe(2);
+      expect(state.isAdHocInput).toBe(true);
+
+      vi.mocked(statePersistence.loadLoopEngineState).mockReset();
+    });
+
+    it("uses defaults when loadLoopEngineState returns null", async () => {
+      vi.mocked(statePersistence.loadLoopEngineState).mockReturnValue(null);
+
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      // Act
+      const discoverHandlers = handlers.get("resources_discover");
+      for (const h of discoverHandlers!) {
+        await h(
+          { type: "resources_discover", cwd: ".", reason: "startup" },
+          mockCtx,
+        );
+      }
+
+      // Assert: defaults used
+      const state = getState();
+      expect(state.currentPhase).toBe(1);
+      expect(state.currentIteration).toBe(1);
+      expect(state.isAdHocInput).toBe(false);
+
+      vi.mocked(statePersistence.loadLoopEngineState).mockReset();
+    });
+
+    it("corrupt file (null from load) starts fresh at Phase 1 without throwing", async () => {
+      vi.mocked(statePersistence.loadLoopEngineState).mockReturnValue(null);
+
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      // Act: should not throw
+      await expect(
+        (async () => {
+          const discoverHandlers = handlers.get("resources_discover");
+          for (const h of discoverHandlers!) {
+            await h(
+              { type: "resources_discover", cwd: ".", reason: "startup" },
+              mockCtx,
+            );
+          }
+        })(),
+      ).resolves.not.toThrow();
+
+      // Assert: fresh state
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().sessionId).toBe("test-session-id");
+
+      vi.mocked(statePersistence.loadLoopEngineState).mockReset();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Persist on mutation — agent_end loop replay
+  // -----------------------------------------------------------------------
+
+  describe("persist on mutation — agent_end loop replay", () => {
+    it("calls saveLoopEngineState after loop replay", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 3,
+        },
+      ];
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 1,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      // Act
+      const handlersList = handlers.get("agent_end");
+      for (const handler of handlersList!) {
+        await handler(
+          {
+            type: "agent_end",
+            messages: [{ role: "assistant", stopReason: "stop" }],
+          },
+          {} as any,
+        );
+      }
+
+      // Assert: save called with incremented iteration
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(1);
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledWith(
+        "test-session-id",
+        expect.objectContaining({ currentIteration: 2 }),
+      );
+
+      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Persist on mutation — agent_end phase advancement
+  // -----------------------------------------------------------------------
+
+  describe("persist on mutation — agent_end phase advancement", () => {
+    it("calls saveLoopEngineState after phase advancement", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      // Act
+      const handlersList = handlers.get("agent_end");
+      for (const handler of handlersList!) {
+        await handler(
+          {
+            type: "agent_end",
+            messages: [{ role: "assistant", stopReason: "stop" }],
+          },
+          {} as any,
+        );
+      }
+
+      // Assert: save called with advanced phase
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(1);
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledWith(
+        "test-session-id",
+        expect.objectContaining({ currentPhase: 2, currentIteration: 1 }),
+      );
+
+      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Persist on mutation — input handler
+  // -----------------------------------------------------------------------
+
+  describe("persist on mutation — input handler", () => {
+    it("calls saveLoopEngineState after setting isAdHocInput", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        isAdHocInput: false,
+        currentPhase: 1,
+        currentIteration: 1,
+      });
+
+      // Act
+      const handlersList = handlers.get("input");
+      for (const handler of handlersList!) {
+        await handler({ source: "interactive" });
+      }
+
+      // Assert: save called with isAdHocInput: true
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(1);
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledWith(
+        "test-session-id",
+        expect.objectContaining({ isAdHocInput: true }),
+      );
+
+      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Persist on mutation — /return command
+  // -----------------------------------------------------------------------
+
+  describe("persist on mutation — /return command", () => {
+    it("calls saveLoopEngineState after /return clears ad-hoc mode", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 2,
+        totalPhases: 2,
+        phasesList: [
+          { id: "s1", title: "S1", instructions: "Do A" },
+          { id: "s2", title: "S2", instructions: "Do B" },
+        ],
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: true,
+      });
+
+      // Act
+      const cmd = registeredCommands.get("return");
+      expect(cmd).toBeDefined();
+      await cmd!.handler("", {} as any);
+
+      // Assert: save called with isAdHocInput: false, currentIteration: 1
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(1);
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledWith(
+        "test-session-id",
+        expect.objectContaining({
+          isAdHocInput: false,
+          currentIteration: 1,
+        }),
+      );
+
+      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // session_shutdown handler
+  // -----------------------------------------------------------------------
+
+  describe("session_shutdown handler", () => {
+    it("calls saveLoopEngineState on 'reload' reason", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 2,
+        currentIteration: 3,
+        isAdHocInput: false,
+      });
+
+      // Act
+      const shutdownHandlers = handlers.get("session_shutdown");
+      expect(shutdownHandlers).toBeDefined();
+      for (const handler of shutdownHandlers!) {
+        await handler({ reason: "reload" }, {} as any);
+      }
+
+      // Assert
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(1);
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledWith(
+        "test-session-id",
+        expect.objectContaining({
+          currentPhase: 2,
+          currentIteration: 3,
+          isAdHocInput: false,
+        }),
+      );
+
+      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+    });
+
+    it("calls saveLoopEngineState on 'quit' reason", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        isAdHocInput: false,
+      });
+
+      // Act
+      const shutdownHandlers = handlers.get("session_shutdown");
+      for (const handler of shutdownHandlers!) {
+        await handler({ reason: "quit" }, {} as any);
+      }
+
+      // Assert
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(1);
+
+      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+    });
+
+    it("does NOT call saveLoopEngineState on 'new' reason", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        isAdHocInput: false,
+      });
+
+      // Act
+      const shutdownHandlers = handlers.get("session_shutdown");
+      for (const handler of shutdownHandlers!) {
+        await handler({ reason: "new" }, {} as any);
+      }
+
+      // Assert
+      expect(statePersistence.saveLoopEngineState).not.toHaveBeenCalled();
+    });
+
+    it("does NOT call saveLoopEngineState on 'resume' reason", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        isAdHocInput: false,
+      });
+
+      // Act
+      const shutdownHandlers = handlers.get("session_shutdown");
+      for (const handler of shutdownHandlers!) {
+        await handler({ reason: "resume" }, {} as any);
+      }
+
+      // Assert
+      expect(statePersistence.saveLoopEngineState).not.toHaveBeenCalled();
+    });
+
+    it("does NOT call saveLoopEngineState on 'fork' reason", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        isAdHocInput: false,
+      });
+
+      // Act
+      const shutdownHandlers = handlers.get("session_shutdown");
+      for (const handler of shutdownHandlers!) {
+        await handler({ reason: "fork" }, {} as any);
+      }
+
+      // Assert
+      expect(statePersistence.saveLoopEngineState).not.toHaveBeenCalled();
+    });
+
+    it("does nothing when isActive is false", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({ isActive: false, sessionId: "test-session-id" });
+
+      // Act
+      const shutdownHandlers = handlers.get("session_shutdown");
+      for (const handler of shutdownHandlers!) {
+        await handler({ reason: "reload" }, {} as any);
+      }
+
+      // Assert
+      expect(statePersistence.saveLoopEngineState).not.toHaveBeenCalled();
+    });
+
+    it("does nothing when sessionId is undefined", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({ isActive: true, sessionId: undefined });
+
+      // Act
+      const shutdownHandlers = handlers.get("session_shutdown");
+      for (const handler of shutdownHandlers!) {
+        await handler({ reason: "reload" }, {} as any);
+      }
+
+      // Assert
+      expect(statePersistence.saveLoopEngineState).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Guard: save skipped when sessionId is undefined
+  // -----------------------------------------------------------------------
+
+  describe("guard — sessionId undefined", () => {
+    it("input handler does not save when sessionId is undefined", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({
+        isActive: true,
+        sessionId: undefined,
+        isAdHocInput: false,
+      });
+
+      // Act
+      const handlersList = handlers.get("input");
+      for (const handler of handlersList!) {
+        await handler({ source: "interactive" });
+      }
+
+      // Assert: state updated but save not called
+      expect(getState().isAdHocInput).toBe(true);
+      expect(statePersistence.saveLoopEngineState).not.toHaveBeenCalled();
+    });
   });
 });

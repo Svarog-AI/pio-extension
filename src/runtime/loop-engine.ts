@@ -121,12 +121,13 @@ export function __testSetActiveSession(value?: boolean): void {
 /**
  * Main registration function — installs event handlers on the pi Extension API.
  *
- * Registers exactly five handlers:
+ * Registers exactly six handlers:
  * - `resources_discover`: detect pio sessions, load workflow phases
  * - `input`: detect ad-hoc interruption via InputEvent.source
  * - `before_agent_start`: iteration setup and ad-hoc mode detection
  * - `tool_call`: track file writes and ask_user calls
  * - `agent_end`: termination evaluation and follow-up injection
+ * - `session_shutdown`: flush persisted state on reload/quit
  */
 export function setupLoopEngine(pi: ExtensionAPI) {
   // 1. Detect pio sub-sessions and initialize loop engine state

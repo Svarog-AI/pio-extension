@@ -38,6 +38,13 @@ export class SessionVariableStore {
   }
 
   set(name: string, type: string, value: unknown): void {
+    // Read-only protection — params cannot be modified via set()
+    if (name in this._params) {
+      throw new Error(
+        `Cannot set variable '${name}': it is a read-only session parameter`,
+      );
+    }
+
     // Type enforcement — check against pre-declared type
     if (this._declarations.has(name)) {
       const declaredType = this._declarations.get(name);

@@ -29,12 +29,11 @@ describe("SessionVariableStore", () => {
       expect(s.get("key")).toBe("val");
     });
 
-    it("params are never modified by set() — read-only layer stays intact", () => {
+    it("set on a param name throws with error indicating param name", () => {
       const s = new SessionVariableStore({ key: "val" });
-      s.set("key", "string", "other");
-      // Writable shadows param in get(), but the param layer itself is untouched
-      expect(s.get("key")).toBe("other"); // writable takes precedence
-      expect(s.getAll()).toEqual({ key: "other" }); // shadowed
+      expect(() => s.set("key", "string", "other")).toThrow(
+        "Cannot set variable 'key': it is a read-only session parameter",
+      );
     });
   });
 
@@ -108,12 +107,11 @@ describe("SessionVariableStore", () => {
       expect(store.get("foo")).toBe(42);
     });
 
-    it("set on a param name shadows the param (read-only layer stays intact)", () => {
+    it("set on a param name throws with error indicating param name", () => {
       const s = new SessionVariableStore({ readOnlyKey: "val" });
-      s.set("readOnlyKey", "string", "other");
-      // Writable shadows param — get returns writable value
-      expect(s.get("readOnlyKey")).toBe("other");
-      expect(s.isDefined("readOnlyKey")).toBe(true);
+      expect(() => s.set("readOnlyKey", "string", "other")).toThrow(
+        "Cannot set variable 'readOnlyKey': it is a read-only session parameter",
+      );
     });
   });
 
@@ -130,12 +128,12 @@ describe("SessionVariableStore", () => {
       expect(store.get("greeting")).toBe("Hello, World!");
     });
 
-    it("interpolation resolves from writable layer first (shadows params)", () => {
-      const s = new SessionVariableStore({ x: "B" });
+    it("interpolation resolves from writable layer (writable takes precedence over params)", () => {
+      const s = new SessionVariableStore({ p: "B" });
       s.set("x", "string", "A");
       // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test of interpolation
-      s.set("msg", "string", "${x}");
-      expect(s.get("msg")).toBe("A");
+      s.set("msg", "string", "${x} and ${p}");
+      expect(s.get("msg")).toBe("A and B");
     });
 
     it("unresolved placeholders pass through unchanged", () => {
@@ -181,10 +179,10 @@ describe("SessionVariableStore", () => {
   // -----------------------------------------------------------------------
 
   describe("getAll()", () => {
-    it("returns merged snapshot with writable values shadowing params", () => {
-      const s = new SessionVariableStore({ x: "param" });
-      s.set("x", "string", "writable");
-      expect(s.getAll()).toEqual({ x: "writable" });
+    it("returns merged snapshot with writable values and params", () => {
+      const s = new SessionVariableStore({ p: "param" });
+      s.set("w", "string", "writable");
+      expect(s.getAll()).toEqual({ p: "param", w: "writable" });
     });
 
     it("does not include declared-but-unset vars in result", () => {
@@ -265,10 +263,10 @@ describe("SessionVariableStore", () => {
     });
 
     it("writable layer takes precedence over params in interpolation", () => {
-      const s = new SessionVariableStore({ x: "param" });
+      const s = new SessionVariableStore({ p: "param" });
       s.set("x", "string", "writable");
       // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test of interpolation
-      expect(s.interpolate("${x}")).toBe("writable");
+      expect(s.interpolate("${x} and ${p}")).toBe("writable and param");
     });
   });
 

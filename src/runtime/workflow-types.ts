@@ -50,6 +50,41 @@ export interface TerminationCondition {
   callback(state: PioSessionState): boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Session variable types
+// ---------------------------------------------------------------------------
+
+/**
+ * How a phase variable's value is produced.
+ *
+ * - `'static'` — value is hardcoded in the phase config (no LLM involvement)
+ * - `'llm'` — value is set by the agent via `setVar()` during a variable-defining phase
+ * - `'computed'` — value is calculated by a callback function at `agent_end`
+ */
+export type PhaseVariableKind = "static" | "llm" | "computed";
+
+/**
+ * Declaration of a single session variable scoped to a workflow phase.
+ *
+ * Each entry specifies the variable's name, authoritative type, and how its
+ * value is produced (`kind`). The loop engine uses this to pre-declare
+ * variables, enforce types on `setVar()`, and manage the variable lifecycle.
+ */
+export interface PhaseVariable {
+  /** Unique identifier within the phase's `variables` array (e.g. `"iteration_count"`) */
+  name: string;
+  /** Authoritative declared type as a string (e.g. `"number"`, `"string"`, `"boolean"`). Used by the loop engine to pre-declare variables so `setVar()` validates against it. */
+  type: string;
+  /** Controls how the value is produced — static (hardcoded), llm (agent sets via setVar), or computed (callback at agent_end) */
+  kind: PhaseVariableKind;
+  /** Optional hardcoded value — used when `kind` is `'static'`. Set before `buildPhaseInstructions()`. */
+  value?: unknown;
+  /** Optional natural language prompt — used when `kind` is `'llm'`. Describes what the agent should determine and set via `setVar()`. */
+  prompt?: string;
+  /** Optional callback — used when `kind` is `'computed'`. Receives current state and returns a value. Executed at `agent_end` in declaration order. */
+  compute?: (state: PioSessionState) => unknown;
+}
+
 /**
  * Structured workflow phase that replaces freeform numbered steps in markdown prompts.
  *
@@ -93,6 +128,12 @@ export interface WorkflowPhase {
 
   /** Contract output names this phase is allowed to write (resolved during resources_discover). When absent or empty, all contract output writes are blocked (restricted-by-default). Non-contract files always pass through. */
   write?: string[];
+
+  /** Phase execution kind — `'standard'` for normal phases, `'variable-definition'` for phases that declare and collect session variables. Defaults to `'standard'`. */
+  kind?: "standard" | "variable-definition";
+
+  /** Variables declared by this phase — meaningful only when `kind` is `'variable-definition'`. Each entry specifies name, type, and how the value is produced (`static`/`llm`/`computed`). */
+  variables?: PhaseVariable[];
 }
 
 // ---------------------------------------------------------------------------

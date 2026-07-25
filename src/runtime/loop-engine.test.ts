@@ -275,7 +275,7 @@ describe("setupLoopEngine — handler registration", () => {
     expect(handlers.has("session_shutdown")).toBe(true);
   });
 
-  it("registers /return command via pi.registerCommand", async () => {
+  it("registers /continue command via pi.registerCommand", async () => {
     // Arrange
     const { pi, registeredCommands } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
@@ -284,25 +284,25 @@ describe("setupLoopEngine — handler registration", () => {
     setupLoopEngine(pi);
 
     // Assert
-    expect(registeredCommands.has("return")).toBe(true);
-    const cmd = registeredCommands.get("return");
+    expect(registeredCommands.has("continue")).toBe(true);
+    const cmd = registeredCommands.get("continue");
     expect(cmd).toBeDefined();
-    expect(cmd!.description?.toLowerCase()).toContain("resume");
+    expect(cmd!.description?.toLowerCase()).toContain("continue");
   });
 });
 
 // ---------------------------------------------------------------------------
-// /return command — ad-hoc resumption
+// /continue command — ad-hoc resumption
 // ---------------------------------------------------------------------------
 
-describe("/return command", () => {
-  async function fireReturnCommand(
+describe("/continue command", () => {
+  async function fireContinueCommand(
     registeredCommands: Map<
       string,
       { description?: string; handler: (...args: unknown[]) => unknown }
     >,
   ) {
-    const cmd = registeredCommands.get("return");
+    const cmd = registeredCommands.get("continue");
     expect(cmd).toBeDefined();
     await cmd!.handler("", {} as any);
   }
@@ -317,7 +317,7 @@ describe("/return command", () => {
 
       setState({ isActive: false, currentPhase: 1 });
 
-      await fireReturnCommand(registeredCommands);
+      await fireContinueCommand(registeredCommands);
 
       expect(sendUserMessageCalls).toHaveLength(0);
       expect(getState().currentIteration).toBe(0); // unchanged
@@ -339,7 +339,7 @@ describe("/return command", () => {
         isAdHocInput: false,
       });
 
-      await fireReturnCommand(registeredCommands);
+      await fireContinueCommand(registeredCommands);
 
       // Should execute (not blocked by dead guard), send empty follow-up
       expect(sendUserMessageCalls).toHaveLength(1);
@@ -350,14 +350,14 @@ describe("/return command", () => {
   // ---- Resumption behavior ----
 
   describe("resumption", () => {
-    it("resets iteration counter to 1 and clears tracking fields", async () => {
+    it("preserves iteration counter and clears tracking fields", async () => {
       const { pi, registeredCommands } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
       setState({
         isActive: true,
-        currentPhase: 1,
+        currentPhase: 2,
         currentIteration: 3,
         totalPhases: 2,
         phasesList: [
@@ -369,16 +369,17 @@ describe("/return command", () => {
         isAdHocInput: true,
       });
 
-      await fireReturnCommand(registeredCommands);
+      await fireContinueCommand(registeredCommands);
 
       const state = getState();
-      expect(state.currentIteration).toBe(1);
+      expect(state.currentIteration).toBe(3); // preserved
+      expect(state.currentPhase).toBe(2); // preserved
       expect(state.filesWritten).toEqual([]);
       expect(state.askUserCalled).toBe(false);
       expect(state.isAdHocInput).toBe(false);
     });
 
-    it("sends empty follow-up trigger (default returnTo)", async () => {
+    it("sends empty follow-up trigger", async () => {
       const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
@@ -397,7 +398,7 @@ describe("/return command", () => {
         isAdHocInput: false,
       });
 
-      await fireReturnCommand(registeredCommands);
+      await fireContinueCommand(registeredCommands);
 
       expect(sendUserMessageCalls).toHaveLength(1);
       expect(sendUserMessageCalls[0].content).toBe("");
@@ -406,35 +407,7 @@ describe("/return command", () => {
       });
     });
 
-    it("uses returnTo when defined on current WorkflowPhase", async () => {
-      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
-      const { setupLoopEngine } = await import("./loop-engine");
-      setupLoopEngine(pi);
-
-      // Phase 2 has returnTo: 1, so /return should jump back to phase 1
-      setState({
-        isActive: true,
-        currentPhase: 2,
-        currentIteration: 1,
-        totalPhases: 2,
-        phasesList: [
-          { id: "s1", title: "S1", instructions: "Do A" },
-          { id: "s2", title: "S2", instructions: "Do B", returnTo: 1 },
-        ],
-        filesWritten: [],
-        askUserCalled: false,
-        isAdHocInput: false,
-      });
-
-      await fireReturnCommand(registeredCommands);
-
-      // Should have jumped to phase 1
-      expect(getState().currentPhase).toBe(1);
-      expect(sendUserMessageCalls).toHaveLength(1);
-      expect(sendUserMessageCalls[0].content).toBe("");
-    });
-
-    it("defaults to current phase when returnTo is omitted", async () => {
+    it("stays on current phase (no returnTo logic)", async () => {
       const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
@@ -453,7 +426,7 @@ describe("/return command", () => {
         isAdHocInput: false,
       });
 
-      await fireReturnCommand(registeredCommands);
+      await fireContinueCommand(registeredCommands);
 
       // Should stay on phase 2
       expect(getState().currentPhase).toBe(2);
@@ -482,36 +455,9 @@ describe("/return command", () => {
       });
 
       // Should not throw
-      await fireReturnCommand(registeredCommands);
+      await fireContinueCommand(registeredCommands);
 
       // No follow-up sent (no phase found)
-      expect(sendUserMessageCalls).toHaveLength(0);
-    });
-
-    it("does not crash when target phase is out of bounds", async () => {
-      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
-      const { setupLoopEngine } = await import("./loop-engine");
-      setupLoopEngine(pi);
-
-      // Phase 1 has returnTo: 5, but there are only 2 phases
-      setState({
-        isActive: true,
-        currentPhase: 1,
-        currentIteration: 1,
-        totalPhases: 2,
-        phasesList: [
-          { id: "s1", title: "S1", instructions: "Do A", returnTo: 5 },
-          { id: "s2", title: "S2", instructions: "Do B" },
-        ],
-        filesWritten: [],
-        askUserCalled: false,
-        isAdHocInput: false,
-      });
-
-      // Should not throw
-      await fireReturnCommand(registeredCommands);
-
-      // No follow-up sent (target phase out of bounds)
       expect(sendUserMessageCalls).toHaveLength(0);
     });
   });
@@ -3814,11 +3760,11 @@ describe("persistence integration", () => {
   });
 
   // -----------------------------------------------------------------------
-  // Persist on mutation — /return command
+  // Persist on mutation — /continue command
   // -----------------------------------------------------------------------
 
-  describe("persist on mutation — /return command", () => {
-    it("calls saveLoopEngineState after /return clears ad-hoc mode", async () => {
+  describe("persist on mutation — /continue command", () => {
+    it("calls saveLoopEngineState after /continue clears ad-hoc mode", async () => {
       const { pi, registeredCommands } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
@@ -3826,7 +3772,7 @@ describe("persistence integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
+        currentPhase: 2,
         currentIteration: 2,
         totalPhases: 2,
         phasesList: [
@@ -3839,57 +3785,18 @@ describe("persistence integration", () => {
       });
 
       // Act
-      const cmd = registeredCommands.get("return");
+      const cmd = registeredCommands.get("continue");
       expect(cmd).toBeDefined();
       await cmd!.handler("", {} as any);
 
-      // Assert: save called with isAdHocInput: false, currentIteration: 1
+      // Assert: save called with isAdHocInput: false, preserved phase/iteration
       expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(1);
       expect(statePersistence.saveLoopEngineState).toHaveBeenCalledWith(
         "test-session-id",
         expect.objectContaining({
           isAdHocInput: false,
-          currentIteration: 1,
-        }),
-      );
-
-      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
-    });
-
-    it("persists phase change when returnTo is defined (returnTo bug fix)", async () => {
-      const { pi, registeredCommands } = createMockPi();
-      const { setupLoopEngine } = await import("./loop-engine");
-      setupLoopEngine(pi);
-
-      // Phase 2 has returnTo: 1, so /return should jump back to phase 1
-      setState({
-        isActive: true,
-        sessionId: "test-session-id",
-        currentPhase: 2,
-        currentIteration: 1,
-        totalPhases: 2,
-        phasesList: [
-          { id: "s1", title: "S1", instructions: "Do A" },
-          { id: "s2", title: "S2", instructions: "Do B", returnTo: 1 },
-        ],
-        filesWritten: [],
-        askUserCalled: false,
-        isAdHocInput: true,
-      });
-
-      // Act
-      const cmd = registeredCommands.get("return");
-      expect(cmd).toBeDefined();
-      await cmd!.handler("", {} as any);
-
-      // Assert: save called AFTER phase change, so persisted state includes currentPhase: 1
-      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(1);
-      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledWith(
-        "test-session-id",
-        expect.objectContaining({
-          currentPhase: 1,
-          isAdHocInput: false,
-          currentIteration: 1,
+          currentPhase: 2, // preserved
+          currentIteration: 2, // preserved
         }),
       );
 

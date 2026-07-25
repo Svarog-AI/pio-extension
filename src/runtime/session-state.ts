@@ -52,7 +52,7 @@ export interface PioSessionState {
 
   /**
    * Set by the `input` handler when an interactive user message arrives.
-   * Persists until cleared by the `/return` command.
+   * Cleared by the `/continue` command.
    */
   isAdHocInput: boolean;
 

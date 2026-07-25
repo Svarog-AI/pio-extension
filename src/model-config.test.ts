@@ -3,6 +3,20 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Mock node:fs to allow mkdirSync to be overridden in specific tests.
+// The mock re-exports everything from the real module except mkdirSync,
+// which defaults to the real implementation but can be overridden per-test.
+vi.mock("node:fs", async (importActual) => {
+  const actualFs = (await importActual()) as typeof fs;
+  return {
+    ...actualFs,
+    mkdirSync: actualFs.mkdirSync,
+  };
+});
+
+// Hold a reference to the real mkdirSync for restore.
+const _realMkdirSync = fs.mkdirSync;
+
 // ---------------------------------------------------------------------------
 // Shared helpers — use env var to control config path (no native module spying)
 // ---------------------------------------------------------------------------
@@ -844,5 +858,189 @@ describe("readTurnThreshold — fallback to default", () => {
 
     const mod = await import("./model-config");
     expect(mod.readTurnThreshold()).toBe(mod.DEFAULT_TURN_THRESHOLD);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DEFAULT_PIO_WORKSPACE_DIR
+// ---------------------------------------------------------------------------
+
+describe("DEFAULT_PIO_WORKSPACE_DIR", () => {
+  it("is exported as a string constant", async () => {
+    vi.resetModules();
+    const mod = await import("./model-config");
+    expect(typeof mod.DEFAULT_PIO_WORKSPACE_DIR).toBe("string");
+    expect(mod.DEFAULT_PIO_WORKSPACE_DIR).toBe(".pi/pio");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readConfig — workspace block parsing
+// ---------------------------------------------------------------------------
+
+describe("readConfig — workspace block parsing", () => {
+  let tempDir: string;
+  const origEnv = process.env.PIO_CONFIG_TEST_HOME;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    process.env.PIO_CONFIG_TEST_HOME = tempDir;
+  });
+
+  afterEach(() => {
+    process.env.PIO_CONFIG_TEST_HOME = origEnv;
+    cleanup(tempDir);
+  });
+
+  it("parses workspace.dir when present", async () => {
+    writeConfig(tempDir, ["workspace:", "  dir: /custom/path"].join("\n"));
+    const mod = await import("./model-config");
+    expect(mod.readConfig()?.workspace?.dir).toBe("/custom/path");
+  });
+
+  it("loads config with ONLY workspace block (no other keys)", async () => {
+    writeConfig(tempDir, ["workspace:", "  dir: /only-workspace"].join("\n"));
+    const mod = await import("./model-config");
+    const result = mod.readConfig();
+    expect(result).toBeDefined();
+    expect(result?.workspace?.dir).toBe("/only-workspace");
+  });
+
+  it("ignores non-string workspace.dir (number)", async () => {
+    writeConfig(tempDir, ["workspace:", "  dir: 42"].join("\n"));
+    const mod = await import("./model-config");
+    const result = mod.readConfig();
+    expect(result?.workspace).toBeUndefined();
+  });
+
+  it("ignores non-string workspace.dir (null)", async () => {
+    writeConfig(tempDir, ["workspace:", "  dir: null"].join("\n"));
+    const mod = await import("./model-config");
+    const result = mod.readConfig();
+    expect(result?.workspace).toBeUndefined();
+  });
+
+  it("ignores non-string workspace.dir (array)", async () => {
+    writeConfig(tempDir, ["workspace:", "  dir:", "    - item"].join("\n"));
+    const mod = await import("./model-config");
+    const result = mod.readConfig();
+    expect(result?.workspace).toBeUndefined();
+  });
+
+  it("ignores empty string workspace.dir", async () => {
+    writeConfig(tempDir, ["workspace:", '  dir: ""'].join("\n"));
+    const mod = await import("./model-config");
+    const result = mod.readConfig();
+    expect(result?.workspace).toBeUndefined();
+  });
+
+  it("parses workspace alongside other config keys", async () => {
+    writeConfig(
+      tempDir,
+      [
+        "default:",
+        "  provider: j6000",
+        "  modelId: general",
+        "workspace:",
+        "  dir: /shared/path",
+      ].join("\n"),
+    );
+    const mod = await import("./model-config");
+    const result = mod.readConfig();
+    expect(result?.default).toEqual({ provider: "j6000", modelId: "general" });
+    expect(result?.workspace?.dir).toBe("/shared/path");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readPioWorkspaceDir — defaults
+// ---------------------------------------------------------------------------
+
+describe("readPioWorkspaceDir — defaults", () => {
+  let tempDir: string;
+  const origEnv = process.env.PIO_CONFIG_TEST_HOME;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    process.env.PIO_CONFIG_TEST_HOME = tempDir;
+  });
+
+  afterEach(() => {
+    process.env.PIO_CONFIG_TEST_HOME = origEnv;
+    cleanup(tempDir);
+  });
+
+  it("returns <home>/.pi/pio when no config exists", async () => {
+    const mod = await import("./model-config");
+    expect(mod.readPioWorkspaceDir()).toBe(path.join(tempDir, ".pi", "pio"));
+  });
+
+  it("returns <home>/.pi/pio when config has no workspace block", async () => {
+    writeConfig(tempDir, "default:\n  provider: j6000\n  modelId: general");
+    const mod = await import("./model-config");
+    expect(mod.readPioWorkspaceDir()).toBe(path.join(tempDir, ".pi", "pio"));
+  });
+
+  it("returns configured path when workspace.dir is set", async () => {
+    writeConfig(tempDir, ["workspace:", "  dir: /custom/workspace"].join("\n"));
+    const mod = await import("./model-config");
+    expect(mod.readPioWorkspaceDir()).toBe("/custom/workspace");
+  });
+
+  it("respects PIO_CONFIG_TEST_HOME env var", async () => {
+    const mod = await import("./model-config");
+    const dir = mod.readPioWorkspaceDir();
+    expect(dir).toContain(tempDir);
+    expect(dir).toBe(path.join(tempDir, ".pi", "pio"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readPioWorkspaceDir — directory creation
+// ---------------------------------------------------------------------------
+
+describe("readPioWorkspaceDir — directory creation", () => {
+  let tempDir: string;
+  const origEnv = process.env.PIO_CONFIG_TEST_HOME;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    process.env.PIO_CONFIG_TEST_HOME = tempDir;
+  });
+
+  afterEach(() => {
+    process.env.PIO_CONFIG_TEST_HOME = origEnv;
+    cleanup(tempDir);
+  });
+
+  it("creates workspace dir and state/ subdirectory on first call", async () => {
+    const mod = await import("./model-config");
+    const workspaceDir = mod.readPioWorkspaceDir();
+
+    expect(fs.existsSync(workspaceDir)).toBe(true);
+    expect(fs.existsSync(path.join(workspaceDir, "state"))).toBe(true);
+  });
+
+  it("is idempotent — second call does not throw", async () => {
+    const mod = await import("./model-config");
+    mod.readPioWorkspaceDir();
+    expect(() => mod.readPioWorkspaceDir()).not.toThrow();
+  });
+
+  it("does not throw on directory creation failure", async () => {
+    // Override mkdirSync to throw — simulates permission denied
+    (fs.mkdirSync as any) = () => {
+      throw new Error("permission denied");
+    };
+
+    vi.resetModules();
+    const mod = await import("./model-config");
+    expect(() => mod.readPioWorkspaceDir()).not.toThrow();
+
+    // Restore real mkdirSync for subsequent tests
+    (fs.mkdirSync as any) = _realMkdirSync;
   });
 });

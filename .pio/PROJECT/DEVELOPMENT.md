@@ -66,3 +66,5 @@ No release cycle, versioning tags, or packaging pipeline exists. The extension i
     - `turnThreshold` (`number`, default: 15) — number of turns before the session guard sends a refinement-loop nudge. Must be a positive integer; invalid values fall back to the default.
   - **Loop config (optional):** The `loop` block in `~/.pi/pio-config.yaml` configures the runtime loop engine:
     - `maxIterations` (`number`, default: 15) — global safety cap on iterations per step. Per-step `maxIterations` overrides this value. Resolution order: per-step > global config > built-in default (15).
+  - **Workspace config (optional):** The `workspace` block in `~/.pi/pio-config.yaml` controls the pio runtime workspace directory:
+    - `dir` (`string`, default: `~/.pi/pio`) — custom path for the pio workspace. Stores per-session loop engine state files at `<dir>/state/<sessionId>.json`.

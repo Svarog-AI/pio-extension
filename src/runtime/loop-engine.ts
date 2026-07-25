@@ -10,9 +10,9 @@
  * there are no module-level variables. Access everything through
  * `getState()` / `setState()` from session-state.
  *
- * The engine registers five event handlers: `resources_discover`, `input`,
- * `before_agent_start`, `tool_call`, and `agent_end`.
- * Additionally, it registers the `/return` command for ad-hoc resumption.
+ * The engine registers six event handlers: `resources_discover`, `input`,
+ * `before_agent_start`, `tool_call`, `agent_end`, and `session_shutdown`.
+ * Additionally, it registers the `/continue` command for ad-hoc resumption.
  */
 
 import * as path from "node:path";
@@ -23,6 +23,11 @@ import { getSessionConfig } from "../capability-utils";
 import { readDebugDisplay, resolveMaxIterations } from "../model-config";
 import type { PioSessionState } from "./session-state";
 import { getState, resetState, setState } from "./session-state";
+import {
+  extractPersistedState,
+  loadLoopEngineState,
+  saveLoopEngineState,
+} from "./state-persistence";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -116,12 +121,13 @@ export function __testSetActiveSession(value?: boolean): void {
 /**
  * Main registration function — installs event handlers on the pi Extension API.
  *
- * Registers exactly five handlers:
+ * Registers exactly six handlers:
  * - `resources_discover`: detect pio sessions, load workflow phases
  * - `input`: detect ad-hoc interruption via InputEvent.source
  * - `before_agent_start`: iteration setup and ad-hoc mode detection
  * - `tool_call`: track file writes and ask_user calls
  * - `agent_end`: termination evaluation and follow-up injection
+ * - `session_shutdown`: flush persisted state on reload/quit
  */
 export function setupLoopEngine(pi: ExtensionAPI) {
   // 1. Detect pio sub-sessions and initialize loop engine state
@@ -181,16 +187,23 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       });
     }
 
+    // Capture session ID for persistence
+    const sessionId = ctx.sessionManager.getSessionId();
+
+    // Attempt to restore state from disk
+    const saved = loadLoopEngineState(sessionId);
+
     // Initialize PioSessionState (single source of truth)
     setState({
       isActive: true,
+      sessionId: sessionId,
       phasesList: phasesList,
       totalPhases: totalPhases,
-      currentPhase: 1,
-      currentIteration: 1, // First run starts at iteration 1
+      currentPhase: saved?.currentPhase ?? 1,
+      currentIteration: saved?.currentIteration ?? 1,
       filesWritten: [],
       askUserCalled: false,
-      isAdHocInput: false,
+      isAdHocInput: saved?.isAdHocInput ?? false,
       phaseWriteAllowlist: phaseWriteAllowlist,
     });
   });
@@ -200,6 +213,11 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // Check if this is an interactive user message
     if (event.source === "interactive" && getState().isActive) {
       setState({ isAdHocInput: true });
+      // Persist ad-hoc mode flag
+      const state = getState();
+      if (state.sessionId) {
+        saveLoopEngineState(state.sessionId, extractPersistedState(state));
+      }
     }
   });
 
@@ -416,6 +434,15 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         askUserCalled: false,
       });
 
+      // Persist incremented iteration
+      const updatedState = getState();
+      if (updatedState.sessionId) {
+        saveLoopEngineState(
+          updatedState.sessionId,
+          extractPersistedState(updatedState),
+        );
+      }
+
       // Send CustomMessage with updated state (correct iteration number)
       await pi.sendMessage(
         {
@@ -444,6 +471,15 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       askUserCalled: false,
     });
 
+    // Persist phase advancement
+    const advancedState = getState();
+    if (advancedState.sessionId) {
+      saveLoopEngineState(
+        advancedState.sessionId,
+        extractPersistedState(advancedState),
+      );
+    }
+
     // Send CustomMessage with instructions for the next phase
     const nextPhase = state.phasesList[nextPhaseNum - 1];
     if (nextPhase) {
@@ -458,35 +494,42 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     }
   });
 
-  // 6. /return command — resume loop engine after ad-hoc interruption
-  pi.registerCommand("return", {
-    description: "Resume loop engine after ad-hoc interruption",
+  // 6. Shutdown handler — flush state on reload/quit
+  pi.on("session_shutdown", async (event, _ctx) => {
+    const state = getState();
+    if (!state.isActive || !state.sessionId) return;
+    if (event.reason !== "reload" && event.reason !== "quit") return;
+    saveLoopEngineState(state.sessionId, extractPersistedState(state));
+  });
+
+  // 7. /continue command — resume loop engine from current phase/iteration
+  pi.registerCommand("continue", {
+    description: "Continue workflow from current phase and iteration",
     handler: async (_args, _ctx) => {
       const state = getState();
 
       // Guard: only execute when engine is active
       if (!state.isActive) return;
 
-      // Determine return target
-      const currentPhaseObj = state.phasesList[state.currentPhase - 1];
-      const targetPhaseNum = currentPhaseObj?.returnTo ?? state.currentPhase;
-
-      // State reset: clear iteration counter and tracking fields
+      // Clear per-iteration tracking and ad-hoc mode — preserve phase/iteration
       setState({
-        currentIteration: 1,
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
       });
 
-      // Advance to target phase if different from current
-      if (targetPhaseNum !== state.currentPhase) {
-        setState({ currentPhase: targetPhaseNum });
+      // Persist AFTER all state mutations
+      const updatedState = getState();
+      if (updatedState.sessionId) {
+        saveLoopEngineState(
+          updatedState.sessionId,
+          extractPersistedState(updatedState),
+        );
       }
 
-      // Queue follow-up to trigger target phase (content via CustomMessage injection)
-      const targetPhase = state.phasesList[targetPhaseNum - 1];
-      if (!targetPhase) return;
+      // Queue follow-up to trigger current phase (content via CustomMessage injection)
+      const currentPhaseObj = state.phasesList[state.currentPhase - 1];
+      if (!currentPhaseObj) return;
 
       pi.sendUserMessage("", { deliverAs: "followUp" });
     },

@@ -52,7 +52,7 @@ export interface PioSessionState {
 
   /**
    * Set by the `input` handler when an interactive user message arrives.
-   * Persists until cleared by the `/return` command.
+   * Cleared by the `/continue` command.
    */
   isAdHocInput: boolean;
 
@@ -65,6 +65,9 @@ export interface PioSessionState {
       allContractOutputs: Set<string>;
     }
   >;
+
+  /** Session ID captured during resources_discover. Used by persistence module to load/save state files. Optional for backward compat. */
+  sessionId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -86,6 +89,7 @@ function createInitialState(): PioSessionState {
     askUserCalled: false,
     isAdHocInput: false,
     phaseWriteAllowlist: new Map(),
+    sessionId: undefined,
   };
 }
 

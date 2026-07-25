@@ -88,7 +88,7 @@ export interface WorkflowPhase {
   /** Message sent as a follow-up when looping (replaying the current phase). Informs the LLM what to focus on for the retry. */
   loopMessage?: string;
 
-  /** Phase number to return to after ad-hoc mode resumption (/return command). Defaults to current phase when omitted. */
+  /** Phase number to return to after ad-hoc mode resumption. No longer used by /continue (which stays on current phase). Kept for backward compatibility and a future goto command. */
   returnTo?: number;
 
   /** Contract output names this phase is allowed to write (resolved during resources_discover). When absent or empty, all contract output writes are blocked (restricted-by-default). Non-contract files always pass through. */

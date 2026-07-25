@@ -132,8 +132,9 @@ Mandatory skills are force-injected (content read from disk, frontmatter strippe
 - **Turn-level tracking:** Dead-turn detection and refinement-loop nudge via `turn_end` handler.
 - **Steering messages:** Delivered via CustomMessage injection at `turn_end` using step-specific `loopMessage`. System prompt is process-aware only (how to work, not what to produce); all step content flows through CustomMessage — KV cache safe across agent runs.
 - **Follow-up messages:** Inter-iteration transitions delivered via `sendUserMessage(..., { deliverAs: "followUp" })` at `agent_end`. Skipped on user abort (`stopReason === "aborted"`), error, or mark-complete termination (detected via `markCompleteCalled` in shared session state).
-- **Ad-hoc mode:** User messages mid-execution pause the step for free conversation. `/return` command exits ad-hoc mode and resumes the workflow from a configurable step.
+- **Ad-hoc mode:** User messages mid-execution pause the step for free conversation. `/continue` command exits ad-hoc mode and resumes the workflow from the current phase/iteration (iteration preserved, unlike the former `/return` which reset iteration to 1).
 - **Write gate (restricted-by-default):** Each capability workflow declares `write: [output-names]` on output-producing steps. Steps without `write` cannot produce contract outputs (source code, tests, docs unaffected). The gate checks against resolved absolute paths during `tool_call` events.
+- **State persistence:** Loop engine state (`currentPhase`, `currentIteration`, `isAdHocInput`) is persisted to disk as JSON files keyed by session ID. Restore on `resources_discover`; save on `agent_end` (loop replay + phase advancement), `input` handler, `/continue` command, and `session_shutdown` (flush on reload/quit). Enabled via `src/runtime/state-persistence.ts`. Per-iteration tracking (`filesWritten`, `askUserCalled`) is intentionally NOT persisted — it resets safely each iteration.
 
 The `workflow-step-finish` tool was removed — advancement is automatic via the engine.
 10. **Abort detection in session guards:** Both `step-nudging.ts` (`turn_end`) and `session-guard.ts` (`turn_end` + `agent_end`) detect user aborts via `stopReason` on event messages instead of `ctx.signal?.aborted` (unreliable — `activeRun` is cleared before events fire). The `turn_end` handler in `session-guard.ts` returns early on abort to skip turn counting and recovery prompts; `agent_end` checks the last message's `stopReason` to suppress completion warnings.
@@ -161,9 +162,14 @@ All workflow state is stored in the `.pio/` directory tree:
 - **`.pio/session-queue/task-{key}.json`** — per-goal task queue slots (key is goal basename for flat goals, hierarchical `parent__S03__nested` for subgoals)
 - **`.pio/PROJECT/`** — 7-file project context (OVERVIEW.md, DEVELOPMENT.md, etc.)
 
+The global pio workspace at `~/.pi/pio/` (configurable via `~/.pi/pio-config.yaml` → `workspace.dir`) stores shared runtime state:
+- **`~/.pi/pio/state/<sessionId>.json`** — per-session loop engine state (`currentPhase`, `currentIteration`, `isAdHocInput`). One JSON file per active session, keyed by `ctx.sessionManager.getSessionId()`.
+
 ### External Model Configuration
 
-Optional `~/.pi/pio-config.yaml` allows per-capability model overrides. Resolution order: capability-specific → default → inherit parent model. Parsed at runtime by `model-config.ts`.
+Optional `~/.pi/pio-config.yaml` allows per-capability model overrides and workspace configuration. Resolution order for models: capability-specific → default → inherit parent model. Parsed at runtime by `model-config.ts`.
+
+- **`workspace.dir`** (optional, string) — Custom pio workspace directory path. Defaults to `~/.pi/pio`. Controls where per-session loop engine state files are stored (`state/<sessionId>.json`).
 
 ### Jira Integration (Skill-Only)
 

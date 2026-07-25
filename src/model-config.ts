@@ -26,12 +26,18 @@ export interface PioLoopConfig {
   debugDisplay?: boolean;
 }
 
+/** Workspace-related settings from ~/.pi/pio-config.yaml. */
+export interface PioWorkspaceConfig {
+  dir?: string;
+}
+
 /** Full config shape parsed from ~/.pi/pio-config.yaml. */
 export interface PioConfig {
   default?: PioModelEntry;
   capabilities?: Record<string, PioModelEntry>;
   guards?: PioGuardsConfig;
   loop?: PioLoopConfig;
+  workspace?: PioWorkspaceConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -43,6 +49,9 @@ export const DEFAULT_TURN_THRESHOLD = 15;
 
 /** Default max iterations for the loop engine when no config or per-step override is specified. */
 export const DEFAULT_MAX_ITERATIONS = 15;
+
+/** Default relative path segments for the pio workspace directory. Used as `path.join(getHomeDir(), ...DEFAULT_PIO_WORKSPACE_DIR.split("/"))`. */
+export const DEFAULT_PIO_WORKSPACE_DIR = ".pi/pio";
 
 // ---------------------------------------------------------------------------
 // Config path resolution
@@ -187,12 +196,26 @@ export function readConfig(): PioConfig | undefined {
       }
     }
 
+    // Parse workspace block
+    if (
+      obj.workspace != null &&
+      typeof obj.workspace === "object" &&
+      !Array.isArray(obj.workspace)
+    ) {
+      const workspaceObj = obj.workspace as Record<string, unknown>;
+      const dir = workspaceObj.dir;
+      if (typeof dir === "string" && dir.length > 0) {
+        config.workspace = { dir };
+      }
+    }
+
     // If no recognized entries were found, treat as no config
     if (
       !config.default &&
       !config.capabilities &&
       !config.guards &&
-      !config.loop
+      !config.loop &&
+      !config.workspace
     ) {
       _cachedConfig = undefined;
       return undefined;
@@ -306,4 +329,46 @@ export function resolveMaxIterations(perStepOverride?: number): number {
 
   // Priority 3: built-in default
   return DEFAULT_MAX_ITERATIONS;
+}
+
+// ---------------------------------------------------------------------------
+// Workspace directory
+// ---------------------------------------------------------------------------
+
+/**
+ * Reads the pio workspace directory from config, falling back to `~/.pi/pio`.
+ * Creates the workspace directory and `state/` subdirectory if they don't exist.
+ * Directory creation failures are logged as warnings — the path is returned regardless.
+ */
+export function readPioWorkspaceDir(): string {
+  const config = readConfig();
+  const configuredDir = config?.workspace?.dir;
+
+  let workspaceDir: string;
+  if (typeof configuredDir === "string" && configuredDir.length > 0) {
+    workspaceDir = configuredDir;
+  } else {
+    workspaceDir = path.join(
+      getHomeDir(),
+      ...DEFAULT_PIO_WORKSPACE_DIR.split("/"),
+    );
+  }
+
+  try {
+    fs.mkdirSync(workspaceDir, { recursive: true });
+  } catch (err) {
+    console.warn(
+      `pio: failed to create workspace directory ${workspaceDir}: ${err}`,
+    );
+  }
+
+  try {
+    fs.mkdirSync(path.join(workspaceDir, "state"), { recursive: true });
+  } catch (err) {
+    console.warn(
+      `pio: failed to create state directory ${path.join(workspaceDir, "state")}: ${err}`,
+    );
+  }
+
+  return workspaceDir;
 }

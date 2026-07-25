@@ -13,7 +13,18 @@ import { getState, resetState, setState } from "./session-state";
 vi.mock("./state-persistence", () => ({
   loadLoopEngineState: vi.fn().mockReturnValue(null),
   saveLoopEngineState: vi.fn(),
-  extractPersistedState: vi.fn((state: unknown) => state),
+  // Mirror real behavior: create a new object with only persisted fields
+  extractPersistedState: vi.fn(
+    (state: {
+      currentPhase: number;
+      currentIteration: number;
+      isAdHocInput: boolean;
+    }) => ({
+      currentPhase: state.currentPhase,
+      currentIteration: state.currentIteration,
+      isAdHocInput: state.isAdHocInput,
+    }),
+  ),
 }));
 
 import * as statePersistence from "./state-persistence";
@@ -3837,6 +3848,46 @@ describe("persistence integration", () => {
       expect(statePersistence.saveLoopEngineState).toHaveBeenCalledWith(
         "test-session-id",
         expect.objectContaining({
+          isAdHocInput: false,
+          currentIteration: 1,
+        }),
+      );
+
+      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+    });
+
+    it("persists phase change when returnTo is defined (returnTo bug fix)", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      // Phase 2 has returnTo: 1, so /return should jump back to phase 1
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 2,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: [
+          { id: "s1", title: "S1", instructions: "Do A" },
+          { id: "s2", title: "S2", instructions: "Do B", returnTo: 1 },
+        ],
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: true,
+      });
+
+      // Act
+      const cmd = registeredCommands.get("return");
+      expect(cmd).toBeDefined();
+      await cmd!.handler("", {} as any);
+
+      // Assert: save called AFTER phase change, so persisted state includes currentPhase: 1
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(1);
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledWith(
+        "test-session-id",
+        expect.objectContaining({
+          currentPhase: 1,
           isAdHocInput: false,
           currentIteration: 1,
         }),

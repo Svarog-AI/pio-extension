@@ -515,26 +515,22 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       const currentPhaseObj = state.phasesList[state.currentPhase - 1];
       const targetPhaseNum = currentPhaseObj?.returnTo ?? state.currentPhase;
 
-      // State reset: clear iteration counter and tracking fields
+      // Single state update: clear tracking fields, ad-hoc mode, and phase change
       setState({
+        currentPhase: targetPhaseNum,
         currentIteration: 1,
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
       });
 
-      // Persist cleared ad-hoc mode
+      // Persist AFTER all state mutations (including phase change from returnTo)
       const returnState = getState();
       if (returnState.sessionId) {
         saveLoopEngineState(
           returnState.sessionId,
           extractPersistedState(returnState),
         );
-      }
-
-      // Advance to target phase if different from current
-      if (targetPhaseNum !== state.currentPhase) {
-        setState({ currentPhase: targetPhaseNum });
       }
 
       // Queue follow-up to trigger target phase (content via CustomMessage injection)

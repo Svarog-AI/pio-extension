@@ -37,7 +37,8 @@ index.ts (async) ──┬── setupSkills()          → skills auto-discover
 
 Runtime package:
   runtime/loop-engine.ts      — Bounded iteration loop engine: resources_discover, before_agent_start, turn_end, agent_end, input handlers
-  runtime/session-state.ts    — PioSessionState singleton (markCompleteCalled, currentPhase, iteration tracking, shared by guard + engine)
+  runtime/state-persistence.ts — File-based persistence for loop engine state (load/save JSON by session ID, atomic writes)
+  runtime/session-state.ts    — PioSessionState singleton (markCompleteCalled, currentPhase, iteration tracking, sessionId, shared by guard + engine)
   runtime/session-guard.ts    — Turn recovery + dead-turn detection (migrated from guards/)
   runtime/workflow-types.ts   — StepState, TerminationCondition types + extended WorkflowPhase loop fields
 
@@ -57,7 +58,7 @@ Shared modules:
   state-machines.ts      — StateMachine<C>, TransitionEdge<C>, TransitionResult, ResolverResult types + dispatch/getOutgoingEdges/registerMachine/unregisterMachine/getMachine/getRegisteredMachines/recordTransition with optional actualParams (leaf module, no internal imports)
   state-machines/        — pio-workflow-machine.ts (goalDrivenDevelopment machine config, resolve functions using getCapState), utils.ts (setDiscoveredContracts/getCapState contract caching only)
   queues.ts              — enqueueTask, readPendingTask, writeLastTask
-  model-config.ts        — resolveModelForCapability(), readTurnThreshold(). Reads ~/.pi/pio-config.yaml
+  model-config.ts        — resolveModelForCapability(), readTurnThreshold(), readPioWorkspaceDir(). Reads ~/.pi/pio-config.yaml
 ```
 
 **Removed modules:** `src/frontmatter-schemas.ts` (schemas now in capability-local `schemas.ts`), `src/prompts/` directory (prompts are component files inside capability packages), `src/guards/step-nudging.ts` (replaced by `runtime/loop-engine.ts`). `src/guards/session-guard.ts` moved to `runtime/session-guard.ts`. Pio-specific skills (`pio`, `pio-planning`, `pio-project-knowledge`, `pio-jira`, `grill-me`, `write-a-skill`) moved from `src/skills/` to `src/skills.old/` (out of auto-discovery).

@@ -4240,12 +4240,120 @@ describe("session variable integration", () => {
   });
 
   // -----------------------------------------------------------------------
-  // buildVariableTemplate helper
+  // buildStandardPhaseInstructions helper
   // -----------------------------------------------------------------------
 
-  describe("buildVariableTemplate", () => {
+  describe("buildStandardPhaseInstructions", () => {
     it("returns phase.instructions for standard phases", async () => {
-      const { buildVariableTemplate } = await import("./loop-engine");
+      const { buildStandardPhaseInstructions } = await import("./loop-engine");
+
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "standard" as const,
+      };
+
+      setState({ currentIteration: 1 });
+      const result = buildStandardPhaseInstructions(getState(), phase);
+      expect(result).toBe("Do A");
+    });
+
+    it("interpolates placeholders when store is available", async () => {
+      const { buildStandardPhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const placeholderEnv = "$" + "{env}";
+      const store = new SessionVariableStore({ env: "prod" });
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: `Deploy to ${placeholderEnv}`,
+        kind: "standard" as const,
+      };
+
+      setState({ currentIteration: 1 });
+      const result = buildStandardPhaseInstructions(getState(), phase, store);
+      expect(result).toBe("Deploy to prod");
+    });
+
+    it("passes unresolved placeholders through when store is not available", async () => {
+      const { buildStandardPhaseInstructions } = await import("./loop-engine");
+
+      const placeholderEnv = "$" + "{env}";
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: `Deploy to ${placeholderEnv}`,
+        kind: "standard" as const,
+      };
+
+      setState({ currentIteration: 1 });
+      const result = buildStandardPhaseInstructions(getState(), phase);
+      expect(result).toContain(placeholderEnv);
+    });
+
+    it("appends Retry focus on loop replay (iteration > 1) with loopMessage", async () => {
+      const { buildStandardPhaseInstructions } = await import("./loop-engine");
+
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "standard" as const,
+        loopMessage: "Focus on edge cases",
+      };
+
+      setState({ currentIteration: 2 });
+      const result = buildStandardPhaseInstructions(getState(), phase);
+      expect(result).toContain("Do A");
+      expect(result).toContain("**Retry focus:** Focus on edge cases");
+    });
+
+    it("does NOT append Retry focus on first iteration", async () => {
+      const { buildStandardPhaseInstructions } = await import("./loop-engine");
+
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "standard" as const,
+        loopMessage: "Focus on edge cases",
+      };
+
+      setState({ currentIteration: 1 });
+      const result = buildStandardPhaseInstructions(getState(), phase);
+      expect(result).toBe("Do A");
+      expect(result).not.toContain("Retry focus");
+    });
+
+    it("interpolates loopMessage when store is available", async () => {
+      const { buildStandardPhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const placeholderTarget = "$" + "{target}";
+      const store = new SessionVariableStore({ target: "edge cases" });
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "standard" as const,
+        loopMessage: `Focus on ${placeholderTarget}`,
+      };
+
+      setState({ currentIteration: 2 });
+      const result = buildStandardPhaseInstructions(getState(), phase, store);
+      expect(result).toContain("**Retry focus:** Focus on edge cases");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // buildVariablePhaseInstructions helper
+  // -----------------------------------------------------------------------
+
+  describe("buildVariablePhaseInstructions", () => {
+    it("returns phase.instructions for standard phases", async () => {
+      const { buildVariablePhaseInstructions } = await import("./loop-engine");
       const { SessionVariableStore } = await import("./session-store");
 
       const store = new SessionVariableStore({});
@@ -4256,12 +4364,12 @@ describe("session variable integration", () => {
         kind: "standard" as const,
       };
 
-      const result = buildVariableTemplate(getState(), phase, store);
+      const result = buildVariablePhaseInstructions(getState(), phase, store);
       expect(result).toBe("Do A");
     });
 
     it("shows only LLM-driven vars (static and computed are engine-managed)", async () => {
-      const { buildVariableTemplate } = await import("./loop-engine");
+      const { buildVariablePhaseInstructions } = await import("./loop-engine");
       const { SessionVariableStore } = await import("./session-store");
 
       const store = new SessionVariableStore({});
@@ -4290,7 +4398,7 @@ describe("session variable integration", () => {
       };
 
       setState({ currentIteration: 1 });
-      const result = buildVariableTemplate(getState(), phase, store);
+      const result = buildVariablePhaseInstructions(getState(), phase, store);
 
       expect(result).toContain("This phase collects session variables");
       expect(result).toContain("### Variables");
@@ -4304,7 +4412,7 @@ describe("session variable integration", () => {
     });
 
     it("omits variable section when no LLM-driven vars present", async () => {
-      const { buildVariableTemplate } = await import("./loop-engine");
+      const { buildVariablePhaseInstructions } = await import("./loop-engine");
       const { SessionVariableStore } = await import("./session-store");
 
       const store = new SessionVariableStore({});
@@ -4326,7 +4434,7 @@ describe("session variable integration", () => {
       };
 
       setState({ currentIteration: 1 });
-      const result = buildVariableTemplate(getState(), phase, store);
+      const result = buildVariablePhaseInstructions(getState(), phase, store);
 
       // Only header is shown — no variable sections (static vars are engine-managed)
       expect(result).toContain("This phase collects session variables");
@@ -4337,7 +4445,7 @@ describe("session variable integration", () => {
     });
 
     it("lists undefined variables on loop replay (iteration > 1)", async () => {
-      const { buildVariableTemplate } = await import("./loop-engine");
+      const { buildVariablePhaseInstructions } = await import("./loop-engine");
       const { SessionVariableStore } = await import("./session-store");
 
       const store = new SessionVariableStore({});
@@ -4366,7 +4474,7 @@ describe("session variable integration", () => {
       };
 
       setState({ currentIteration: 2 });
-      const result = buildVariableTemplate(getState(), phase, store);
+      const result = buildVariablePhaseInstructions(getState(), phase, store);
 
       expect(result).toContain(
         "### Undefined Variables (from previous iteration)",
@@ -4376,7 +4484,7 @@ describe("session variable integration", () => {
     });
 
     it("does not list undefined variables on first iteration", async () => {
-      const { buildVariableTemplate } = await import("./loop-engine");
+      const { buildVariablePhaseInstructions } = await import("./loop-engine");
       const { SessionVariableStore } = await import("./session-store");
 
       const store = new SessionVariableStore({});
@@ -4396,7 +4504,7 @@ describe("session variable integration", () => {
       };
 
       setState({ currentIteration: 1 });
-      const result = buildVariableTemplate(getState(), phase, store);
+      const result = buildVariablePhaseInstructions(getState(), phase, store);
 
       expect(result).not.toContain("Undefined Variables");
     });
@@ -4508,7 +4616,7 @@ describe("session variable integration", () => {
           {
             id: "p1",
             title: "P1",
-            instructions: "Deploy to " + placeholderEnv,
+            instructions: `Deploy to ${placeholderEnv}`,
           },
         ],
         store,
@@ -4532,7 +4640,7 @@ describe("session variable integration", () => {
           {
             id: "p1",
             title: "P1",
-            instructions: "Deploy to " + placeholderEnv,
+            instructions: `Deploy to ${placeholderEnv}`,
           },
         ],
         store,
@@ -4556,7 +4664,7 @@ describe("session variable integration", () => {
             id: "p1",
             title: "P1",
             instructions: "Do A",
-            loopMessage: "Focus on " + placeholderTarget,
+            loopMessage: `Focus on ${placeholderTarget}`,
           },
         ],
         store,
@@ -4576,7 +4684,7 @@ describe("session variable integration", () => {
           {
             id: "p1",
             title: "P1",
-            instructions: "Deploy to " + placeholderEnv,
+            instructions: `Deploy to ${placeholderEnv}`,
           },
         ],
         store: undefined,

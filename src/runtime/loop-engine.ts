@@ -101,7 +101,41 @@ export function preparePhaseVariables(
 }
 
 /**
- * Build the custom message template for variable-defining phases.
+ * Build the instruction body for standard (non-variable-defining) phases.
+ *
+ * Returns interpolated phase.instructions, optionally appended with a
+ * Retry focus block when iteration > 1 and loopMessage is defined.
+ *
+ * @param state - Current session state (for iteration count)
+ * @param phase - Current WorkflowPhase (for instructions and loopMessage)
+ * @param store - Optional SessionVariableStore instance for interpolation
+ * @returns Markdown string with the instruction body
+ */
+export function buildStandardPhaseInstructions(
+  state: PioSessionState,
+  phase: WorkflowPhase,
+  store?: SessionVariableStore,
+): string {
+  let body = phase.instructions;
+
+  // Apply interpolation when store is available
+  if (store) {
+    body = store.interpolate(body);
+  }
+
+  // Loop replay: include loopMessage as additional per-retry context
+  if (state.currentIteration > 1 && phase.loopMessage) {
+    const loopMsg = store
+      ? store.interpolate(phase.loopMessage)
+      : phase.loopMessage;
+    body += `\n\n**Retry focus:** ${loopMsg}`;
+  }
+
+  return body;
+}
+
+/**
+ * Build the instruction body for variable-defining phases.
  *
  * Groups variables by kind (static, llm, computed) and generates markdown
  * tables/lists for each non-empty group. On loop replay (iteration > 1),
@@ -112,7 +146,7 @@ export function preparePhaseVariables(
  * @param store - SessionVariableStore instance (for isDefined checks and values)
  * @returns Markdown string with the structured variable listing
  */
-export function buildVariableTemplate(
+export function buildVariablePhaseInstructions(
   state: PioSessionState,
   phase: WorkflowPhase,
   store: SessionVariableStore,
@@ -193,24 +227,13 @@ function buildCompletedPhasesInfo(state: PioSessionState): string {
  */
 export function buildPhaseInstructions(state: PioSessionState): string {
   const phase = state.phasesList[state.currentPhase - 1];
-  const store = getState().store;
+  const store = getState().store ?? undefined;
 
-  // Determine instruction body: variable-definition phases get custom template
-  let instructionBody: string;
-  if (
-    phase.kind === "variable-definition" &&
-    phase.variables?.length &&
-    store
-  ) {
-    instructionBody = buildVariableTemplate(state, phase, store);
-  } else {
-    instructionBody = phase.instructions;
-  }
-
-  // Apply interpolation when store is available
-  if (store) {
-    instructionBody = store.interpolate(instructionBody);
-  }
+  // Dispatch body building to the appropriate strategy based on phase kind
+  const instructionBody =
+    phase.kind === "variable-definition" && phase.variables?.length && store
+      ? buildVariablePhaseInstructions(state, phase, store)
+      : buildStandardPhaseInstructions(state, phase, store);
 
   let prompt =
     `## Instructions for Phase ${state.currentPhase}\n\n` +
@@ -220,19 +243,6 @@ export function buildPhaseInstructions(state: PioSessionState): string {
     `You are on Phase ${state.currentPhase} of ${state.totalPhases}, iteration ${state.currentIteration}.\n\n---\n\n` +
     instructionBody;
 
-  // Loop replay: include loopMessage as additional per-retry context (with interpolation)
-  // Skip for variable-defining phases — the undefined-var listing in the template
-  // already serves as retry guidance, avoiding duplicate messages.
-  if (
-    state.currentIteration > 1 &&
-    phase.loopMessage &&
-    phase.kind !== "variable-definition"
-  ) {
-    const loopMsg = store
-      ? store.interpolate(phase.loopMessage)
-      : phase.loopMessage;
-    prompt += `\n\n**Retry focus:** ${loopMsg}`;
-  }
   return prompt;
 }
 

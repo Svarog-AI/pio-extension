@@ -23,15 +23,169 @@ import { getSessionConfig } from "../capability-utils";
 import { readDebugDisplay, resolveMaxIterations } from "../model-config";
 import type { PioSessionState } from "./session-state";
 import { getState, resetState, setState } from "./session-state";
+import { SessionVariableStore, setupSessionVariables } from "./session-store";
 import {
   extractPersistedState,
   loadLoopEngineState,
   saveLoopEngineState,
 } from "./state-persistence";
+import type { PhaseVariable, WorkflowPhase } from "./workflow-types";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Initialize a SessionVariableStore from session params and optional persisted vars.
+ *
+ * Creates a new store with read-only params frozen from config, then restores
+ * persisted writable vars on top. For each persisted var, `declare()` is called
+ * before `set()` to preserve type enforcement across session reloads.
+ *
+ * @param sessionParams - Read-only params from config
+ * @param persistedVars - Optional vars object from loadLoopEngineState()
+ * @returns Initialized SessionVariableStore instance
+ */
+export function initializeStore(
+  sessionParams: Record<string, unknown>,
+  persistedVars?: { [name: string]: { value: unknown; type: string } },
+): SessionVariableStore {
+  const store = new SessionVariableStore(sessionParams);
+
+  if (persistedVars) {
+    for (const [name, entry] of Object.entries(persistedVars)) {
+      store.declare(name, entry.type);
+      store.set(name, entry.type, entry.value);
+    }
+  }
+
+  return store;
+}
+
+/**
+ * Prepare static and computed variables for a variable-defining phase.
+ *
+ * Sets static vars first (so computed callbacks can access them via store.getAll()),
+ * then runs computed callbacks in declaration order. Computed callbacks read
+ * state.filesWritten and state.askUserCalled from the previous phase's last agent turn.
+ *
+ * @param phase - WorkflowPhase to prepare variables for
+ * @param store - SessionVariableStore instance
+ */
+export function preparePhaseVariables(
+  phase: WorkflowPhase,
+  store: SessionVariableStore,
+): void {
+  if (phase.kind !== "variable-definition" || !phase.variables?.length) return;
+
+  // 1. Set static vars first (so computed callbacks can access them)
+  for (const pv of phase.variables) {
+    if (pv.kind === "static" && pv.value !== undefined) {
+      store.set(pv.name, pv.type, pv.value);
+    }
+  }
+
+  // 2. Run computed callbacks (use state.filesWritten, state.askUserCalled from last agent turn)
+  for (const pv of phase.variables) {
+    if (pv.kind === "computed" && pv.compute) {
+      try {
+        const result = pv.compute(getState());
+        store.set(pv.name, pv.type, result);
+      } catch (err) {
+        console.warn(
+          `[loop-engine] Computed variable '${pv.name}' callback threw: ${err}`,
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Build the custom message template for variable-defining phases.
+ *
+ * Groups variables by kind (static, llm, computed) and generates markdown
+ * tables/lists for each non-empty group. On loop replay (iteration > 1),
+ * additionally lists undefined variables.
+ *
+ * @param state - Current session state (for iteration count)
+ * @param phase - Current WorkflowPhase (for variables array)
+ * @param store - SessionVariableStore instance (for isDefined checks and values)
+ * @returns Markdown string with the structured variable listing
+ */
+export function buildVariableTemplate(
+  state: PioSessionState,
+  phase: WorkflowPhase,
+  store: SessionVariableStore,
+): string {
+  if (phase.kind !== "variable-definition" || !phase.variables?.length) {
+    return phase.instructions;
+  }
+
+  const staticVars = phase.variables.filter(
+    (pv) => pv.kind === "static",
+  ) as PhaseVariable[];
+  const llmVars = phase.variables.filter(
+    (pv) => pv.kind === "llm",
+  ) as PhaseVariable[];
+  const computedVars = phase.variables.filter(
+    (pv) => pv.kind === "computed",
+  ) as PhaseVariable[];
+
+  let body =
+    "This phase collects session variables. Use setVar to define the LLM-driven variables below.\n\n";
+
+  if (staticVars.length > 0 || llmVars.length > 0 || computedVars.length > 0) {
+    body += "### Variables\n\n";
+  }
+
+  // Static (pre-set) — table with values
+  if (staticVars.length > 0) {
+    body += "#### Static (pre-set)\n";
+    body += "| Name | Type | Value |\n";
+    body += "|------|------|-------|\n";
+    for (const pv of staticVars) {
+      const value = store.get(pv.name);
+      body += `| ${pv.name} | ${pv.type} | ${value !== undefined ? String(value) : "(unset)"} |\n`;
+    }
+    body += "\n";
+  }
+
+  // LLM-driven — bullets with prompt text
+  if (llmVars.length > 0) {
+    body += "#### LLM-driven (set via setVar)\n";
+    for (const pv of llmVars) {
+      body += `- **${pv.name}** (\`${pv.type}\`): ${pv.prompt ?? "(no prompt)"}\n`;
+    }
+    body += "\n";
+  }
+
+  // Computed — bullets with "will be auto-computed"
+  if (computedVars.length > 0) {
+    body += "#### Computed (auto-computed)\n";
+    for (const pv of computedVars) {
+      body += `- **${pv.name}** (\`${pv.type}\`) — will be auto-computed after this turn\n`;
+    }
+    body += "\n";
+  }
+
+  // On loop replay: list undefined variables
+  if (state.currentIteration > 1) {
+    const undefinedVars = phase.variables.filter(
+      (pv) => !store.isDefined(pv.name),
+    );
+    if (undefinedVars.length > 0) {
+      body += "### Undefined Variables (from previous iteration)\n";
+      body += "| Name | Type |\n";
+      body += "|------|------|\n";
+      for (const pv of undefinedVars) {
+        body += `| ${pv.name} | ${pv.type} |\n`;
+      }
+      body += "\n";
+    }
+  }
+
+  return body.trimEnd();
+}
 
 /**
  * Build a one-line summary of completed phases for CustomMessage injection.
@@ -66,16 +220,39 @@ function buildCompletedPhasesInfo(state: PioSessionState): string {
  */
 export function buildPhaseInstructions(state: PioSessionState): string {
   const phase = state.phasesList[state.currentPhase - 1];
+  const store = getState().store;
+
+  // Determine instruction body: variable-definition phases get custom template
+  let instructionBody: string;
+  if (
+    phase.kind === "variable-definition" &&
+    phase.variables?.length &&
+    store
+  ) {
+    instructionBody = buildVariableTemplate(state, phase, store);
+  } else {
+    instructionBody = phase.instructions;
+  }
+
+  // Apply interpolation when store is available
+  if (store) {
+    instructionBody = store.interpolate(instructionBody);
+  }
+
   let prompt =
     `## Instructions for Phase ${state.currentPhase}\n\n` +
     `Follow the instructions below. Do not do anything outside these instructions.\n\n`;
   prompt +=
     `${buildCompletedPhasesInfo(state)}\n` +
     `You are on Phase ${state.currentPhase} of ${state.totalPhases}, iteration ${state.currentIteration}.\n\n---\n\n` +
-    phase.instructions;
-  // Loop replay: include loopMessage as additional per-retry context
+    instructionBody;
+
+  // Loop replay: include loopMessage as additional per-retry context (with interpolation)
   if (state.currentIteration > 1 && phase.loopMessage) {
-    prompt += `\n\n**Retry focus:** ${phase.loopMessage}`;
+    const loopMsg = store
+      ? store.interpolate(phase.loopMessage)
+      : phase.loopMessage;
+    prompt += `\n\n**Retry focus:** ${loopMsg}`;
   }
   return prompt;
 }
@@ -206,6 +383,10 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       isAdHocInput: saved?.isAdHocInput ?? false,
       phaseWriteAllowlist: phaseWriteAllowlist,
     });
+
+    // Initialize session variable store — reuse saved from loadLoopEngineState() call above
+    const store = initializeStore(config.sessionParams ?? {}, saved?.vars);
+    setState({ store });
   });
 
   // 2. Ad-hoc mode detection — fires before before_agent_start
@@ -252,6 +433,17 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // Normal mode: inject phase instructions via helper
     const phase = state.phasesList[state.currentPhase - 1];
     if (!phase) return; // no phase loaded — skip injection
+
+    // Prepare variables for variable-defining phases (Phase 1 entry or loop replay)
+    const phaseStore = getState().store;
+    if (
+      phase.kind === "variable-definition" &&
+      phase.variables &&
+      phase.variables.length > 0 &&
+      phaseStore
+    ) {
+      preparePhaseVariables(phase, phaseStore);
+    }
 
     return {
       message: {
@@ -463,9 +655,19 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       return;
     }
 
-    // Advance to next phase — reset iteration and tracking fields
+    // Advance to next phase — but keep iteration data alive for computed callbacks first
+    setState({ currentPhase: nextPhaseNum });
+
+    const nextPhaseObj = getState().phasesList[nextPhaseNum - 1];
+    const phaseStore = getState().store;
+
+    // Prepare static and computed vars for next variable-defining phase (uses current state filesWritten/askUserCalled)
+    if (phaseStore && nextPhaseObj) {
+      preparePhaseVariables(nextPhaseObj, phaseStore);
+    }
+
+    // Now reset iteration tracking
     setState({
-      currentPhase: nextPhaseNum,
       currentIteration: 1,
       filesWritten: [],
       askUserCalled: false,
@@ -481,8 +683,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     }
 
     // Send CustomMessage with instructions for the next phase
-    const nextPhase = state.phasesList[nextPhaseNum - 1];
-    if (nextPhase) {
+    if (nextPhaseObj) {
       await pi.sendMessage(
         {
           customType: "workflow-phase-instructions",
@@ -534,4 +735,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       pi.sendUserMessage("", { deliverAs: "followUp" });
     },
   });
+
+  // Register session variable tools (setVar, getVar, listVars)
+  setupSessionVariables(pi);
 }

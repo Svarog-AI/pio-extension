@@ -1,17 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  __testResetStore,
-  getStore,
-  SessionVariableStore,
-  setStore,
-} from "./session-store";
+import { SessionVariableStore } from "./session-store";
 
 describe("SessionVariableStore", () => {
   let store: SessionVariableStore;
 
   beforeEach(() => {
     store = new SessionVariableStore({});
-    __testResetStore();
   });
 
   // -----------------------------------------------------------------------
@@ -284,29 +278,6 @@ describe("SessionVariableStore", () => {
       s.set("x", "string", "writable");
       // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test of interpolation
       expect(s.interpolate("${x} and ${p}")).toBe("writable and param");
-    });
-  });
-
-  // -----------------------------------------------------------------------
-  // Module-level singleton
-  // -----------------------------------------------------------------------
-
-  describe("module-level singleton", () => {
-    it("getStore() returns null initially", () => {
-      expect(getStore()).toBe(null);
-    });
-
-    it("after setStore(), getStore() returns the same instance", () => {
-      const s = new SessionVariableStore({});
-      setStore(s);
-      expect(getStore()).toBe(s);
-    });
-
-    it("__testResetStore() resets _store to null", () => {
-      const s = new SessionVariableStore({});
-      setStore(s);
-      __testResetStore();
-      expect(getStore()).toBe(null);
     });
   });
 });

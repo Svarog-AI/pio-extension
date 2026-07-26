@@ -127,25 +127,3 @@ export class SessionVariableStore {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Module-level singleton
-// ---------------------------------------------------------------------------
-
-let _store: SessionVariableStore | null = null;
-
-export function setStore(store: SessionVariableStore): void {
-  _store = store;
-}
-
-export function getStore(): SessionVariableStore | null {
-  return _store;
-}
-
-// ---------------------------------------------------------------------------
-// Test accessors
-// ---------------------------------------------------------------------------
-
-export function __testResetStore(): void {
-  _store = null;
-}

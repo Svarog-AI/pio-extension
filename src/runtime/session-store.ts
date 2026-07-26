@@ -113,6 +113,14 @@ export class SessionVariableStore {
     return this._resolvePlaceholders(template, this.getAll());
   }
 
+  toSerializableVars(): { [name: string]: { value: unknown; type: string } } {
+    const result: { [name: string]: { value: unknown; type: string } } = {};
+    for (const [name, entry] of this._writable) {
+      result[name] = { value: entry.value, type: entry.type };
+    }
+    return result;
+  }
+
   private _interpolateValue(value: unknown): unknown {
     if (typeof value !== "string") {
       return value;

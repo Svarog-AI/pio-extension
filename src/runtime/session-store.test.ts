@@ -249,6 +249,48 @@ describe("SessionVariableStore", () => {
   });
 
   // -----------------------------------------------------------------------
+  // toSerializableVars()
+  // -----------------------------------------------------------------------
+
+  describe("toSerializableVars()", () => {
+    it("returns a plain object mapping variable names to { value, type } pairs", () => {
+      store.set("count", "number", 42);
+      store.set("name", "string", "hello");
+      expect(store.toSerializableVars()).toEqual({
+        count: { value: 42, type: "number" },
+        name: { value: "hello", type: "string" },
+      });
+    });
+
+    it("returns an empty object when no writable vars exist", () => {
+      expect(store.toSerializableVars()).toEqual({});
+    });
+
+    it("does not include read-only params", () => {
+      const s = new SessionVariableStore({ param: "val" });
+      s.set("w", "string", "writable");
+      const result = s.toSerializableVars();
+      expect(result).toHaveProperty("w");
+      expect(result).not.toHaveProperty("param");
+    });
+
+    it("does not include declared-but-unset vars", () => {
+      store.declare("foo", "number");
+      expect(store.toSerializableVars()).toEqual({});
+    });
+
+    it("preserves type information for different types", () => {
+      store.set("a", "boolean", true);
+      store.set("b", "array", [1, 2]);
+      store.set("c", "null", null);
+      const result = store.toSerializableVars();
+      expect(result.a.type).toBe("boolean");
+      expect(result.b.type).toBe("array");
+      expect(result.c.type).toBe("null");
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // interpolate()
   // -----------------------------------------------------------------------
 

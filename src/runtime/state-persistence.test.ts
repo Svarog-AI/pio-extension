@@ -332,6 +332,214 @@ describe("loadLoopEngineState — error handling", () => {
     warnSpy.mockRestore();
   });
 
+  it("accepts persisted objects with a valid vars field", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const stateDir = getStateDir(tempDir);
+    fs.writeFileSync(
+      path.join(stateDir, "sess-vars-ok.json"),
+      JSON.stringify({
+        currentPhase: 1,
+        currentIteration: 1,
+        isAdHocInput: false,
+        vars: {
+          count: { value: 42, type: "number" },
+          name: { value: "hello", type: "string" },
+        },
+      }),
+      "utf-8",
+    );
+
+    const result = mod.loadLoopEngineState("sess-vars-ok");
+
+    expect(result).toEqual({
+      currentPhase: 1,
+      currentIteration: 1,
+      isAdHocInput: false,
+      vars: {
+        count: { value: 42, type: "number" },
+        name: { value: "hello", type: "string" },
+      },
+    });
+  });
+
+  it("accepts persisted objects with an empty vars object", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const stateDir = getStateDir(tempDir);
+    fs.writeFileSync(
+      path.join(stateDir, "sess-vars-empty.json"),
+      JSON.stringify({
+        currentPhase: 1,
+        currentIteration: 1,
+        isAdHocInput: false,
+        vars: {},
+      }),
+      "utf-8",
+    );
+
+    const result = mod.loadLoopEngineState("sess-vars-empty");
+
+    expect(result).toEqual({
+      currentPhase: 1,
+      currentIteration: 1,
+      isAdHocInput: false,
+      vars: {},
+    });
+  });
+
+  it("accepts persisted objects without vars field (backward compat)", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const stateDir = getStateDir(tempDir);
+    fs.writeFileSync(
+      path.join(stateDir, "sess-no-vars.json"),
+      JSON.stringify({
+        currentPhase: 2,
+        currentIteration: 3,
+        isAdHocInput: true,
+      }),
+      "utf-8",
+    );
+
+    const result = mod.loadLoopEngineState("sess-no-vars");
+
+    expect(result).toEqual({
+      currentPhase: 2,
+      currentIteration: 3,
+      isAdHocInput: true,
+    });
+    expect(result).not.toHaveProperty("vars");
+  });
+
+  it("rejects persisted objects where vars is an array", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const stateDir = getStateDir(tempDir);
+    fs.writeFileSync(
+      path.join(stateDir, "sess-vars-array.json"),
+      JSON.stringify({
+        currentPhase: 1,
+        currentIteration: 1,
+        isAdHocInput: false,
+        vars: [{ value: 1, type: "number" }],
+      }),
+      "utf-8",
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = mod.loadLoopEngineState("sess-vars-array");
+
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("rejects persisted objects where vars entries lack a type field", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const stateDir = getStateDir(tempDir);
+    fs.writeFileSync(
+      path.join(stateDir, "sess-vars-no-type.json"),
+      JSON.stringify({
+        currentPhase: 1,
+        currentIteration: 1,
+        isAdHocInput: false,
+        vars: { count: { value: 42 } },
+      }),
+      "utf-8",
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = mod.loadLoopEngineState("sess-vars-no-type");
+
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("rejects persisted objects where vars entries have non-string type", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const stateDir = getStateDir(tempDir);
+    fs.writeFileSync(
+      path.join(stateDir, "sess-vars-num-type.json"),
+      JSON.stringify({
+        currentPhase: 1,
+        currentIteration: 1,
+        isAdHocInput: false,
+        vars: { count: { value: 42, type: 123 } },
+      }),
+      "utf-8",
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = mod.loadLoopEngineState("sess-vars-num-type");
+
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("rejects persisted objects where vars is null", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const stateDir = getStateDir(tempDir);
+    fs.writeFileSync(
+      path.join(stateDir, "sess-vars-null.json"),
+      JSON.stringify({
+        currentPhase: 1,
+        currentIteration: 1,
+        isAdHocInput: false,
+        vars: null,
+      }),
+      "utf-8",
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = mod.loadLoopEngineState("sess-vars-null");
+
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("rejects persisted objects where vars entries are non-objects", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const stateDir = getStateDir(tempDir);
+    fs.writeFileSync(
+      path.join(stateDir, "sess-vars-str-entry.json"),
+      JSON.stringify({
+        currentPhase: 1,
+        currentIteration: 1,
+        isAdHocInput: false,
+        vars: { count: "hello" },
+      }),
+      "utf-8",
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = mod.loadLoopEngineState("sess-vars-str-entry");
+
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   it("does not throw on file read error (permission denied)", async () => {
     // Override existsSync to return true (file exists) and readFileSync to throw
     (fs.existsSync as any) = () => true;
@@ -359,6 +567,64 @@ describe("loadLoopEngineState — error handling", () => {
 // ---------------------------------------------------------------------------
 // saveLoopEngineState — basic and atomic write
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Round-trip: save with vars, load back
+// ---------------------------------------------------------------------------
+
+describe("round-trip with vars", () => {
+  let tempDir: string;
+  const origEnv = process.env.PIO_CONFIG_TEST_HOME;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempDir = createTempDir();
+    process.env.PIO_CONFIG_TEST_HOME = tempDir;
+  });
+
+  afterEach(() => {
+    process.env.PIO_CONFIG_TEST_HOME = origEnv;
+    cleanup(tempDir);
+  });
+
+  it("save state with vars, load it back, and verify vars are preserved", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const state = {
+      currentPhase: 2,
+      currentIteration: 5,
+      isAdHocInput: false,
+      vars: {
+        count: { value: 42, type: "number" },
+        name: { value: "hello", type: "string" },
+        flag: { value: true, type: "boolean" },
+      },
+    };
+
+    mod.saveLoopEngineState("sess-rt", state);
+    const loaded = mod.loadLoopEngineState("sess-rt");
+
+    expect(loaded).toEqual(state);
+  });
+
+  it("save state without vars, load it back, and verify no vars field", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const state = {
+      currentPhase: 1,
+      currentIteration: 1,
+      isAdHocInput: false,
+    };
+
+    mod.saveLoopEngineState("sess-rt-no-vars", state);
+    const loaded = mod.loadLoopEngineState("sess-rt-no-vars");
+
+    expect(loaded).toEqual(state);
+    expect(loaded).not.toHaveProperty("vars");
+  });
+});
 
 describe("saveLoopEngineState — basic write", () => {
   let tempDir: string;
@@ -559,7 +825,7 @@ describe("extractPersistedState", () => {
     vi.resetModules();
   });
 
-  it("projects exactly the 3 persisted fields", async () => {
+  it("projects exactly the 3 persisted fields when store is absent", async () => {
     const { extractPersistedState } = await import("./state-persistence");
     const { __testSetState, getState } = await import("./session-state");
 
@@ -584,8 +850,120 @@ describe("extractPersistedState", () => {
       currentIteration: 7,
       isAdHocInput: true,
     });
-    // No extra keys
-    expect(Object.keys(result)).toHaveLength(3);
+    // No vars key when store is absent
+    expect(result).not.toHaveProperty("vars");
+  });
+
+  it("includes vars field when store exists and has writable vars", async () => {
+    const { extractPersistedState } = await import("./state-persistence");
+    const { __testSetState, getState } = await import("./session-state");
+    const { SessionVariableStore } = await import("./session-store");
+
+    const store = new SessionVariableStore({});
+    store.set("count", "number", 42);
+    store.set("name", "string", "hello");
+
+    __testSetState({
+      isActive: true,
+      markCompleteCalled: false,
+      turnCount: 10,
+      currentPhase: 2,
+      currentIteration: 3,
+      totalPhases: 5,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      phaseWriteAllowlist: new Map(),
+      store,
+    });
+
+    const result = extractPersistedState(getState());
+
+    expect(result).toEqual({
+      currentPhase: 2,
+      currentIteration: 3,
+      isAdHocInput: false,
+      vars: {
+        count: { value: 42, type: "number" },
+        name: { value: "hello", type: "string" },
+      },
+    });
+  });
+
+  it("omits vars field when store is null", async () => {
+    const { extractPersistedState } = await import("./state-persistence");
+    const { __testSetState, getState } = await import("./session-state");
+
+    __testSetState({
+      isActive: true,
+      markCompleteCalled: false,
+      turnCount: 10,
+      currentPhase: 1,
+      currentIteration: 1,
+      totalPhases: 3,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      phaseWriteAllowlist: new Map(),
+      store: null,
+    });
+
+    const result = extractPersistedState(getState());
+
+    expect(result).not.toHaveProperty("vars");
+  });
+
+  it("omits vars field when store is undefined", async () => {
+    const { extractPersistedState } = await import("./state-persistence");
+    const { __testSetState, getState } = await import("./session-state");
+
+    __testSetState({
+      isActive: true,
+      markCompleteCalled: false,
+      turnCount: 10,
+      currentPhase: 1,
+      currentIteration: 1,
+      totalPhases: 3,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      phaseWriteAllowlist: new Map(),
+      store: undefined,
+    });
+
+    const result = extractPersistedState(getState());
+
+    expect(result).not.toHaveProperty("vars");
+  });
+
+  it("includes empty vars object when store exists but has no writable vars", async () => {
+    const { extractPersistedState } = await import("./state-persistence");
+    const { __testSetState, getState } = await import("./session-state");
+    const { SessionVariableStore } = await import("./session-store");
+
+    const store = new SessionVariableStore({ param: "val" });
+
+    __testSetState({
+      isActive: true,
+      markCompleteCalled: false,
+      turnCount: 1,
+      currentPhase: 1,
+      currentIteration: 1,
+      totalPhases: 3,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      phaseWriteAllowlist: new Map(),
+      store,
+    });
+
+    const result = extractPersistedState(getState());
+
+    expect(result.vars).toEqual({});
   });
 });
 

@@ -103,7 +103,9 @@ function isValidPersistedState(obj: unknown): obj is {
       if (typeof e.type !== "string") {
         return false;
       }
-      // value can be any type (including undefined — though JSON won't produce it)
+      if (!("value" in e)) {
+        return false;
+      }
     }
   }
 

@@ -465,6 +465,30 @@ describe("loadLoopEngineState — error handling", () => {
     warnSpy.mockRestore();
   });
 
+  it("rejects persisted objects where vars entries lack a value field", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const stateDir = getStateDir(tempDir);
+    fs.writeFileSync(
+      path.join(stateDir, "sess-vars-no-value.json"),
+      JSON.stringify({
+        currentPhase: 1,
+        currentIteration: 1,
+        isAdHocInput: false,
+        vars: { count: { type: "number" } },
+      }),
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = mod.loadLoopEngineState("sess-vars-no-value");
+
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   it("rejects persisted objects where vars entries have non-string type", async () => {
     const mod = await import("./state-persistence");
     mod.ensureStateDir();

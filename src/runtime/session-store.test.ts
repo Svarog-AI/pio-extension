@@ -1,5 +1,14 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { SessionVariableStore } from "./session-store";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { PioSessionState } from "./session-state";
+import { __testSetState, getState, resetState } from "./session-state";
+import {
+  getVarTool,
+  listVarsTool,
+  SessionVariableStore,
+  setupSessionVariables,
+  setVarTool,
+} from "./session-store";
 
 describe("SessionVariableStore", () => {
   let store: SessionVariableStore;
@@ -278,6 +287,451 @@ describe("SessionVariableStore", () => {
       s.set("x", "string", "writable");
       // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test of interpolation
       expect(s.interpolate("${x} and ${p}")).toBe("writable and param");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Session variable tools (setVar, getVar, listVars)
+// ---------------------------------------------------------------------------
+
+describe("session variable tools", () => {
+  beforeEach(() => {
+    resetState();
+  });
+
+  // Helper: merge partial updates into a full PioSessionState
+  function setPartialState(partial: Partial<PioSessionState>): void {
+    __testSetState({ ...getState(), ...partial } as PioSessionState);
+  }
+
+  // Helper: extract text from tool result content
+  function resultText(result: { content: Array<{ type: string }> }): string {
+    return (result.content[0] as unknown as { text: string }).text;
+  }
+
+  // -----------------------------------------------------------------------
+  // Tool definitions
+  // -----------------------------------------------------------------------
+
+  describe("tool definitions", () => {
+    it("setVarTool is defined with name, label, description, parameters, and execute", () => {
+      expect(setVarTool).toBeDefined();
+      expect(setVarTool.name).toBe("setVar");
+      expect(setVarTool.label).toBeDefined();
+      expect(typeof setVarTool.label).toBe("string");
+      expect(setVarTool.description).toBeDefined();
+      expect(typeof setVarTool.description).toBe("string");
+      expect(setVarTool.parameters).toBeDefined();
+      expect(typeof setVarTool.execute).toBe("function");
+    });
+
+    it("getVarTool is defined with name, label, description, parameters, and execute", () => {
+      expect(getVarTool).toBeDefined();
+      expect(getVarTool.name).toBe("getVar");
+      expect(getVarTool.label).toBeDefined();
+      expect(typeof getVarTool.label).toBe("string");
+      expect(getVarTool.description).toBeDefined();
+      expect(typeof getVarTool.description).toBe("string");
+      expect(getVarTool.parameters).toBeDefined();
+      expect(typeof getVarTool.execute).toBe("function");
+    });
+
+    it("listVarsTool is defined with name, label, description, parameters, and execute", () => {
+      expect(listVarsTool).toBeDefined();
+      expect(listVarsTool.name).toBe("listVars");
+      expect(listVarsTool.label).toBeDefined();
+      expect(typeof listVarsTool.label).toBe("string");
+      expect(listVarsTool.description).toBeDefined();
+      expect(typeof listVarsTool.description).toBe("string");
+      expect(listVarsTool.parameters).toBeDefined();
+      expect(typeof listVarsTool.execute).toBe("function");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Parameter schemas
+  // -----------------------------------------------------------------------
+
+  describe("parameter schemas", () => {
+    it("setVar parameters include name (string), type (union of literals), and value (union of JSON types)", () => {
+      const params = setVarTool.parameters;
+      expect(params.type).toBe("object");
+      expect(params.properties.name.type).toBe("string");
+      // TypeBox uses anyOf for unions
+      expect(params.properties.type.anyOf).toBeDefined();
+      expect(Array.isArray(params.properties.type.anyOf)).toBe(true);
+      expect(params.properties.value.anyOf).toBeDefined();
+      expect(Array.isArray(params.properties.value.anyOf)).toBe(true);
+    });
+
+    it("getVar parameters include only name (string)", () => {
+      const params = getVarTool.parameters;
+      expect(params.type).toBe("object");
+      expect(Object.keys(params.properties)).toEqual(["name"]);
+      expect(params.properties.name.type).toBe("string");
+    });
+
+    it("listVars parameters are an empty object", () => {
+      const params = listVarsTool.parameters;
+      expect(params.type).toBe("object");
+      expect(Object.keys(params.properties)).toEqual([]);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // setupSessionVariables
+  // -----------------------------------------------------------------------
+
+  describe("setupSessionVariables", () => {
+    it("registers exactly 3 tools via pi.registerTool", () => {
+      const registeredTools: any[] = [];
+      const mockPi = {
+        registerTool: vi.fn((tool: any) => registeredTools.push(tool)),
+      } as unknown as ExtensionAPI;
+
+      setupSessionVariables(mockPi);
+
+      expect(mockPi.registerTool).toHaveBeenCalledTimes(3);
+      expect(registeredTools).toContain(setVarTool);
+      expect(registeredTools).toContain(getVarTool);
+      expect(registeredTools).toContain(listVarsTool);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Session gating (isActive check)
+  // -----------------------------------------------------------------------
+
+  describe("session gating", () => {
+    it("setVar returns error when isActive is false", async () => {
+      setPartialState({ isActive: false, store: null });
+
+      const result = await setVarTool.execute(
+        "tc-1",
+        { name: "x", type: "string", value: "hello" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain(
+        "only available inside a pio session",
+      );
+    });
+
+    it("getVar returns error when isActive is false", async () => {
+      setPartialState({ isActive: false, store: null });
+
+      const result = await getVarTool.execute(
+        "tc-1",
+        { name: "x" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain(
+        "only available inside a pio session",
+      );
+    });
+
+    it("listVars returns error when isActive is false", async () => {
+      setPartialState({ isActive: false, store: null });
+
+      const result = await listVarsTool.execute(
+        "tc-1",
+        {},
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain(
+        "only available inside a pio session",
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Phase gating (setVar only during variable-definition phases)
+  // -----------------------------------------------------------------------
+
+  describe("phase gating", () => {
+    it("setVar returns error when current phase kind is not variable-definition", async () => {
+      const store = new SessionVariableStore({});
+      setPartialState({
+        isActive: true,
+        currentPhase: 1,
+        totalPhases: 3,
+        phasesList: [
+          {
+            id: "p1",
+            title: "Phase 1",
+            instructions: "Do stuff",
+            kind: "standard",
+          },
+        ],
+        store,
+      });
+
+      const result = await setVarTool.execute(
+        "tc-1",
+        { name: "x", type: "string", value: "hello" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("variable-defining");
+    });
+
+    it("setVar proceeds past phase check when current phase kind is variable-definition", async () => {
+      const store = new SessionVariableStore({});
+      setPartialState({
+        isActive: true,
+        currentPhase: 1,
+        totalPhases: 3,
+        phasesList: [
+          {
+            id: "p1",
+            title: "Define Variables",
+            instructions: "Set vars",
+            kind: "variable-definition",
+          },
+        ],
+        store,
+      });
+
+      const result = await setVarTool.execute(
+        "tc-1",
+        { name: "x", type: "string", value: "hello" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      // Should have reached the store call and succeeded
+      expect(resultText(result)).not.toContain("variable-defining");
+      expect(resultText(result)).toContain("x");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Store null safety
+  // -----------------------------------------------------------------------
+
+  describe("store null safety", () => {
+    it("setVar returns error when store is undefined", async () => {
+      setPartialState({
+        isActive: true,
+        currentPhase: 1,
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "i",
+            kind: "variable-definition",
+          },
+        ],
+        store: undefined,
+      });
+
+      const result = await setVarTool.execute(
+        "tc-1",
+        { name: "x", type: "string", value: "hello" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("Variable store not initialized");
+    });
+
+    it("getVar returns error when store is null", async () => {
+      setPartialState({
+        isActive: true,
+        currentPhase: 1,
+        totalPhases: 1,
+        phasesList: [],
+        store: null,
+      });
+
+      const result = await getVarTool.execute(
+        "tc-1",
+        { name: "x" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("Variable store not initialized");
+    });
+
+    it("listVars returns error when store is undefined", async () => {
+      setPartialState({
+        isActive: true,
+        currentPhase: 1,
+        totalPhases: 1,
+        phasesList: [],
+        store: undefined,
+      });
+
+      const result = await listVarsTool.execute(
+        "tc-1",
+        {},
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("Variable store not initialized");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Error conversion (setVar catches store errors)
+  // -----------------------------------------------------------------------
+
+  describe("error conversion", () => {
+    it("setVar catches store Error for type mismatch and returns user-friendly message", async () => {
+      const store = new SessionVariableStore({});
+      // Pre-set with a type so next set with different type will throw
+      store.set("x", "number", 42);
+
+      setPartialState({
+        isActive: true,
+        currentPhase: 1,
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "i",
+            kind: "variable-definition",
+          },
+        ],
+        store,
+      });
+
+      const result = await setVarTool.execute(
+        "tc-1",
+        { name: "x", type: "string", value: "hello" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      // Should contain the type mismatch error, not throw
+      expect(resultText(result)).toContain("Type mismatch");
+    });
+
+    it("setVar catches store Error for param write and returns user-friendly message", async () => {
+      const store = new SessionVariableStore({ readOnlyKey: "val" });
+
+      setPartialState({
+        isActive: true,
+        currentPhase: 1,
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "i",
+            kind: "variable-definition",
+          },
+        ],
+        store,
+      });
+
+      const result = await setVarTool.execute(
+        "tc-1",
+        { name: "readOnlyKey", type: "string", value: "new" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      // Should contain the read-only param error, not throw
+      expect(resultText(result)).toContain("read-only");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Successful getVar and listVars
+  // -----------------------------------------------------------------------
+
+  describe("successful operations", () => {
+    it("getVar returns the stored value", async () => {
+      const store = new SessionVariableStore({});
+      store.set("x", "string", "hello");
+
+      setPartialState({
+        isActive: true,
+        currentPhase: 1,
+        totalPhases: 1,
+        phasesList: [],
+        store,
+      });
+
+      const result = await getVarTool.execute(
+        "tc-1",
+        { name: "x" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("hello");
+    });
+
+    it("getVar returns undefined message for unknown variable", async () => {
+      const store = new SessionVariableStore({});
+
+      setPartialState({
+        isActive: true,
+        currentPhase: 1,
+        totalPhases: 1,
+        phasesList: [],
+        store,
+      });
+
+      const result = await getVarTool.execute(
+        "tc-1",
+        { name: "nonexistent" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("undefined");
+    });
+
+    it("listVars returns formatted JSON with all variables", async () => {
+      const store = new SessionVariableStore({ param: "val" });
+      store.set("w", "string", "writable");
+
+      setPartialState({
+        isActive: true,
+        currentPhase: 1,
+        totalPhases: 1,
+        phasesList: [],
+        store,
+      });
+
+      const result = await listVarsTool.execute(
+        "tc-1",
+        {},
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("param");
+      expect(resultText(result)).toContain("val");
+      expect(resultText(result)).toContain("w");
+      expect(resultText(result)).toContain("writable");
     });
   });
 });

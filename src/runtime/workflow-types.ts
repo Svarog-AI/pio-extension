@@ -50,6 +50,26 @@ export interface TerminationCondition {
   callback(state: PioSessionState): boolean;
 }
 
+/**
+ * A condition definition for callback-based loop continuation.
+ *
+ * When any condition in the `loopWhile` array returns `true`,
+ * the loop continues and the engine replays the current phase.
+ * Conditions use OR logic — the first passing condition forces a loop replay.
+ *
+ * Complements `TerminationCondition` (AND: all pass → advance).
+ * `loopWhile(a)` is equivalent to `terminateWhen(¬a)`.
+ *
+ * The callback receives the full PioSessionState directly — it reads
+ * whatever fields it needs and ignores the rest.
+ */
+export interface LoopWhileCondition {
+  /** Condition type — currently only "callback" is supported */
+  type: "callback";
+  /** Callback that receives the full PioSessionState and returns true to keep looping. Uses OR logic — any passing condition forces a loop replay */
+  callback(state: PioSessionState): boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Session variable types
 // ---------------------------------------------------------------------------
@@ -119,6 +139,9 @@ export interface WorkflowPhase {
 
   /** Array of callback-based conditions — any passing condition terminates the loop (OR logic) */
   terminateWhen?: TerminationCondition[];
+
+  /** Array of callback-based conditions — any passing condition keeps the phase looping (OR logic). Complements `terminateWhen` (AND: all pass → advance) */
+  loopWhile?: LoopWhileCondition[];
 
   /** Message sent as a follow-up when looping (replaying the current phase). Informs the LLM what to focus on for the retry. */
   loopMessage?: string;

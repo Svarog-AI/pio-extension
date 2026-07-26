@@ -13,6 +13,9 @@
 // ---------------------------------------------------------------------------
 
 export class SessionVariableStore {
+  private static readonly PLACEHOLDER_REGEX =
+    /\$\{([a-zA-Z_$][a-zA-Z0-9_$]*)\}/g;
+
   private readonly _params: Readonly<Record<string, unknown>>;
   private readonly _writable: Map<string, { value: unknown; type: string }>;
   private readonly _declarations: Map<string, string>;
@@ -24,6 +27,13 @@ export class SessionVariableStore {
   }
 
   declare(name: string, type: string): void {
+    // Read-only protection — params cannot be declared as writable vars
+    if (name in this._params) {
+      throw new Error(
+        `Cannot declare variable '${name}': it is a read-only session parameter`,
+      );
+    }
+
     if (this._declarations.has(name)) {
       const existing = this._declarations.get(name);
       if (existing !== type) {
@@ -92,25 +102,22 @@ export class SessionVariableStore {
   }
 
   interpolate(template: string): string {
-    const vars = this.getAll();
-    return template.replace(
-      /\$\{([a-zA-Z_$][a-zA-Z0-9_$]*)\}/g,
-      (_match, varName) => {
-        if (varName in vars) {
-          return String(vars[varName]);
-        }
-        return _match; // Pass through unchanged
-      },
-    );
+    return this._resolvePlaceholders(template, this.getAll());
   }
 
   private _interpolateValue(value: unknown): unknown {
     if (typeof value !== "string") {
       return value;
     }
-    const vars = this.getAll();
-    return value.replace(
-      /\$\{([a-zA-Z_$][a-zA-Z0-9_$]*)\}/g,
+    return this._resolvePlaceholders(value, this.getAll());
+  }
+
+  private _resolvePlaceholders(
+    template: string,
+    vars: Record<string, unknown>,
+  ): string {
+    return template.replace(
+      SessionVariableStore.PLACEHOLDER_REGEX,
       (_match, varName) => {
         if (varName in vars) {
           return String(vars[varName]);

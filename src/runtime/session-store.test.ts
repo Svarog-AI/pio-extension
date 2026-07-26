@@ -42,14 +42,12 @@ describe("SessionVariableStore", () => {
   // -----------------------------------------------------------------------
 
   describe("declare()", () => {
-    it("registers expected type without setting a value", () => {
+    it("registers type, allows subsequent matching set, and isDefined is false until set", () => {
       store.declare("foo", "number");
       expect(store.isDefined("foo")).toBe(false);
-    });
-
-    it("isDefined returns false for declared but not set", () => {
-      store.declare("foo", "number");
-      expect(store.isDefined("foo")).toBe(false);
+      store.set("foo", "number", 42);
+      expect(store.isDefined("foo")).toBe(true);
+      expect(store.get("foo")).toBe(42);
     });
 
     it("get returns undefined for declared but not set", () => {
@@ -66,6 +64,13 @@ describe("SessionVariableStore", () => {
       store.declare("foo", "number");
       expect(() => store.declare("foo", "string")).toThrow(
         /Type mismatch for variable 'foo'/,
+      );
+    });
+
+    it("declare on a param name throws with error indicating param name", () => {
+      const s = new SessionVariableStore({ readOnlyKey: "val" });
+      expect(() => s.declare("readOnlyKey", "string")).toThrow(
+        "Cannot declare variable 'readOnlyKey': it is a read-only session parameter",
       );
     });
   });
@@ -112,6 +117,18 @@ describe("SessionVariableStore", () => {
       expect(() => s.set("readOnlyKey", "string", "other")).toThrow(
         "Cannot set variable 'readOnlyKey': it is a read-only session parameter",
       );
+    });
+
+    it("stores and retrieves falsy values (0, false, null) correctly", () => {
+      store.set("zero", "number", 0);
+      store.set("flag", "boolean", false);
+      store.set("nothing", "string", null);
+      expect(store.get("zero")).toBe(0);
+      expect(store.get("flag")).toBe(false);
+      expect(store.get("nothing")).toBe(null);
+      expect(store.isDefined("zero")).toBe(true);
+      expect(store.isDefined("flag")).toBe(true);
+      expect(store.isDefined("nothing")).toBe(true);
     });
   });
 

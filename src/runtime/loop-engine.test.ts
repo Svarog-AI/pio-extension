@@ -2807,6 +2807,42 @@ describe("buildPhaseInstructions", () => {
     const result = build(getState());
     expect(result).not.toContain("Retry focus");
   });
+
+  it("does NOT append Retry focus for variable-defining phases (undefined-var listing is the retry message)", async () => {
+    const build = await getBuildPhaseInstructions();
+    const { SessionVariableStore } = await import("./session-store");
+
+    const store = new SessionVariableStore({});
+    setState({
+      currentPhase: 1,
+      currentIteration: 2,
+      totalPhases: 1,
+      phasesList: [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          loopMessage: "This should not appear",
+          variables: [
+            {
+              name: "feature",
+              type: "string",
+              kind: "llm" as const,
+              prompt: "What feature?",
+            },
+          ],
+        },
+      ],
+      store,
+    });
+    const result = build(getState());
+    // Variable-defining phases use undefined-var listing instead of loopMessage
+    expect(result).not.toContain("**Retry focus:**");
+    expect(result).not.toContain("This should not appear");
+    // Undefined var listing should be present (iteration > 1, feature not set)
+    expect(result).toContain("Undefined Variables");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -4224,7 +4260,7 @@ describe("session variable integration", () => {
       expect(result).toBe("Do A");
     });
 
-    it("produces structured template for variable-defining phases with all kinds", async () => {
+    it("shows only LLM-driven vars (static and computed are engine-managed)", async () => {
       const { buildVariableTemplate } = await import("./loop-engine");
       const { SessionVariableStore } = await import("./session-store");
 
@@ -4258,17 +4294,16 @@ describe("session variable integration", () => {
 
       expect(result).toContain("This phase collects session variables");
       expect(result).toContain("### Variables");
-      expect(result).toContain("#### Static (pre-set)");
-      expect(result).toContain("| env | string | prod |");
-      expect(result).toContain("#### LLM-driven (set via setVar)");
+      // Only LLM-driven vars are shown
       expect(result).toContain("**feature**");
       expect(result).toContain("What feature to build?");
-      expect(result).toContain("#### Computed (auto-computed)");
-      expect(result).toContain("**count**");
-      expect(result).toContain("will be auto-computed after this turn");
+      // Static and computed sections are omitted (engine-managed, not actionable)
+      expect(result).not.toContain("Static");
+      expect(result).not.toContain("Computed");
+      expect(result).not.toContain("auto-computed");
     });
 
-    it("omits sections with no variables of that kind", async () => {
+    it("omits variable section when no LLM-driven vars present", async () => {
       const { buildVariableTemplate } = await import("./loop-engine");
       const { SessionVariableStore } = await import("./session-store");
 
@@ -4293,7 +4328,10 @@ describe("session variable integration", () => {
       setState({ currentIteration: 1 });
       const result = buildVariableTemplate(getState(), phase, store);
 
-      expect(result).toContain("#### Static (pre-set)");
+      // Only header is shown — no variable sections (static vars are engine-managed)
+      expect(result).toContain("This phase collects session variables");
+      expect(result).not.toContain("### Variables");
+      expect(result).not.toContain("#### Static");
       expect(result).not.toContain("#### LLM-driven");
       expect(result).not.toContain("#### Computed");
     });
@@ -4585,8 +4623,11 @@ describe("session variable integration", () => {
 
       const result = buildPhaseInstructions(getState());
       expect(result).toContain("This phase collects session variables");
-      expect(result).toContain("#### Static (pre-set)");
-      expect(result).toContain("#### LLM-driven (set via setVar)");
+      // Only LLM-driven vars are shown (static/computed are engine-managed)
+      expect(result).toContain("### Variables");
+      expect(result).toContain("**feature**");
+      expect(result).not.toContain("Static");
+      expect(result).not.toContain("Computed");
       expect(result).not.toContain("Do A"); // freeform instructions replaced
     });
 

@@ -121,54 +121,27 @@ export function buildVariableTemplate(
     return phase.instructions;
   }
 
-  const staticVars = phase.variables.filter(
-    (pv) => pv.kind === "static",
-  ) as PhaseVariable[];
+  // Only LLM-driven vars are actionable — static vars are already pre-set
+  // by the engine, and computed vars will be auto-computed after the turn.
+  // Showing them to the agent wastes tokens and adds noise.
   const llmVars = phase.variables.filter(
     (pv) => pv.kind === "llm",
-  ) as PhaseVariable[];
-  const computedVars = phase.variables.filter(
-    (pv) => pv.kind === "computed",
   ) as PhaseVariable[];
 
   let body =
     "This phase collects session variables. Use setVar to define the LLM-driven variables below.\n\n";
 
-  if (staticVars.length > 0 || llmVars.length > 0 || computedVars.length > 0) {
-    body += "### Variables\n\n";
-  }
-
-  // Static (pre-set) — table with values
-  if (staticVars.length > 0) {
-    body += "#### Static (pre-set)\n";
-    body += "| Name | Type | Value |\n";
-    body += "|------|------|-------|\n";
-    for (const pv of staticVars) {
-      const value = store.get(pv.name);
-      body += `| ${pv.name} | ${pv.type} | ${value !== undefined ? String(value) : "(unset)"} |\n`;
-    }
-    body += "\n";
-  }
-
   // LLM-driven — bullets with prompt text
   if (llmVars.length > 0) {
-    body += "#### LLM-driven (set via setVar)\n";
+    body += "### Variables\n\n";
     for (const pv of llmVars) {
       body += `- **${pv.name}** (\`${pv.type}\`): ${pv.prompt ?? "(no prompt)"}\n`;
     }
     body += "\n";
   }
 
-  // Computed — bullets with "will be auto-computed"
-  if (computedVars.length > 0) {
-    body += "#### Computed (auto-computed)\n";
-    for (const pv of computedVars) {
-      body += `- **${pv.name}** (\`${pv.type}\`) — will be auto-computed after this turn\n`;
-    }
-    body += "\n";
-  }
-
-  // On loop replay: list undefined variables
+  // On loop replay: list undefined variables (this IS the retry guidance
+  // for variable-defining phases — no separate **Retry focus:** block needed)
   if (state.currentIteration > 1) {
     const undefinedVars = phase.variables.filter(
       (pv) => !store.isDefined(pv.name),
@@ -248,7 +221,13 @@ export function buildPhaseInstructions(state: PioSessionState): string {
     instructionBody;
 
   // Loop replay: include loopMessage as additional per-retry context (with interpolation)
-  if (state.currentIteration > 1 && phase.loopMessage) {
+  // Skip for variable-defining phases — the undefined-var listing in the template
+  // already serves as retry guidance, avoiding duplicate messages.
+  if (
+    state.currentIteration > 1 &&
+    phase.loopMessage &&
+    phase.kind !== "variable-definition"
+  ) {
     const loopMsg = store
       ? store.interpolate(phase.loopMessage)
       : phase.loopMessage;
@@ -662,7 +641,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     const phaseStore = getState().store;
 
     // Prepare static and computed vars for next variable-defining phase (uses current state filesWritten/askUserCalled)
-    if (phaseStore && nextPhaseObj) {
+    if (phaseStore && nextPhaseObj?.kind === "variable-definition") {
       preparePhaseVariables(nextPhaseObj, phaseStore);
     }
 

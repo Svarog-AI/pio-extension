@@ -155,7 +155,7 @@ export function buildStandardPhaseInstructions(
   phase: WorkflowPhase,
   store?: SessionVariableStore,
 ): string {
-  let body = phase.instructions;
+  let body = phase.instructions ?? "";
 
   // Apply interpolation when store is available
   if (store) {
@@ -191,7 +191,7 @@ export function buildVariablePhaseInstructions(
   store: SessionVariableStore,
 ): string {
   if (phase.kind !== "variable-definition" || !phase.variables?.length) {
-    return phase.instructions;
+    return phase.instructions ?? "";
   }
 
   // Only LLM-driven vars are actionable — static vars are already pre-set

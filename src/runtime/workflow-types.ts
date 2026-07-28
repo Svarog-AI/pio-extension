@@ -122,8 +122,8 @@ export interface WorkflowPhase {
   id: string;
   /** Display title shown to the agent, e.g. "Understand the goal" */
   title: string;
-  /** Natural language instructions for this phase. This replaces the freeform numbered-step body in current .md prompts. May contain markdown formatting. */
-  instructions: string;
+  /** Natural language instructions for this phase. This replaces the freeform numbered-step body in current .md prompts. May contain markdown formatting. Omitted for variable-defining phases — the engine generates instructions from the `variables` array. */
+  instructions?: string;
   /** Per-phase skill declarations — merged into session skills at prompt compilation time */
   skills?: WorkflowPhaseSkillDeclarations;
 

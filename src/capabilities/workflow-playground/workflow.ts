@@ -94,6 +94,7 @@ Follow these steps:
 
   // ---------------------------------------------------------------------------
   // Phase 6: Variable Definition — Basic Test
+  // instructions ignored — engine generates template from variables array
   // ---------------------------------------------------------------------------
   {
     id: "var-basic-test",
@@ -122,13 +123,6 @@ Follow these steps:
         compute: (state: PioSessionState) => state.currentPhase,
       },
     ],
-    instructions: `This phase tests the variable definition mechanism — static, LLM-driven, and computed variables.
-
-Follow these steps:
-1. Call \`listVars\` to see pre-set static variables (including \`phase_label\`) and the computed \`current_phase_num\`
-2. Use \`setVar\` to set \`llm_chosen_value\` to any short word (e.g., "confirmed")
-3. Call \`listVars\` again and report all variable values
-4. The phase should advance after setting the LLM-driven var — the engine's auto-generated var completeness callback handles replay if you forget to set it`,
   },
 
   // ---------------------------------------------------------------------------
@@ -157,6 +151,7 @@ Follow these steps:
 
   // ---------------------------------------------------------------------------
   // Phase 8: terminateWhen AND Logic Test (with variables)
+  // instructions ignored — engine generates template from variables array
   // ---------------------------------------------------------------------------
   {
     id: "terminate-when-and-test",
@@ -184,12 +179,6 @@ Follow these steps:
           state.store?.get("terminate_flag") === true,
       },
     ],
-    instructions: `This phase tests terminateWhen AND logic. Two conditions must BOTH pass to advance: (1) a file was written during the phase, AND (2) the \`terminate_flag\` variable was set to true.
-
-Follow these steps:
-1. On iteration 1: write a file but do NOT set the variable. Observe the phase replays (only 1 of 2 conditions met)
-2. On iteration 2: write another file AND call \`setVar\` with \`name: "terminate_flag"\`, \`type: "boolean"\`, \`value: true\`. Observe that both conditions now pass and the phase advances
-3. Report the exact number of iterations and explain why: \`terminateWhen\` uses AND logic — all conditions must return \`true\` to advance`,
   },
 
   // ---------------------------------------------------------------------------
@@ -213,6 +202,7 @@ Follow these steps:
 
   // ---------------------------------------------------------------------------
   // Phase 10: Validation Gate Replay
+  // instructions ignored — engine generates template from variables array
   // ---------------------------------------------------------------------------
   {
     id: "validation-gate-replay",
@@ -228,13 +218,6 @@ Follow these steps:
         description: "Set this variable using setVar with any short value.",
       },
     ],
-    instructions: `This phase tests loopWhile validation replay. The engine will replay this phase if \`retry_var\` is not set.
-
-Follow these steps:
-1. On iteration 1: deliberately NOT call \`setVar\` for \`retry_var\`. Report that you're intentionally skipping it to observe the loop replay behavior.
-2. Observe the follow-up message from the engine — it should list \`retry_var\` as an undefined variable in a table format (the "Undefined Variables" section)
-3. On iteration 2: call \`setVar\` with \`name: "retry_var"\` and any string value
-4. Report that the phase advanced after setting the variable, confirming \`loopWhile\` validation replay works`,
   },
 
   // ---------------------------------------------------------------------------

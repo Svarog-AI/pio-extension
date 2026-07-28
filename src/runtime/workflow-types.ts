@@ -31,9 +31,9 @@ export interface WorkflowPhaseSkillDeclarations {
 /**
  * A condition definition for callback-based loop termination.
  *
- * When any condition in the `terminateWhen` array returns `true`,
- * the loop terminates and the engine advances to the next phase.
- * Conditions use OR logic — the first passing condition wins.
+ * All conditions in the `terminateWhen` array must return `true` for the
+ * loop to terminate and advance to the next phase. Conditions use AND logic —
+ * all must pass to advance.
  *
  * The callback receives the full PioSessionState directly — it reads
  * whatever fields it needs (`state.filesWritten`, `state.currentIteration`)
@@ -46,7 +46,7 @@ export interface WorkflowPhaseSkillDeclarations {
 export interface TerminationCondition {
   /** Condition type — currently only "callback" is supported; expression-based conditions are deferred */
   type: "callback";
-  /** Callback that receives the full PioSessionState and returns true to terminate the loop */
+  /** Callback that receives the full PioSessionState and returns true to signal this condition is met. All conditions must return true to advance (AND logic) */
   callback(state: PioSessionState): boolean;
 }
 
@@ -137,7 +137,7 @@ export interface WorkflowPhase {
   /** Hard limit on iterations regardless of termination conditions. Uses resolveMaxIterations() from model-config for resolution. */
   maxIterations?: number;
 
-  /** Array of callback-based conditions — any passing condition terminates the loop (OR logic) */
+  /** Array of callback-based conditions — all passing conditions terminate the loop (AND logic) */
   terminateWhen?: TerminationCondition[];
 
   /** Array of callback-based conditions — any passing condition keeps the phase looping (OR logic). Complements `terminateWhen` (AND: all pass → advance) */

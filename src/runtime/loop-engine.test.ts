@@ -5900,7 +5900,10 @@ describe("session variable integration", () => {
       expect(sendMessageCalls).toHaveLength(1);
     });
 
-    it("var completeness runs regardless of minIterations", async () => {
+    it("minIterations gates var completeness (hard floor before conditions)", async () => {
+      // Corrected behavior: minIterations is a hard floor — on iteration 1
+      // with minIterations: 5, the engine loops back immediately WITHOUT
+      // evaluating var completeness or other conditions.
       const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       const { SessionVariableStore } = await import("./session-store");
@@ -5912,7 +5915,7 @@ describe("session variable integration", () => {
           title: "P1",
           instructions: "Do A",
           kind: "variable-definition" as const,
-          minIterations: 5, // High min — would normally loop
+          minIterations: 5, // High min — gates all conditions
           variables: [
             {
               name: "feature",
@@ -5954,7 +5957,69 @@ describe("session variable integration", () => {
         },
       ]);
 
-      // Var completeness triggers loop BEFORE minIterations check
+      // minIterations gates first → loop back (var completeness NOT evaluated)
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("var completeness is evaluated after minIterations is reached", async () => {
+      // After minIterations floor is satisfied, var completeness is evaluated
+      // as part of the unified loopWhile callback pass.
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phases = [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          minIterations: 1, // Met on iteration 1
+          variables: [
+            {
+              name: "feature",
+              type: "string",
+              kind: "llm" as const,
+              prompt: "What?",
+            },
+          ],
+        },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1, // >= minIterations (1)
+        totalPhases: 1,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        store,
+      });
+
+      // Prepare vars (feature declared but not set)
+      const { preparePhaseVariables } = await import("./loop-engine");
+      preparePhaseVariables(phases[0], store);
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // minIterations met → var completeness evaluated → feature missing → loop
       expect(getState().currentPhase).toBe(1);
       expect(getState().currentIteration).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
@@ -6306,9 +6371,13 @@ describe("session variable integration", () => {
       expect(sendMessageCalls).toHaveLength(1);
     });
 
-    it("evaluation order: max iterations → loopWhile → minIterations → terminateWhen → advance", async () => {
-      // This test verifies the complete evaluation order by checking that
-      // each stage can short-circuit the next.
+    it("evaluation order: max iterations → minIterations → loopWhile → terminateWhen → advance", async () => {
+      // This test verifies the correct evaluation order:
+      // 1. max iterations (hard stop)
+      // 2. minIterations (hard floor before conditions)
+      // 3. loopWhile (unified callbacks, OR)
+      // 4. terminateWhen (AND)
+      // 5. advance
       const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
@@ -6358,9 +6427,224 @@ describe("session variable integration", () => {
         },
       ]);
 
-      // No max iterations hit → loopWhile false → minIterations met → terminateWhen true → advance
+      // max not hit → minIterations met → loopWhile false → terminateWhen true → advance
       expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("minIterations floor triggers replay before loopWhile and terminateWhen", async () => {
+      // On iteration 1 with minIterations: 5, the engine loops back
+      // immediately WITHOUT evaluating loopWhile or terminateWhen.
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const loopWhileCalled = vi.fn(() => false);
+      const terminateWhenCalled = vi.fn(() => true);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 5,
+          loopWhile: [
+            {
+              type: "callback" as const,
+              callback: loopWhileCalled,
+            },
+          ],
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: terminateWhenCalled,
+            },
+          ],
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1, // Below minIterations (5)
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // minIterations gates first → loop back
+      // Conditions should NOT have been called
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(loopWhileCalled).not.toHaveBeenCalled();
+      expect(terminateWhenCalled).not.toHaveBeenCalled();
+    });
+
+    it("unified loopWhile: user-defined callback integrates with auto var completeness", async () => {
+      // User-defined loopWhile callbacks are evaluated in the same pass as
+      // auto var completeness — first true wins (OR semantics).
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const userCallbackCalled = vi.fn(() => false);
+
+      const phases = [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          minIterations: 1,
+          loopWhile: [
+            {
+              type: "callback" as const,
+              callback: userCallbackCalled,
+            },
+          ],
+          variables: [
+            {
+              name: "feature",
+              type: "string",
+              kind: "llm" as const,
+              prompt: "What?",
+            },
+          ],
+        },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 1,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        store,
+      });
+
+      // Prepare vars (feature declared but not set)
+      const { preparePhaseVariables } = await import("./loop-engine");
+      preparePhaseVariables(phases[0], store);
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Auto var completeness (first in unified list) triggers loop
+      // User callback should NOT be called (short-circuited by var completeness)
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(userCallbackCalled).not.toHaveBeenCalled();
+    });
+
+    it("unified loopWhile: user callback triggers loop when all vars defined", async () => {
+      // When auto var completeness passes (all vars defined),
+      // user-defined callbacks are still evaluated.
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const userCallbackCalled = vi.fn(() => true); // Force loop
+
+      const phases = [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          minIterations: 1,
+          loopWhile: [
+            {
+              type: "callback" as const,
+              callback: userCallbackCalled,
+            },
+          ],
+          variables: [
+            {
+              name: "feature",
+              type: "string",
+              kind: "llm" as const,
+              prompt: "What?",
+            },
+          ],
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: () => true, // Would advance if not for loopWhile
+            },
+          ],
+        },
+        { id: "p2", title: "P2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        store,
+      });
+
+      // Prepare vars and set all
+      const { preparePhaseVariables } = await import("./loop-engine");
+      preparePhaseVariables(phases[0], store);
+      store.set("feature", "string", "auth");
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Auto var completeness passes → user callback evaluated → returns true → loop
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(userCallbackCalled).toHaveBeenCalledTimes(1);
     });
   });
 

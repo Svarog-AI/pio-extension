@@ -652,8 +652,9 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         currentPhase.variables?.length &&
         state.store
       ) {
+        const store = state.store;
         const missing = currentPhase.variables.filter(
-          (pv) => !state.store?.isDefined(pv.name),
+          (pv) => !store.isDefined(pv.name),
         );
         if (missing.length > 0) {
           const names = missing
@@ -668,50 +669,56 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     }
 
     // ---------------------------------------------------------------------------
-    // 3. loopWhile evaluation (OR: any true → loop replay)
+    // 3. Min iterations enforcement — HARD FLOOR before any conditions
     // ---------------------------------------------------------------------------
 
-    let shouldLoop = false;
-
-    // 3a. Auto var completeness check for variable-defining phases
-    if (
-      currentPhase.kind === "variable-definition" &&
-      currentPhase.variables?.length &&
-      state.store
-    ) {
-      const allDefined = currentPhase.variables.every((pv) =>
-        state.store?.isDefined(pv.name),
-      );
-      if (!allDefined) {
-        shouldLoop = true;
-      }
-    }
-
-    // 3b. User-defined loopWhile conditions (OR logic — first true wins)
-    if (!shouldLoop && currentPhase.loopWhile?.length) {
-      for (const condition of currentPhase.loopWhile) {
-        try {
-          if (condition.callback(state)) {
-            shouldLoop = true;
-            break;
-          }
-        } catch {
-          // Callback threw — treat as "not passing" (don't loop for this condition)
-        }
-      }
-    }
-
-    if (shouldLoop) {
+    const minIterations = currentPhase.minIterations ?? 1;
+    if (state.currentIteration < minIterations) {
       await replayLoop(pi, state);
       return;
     }
 
     // ---------------------------------------------------------------------------
-    // 4. Min iterations enforcement
+    // 4. loopWhile evaluation (unified callback pass — OR: any true → loop)
     // ---------------------------------------------------------------------------
 
-    const minIterations = currentPhase.minIterations ?? 1;
-    if (state.currentIteration < minIterations) {
+    // Build unified callback list: auto var completeness + user-defined conditions
+    const loopWhileCallbacks: Array<() => boolean> = [];
+
+    // Auto var completeness callback for variable-defining phases
+    if (
+      currentPhase.kind === "variable-definition" &&
+      currentPhase.variables?.length &&
+      state.store
+    ) {
+      const phaseVars = currentPhase.variables;
+      const phaseStore = state.store;
+      loopWhileCallbacks.push(() =>
+        phaseVars.some((pv) => !phaseStore.isDefined(pv.name)),
+      );
+    }
+
+    // User-defined loopWhile conditions
+    if (currentPhase.loopWhile?.length) {
+      for (const condition of currentPhase.loopWhile) {
+        loopWhileCallbacks.push(() => condition.callback(state));
+      }
+    }
+
+    // Evaluate all callbacks in one pass — first true wins
+    let shouldLoop = false;
+    for (const cb of loopWhileCallbacks) {
+      try {
+        if (cb()) {
+          shouldLoop = true;
+          break;
+        }
+      } catch {
+        // Callback threw — treat as "not passing" (don't loop for this condition)
+      }
+    }
+
+    if (shouldLoop) {
       await replayLoop(pi, state);
       return;
     }

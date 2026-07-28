@@ -99,8 +99,8 @@ export interface PhaseVariable {
   kind: PhaseVariableKind;
   /** Optional hardcoded value — used when `kind` is `'static'`. Set before `buildPhaseInstructions()`. */
   value?: unknown;
-  /** Optional natural language prompt — used when `kind` is `'llm'`. Describes what the agent should determine and set via `setVar()`. */
-  prompt?: string;
+  /** Optional natural language description — used when `kind` is `'llm'`. Describes what the agent should determine and set via `setVar()`. The loop engine uses this text to construct the agent-facing variable listing. */
+  description?: string;
   /** Optional callback — used when `kind` is `'computed'`. Receives current state and returns a value. Executed at `agent_end` in declaration order. */
   compute?: (state: PioSessionState) => unknown;
 }

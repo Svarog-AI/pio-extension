@@ -208,7 +208,7 @@ export function buildVariablePhaseInstructions(
   if (llmVars.length > 0) {
     body += "### Variables\n\n";
     for (const pv of llmVars) {
-      body += `- **${pv.name}** (\`${pv.type}\`): ${pv.prompt ?? "(no prompt)"}\n`;
+      body += `- **${pv.name}** (\`${pv.type}\`): ${pv.description ?? "(no description)"}\n`;
     }
     body += "\n";
   }

@@ -93,18 +93,164 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 6: Write Allowlist Test (final report with blocked attempt first)
+  // Phase 6: Variable Definition — Basic Test
   // ---------------------------------------------------------------------------
   {
-    id: "write-allowlist",
-    title: "Write allowlist test — final report",
-    write: ["playground-output"],
-    instructions: `This is the final phase. Produce a comprehensive test report in \`PLAYGROUND.md\` summarizing all observations from Phases 1–5.
+    id: "var-basic-test",
+    title: "Variable Definition — Basic Test",
+    kind: "variable-definition",
+    minIterations: 1,
+    maxIterations: 3,
+    variables: [
+      {
+        name: "phase_label",
+        type: "string",
+        kind: "static",
+        value: "Variable System Test",
+      },
+      {
+        name: "llm_chosen_value",
+        type: "string",
+        kind: "llm",
+        description:
+          "Choose any short word (e.g. 'confirmed') and set it as the llm_chosen_value variable using setVar.",
+      },
+      {
+        name: "current_phase_num",
+        type: "number",
+        kind: "computed",
+        compute: (state: PioSessionState) => state.currentPhase,
+      },
+    ],
+    instructions: `This phase tests the variable definition mechanism — static, LLM-driven, and computed variables.
 
 Follow these steps:
-1. First, attempt to write a file that is NOT in the allowlist and NOT a contract output (e.g., \`not-allowed.md\`) — this should succeed because it's a non-contract file. If all files pass through for non-contract paths, report that the allowlist only blocks other contract outputs (there aren't any beyond playground-output in this capability)
-2. Then write \`PLAYGROUND.md\` as a comprehensive test report summarizing all observations from Phases 1–5: which tests passed, which failed, and the exact error/block messages observed
-3. Include a section for each phase with iteration counts, block/reject messages (verbatim), \`/tmp/\` test results, project file access results, and whether the behavior matched expectations
-4. This is the final phase — produce a complete, well-structured report in \`PLAYGROUND.md\``,
+1. Call \`listVars\` to see pre-set static variables (including \`phase_label\`) and the computed \`current_phase_num\`
+2. Use \`setVar\` to set \`llm_chosen_value\` to any short word (e.g., "confirmed")
+3. Call \`listVars\` again and report all variable values
+4. The phase should advance after setting the LLM-driven var — the engine's auto-generated var completeness callback handles replay if you forget to set it`,
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 7: loopWhile Condition Test
+  // ---------------------------------------------------------------------------
+  {
+    id: "loopwhile-test",
+    title: "loopWhile Condition Test",
+    minIterations: 1,
+    maxIterations: 3,
+    loopWhile: [
+      {
+        type: "callback",
+        callback: (state: PioSessionState) =>
+          state.filesWritten.filter((f) => f.endsWith("loopwhile-test.txt"))
+            .length === 0,
+      },
+    ],
+    instructions: `This phase tests user-defined loopWhile conditions. The loop engine checks whether a file ending with \`loopwhile-test.txt\` was written — it keeps looping until the file exists.
+
+Follow these steps:
+1. On iteration 1: do NOT write the required file. Report "Iteration 1 — skipping file write" and observe the phase replays
+2. On iteration 2: write \`/tmp/loopwhile-test.txt\` with any content. Observe that after writing the file, the loopWhile condition returns \`false\` (condition not met → no loop replay) and the phase advances
+3. Report the exact number of iterations and explain why: \`loopWhile\` uses OR logic — when the callback returns \`false\`, the engine does not loop back`,
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 8: terminateWhen AND Logic Test (with variables)
+  // ---------------------------------------------------------------------------
+  {
+    id: "terminate-when-and-test",
+    title: "terminateWhen AND Logic Test",
+    kind: "variable-definition",
+    minIterations: 1,
+    maxIterations: 4,
+    variables: [
+      {
+        name: "terminate_flag",
+        type: "boolean",
+        kind: "llm",
+        description:
+          "Set this to true using setVar when you are ready to advance.",
+      },
+    ],
+    terminateWhen: [
+      {
+        type: "callback",
+        callback: (state: PioSessionState) => state.filesWritten.length > 0,
+      },
+      {
+        type: "callback",
+        callback: (state: PioSessionState) =>
+          state.store?.get("terminate_flag") === true,
+      },
+    ],
+    instructions: `This phase tests terminateWhen AND logic. Two conditions must BOTH pass to advance: (1) a file was written during the phase, AND (2) the \`terminate_flag\` variable was set to true.
+
+Follow these steps:
+1. On iteration 1: write a file but do NOT set the variable. Observe the phase replays (only 1 of 2 conditions met)
+2. On iteration 2: write another file AND call \`setVar\` with \`name: "terminate_flag"\`, \`type: "boolean"\`, \`value: true\`. Observe that both conditions now pass and the phase advances
+3. Report the exact number of iterations and explain why: \`terminateWhen\` uses AND logic — all conditions must return \`true\` to advance`,
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 9: Template Interpolation
+  // ---------------------------------------------------------------------------
+  {
+    id: "template-interpolation",
+    title: "Template Interpolation",
+    instructions: `This phase tests template interpolation. The placeholders below reference variables set in Phase 6.
+
+Resolved values from Phase 6:
+- \`\${phase_label}\` — should resolve to the static var value
+- \`\${llm_chosen_value}\` — should resolve to whatever you set via setVar in Phase 6
+- \`\${current_phase_num}\` — should resolve to the computed phase number from Phase 6
+
+Follow these steps:
+1. Call \`listVars\` to see all current variables
+2. Report the resolved values of the interpolated placeholders above (they appear directly in these instructions)
+3. Confirm that static, LLM-driven, and computed vars all survive across phases and interpolate correctly`,
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 10: Validation Gate Replay
+  // ---------------------------------------------------------------------------
+  {
+    id: "validation-gate-replay",
+    title: "Validation Gate Replay",
+    kind: "variable-definition",
+    minIterations: 1,
+    maxIterations: 3,
+    variables: [
+      {
+        name: "retry_var",
+        type: "string",
+        kind: "llm",
+        description: "Set this variable using setVar with any short value.",
+      },
+    ],
+    instructions: `This phase tests loopWhile validation replay. The engine will replay this phase if \`retry_var\` is not set.
+
+Follow these steps:
+1. On iteration 1: deliberately NOT call \`setVar\` for \`retry_var\`. Report that you're intentionally skipping it to observe the loop replay behavior.
+2. Observe the follow-up message from the engine — it should list \`retry_var\` as an undefined variable in a table format (the "Undefined Variables" section)
+3. On iteration 2: call \`setVar\` with \`name: "retry_var"\` and any string value
+4. Report that the phase advanced after setting the variable, confirming \`loopWhile\` validation replay works`,
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 11: Final Report
+  // ---------------------------------------------------------------------------
+  {
+    id: "final-report",
+    title: "Final Report",
+    write: ["playground-output"],
+    instructions: `This is the final phase. Write a comprehensive test report in \`PLAYGROUND.md\` covering all phases (1–10).
+
+Follow these steps:
+1. Write \`PLAYGROUND.md\` with a section for each phase (1–10) summarizing behavior observed
+2. For Phases 6–10 specifically, include: variable values, interpolation results, loopWhile replay observations, terminateWhen AND logic behavior, and computed callback results
+3. Confirm that user-defined \`loopWhile\` uses OR logic (Phase 7) and \`terminateWhen\` uses AND logic (Phase 8) based on direct observations
+4. Include any unexpected behaviors or discrepancies
+5. This is the final phase — produce a complete, well-structured report in \`PLAYGROUND.md\``,
   },
 ] satisfies WorkflowPhase[];

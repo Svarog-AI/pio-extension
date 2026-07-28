@@ -691,6 +691,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       currentPhase.variables?.length &&
       state.store
     ) {
+      // Capture narrowed values for closure (avoids non-null assertions)
       const phaseVars = currentPhase.variables;
       const phaseStore = state.store;
       loopWhileCallbacks.push(() =>
@@ -727,25 +728,25 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // 5. terminateWhen evaluation (AND: all must pass → advance)
     // ---------------------------------------------------------------------------
 
-    let conditionsMet = true;
+    let shouldReplay = false;
 
     if (currentPhase.terminateWhen && currentPhase.terminateWhen.length > 0) {
       for (const condition of currentPhase.terminateWhen) {
         try {
           if (!condition.callback(state)) {
-            conditionsMet = false;
+            shouldReplay = true;
             break;
           }
         } catch {
-          // Callback threw — fail-safe: treat as NOT met (keep looping)
-          conditionsMet = false;
+          // Callback threw — fail-safe: treat as not met (keep looping)
+          shouldReplay = true;
           break;
         }
       }
     }
-    // No conditions defined (or empty array) → conditionsMet stays true (advance)
+    // No conditions defined (or empty array) → shouldReplay stays false (advance)
 
-    if (!conditionsMet) {
+    if (shouldReplay) {
       await replayLoop(pi, state);
       return;
     }

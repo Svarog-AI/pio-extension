@@ -1779,7 +1779,7 @@ describe("agent_end", () => {
       expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
 
-    it("advances when terminateWhen callback returns true (OR logic)", async () => {
+    it("advances when terminateWhen callback returns true", async () => {
       const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
@@ -1833,7 +1833,7 @@ describe("agent_end", () => {
       expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
 
-    it("loops when all terminateWhen callbacks return false (OR logic)", async () => {
+    it("loops when all terminateWhen callbacks return false (AND logic)", async () => {
       const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
@@ -1891,7 +1891,7 @@ describe("agent_end", () => {
       expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
 
-    it("advances when second callback returns true (short-circuit OR)", async () => {
+    it("loops when first callback returns false (AND logic — all must pass)", async () => {
       const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
@@ -1940,7 +1940,66 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Second callback true → advance via sendMessage
+      // AND logic: first callback false → loop (all must pass)
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(sendMessageCalls[0].message.customType).toBe(
+        "workflow-phase-instructions",
+      );
+      expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
+    });
+
+    it("advances when all terminateWhen callbacks return true (AND logic)", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 1,
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: (state: any) => state.filesWritten.length > 0,
+            },
+            {
+              type: "callback" as const,
+              callback: (state: any) => state.askUserCalled,
+            },
+          ],
+          loopMessage: "Retry",
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: ["/some/file.ts"], // First callback returns true
+        askUserCalled: true, // Second callback returns true
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // AND logic: all callbacks true → advance
       expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
@@ -2806,6 +2865,42 @@ describe("buildPhaseInstructions", () => {
     });
     const result = build(getState());
     expect(result).not.toContain("Retry focus");
+  });
+
+  it("does NOT append Retry focus for variable-defining phases (undefined-var listing is the retry message)", async () => {
+    const build = await getBuildPhaseInstructions();
+    const { SessionVariableStore } = await import("./session-store");
+
+    const store = new SessionVariableStore({});
+    setState({
+      currentPhase: 1,
+      currentIteration: 2,
+      totalPhases: 1,
+      phasesList: [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          loopMessage: "This should not appear",
+          variables: [
+            {
+              name: "feature",
+              type: "string",
+              kind: "llm" as const,
+              description: "What feature?",
+            },
+          ],
+        },
+      ],
+      store,
+    });
+    const result = build(getState());
+    // Variable-defining phases use undefined-var listing instead of loopMessage
+    expect(result).not.toContain("**Retry focus:**");
+    expect(result).not.toContain("This should not appear");
+    // Undefined var listing should be present (iteration > 1, feature not set)
+    expect(result).toContain("Undefined Variables");
   });
 });
 
@@ -3997,6 +4092,2716 @@ describe("persistence integration", () => {
       // Assert: state updated but save not called
       expect(getState().isAdHocInput).toBe(true);
       expect(statePersistence.saveLoopEngineState).not.toHaveBeenCalled();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Session variable integration
+// ---------------------------------------------------------------------------
+
+describe("session variable integration", () => {
+  // Build placeholder strings programmatically to avoid linter warnings
+  const placeholderEnv = "$" + "{env}";
+  const placeholderTarget = "$" + "{target}";
+
+  // -----------------------------------------------------------------------
+  // initializeStore helper
+  // -----------------------------------------------------------------------
+
+  describe("initializeStore", () => {
+    it("creates store with session params as read-only layer", async () => {
+      const { initializeStore } = await import("./loop-engine");
+      const store = initializeStore({ foo: "bar", count: 42 });
+
+      expect(store.get("foo")).toBe("bar");
+      expect(store.get("count")).toBe(42);
+      expect(store.getAll()).toEqual({ foo: "bar", count: 42 });
+    });
+
+    it("restores persisted vars on top of frozen params", async () => {
+      const { initializeStore } = await import("./loop-engine");
+      const store = initializeStore(
+        { foo: "bar" },
+        { myVar: { value: "hello", type: "string" } },
+      );
+
+      expect(store.get("foo")).toBe("bar");
+      expect(store.get("myVar")).toBe("hello");
+      expect(store.isDefined("myVar")).toBe(true);
+    });
+
+    it("calls declare before set for persisted vars (type enforcement preserved)", async () => {
+      const { initializeStore } = await import("./loop-engine");
+      const store = initializeStore({}, { x: { value: 10, type: "number" } });
+
+      // Verify the var was declared and set
+      expect(store.get("x")).toBe(10);
+      expect(store.isDefined("x")).toBe(true);
+
+      // Type enforcement should work — setting with wrong type should throw
+      expect(() => store.set("x", "string", "wrong")).toThrow("Type mismatch");
+    });
+
+    it("handles missing persisted vars gracefully", async () => {
+      const { initializeStore } = await import("./loop-engine");
+      const store = initializeStore({ a: 1 });
+
+      expect(store.get("a")).toBe(1);
+      expect(store.getAll()).toEqual({ a: 1 });
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // preparePhaseVariables helper
+  // -----------------------------------------------------------------------
+
+  describe("preparePhaseVariables", () => {
+    it("sets static vars for variable-definition phases", async () => {
+      const { preparePhaseVariables } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [
+          {
+            name: "env",
+            type: "string",
+            kind: "static" as const,
+            value: "prod",
+          },
+        ],
+      };
+
+      preparePhaseVariables(phase, store);
+      expect(store.get("env")).toBe("prod");
+      expect(store.isDefined("env")).toBe(true);
+    });
+
+    it("runs computed callbacks after static vars", async () => {
+      const { preparePhaseVariables } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const computeSpy = vi.fn((state: any) => state.filesWritten.length);
+
+      setState({
+        isActive: true,
+        currentPhase: 2,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: [],
+        filesWritten: ["/a.ts", "/b.ts"],
+        askUserCalled: true,
+        isAdHocInput: false,
+      });
+
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [
+          {
+            name: "env",
+            type: "string",
+            kind: "static" as const,
+            value: "prod",
+          },
+          {
+            name: "fileCount",
+            type: "number",
+            kind: "computed" as const,
+            compute: computeSpy,
+          },
+        ],
+      };
+
+      preparePhaseVariables(phase, store);
+
+      // Static var set first
+      expect(store.get("env")).toBe("prod");
+      // Computed callback ran and used filesWritten from previous phase
+      expect(computeSpy).toHaveBeenCalledTimes(1);
+      expect(store.get("fileCount")).toBe(2);
+    });
+
+    it("catches and logs errors from computed callbacks", async () => {
+      const { preparePhaseVariables } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [
+          {
+            name: "bad",
+            type: "string",
+            kind: "computed" as const,
+            compute: () => {
+              throw new Error("boom");
+            },
+          },
+        ],
+      };
+
+      preparePhaseVariables(phase, store);
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Computed variable 'bad' callback threw"),
+      );
+      // Var remains undefined
+      expect(store.isDefined("bad")).toBe(false);
+      warnSpy.mockRestore();
+    });
+
+    it("is a no-op for standard phases", async () => {
+      const { preparePhaseVariables } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "standard" as const,
+      };
+
+      preparePhaseVariables(phase, store);
+      expect(store.get("env")).toBeUndefined();
+    });
+
+    it("is a no-op when variables array is empty", async () => {
+      const { preparePhaseVariables } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [],
+      };
+
+      preparePhaseVariables(phase, store);
+      expect(store.getAll()).toEqual({});
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // buildStandardPhaseInstructions helper
+  // -----------------------------------------------------------------------
+
+  describe("buildStandardPhaseInstructions", () => {
+    it("returns phase.instructions for standard phases", async () => {
+      const { buildStandardPhaseInstructions } = await import("./loop-engine");
+
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "standard" as const,
+      };
+
+      setState({ currentIteration: 1 });
+      const result = buildStandardPhaseInstructions(getState(), phase);
+      expect(result).toBe("Do A");
+    });
+
+    it("interpolates placeholders when store is available", async () => {
+      const { buildStandardPhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const placeholderEnv = "$" + "{env}";
+      const store = new SessionVariableStore({ env: "prod" });
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: `Deploy to ${placeholderEnv}`,
+        kind: "standard" as const,
+      };
+
+      setState({ currentIteration: 1 });
+      const result = buildStandardPhaseInstructions(getState(), phase, store);
+      expect(result).toBe("Deploy to prod");
+    });
+
+    it("passes unresolved placeholders through when store is not available", async () => {
+      const { buildStandardPhaseInstructions } = await import("./loop-engine");
+
+      const placeholderEnv = "$" + "{env}";
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: `Deploy to ${placeholderEnv}`,
+        kind: "standard" as const,
+      };
+
+      setState({ currentIteration: 1 });
+      const result = buildStandardPhaseInstructions(getState(), phase);
+      expect(result).toContain(placeholderEnv);
+    });
+
+    it("appends Retry focus on loop replay (iteration > 1) with loopMessage", async () => {
+      const { buildStandardPhaseInstructions } = await import("./loop-engine");
+
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "standard" as const,
+        loopMessage: "Focus on edge cases",
+      };
+
+      setState({ currentIteration: 2 });
+      const result = buildStandardPhaseInstructions(getState(), phase);
+      expect(result).toContain("Do A");
+      expect(result).toContain("**Retry focus:** Focus on edge cases");
+    });
+
+    it("does NOT append Retry focus on first iteration", async () => {
+      const { buildStandardPhaseInstructions } = await import("./loop-engine");
+
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "standard" as const,
+        loopMessage: "Focus on edge cases",
+      };
+
+      setState({ currentIteration: 1 });
+      const result = buildStandardPhaseInstructions(getState(), phase);
+      expect(result).toBe("Do A");
+      expect(result).not.toContain("Retry focus");
+    });
+
+    it("interpolates loopMessage when store is available", async () => {
+      const { buildStandardPhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const placeholderTarget = "$" + "{target}";
+      const store = new SessionVariableStore({ target: "edge cases" });
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "standard" as const,
+        loopMessage: `Focus on ${placeholderTarget}`,
+      };
+
+      setState({ currentIteration: 2 });
+      const result = buildStandardPhaseInstructions(getState(), phase, store);
+      expect(result).toContain("**Retry focus:** Focus on edge cases");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // buildVariablePhaseInstructions helper
+  // -----------------------------------------------------------------------
+
+  describe("buildVariablePhaseInstructions", () => {
+    it("returns phase.instructions for standard phases", async () => {
+      const { buildVariablePhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "standard" as const,
+      };
+
+      const result = buildVariablePhaseInstructions(getState(), phase, store);
+      expect(result).toBe("Do A");
+    });
+
+    it("shows only LLM-driven vars (static and computed are engine-managed)", async () => {
+      const { buildVariablePhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      store.set("env", "string", "prod");
+
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [
+          {
+            name: "env",
+            type: "string",
+            kind: "static" as const,
+            value: "prod",
+          },
+          {
+            name: "feature",
+            type: "string",
+            kind: "llm" as const,
+            description: "What feature to build?",
+          },
+          { name: "count", type: "number", kind: "computed" as const },
+        ],
+      };
+
+      setState({ currentIteration: 1 });
+      const result = buildVariablePhaseInstructions(getState(), phase, store);
+
+      expect(result).toContain("This phase collects session variables");
+      expect(result).toContain("### Variables");
+      // Only LLM-driven vars are shown
+      expect(result).toContain("**feature**");
+      expect(result).toContain("What feature to build?");
+      // Static and computed sections are omitted (engine-managed, not actionable)
+      expect(result).not.toContain("Static");
+      expect(result).not.toContain("Computed");
+      expect(result).not.toContain("auto-computed");
+    });
+
+    it("omits variable section when no LLM-driven vars present", async () => {
+      const { buildVariablePhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      store.set("env", "string", "prod");
+
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [
+          {
+            name: "env",
+            type: "string",
+            kind: "static" as const,
+            value: "prod",
+          },
+        ],
+      };
+
+      setState({ currentIteration: 1 });
+      const result = buildVariablePhaseInstructions(getState(), phase, store);
+
+      // Only header is shown — no variable sections (static vars are engine-managed)
+      expect(result).toContain("This phase collects session variables");
+      expect(result).not.toContain("### Variables");
+      expect(result).not.toContain("#### Static");
+      expect(result).not.toContain("#### LLM-driven");
+      expect(result).not.toContain("#### Computed");
+    });
+
+    it("lists undefined variables on loop replay (iteration > 1)", async () => {
+      const { buildVariablePhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      store.set("env", "string", "prod");
+      // feature is NOT set
+
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [
+          {
+            name: "env",
+            type: "string",
+            kind: "static" as const,
+            value: "prod",
+          },
+          {
+            name: "feature",
+            type: "string",
+            kind: "llm" as const,
+            description: "What?",
+          },
+        ],
+      };
+
+      setState({ currentIteration: 2 });
+      const result = buildVariablePhaseInstructions(getState(), phase, store);
+
+      expect(result).toContain(
+        "### Undefined Variables (from previous iteration)",
+      );
+      expect(result).toContain("| feature | string |");
+      expect(result).not.toContain("| env | string |\n"); // env is defined, not listed
+    });
+
+    it("does not list undefined variables on first iteration", async () => {
+      const { buildVariablePhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [
+          {
+            name: "feature",
+            type: "string",
+            kind: "llm" as const,
+            description: "What?",
+          },
+        ],
+      };
+
+      setState({ currentIteration: 1 });
+      const result = buildVariablePhaseInstructions(getState(), phase, store);
+
+      expect(result).not.toContain("Undefined Variables");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // resources_discover — store creation
+  // -----------------------------------------------------------------------
+
+  describe("resources_discover — store creation", () => {
+    it("creates SessionVariableStore with session params", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      vi.mocked(capabilityUtils.getSessionConfig).mockResolvedValue({
+        capability: "create-goal",
+        workspaceDir: "/test/.pio/goals/test",
+        sessionParams: { foo: "bar" },
+        sessionName: "test-create-goal",
+        allowProjectWrites: false,
+        contract: { inputs: [], outputs: [{ name: "goal", file: "GOAL.md" }] },
+      });
+      setupLoopEngine(pi);
+
+      const discoverHandlers = handlers.get("resources_discover");
+      for (const h of discoverHandlers!) {
+        await h(
+          { type: "resources_discover", cwd: ".", reason: "startup" },
+          mockCtx,
+        );
+      }
+
+      const state = getState();
+      expect(state.store).toBeDefined();
+      expect(state.store!.get("foo")).toBe("bar");
+    });
+
+    it("restores persisted vars from saved state", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      vi.mocked(statePersistence.loadLoopEngineState).mockReturnValue({
+        currentPhase: 1,
+        currentIteration: 1,
+        isAdHocInput: false,
+        vars: { myVar: { value: "hello", type: "string" } },
+      });
+      setupLoopEngine(pi);
+
+      const discoverHandlers = handlers.get("resources_discover");
+      for (const h of discoverHandlers!) {
+        await h(
+          { type: "resources_discover", cwd: ".", reason: "startup" },
+          mockCtx,
+        );
+      }
+
+      const state = getState();
+      expect(state.store).toBeDefined();
+      expect(state.store!.get("myVar")).toBe("hello");
+      expect(state.store!.isDefined("myVar")).toBe(true);
+
+      vi.mocked(statePersistence.loadLoopEngineState).mockReset();
+    });
+
+    it("persisted vars have type enforcement restored", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      vi.mocked(statePersistence.loadLoopEngineState).mockReturnValue({
+        currentPhase: 1,
+        currentIteration: 1,
+        isAdHocInput: false,
+        vars: { x: { value: 10, type: "number" } },
+      });
+      setupLoopEngine(pi);
+
+      const discoverHandlers = handlers.get("resources_discover");
+      for (const h of discoverHandlers!) {
+        await h(
+          { type: "resources_discover", cwd: ".", reason: "startup" },
+          mockCtx,
+        );
+      }
+
+      const state = getState();
+      expect(state.store!.get("x")).toBe(10);
+      // Type enforcement should be active
+      expect(() => state.store!.set("x", "string", "wrong")).toThrow(
+        "Type mismatch",
+      );
+
+      vi.mocked(statePersistence.loadLoopEngineState).mockReset();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // buildPhaseInstructions — interpolation
+  // -----------------------------------------------------------------------
+
+  describe("buildPhaseInstructions — interpolation", () => {
+    it("interpolates placeholders in phase.instructions when store is available", async () => {
+      const { buildPhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({ env: "prod" });
+      setState({
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: `Deploy to ${placeholderEnv}`,
+          },
+        ],
+        store,
+      });
+
+      const result = buildPhaseInstructions(getState());
+      expect(result).toContain("Deploy to prod");
+      expect(result).not.toContain(placeholderEnv);
+    });
+
+    it("passes unresolved placeholders through unchanged", async () => {
+      const { buildPhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      setState({
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: `Deploy to ${placeholderEnv}`,
+          },
+        ],
+        store,
+      });
+
+      const result = buildPhaseInstructions(getState());
+      expect(result).toContain(placeholderEnv);
+    });
+
+    it("interpolates loopMessage when store is available", async () => {
+      const { buildPhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({ target: "edge cases" });
+      setState({
+        currentPhase: 1,
+        currentIteration: 2,
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "Do A",
+            loopMessage: `Focus on ${placeholderTarget}`,
+          },
+        ],
+        store,
+      });
+
+      const result = buildPhaseInstructions(getState());
+      expect(result).toContain("**Retry focus:** Focus on edge cases");
+    });
+
+    it("uses raw instructions when store is not available", async () => {
+      const { buildPhaseInstructions } = await import("./loop-engine");
+      setState({
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: `Deploy to ${placeholderEnv}`,
+          },
+        ],
+        store: undefined,
+      });
+
+      const result = buildPhaseInstructions(getState());
+      expect(result).toContain(placeholderEnv);
+    });
+
+    it("produces custom variable template for variable-definition phases", async () => {
+      const { buildPhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      store.set("env", "string", "prod");
+      setState({
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "Do A",
+            kind: "variable-definition" as const,
+            variables: [
+              {
+                name: "env",
+                type: "string",
+                kind: "static" as const,
+                value: "prod",
+              },
+              {
+                name: "feature",
+                type: "string",
+                kind: "llm" as const,
+                description: "What feature?",
+              },
+            ],
+          },
+        ],
+        store,
+      });
+
+      const result = buildPhaseInstructions(getState());
+      expect(result).toContain("This phase collects session variables");
+      // Only LLM-driven vars are shown (static/computed are engine-managed)
+      expect(result).toContain("### Variables");
+      expect(result).toContain("**feature**");
+      expect(result).not.toContain("Static");
+      expect(result).not.toContain("Computed");
+      expect(result).not.toContain("Do A"); // freeform instructions replaced
+    });
+
+    it("falls back to standard instructions when variable-defining phase has no variables array", async () => {
+      const { buildPhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      setState({
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "Do A",
+            kind: "variable-definition" as const,
+            // No variables array
+          },
+        ],
+        store,
+      });
+
+      const result = buildPhaseInstructions(getState());
+      expect(result).toContain("Do A");
+      expect(result).not.toContain("This phase collects session variables");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // before_agent_start — variable setup for Phase 1 variable-defining entry
+  // -----------------------------------------------------------------------
+
+  describe("before_agent_start — variable setup", () => {
+    async function fireBeforeAgentStart(
+      handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+    ) {
+      const handlersList = handlers.get("before_agent_start");
+      expect(handlersList).toBeDefined();
+      const mockCtx = {} as any;
+      const results: unknown[] = [];
+      for (const handler of handlersList!) {
+        const result = await handler({ type: "before_agent_start" }, mockCtx);
+        if (result) results.push(result);
+      }
+      return results;
+    }
+
+    it("sets static vars for variable-defining Phase 1", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phases = [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          variables: [
+            {
+              name: "env",
+              type: "string",
+              kind: "static" as const,
+              value: "prod",
+            },
+          ],
+        },
+      ];
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 1,
+        phasesList: phases,
+        isAdHocInput: false,
+        filesWritten: [],
+        askUserCalled: false,
+        store,
+      });
+
+      await fireBeforeAgentStart(handlers);
+
+      expect(store.get("env")).toBe("prod");
+    });
+
+    it("runs computed callbacks for variable-defining Phase 1 (empty state)", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const computeSpy = vi.fn((state: any) => state.filesWritten.length);
+      const phases = [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          variables: [
+            {
+              name: "count",
+              type: "number",
+              kind: "computed" as const,
+              compute: computeSpy,
+            },
+          ],
+        },
+      ];
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 1,
+        phasesList: phases,
+        isAdHocInput: false,
+        filesWritten: [], // empty — Phase 1 has no previous data
+        askUserCalled: false,
+        store,
+      });
+
+      await fireBeforeAgentStart(handlers);
+
+      expect(computeSpy).toHaveBeenCalledTimes(1);
+      expect(store.get("count")).toBe(0); // empty filesWritten
+    });
+
+    it("does not run variable setup for standard Phase 1", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phases = [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+        },
+      ];
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 1,
+        phasesList: phases,
+        isAdHocInput: false,
+        filesWritten: [],
+        askUserCalled: false,
+        store,
+      });
+
+      await fireBeforeAgentStart(handlers);
+
+      // No variable setup should have occurred
+      expect(store.getAll()).toEqual({});
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // agent_end — variable setup at phase advancement
+  // -----------------------------------------------------------------------
+
+  describe("agent_end — variable setup at phase advancement", () => {
+    async function fireAgentEnd(
+      handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+      messages: unknown[],
+    ) {
+      const handlersList = handlers.get("agent_end");
+      expect(handlersList).toBeDefined();
+      const mockCtx = {} as any;
+      for (const handler of handlersList!) {
+        await handler({ type: "agent_end", messages }, mockCtx);
+      }
+    }
+
+    it("prepares static vars for next variable-defining phase during advancement", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phases = [
+        { id: "p1", title: "P1", instructions: "Do A" },
+        {
+          id: "p2",
+          title: "P2",
+          instructions: "Do B",
+          kind: "variable-definition" as const,
+          variables: [
+            {
+              name: "env",
+              type: "string",
+              kind: "static" as const,
+              value: "staging",
+            },
+          ],
+        },
+      ];
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        store,
+      });
+
+      await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+
+      // Advanced to phase 2
+      expect(getState().currentPhase).toBe(2);
+      // Static var for phase 2 should be set
+      expect(store.get("env")).toBe("staging");
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("runs computed callbacks using previous phase's data during advancement", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const computeSpy = vi.fn((state: any) => state.filesWritten.length);
+      const phases = [
+        { id: "p1", title: "P1", instructions: "Do A" },
+        {
+          id: "p2",
+          title: "P2",
+          instructions: "Do B",
+          kind: "variable-definition" as const,
+          variables: [
+            {
+              name: "fileCount",
+              type: "number",
+              kind: "computed" as const,
+              compute: computeSpy,
+            },
+          ],
+        },
+      ];
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: ["/a.ts", "/b.ts", "/c.ts"], // Phase 1 wrote 3 files
+        askUserCalled: true,
+        isAdHocInput: false,
+        store,
+      });
+
+      await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+
+      // Computed callback should have seen Phase 1's data
+      expect(computeSpy).toHaveBeenCalledTimes(1);
+      expect(store.get("fileCount")).toBe(3);
+      // Tracking fields should be reset after computed callbacks
+      expect(getState().filesWritten).toEqual([]);
+      expect(getState().askUserCalled).toBe(false);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("does not prepare vars when next phase is standard", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phases = [
+        { id: "p1", title: "P1", instructions: "Do A" },
+        { id: "p2", title: "P2", instructions: "Do B" },
+      ];
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: ["/a.ts"],
+        askUserCalled: false,
+        isAdHocInput: false,
+        store,
+      });
+
+      await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+
+      expect(getState().currentPhase).toBe(2);
+      // No vars should have been set
+      expect(store.getAll()).toEqual({});
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("does not prepare vars on loop replay (only at phase advancement)", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phases = [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          minIterations: 2,
+          variables: [
+            {
+              name: "env",
+              type: "string",
+              kind: "static" as const,
+              value: "prod",
+            },
+          ],
+        },
+      ];
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1, // < minIterations
+        totalPhases: 1,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        store,
+      });
+
+      await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+
+      // Should loop (not advance)
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // setupSessionVariables registration
+  // -----------------------------------------------------------------------
+
+  describe("setupSessionVariables registration", () => {
+    it("setupLoopEngine calls setupSessionVariables (tools registered)", async () => {
+      const registeredTools: string[] = [];
+      const pi = {
+        on: vi.fn(),
+        registerTool: vi.fn((tool: any) => {
+          registeredTools.push(tool.name);
+        }),
+        registerCommand: vi.fn(),
+        registerShortcut: vi.fn(),
+        registerFlag: vi.fn(),
+        getFlag: vi.fn(),
+        registerMessageRenderer: vi.fn(),
+        sendMessage: vi.fn(),
+        sendUserMessage: vi.fn(),
+        appendEntry: vi.fn(),
+        setSessionName: vi.fn(),
+        getSessionName: vi.fn(),
+        setLabel: vi.fn(),
+        exec: vi.fn(),
+        getActiveTools: vi.fn(),
+        getAllTools: vi.fn(),
+        setActiveTools: vi.fn(),
+        getCommands: vi.fn(),
+        setModel: vi.fn(),
+        getThinkingLevel: vi.fn(),
+        setThinkingLevel: vi.fn(),
+        registerProvider: vi.fn(),
+        unregisterProvider: vi.fn(),
+        events: { emit: vi.fn() },
+      } as any;
+
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      expect(registeredTools).toContain("setVar");
+      expect(registeredTools).toContain("getVar");
+      expect(registeredTools).toContain("listVars");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // declarePhaseVariables helper
+  // -----------------------------------------------------------------------
+
+  describe("declarePhaseVariables", () => {
+    it("pre-declares LLM and computed variables", async () => {
+      const { declarePhaseVariables } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [
+          {
+            name: "env",
+            type: "string",
+            kind: "static" as const,
+            value: "prod",
+          },
+          {
+            name: "feature",
+            type: "string",
+            kind: "llm" as const,
+            description: "What feature?",
+          },
+          {
+            name: "count",
+            type: "number",
+            kind: "computed" as const,
+          },
+        ],
+      };
+
+      declarePhaseVariables(phase, store);
+
+      // LLM and computed vars should be declared (type enforcement active)
+      // Setting with wrong type should throw
+      expect(() => store.set("feature", "number", 42)).toThrow("Type mismatch");
+      expect(() => store.set("count", "string", "wrong")).toThrow(
+        "Type mismatch",
+      );
+      // Setting with correct type should work
+      store.set("feature", "string", "auth");
+      store.set("count", "number", 5);
+      expect(store.get("feature")).toBe("auth");
+      expect(store.get("count")).toBe(5);
+      // Static var is NOT pre-declared
+      expect(() => store.set("env", "number", 99)).not.toThrow();
+    });
+
+    it("is idempotent — same name+type does not throw on repeat", async () => {
+      const { declarePhaseVariables } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [
+          {
+            name: "feature",
+            type: "string",
+            kind: "llm" as const,
+            description: "What?",
+          },
+        ],
+      };
+
+      // Call twice — should not throw
+      declarePhaseVariables(phase, store);
+      declarePhaseVariables(phase, store);
+
+      // Var should still be settable with correct type
+      store.set("feature", "string", "auth");
+      expect(store.get("feature")).toBe("auth");
+    });
+
+    it("catches type mismatch errors silently", async () => {
+      const { declarePhaseVariables } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      // Pre-declare with a different type to simulate mismatch
+      store.declare("feature", "number");
+
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [
+          {
+            name: "feature",
+            type: "string", // Different from pre-existing declaration
+            kind: "llm" as const,
+            description: "What?",
+          },
+        ],
+      };
+
+      // Should not throw — errors caught silently
+      expect(() => declarePhaseVariables(phase, store)).not.toThrow();
+      // Original declaration should still be in place
+      expect(() => store.set("feature", "string", "x")).toThrow(
+        "Type mismatch",
+      );
+    });
+
+    it("is a no-op for standard phases", async () => {
+      const { declarePhaseVariables } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "standard" as const,
+      };
+
+      declarePhaseVariables(phase, store);
+      // Nothing should have been declared
+      expect(() => store.set("x", "string", "y")).not.toThrow();
+    });
+
+    it("is a no-op when variables array is empty", async () => {
+      const { declarePhaseVariables } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [],
+      };
+
+      declarePhaseVariables(phase, store);
+      expect(() => store.set("x", "string", "y")).not.toThrow();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // preparePhaseVariables — pre-declaration integration
+  // -----------------------------------------------------------------------
+
+  describe("preparePhaseVariables — pre-declaration", () => {
+    it("LLM vars are pre-declared before static vars are set", async () => {
+      const { preparePhaseVariables } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [
+          {
+            name: "env",
+            type: "string",
+            kind: "static" as const,
+            value: "prod",
+          },
+          {
+            name: "feature",
+            type: "string",
+            kind: "llm" as const,
+            description: "What?",
+          },
+        ],
+      };
+
+      preparePhaseVariables(phase, store);
+
+      // Static var should be set
+      expect(store.get("env")).toBe("prod");
+      // LLM var should be declared (type enforcement active)
+      expect(() => store.set("feature", "number", 42)).toThrow("Type mismatch");
+    });
+
+    it("computed callback result validates against pre-declared type", async () => {
+      const { preparePhaseVariables } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 1,
+        phasesList: [],
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [
+          {
+            name: "count",
+            type: "number",
+            kind: "computed" as const,
+            compute: () => 42,
+          },
+        ],
+      };
+
+      preparePhaseVariables(phase, store);
+
+      // Computed var should be set with correct type
+      expect(store.get("count")).toBe(42);
+      // Type enforcement should be active
+      expect(() => store.set("count", "string", "wrong")).toThrow(
+        "Type mismatch",
+      );
+    });
+
+    it("computed callback error is caught by preparePhaseVariables", async () => {
+      const { preparePhaseVariables } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 1,
+        phasesList: [],
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [
+          {
+            name: "count",
+            type: "number",
+            kind: "computed" as const,
+            compute: () => {
+              throw new Error("boom");
+            },
+          },
+        ],
+      };
+
+      preparePhaseVariables(phase, store);
+
+      // Error should be caught and logged
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Computed variable 'count' callback threw"),
+      );
+      // Var should remain undefined
+      expect(store.isDefined("count")).toBe(false);
+      warnSpy.mockRestore();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // agent_end — loopWhile evaluation
+  // -----------------------------------------------------------------------
+
+  describe("agent_end — loopWhile evaluation", () => {
+    async function fireAgentEnd(
+      handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+      messages: unknown[],
+    ) {
+      const handlersList = handlers.get("agent_end");
+      expect(handlersList).toBeDefined();
+      const mockCtx = {} as any;
+      for (const handler of handlersList!) {
+        await handler({ type: "agent_end", messages }, mockCtx);
+      }
+    }
+
+    it("loops when loopWhile callback returns true (OR logic)", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          loopWhile: [
+            {
+              type: "callback" as const,
+              callback: (state: any) => state.filesWritten.length === 0,
+            },
+          ],
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: () => true, // Would advance if not for loopWhile
+            },
+          ],
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [], // loopWhile condition is true
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // loopWhile true → loop replay (before terminateWhen is even evaluated)
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("does not loop when loopWhile callback returns false", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          loopWhile: [
+            {
+              type: "callback" as const,
+              callback: (state: any) => state.filesWritten.length === 0,
+            },
+          ],
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: () => true,
+            },
+          ],
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: ["/a.ts"], // loopWhile condition is false
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // loopWhile false → proceed to terminateWhen (which is true) → advance
+      expect(getState().currentPhase).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("loops when any loopWhile callback returns true (OR logic — first true wins)", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          loopWhile: [
+            {
+              type: "callback" as const,
+              callback: () => false, // First returns false
+            },
+            {
+              type: "callback" as const,
+              callback: (state: any) => state.askUserCalled, // Second returns true
+            },
+          ],
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: true, // Second loopWhile returns true
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // OR logic: second callback true → loop
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("treats loopWhile callback error as not passing (don't loop for that condition)", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          loopWhile: [
+            {
+              type: "callback" as const,
+              callback: () => {
+                throw new Error("boom");
+              },
+            },
+          ],
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: () => true,
+            },
+          ],
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Error treated as not passing → proceed to terminateWhen → advance
+      expect(getState().currentPhase).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // agent_end — auto var completeness as loopWhile
+  // -----------------------------------------------------------------------
+
+  describe("agent_end — auto var completeness as loopWhile", () => {
+    async function fireAgentEnd(
+      handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+      messages: unknown[],
+    ) {
+      const handlersList = handlers.get("agent_end");
+      expect(handlersList).toBeDefined();
+      const mockCtx = {} as any;
+      for (const handler of handlersList!) {
+        await handler({ type: "agent_end", messages }, mockCtx);
+      }
+    }
+
+    it("loops back when LLM-driven vars are not yet defined", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phases = [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          minIterations: 1,
+          variables: [
+            {
+              name: "env",
+              type: "string",
+              kind: "static" as const,
+              value: "prod",
+            },
+            {
+              name: "feature",
+              type: "string",
+              kind: "llm" as const,
+              description: "What feature?",
+            },
+          ],
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: () => true, // Would advance if not for var completeness
+            },
+          ],
+        },
+        { id: "p2", title: "P2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        store,
+      });
+
+      // Prepare vars (simulates before_agent_start)
+      const { preparePhaseVariables } = await import("./loop-engine");
+      preparePhaseVariables(phases[0], store);
+      // env (static) is set, feature (llm) is declared but not set
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Var completeness check: feature is not defined → loop back
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("passes through when all variables are defined", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phases = [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          minIterations: 1,
+          variables: [
+            {
+              name: "env",
+              type: "string",
+              kind: "static" as const,
+              value: "prod",
+            },
+            {
+              name: "feature",
+              type: "string",
+              kind: "llm" as const,
+              description: "What feature?",
+            },
+          ],
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: () => true,
+            },
+          ],
+        },
+        { id: "p2", title: "P2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        store,
+      });
+
+      // Prepare vars then set the LLM var
+      const { preparePhaseVariables } = await import("./loop-engine");
+      preparePhaseVariables(phases[0], store);
+      store.set("feature", "string", "auth");
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // All vars defined → proceed to terminateWhen → advance
+      expect(getState().currentPhase).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("minIterations gates var completeness (hard floor before conditions)", async () => {
+      // Corrected behavior: minIterations is a hard floor — on iteration 1
+      // with minIterations: 5, the engine loops back immediately WITHOUT
+      // evaluating var completeness or other conditions.
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phases = [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          minIterations: 5, // High min — gates all conditions
+          variables: [
+            {
+              name: "feature",
+              type: "string",
+              kind: "llm" as const,
+              description: "What?",
+            },
+          ],
+        },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1, // Below minIterations
+        totalPhases: 1,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        store,
+      });
+
+      // Prepare vars (feature declared but not set)
+      const { preparePhaseVariables } = await import("./loop-engine");
+      preparePhaseVariables(phases[0], store);
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // minIterations gates first → loop back (var completeness NOT evaluated)
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("var completeness is evaluated after minIterations is reached", async () => {
+      // After minIterations floor is satisfied, var completeness is evaluated
+      // as part of the unified loopWhile callback pass.
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phases = [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          minIterations: 1, // Met on iteration 1
+          variables: [
+            {
+              name: "feature",
+              type: "string",
+              kind: "llm" as const,
+              description: "What?",
+            },
+          ],
+        },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1, // >= minIterations (1)
+        totalPhases: 1,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        store,
+      });
+
+      // Prepare vars (feature declared but not set)
+      const { preparePhaseVariables } = await import("./loop-engine");
+      preparePhaseVariables(phases[0], store);
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // minIterations met → var completeness evaluated → feature missing → loop
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("empty loopWhile array still triggers var completeness for variable-defining phases", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phases = [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          minIterations: 1,
+          loopWhile: [], // Empty — no user-defined conditions
+          variables: [
+            {
+              name: "feature",
+              type: "string",
+              kind: "llm" as const,
+              description: "What?",
+            },
+          ],
+        },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 1,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        store,
+      });
+
+      // Prepare vars (feature declared but not set)
+      const { preparePhaseVariables } = await import("./loop-engine");
+      preparePhaseVariables(phases[0], store);
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Var completeness still triggers loop
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // agent_end — max iteration failure with missing vars warning
+  // -----------------------------------------------------------------------
+
+  describe("agent_end — max iteration with missing vars warning", () => {
+    async function fireAgentEnd(
+      handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+      messages: unknown[],
+    ) {
+      const handlersList = handlers.get("agent_end");
+      expect(handlersList).toBeDefined();
+      const mockCtx = {} as any;
+      for (const handler of handlersList!) {
+        await handler({ type: "agent_end", messages }, mockCtx);
+      }
+    }
+
+    it("emits console.warn listing missing vars when max iterations reached", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phases = [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          maxIterations: 2,
+          variables: [
+            {
+              name: "env",
+              type: "string",
+              kind: "static" as const,
+              value: "prod",
+            },
+            {
+              name: "feature",
+              type: "string",
+              kind: "llm" as const,
+              description: "What?",
+            },
+          ],
+        },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 2, // >= maxIterations
+        totalPhases: 1,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        store,
+      });
+
+      // Prepare vars (env set, feature not)
+      const { preparePhaseVariables } = await import("./loop-engine");
+      preparePhaseVariables(phases[0], store);
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Should warn about missing vars
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Max iterations reached"),
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Undefined variables"),
+      );
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("feature"));
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("string"));
+      // No follow-up sent (hard stop)
+      expect(sendMessageCalls).toHaveLength(0);
+      warnSpy.mockRestore();
+    });
+
+    it("does not emit var warning when all vars are defined at max iterations", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phases = [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          maxIterations: 2,
+          variables: [
+            {
+              name: "env",
+              type: "string",
+              kind: "static" as const,
+              value: "prod",
+            },
+            {
+              name: "feature",
+              type: "string",
+              kind: "llm" as const,
+              description: "What?",
+            },
+          ],
+        },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 2, // >= maxIterations
+        totalPhases: 1,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        store,
+      });
+
+      // Prepare vars and set all
+      const { preparePhaseVariables } = await import("./loop-engine");
+      preparePhaseVariables(phases[0], store);
+      store.set("feature", "string", "auth");
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // No warning about missing vars (all defined)
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("Undefined variables"),
+      );
+      expect(sendMessageCalls).toHaveLength(0);
+      warnSpy.mockRestore();
+    });
+
+    it("does not emit var warning for standard phases at max iterations", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          maxIterations: 2,
+        },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 2, // >= maxIterations
+        totalPhases: 1,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // No var warning for standard phase
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("Undefined variables"),
+      );
+      expect(sendMessageCalls).toHaveLength(0);
+      warnSpy.mockRestore();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // agent_end — combined loopWhile + terminateWhen interaction
+  // -----------------------------------------------------------------------
+
+  describe("agent_end — loopWhile + terminateWhen interaction", () => {
+    async function fireAgentEnd(
+      handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+      messages: unknown[],
+    ) {
+      const handlersList = handlers.get("agent_end");
+      expect(handlersList).toBeDefined();
+      const mockCtx = {} as any;
+      for (const handler of handlersList!) {
+        await handler({ type: "agent_end", messages }, mockCtx);
+      }
+    }
+
+    it("loopWhile takes precedence over terminateWhen (loopWhile true + terminateWhen true → loop)", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          loopWhile: [
+            {
+              type: "callback" as const,
+              callback: () => true, // Always loop
+            },
+          ],
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: () => true, // Would advance
+            },
+          ],
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // loopWhile evaluated first → true → loop (terminateWhen not evaluated)
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("evaluation order: max iterations → minIterations → loopWhile → terminateWhen → advance", async () => {
+      // This test verifies the correct evaluation order:
+      // 1. max iterations (hard stop)
+      // 2. minIterations (hard floor before conditions)
+      // 3. loopWhile (unified callbacks, OR)
+      // 4. terminateWhen (AND)
+      // 5. advance
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 1,
+          loopWhile: [
+            {
+              type: "callback" as const,
+              callback: () => false, // Don't loop
+            },
+          ],
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: () => true, // Advance
+            },
+          ],
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // max not hit → minIterations met → loopWhile false → terminateWhen true → advance
+      expect(getState().currentPhase).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("minIterations floor triggers replay before loopWhile and terminateWhen", async () => {
+      // On iteration 1 with minIterations: 5, the engine loops back
+      // immediately WITHOUT evaluating loopWhile or terminateWhen.
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const loopWhileCalled = vi.fn(() => false);
+      const terminateWhenCalled = vi.fn(() => true);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 5,
+          loopWhile: [
+            {
+              type: "callback" as const,
+              callback: loopWhileCalled,
+            },
+          ],
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: terminateWhenCalled,
+            },
+          ],
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1, // Below minIterations (5)
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // minIterations gates first → loop back
+      // Conditions should NOT have been called
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(loopWhileCalled).not.toHaveBeenCalled();
+      expect(terminateWhenCalled).not.toHaveBeenCalled();
+    });
+
+    it("unified loopWhile: user-defined callback integrates with auto var completeness", async () => {
+      // User-defined loopWhile callbacks are evaluated in the same pass as
+      // auto var completeness — first true wins (OR semantics).
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const userCallbackCalled = vi.fn(() => false);
+
+      const phases = [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          minIterations: 1,
+          loopWhile: [
+            {
+              type: "callback" as const,
+              callback: userCallbackCalled,
+            },
+          ],
+          variables: [
+            {
+              name: "feature",
+              type: "string",
+              kind: "llm" as const,
+              description: "What?",
+            },
+          ],
+        },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 1,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        store,
+      });
+
+      // Prepare vars (feature declared but not set)
+      const { preparePhaseVariables } = await import("./loop-engine");
+      preparePhaseVariables(phases[0], store);
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Auto var completeness (first in unified list) triggers loop
+      // User callback should NOT be called (short-circuited by var completeness)
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(userCallbackCalled).not.toHaveBeenCalled();
+    });
+
+    it("unified loopWhile: user callback triggers loop when all vars defined", async () => {
+      // When auto var completeness passes (all vars defined),
+      // user-defined callbacks are still evaluated.
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const userCallbackCalled = vi.fn(() => true); // Force loop
+
+      const phases = [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "Do A",
+          kind: "variable-definition" as const,
+          minIterations: 1,
+          loopWhile: [
+            {
+              type: "callback" as const,
+              callback: userCallbackCalled,
+            },
+          ],
+          variables: [
+            {
+              name: "feature",
+              type: "string",
+              kind: "llm" as const,
+              description: "What?",
+            },
+          ],
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: () => true, // Would advance if not for loopWhile
+            },
+          ],
+        },
+        { id: "p2", title: "P2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setupLoopEngine(pi);
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        store,
+      });
+
+      // Prepare vars and set all
+      const { preparePhaseVariables } = await import("./loop-engine");
+      preparePhaseVariables(phases[0], store);
+      store.set("feature", "string", "auth");
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Auto var completeness passes → user callback evaluated → returns true → loop
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+      expect(userCallbackCalled).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // agent_end — terminateWhen AND logic (additional tests)
+  // -----------------------------------------------------------------------
+
+  describe("agent_end — terminateWhen AND logic", () => {
+    async function fireAgentEnd(
+      handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+      messages: unknown[],
+    ) {
+      const handlersList = handlers.get("agent_end");
+      expect(handlersList).toBeDefined();
+      const mockCtx = {} as any;
+      for (const handler of handlersList!) {
+        await handler({ type: "agent_end", messages }, mockCtx);
+      }
+    }
+
+    it("loops when terminateWhen callback throws (fail-safe: treat as not met)", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 1,
+          terminateWhen: [
+            {
+              type: "callback" as const,
+              callback: () => {
+                throw new Error("boom");
+              },
+            },
+          ],
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Callback threw → fail-safe: loop
+      expect(getState().currentPhase).toBe(1);
+      expect(getState().currentIteration).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("advances when terminateWhen is undefined after minIterations reached (AND logic)", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 2,
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 2, // >= minIterations
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // No terminateWhen + minIterations met → advance
+      expect(getState().currentPhase).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("advances when terminateWhen is empty array after minIterations reached (AND logic)", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        {
+          id: "s1",
+          title: "S1",
+          instructions: "Do A",
+          minIterations: 1,
+          terminateWhen: [],
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+      });
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // Empty terminateWhen + minIterations met → advance
+      expect(getState().currentPhase).toBe(2);
+      expect(sendMessageCalls).toHaveLength(1);
     });
   });
 });

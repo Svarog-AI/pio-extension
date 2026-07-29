@@ -31,9 +31,9 @@ export interface WorkflowPhaseSkillDeclarations {
 /**
  * A condition definition for callback-based loop termination.
  *
- * When any condition in the `terminateWhen` array returns `true`,
- * the loop terminates and the engine advances to the next phase.
- * Conditions use OR logic — the first passing condition wins.
+ * All conditions in the `terminateWhen` array must return `true` for the
+ * loop to terminate and advance to the next phase. Conditions use AND logic —
+ * all must pass to advance.
  *
  * The callback receives the full PioSessionState directly — it reads
  * whatever fields it needs (`state.filesWritten`, `state.currentIteration`)
@@ -46,8 +46,63 @@ export interface WorkflowPhaseSkillDeclarations {
 export interface TerminationCondition {
   /** Condition type — currently only "callback" is supported; expression-based conditions are deferred */
   type: "callback";
-  /** Callback that receives the full PioSessionState and returns true to terminate the loop */
+  /** Callback that receives the full PioSessionState and returns true to signal this condition is met. All conditions must return true to advance (AND logic) */
   callback(state: PioSessionState): boolean;
+}
+
+/**
+ * A condition definition for callback-based loop continuation.
+ *
+ * When any condition in the `loopWhile` array returns `true`,
+ * the loop continues and the engine replays the current phase.
+ * Conditions use OR logic — the first passing condition forces a loop replay.
+ *
+ * Complements `TerminationCondition` (AND: all pass → advance).
+ * `loopWhile(a)` is equivalent to `terminateWhen(¬a)`.
+ *
+ * The callback receives the full PioSessionState directly — it reads
+ * whatever fields it needs and ignores the rest.
+ */
+export interface LoopWhileCondition {
+  /** Condition type — currently only "callback" is supported */
+  type: "callback";
+  /** Callback that receives the full PioSessionState and returns true to keep looping. Uses OR logic — any passing condition forces a loop replay */
+  callback(state: PioSessionState): boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Session variable types
+// ---------------------------------------------------------------------------
+
+/**
+ * How a phase variable's value is produced.
+ *
+ * - `'static'` — value is hardcoded in the phase config (no LLM involvement)
+ * - `'llm'` — value is set by the agent via `setVar()` during a variable-defining phase
+ * - `'computed'` — value is calculated by a callback function at `agent_end`
+ */
+export type PhaseVariableKind = "static" | "llm" | "computed";
+
+/**
+ * Declaration of a single session variable scoped to a workflow phase.
+ *
+ * Each entry specifies the variable's name, authoritative type, and how its
+ * value is produced (`kind`). The loop engine uses this to pre-declare
+ * variables, enforce types on `setVar()`, and manage the variable lifecycle.
+ */
+export interface PhaseVariable {
+  /** Unique identifier within the phase's `variables` array (e.g. `"iteration_count"`) */
+  name: string;
+  /** Authoritative declared type as a string (e.g. `"number"`, `"string"`, `"boolean"`). Used by the loop engine to pre-declare variables so `setVar()` validates against it. */
+  type: string;
+  /** Controls how the value is produced — static (hardcoded), llm (agent sets via setVar), or computed (callback at agent_end) */
+  kind: PhaseVariableKind;
+  /** Optional hardcoded value — used when `kind` is `'static'`. Set before `buildPhaseInstructions()`. */
+  value?: unknown;
+  /** Optional natural language description — used when `kind` is `'llm'`. Describes what the agent should determine and set via `setVar()`. The loop engine uses this text to construct the agent-facing variable listing. */
+  description?: string;
+  /** Optional callback — used when `kind` is `'computed'`. Receives current state and returns a value. Executed at `agent_end` in declaration order. */
+  compute?: (state: PioSessionState) => unknown;
 }
 
 /**
@@ -67,8 +122,8 @@ export interface WorkflowPhase {
   id: string;
   /** Display title shown to the agent, e.g. "Understand the goal" */
   title: string;
-  /** Natural language instructions for this phase. This replaces the freeform numbered-step body in current .md prompts. May contain markdown formatting. */
-  instructions: string;
+  /** Natural language instructions for this phase. This replaces the freeform numbered-step body in current .md prompts. May contain markdown formatting. Omitted for variable-defining phases — the engine generates instructions from the `variables` array. */
+  instructions?: string;
   /** Per-phase skill declarations — merged into session skills at prompt compilation time */
   skills?: WorkflowPhaseSkillDeclarations;
 
@@ -82,8 +137,11 @@ export interface WorkflowPhase {
   /** Hard limit on iterations regardless of termination conditions. Uses resolveMaxIterations() from model-config for resolution. */
   maxIterations?: number;
 
-  /** Array of callback-based conditions — any passing condition terminates the loop (OR logic) */
+  /** Array of callback-based conditions — all passing conditions terminate the loop (AND logic) */
   terminateWhen?: TerminationCondition[];
+
+  /** Array of callback-based conditions — any passing condition keeps the phase looping (OR logic). Complements `terminateWhen` (AND: all pass → advance) */
+  loopWhile?: LoopWhileCondition[];
 
   /** Message sent as a follow-up when looping (replaying the current phase). Informs the LLM what to focus on for the retry. */
   loopMessage?: string;
@@ -93,6 +151,12 @@ export interface WorkflowPhase {
 
   /** Contract output names this phase is allowed to write (resolved during resources_discover). When absent or empty, all contract output writes are blocked (restricted-by-default). Non-contract files always pass through. */
   write?: string[];
+
+  /** Phase execution kind — `'standard'` for normal phases, `'variable-definition'` for phases that declare and collect session variables. Defaults to `'standard'`. */
+  kind?: "standard" | "variable-definition";
+
+  /** Variables declared by this phase — meaningful only when `kind` is `'variable-definition'`. Each entry specifies name, type, and how the value is produced (`static`/`llm`/`computed`). */
+  variables?: PhaseVariable[];
 }
 
 // ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@
  * mutate state through the accessor functions.
  */
 
+import type { SessionVariableStore } from "./session-store";
 import type { WorkflowPhase } from "./workflow-types";
 
 // ---------------------------------------------------------------------------
@@ -68,6 +69,9 @@ export interface PioSessionState {
 
   /** Session ID captured during resources_discover. Used by persistence module to load/save state files. Optional for backward compat. */
   sessionId?: string;
+
+  /** Session variable store instance. Created during resources_discover, accessed via getState().store in loop engine and tools. */
+  store?: SessionVariableStore | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -90,6 +94,7 @@ function createInitialState(): PioSessionState {
     isAdHocInput: false,
     phaseWriteAllowlist: new Map(),
     sessionId: undefined,
+    store: undefined,
   };
 }
 

@@ -194,3 +194,179 @@ describe("pio_launch_playground tool", () => {
     expect(mockEnqueueTask).toHaveBeenCalledTimes(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Workflow phases (Phases 6–11)
+// ---------------------------------------------------------------------------
+
+import workflowPhases from "./workflow";
+
+describe("workflow phases", () => {
+  it("contains exactly 11 phases", () => {
+    expect(workflowPhases).toHaveLength(11);
+  });
+
+  // ---- Phase 6: Variable Definition — Basic Test ----
+
+  describe("Phase 6: Variable Definition — Basic Test", () => {
+    const phase = workflowPhases[5]; // 0-indexed
+
+    it("has kind 'variable-definition'", () => {
+      expect(phase.kind).toBe("variable-definition");
+    });
+
+    it("has exactly 3 variables with expected kinds", () => {
+      expect(phase.variables).toHaveLength(3);
+      const kinds = phase.variables!.map((v: any) => v.kind);
+      expect(kinds).toContain("static");
+      expect(kinds).toContain("llm");
+      expect(kinds).toContain("computed");
+    });
+
+    it("has a static variable named 'phase_label'", () => {
+      const staticVar = phase.variables!.find(
+        (v: any) => v.name === "phase_label" && v.kind === "static",
+      );
+      expect(staticVar).toBeDefined();
+      expect((staticVar as any).value).toBe("Variable System Test");
+    });
+
+    it("has an LLM-driven variable named 'llm_chosen_value'", () => {
+      const llmVar = phase.variables!.find(
+        (v: any) => v.name === "llm_chosen_value" && v.kind === "llm",
+      );
+      expect(llmVar).toBeDefined();
+      expect((llmVar as any).description).toBeDefined();
+    });
+
+    it("has a computed variable named 'current_phase_num' with a callback", () => {
+      const computedVar = phase.variables!.find(
+        (v: any) => v.name === "current_phase_num" && v.kind === "computed",
+      );
+      expect(computedVar).toBeDefined();
+      expect(typeof (computedVar as any).compute).toBe("function");
+    });
+
+    it("does not have user-defined loopWhile or terminateWhen", () => {
+      expect(phase.loopWhile).toBeUndefined();
+      expect(phase.terminateWhen).toBeUndefined();
+    });
+  });
+
+  // ---- Phase 7: loopWhile Condition Test ----
+
+  describe("Phase 7: loopWhile Condition Test", () => {
+    const phase = workflowPhases[6];
+
+    it("has user-defined loopWhile", () => {
+      expect(phase.loopWhile).toBeDefined();
+      expect(phase.loopWhile!.length).toBeGreaterThan(0);
+    });
+
+    it("loopWhile callback checks for file write", () => {
+      const callback = phase.loopWhile![0].callback;
+      expect(typeof callback).toBe("function");
+    });
+
+    it("does not have variables (not a variable-defining phase)", () => {
+      expect(phase.variables).toBeUndefined();
+    });
+  });
+
+  // ---- Phase 8: terminateWhen AND Logic Test ----
+
+  describe("Phase 8: terminateWhen AND Logic Test", () => {
+    const phase = workflowPhases[7];
+
+    it("has no kind or variables fields", () => {
+      expect(phase.kind).toBeUndefined();
+      expect(phase.variables).toBeUndefined();
+    });
+
+    it("has terminateWhen with 2 conditions", () => {
+      expect(phase.terminateWhen).toHaveLength(2);
+    });
+
+    it("first terminateWhen condition checks filesWritten", () => {
+      const callback = phase.terminateWhen![0].callback;
+      expect(typeof callback).toBe("function");
+    });
+
+    it("second terminateWhen condition checks askUserCalled", () => {
+      const callback = phase.terminateWhen![1].callback;
+      expect(typeof callback).toBe("function");
+    });
+
+    it("has custom instructions with iteration-specific guidance", () => {
+      expect(phase.instructions).toBeDefined();
+      expect(phase.instructions).toContain("Iteration 1");
+      expect(phase.instructions).toContain("Iteration 2");
+    });
+
+    it("has a loopMessage field", () => {
+      expect(phase.loopMessage).toBeDefined();
+      expect(typeof phase.loopMessage).toBe("string");
+      expect(phase.loopMessage!.toLowerCase()).toContain("file");
+      expect(phase.loopMessage!.toLowerCase()).toContain("ask_user");
+    });
+  });
+
+  // ---- Phase 9: Template Interpolation ----
+
+  describe("Phase 9: Template Interpolation", () => {
+    const phase = workflowPhases[8];
+
+    it("instructions contain dollar-brace phase_label placeholder", () => {
+      expect(phase.instructions).toContain(`${"$"}{phase_label}`);
+    });
+
+    it("instructions contain dollar-brace llm_chosen_value placeholder", () => {
+      expect(phase.instructions).toContain(`${"$"}{llm_chosen_value}`);
+    });
+
+    it("instructions contain dollar-brace current_phase_num placeholder", () => {
+      expect(phase.instructions).toContain(`${"$"}{current_phase_num}`);
+    });
+  });
+
+  // ---- Phase 10: Validation Gate Replay ----
+
+  describe("Phase 10: Validation Gate Replay", () => {
+    const phase = workflowPhases[9];
+
+    it("has kind 'variable-definition'", () => {
+      expect(phase.kind).toBe("variable-definition");
+    });
+
+    it("declares an LLM-driven variable named 'retry_var'", () => {
+      const retryVar = phase.variables!.find(
+        (v: any) => v.name === "retry_var" && v.kind === "llm",
+      );
+      expect(retryVar).toBeDefined();
+    });
+
+    it("retry_var description contains iteration-aware instructions", () => {
+      const retryVar = phase.variables!.find(
+        (v: any) => v.name === "retry_var" && v.kind === "llm",
+      );
+      const desc = (retryVar as any).description;
+      expect(desc).toBeDefined();
+      expect(desc.toLowerCase()).toContain("first iteration");
+      expect(desc.toLowerCase()).toContain("second iteration");
+    });
+  });
+
+  // ---- Phase 11: Final Report ----
+
+  describe("Phase 11: Final Report", () => {
+    const phase = workflowPhases[10];
+
+    it("has write: ['playground-output']", () => {
+      expect(phase.write).toEqual(["playground-output"]);
+    });
+
+    it("instructions mention writing PLAYGROUND.md", () => {
+      expect(phase.instructions).toContain("PLAYGROUND.md");
+    });
+  });
+});

@@ -33,6 +33,7 @@ export function loadLoopEngineState(sessionId: string): {
   currentPhase: number;
   currentIteration: number;
   isAdHocInput: boolean;
+  vars?: { [name: string]: { value: unknown; type: string } };
 } | null {
   try {
     const workspaceDir = ensureStateDir();
@@ -67,6 +68,7 @@ function isValidPersistedState(obj: unknown): obj is {
   currentPhase: number;
   currentIteration: number;
   isAdHocInput: boolean;
+  vars?: { [name: string]: { value: unknown; type: string } };
 } {
   if (obj == null || typeof obj !== "object" || Array.isArray(obj)) {
     return false;
@@ -74,15 +76,40 @@ function isValidPersistedState(obj: unknown): obj is {
 
   const record = obj as Record<string, unknown>;
 
-  return (
+  const coreOk =
     typeof record.currentPhase === "number" &&
     Number.isInteger(record.currentPhase) &&
     record.currentPhase > 0 &&
     typeof record.currentIteration === "number" &&
     Number.isInteger(record.currentIteration) &&
     record.currentIteration > 0 &&
-    typeof record.isAdHocInput === "boolean"
-  );
+    typeof record.isAdHocInput === "boolean";
+
+  if (!coreOk) {
+    return false;
+  }
+
+  // Optional vars validation
+  if ("vars" in record) {
+    const vars = record.vars;
+    if (vars == null || typeof vars !== "object" || Array.isArray(vars)) {
+      return false;
+    }
+    for (const entry of Object.values(vars)) {
+      if (entry == null || typeof entry !== "object" || Array.isArray(entry)) {
+        return false;
+      }
+      const e = entry as Record<string, unknown>;
+      if (typeof e.type !== "string") {
+        return false;
+      }
+      if (!("value" in e)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,6 +130,7 @@ export function saveLoopEngineState(
     currentPhase: number;
     currentIteration: number;
     isAdHocInput: boolean;
+    vars?: { [name: string]: { value: unknown; type: string } };
   },
 ): void {
   try {
@@ -135,10 +163,16 @@ export function extractPersistedState(state: PioSessionState): {
   currentPhase: number;
   currentIteration: number;
   isAdHocInput: boolean;
+  vars?: { [name: string]: { value: unknown; type: string } };
 } {
-  return {
+  const base = {
     currentPhase: state.currentPhase,
     currentIteration: state.currentIteration,
     isAdHocInput: state.isAdHocInput,
   };
+
+  if (state.store) {
+    return { ...base, vars: state.store.toSerializableVars() };
+  }
+  return base;
 }

@@ -6,6 +6,7 @@ import {
   resetState,
   setState,
 } from "./session-state";
+import { SessionVariableStore } from "./session-store";
 
 describe("session-state", () => {
   beforeEach(() => {
@@ -26,6 +27,7 @@ describe("session-state", () => {
       expect(state.filesWritten).toEqual([]);
       expect(state.askUserCalled).toBe(false);
       expect(state.isAdHocInput).toBe(false);
+      expect(state.store).toBe(undefined);
     });
   });
 
@@ -61,10 +63,27 @@ describe("session-state", () => {
       expect(state.phasesList).toEqual(steps);
       expect(state.totalPhases).toBe(1);
     });
+
+    it("can set store field with a SessionVariableStore instance", () => {
+      const store = new SessionVariableStore({ key: "val" });
+      setState({ store });
+
+      expect(getState().store).toBe(store);
+    });
+
+    it("partial update does not overwrite store field", () => {
+      const store = new SessionVariableStore({ key: "val" });
+      setState({ store });
+      setState({ isActive: true });
+
+      expect(getState().store).toBe(store);
+      expect(getState().isActive).toBe(true);
+    });
   });
 
   describe("resetState", () => {
     it("resets all fields to defaults", () => {
+      const store = new SessionVariableStore({ key: "val" });
       setState({
         isActive: true,
         markCompleteCalled: true,
@@ -76,6 +95,7 @@ describe("session-state", () => {
         filesWritten: ["/some/file"],
         askUserCalled: true,
         isAdHocInput: true,
+        store,
       });
 
       resetState();
@@ -91,6 +111,7 @@ describe("session-state", () => {
       expect(state.filesWritten).toEqual([]);
       expect(state.askUserCalled).toBe(false);
       expect(state.isAdHocInput).toBe(false);
+      expect(state.store).toBe(undefined);
     });
   });
 

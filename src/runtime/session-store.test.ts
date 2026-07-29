@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PioSessionState } from "./session-state";
 import { __testSetState, getState, resetState } from "./session-state";
 import {
+  coerceValue,
   getVarTool,
   listVarsTool,
   SessionVariableStore,
@@ -329,6 +330,186 @@ describe("SessionVariableStore", () => {
       s.set("x", "string", "writable");
       // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test of interpolation
       expect(s.interpolate("${x} and ${p}")).toBe("writable and param");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// coerceValue
+// ---------------------------------------------------------------------------
+
+describe("coerceValue", () => {
+  // --- boolean ---
+
+  describe("boolean", () => {
+    it("returns true for boolean true", () => {
+      expect(coerceValue(true, "boolean")).toBe(true);
+    });
+
+    it("returns true for string 'true'", () => {
+      expect(coerceValue("true", "boolean")).toBe(true);
+    });
+
+    it("returns true for string '1'", () => {
+      expect(coerceValue("1", "boolean")).toBe(true);
+    });
+
+    it("returns true for string 'yes'", () => {
+      expect(coerceValue("yes", "boolean")).toBe(true);
+    });
+
+    it("returns false for boolean false", () => {
+      expect(coerceValue(false, "boolean")).toBe(false);
+    });
+
+    it("returns false for string 'false'", () => {
+      expect(coerceValue("false", "boolean")).toBe(false);
+    });
+
+    it("returns false for string '0'", () => {
+      expect(coerceValue("0", "boolean")).toBe(false);
+    });
+
+    it("returns false for string 'no'", () => {
+      expect(coerceValue("no", "boolean")).toBe(false);
+    });
+
+    it("returns false for null", () => {
+      expect(coerceValue(null, "boolean")).toBe(false);
+    });
+
+    it("returns false for undefined", () => {
+      expect(coerceValue(undefined, "boolean")).toBe(false);
+    });
+
+    it("returns false for number 0", () => {
+      expect(coerceValue(0, "boolean")).toBe(false);
+    });
+
+    it("returns false for empty string", () => {
+      expect(coerceValue("", "boolean")).toBe(false);
+    });
+
+    it("returns false for unrecognized string 'True'", () => {
+      expect(coerceValue("True", "boolean")).toBe(false);
+    });
+
+    it("returns false for unrecognized string 'maybe'", () => {
+      expect(coerceValue("maybe", "boolean")).toBe(false);
+    });
+  });
+
+  // --- number ---
+
+  describe("number", () => {
+    it("converts string '42' to number 42", () => {
+      expect(coerceValue("42", "number")).toBe(42);
+    });
+
+    it("returns native number unchanged", () => {
+      expect(coerceValue(42, "number")).toBe(42);
+    });
+
+    it("converts native boolean true to 1", () => {
+      expect(coerceValue(true, "number")).toBe(1);
+    });
+
+    it("converts native boolean false to 0", () => {
+      expect(coerceValue(false, "number")).toBe(0);
+    });
+
+    it("throws for non-numeric string 'abc' with message containing input", () => {
+      expect(() => coerceValue("abc", "number")).toThrow(
+        /Cannot coerce.*abc.*to number/,
+      );
+    });
+
+    it("throws for string 'true' (NaN) with message containing input", () => {
+      expect(() => coerceValue("true", "number")).toThrow(
+        /Cannot coerce.*true.*to number/,
+      );
+    });
+  });
+
+  // --- string ---
+
+  describe("string", () => {
+    it("converts number 42 to '42'", () => {
+      expect(coerceValue(42, "string")).toBe("42");
+    });
+
+    it("converts boolean true to 'true'", () => {
+      expect(coerceValue(true, "string")).toBe("true");
+    });
+
+    it("returns native string unchanged", () => {
+      expect(coerceValue("hello", "string")).toBe("hello");
+    });
+  });
+
+  // --- array ---
+
+  describe("array", () => {
+    it("returns array unchanged", () => {
+      const arr = [1, 2];
+      expect(coerceValue(arr, "array")).toBe(arr);
+    });
+
+    it("throws for non-array input with type info", () => {
+      expect(() => coerceValue("a", "array")).toThrow(
+        /Cannot coerce.*string.*to array/,
+      );
+    });
+  });
+
+  // --- object ---
+
+  describe("object", () => {
+    it("returns plain object unchanged", () => {
+      const obj = { a: 1 };
+      expect(coerceValue(obj, "object")).toBe(obj);
+    });
+
+    it("throws for string input", () => {
+      expect(() => coerceValue("x", "object")).toThrow(
+        /Cannot coerce.*string.*to object/,
+      );
+    });
+
+    it("throws for null input", () => {
+      expect(() => coerceValue(null, "object")).toThrow(
+        /Cannot coerce.*object.*to object/,
+      );
+    });
+
+    it("throws for array input", () => {
+      expect(() => coerceValue([1], "object")).toThrow(
+        /Cannot coerce.*object.*to object/,
+      );
+    });
+  });
+
+  // --- null ---
+
+  describe("null", () => {
+    it("returns null unchanged", () => {
+      expect(coerceValue(null, "null")).toBe(null);
+    });
+
+    it("throws for string 'null'", () => {
+      expect(() => coerceValue("null", "null")).toThrow(
+        /Cannot coerce.*string.*to null/,
+      );
+    });
+  });
+
+  // --- unknown type ---
+
+  describe("unknown type", () => {
+    it("throws with message containing the unknown type name", () => {
+      expect(() => coerceValue("x", "unknownType")).toThrow(
+        /Unknown declared type: 'unknownType'/,
+      );
     });
   });
 });
@@ -697,6 +878,129 @@ describe("session variable tools", () => {
 
       // Should contain the read-only param error, not throw
       expect(resultText(result)).toContain("read-only");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Coercion integration (setVar coerces value before store.set)
+  // -----------------------------------------------------------------------
+
+  describe("coercion integration", () => {
+    it("setVar coerces string 'true' to boolean true when type is 'boolean'", async () => {
+      const store = new SessionVariableStore({});
+      setPartialState({
+        isActive: true,
+        currentPhase: 1,
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "i",
+            kind: "variable-definition",
+          },
+        ],
+        store,
+      });
+
+      const result = await setVarTool.execute(
+        "tc-1",
+        { name: "flag", type: "boolean", value: "true" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      // Tool should succeed
+      expect(resultText(result)).toContain("flag");
+      // Store should contain actual boolean true
+      expect(store.get("flag")).toBe(true);
+    });
+
+    it("setVar coerces string '42' to number 42 when type is 'number'", async () => {
+      const store = new SessionVariableStore({});
+      setPartialState({
+        isActive: true,
+        currentPhase: 1,
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "i",
+            kind: "variable-definition",
+          },
+        ],
+        store,
+      });
+
+      const result = await setVarTool.execute(
+        "tc-1",
+        { name: "count", type: "number", value: "42" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("count");
+      expect(store.get("count")).toBe(42);
+    });
+
+    it("setVar returns coercion error message when value cannot be coerced", async () => {
+      const store = new SessionVariableStore({});
+      setPartialState({
+        isActive: true,
+        currentPhase: 1,
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "i",
+            kind: "variable-definition",
+          },
+        ],
+        store,
+      });
+
+      const result = await setVarTool.execute(
+        "tc-1",
+        { name: "x", type: "number", value: "abc" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("Cannot coerce");
+    });
+
+    it("setVar success message references original params.value, not coerced value", async () => {
+      const store = new SessionVariableStore({});
+      setPartialState({
+        isActive: true,
+        currentPhase: 1,
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "i",
+            kind: "variable-definition",
+          },
+        ],
+        store,
+      });
+
+      const result = await setVarTool.execute(
+        "tc-1",
+        { name: "flag", type: "boolean", value: "true" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      // The success text should reference the original value "true" (string)
+      expect(resultText(result)).toContain('"true"');
     });
   });
 

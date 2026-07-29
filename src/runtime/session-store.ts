@@ -145,6 +145,56 @@ export class SessionVariableStore {
 }
 
 // ---------------------------------------------------------------------------
+// Value coercion — converts tool parameter values to match declared types
+// ---------------------------------------------------------------------------
+
+export function coerceValue(value: unknown, declaredType: string): unknown {
+  switch (declaredType) {
+    case "boolean": {
+      if (
+        value === true ||
+        value === "true" ||
+        value === "1" ||
+        value === "yes"
+      ) {
+        return true;
+      }
+      return false;
+    }
+    case "number": {
+      const num = Number(value);
+      if (Number.isNaN(num)) {
+        throw new Error(`Cannot coerce '${String(value)}' to number`);
+      }
+      return num;
+    }
+    case "string": {
+      return typeof value === "string" ? value : String(value);
+    }
+    case "array": {
+      if (Array.isArray(value)) return value;
+      throw new Error(`Cannot coerce '${typeof value}' to array`);
+    }
+    case "object": {
+      if (
+        typeof value === "object" &&
+        value !== null &&
+        !Array.isArray(value)
+      ) {
+        return value;
+      }
+      throw new Error(`Cannot coerce '${typeof value}' to object`);
+    }
+    case "null": {
+      if (value === null) return null;
+      throw new Error(`Cannot coerce '${typeof value}' to null`);
+    }
+    default:
+      throw new Error(`Unknown declared type: '${declaredType}'`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Agent-facing tools: setVar, getVar, listVars
 // ---------------------------------------------------------------------------
 
@@ -224,9 +274,25 @@ export const setVarTool = defineTool({
       };
     }
 
+    // 3b. Coerce value to match declared type
+    let coercedValue: unknown;
+    try {
+      coercedValue = coerceValue(params.value, params.type);
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: err instanceof Error ? err.message : String(err),
+          },
+        ],
+        details: {},
+      };
+    }
+
     // 4. Set the variable
     try {
-      state.store.set(params.name, params.type, params.value);
+      state.store.set(params.name, params.type, coercedValue);
       return {
         content: [
           {

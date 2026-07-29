@@ -52,11 +52,11 @@ Follow these steps:
     id: "restricted-writes",
     title: "Restricted writes test",
     write: [],
-    instructions: `This phase tests the restricted-by-default write gate model. With \`write: []\` (empty array), contract output paths are blocked, but non-contract files still pass through.
+    instructions: `This phase tests the restricted-by-default write gate model. With \`write: []\` (empty array), contract output paths are blocked, as well as non-contract files.
 
 Follow these steps:
 1. Attempt to write \`PLAYGROUND.md\` and observe it is blocked by the restricted-by-default model (the empty write array blocks known contract output paths)
-2. Write a non-contract file (e.g., \`notes.md\`) with your observations so far from Phases 1–3, and observe that non-contract files still pass through
+2. Write a non-contract file (e.g., \`notes.md\`) with your observations so far from Phases 1–3, and observe that non-contract files also cannot be written
 3. Report both outcomes verbatim, including the exact block message for the contract output`,
   },
 

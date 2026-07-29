@@ -278,20 +278,13 @@ describe("workflow phases", () => {
   describe("Phase 8: terminateWhen AND Logic Test", () => {
     const phase = workflowPhases[7];
 
-    it("has kind 'variable-definition'", () => {
-      expect(phase.kind).toBe("variable-definition");
+    it("has no kind or variables fields", () => {
+      expect(phase.kind).toBeUndefined();
+      expect(phase.variables).toBeUndefined();
     });
 
     it("has terminateWhen with 2 conditions", () => {
       expect(phase.terminateWhen).toHaveLength(2);
-    });
-
-    it("has variables with the terminate_flag LLM-driven variable", () => {
-      expect(phase.variables).toBeDefined();
-      const flagVar = phase.variables!.find(
-        (v: any) => v.name === "terminate_flag" && v.kind === "llm",
-      );
-      expect(flagVar).toBeDefined();
     });
 
     it("first terminateWhen condition checks filesWritten", () => {
@@ -299,9 +292,22 @@ describe("workflow phases", () => {
       expect(typeof callback).toBe("function");
     });
 
-    it("second terminateWhen condition checks the terminate_flag variable", () => {
+    it("second terminateWhen condition checks askUserCalled", () => {
       const callback = phase.terminateWhen![1].callback;
       expect(typeof callback).toBe("function");
+    });
+
+    it("has custom instructions with iteration-specific guidance", () => {
+      expect(phase.instructions).toBeDefined();
+      expect(phase.instructions).toContain("Iteration 1");
+      expect(phase.instructions).toContain("Iteration 2");
+    });
+
+    it("has a loopMessage field", () => {
+      expect(phase.loopMessage).toBeDefined();
+      expect(typeof phase.loopMessage).toBe("string");
+      expect(phase.loopMessage!.toLowerCase()).toContain("file");
+      expect(phase.loopMessage!.toLowerCase()).toContain("ask_user");
     });
   });
 
@@ -337,6 +343,16 @@ describe("workflow phases", () => {
         (v: any) => v.name === "retry_var" && v.kind === "llm",
       );
       expect(retryVar).toBeDefined();
+    });
+
+    it("retry_var description contains iteration-aware instructions", () => {
+      const retryVar = phase.variables!.find(
+        (v: any) => v.name === "retry_var" && v.kind === "llm",
+      );
+      const desc = (retryVar as any).description;
+      expect(desc).toBeDefined();
+      expect(desc.toLowerCase()).toContain("first iteration");
+      expect(desc.toLowerCase()).toContain("second iteration");
     });
   });
 

@@ -150,24 +150,15 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 8: terminateWhen AND Logic Test (with variables)
-  // instructions ignored — engine generates template from variables array
+  // Phase 8: terminateWhen AND Logic Test
   // ---------------------------------------------------------------------------
   {
     id: "terminate-when-and-test",
     title: "terminateWhen AND Logic Test",
-    kind: "variable-definition",
     minIterations: 1,
     maxIterations: 4,
-    variables: [
-      {
-        name: "terminate_flag",
-        type: "boolean",
-        kind: "llm",
-        description:
-          "Set this to true using setVar when you are ready to advance.",
-      },
-    ],
+    loopMessage:
+      "This phase is replaying because not all terminateWhen conditions are met. You need to satisfy both: write a random file to /tmp/ folder AND call ask_user.",
     terminateWhen: [
       {
         type: "callback",
@@ -175,10 +166,15 @@ Follow these steps:
       },
       {
         type: "callback",
-        callback: (state: PioSessionState) =>
-          state.store?.get("terminate_flag") === true,
+        callback: (state: PioSessionState) => state.askUserCalled === true,
       },
     ],
+    instructions: `This phase tests terminateWhen AND logic — both callbacks must return true to advance. Satisfying only one triggers a replay.
+
+Follow these steps:
+1. **Iteration 1:** Do NOT write any file and do NOT call ask_user. Report "Iteration 1 — both conditions not met". Observe that the phase replays because neither condition is met
+2. **Iteration 2:** Write a file (e.g., via the write tool to /tmp/terminate-and-test.txt) AND call ask_user with any question. Observe that after both actions, all termination conditions pass and the phase advances
+3. Report the exact number of iterations and explain why: terminateWhen uses AND logic — both callbacks must return true to advance`,
   },
 
   // ---------------------------------------------------------------------------
@@ -215,7 +211,8 @@ Follow these steps:
         name: "retry_var",
         type: "string",
         kind: "llm",
-        description: "Set this variable using setVar with any short value.",
+        description:
+          "On the first iteration, do NOT set this variable — report it as intentionally unset. On the second iteration (after seeing it listed as undefined in the follow-up message), set it using setVar with any short string value.",
       },
     ],
   },

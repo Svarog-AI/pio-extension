@@ -750,9 +750,7 @@ describe("before_agent_start", () => {
       // Content should NOT contain the base system prompt
       expect(result.message.content).not.toContain("base prompt");
       expect(result.message.content).toContain("No previous phases completed.");
-      expect(result.message.content).toContain(
-        "You are on Phase 1 of 2, iteration 1.",
-      );
+      expect(result.message.content).toContain(`You are on "s1", iteration 1.`);
       expect(result.message.content).toContain("Do A");
     });
 
@@ -785,10 +783,8 @@ describe("before_agent_start", () => {
         message: { customType: string; content: string; display: boolean };
       };
       expect(result.message.customType).toBe("workflow-phase-instructions");
-      expect(result.message.content).toContain("Phases 1 completed.");
-      expect(result.message.content).toContain(
-        "You are on Phase 2 of 3, iteration 1.",
-      );
+      expect(result.message.content).toContain(`Phases "s1" completed.`);
+      expect(result.message.content).toContain(`You are on "s2", iteration 1.`);
     });
 
     it("includes completed phases range on Phase 4", async () => {
@@ -821,7 +817,9 @@ describe("before_agent_start", () => {
       const result = results[0] as {
         message: { customType: string; content: string; display: boolean };
       };
-      expect(result.message.content).toContain("Phases 1–3 completed.");
+      expect(result.message.content).toContain(
+        `Phases "s1", "s2", and "s3" completed.`,
+      );
     });
 
     it("includes loopMessage as Retry focus on iteration > 1", async () => {
@@ -987,9 +985,9 @@ describe("before_agent_start", () => {
       expect(result.message.content).toContain(
         "## Workflow Paused (Ad-hoc Mode)",
       );
-      expect(result.message.content).toContain("Phases 1 completed.");
+      expect(result.message.content).toContain(`Phases "s1" completed.`);
       expect(result.message.content).toContain(
-        'You were on Phase 2 of 4: "S2", iteration 3.',
+        `You were on "s2", iteration 3.`,
       );
       expect(result.message.content).toContain(
         "Workflow execution is paused. Any prior instructions are no longer active — you can answer questions or help the user freely.",
@@ -1722,7 +1720,7 @@ describe("agent_end", () => {
         "workflow-phase-instructions",
       );
       expect(sendMessageCalls[0].message.content).toContain(
-        "## Instructions for Phase 2",
+        `## Instructions for "s2"`,
       );
       expect(sendMessageCalls[0].options).toEqual({ deliverAs: "followUp" });
     });
@@ -2737,7 +2735,7 @@ describe("buildPhaseInstructions", () => {
       ],
     });
     const result = build(getState());
-    expect(result).toContain("## Instructions for Phase 2");
+    expect(result).toContain(`## Instructions for "s2"`);
   });
 
   it("contains authority text without leaking future phases", async () => {
@@ -2758,7 +2756,7 @@ describe("buildPhaseInstructions", () => {
     expect(result).not.toContain("future phases");
   });
 
-  it("includes completed phases info via buildCompletedPhasesInfo", async () => {
+  it("includes completed phases info via buildCompletedPhasesIds", async () => {
     const build = await getBuildPhaseInstructions();
     setState({
       currentPhase: 3,
@@ -2773,7 +2771,7 @@ describe("buildPhaseInstructions", () => {
       ],
     });
     const result = build(getState());
-    expect(result).toContain("Phases 1–2 completed.");
+    expect(result).toContain(`Phases "s1" and "s2" completed.`);
   });
 
   it("includes phase position line", async () => {
@@ -2788,7 +2786,7 @@ describe("buildPhaseInstructions", () => {
       ],
     });
     const result = build(getState());
-    expect(result).toContain("You are on Phase 1 of 2, iteration 1.");
+    expect(result).toContain(`You are on "s1", iteration 1.`);
   });
 
   it("includes separator (---) before instructions", async () => {

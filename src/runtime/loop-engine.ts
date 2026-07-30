@@ -234,15 +234,32 @@ export function buildVariablePhaseInstructions(
 }
 
 /**
- * Build a one-line summary of completed phases for CustomMessage injection.
+ * Build a one-line summary of completed phases (by ID) for CustomMessage injection.
  *
- * Returns "No previous phases completed" on Phase 1, "Phases 1 completed" on
- * Phase 2, and "Phases 1\u2013N completed" on Phase N+1.
+ * Returns "No previous phases completed" on Phase 1, "Phases \"s1\" completed" on
+ * Phase 2, and "Phases \"s1\", \"s2\", and \"s3\" completed" (Oxford comma) on Phase 4+.
  */
-function buildCompletedPhasesInfo(state: PioSessionState): string {
-  return state.currentPhase > 1
-    ? `Phases ${state.currentPhase > 2 ? `${1}\u2013${state.currentPhase - 1}` : "1"} completed.`
-    : "No previous phases completed.";
+function buildCompletedPhasesIds(state: PioSessionState): string {
+  if (state.currentPhase <= 1) return "No previous phases completed.";
+
+  const ids: string[] = [];
+  for (let i = 0; i < state.currentPhase - 1; i++) {
+    const phase = state.phasesList[i];
+    if (phase) ids.push(phase.id);
+  }
+
+  if (ids.length === 1) {
+    return `Phases "${ids[0]}" completed.`;
+  }
+  if (ids.length === 2) {
+    return `Phases "${ids[0]}" and "${ids[1]}" completed.`;
+  }
+  // 3+: Oxford comma
+  const joined = ids
+    .slice(0, -1)
+    .map((id) => `"${id}"`)
+    .join(", ");
+  return `Phases ${joined}, and "${ids[ids.length - 1]}" completed.`;
 }
 
 /**
@@ -275,11 +292,11 @@ export function buildPhaseInstructions(state: PioSessionState): string {
       : buildStandardPhaseInstructions(state, phase, store);
 
   let prompt =
-    `## Instructions for Phase ${state.currentPhase}\n\n` +
+    `## Instructions for "${phase.id}"\n\n` +
     `Follow the instructions below. Do not do anything outside these instructions.\n\n`;
   prompt +=
-    `${buildCompletedPhasesInfo(state)}\n` +
-    `You are on Phase ${state.currentPhase} of ${state.totalPhases}, iteration ${state.currentIteration}.\n\n---\n\n` +
+    `${buildCompletedPhasesIds(state)}\n` +
+    `You are on "${phase.id}", iteration ${state.currentIteration}.\n\n---\n\n` +
     instructionBody;
 
   return prompt;
@@ -491,8 +508,8 @@ export function setupLoopEngine(pi: ExtensionAPI) {
           customType: "workflow-paused",
           content:
             `## Workflow Paused (Ad-hoc Mode)\n\n` +
-            `${buildCompletedPhasesInfo(state)}\n` +
-            `You were on Phase ${state.currentPhase} of ${state.totalPhases}: "${phase.title}", iteration ${state.currentIteration}.\n\n` +
+            `${buildCompletedPhasesIds(state)}\n` +
+            `You were on "${phase.id}", iteration ${state.currentIteration}.\n\n` +
             `Workflow execution is paused. Any prior instructions are no longer active — you can answer questions or help the user freely.`,
           display: readDebugDisplay(),
         },

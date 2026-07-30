@@ -93,7 +93,7 @@ export default config;`,
     expect(result[0].name).toBe("test-cap");
     expect(result[0].dirPath).toBe(capDir);
     expect(result[0].config.capability).toBe("test-cap");
-    expect(result[0].config.defaultInitialMessage("/tmp")).toBe("Hello");
+    expect(result[0].config.defaultInitialMessage?.("/tmp")).toBe("Hello");
   });
 
   it("discovers multiple capability packages", async () => {

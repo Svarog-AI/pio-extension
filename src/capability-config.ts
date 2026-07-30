@@ -246,7 +246,7 @@ function normalizePackageConfig(
   const initialMsg =
     (typeof params?.initialMessage === "string"
       ? params.initialMessage
-      : undefined) ?? pkg.defaultInitialMessage(workspaceDir, resolvedParams);
+      : undefined) ?? pkg.defaultInitialMessage?.(workspaceDir, resolvedParams);
   if (!initialMsg) {
     throw new Error(
       `Capability "${cap}" requires an initial message. Provide params.initialMessage or define defaultInitialMessage.`,

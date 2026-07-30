@@ -160,8 +160,10 @@ export interface CapabilityConfig {
   capability: string;
   /** Prompt filename (e.g. "create-goal.md") */
   prompt?: string;
-  /** Kickoff prompt sent as a user message to trigger the agent */
+  /** Kickoff prompt sent as a user message to trigger the agent. Deprecated — use additionalContext instead. */
   initialMessage?: string;
+  /** Additional session-specific context injected into the system prompt under --- ADDITIONAL CONTEXT ---. Visible every turn, not accumulated in conversation history. */
+  additionalContext?: string;
   /** Resolved workspace directory — includes workspacePrefix from normalization. */
   workspaceDir?: string;
   /** Files that must not be modified during this session (relative to workspaceDir) */

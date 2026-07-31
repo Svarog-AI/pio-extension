@@ -2,6 +2,12 @@ import type { PioSessionState } from "../../runtime/session-state";
 import type { WorkflowPhase } from "../../runtime/workflow-types";
 
 export default [
+  {
+    id: "hey",
+    title: "Hey Hey",
+    kind: "standard",
+    instructions: "Just chill",
+  },
   // ---------------------------------------------------------------------------
   // Phase 1: Edge Case — Pure Variable Phase (no LLM vars)
   // instructions ignored — engine generates template from variables array

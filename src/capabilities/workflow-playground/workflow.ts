@@ -3,234 +3,102 @@ import type { WorkflowPhase } from "../../runtime/workflow-types";
 
 export default [
   // ---------------------------------------------------------------------------
-  // Phase 1: minIterations Default Behavior Test
-  // ---------------------------------------------------------------------------
-  {
-    id: "min-iterations",
-    title: "minIterations test",
-    minIterations: 3,
-    maxIterations: 5,
-    loopMessage:
-      "This phase is replaying. Report your iteration number and continue — you need to reach minIterations (3) before advancing.",
-    instructions: `This phase tests the minIterations default behavior. Without terminateWhen defined, the loop engine will advance the phase once minIterations is reached and conditions default to "met".
-
-Follow these steps:
-1. Report your iteration number at the start of each run (e.g., "Iteration 1", "Iteration 2")
-2. Do nothing special — just let the loop engine advance naturally
-3. Observe and report that exactly 3 iterations occur before advancing to Phase 2
-4. Explain why: without \`terminateWhen\`, conditions default to "met" once \`minIterations\` (3) is reached`,
-  },
-
-  // ---------------------------------------------------------------------------
-  // Phase 2: terminateWhen Callback Test
-  // ---------------------------------------------------------------------------
-  {
-    id: "terminate-when",
-    title: "terminateWhen test",
-    minIterations: 1,
-    maxIterations: 4,
-    loopMessage:
-      "This phase is replaying because you did not call ask_user. On this iteration, call ask_user with any question to trigger the termination condition.",
-    terminateWhen: [
-      {
-        type: "callback",
-        callback: (state: PioSessionState) => state.askUserCalled === true,
-      },
-    ],
-    instructions: `This phase tests the terminateWhen callback feature. The loop engine checks \`state.askUserCalled\` after each iteration — when you call \`ask_user\`, this flag becomes \`true\` and the phase advances.
-
-Follow these steps:
-1. On iteration 1: do NOT call \`ask_user\`. Report "Iteration 1 — skipping ask_user" and observe that the phase replays
-2. On iteration 2: call \`ask_user\` with any question (e.g., asking yourself to confirm) and then answer it. Report "Iteration 2 — calling ask_user". Observe that after calling \`ask_user\`, the termination condition fires and the phase advances
-3. Report the exact number of iterations before advancement and explain why: \`terminateWhen\` checks \`state.askUserCalled\`, which is set to \`true\` by the loop engine when \`ask_user\` is called`,
-  },
-
-  // ---------------------------------------------------------------------------
-  // Phase 3: Restricted Writes (empty write array)
-  // ---------------------------------------------------------------------------
-  {
-    id: "restricted-writes",
-    title: "Restricted writes test",
-    write: [],
-    instructions: `This phase tests the restricted-by-default write gate model. With \`write: []\` (empty array), contract output paths are blocked, as well as non-contract files.
-
-Follow these steps:
-1. Attempt to write \`PLAYGROUND.md\` and observe it is blocked by the restricted-by-default model (the empty write array blocks known contract output paths)
-2. Write a non-contract file (e.g., \`notes.md\`) with your observations so far from Phases 1–3, and observe that non-contract files also cannot be written
-3. Report both outcomes verbatim, including the exact block message for the contract output`,
-  },
-
-  // ---------------------------------------------------------------------------
-  // Phase 4: /tmp/ Writes Test
-  // ---------------------------------------------------------------------------
-  {
-    id: "tmp-writes",
-    title: "/tmp/ writes test",
-    write: ["playground-output"],
-    instructions: `This phase tests that \`/tmp/\` writes bypass all write gate restrictions. The loop engine explicitly skips write gating for any path starting with \`/tmp/\`.
-
-Follow these steps:
-1. Write a file to \`/tmp/\` (e.g., \`/tmp/playground-tmp-test.md\`) with some content and observe it succeeds — the \`/tmp/\` path is always allowed by the write gate regardless of \`write\` configuration
-2. Report that \`/tmp/\` writes pass through freely, even though this phase has a populated write allowlist
-3. Note why: the loop engine explicitly skips write gating for any path starting with \`/tmp/\``,
-  },
-
-  // ---------------------------------------------------------------------------
-  // Phase 5: Project Files Allowed Test
-  // ---------------------------------------------------------------------------
-  {
-    id: "project-files",
-    title: "Project files allowed test",
-    write: ["playground-output"],
-    instructions: `This phase tests that non-contract project/workspace files always pass through the write gate, regardless of the \`write\` allowlist configuration.
-
-Follow these steps:
-1. Write a file in the workspace directory (e.g., \`workspace-test.md\` or a file under the \`.pio/goals/test-playground/\` path) and observe it succeeds — non-contract files always pass through regardless of write restrictions
-2. Attempt to write \`PLAYGROUND.md\` and observe it is allowed (because \`playground-output\` is in the allowlist for this phase), but then delete or overwrite it with a placeholder since the final report comes later
-3. Alternatively, if \`PLAYGROUND.md\` has already been created by an earlier phase, attempt to edit it and confirm it's allowed
-4. Report outcomes: project file writes pass through freely; contract outputs in the allowlist are also writable
-5. This demonstrates that the write gate only restricts specific contract output paths — all other files (including arbitrary workspace files) are always writable`,
-  },
-
-  // ---------------------------------------------------------------------------
-  // Phase 6: Variable Definition — Basic Test
+  // Phase 1: Edge Case — Pure Variable Phase (no LLM vars)
   // instructions ignored — engine generates template from variables array
+  // Tests that a variable phase with ONLY static + computed vars (no llm kind)
+  // completes and advances correctly. No setVar call needed from the agent.
   // ---------------------------------------------------------------------------
   {
-    id: "var-basic-test",
-    title: "Variable Definition — Basic Test",
+    id: "edge-case-pure-var",
+    title: "Edge Case — Pure Variable Phase",
     kind: "variable-definition",
     minIterations: 1,
-    maxIterations: 3,
+    maxIterations: 2,
     variables: [
       {
-        name: "phase_label",
+        name: "pure_static_val",
         type: "string",
         kind: "static",
-        value: "Variable System Test",
+        value: "i-am-pure-static",
       },
       {
-        name: "llm_chosen_value",
+        name: "pure_computed_len",
+        type: "number",
+        kind: "computed",
+        compute: (_state: PioSessionState) => "i-am-pure-static".length,
+      },
+    ],
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 2: Edge Case — Two Variable Phases Back-to-Back
+  // instructions ignored — engine generates template from variables array
+  // Follows immediately after Phase 1 (another variable-defining phase).
+  // Tests that advancement from one var phase to another works:
+  // Phase 1's agent_end triggers preparePhaseVariables(Phase 2) + followUp.
+  // ---------------------------------------------------------------------------
+  {
+    id: "edge-case-var-chain",
+    title: "Edge Case — Var Phase Chain",
+    kind: "variable-definition",
+    minIterations: 1,
+    maxIterations: 2,
+    variables: [
+      {
+        name: "chain_llm_val",
         type: "string",
         kind: "llm",
         description:
-          "Choose any short word (e.g. 'confirmed') and set it as the llm_chosen_value variable using setVar.",
+          "Set this to 'chain-link' using setVar. This phase follows another variable-defining phase (Phase 1).",
       },
       {
-        name: "current_phase_num",
-        type: "number",
+        name: "pure_static_check",
+        type: "string",
         kind: "computed",
-        compute: (state: PioSessionState) => state.currentPhase,
+        compute: (state: PioSessionState) =>
+          state.store?.get("pure_static_val") ?? "MISSING",
       },
     ],
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 7: loopWhile Condition Test
+  // Phase 3: Edge Case Verification
+  // Verifies variables from Phases 1–2 survived and chained correctly.
   // ---------------------------------------------------------------------------
   {
-    id: "loopwhile-test",
-    title: "loopWhile Condition Test",
-    minIterations: 1,
-    maxIterations: 3,
-    loopWhile: [
-      {
-        type: "callback",
-        callback: (state: PioSessionState) =>
-          state.filesWritten.filter((f) => f.endsWith("loopwhile-test.txt"))
-            .length === 0,
-      },
-    ],
-    instructions: `This phase tests user-defined loopWhile conditions. The loop engine checks whether a file ending with \`loopwhile-test.txt\` was written — it keeps looping until the file exists.
+    id: "edge-case-verify",
+    title: "Edge Case Verification",
+    instructions: `This phase verifies the edge case variable phases (1–2).
 
-Follow these steps:
-1. On iteration 1: do NOT write the required file. Report "Iteration 1 — skipping file write" and observe the phase replays
-2. On iteration 2: write \`/tmp/loopwhile-test.txt\` with any content. Observe that after writing the file, the loopWhile condition returns \`false\` (condition not met → no loop replay) and the phase advances
-3. Report the exact number of iterations and explain why: \`loopWhile\` uses OR logic — when the callback returns \`false\`, the engine does not loop back`,
-  },
-
-  // ---------------------------------------------------------------------------
-  // Phase 8: terminateWhen AND Logic Test
-  // ---------------------------------------------------------------------------
-  {
-    id: "terminate-when-and-test",
-    title: "terminateWhen AND Logic Test",
-    minIterations: 1,
-    maxIterations: 4,
-    loopMessage:
-      "This phase is replaying because not all terminateWhen conditions are met. You need to satisfy both: write a random file to /tmp/ folder AND call ask_user.",
-    terminateWhen: [
-      {
-        type: "callback",
-        callback: (state: PioSessionState) => state.filesWritten.length > 0,
-      },
-      {
-        type: "callback",
-        callback: (state: PioSessionState) => state.askUserCalled === true,
-      },
-    ],
-    instructions: `This phase tests terminateWhen AND logic — both callbacks must return true to advance. Satisfying only one triggers a replay.
-
-Follow these steps:
-1. **Iteration 1:** Do NOT write any file and do NOT call ask_user. Report "Iteration 1 — both conditions not met". Observe that the phase replays because neither condition is met
-2. **Iteration 2:** Write a file (e.g., via the write tool to /tmp/terminate-and-test.txt) AND call ask_user with any question. Observe that after both actions, all termination conditions pass and the phase advances
-3. Report the exact number of iterations and explain why: terminateWhen uses AND logic — both callbacks must return true to advance`,
-  },
-
-  // ---------------------------------------------------------------------------
-  // Phase 9: Template Interpolation
-  // ---------------------------------------------------------------------------
-  {
-    id: "template-interpolation",
-    title: "Template Interpolation",
-    instructions: `This phase tests template interpolation. The placeholders below reference variables set in Phase 6.
-
-Resolved values from Phase 6:
-- \`\${phase_label}\` — should resolve to the static var value
-- \`\${llm_chosen_value}\` — should resolve to whatever you set via setVar in Phase 6
-- \`\${current_phase_num}\` — should resolve to the computed phase number from Phase 6
+Resolved values:
+- \`${pure_static_val}\` — should be "i-am-pure-static" (static var from Phase 1)
+- \`${pure_computed_len}\` — should be 17 (computed len of the static string, Phase 1)
+- \`${chain_llm_val}\` — should be "chain-link" (llm var from Phase 2)
+- \`${pure_static_check}\` — should be "i-am-pure-static" (computed in Phase 2 reading Phase 1's static var)
 
 Follow these steps:
 1. Call \`listVars\` to see all current variables
-2. Report the resolved values of the interpolated placeholders above (they appear directly in these instructions)
-3. Confirm that static, LLM-driven, and computed vars all survive across phases and interpolate correctly`,
+2. Report whether each resolved value above matches expectations
+3. Note: Phase 1 had NO llm-kind variables — only static + computed. Verify it still completed and advanced.
+4. Note: Phase 2 followed immediately after Phase 1 (two var-defining phases back-to-back). Verify the chain worked — did preparePhaseVariables for Phase 2 fire correctly?`,
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 10: Validation Gate Replay
-  // instructions ignored — engine generates template from variables array
-  // ---------------------------------------------------------------------------
-  {
-    id: "validation-gate-replay",
-    title: "Validation Gate Replay",
-    kind: "variable-definition",
-    minIterations: 1,
-    maxIterations: 3,
-    variables: [
-      {
-        name: "retry_var",
-        type: "string",
-        kind: "llm",
-        description:
-          "On the first iteration, do NOT set this variable — report it as intentionally unset. On the second iteration (after seeing it listed as undefined in the follow-up message), set it using setVar with any short string value.",
-      },
-    ],
-  },
-
-  // ---------------------------------------------------------------------------
-  // Phase 11: Final Report
+  // Phase 4: Final Report
   // ---------------------------------------------------------------------------
   {
     id: "final-report",
     title: "Final Report",
     write: ["playground-output"],
-    instructions: `This is the final phase. Write a comprehensive test report in \`PLAYGROUND.md\` covering all phases (1–10).
+    instructions: `This is the final phase. Write a comprehensive test report in \`PLAYGROUND.md\` covering all phases (1–3).
 
 Follow these steps:
-1. Write \`PLAYGROUND.md\` with a section for each phase (1–10) summarizing behavior observed
-2. For Phases 6–10 specifically, include: variable values, interpolation results, loopWhile replay observations, terminateWhen AND logic behavior, and computed callback results
-3. Confirm that user-defined \`loopWhile\` uses OR logic (Phase 7) and \`terminateWhen\` uses AND logic (Phase 8) based on direct observations
-4. Include any unexpected behaviors or discrepancies
-5. This is the final phase — produce a complete, well-structured report in \`PLAYGROUND.md\``,
+1. Write \`PLAYGROUND.md\` with a section for each phase (1–3) summarizing behavior observed
+2. Include a "Variable Definition Verification" section with a pass/fail table:
+   - Phase 1: pure variable phase (static + computed only, no llm)
+   - Phase 2: back-to-back variable phase chain
+   - Phase 3: cross-phase variable verification
+3. Include any unexpected behaviors or discrepancies
+4. This is the final phase — produce a complete, well-structured report in \`PLAYGROUND.md\``,
   },
 ] satisfies WorkflowPhase[];

@@ -275,73 +275,65 @@ describe("resolveCapabilityConfig — session name passthrough", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolveCapabilityConfig — initial message derivation
+// resolveCapabilityConfig — additionalContext passthrough
 // ---------------------------------------------------------------------------
 
-describe("resolveCapabilityConfig — initial message derivation", () => {
-  it("prepends workspace directory to initialMessage (defaultInitialMessage path)", async () => {
+describe("resolveCapabilityConfig — additionalContext passthrough", () => {
+  it("passes through params.additionalContext as-is (no enrichment)", async () => {
     const cwd = "/tmp/proj";
     const params = {
       capability: "create-goal" as string,
-      goalName: "my-feature",
+      additionalContext: "custom context",
       sessionName: "test",
     };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(typeof result?.initialMessage).toBe("string");
-    expect(result?.initialMessage?.startsWith("Workspace directory:")).toBe(
-      true,
-    );
-    expect(result?.initialMessage).toContain("Ready.");
+    expect(result?.additionalContext).toBe("custom context");
+    // No workspace-dir prepending
+    expect(result?.additionalContext).not.toContain("Workspace directory:");
   });
 
-  it("prepends workspace directory to explicit params.initialMessage", async () => {
-    const cwd = "/tmp/proj";
-    const params = {
-      capability: "create-goal" as string,
-      goalName: "my-feature",
-      initialMessage: "custom message",
-      sessionName: "test",
-    };
-
-    const result = await resolveCapabilityConfig(cwd, params);
-
-    expect(result?.initialMessage?.startsWith("Workspace directory:")).toBe(
-      true,
-    );
-    expect(result?.initialMessage).toContain("custom message");
-  });
-
-  it("prepends workspace directory with workspacePrefix (goal-scoped)", async () => {
+  it("passes through params.additionalContext with workspacePrefix (goal-scoped)", async () => {
     const cwd = "/tmp/proj";
     const params = {
       capability: "create-plan" as string,
       sessionName: "test",
       workspacePrefix: "goals/my-feature",
-      initialMessage: "plan the feature",
+      additionalContext: "plan the feature",
     };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result?.initialMessage).toBe(
-      `Workspace directory: ${path.join(cwd, ".pio", "goals", "my-feature")}\n\nplan the feature`,
-    );
+    // additionalContext equals input exactly — no workspace-dir prepending
+    expect(result?.additionalContext).toBe("plan the feature");
   });
 
-  it("defaultInitialMessage content is preserved after workspaceDir prefix", async () => {
+  it("sets both additionalContext and initialMessage to the same value (migration bridge)", async () => {
     const cwd = "/tmp/proj";
     const params = {
-      capability: "create-plan" as string,
-      goalName: "my-feature",
+      capability: "create-goal" as string,
+      additionalContext: "custom context",
       sessionName: "test",
     };
 
     const result = await resolveCapabilityConfig(cwd, params);
 
-    expect(result?.initialMessage).toBe(
-      `Workspace directory: ${path.join(cwd, ".pio")}\n\nReady.`,
-    );
+    expect(result?.additionalContext).toBe("custom context");
+    expect(result?.initialMessage).toBe("custom context");
+  });
+
+  it("when neither additionalContext nor initialMessage is provided, both fields are undefined", async () => {
+    const cwd = "/tmp/proj";
+    const params = {
+      capability: "create-plan" as string,
+      sessionName: "test",
+    };
+
+    const result = await resolveCapabilityConfig(cwd, params);
+
+    expect(result?.additionalContext).toBeUndefined();
+    expect(result?.initialMessage).toBeUndefined();
   });
 });
 
@@ -979,7 +971,7 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
     ).toBe(true);
   });
 
-  it("finalize-goal initial message is non-empty (defaultInitialMessage)", async () => {
+  it("finalize-goal additionalContext is undefined when not provided", async () => {
     // Arrange: same params shape as the previous evolve-plan→finalize-goal edge for a completed goal
     const cwd = "/tmp/auto-transition-proj";
     const params = {
@@ -992,11 +984,10 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
     // Act
     const result = await resolveCapabilityConfig(cwd, params);
 
-    // Assert: initialMessage is non-empty — comes from defaultInitialMessage callback
-    // (pio-workflow state machine can override via explicit initialMessage param)
+    // Assert: without additionalContext, both fields are undefined
     expect(result).toBeDefined();
-    expect(result?.initialMessage).toBeDefined();
-    expect(result?.initialMessage?.length).toBeGreaterThan(0);
+    expect(result?.additionalContext).toBeUndefined();
+    expect(result?.initialMessage).toBeUndefined();
   });
 });
 
@@ -1024,43 +1015,30 @@ describe("resolveCapabilityConfig — mandatory param enforcement", () => {
     );
   });
 
-  it("throws when both initialMessage and defaultInitialMessage are empty", async () => {
-    // test-no-initial-message is a test capability with defaultInitialMessage returning ""
-    const params = {
-      capability: "test-no-initial-message" as string,
-      sessionName: "test",
-    };
-
-    await expect(resolveCapabilityConfig("/tmp/proj", params)).rejects.toThrow(
-      /requires an initial message/,
-    );
-  });
-
-  it("does not throw when defaultInitialMessage provides a value", async () => {
-    // create-goal has defaultInitialMessage returning "Ready."
-    const params = { capability: "create-goal" as string, sessionName: "test" };
-
-    const result = await resolveCapabilityConfig("/tmp/proj", params);
-    expect(result).toBeDefined();
-    expect(result?.initialMessage?.startsWith("Workspace directory:")).toBe(
-      true,
-    );
-    expect(result?.initialMessage).toContain("Ready.");
-  });
-
-  it("does not throw when params.initialMessage is provided", async () => {
+  it("does not throw when additionalContext is absent", async () => {
+    // additionalContext is optional — resolving without it succeeds
     const params = {
       capability: "create-goal" as string,
       sessionName: "test",
-      initialMessage: "custom",
     };
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
     expect(result).toBeDefined();
-    expect(result?.initialMessage?.startsWith("Workspace directory:")).toBe(
-      true,
-    );
-    expect(result?.initialMessage).toContain("custom");
+    expect(result?.additionalContext).toBeUndefined();
+    expect(result?.initialMessage).toBeUndefined();
+  });
+
+  it("passes through additionalContext when provided", async () => {
+    const params = {
+      capability: "create-goal" as string,
+      sessionName: "test",
+      additionalContext: "custom context",
+    };
+
+    const result = await resolveCapabilityConfig("/tmp/proj", params);
+    expect(result).toBeDefined();
+    expect(result?.additionalContext).toBe("custom context");
+    expect(result?.initialMessage).toBe("custom context");
   });
 });
 
@@ -1391,16 +1369,14 @@ describe("resolveContractPath", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Integration — custom initial message passthrough
+// Integration — additionalContext passthrough
 // ---------------------------------------------------------------------------
 
 /**
- * These tests verify the end-to-end passthrough of custom initialMessage
+ * These tests verify the end-to-end passthrough of additionalContext
  * through the queue mechanism: enqueue → JSON round-trip → resolve → config.
- * This ensures the mechanism works before Step 6 starts injecting custom
- * messages in every pio-workflow transition.
  */
-describe("custom initial message passthrough", () => {
+describe("additionalContext passthrough", () => {
   const cwd = "/tmp/pio-msg-passthrough";
   const queueKey = "test-msg-passthrough";
 
@@ -1419,12 +1395,12 @@ describe("custom initial message passthrough", () => {
     }
   });
 
-  it("custom initialMessage survives JSON round-trip: enqueue → readPendingTask → resolveCapabilityConfig", async () => {
-    // Arrange: enqueue a task with a custom initialMessage
-    const customMessage = "Build the widget factory with 42 conveyor belts";
+  it("additionalContext survives JSON round-trip: enqueue → readPendingTask → resolveCapabilityConfig", async () => {
+    // Arrange: enqueue a task with additionalContext
+    const customContext = "Build the widget factory with 42 conveyor belts";
     enqueueTask(cwd, queueKey, {
       capability: "create-goal",
-      params: { goalName: "widget-factory", initialMessage: customMessage },
+      params: { goalName: "widget-factory", additionalContext: customContext },
     });
 
     // Act: read it back and resolve config
@@ -1435,31 +1411,32 @@ describe("custom initial message passthrough", () => {
       sessionName: "test",
     });
 
-    // Assert: config.initialMessage starts with workspace metadata and contains the custom message
+    // Assert: config.additionalContext equals input exactly (no "Workspace directory:" prefix)
     expect(config).toBeDefined();
-    expect(config?.initialMessage?.startsWith("Workspace directory:")).toBe(
-      true,
-    );
-    expect(config?.initialMessage).toContain(customMessage);
-    expect(config?.initialMessage).not.toBe("Ready.");
+    expect(config?.additionalContext).toBe(customContext);
+    expect(config?.additionalContext).not.toContain("Workspace directory:");
+    expect(config?.initialMessage).toBe(customContext); // migration bridge
   });
 
-  it("throw: when neither params.initialMessage nor defaultInitialMessage provides a value", async () => {
-    // Arrange: test-no-initial-message has defaultInitialMessage returning ""
+  it("resolving without additionalContext succeeds (both fields undefined)", async () => {
+    // Arrange: enqueue without additionalContext
     enqueueTask(cwd, queueKey, {
-      capability: "test-no-initial-message",
-      params: {},
+      capability: "create-goal",
+      params: { goalName: "widget-factory" },
     });
 
-    // Act + Assert: resolving config should throw
+    // Act: read it back and resolve config
     const task = readPendingTask(cwd, queueKey);
-    await expect(
-      resolveCapabilityConfig(cwd, {
-        ...task?.params,
-        capability: task?.capability,
-        sessionName: "test",
-      }),
-    ).rejects.toThrow(/requires an initial message/);
+    const config = await resolveCapabilityConfig(cwd, {
+      ...task?.params,
+      capability: task?.capability,
+      sessionName: "test",
+    });
+
+    // Assert: no throw, both fields undefined
+    expect(config).toBeDefined();
+    expect(config?.additionalContext).toBeUndefined();
+    expect(config?.initialMessage).toBeUndefined();
   });
 });
 
@@ -1467,91 +1444,81 @@ describe("custom initial message passthrough", () => {
 // Integration — all real capabilities define defaultInitialMessage
 // ---------------------------------------------------------------------------
 
-describe("all real capabilities define defaultInitialMessage", () => {
-  it("create-goal defaultInitialMessage returns a non-empty string", async () => {
+describe("all real capabilities resolve without additionalContext", () => {
+  it("create-goal resolves without additionalContext (both fields undefined)", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "create-goal" as string,
       sessionName: "test",
     });
-    expect(config?.initialMessage).toBeDefined();
-    expect(config?.initialMessage?.length).toBeGreaterThan(0);
+    expect(config?.additionalContext).toBeUndefined();
+    expect(config?.initialMessage).toBeUndefined();
   });
 
-  it("create-plan defaultInitialMessage returns a non-empty string", async () => {
+  it("create-plan resolves without additionalContext (both fields undefined)", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "create-plan" as string,
       sessionName: "test",
     });
-    expect(config?.initialMessage).toBeDefined();
-    expect(config?.initialMessage?.length).toBeGreaterThan(0);
+    expect(config?.additionalContext).toBeUndefined();
+    expect(config?.initialMessage).toBeUndefined();
   });
 
-  it("evolve-plan defaultInitialMessage returns a non-empty string", async () => {
+  it("evolve-plan resolves without additionalContext (both fields undefined)", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "evolve-plan" as string,
       stepNumber: 1,
       sessionName: "test",
     });
-    expect(config?.initialMessage).toBeDefined();
-    expect(config?.initialMessage?.length).toBeGreaterThan(0);
+    expect(config?.additionalContext).toBeUndefined();
+    expect(config?.initialMessage).toBeUndefined();
   });
 
-  it("execute-task defaultInitialMessage returns a non-empty string with .pio/ workspaceDir", async () => {
+  it("execute-task resolves without additionalContext (both fields undefined)", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "execute-task" as string,
       stepNumber: 1,
       sessionName: "test",
     });
-    expect(config?.initialMessage).toBeDefined();
-    expect(config?.initialMessage?.length).toBeGreaterThan(0);
-    // Message starts with workspace metadata block containing .pio/
-    expect(config?.initialMessage?.startsWith("Workspace directory:")).toBe(
-      true,
-    );
-    expect(config?.initialMessage).toContain(".pio");
-    // Original defaultInitialMessage content preserved after the metadata block
-    expect(config?.initialMessage).toContain(
-      "Read TASK.md and resolve the task",
-    );
+    expect(config?.additionalContext).toBeUndefined();
+    expect(config?.initialMessage).toBeUndefined();
   });
 
-  it("review-task defaultInitialMessage returns a non-empty string", async () => {
+  it("review-task resolves without additionalContext (both fields undefined)", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "review-task" as string,
       stepNumber: 1,
       sessionName: "test",
     });
-    expect(config?.initialMessage).toBeDefined();
-    expect(config?.initialMessage?.length).toBeGreaterThan(0);
+    expect(config?.additionalContext).toBeUndefined();
+    expect(config?.initialMessage).toBeUndefined();
   });
 
-  it("revise-plan defaultInitialMessage returns a non-empty string", async () => {
+  it("revise-plan resolves without additionalContext (both fields undefined)", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "revise-plan" as string,
       sessionName: "test",
     });
-    expect(config?.initialMessage).toBeDefined();
-    expect(config?.initialMessage?.length).toBeGreaterThan(0);
+    expect(config?.additionalContext).toBeUndefined();
+    expect(config?.initialMessage).toBeUndefined();
   });
 
-  it("finalize-goal defaultInitialMessage returns a non-empty string", async () => {
+  it("finalize-goal resolves without additionalContext (both fields undefined)", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "finalize-goal" as string,
       goalName: "my-feature",
       sessionName: "test",
     });
-    expect(config?.initialMessage).toBeDefined();
-    expect(config?.initialMessage?.length).toBeGreaterThan(0);
-    // defaultInitialMessage returns a minimal message
+    expect(config?.additionalContext).toBeUndefined();
+    expect(config?.initialMessage).toBeUndefined();
   });
 
-  it("project-context defaultInitialMessage returns a non-empty string", async () => {
+  it("project-context resolves without additionalContext (both fields undefined)", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "project-context" as string,
       sessionName: "test",
     });
-    expect(config?.initialMessage).toBeDefined();
-    expect(config?.initialMessage?.length).toBeGreaterThan(0);
+    expect(config?.additionalContext).toBeUndefined();
+    expect(config?.initialMessage).toBeUndefined();
   });
 });
 

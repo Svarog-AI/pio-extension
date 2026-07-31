@@ -442,9 +442,10 @@ const goalFromIssueTool = defineTool({
       description:
         "Issue filename or identifier (e.g. fix-something.md or fix-something)",
     }),
-    initialMessage: Type.Optional(
+    additionalContext: Type.Optional(
       Type.String({
-        description: "Custom initial message for the goal definition session",
+        description:
+          "Additional context injected into the system prompt for this session",
       }),
     ),
   }),
@@ -469,9 +470,10 @@ const goalFromIssueTool = defineTool({
         workspacePrefix: `goals/${goalName}`,
         sessionName: `${goalName} create-goal`,
         queueKey: goalName,
-        initialMessage:
-          params.initialMessage ??
+        additionalContext:
+          params.additionalContext ??
           `Create a goal from this issue. Read ${issuePath} for context, interview about scope and constraints, then write GOAL.md.`,
+
         fileCleanup: [issuePath],
       },
     });
@@ -522,7 +524,8 @@ async function handleGoalFromIssue(
     workspacePrefix: `goals/${goalName}`,
     sessionName: `${goalName} create-goal`,
     queueKey: goalName,
-    initialMessage: `Create a goal from this issue. Read ${resolvedIssuePath} for context, interview about scope and constraints, then write GOAL.md.`,
+    additionalContext: `Create a goal from this issue. Read ${resolvedIssuePath} for context, interview about scope and constraints, then write GOAL.md.`,
+
     fileCleanup: [resolvedIssuePath],
   });
   if (!config) {

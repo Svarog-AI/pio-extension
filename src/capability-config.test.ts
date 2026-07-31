@@ -969,9 +969,8 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
     // Act
     const result = await resolveCapabilityConfig(cwd, params);
 
-    // Assert: without additionalContext, both fields are undefined
+    // Assert: without additionalContext, the field is undefined
     expect(result).toBeDefined();
-    expect(result?.additionalContext).toBeUndefined();
     expect(result?.additionalContext).toBeUndefined();
   });
 });
@@ -1010,7 +1009,6 @@ describe("resolveCapabilityConfig — mandatory param enforcement", () => {
     const result = await resolveCapabilityConfig("/tmp/proj", params);
     expect(result).toBeDefined();
     expect(result?.additionalContext).toBeUndefined();
-    expect(result?.additionalContext).toBeUndefined();
   });
 
   it("passes through additionalContext when provided", async () => {
@@ -1022,7 +1020,6 @@ describe("resolveCapabilityConfig — mandatory param enforcement", () => {
 
     const result = await resolveCapabilityConfig("/tmp/proj", params);
     expect(result).toBeDefined();
-    expect(result?.additionalContext).toBe("custom context");
     expect(result?.additionalContext).toBe("custom context");
   });
 });
@@ -1402,7 +1399,7 @@ describe("additionalContext passthrough", () => {
     expect(config?.additionalContext).not.toContain("Workspace directory:");
   });
 
-  it("resolving without additionalContext succeeds (both fields undefined)", async () => {
+  it("resolving without additionalContext succeeds", async () => {
     // Arrange: enqueue without additionalContext
     enqueueTask(cwd, queueKey, {
       capability: "create-goal",
@@ -1417,9 +1414,8 @@ describe("additionalContext passthrough", () => {
       sessionName: "test",
     });
 
-    // Assert: no throw, both fields undefined
+    // Assert: no throw, field is undefined
     expect(config).toBeDefined();
-    expect(config?.additionalContext).toBeUndefined();
     expect(config?.additionalContext).toBeUndefined();
   });
 });
@@ -1429,79 +1425,71 @@ describe("additionalContext passthrough", () => {
 // ---------------------------------------------------------------------------
 
 describe("all real capabilities resolve without additionalContext", () => {
-  it("create-goal resolves without additionalContext (both fields undefined)", async () => {
+  it("create-goal resolves without additionalContext", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "create-goal" as string,
       sessionName: "test",
     });
     expect(config?.additionalContext).toBeUndefined();
-    expect(config?.additionalContext).toBeUndefined();
   });
 
-  it("create-plan resolves without additionalContext (both fields undefined)", async () => {
+  it("create-plan resolves without additionalContext", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "create-plan" as string,
       sessionName: "test",
     });
     expect(config?.additionalContext).toBeUndefined();
-    expect(config?.additionalContext).toBeUndefined();
   });
 
-  it("evolve-plan resolves without additionalContext (both fields undefined)", async () => {
+  it("evolve-plan resolves without additionalContext", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "evolve-plan" as string,
       stepNumber: 1,
       sessionName: "test",
     });
     expect(config?.additionalContext).toBeUndefined();
-    expect(config?.additionalContext).toBeUndefined();
   });
 
-  it("execute-task resolves without additionalContext (both fields undefined)", async () => {
+  it("execute-task resolves without additionalContext", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "execute-task" as string,
       stepNumber: 1,
       sessionName: "test",
     });
     expect(config?.additionalContext).toBeUndefined();
-    expect(config?.additionalContext).toBeUndefined();
   });
 
-  it("review-task resolves without additionalContext (both fields undefined)", async () => {
+  it("review-task resolves without additionalContext", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "review-task" as string,
       stepNumber: 1,
       sessionName: "test",
     });
     expect(config?.additionalContext).toBeUndefined();
-    expect(config?.additionalContext).toBeUndefined();
   });
 
-  it("revise-plan resolves without additionalContext (both fields undefined)", async () => {
+  it("revise-plan resolves without additionalContext", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "revise-plan" as string,
       sessionName: "test",
     });
     expect(config?.additionalContext).toBeUndefined();
-    expect(config?.additionalContext).toBeUndefined();
   });
 
-  it("finalize-goal resolves without additionalContext (both fields undefined)", async () => {
+  it("finalize-goal resolves without additionalContext", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "finalize-goal" as string,
       goalName: "my-feature",
       sessionName: "test",
     });
     expect(config?.additionalContext).toBeUndefined();
-    expect(config?.additionalContext).toBeUndefined();
   });
 
-  it("project-context resolves without additionalContext (both fields undefined)", async () => {
+  it("project-context resolves without additionalContext", async () => {
     const config = await resolveCapabilityConfig("/tmp/proj", {
       capability: "project-context" as string,
       sessionName: "test",
     });
-    expect(config?.additionalContext).toBeUndefined();
     expect(config?.additionalContext).toBeUndefined();
   });
 });

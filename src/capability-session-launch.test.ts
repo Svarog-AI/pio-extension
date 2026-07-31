@@ -223,7 +223,7 @@ describe("launchCapability — input validation", () => {
     const newSessionCall = ctx.newSession.mock.calls[0][0];
     expect(newSessionCall.withSession).toBeDefined();
 
-    // The withSession callback sends the initial message
+    // The withSession callback delivers additionalContext into the system prompt
     // We can't easily invoke it here, but we verified newSession was called
     expect(ctx.newSession).toHaveBeenCalledTimes(1);
   });

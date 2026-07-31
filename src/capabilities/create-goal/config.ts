@@ -34,7 +34,6 @@ const capabilityConfig = {
       },
     ],
   },
-  defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;
@@ -54,7 +53,7 @@ const createGoalTool = defineTool({
   async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
     const queueKey = deriveQueueKey(params.workspacePrefix);
     const sessionName = params.sessionName ?? `${queueKey} create-goal`;
-    const initialMessage = params.initialMessage;
+    const additionalContext = params.additionalContext;
 
     // Resolve workspace directory: workspaceDir is .pio/, prefix tells us where within it
     const workspaceDir = path.join(ctx.cwd, ".pio", params.workspacePrefix);
@@ -77,7 +76,7 @@ const createGoalTool = defineTool({
         workspacePrefix: params.workspacePrefix,
         sessionName,
         queueKey,
-        initialMessage,
+        additionalContext,
       },
     });
 

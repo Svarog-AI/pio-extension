@@ -43,7 +43,6 @@ const capabilityConfig = {
       },
     ],
   },
-  defaultInitialMessage: () => "Ready.",
   prepareSession,
 } satisfies CapabilityPackageConfig;
 
@@ -74,7 +73,7 @@ const revisePlanTool = defineTool({
         workspacePrefix: params.workspacePrefix,
         sessionName: params.sessionName ?? `${queueKey} revise-plan`,
         queueKey,
-        initialMessage: params.initialMessage,
+        additionalContext: params.additionalContext,
         goalFile: params.goalFile,
         planFile: params.planFile,
         revisionContextFile: params.revisionContextFile,

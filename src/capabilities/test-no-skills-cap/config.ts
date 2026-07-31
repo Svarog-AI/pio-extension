@@ -12,7 +12,6 @@ const capabilityConfig = {
     inputs: [],
     outputs: [],
   },
-  defaultInitialMessage: () => "Test capability without skills",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;

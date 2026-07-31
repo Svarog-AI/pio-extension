@@ -59,7 +59,6 @@ const capabilityConfig = {
   skills: {
     mandatory: ["tdd"],
   },
-  defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;
@@ -108,7 +107,7 @@ const reviewTaskTool = defineTool({
         workspacePrefix: params.workspacePrefix,
         sessionName,
         queueKey,
-        initialMessage: params.initialMessage,
+        additionalContext: params.additionalContext,
         completedMarker: params.completedMarker,
         summaryFile: params.summaryFile,
         taskFile: params.taskFile,

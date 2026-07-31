@@ -33,7 +33,6 @@ const capabilityConfig = {
     ".pio/PROJECT/DEPENDENCIES.md",
     ".pio/PROJECT/GLOSSARY.md",
   ],
-  defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;
@@ -57,7 +56,7 @@ const projectContextTool = defineTool({
         workspacePrefix: params.workspacePrefix,
         sessionName: params.sessionName ?? "project-context",
         queueKey: "project-context",
-        initialMessage: params.initialMessage,
+        additionalContext: params.additionalContext,
       },
     });
 

@@ -101,12 +101,6 @@ describe("CapabilityPackageConfig (default export)", () => {
   it("has writeAllowlist with PLAYGROUND.md", () => {
     expect(config.writeAllowlist).toEqual(["PLAYGROUND.md"]);
   });
-
-  it("defaultInitialMessage returns a non-empty instructional string", () => {
-    const msg = config.defaultInitialMessage("", undefined);
-    expect(msg.length).toBeGreaterThan(0);
-    expect(msg).not.toBe("Ready.");
-  });
 });
 
 // ---------------------------------------------------------------------------

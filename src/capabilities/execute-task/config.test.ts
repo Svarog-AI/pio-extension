@@ -97,24 +97,6 @@ describe("stepFolderName", () => {
 });
 
 // ---------------------------------------------------------------------------
-// execute-task defaultInitialMessage — behavioral tests
-// ---------------------------------------------------------------------------
-
-describe("execute-task defaultInitialMessage", () => {
-  it("returns static guidance string", () => {
-    const message = config.defaultInitialMessage();
-
-    expect(message).toBe("Read TASK.md and resolve the task.");
-  });
-
-  it("references TASK.md as the task specification", () => {
-    const message = config.defaultInitialMessage();
-
-    expect(message).toContain("TASK.md");
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Tool execute — pio_execute_task
 // ---------------------------------------------------------------------------
 
@@ -180,7 +162,7 @@ describe("executeTaskTool.execute", () => {
     expect(result.content[0].text).toContain("Task queued");
   });
 
-  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, initialMessage)", async () => {
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, additionalContext)", async () => {
     // Arrange: goal dir with TASK.md in S01
     const { goalDir, stepDir } = createGoalTree(tempDir, "my-feature", {
       stepNumber: 1,
@@ -197,7 +179,7 @@ describe("executeTaskTool.execute", () => {
       "test-id",
       {
         workspacePrefix: "goals/my-feature/S01",
-        initialMessage: "test message",
+        additionalContext: "test message",
       },
       undefined,
       undefined,
@@ -214,8 +196,8 @@ describe("executeTaskTool.execute", () => {
     expect(task?.params).toHaveProperty("sessionName");
     expect(task?.params?.sessionName).toContain("execute-task");
     expect(task?.params).toHaveProperty("queueKey", "S01");
-    expect(task?.params).toHaveProperty("initialMessage");
-    expect(task?.params?.initialMessage).toBe("test message");
+    expect(task?.params).toHaveProperty("additionalContext");
+    expect(task?.params?.additionalContext).toBe("test message");
   });
 
   it("forwards taskFile to enqueued task params when provided", async () => {

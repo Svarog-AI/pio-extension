@@ -25,8 +25,6 @@ const capabilityConfig = {
   capability: "workflow-playground",
   contract: CONTRACT,
   writeAllowlist: ["PLAYGROUND.md"],
-  defaultInitialMessage: (_workspaceDir, _params) =>
-    "You are in a workflow playground sandbox. Run through all test phases and report the observed behavior: write gate messages, loop iteration counts, and phase transitions. Do not produce real deliverables.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;
@@ -48,7 +46,7 @@ const playgroundTool = defineTool({
     const workspacePrefix = params.workspacePrefix ?? "goals/test-playground";
     const queueKey = deriveQueueKey(workspacePrefix);
     const sessionName = params.sessionName ?? `${queueKey} workflow-playground`;
-    const initialMessage = params.initialMessage;
+    const additionalContext = params.additionalContext;
 
     // Resolve workspace directory
     const workspaceDir = path.join(ctx.cwd, ".pio", workspacePrefix);
@@ -62,7 +60,7 @@ const playgroundTool = defineTool({
         workspacePrefix,
         sessionName,
         queueKey,
-        initialMessage,
+        additionalContext,
       },
     });
 

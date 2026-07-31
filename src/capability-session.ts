@@ -205,7 +205,8 @@ export function buildSkillLoadingSection(
 
 /**
  * Build a markdown section listing the workspace directory and resolved contract inputs.
- * Returns an empty string when there are no inputs or no params to resolve.
+ * Always returns a non-empty string when `workspaceDir` is provided — the workspace
+ * directory line is unconditional. Contract inputs are listed below when present.
  *
  * For each contract input:
  * - Calls resolveContractPath() with workspacePrefix = undefined (same convention as CapState)
@@ -217,35 +218,39 @@ export function buildSessionInputsSection(
   workspaceDir: string,
   params?: Record<string, unknown>,
 ): string {
-  const inputs = config?.contract?.inputs;
-  if (!inputs || inputs.length === 0) return "";
-
   const lines: string[] = [];
 
-  for (const entry of inputs) {
-    try {
-      const fullPath = resolveContractPath(
-        entry.file,
-        workspaceDir,
-        undefined,
-        params,
-        entry.projectRelative,
-        entry.paramKey,
-      );
-      lines.push(`- ${entry.name}: \`${fullPath}\``);
-    } catch {
-      // Skip unresolvable inputs gracefully (missing params, non-string values, etc.)
+  if (config?.contract?.inputs) {
+    for (const entry of config.contract.inputs) {
+      try {
+        const fullPath = resolveContractPath(
+          entry.file,
+          workspaceDir,
+          undefined,
+          params,
+          entry.projectRelative,
+          entry.paramKey,
+        );
+        lines.push(`- ${entry.name}: \`${fullPath}\``);
+      } catch {
+        // Skip unresolvable inputs gracefully
+      }
     }
   }
 
-  if (lines.length === 0) return "";
+  // Always return the section with workspace directory
+  const parts: string[] = [
+    `--- SESSION INPUTS ---`,
+    `Workspace directory: ${workspaceDir}`,
+  ];
+  if (lines.length > 0) {
+    parts.push(
+      `Your capability was invoked with these inputs:`,
+      lines.join("\n"),
+    );
+  }
 
-  return (
-    `--- SESSION INPUTS ---\n\n` +
-    `Workspace directory: ${workspaceDir}\n\n` +
-    `Your capability was invoked with these inputs:\n` +
-    lines.join("\n")
-  );
+  return parts.join("\n\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -384,6 +389,14 @@ export function setupSessionInfrastructure(pi: ExtensionAPI) {
     // This is the only section telling the agent how to work through phases;
     // all task-specific directives arrive via CustomMessage from the loop engine.
     prompts.push(`--- WORKFLOW EXECUTION ---\n\n${WORKFLOW_INSTRUCTIONS}`);
+
+    // Additional context — injected after workflow execution rules.
+    // Only present when additionalContext is a non-empty string.
+    if (currentConfig?.additionalContext) {
+      prompts.push(
+        `--- ADDITIONAL CONTEXT ---\n\n${currentConfig.additionalContext}`,
+      );
+    }
 
     if (prompts.length === 0) return; // no injection needed
 

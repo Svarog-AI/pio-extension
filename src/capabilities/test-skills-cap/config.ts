@@ -20,7 +20,6 @@ const capabilityConfig = {
       },
     ],
   },
-  defaultInitialMessage: () => "Test capability with skills",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;

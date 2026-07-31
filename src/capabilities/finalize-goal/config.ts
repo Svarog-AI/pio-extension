@@ -72,7 +72,6 @@ const capabilityConfig = {
   skills: {
     mandatory: ["pio-project-knowledge"],
   },
-  defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;
@@ -103,7 +102,7 @@ const finalizeGoalTool = defineTool({
         workspacePrefix: params.workspacePrefix,
         sessionName: params.sessionName ?? `${queueKey} finalize-goal`,
         queueKey,
-        initialMessage: params.initialMessage,
+        additionalContext: params.additionalContext,
         goalFile: params.goalFile,
         planFile: params.planFile,
         qualityGateFile: params.qualityGateFile,

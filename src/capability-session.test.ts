@@ -340,13 +340,15 @@ describe("model resolution — setupSessionInfrastructure and before_agent_start
         typeof params?.capability === "string" ? params.capability : "unknown";
       // getSessionConfig passes { capability, ...sessionParams } to resolveCapabilityConfig.
       // Tests may put skills/other fields in sessionParams for the mock to pick up.
-      const { capability: _cap, ...rest } = params ?? {};
+      const { capability: _cap, additionalContext, ...rest } = params ?? {};
       return {
         capability: cap,
         workspaceDir: rest.workspaceDir ?? "/test/.pio/goals/test",
         sessionParams: rest,
         contract: { inputs: [], outputs: [] },
         skills: rest.skills ?? undefined,
+        additionalContext:
+          typeof additionalContext === "string" ? additionalContext : undefined,
       };
     });
   });
@@ -1241,17 +1243,114 @@ describe("skill injection — before_agent_start integration", () => {
     // CAPABILITY CONTEXT should be absent (instruction leak removal)
     expect(result.systemPrompt).not.toContain("--- CAPABILITY CONTEXT ---");
 
-    // Verify order: SKILL LOADING < WORKFLOW EXECUTION
+    // Verify order: SKILL LOADING < SESSION INPUTS < WORKFLOW EXECUTION
     const skillIdx = result.systemPrompt.indexOf(
       "--- SKILL LOADING INSTRUCTIONS ---",
+    );
+    const sessionInputsIdx = result.systemPrompt.indexOf(
+      "--- SESSION INPUTS ---",
     );
     const workflowExecIdx = result.systemPrompt.indexOf(
       "--- WORKFLOW EXECUTION ---",
     );
 
     expect(skillIdx).toBeGreaterThan(-1);
+    expect(sessionInputsIdx).toBeGreaterThan(-1);
     expect(workflowExecIdx).toBeGreaterThan(-1);
-    expect(skillIdx).toBeLessThan(workflowExecIdx);
+    expect(skillIdx).toBeLessThan(sessionInputsIdx);
+    expect(sessionInputsIdx).toBeLessThan(workflowExecIdx);
+    // ADDITIONAL CONTEXT should be absent (no additionalContext set)
+    expect(result.systemPrompt).not.toContain("--- ADDITIONAL CONTEXT ---");
+  });
+
+  it("given before_agent_start with additionalContext in config when the handler runs then ADDITIONAL CONTEXT section appears after WORKFLOW EXECUTION", async () => {
+    const askUserSkillBody = "# Ask User Skill";
+    const askUserFilePath = writeSkillFile(
+      tempDir,
+      "ask-user",
+      askUserSkillBody,
+    );
+    const askUserBaseDir = path.dirname(askUserFilePath);
+
+    const registry = [makeSkill("ask-user", askUserFilePath, askUserBaseDir)];
+
+    const registeredHandlers: Record<string, Function> = {};
+    const setModelMock = vi.fn();
+
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
+      setModel: setModelMock,
+      setSessionName: vi.fn(),
+    };
+
+    const mod = await import("./capability-session");
+    mod.setupSessionInfrastructure(mockPi as any);
+
+    // Trigger resources_discover with additionalContext in sessionParams
+    const rdHandler = registeredHandlers.resources_discover;
+    if (rdHandler) {
+      await rdHandler(
+        {
+          type: "resources_discover",
+          cwd: process.cwd(),
+          reason: "startup" as const,
+        },
+        {
+          sessionManager: {
+            getEntries: () => [
+              {
+                type: "custom",
+                customType: "pio-config",
+                data: {
+                  capability: "test-cap",
+                  sessionParams: {
+                    workspaceDir: tempDir,
+                    additionalContext:
+                      "This is additional context for the task.",
+                  },
+                },
+              },
+            ],
+          },
+        },
+      );
+    }
+
+    // Trigger before_agent_start
+    const handler = registeredHandlers.before_agent_start;
+    if (!handler) throw new Error("before_agent_start handler not registered");
+    const result = await handler(
+      {
+        type: "before_agent_start",
+        prompt: "test",
+        systemPrompt: "",
+        systemPromptOptions: { skills: registry, cwd: process.cwd() },
+      } as any,
+      {} as any,
+    );
+
+    expect(typeof result.systemPrompt).toBe("string");
+
+    // ADDITIONAL CONTEXT should be present
+    expect(result.systemPrompt).toContain("--- ADDITIONAL CONTEXT ---");
+    expect(result.systemPrompt).toContain(
+      "This is additional context for the task.",
+    );
+
+    // Verify order: WORKFLOW EXECUTION < ADDITIONAL CONTEXT
+    const workflowExecIdx = result.systemPrompt.indexOf(
+      "--- WORKFLOW EXECUTION ---",
+    );
+    const additionalCtxIdx = result.systemPrompt.indexOf(
+      "--- ADDITIONAL CONTEXT ---",
+    );
+
+    expect(workflowExecIdx).toBeGreaterThan(-1);
+    expect(additionalCtxIdx).toBeGreaterThan(-1);
+    expect(workflowExecIdx).toBeLessThan(additionalCtxIdx);
   });
 
   it("given the skill registry is populated via systemPromptOptions.skills when before_agent_start runs then the registry is cached", async () => {
@@ -2142,13 +2241,13 @@ describe("launchCapability — withSession no longer sends initial message as Cu
     };
   }
 
-  it("given config with initialMessage when withSession runs then sendMessage is NOT called (initial message delivery removed)", async () => {
+  it("given config with additionalContext when withSession runs then sendMessage is NOT called (additionalContext delivery removed)", async () => {
     const mockCtx = makeMockCtx();
 
     const mod = await import("./capability-session");
     await mod.launchCapability(mockCtx as any, {
       capability: "test-cap",
-      initialMessage: "Build the feature",
+      additionalContext: "Build the feature",
       workspaceDir: "/test/.pio/goals/test",
       contract: { inputs: [], outputs: [] },
       allowProjectWrites: false,
@@ -2163,14 +2262,14 @@ describe("launchCapability — withSession no longer sends initial message as Cu
     const newSessionCall = mockCtx.newSession.mock.calls[0];
     await newSessionCall[0].withSession(fakeNewCtx);
 
-    // Assert: sendMessage NOT called (initial message delivery removed)
+    // Assert: sendMessage NOT called (additionalContext delivery removed)
     expect(fakeNewCtx.sendMessage).not.toHaveBeenCalled();
     // Assert: sendUserMessage still called with empty string (trigger)
     expect(fakeNewCtx.sendUserMessage).toHaveBeenCalledTimes(1);
     expect(fakeNewCtx.sendUserMessage).toHaveBeenCalledWith("");
   });
 
-  it("given config without initialMessage when withSession runs then only empty sendUserMessage is sent", async () => {
+  it("given config without additionalContext when withSession runs then only empty sendUserMessage is sent", async () => {
     const mockCtx = makeMockCtx();
 
     const mod = await import("./capability-session");

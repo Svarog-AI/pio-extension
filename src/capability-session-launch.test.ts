@@ -209,10 +209,10 @@ describe("launchCapability — input validation", () => {
     expect(ctx.newSession).toHaveBeenCalledTimes(1);
   });
 
-  it("passes initialMessage through to session", async () => {
+  it("passes additionalContext through to session", async () => {
     const launchCapability = await getLaunchCapability();
     const config = makeConfig({
-      initialMessage: "Test initial message",
+      additionalContext: "Test initial message",
     });
 
     mockValidateInputs.mockReturnValue({ success: true });
@@ -223,7 +223,7 @@ describe("launchCapability — input validation", () => {
     const newSessionCall = ctx.newSession.mock.calls[0][0];
     expect(newSessionCall.withSession).toBeDefined();
 
-    // The withSession callback sends the initial message
+    // The withSession callback delivers additionalContext into the system prompt
     // We can't easily invoke it here, but we verified newSession was called
     expect(ctx.newSession).toHaveBeenCalledTimes(1);
   });

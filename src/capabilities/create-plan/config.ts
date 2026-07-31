@@ -146,7 +146,6 @@ const capabilityConfig = {
       },
     ],
   },
-  defaultInitialMessage: () => "Ready.",
   postValidate: postValidateCreatePlan,
 } satisfies CapabilityPackageConfig;
 
@@ -176,7 +175,7 @@ const createPlanTool = defineTool({
         workspacePrefix: params.workspacePrefix,
         sessionName: params.sessionName ?? `${queueKey} create-plan`,
         queueKey,
-        initialMessage: params.initialMessage,
+        additionalContext: params.additionalContext,
         goalFile: params.goalFile,
       },
     });

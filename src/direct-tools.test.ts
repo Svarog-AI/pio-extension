@@ -178,7 +178,7 @@ describe("goalFromIssueTool.execute", () => {
     expect(result.content[0].text).toContain("/pio-delete-goal");
   });
 
-  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, initialMessage)", async () => {
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, additionalContext)", async () => {
     // Arrange: create issue file
     const issuesDir = path.join(tempCwd, ".pio", "issues");
     fs.mkdirSync(issuesDir, { recursive: true });
@@ -208,7 +208,7 @@ describe("goalFromIssueTool.execute", () => {
           workspacePrefix: "goals/fix-bug",
           sessionName: "fix-bug create-goal",
           queueKey: "fix-bug",
-          initialMessage: expect.stringContaining("fix-bug"),
+          additionalContext: expect.stringContaining("fix-bug"),
         }),
       }),
     );

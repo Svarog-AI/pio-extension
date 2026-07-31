@@ -50,7 +50,6 @@ const capabilityConfig = {
   skills: {
     mandatory: ["tdd", "pio-git"],
   },
-  defaultInitialMessage: () => "Read TASK.md and resolve the task.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;
@@ -97,7 +96,7 @@ const executeTaskTool = defineTool({
         workspacePrefix: params.workspacePrefix,
         sessionName,
         queueKey,
-        initialMessage: params.initialMessage,
+        additionalContext: params.additionalContext,
         taskFile: params.taskFile,
       },
     });

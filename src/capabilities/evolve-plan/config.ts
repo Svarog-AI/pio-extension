@@ -98,7 +98,6 @@ const capabilityConfig = {
   skills: {
     mandatory: ["pio-planning", "grill-me"],
   },
-  defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;
@@ -129,7 +128,7 @@ const evolvePlanTool = defineTool({
           params.sessionName ?? `${queueKey} evolve-plan s${params.stepNumber}`,
         queueKey,
         stepNumber: params.stepNumber,
-        initialMessage: params.initialMessage,
+        additionalContext: params.additionalContext,
         planFile: params.planFile,
       },
     });

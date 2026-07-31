@@ -32,7 +32,6 @@ const capabilityConfig = {
   skills: {
     mandatory: ["pio-git", "ask-user"],
   },
-  defaultInitialMessage: () => "Ready.",
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;
@@ -61,7 +60,7 @@ const qualityGateTool = defineTool({
         workspacePrefix: params.workspacePrefix,
         sessionName: params.sessionName ?? `${queueKey} quality-gate`,
         queueKey,
-        initialMessage: params.initialMessage,
+        additionalContext: params.additionalContext,
         requirementsFile: params.requirementsFile,
       },
     });

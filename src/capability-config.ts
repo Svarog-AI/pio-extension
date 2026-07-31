@@ -177,7 +177,7 @@ function buildCapabilityConfig(
   workspaceDir: string,
   readOnlyFiles: string[] | undefined,
   writeAllowlist: string[] | undefined,
-  initialMessage: string | undefined,
+  additionalContext: string | undefined,
   sessionParams: Record<string, unknown> | undefined,
   sessionName: string,
   prepareSession: PrepareSessionCallback | undefined,
@@ -193,7 +193,7 @@ function buildCapabilityConfig(
     workspaceDir,
     readOnlyFiles,
     writeAllowlist,
-    initialMessage,
+    additionalContext,
     sessionParams,
     sessionName,
     prepareSession,
@@ -242,19 +242,11 @@ function normalizePackageConfig(
     );
   }
 
-  // Mandatory: initialMessage — read from params, fallback to defaultInitialMessage, throw if both missing
-  const initialMsg =
-    (typeof params?.initialMessage === "string"
-      ? params.initialMessage
-      : undefined) ?? pkg.defaultInitialMessage(workspaceDir, resolvedParams);
-  if (!initialMsg) {
-    throw new Error(
-      `Capability "${cap}" requires an initial message. Provide params.initialMessage or define defaultInitialMessage.`,
-    );
-  }
-
-  // Prepend workspace directory metadata — covers all paths: state machine, tool handler, default fallback
-  const enrichedMsg = `Workspace directory: ${workspaceDir}\n\n${initialMsg}`;
+  // Read additionalContext from params — passthrough, no fallback, no enrichment
+  const additionalCtx =
+    typeof params?.additionalContext === "string"
+      ? params.additionalContext
+      : undefined;
 
   const readOnlyFiles = resolveField<string[]>(
     pkg.readOnlyFiles,
@@ -274,7 +266,7 @@ function normalizePackageConfig(
     workspaceDir,
     readOnlyFiles,
     writeAllowlist,
-    enrichedMsg, // workspaceDir-prepended message (covers all paths: state machine, tool handler, default fallback)
+    additionalCtx, // additionalContext (passthrough, no enrichment)
     resolvedParams,
     sessionName,
     pkg.prepareSession,

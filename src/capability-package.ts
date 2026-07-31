@@ -106,11 +106,6 @@ export interface CapabilityPackageConfig {
   readOnlyFiles?: string[] | ConfigCallback<string[]>;
   /** Allowlist of files that may be written. Takes precedence over readOnlyFiles when present. */
   writeAllowlist?: string[] | ConfigCallback<string[]>;
-  /** Derive initialMessage from workspaceDir (resolved directory, includes prefix) and params */
-  defaultInitialMessage: (
-    workspaceDir: string,
-    params?: Record<string, unknown>,
-  ) => string;
   /** Lifecycle hooks */
   prepareSession?: PrepareSessionCallback;
   postValidate?: PostValidateCallback;

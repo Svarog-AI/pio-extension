@@ -647,7 +647,7 @@ describe("create-plan tool execute — pre-launch validation", () => {
     expect(result.content[0].text).toContain("queued");
   });
 
-  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, initialMessage)", async () => {
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, additionalContext)", async () => {
     // Arrange: goal dir with GOAL.md
     const goalDir = path.join(tempDir, ".pio", "goals", "my-feature");
     fs.mkdirSync(goalDir, { recursive: true });
@@ -656,7 +656,10 @@ describe("create-plan tool execute — pre-launch validation", () => {
     const tool = getTool();
     await tool.execute(
       "test-id",
-      { workspacePrefix: "goals/my-feature", initialMessage: "test message" },
+      {
+        workspacePrefix: "goals/my-feature",
+        additionalContext: "test message",
+      },
       undefined,
       undefined,
       makeCtx(tempDir),
@@ -672,8 +675,8 @@ describe("create-plan tool execute — pre-launch validation", () => {
       "my-feature create-plan",
     );
     expect(task?.params).toHaveProperty("queueKey", "my-feature");
-    expect(task?.params).toHaveProperty("initialMessage");
-    expect(task?.params?.initialMessage).toBe("test message");
+    expect(task?.params).toHaveProperty("additionalContext");
+    expect(task?.params?.additionalContext).toBe("test message");
   });
 
   it("forwards goalFile to enqueued task params when provided", async () => {

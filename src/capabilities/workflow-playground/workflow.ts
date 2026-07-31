@@ -6,6 +6,7 @@ export default [
     id: "hey",
     title: "Hey Hey",
     instructions: `Just chill and write "Chilling!"`,
+    minIterations: 1,
   },
   // ---------------------------------------------------------------------------
   // Phase 1: Edge Case — Pure Variable Phase (no LLM vars)

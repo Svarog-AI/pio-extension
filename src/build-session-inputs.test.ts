@@ -88,17 +88,19 @@ describe("buildSessionInputsSection", () => {
     expect(result).toContain(path.join(tempDir, "PLAN.md"));
   });
 
-  it("given a config with no contract inputs when buildSessionInputsSection is called then it returns an empty string", () => {
+  it("given a config with no contract inputs when buildSessionInputsSection is called then it returns the section with workspace directory only", () => {
     const config = makeConfig({
       contract: { inputs: [], outputs: [] },
     });
 
     const result = buildSessionInputsSection(config, tempDir, {});
 
-    expect(result).toBe("");
+    expect(result).toContain("--- SESSION INPUTS ---");
+    expect(result).toContain(`Workspace directory: ${tempDir}`);
+    expect(result).not.toContain("Your capability was invoked");
   });
 
-  it("given a config with missing contract when buildSessionInputsSection is called then it returns an empty string", () => {
+  it("given a config with missing contract when buildSessionInputsSection is called then it returns the section with workspace directory only", () => {
     // @ts-expect-error — testing missing contract gracefully
     const config: CapabilityConfig = {
       capability: "test-cap",
@@ -108,7 +110,9 @@ describe("buildSessionInputsSection", () => {
 
     const result = buildSessionInputsSection(config, tempDir, {});
 
-    expect(result).toBe("");
+    expect(result).toContain("--- SESSION INPUTS ---");
+    expect(result).toContain(`Workspace directory: ${tempDir}`);
+    expect(result).not.toContain("Your capability was invoked");
   });
 
   it("given a paramKey input with missing param value when buildSessionInputsSection is called then it skips the unresolvable input gracefully", () => {
@@ -132,7 +136,7 @@ describe("buildSessionInputsSection", () => {
     expect(result).toContain(path.join(tempDir, "PLAN.md"));
   });
 
-  it("given a paramKey input with a non-string param value when buildSessionInputsSection is called then it skips the input gracefully", () => {
+  it("given a paramKey input with a non-string param value when buildSessionInputsSection is called then it skips the input gracefully but still returns workspace directory", () => {
     const config = makeConfig({
       contract: {
         inputs: [{ name: "goal", paramKey: "goalFile" }],
@@ -145,9 +149,12 @@ describe("buildSessionInputsSection", () => {
 
     // goal should NOT appear (non-string param)
     expect(result).not.toContain("- goal:");
+    // But workspace dir section should still be present
+    expect(result).toContain("--- SESSION INPUTS ---");
+    expect(result).toContain(`Workspace directory: ${tempDir}`);
   });
 
-  it("given a paramKey input with an empty string param value when buildSessionInputsSection is called then it skips the input gracefully", () => {
+  it("given a paramKey input with an empty string param value when buildSessionInputsSection is called then it skips the input gracefully but still returns workspace directory", () => {
     const config = makeConfig({
       contract: {
         inputs: [{ name: "goal", paramKey: "goalFile" }],
@@ -160,6 +167,9 @@ describe("buildSessionInputsSection", () => {
 
     // goal should NOT appear (empty string treated as missing)
     expect(result).not.toContain("- goal:");
+    // But workspace dir section should still be present
+    expect(result).toContain("--- SESSION INPUTS ---");
+    expect(result).toContain(`Workspace directory: ${tempDir}`);
   });
 
   it("given a config with no params at all when buildSessionInputsSection is called then it resolves static file inputs and skips paramKey inputs", () => {
@@ -203,7 +213,7 @@ describe("buildSessionInputsSection", () => {
     expect(result).toContain(".pio/PROJECT/OVERVIEW.md");
   });
 
-  it("given resolved inputs when the output format is checked then it contains workspace directory header and input list with backtick-wrapped paths", () => {
+  it("given resolved inputs when the output format is checked then it contains workspace directory first followed by input list with backtick-wrapped paths", () => {
     const config = makeConfig({
       contract: {
         inputs: [
@@ -217,11 +227,15 @@ describe("buildSessionInputsSection", () => {
 
     const result = buildSessionInputsSection(config, tempDir, params);
 
-    // Verify format: header, workspace dir, input list
+    // Verify format: header, workspace dir, then input list
     expect(result).toMatch(/^--- SESSION INPUTS ---\n\n/);
-    expect(result).toContain(`Workspace directory: ${tempDir}\n\n`);
+    expect(result).toContain(`Workspace directory: ${tempDir}`);
     expect(result).toContain("Your capability was invoked with these inputs:");
     expect(result).toContain("- goal: `");
     expect(result).toContain("`");
+    // Workspace dir must appear before the inputs list
+    const wsIdx = result.indexOf("Workspace directory:");
+    const inputsIdx = result.indexOf("Your capability was invoked");
+    expect(wsIdx).toBeLessThan(inputsIdx);
   });
 });

@@ -209,10 +209,10 @@ describe("launchCapability — input validation", () => {
     expect(ctx.newSession).toHaveBeenCalledTimes(1);
   });
 
-  it("passes initialMessage through to session", async () => {
+  it("passes additionalContext through to session", async () => {
     const launchCapability = await getLaunchCapability();
     const config = makeConfig({
-      initialMessage: "Test initial message",
+      additionalContext: "Test initial message",
     });
 
     mockValidateInputs.mockReturnValue({ success: true });

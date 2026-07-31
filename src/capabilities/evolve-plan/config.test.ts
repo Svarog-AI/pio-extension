@@ -592,7 +592,7 @@ describe("evolvePlanTool.execute", () => {
     expect(result.content[0].text).toContain("queued");
   });
 
-  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, stepNumber, initialMessage)", async () => {
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, stepNumber, additionalContext)", async () => {
     createGoalTreeWithFrontmatter(tempDir, "my-feature", 3);
 
     const tool = getTool();
@@ -601,7 +601,7 @@ describe("evolvePlanTool.execute", () => {
       {
         workspacePrefix: "goals/my-feature",
         stepNumber: 1,
-        initialMessage: "test message",
+        additionalContext: "test message",
       },
       undefined,
       undefined,
@@ -616,8 +616,8 @@ describe("evolvePlanTool.execute", () => {
     expect(task?.params?.sessionName).toContain("evolve-plan");
     expect(task?.params).toHaveProperty("queueKey", "my-feature");
     expect(task?.params).toHaveProperty("stepNumber");
-    expect(task?.params).toHaveProperty("initialMessage");
-    expect(task?.params?.initialMessage).toBe("test message");
+    expect(task?.params).toHaveProperty("additionalContext");
+    expect(task?.params?.additionalContext).toBe("test message");
   });
 
   it("forwards planFile to enqueued task params when provided", async () => {

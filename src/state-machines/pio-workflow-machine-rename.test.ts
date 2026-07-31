@@ -1,11 +1,11 @@
 /**
- * Verification test: resolver functions return `additionalContext` (not `initialMessage`).
+ * Verification test: resolver functions return `additionalContext`.
  * Created for Step 4 of workflow-initial-message-delivery.
  */
 import { describe, expect, it } from "vitest";
 import { goalDrivenDevelopment } from "./pio-workflow-machine";
 
-describe("pio-workflow-machine resolver additionalContext rename", () => {
+describe("pio-workflow-machine resolver additionalContext", () => {
   const dummyCtx = { workspaceDir: "/tmp/test" };
 
   // Resolve an edge by calling its resolve function with test params.
@@ -22,22 +22,20 @@ describe("pio-workflow-machine resolver additionalContext rename", () => {
   }
 
   // These resolvers don't call getCapState, so they work without contracts loaded.
-  it("create-goal → create-plan returns additionalContext, not initialMessage", () => {
+  it("create-goal → create-plan returns additionalContext", () => {
     const result = resolveEdge("create-goal", "create-plan", {
       queueKey: "test-goal",
     });
     expect(result).toBeDefined();
     expect(result?.additionalContext).toBeDefined();
-    expect(result?.initialMessage).toBeUndefined();
   });
 
-  it("create-plan → evolve-plan returns additionalContext, not initialMessage", () => {
+  it("create-plan → evolve-plan returns additionalContext", () => {
     const result = resolveEdge("create-plan", "evolve-plan", {
       queueKey: "test-goal",
     });
     expect(result).toBeDefined();
     expect(result?.additionalContext).toBeDefined();
-    expect(result?.initialMessage).toBeUndefined();
   });
 
   it("evolve-plan → create-goal (deprecated) returns undefined", () => {

@@ -338,7 +338,7 @@ describe("mark-complete (setupMarkComplete)", () => {
         stateMachineId: "goal-driven-development",
         params: { goalName: "test-goal", stepNumber: 1 },
         sessionName: "test review",
-        initialMessage: "msg",
+        additionalContext: "msg",
       },
     ]);
 
@@ -388,14 +388,14 @@ describe("mark-complete (setupMarkComplete)", () => {
         stateMachineId: "goal-driven-development",
         params: { goalName: "test-goal", stepNumber: 2 },
         sessionName: "s1",
-        initialMessage: "m1",
+        additionalContext: "m1",
       },
       {
         capability: "execute-task",
         stateMachineId: "goal-driven-development",
         params: { goalName: "test-goal", stepNumber: 1 },
         sessionName: "s2",
-        initialMessage: "m2",
+        additionalContext: "m2",
       },
     ]);
 
@@ -501,7 +501,7 @@ describe("mark-complete (setupMarkComplete)", () => {
         stateMachineId: "goal-driven-development",
         params: { goalName: "test-goal", stepNumber: 1 },
         sessionName: "test review",
-        initialMessage: "msg",
+        additionalContext: "msg",
       },
     ]);
 
@@ -568,7 +568,7 @@ describe("mark-complete (setupMarkComplete)", () => {
         stateMachineId: "goal-driven-development",
         params: { goalName: "test-goal", stepNumber: 1 },
         sessionName: "test review",
-        initialMessage: "msg",
+        additionalContext: "msg",
       },
     ]);
 
@@ -691,7 +691,7 @@ describe("mark-complete (setupMarkComplete)", () => {
         stateMachineId: "goal-driven-development",
         params: { goalName: "test-goal", stepNumber: 1 },
         sessionName: "test review",
-        initialMessage: "msg",
+        additionalContext: "msg",
       },
     ]);
 
@@ -939,7 +939,7 @@ describe("mark-complete (setupMarkComplete)", () => {
         stateMachineId: "goal-driven-development",
         params: { goalName: "test-goal", stepNumber: 1 },
         sessionName: "test review",
-        initialMessage: "msg",
+        additionalContext: "msg",
       },
     ]);
 
@@ -1003,7 +1003,7 @@ describe("mark-complete (setupMarkComplete)", () => {
         stateMachineId: "goal-driven-development",
         params: { goalName: "test-goal", stepNumber: 1 },
         sessionName: "test review",
-        initialMessage: "msg",
+        additionalContext: "msg",
       },
     ]);
 
@@ -1066,7 +1066,7 @@ describe("mark-complete (setupMarkComplete)", () => {
         stateMachineId: "goal-driven-development",
         params: { goalName: "test-goal", stepNumber: 1 },
         sessionName: "test review",
-        initialMessage: "msg",
+        additionalContext: "msg",
       },
     ]);
 
@@ -1131,7 +1131,7 @@ describe("mark-complete (setupMarkComplete)", () => {
         stateMachineId: "goal-driven-development",
         params: { goalName: "test-goal", stepNumber: 1 },
         sessionName: "test review",
-        initialMessage: "msg",
+        additionalContext: "msg",
       },
     ]);
 
@@ -1198,7 +1198,7 @@ describe("mark-complete (setupMarkComplete)", () => {
         stateMachineId: "goal-driven-development",
         params: { stepNumber: 2 },
         sessionName: "test review",
-        initialMessage: "msg",
+        additionalContext: "msg",
       },
     ]);
 
@@ -1267,7 +1267,7 @@ describe("mark-complete (setupMarkComplete)", () => {
         stateMachineId: "goal-driven-development",
         params: { stepNumber: 2 },
         sessionName: "test review",
-        initialMessage: "msg",
+        additionalContext: "msg",
       },
     ]);
 
@@ -1325,7 +1325,7 @@ describe("mark-complete (setupMarkComplete)", () => {
     );
   });
 
-  it("propagates initialMessage into enqueued task params", async () => {
+  it("propagates additionalContext into enqueued task params", async () => {
     mockValidateOutputs.mockReturnValue({ success: true });
     mockGetMachine.mockReturnValue({ id: "goal-driven-development" });
     mockDispatch.mockReturnValue([
@@ -1334,7 +1334,7 @@ describe("mark-complete (setupMarkComplete)", () => {
         stateMachineId: "goal-driven-development",
         params: { stepNumber: 2 },
         sessionName: "test review",
-        initialMessage: "custom kickoff message",
+        additionalContext: "custom kickoff message",
       },
     ]);
 
@@ -1379,14 +1379,14 @@ describe("mark-complete (setupMarkComplete)", () => {
       mockCtx,
     );
 
-    // enqueueTask should have been called with initialMessage in params
+    // enqueueTask should have been called with additionalContext in params
     expect(mockEnqueueTask).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
       expect.objectContaining({
         capability: "review-task",
         params: expect.objectContaining({
-          initialMessage: "custom kickoff message",
+          additionalContext: "custom kickoff message",
         }),
       }),
     );
@@ -1475,7 +1475,7 @@ describe("mark-complete (setupMarkComplete)", () => {
         stateMachineId: "goal-driven-development",
         params: { goalName: "test-goal", stepNumber: 1 },
         sessionName: "test review",
-        initialMessage: "msg",
+        additionalContext: "msg",
       },
     ]);
 
@@ -2413,7 +2413,7 @@ describe("resolver-declared cleanup", () => {
         stateMachineId: "goal-driven-development",
         params: { goalName: "test-goal" },
         sessionName: "quality gate",
-        initialMessage: "msg",
+        additionalContext: "msg",
         cleanup: ["requirements"],
       },
     ]);
@@ -2472,7 +2472,7 @@ describe("resolver-declared cleanup", () => {
         stateMachineId: "goal-driven-development",
         params: {},
         sessionName: "quality gate",
-        initialMessage: "msg",
+        additionalContext: "msg",
         cleanup: ["nonexistent-spec"],
       },
     ]);
@@ -2536,7 +2536,7 @@ describe("resolver-declared cleanup", () => {
         stateMachineId: "goal-driven-development",
         params: {},
         sessionName: "quality gate",
-        initialMessage: "msg",
+        additionalContext: "msg",
         cleanup: ["requirements"],
       },
     ]);
@@ -2601,7 +2601,7 @@ describe("resolver-declared cleanup", () => {
         stateMachineId: "goal-driven-development",
         params: {},
         sessionName: "finalize",
-        initialMessage: "msg",
+        additionalContext: "msg",
         // No cleanup field
       },
     ]);
@@ -2660,7 +2660,7 @@ describe("resolver-declared cleanup", () => {
         stateMachineId: "goal-driven-development",
         params: {},
         sessionName: "qg",
-        initialMessage: "msg",
+        additionalContext: "msg",
         cleanup: ["requirements"],
       },
       {
@@ -2668,7 +2668,7 @@ describe("resolver-declared cleanup", () => {
         stateMachineId: "goal-driven-development",
         params: {},
         sessionName: "fg",
-        initialMessage: "msg",
+        additionalContext: "msg",
       },
     ]);
 
@@ -2779,7 +2779,7 @@ describe("previousCapability in enriched params", () => {
         stateMachineId: "goal-driven-development",
         params: { goalName: "test-goal" },
         sessionName: "quality gate",
-        initialMessage: "msg",
+        additionalContext: "msg",
       },
     ]);
 
@@ -2840,7 +2840,7 @@ describe("previousCapability in enriched params", () => {
         stateMachineId: "goal-driven-development",
         params: { goalName: "test-goal" },
         sessionName: "quality gate",
-        initialMessage: "msg",
+        additionalContext: "msg",
       },
     ]);
 

@@ -309,21 +309,7 @@ describe("resolveCapabilityConfig — additionalContext passthrough", () => {
     expect(result?.additionalContext).toBe("plan the feature");
   });
 
-  it("sets both additionalContext and initialMessage to the same value (migration bridge)", async () => {
-    const cwd = "/tmp/proj";
-    const params = {
-      capability: "create-goal" as string,
-      additionalContext: "custom context",
-      sessionName: "test",
-    };
-
-    const result = await resolveCapabilityConfig(cwd, params);
-
-    expect(result?.additionalContext).toBe("custom context");
-    expect(result?.initialMessage).toBe("custom context");
-  });
-
-  it("when neither additionalContext nor initialMessage is provided, both fields are undefined", async () => {
+  it("when additionalContext is not provided, the field is undefined", async () => {
     const cwd = "/tmp/proj";
     const params = {
       capability: "create-plan" as string,
@@ -333,7 +319,6 @@ describe("resolveCapabilityConfig — additionalContext passthrough", () => {
     const result = await resolveCapabilityConfig(cwd, params);
 
     expect(result?.additionalContext).toBeUndefined();
-    expect(result?.initialMessage).toBeUndefined();
   });
 });
 
@@ -987,7 +972,7 @@ describe("resolveCapabilityConfig — finalize-goal auto-transition integration"
     // Assert: without additionalContext, both fields are undefined
     expect(result).toBeDefined();
     expect(result?.additionalContext).toBeUndefined();
-    expect(result?.initialMessage).toBeUndefined();
+    expect(result?.additionalContext).toBeUndefined();
   });
 });
 
@@ -1025,7 +1010,7 @@ describe("resolveCapabilityConfig — mandatory param enforcement", () => {
     const result = await resolveCapabilityConfig("/tmp/proj", params);
     expect(result).toBeDefined();
     expect(result?.additionalContext).toBeUndefined();
-    expect(result?.initialMessage).toBeUndefined();
+    expect(result?.additionalContext).toBeUndefined();
   });
 
   it("passes through additionalContext when provided", async () => {
@@ -1038,7 +1023,7 @@ describe("resolveCapabilityConfig — mandatory param enforcement", () => {
     const result = await resolveCapabilityConfig("/tmp/proj", params);
     expect(result).toBeDefined();
     expect(result?.additionalContext).toBe("custom context");
-    expect(result?.initialMessage).toBe("custom context");
+    expect(result?.additionalContext).toBe("custom context");
   });
 });
 
@@ -1415,7 +1400,6 @@ describe("additionalContext passthrough", () => {
     expect(config).toBeDefined();
     expect(config?.additionalContext).toBe(customContext);
     expect(config?.additionalContext).not.toContain("Workspace directory:");
-    expect(config?.initialMessage).toBe(customContext); // migration bridge
   });
 
   it("resolving without additionalContext succeeds (both fields undefined)", async () => {
@@ -1436,12 +1420,12 @@ describe("additionalContext passthrough", () => {
     // Assert: no throw, both fields undefined
     expect(config).toBeDefined();
     expect(config?.additionalContext).toBeUndefined();
-    expect(config?.initialMessage).toBeUndefined();
+    expect(config?.additionalContext).toBeUndefined();
   });
 });
 
 // ---------------------------------------------------------------------------
-// Integration — all real capabilities define defaultInitialMessage
+// Integration — all real capabilities resolve without additionalContext
 // ---------------------------------------------------------------------------
 
 describe("all real capabilities resolve without additionalContext", () => {
@@ -1451,7 +1435,7 @@ describe("all real capabilities resolve without additionalContext", () => {
       sessionName: "test",
     });
     expect(config?.additionalContext).toBeUndefined();
-    expect(config?.initialMessage).toBeUndefined();
+    expect(config?.additionalContext).toBeUndefined();
   });
 
   it("create-plan resolves without additionalContext (both fields undefined)", async () => {
@@ -1460,7 +1444,7 @@ describe("all real capabilities resolve without additionalContext", () => {
       sessionName: "test",
     });
     expect(config?.additionalContext).toBeUndefined();
-    expect(config?.initialMessage).toBeUndefined();
+    expect(config?.additionalContext).toBeUndefined();
   });
 
   it("evolve-plan resolves without additionalContext (both fields undefined)", async () => {
@@ -1470,7 +1454,7 @@ describe("all real capabilities resolve without additionalContext", () => {
       sessionName: "test",
     });
     expect(config?.additionalContext).toBeUndefined();
-    expect(config?.initialMessage).toBeUndefined();
+    expect(config?.additionalContext).toBeUndefined();
   });
 
   it("execute-task resolves without additionalContext (both fields undefined)", async () => {
@@ -1480,7 +1464,7 @@ describe("all real capabilities resolve without additionalContext", () => {
       sessionName: "test",
     });
     expect(config?.additionalContext).toBeUndefined();
-    expect(config?.initialMessage).toBeUndefined();
+    expect(config?.additionalContext).toBeUndefined();
   });
 
   it("review-task resolves without additionalContext (both fields undefined)", async () => {
@@ -1490,7 +1474,7 @@ describe("all real capabilities resolve without additionalContext", () => {
       sessionName: "test",
     });
     expect(config?.additionalContext).toBeUndefined();
-    expect(config?.initialMessage).toBeUndefined();
+    expect(config?.additionalContext).toBeUndefined();
   });
 
   it("revise-plan resolves without additionalContext (both fields undefined)", async () => {
@@ -1499,7 +1483,7 @@ describe("all real capabilities resolve without additionalContext", () => {
       sessionName: "test",
     });
     expect(config?.additionalContext).toBeUndefined();
-    expect(config?.initialMessage).toBeUndefined();
+    expect(config?.additionalContext).toBeUndefined();
   });
 
   it("finalize-goal resolves without additionalContext (both fields undefined)", async () => {
@@ -1509,7 +1493,7 @@ describe("all real capabilities resolve without additionalContext", () => {
       sessionName: "test",
     });
     expect(config?.additionalContext).toBeUndefined();
-    expect(config?.initialMessage).toBeUndefined();
+    expect(config?.additionalContext).toBeUndefined();
   });
 
   it("project-context resolves without additionalContext (both fields undefined)", async () => {
@@ -1518,7 +1502,7 @@ describe("all real capabilities resolve without additionalContext", () => {
       sessionName: "test",
     });
     expect(config?.additionalContext).toBeUndefined();
-    expect(config?.initialMessage).toBeUndefined();
+    expect(config?.additionalContext).toBeUndefined();
   });
 });
 

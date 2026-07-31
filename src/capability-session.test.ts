@@ -2241,13 +2241,13 @@ describe("launchCapability — withSession no longer sends initial message as Cu
     };
   }
 
-  it("given config with initialMessage when withSession runs then sendMessage is NOT called (initial message delivery removed)", async () => {
+  it("given config with additionalContext when withSession runs then sendMessage is NOT called (additionalContext delivery removed)", async () => {
     const mockCtx = makeMockCtx();
 
     const mod = await import("./capability-session");
     await mod.launchCapability(mockCtx as any, {
       capability: "test-cap",
-      initialMessage: "Build the feature",
+      additionalContext: "Build the feature",
       workspaceDir: "/test/.pio/goals/test",
       contract: { inputs: [], outputs: [] },
       allowProjectWrites: false,
@@ -2262,14 +2262,14 @@ describe("launchCapability — withSession no longer sends initial message as Cu
     const newSessionCall = mockCtx.newSession.mock.calls[0];
     await newSessionCall[0].withSession(fakeNewCtx);
 
-    // Assert: sendMessage NOT called (initial message delivery removed)
+    // Assert: sendMessage NOT called (additionalContext delivery removed)
     expect(fakeNewCtx.sendMessage).not.toHaveBeenCalled();
     // Assert: sendUserMessage still called with empty string (trigger)
     expect(fakeNewCtx.sendUserMessage).toHaveBeenCalledTimes(1);
     expect(fakeNewCtx.sendUserMessage).toHaveBeenCalledWith("");
   });
 
-  it("given config without initialMessage when withSession runs then only empty sendUserMessage is sent", async () => {
+  it("given config without additionalContext when withSession runs then only empty sendUserMessage is sent", async () => {
     const mockCtx = makeMockCtx();
 
     const mod = await import("./capability-session");

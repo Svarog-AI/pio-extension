@@ -143,7 +143,7 @@ describe("qualityGateTool.execute", () => {
 
     const result = await tool.execute(
       "test-call-id",
-      { workspacePrefix: "goals/my-goal", initialMessage: "test message" },
+      { workspacePrefix: "goals/my-goal", additionalContext: "test message" },
       undefined,
       undefined,
       makeCtx(tempDir),
@@ -158,8 +158,8 @@ describe("qualityGateTool.execute", () => {
     expect(task?.params).toHaveProperty("workspacePrefix", "goals/my-goal");
     expect(task?.params).toHaveProperty("sessionName", "my-goal quality-gate");
     expect(task?.params).toHaveProperty("queueKey", "my-goal");
-    expect(task?.params).toHaveProperty("initialMessage");
-    expect(task?.params?.initialMessage).toBe("test message");
+    expect(task?.params).toHaveProperty("additionalContext");
+    expect(task?.params?.additionalContext).toBe("test message");
   });
 
   it("enqueues task when workspace does not exist", async () => {

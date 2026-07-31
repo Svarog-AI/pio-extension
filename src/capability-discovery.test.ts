@@ -80,7 +80,7 @@ describe("discoverCapabilities", () => {
       `import type { CapabilityPackageConfig } from "../capability-package";
 const config: CapabilityPackageConfig = {
   capability: "test-cap",
-  defaultInitialMessage: () => "Hello",
+  contract: { inputs: [], outputs: [] },
 };
 export default config;`,
     );
@@ -93,7 +93,6 @@ export default config;`,
     expect(result[0].name).toBe("test-cap");
     expect(result[0].dirPath).toBe(capDir);
     expect(result[0].config.capability).toBe("test-cap");
-    expect(result[0].config.defaultInitialMessage?.("/tmp")).toBe("Hello");
   });
 
   it("discovers multiple capability packages", async () => {
@@ -105,7 +104,7 @@ export default config;`,
         path.join(capDir, "config.ts"),
         `const config = {
   capability: "${name}",
-  defaultInitialMessage: () => "Msg from ${name}",
+  contract: { inputs: [], outputs: [] },
 };
 export default config;`,
       );
@@ -175,7 +174,7 @@ export const register = (pi) => { registered = true; };
 export const isRegistered = () => registered;
 const config = {
   capability: "reg-cap",
-  defaultInitialMessage: () => "Hello",
+  contract: { inputs: [], outputs: [] },
 };
 export default config;`,
       );
@@ -206,7 +205,7 @@ export default config;`,
         `
 const config = {
   capability: "no-register-cap",
-  defaultInitialMessage: () => "Hello",
+  contract: { inputs: [], outputs: [] },
 };
 export default config;`,
       );
@@ -242,7 +241,6 @@ export default config;`,
         config: {
           capability: "missing-cap",
           contract: { inputs: [], outputs: [] },
-          defaultInitialMessage: () => "Hello",
         },
       });
 
@@ -268,7 +266,7 @@ export default config;`,
       path.join(goodDir, "config.ts"),
       `const config = {
   capability: "good-cap",
-  defaultInitialMessage: () => "OK",
+  contract: { inputs: [], outputs: [] },
 };
 export default config;`,
     );

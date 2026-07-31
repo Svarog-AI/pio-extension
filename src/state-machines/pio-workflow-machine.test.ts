@@ -199,7 +199,7 @@ describe("dispatch — create-goal → create-plan", () => {
     expect(results[0]).toEqual({
       capability: "create-plan",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Create an implementation plan for goal "my-feature". Read GOAL.md to understand current state and target, then produce PLAN.md.`,
+      additionalContext: `Create an implementation plan for goal "my-feature". Read GOAL.md to understand current state and target, then produce PLAN.md.`,
       sessionName: "my-feature create-plan",
       params: {
         workspacePrefix: "goals/my-feature",
@@ -251,7 +251,7 @@ describe("dispatch — create-plan → evolve-plan", () => {
     expect(results[0]).toEqual({
       capability: "evolve-plan",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Generate the specification for Step 1. Read PLAN.md — locate \`### Step 1:\`, review its description and acceptance criteria, then write TASK.md in S01/.`,
+      additionalContext: `Generate the specification for Step 1. Read PLAN.md — locate \`### Step 1:\`, review its description and acceptance criteria, then write TASK.md in S01/.`,
       sessionName: "my-feature evolve-plan s1",
       params: {
         stepNumber: 1,
@@ -304,7 +304,7 @@ describe("dispatch — evolve-plan → execute-task", () => {
     expect(results[0]).toEqual({
       capability: "execute-task",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Implement Step 3. Your workspace is the step directory (S03/). Read TASK.md for the specification and acceptance criteria, then implement the changes.`,
+      additionalContext: `Implement Step 3. Your workspace is the step directory (S03/). Read TASK.md for the specification and acceptance criteria, then implement the changes.`,
       sessionName: "feat execute-task s3",
       params: {
         stepNumber: 3,
@@ -340,7 +340,7 @@ describe("dispatch — evolve-plan → execute-task", () => {
     expect(results[0]).toEqual({
       capability: "execute-task",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Implement Step 2. Your workspace is the step directory (S02/). Read TASK.md for the specification and acceptance criteria, then implement the changes.`,
+      additionalContext: `Implement Step 2. Your workspace is the step directory (S02/). Read TASK.md for the specification and acceptance criteria, then implement the changes.`,
       sessionName: "feat execute-task s2",
       params: {
         stepNumber: 2,
@@ -387,7 +387,7 @@ describe("dispatch — review→evolve→quality-gate chain", () => {
     expect(reviewResults[0]).toEqual({
       capability: "evolve-plan",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Step 3 approved. Generate the specification for Step 4. Read PLAN.md — locate \`### Step 4:\`, review its description, then write TASK.md in S04/.`,
+      additionalContext: `Step 3 approved. Generate the specification for Step 4. Read PLAN.md — locate \`### Step 4:\`, review its description, then write TASK.md in S04/.`,
       sessionName: "feat evolve-plan s4",
       params: {
         stepNumber: 4,
@@ -413,7 +413,7 @@ describe("dispatch — review→evolve→quality-gate chain", () => {
     expect(evolveResults[0]).toEqual({
       capability: "quality-gate",
       stateMachineId: "goal-driven-development",
-      initialMessage: `All plan steps for goal "feat" are complete. Goal description: read \`GOAL.md\` in your workspace for details on what was changed. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
+      additionalContext: `All plan steps for goal "feat" are complete. Goal description: read \`GOAL.md\` in your workspace for details on what was changed. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
       sessionName: "feat quality-gate",
       params: {
         workspacePrefix: "goals/feat",
@@ -455,7 +455,7 @@ describe("dispatch — evolve-plan completion detection", () => {
     expect(results[0]).toEqual({
       capability: "quality-gate",
       stateMachineId: "goal-driven-development",
-      initialMessage: `All plan steps for goal "feat" are complete. Goal description: read \`GOAL.md\` in your workspace for details on what was changed. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
+      additionalContext: `All plan steps for goal "feat" are complete. Goal description: read \`GOAL.md\` in your workspace for details on what was changed. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
       sessionName: "feat quality-gate",
       params: {
         workspacePrefix: "goals/feat",
@@ -465,7 +465,7 @@ describe("dispatch — evolve-plan completion detection", () => {
     });
   });
 
-  it("initialMessage references GOAL.md for goal context", () => {
+  it("additionalContext references GOAL.md for goal context", () => {
     writeCompletionSummary(goalDir);
 
     const results = dispatch(
@@ -476,7 +476,7 @@ describe("dispatch — evolve-plan completion detection", () => {
     );
 
     expect(results).toHaveLength(1);
-    expect(results[0].initialMessage).toContain("GOAL.md");
+    expect(results[0].additionalContext).toContain("GOAL.md");
   });
 
   it("propagates queueKey and requirementsFile in quality-gate params", () => {
@@ -524,7 +524,7 @@ describe("dispatch — evolve-plan completion detection", () => {
     expect(results[0]).toEqual({
       capability: "execute-task",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Implement Step 2. Your workspace is the step directory (S02/). Read TASK.md for the specification and acceptance criteria, then implement the changes.`,
+      additionalContext: `Implement Step 2. Your workspace is the step directory (S02/). Read TASK.md for the specification and acceptance criteria, then implement the changes.`,
       sessionName: "feat execute-task s2",
       params: {
         stepNumber: 2,
@@ -566,7 +566,7 @@ describe("dispatch — execute-task → review-task", () => {
     expect(results[0]).toEqual({
       capability: "review-task",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Review Step 5 for goal "feat". Your workspace is the step directory. Read TASK.md for the specification, SUMMARY.md for what was implemented, and verify against acceptance criteria. Write REVIEW.md.`,
+      additionalContext: `Review Step 5 for goal "feat". Your workspace is the step directory. Read TASK.md for the specification, SUMMARY.md for what was implemented, and verify against acceptance criteria. Write REVIEW.md.`,
       sessionName: "feat review-task s5",
       params: {
         stepNumber: 5,
@@ -593,7 +593,7 @@ describe("dispatch — execute-task → review-task", () => {
     expect(results[0]).toEqual({
       capability: "evolve-plan",
       stateMachineId: "goal-driven-development",
-      initialMessage: expect.stringContaining("Step 5 is blocked"),
+      additionalContext: expect.stringContaining("Step 5 is blocked"),
       sessionName: "feat evolve-plan s5",
       params: {
         stepNumber: 5,
@@ -670,7 +670,7 @@ describe("dispatch — review-task approval", () => {
     expect(results[0]).toEqual({
       capability: "evolve-plan",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Step 3 approved. Generate the specification for Step 4. Read PLAN.md — locate \`### Step 4:\`, review its description, then write TASK.md in S04/.`,
+      additionalContext: `Step 3 approved. Generate the specification for Step 4. Read PLAN.md — locate \`### Step 4:\`, review its description, then write TASK.md in S04/.`,
       sessionName: "feat evolve-plan s4",
       params: {
         stepNumber: 4,
@@ -745,7 +745,7 @@ describe("dispatch — review-task rejection", () => {
     expect(results[0]).toEqual({
       capability: "execute-task",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Step 3 rejected. Your workspace is the step directory (S03/). Read REVIEW.md for rejection reasons and categorized issues. Re-implement by addressing all critical and high-priority findings.`,
+      additionalContext: `Step 3 rejected. Your workspace is the step directory (S03/). Read REVIEW.md for rejection reasons and categorized issues. Re-implement by addressing all critical and high-priority findings.`,
       sessionName: "feat execute-task s3",
       params: {
         stepNumber: 3,
@@ -811,7 +811,7 @@ describe("dispatch — review-task blocked", () => {
     expect(results[0]).toEqual({
       capability: "evolve-plan",
       stateMachineId: "goal-driven-development",
-      initialMessage: expect.stringContaining("Step 3 is blocked"),
+      additionalContext: expect.stringContaining("Step 3 is blocked"),
       sessionName: "feat evolve-plan s3",
       params: {
         stepNumber: 3,
@@ -963,7 +963,7 @@ describe("TransitionResult shape consistency", () => {
 
   afterEach(() => cleanup(tempDir));
 
-  it("results include stateMachineId, params, and initialMessage", () => {
+  it("results include stateMachineId, params, and additionalContext", () => {
     const results = dispatch(
       goalDrivenDevelopment,
       "create-goal",
@@ -977,7 +977,7 @@ describe("TransitionResult shape consistency", () => {
     expect(results[0]).toHaveProperty("capability");
     expect(results[0]).toHaveProperty("stateMachineId");
     expect(results[0]).toHaveProperty("params");
-    expect(results[0]).toHaveProperty("initialMessage");
+    expect(results[0]).toHaveProperty("additionalContext");
     expect(results[0].stateMachineId).toBe("goal-driven-development");
   });
 
@@ -997,7 +997,7 @@ describe("TransitionResult shape consistency", () => {
     expect(results[0]).toEqual({
       capability: "execute-task",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Implement Step 1. Your workspace is the step directory (S01/). Read TASK.md for the specification and acceptance criteria, then implement the changes.`,
+      additionalContext: `Implement Step 1. Your workspace is the step directory (S01/). Read TASK.md for the specification and acceptance criteria, then implement the changes.`,
       sessionName: "feat execute-task s1",
       params: {
         stepNumber: 1,
@@ -1066,10 +1066,10 @@ describe("dispatch — evolve-plan → revise-plan", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0].capability).toBe("revise-plan");
-    expect((results[0] as any).initialMessage).toContain(
+    expect((results[0] as any).additionalContext).toContain(
       "Revise the plan for goal",
     );
-    expect((results[0] as any).initialMessage).toContain(
+    expect((results[0] as any).additionalContext).toContain(
       "REVISE_PLAN_NEEDED.md at the workspace root",
     );
     expect(results[0].params?.workspacePrefix).toBe("goals/feat");
@@ -1196,10 +1196,10 @@ describe("dispatch — revise-plan → evolve-plan", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0].capability).toBe("evolve-plan");
-    expect((results[0] as any).initialMessage).toContain(
+    expect((results[0] as any).additionalContext).toContain(
       "Plan revision complete",
     );
-    expect((results[0] as any).initialMessage).toContain("Step 3");
+    expect((results[0] as any).additionalContext).toContain("Step 3");
   });
 
   it("preserves queueKey in evolve-plan params", () => {
@@ -1294,7 +1294,7 @@ describe("recordTransition isolation", () => {
       capability: "next",
       stateMachineId: "goal-driven-development",
       sessionName: "test",
-      initialMessage: "msg",
+      additionalContext: "msg",
     });
 
     // Verify dispatch still works correctly
@@ -1309,7 +1309,7 @@ describe("recordTransition isolation", () => {
     expect(results[0]).toEqual({
       capability: "create-plan",
       stateMachineId: "goal-driven-development",
-      initialMessage: `Create an implementation plan for goal "test". Read GOAL.md to understand current state and target, then produce PLAN.md.`,
+      additionalContext: `Create an implementation plan for goal "test". Read GOAL.md to understand current state and target, then produce PLAN.md.`,
       sessionName: "test create-plan",
       params: {
         workspacePrefix: "goals/test",

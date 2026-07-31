@@ -23,8 +23,8 @@ import * as path from "node:path";
  * This enables multi-machine dispatch where transitions chain across the same machine.
  *
  * `sessionName` is required — every resolve function must provide it so downstream
- * sessions get a proper identity. `initialMessage` and `additionalContext` are optional
- * during the migration bridge (both may be present; new code should use `additionalContext`).
+ * sessions get a proper identity. `additionalContext` is optional — it provides
+ * additional context injected into the system prompt for the next session.
  * `cleanup` is an optional list of input spec names to delete as a consequence of
  * this transition firing. Resolved by mark-complete through the completing session's CapState.
  *
@@ -39,8 +39,6 @@ export interface TransitionResult {
   params?: Record<string, unknown>;
   /** Human-readable session identifier (e.g. "my-feature execute-task s3"). Required — propagated by mark-complete into enqueued task params. */
   sessionName: string;
-  /** Kickoff message for the next session. Deprecated — use additionalContext instead. */
-  initialMessage?: string;
   /** Additional context injected into the system prompt for the next session. */
   additionalContext?: string;
   /** Optional list of input spec names from the completing capability's contract to delete as a consequence of this transition firing. Resolved by mark-complete through the completing session's CapState. */
@@ -54,8 +52,8 @@ export interface TransitionResult {
  * by setting `stateMachineId: m.id` on every result. This makes it impossible for
  * a resolver to set an incorrect or missing ID.
  *
- * All other fields (`capability`, `sessionName`, `initialMessage?`, `additionalContext?`, `params?`)
- * come from `TransitionResult` via `Omit`. New resolvers should use `additionalContext`.
+ * All other fields (`capability`, `sessionName`, `additionalContext?`, `params?`)
+ * come from `TransitionResult` via `Omit`.
  */
 export type ResolverResult = Omit<TransitionResult, "stateMachineId">;
 

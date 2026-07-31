@@ -650,7 +650,7 @@ describe("reviewTaskTool.execute", () => {
     expect(result.content[0].text).toContain("Review queued");
   });
 
-  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, initialMessage)", async () => {
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, additionalContext)", async () => {
     // Arrange: goal dir with COMPLETED and SUMMARY.md in S01
     const { goalDir, stepDir } = createGoalTree(tempDir, "my-feature", {
       stepNumber: 1,
@@ -669,7 +669,7 @@ describe("reviewTaskTool.execute", () => {
       "test-id",
       {
         workspacePrefix: "goals/my-feature/S01",
-        initialMessage: "test message",
+        additionalContext: "test message",
       },
       undefined,
       undefined,
@@ -686,7 +686,7 @@ describe("reviewTaskTool.execute", () => {
     expect(task?.params).toHaveProperty("sessionName");
     expect(task?.params?.sessionName).toContain("review-task");
     expect(task?.params).toHaveProperty("queueKey", "S01");
-    expect(task?.params).toHaveProperty("initialMessage");
-    expect(task?.params?.initialMessage).toBe("test message");
+    expect(task?.params).toHaveProperty("additionalContext");
+    expect(task?.params?.additionalContext).toBe("test message");
   });
 });

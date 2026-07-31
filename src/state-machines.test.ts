@@ -67,7 +67,7 @@ describe("dispatch — single machine", () => {
         to: "b",
         resolve: () => ({
           capability: "b",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "test",
         }),
@@ -88,7 +88,7 @@ describe("dispatch — single machine", () => {
         to: "b",
         resolve: () => ({
           capability: "b",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "test",
         }),
@@ -121,7 +121,7 @@ describe("dispatch — single machine", () => {
         to: "b",
         resolve: () => ({
           capability: "b",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "test",
         }),
@@ -131,7 +131,7 @@ describe("dispatch — single machine", () => {
         to: "c",
         resolve: () => ({
           capability: "c",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "test",
         }),
@@ -152,7 +152,7 @@ describe("dispatch — single machine", () => {
         to: "first",
         resolve: () => ({
           capability: "first",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "test",
         }),
@@ -162,7 +162,7 @@ describe("dispatch — single machine", () => {
         to: "second",
         resolve: () => ({
           capability: "second",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "test",
         }),
@@ -172,7 +172,7 @@ describe("dispatch — single machine", () => {
         to: "third",
         resolve: () => ({
           capability: "third",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "test",
         }),
@@ -202,7 +202,7 @@ describe("dispatch — single machine", () => {
           received.push({ context: ctx, params });
           return {
             capability: "b",
-            initialMessage: "msg",
+            additionalContext: "msg",
             sessionName: "s",
             stateMachineId: "test",
           };
@@ -224,7 +224,7 @@ describe("dispatch — single machine", () => {
         to: "b",
         resolve: () => ({
           capability: "b",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "test",
           params: { stepNumber: 3, goalName: "my-goal" },
@@ -249,7 +249,7 @@ describe("dispatch — single machine", () => {
         to: "c",
         resolve: () => ({
           capability: "c",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "test",
         }),
@@ -276,7 +276,7 @@ describe("dispatch — single machine", () => {
         resolve: () =>
           ({
             capability: "b",
-            initialMessage: "msg",
+            additionalContext: "msg",
             sessionName: "s",
             stateMachineId: "wrong-id",
           }) as any,
@@ -297,7 +297,7 @@ describe("dispatch — single machine", () => {
         to: "b",
         resolve: () => ({
           capability: "b",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "test",
           cleanup: ["requirements", "completion-summary"],
@@ -318,7 +318,7 @@ describe("dispatch — single machine", () => {
         to: "b",
         resolve: () => ({
           capability: "b",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "test",
         }),
@@ -363,7 +363,7 @@ describe("dispatch — multi-machine (machine === undefined)", () => {
         to: "y",
         resolve: () => ({
           capability: "y",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "reg-test-1",
         }),
@@ -375,7 +375,7 @@ describe("dispatch — multi-machine (machine === undefined)", () => {
         to: "z",
         resolve: () => ({
           capability: "z",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "reg-test-2",
         }),
@@ -409,7 +409,7 @@ describe("dispatch — multi-machine (machine === undefined)", () => {
         to: "end",
         resolve: () => ({
           capability: "end",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "id-test-machine",
         }),
@@ -434,7 +434,7 @@ describe("dispatch — multi-machine (machine === undefined)", () => {
         to: "y",
         resolve: () => ({
           capability: "y",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "good-machine",
         }),
@@ -544,7 +544,7 @@ describe("registerMachine", () => {
         to: "end",
         resolve: () => ({
           capability: "end",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "reg-single-test",
         }),
@@ -569,7 +569,7 @@ describe("registerMachine", () => {
         to: "e",
         resolve: () => ({
           capability: "e",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "idempotent-test",
         }),
@@ -604,7 +604,7 @@ describe("unregisterMachine", () => {
         to: "end",
         resolve: () => ({
           capability: "end",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "unreg-test",
         }),
@@ -684,7 +684,7 @@ describe("getMachine", () => {
         to: "b",
         resolve: () => ({
           capability: "b",
-          initialMessage: "msg",
+          additionalContext: "msg",
           sessionName: "s",
           stateMachineId: "get-3",
         }),
@@ -773,7 +773,7 @@ describe("recordTransition — file creation", () => {
       stateMachineId: "goal-driven-development",
       params: { stepNumber: 2 },
       sessionName: "test",
-      initialMessage: "msg",
+      additionalContext: "msg",
     };
     recordTransition(tempDir, "create-plan", result);
 
@@ -793,7 +793,7 @@ describe("recordTransition — file creation", () => {
       capability: "execute-task",
       stateMachineId: "goal-driven-development",
       sessionName: "test",
-      initialMessage: "msg",
+      additionalContext: "msg",
     };
     recordTransition(tempDir, "evolve-plan", result);
 
@@ -825,13 +825,13 @@ describe("recordTransition — append to existing", () => {
       capability: "create-plan",
       stateMachineId: "goal-driven-development",
       sessionName: "test",
-      initialMessage: "msg",
+      additionalContext: "msg",
     });
     recordTransition(tempDir, "create-plan", {
       capability: "evolve-plan",
       stateMachineId: "goal-driven-development",
       sessionName: "test",
-      initialMessage: "msg",
+      additionalContext: "msg",
     });
 
     const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
@@ -848,7 +848,7 @@ describe("recordTransition — append to existing", () => {
         capability: "next",
         stateMachineId: "goal-driven-development",
         sessionName: "test",
-        initialMessage: "msg",
+        additionalContext: "msg",
       });
     }
 
@@ -874,7 +874,7 @@ describe("recordTransition — error handling", () => {
         capability: "next",
         stateMachineId: "goal-driven-development",
         sessionName: "test",
-        initialMessage: "msg",
+        additionalContext: "msg",
       });
     }).not.toThrow();
   });
@@ -901,7 +901,7 @@ describe("recordTransition — actualParams", () => {
       stateMachineId: "goal-driven-development",
       params: { stepNumber: 1 },
       sessionName: "test",
-      initialMessage: "msg",
+      additionalContext: "msg",
     };
     const actualParams = {
       stepNumber: 1,
@@ -925,7 +925,7 @@ describe("recordTransition — actualParams", () => {
       stateMachineId: "goal-driven-development",
       params: { stepNumber: 5, goalName: "my-goal" },
       sessionName: "test",
-      initialMessage: "msg",
+      additionalContext: "msg",
     };
     // Call with only 3 arguments — no actualParams
     recordTransition(tempDir, "evolve-plan", result);
@@ -962,7 +962,7 @@ describe("recordTransition — malformed file recovery", () => {
       capability: "next",
       stateMachineId: "test",
       sessionName: "test",
-      initialMessage: "msg",
+      additionalContext: "msg",
     });
 
     const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");
@@ -984,7 +984,7 @@ describe("recordTransition — malformed file recovery", () => {
       capability: "next",
       stateMachineId: "test",
       sessionName: "test",
-      initialMessage: "msg",
+      additionalContext: "msg",
     });
 
     const content = fs.readFileSync(join(tempDir, "transitions.json"), "utf-8");

@@ -404,13 +404,16 @@ describe("revisePlanTool.execute", () => {
     expect(result.content[0].text).toMatch(/PLAN/i);
   });
 
-  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, initialMessage)", async () => {
+  it("enqueues task with correct params (workspacePrefix, sessionName, queueKey, additionalContext)", async () => {
     createGoalTree(tempDir, "my-feature", { withGoal: true, withPlan: true });
 
     const tool = getTool();
     await tool.execute(
       "test-id",
-      { workspacePrefix: "goals/my-feature", initialMessage: "test message" },
+      {
+        workspacePrefix: "goals/my-feature",
+        additionalContext: "test message",
+      },
       undefined,
       undefined,
       makeCtx(tempDir),
@@ -423,8 +426,8 @@ describe("revisePlanTool.execute", () => {
     expect(task?.params).toHaveProperty("sessionName");
     expect(task?.params?.sessionName).toContain("revise-plan");
     expect(task?.params).toHaveProperty("queueKey", "my-feature");
-    expect(task?.params).toHaveProperty("initialMessage");
-    expect(task?.params?.initialMessage).toBe("test message");
+    expect(task?.params).toHaveProperty("additionalContext");
+    expect(task?.params?.additionalContext).toBe("test message");
   });
 
   it("forwards goalFile to enqueued task params when provided", async () => {

@@ -42,12 +42,10 @@ describe("BASE_TOOL_PARAMS", () => {
     expect(BASE_TOOL_PARAMS.sessionName).toBeDefined();
   });
 
-  it("exports initialMessage as required string", () => {
+  it("exports additionalContext as optional string", () => {
     const schema = Type.Object({ ...BASE_TOOL_PARAMS });
-    // The distinction between required and optional appears in the .required array
-    expect(schema.required).toContain("initialMessage");
-    // sessionName is optional — verify the test actually discriminates
-    expect(schema.required).not.toContain("sessionName");
+    // additionalContext is optional — should NOT be in .required array
+    expect(schema.required).not.toContain("additionalContext");
   });
 });
 

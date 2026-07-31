@@ -178,7 +178,6 @@ function buildCapabilityConfig(
   readOnlyFiles: string[] | undefined,
   writeAllowlist: string[] | undefined,
   additionalContext: string | undefined,
-  initialMessage: string | undefined,
   sessionParams: Record<string, unknown> | undefined,
   sessionName: string,
   prepareSession: PrepareSessionCallback | undefined,
@@ -195,7 +194,6 @@ function buildCapabilityConfig(
     readOnlyFiles,
     writeAllowlist,
     additionalContext,
-    initialMessage,
     sessionParams,
     sessionName,
     prepareSession,
@@ -269,7 +267,6 @@ function normalizePackageConfig(
     readOnlyFiles,
     writeAllowlist,
     additionalCtx, // additionalContext (passthrough, no enrichment)
-    additionalCtx, // initialMessage (migration bridge — step 8 removes)
     resolvedParams,
     sessionName,
     pkg.prepareSession,

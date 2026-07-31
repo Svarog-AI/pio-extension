@@ -76,10 +76,10 @@ export default [
     instructions: `This phase verifies the edge case variable phases (1–2).
 
 Resolved values:
-- \`${pure_static_val}\` — should be "i-am-pure-static" (static var from Phase 1)
-- \`${pure_computed_len}\` — should be 17 (computed len of the static string, Phase 1)
-- \`${chain_llm_val}\` — should be "chain-link" (llm var from Phase 2)
-- \`${pure_static_check}\` — should be "i-am-pure-static" (computed in Phase 2 reading Phase 1's static var)
+- \`\${pure_static_val}\` — should be "i-am-pure-static" (static var from Phase 1)
+- \`\${pure_computed_len}\` — should be 17 (computed len of the static string, Phase 1)
+- \`\${chain_llm_val}\` — should be "chain-link" (llm var from Phase 2)
+- \`\${pure_static_check}\` — should be "i-am-pure-static" (computed in Phase 2 reading Phase 1's static var)
 
 Follow these steps:
 1. Call \`listVars\` to see all current variables

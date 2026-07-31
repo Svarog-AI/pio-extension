@@ -93,7 +93,7 @@ function resolveCreateGoalToCreatePlan(
 
   return {
     capability: "create-plan",
-    initialMessage: `Create an implementation plan for goal "${goalName}". Read GOAL.md to understand current state and target, then produce PLAN.md.`,
+    additionalContext: `Create an implementation plan for goal "${goalName}". Read GOAL.md to understand current state and target, then produce PLAN.md.`,
     sessionName: sessionName(goalName, "create-plan"),
     params: {
       workspacePrefix: workspacePrefix(goalName),
@@ -114,7 +114,7 @@ function resolveCreatePlanToEvolvePlan(
 
   return {
     capability: "evolve-plan",
-    initialMessage: `Generate the specification for Step 1. Read PLAN.md — locate \`### Step 1:\`, review its description and acceptance criteria, then write TASK.md in S01/.`,
+    additionalContext: `Generate the specification for Step 1. Read PLAN.md — locate \`### Step 1:\`, review its description and acceptance criteria, then write TASK.md in S01/.`,
     sessionName: sessionName(goalName, "evolve-plan", 1),
     params: {
       stepNumber: 1,
@@ -151,7 +151,7 @@ function resolveEvolvePlanToRevisePlan(
   if (revisePlan && fs.existsSync(revisePlan.path)) {
     return {
       capability: "revise-plan",
-      initialMessage: `Revise the plan for goal "${goalName}". Read REVISE_PLAN_NEEDED.md at the workspace root for the reason, check PLAN_ARCHIVE/ for previous plans, and read GOAL.md for scope boundaries. Write a fresh PLAN.md.`,
+      additionalContext: `Revise the plan for goal "${goalName}". Read REVISE_PLAN_NEEDED.md at the workspace root for the reason, check PLAN_ARCHIVE/ for previous plans, and read GOAL.md for scope boundaries. Write a fresh PLAN.md.`,
       sessionName: sessionName(goalName, "revise-plan"),
       params: {
         workspacePrefix: prefix,
@@ -199,7 +199,7 @@ function resolveEvolvePlanToQualityGate(
     const stepNumber = extractStepNumber(params);
     return {
       capability: "quality-gate",
-      initialMessage: `All plan steps for goal "${goalName}" are complete. Goal description: read \`GOAL.md\` in your workspace for details on what was changed. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
+      additionalContext: `All plan steps for goal "${goalName}" are complete. Goal description: read \`GOAL.md\` in your workspace for details on what was changed. Perform quality gate: push commits, open PR, run E2E testing gate, run code review gate, then write QUALITY_GATE.md.`,
 
       sessionName: sessionName(goalName, "quality-gate"),
       params: {
@@ -234,7 +234,7 @@ function resolveQualityGateToFinalizeGoal(
 
   return {
     capability: "finalize-goal",
-    initialMessage: `Quality gate approved for goal "${goalName}". Update .pio/PROJECT/ documentation with accumulated decisions.`,
+    additionalContext: `Quality gate approved for goal "${goalName}". Update .pio/PROJECT/ documentation with accumulated decisions.`,
     sessionName: sessionName(goalName, "finalize-goal"),
     params: {
       workspacePrefix: prefix,
@@ -268,7 +268,7 @@ function resolveQualityGateToRevisePlan(
   const stepNumber = extractStepNumber(params);
   return {
     capability: "revise-plan",
-    initialMessage: `Quality gate rejected for goal "${goalName}". Read QUALITY_GATE.md for rejection reasons, check PLAN_ARCHIVE/ for previous plans, and read GOAL.md for scope boundaries. Write a fresh PLAN.md.`,
+    additionalContext: `Quality gate rejected for goal "${goalName}". Read QUALITY_GATE.md for rejection reasons, check PLAN_ARCHIVE/ for previous plans, and read GOAL.md for scope boundaries. Write a fresh PLAN.md.`,
     sessionName: sessionName(goalName, "revise-plan"),
     params: {
       workspacePrefix: prefix,
@@ -308,7 +308,7 @@ function resolveEvolvePlanToExecuteTask(
 
   return {
     capability: "execute-task",
-    initialMessage: `Implement Step ${stepNumber}. Your workspace is the step directory (${stepFolderName(stepNumber)}/). Read TASK.md for the specification and acceptance criteria, then implement the changes.`,
+    additionalContext: `Implement Step ${stepNumber}. Your workspace is the step directory (${stepFolderName(stepNumber)}/). Read TASK.md for the specification and acceptance criteria, then implement the changes.`,
     sessionName: sessionName(goalName, "execute-task", stepNumber),
     params: {
       stepNumber,
@@ -346,7 +346,7 @@ function resolveExecuteTaskToReviewTask(
 
   return {
     capability: "review-task",
-    initialMessage: `Review Step ${stepNumber} for goal "${goalName}". Your workspace is the step directory. Read TASK.md for the specification, SUMMARY.md for what was implemented, and verify against acceptance criteria. Write REVIEW.md.`,
+    additionalContext: `Review Step ${stepNumber} for goal "${goalName}". Your workspace is the step directory. Read TASK.md for the specification, SUMMARY.md for what was implemented, and verify against acceptance criteria. Write REVIEW.md.`,
     sessionName: sessionName(goalName, "review-task", stepNumber),
     params: {
       stepNumber,
@@ -385,7 +385,7 @@ function resolveExecuteTaskToEvolvePlan(
 
   return {
     capability: "evolve-plan",
-    initialMessage: `Step ${stepNumber} is blocked (execute-task). Your workspace is the step directory (${stepFolderName(stepNumber)}/). Read SUMMARY.md for blocker details, then evaluate whether the task can be adapted to work around the blocker or if structural plan changes are needed (write REVISE_PLAN_NEEDED.md at workspace root if so).`,
+    additionalContext: `Step ${stepNumber} is blocked (execute-task). Your workspace is the step directory (${stepFolderName(stepNumber)}/). Read SUMMARY.md for blocker details, then evaluate whether the task can be adapted to work around the blocker or if structural plan changes are needed (write REVISE_PLAN_NEEDED.md at workspace root if so).`,
     sessionName: sessionName(goalName, "evolve-plan", stepNumber),
     params: {
       stepNumber,
@@ -417,7 +417,7 @@ function resolveReviewTaskToEvolvePlan(
     const nextStep = stepNumber + 1;
     return {
       capability: "evolve-plan",
-      initialMessage: `Step ${stepNumber} approved. Generate the specification for Step ${nextStep}. Read PLAN.md — locate \`### Step ${nextStep}:\`, review its description, then write TASK.md in ${stepFolderName(nextStep)}/.`,
+      additionalContext: `Step ${stepNumber} approved. Generate the specification for Step ${nextStep}. Read PLAN.md — locate \`### Step ${nextStep}:\`, review its description, then write TASK.md in ${stepFolderName(nextStep)}/.`,
       sessionName: sessionName(goalName, "evolve-plan", nextStep),
       params: {
         stepNumber: nextStep,
@@ -431,7 +431,7 @@ function resolveReviewTaskToEvolvePlan(
   if (reviewData?.decision === "BLOCKED") {
     return {
       capability: "evolve-plan",
-      initialMessage: `Step ${stepNumber} is blocked (review-task). Your workspace is the step directory (${stepFolderName(stepNumber)}/). Read REVIEW.md for blocker details, then evaluate whether the task can be adapted to work around the blocker or if structural plan changes are needed (write REVISE_PLAN_NEEDED.md at workspace root if so).`,
+      additionalContext: `Step ${stepNumber} is blocked (review-task). Your workspace is the step directory (${stepFolderName(stepNumber)}/). Read REVIEW.md for blocker details, then evaluate whether the task can be adapted to work around the blocker or if structural plan changes are needed (write REVISE_PLAN_NEEDED.md at workspace root if so).`,
       sessionName: sessionName(goalName, "evolve-plan", stepNumber),
       params: {
         stepNumber,
@@ -466,7 +466,7 @@ function resolveReviewTaskToExecuteTask(
   if (reviewData?.decision === "REJECTED") {
     return {
       capability: "execute-task",
-      initialMessage: `Step ${stepNumber} rejected. Your workspace is the step directory (${stepFolderName(stepNumber)}/). Read REVIEW.md for rejection reasons and categorized issues. Re-implement by addressing all critical and high-priority findings.`,
+      additionalContext: `Step ${stepNumber} rejected. Your workspace is the step directory (${stepFolderName(stepNumber)}/). Read REVIEW.md for rejection reasons and categorized issues. Re-implement by addressing all critical and high-priority findings.`,
       sessionName: sessionName(goalName, "execute-task", stepNumber),
       params: {
         stepNumber,
@@ -492,7 +492,7 @@ function resolveRevisePlanToEvolvePlan(
 
   return {
     capability: "evolve-plan",
-    initialMessage: `Plan revision complete. Generate the specification for Step ${stepNumber}. Read PLAN.md — locate \`### Step ${stepNumber}:\`, review its description, then write TASK.md in ${stepFolderName(stepNumber)}/.`,
+    additionalContext: `Plan revision complete. Generate the specification for Step ${stepNumber}. Read PLAN.md — locate \`### Step ${stepNumber}:\`, review its description, then write TASK.md in ${stepFolderName(stepNumber)}/.`,
     sessionName: sessionName(goalName, "evolve-plan", stepNumber),
     params: {
       stepNumber,
@@ -523,7 +523,7 @@ function resolveFinalizeGoalToEvolvePlan(
     const prefix = workspacePrefix(parentGoalName);
     return {
       capability: "evolve-plan",
-      initialMessage: `Subgoal completed. Generate the specification for Step ${nextStep} of parent goal "${parentGoalName}". Read PLAN.md — locate \`### Step ${nextStep}:\`, then write TASK.md.`,
+      additionalContext: `Subgoal completed. Generate the specification for Step ${nextStep} of parent goal "${parentGoalName}". Read PLAN.md — locate \`### Step ${nextStep}:\`, then write TASK.md.`,
       sessionName: sessionName(parentGoalName, "evolve-plan", nextStep),
       params: {
         stepNumber: nextStep,

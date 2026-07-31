@@ -306,13 +306,13 @@ export const markCompleteTool = defineTool({
 
         // Enriched params: same object passed to both enqueueTask and recordTransition
         // so transitions.json accurately reflects what was actually dispatched.
-        // sessionName and initialMessage are required on TransitionResult — propagate unconditionally.
+        // sessionName is required on TransitionResult; additionalContext is optional.
         // previousCapability identifies the completing capability for downstream resolvers.
         const enrichedParams = {
           ...adjustedParams,
           stateMachineId: nextTask.stateMachineId,
           sessionName: nextTask.sessionName,
-          initialMessage: nextTask.initialMessage,
+          additionalContext: nextTask.additionalContext,
           previousCapability: capability,
         };
 

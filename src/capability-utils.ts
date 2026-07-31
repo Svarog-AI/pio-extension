@@ -59,9 +59,16 @@ export const BASE_TOOL_PARAMS = {
   sessionName: Type.Optional(
     Type.String({ description: "Human-readable session name" }),
   ),
-  initialMessage: Type.String({
-    description: "Custom kickoff message for the session",
-  }),
+  additionalContext: Type.Optional(
+    Type.String({
+      description:
+        "Additional context injected into the system prompt for this session",
+    }),
+  ),
+  /** Deprecated — use additionalContext instead. Kept for migration bridge (removed in step 8). */
+  initialMessage: Type.Optional(
+    Type.String({ description: "Custom kickoff message for the session" }),
+  ),
 };
 
 /**

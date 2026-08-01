@@ -4,6 +4,7 @@ import * as capabilitySession from "../capability-session";
 // Import the real modules to spy on them
 import * as capabilityUtils from "../capability-utils";
 import * as modelConfig from "../model-config";
+import { initializeStore } from "./loop-engine";
 import { getState, resetState, setState } from "./session-state";
 
 // ---------------------------------------------------------------------------
@@ -202,6 +203,8 @@ beforeEach(() => {
   vi.spyOn(modelConfig, "readDebugDisplay").mockReturnValue(false);
   // resetState() resets ALL PioSessionState including loop engine fields
   resetState();
+  // Clear persistence mock to isolate tests
+  vi.mocked(statePersistence.saveLoopEngineState).mockClear();
 });
 
 // ---------------------------------------------------------------------------
@@ -645,29 +648,37 @@ describe("before_agent_start", () => {
     return results;
   }
 
-  it("normal run: does NOT modify currentIteration, filesWritten, or askUserCalled (dead increment removed)", async () => {
+  it("normal run: preserves currentIteration but resets tracking fields (setupTurn preserve mode)", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
 
-    // Pre-populate state with values that should NOT be changed
+    // Pre-populate state with values that should be reset
+    const store = initializeStore({});
     setState({
       isActive: true,
       currentIteration: 1,
       isAdHocInput: false,
       filesWritten: ["/x.ts"],
       askUserCalled: true,
+      phasesList: [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ],
+      totalPhases: 2,
+      currentPhase: 1,
+      store,
     });
 
     // Act: fire before_agent_start
     await fireBeforeAgentStart(handlers);
 
-    // Assert: values unchanged (dead increment removed)
+    // Assert: iteration preserved, tracking fields reset by setupTurn("preserve")
     const state = getState();
     expect(state.currentIteration).toBe(1);
-    expect(state.filesWritten).toEqual(["/x.ts"]);
-    expect(state.askUserCalled).toBe(true);
+    expect(state.filesWritten).toEqual([]);
+    expect(state.askUserCalled).toBe(false);
     expect(state.isAdHocInput).toBe(false);
   });
 
@@ -722,6 +733,7 @@ describe("before_agent_start", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 1,
@@ -734,6 +746,7 @@ describe("before_agent_start", () => {
         isAdHocInput: false,
         filesWritten: [],
         askUserCalled: false,
+        store,
       });
 
       const results = await fireBeforeAgentStart(handlers, {
@@ -759,6 +772,7 @@ describe("before_agent_start", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 2,
@@ -772,6 +786,7 @@ describe("before_agent_start", () => {
         isAdHocInput: false,
         filesWritten: [],
         askUserCalled: false,
+        store,
       });
 
       const results = await fireBeforeAgentStart(handlers, {
@@ -792,6 +807,7 @@ describe("before_agent_start", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 4,
@@ -807,6 +823,7 @@ describe("before_agent_start", () => {
         isAdHocInput: false,
         filesWritten: [],
         askUserCalled: false,
+        store,
       });
 
       const results = await fireBeforeAgentStart(handlers, {
@@ -827,6 +844,7 @@ describe("before_agent_start", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 1,
@@ -843,6 +861,7 @@ describe("before_agent_start", () => {
         isAdHocInput: false,
         filesWritten: [],
         askUserCalled: false,
+        store,
       });
 
       const results = await fireBeforeAgentStart(handlers, {
@@ -863,6 +882,7 @@ describe("before_agent_start", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 1,
@@ -879,6 +899,7 @@ describe("before_agent_start", () => {
         isAdHocInput: false,
         filesWritten: [],
         askUserCalled: false,
+        store,
       });
 
       const results = await fireBeforeAgentStart(handlers, {
@@ -897,6 +918,7 @@ describe("before_agent_start", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 1,
@@ -906,6 +928,7 @@ describe("before_agent_start", () => {
         isAdHocInput: false,
         filesWritten: [],
         askUserCalled: false,
+        store,
       });
 
       const results = await fireBeforeAgentStart(handlers, {
@@ -922,6 +945,7 @@ describe("before_agent_start", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 99,
@@ -934,6 +958,7 @@ describe("before_agent_start", () => {
         isAdHocInput: false,
         filesWritten: [],
         askUserCalled: false,
+        store,
       });
 
       const results = await fireBeforeAgentStart(handlers, {
@@ -942,6 +967,64 @@ describe("before_agent_start", () => {
       });
 
       expect(results).toHaveLength(0);
+    });
+
+    it("skips purely programmatic variable-def phase and returns instructions for next phase", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      // Phase 1: variable-def with only static vars (no LLM vars) — purely programmatic
+      // Phase 2: standard phase — should get instructions for this one
+      const phases = [
+        {
+          id: "var-setup",
+          title: "Var Setup",
+          kind: "variable-definition" as const,
+          variables: [
+            {
+              name: "env",
+              kind: "static" as const,
+              type: "string" as const,
+              value: "test",
+            },
+          ],
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      const store = initializeStore({});
+      setState({
+        isActive: true,
+        currentPhase: 1, // Start on the programmatic phase
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        isAdHocInput: false,
+        filesWritten: [],
+        askUserCalled: false,
+        store,
+      });
+
+      const results = await fireBeforeAgentStart(handlers, {
+        type: "before_agent_start",
+        systemPrompt: "base",
+      });
+
+      // Should skip the programmatic phase and return instructions for phase 2
+      expect(results).toHaveLength(1);
+      const result = results[0] as {
+        message: { customType: string; content: string; display: boolean };
+      };
+      expect(result.message.customType).toBe("workflow-phase-instructions");
+      // Content should reference phase 2, not phase 1
+      expect(result.message.content).toContain(`You are on "s2"`);
+      expect(result.message.content).not.toContain(`You are on "var-setup"`);
+      // State should have advanced past the programmatic phase
+      expect(getState().currentPhase).toBe(2);
     });
   });
 
@@ -1031,6 +1114,7 @@ describe("before_agent_start", () => {
         const { setupLoopEngine } = await import("./loop-engine");
         setupLoopEngine(pi);
 
+        const store = initializeStore({});
         setState({
           isActive: true,
           currentPhase: 1,
@@ -1043,6 +1127,7 @@ describe("before_agent_start", () => {
           isAdHocInput: false,
           filesWritten: [],
           askUserCalled: false,
+          store,
         });
 
         const results = await fireBeforeAgentStart(handlers, {
@@ -1107,6 +1192,7 @@ describe("before_agent_start", () => {
         const { setupLoopEngine } = await import("./loop-engine");
         setupLoopEngine(pi);
 
+        const store = initializeStore({});
         setState({
           isActive: true,
           currentPhase: 1,
@@ -1116,6 +1202,7 @@ describe("before_agent_start", () => {
           isAdHocInput: false,
           filesWritten: [],
           askUserCalled: false,
+          store,
         });
 
         await fireBeforeAgentStart(handlers, {
@@ -1322,29 +1409,37 @@ describe("iteration data clearing between iterations", () => {
     }
   }
 
-  it("before_agent_start no longer clears tracking data or increments iteration (dead code removed)", async () => {
+  it("before_agent_start resets tracking fields via setupTurn(preserve) — new turn starts fresh", async () => {
     // Arrange
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
 
     // Simulate end of iteration 1 with tracking data
+    const store = initializeStore({});
     setState({
       isActive: true,
       currentIteration: 1,
       isAdHocInput: false,
       filesWritten: ["/old/file.ts"],
       askUserCalled: true,
+      phasesList: [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ],
+      totalPhases: 2,
+      currentPhase: 1,
+      store,
     });
 
     // Act: fire before_agent_start
     await fireBeforeAgentStart(handlers);
 
-    // Assert: tracking data NOT cleared, iteration NOT incremented (dead code removed)
+    // Assert: tracking data IS cleared (new turn starts fresh), iteration preserved
     const state = getState();
     expect(state.currentIteration).toBe(1);
-    expect(state.filesWritten).toEqual(["/old/file.ts"]);
-    expect(state.askUserCalled).toBe(true);
+    expect(state.filesWritten).toEqual([]);
+    expect(state.askUserCalled).toBe(false);
   });
 });
 
@@ -2672,11 +2767,12 @@ describe("phase advancement state reset", () => {
     expect(sendMessageCalls[0].message.content).not.toContain("iteration 3");
   });
 
-  it("before_agent_start no longer increments currentIteration (dead code removed)", async () => {
+  it("before_agent_start preserves currentIteration via setupTurn(preserve)", async () => {
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
 
+    const store = initializeStore({});
     setState({
       isActive: true,
       currentPhase: 1,
@@ -2689,6 +2785,7 @@ describe("phase advancement state reset", () => {
       isAdHocInput: false,
       filesWritten: [],
       askUserCalled: false,
+      store,
     });
 
     // Fire before_agent_start
@@ -2701,7 +2798,7 @@ describe("phase advancement state reset", () => {
       if (result) results.push(result);
     }
 
-    // currentIteration should still be 5 (not incremented)
+    // currentIteration should still be 5 (preserve mode does not increment)
     expect(getState().currentIteration).toBe(5);
     // CustomMessage injection should still work
     expect(results).toHaveLength(1);

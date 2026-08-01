@@ -665,28 +665,18 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       };
     }
 
-    // Normal mode: inject phase instructions via helper
-    const phase = state.phasesList[state.currentPhase - 1];
-    if (!phase) return; // no phase loaded — skip injection
-
-    // Prepare variables for variable-defining phases (Phase 1 entry or loop replay)
+    // Normal mode: advance through phases and inject instructions
     const phaseStore = getState().store;
-    if (
-      phase.kind === "variable-definition" &&
-      phase.variables &&
-      phase.variables.length > 0 &&
-      phaseStore
-    ) {
-      preparePhaseVariables(phase, phaseStore);
+    if (!phaseStore) return; // no store — skip injection
+
+    const result = advancePhase(phaseStore, state.currentPhase, "preserve");
+
+    if (!result.triggered) {
+      // All phases exhausted — no injection needed
+      return;
     }
 
-    return {
-      message: {
-        customType: "workflow-phase-instructions",
-        content: buildPhaseInstructions(state),
-        display: readDebugDisplay(),
-      },
-    };
+    return { message: result.payload };
   });
 
   // 4. Track file writes and ask_user calls per iteration

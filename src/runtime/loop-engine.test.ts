@@ -6919,7 +6919,7 @@ describe("executePhase", () => {
     expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
   });
 
-  it("for standard phases: preparePhaseVariables() is a no-op internally but still called; state is persisted", async () => {
+  it("for standard phases: preparePhaseVariables() is skipped; state is still persisted", async () => {
     const executePhase = await getExecutePhase();
     const { SessionVariableStore } = await import("./session-store");
     const store = new SessionVariableStore({});

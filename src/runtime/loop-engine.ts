@@ -351,7 +351,9 @@ export function executePhase(
   phase: WorkflowPhase,
   store: SessionVariableStore,
 ): void {
-  preparePhaseVariables(phase, store);
+  if (phase.kind === "variable-definition" && phase.variables?.length) {
+    preparePhaseVariables(phase, store);
+  }
   _persistCurrentState();
 }
 

@@ -320,9 +320,7 @@ export function isProgrammatic(phase: WorkflowPhase): boolean {
   if (phase.kind !== "variable-definition" || !phase.variables?.length) {
     return false;
   }
-  return phase.variables.every(
-    (pv) => pv.kind === "static" || pv.kind === "computed",
-  );
+  return !phase.variables.some((pv) => pv.kind === "llm");
 }
 
 /**

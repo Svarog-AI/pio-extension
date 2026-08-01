@@ -303,6 +303,116 @@ export function buildPhaseInstructions(state: PioSessionState): string {
 }
 
 // ---------------------------------------------------------------------------
+// Phase advancement helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if a phase can execute without an agent turn.
+ *
+ * A programmatic phase is a variable-definition phase where all variables
+ * have `kind` of `"static"` or `"computed"` — meaning there's nothing for
+ * the LLM to do. Standard phases always return `false`.
+ *
+ * @param phase - WorkflowPhase to check
+ * @returns `true` if the phase is purely programmatic (no LLM involvement)
+ */
+export function isProgrammatic(phase: WorkflowPhase): boolean {
+  if (phase.kind !== "variable-definition" || !phase.variables?.length) {
+    return false;
+  }
+  return phase.variables.every(
+    (pv) => pv.kind === "static" || pv.kind === "computed",
+  );
+}
+
+/**
+ * Persist the current loop engine state to disk.
+ *
+ * Internal helper — avoids duplicating the save pattern across multiple
+ * phase advancement helpers. Guards against null `sessionId`.
+ */
+function _persistCurrentState(): void {
+  const state = getState();
+  if (state.sessionId) {
+    saveLoopEngineState(state.sessionId, extractPersistedState(state));
+  }
+}
+
+/**
+ * Execute the programmatic parts of a phase.
+ *
+ * For variable-definition phases, this sets static variables and runs
+ * computed callbacks. For standard phases, `preparePhaseVariables()`
+ * is a no-op internally (kind guard returns early) but is still called.
+ * Always persists state after execution.
+ *
+ * @param phase - WorkflowPhase to execute
+ * @param store - SessionVariableStore for variable operations
+ */
+export function executePhase(
+  phase: WorkflowPhase,
+  store: SessionVariableStore,
+): void {
+  preparePhaseVariables(phase, store);
+  _persistCurrentState();
+}
+
+/**
+ * Persist state after stopping at a turn-triggering phase.
+ *
+ * By the time `triggerTurn` is called, `executePhase` has already run
+ * for this phase — so variable preparation is already done. This helper
+ * only persists state.
+ *
+ * @param phase - The WorkflowPhase where execution stopped
+ * @param store - SessionVariableStore (kept for API consistency, not used)
+ */
+export function triggerTurn(
+  _phase: WorkflowPhase,
+  _store: SessionVariableStore,
+): void {
+  _persistCurrentState();
+}
+
+/**
+ * Advance through phases, skipping programmatic phases and stopping at the
+ * first phase that requires an agent turn.
+ *
+ * Always executes programmatic parts of each phase via `executePhase()`.
+ * Uses `isProgrammatic()` as a control-flow signal to decide whether to
+ * keep looping or stop.
+ *
+ * @param store - SessionVariableStore for variable operations
+ * @param startAt - 1-based phase number to start from
+ * @returns `true` if stopped at a turn-triggering phase, `false` if all phases exhausted
+ */
+export function advancePhase(
+  store: SessionVariableStore,
+  startAt: number,
+): boolean {
+  let currentPhaseNum = startAt;
+
+  while (true) {
+    setState({ currentPhase: currentPhaseNum });
+
+    const phase = getState().phasesList[currentPhaseNum - 1];
+    if (!phase) {
+      return false;
+    }
+
+    executePhase(phase, store);
+
+    if (isProgrammatic(phase)) {
+      currentPhaseNum++;
+      continue;
+    }
+
+    triggerTurn(phase, store);
+    return true;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Type helpers
 // ---------------------------------------------------------------------------
 

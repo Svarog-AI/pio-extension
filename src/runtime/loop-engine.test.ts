@@ -6803,3 +6803,442 @@ describe("session variable integration", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase advancement helpers
+// ---------------------------------------------------------------------------
+
+describe("isProgrammatic", () => {
+  async function getIsProgrammatic() {
+    const mod = await import("./loop-engine");
+    return mod.isProgrammatic;
+  }
+
+  it("returns false for a standard phase", async () => {
+    const isProgrammatic = await getIsProgrammatic();
+    const phase = { id: "s1", title: "S1", instructions: "Do A" };
+    expect(isProgrammatic(phase)).toBe(false);
+  });
+
+  it("returns true for variable-definition phase with only static/computed variables", async () => {
+    const isProgrammatic = await getIsProgrammatic();
+    const phase = {
+      id: "p1",
+      title: "P1",
+      kind: "variable-definition" as const,
+      variables: [
+        { name: "x", type: "string", kind: "static" as const, value: "hi" },
+        {
+          name: "y",
+          type: "number",
+          kind: "computed" as const,
+          compute: () => 1,
+        },
+      ],
+    };
+    expect(isProgrammatic(phase)).toBe(true);
+  });
+
+  it("returns false for variable-definition phase with at least one llm variable", async () => {
+    const isProgrammatic = await getIsProgrammatic();
+    const phase = {
+      id: "p1",
+      title: "P1",
+      kind: "variable-definition" as const,
+      variables: [
+        { name: "x", type: "string", kind: "static" as const, value: "hi" },
+        {
+          name: "feature",
+          type: "string",
+          kind: "llm" as const,
+          description: "What feature?",
+        },
+      ],
+    };
+    expect(isProgrammatic(phase)).toBe(false);
+  });
+
+  it("returns false for variable-definition phase with empty/missing variables", async () => {
+    const isProgrammatic = await getIsProgrammatic();
+    const phaseEmpty = {
+      id: "p1",
+      title: "P1",
+      kind: "variable-definition" as const,
+      variables: [],
+    };
+    const phaseMissing = {
+      id: "p1",
+      title: "P1",
+      kind: "variable-definition" as const,
+    };
+    expect(isProgrammatic(phaseEmpty)).toBe(false);
+    expect(isProgrammatic(phaseMissing)).toBe(false);
+  });
+});
+
+describe("executePhase", () => {
+  async function getExecutePhase() {
+    const mod = await import("./loop-engine");
+    return mod.executePhase;
+  }
+
+  it("for variable-definition phases: calls preparePhaseVariables() and persists state", async () => {
+    const executePhase = await getExecutePhase();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentPhase: 1,
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      phaseWriteAllowlist: new Map(),
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const phase = {
+      id: "p1",
+      title: "P1",
+      kind: "variable-definition" as const,
+      variables: [
+        { name: "x", type: "string", kind: "static" as const, value: "hello" },
+      ],
+    };
+
+    executePhase(phase, store);
+
+    // preparePhaseVariables sets static vars
+    expect(store.get("x")).toBe("hello");
+    // State should be persisted
+    expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
+  });
+
+  it("for standard phases: preparePhaseVariables() is a no-op internally but still called; state is persisted", async () => {
+    const executePhase = await getExecutePhase();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentPhase: 1,
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      phaseWriteAllowlist: new Map(),
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const phase = { id: "s1", title: "S1", instructions: "Do A" };
+
+    executePhase(phase, store);
+
+    // No variables set (standard phase — kind guard returns early)
+    expect(store.get("x")).toBeUndefined();
+    // But state should still be persisted
+    expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
+  });
+
+  it("persists state via saveLoopEngineState() in all cases", async () => {
+    const executePhase = await getExecutePhase();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentPhase: 1,
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      phaseWriteAllowlist: new Map(),
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const phase = { id: "s1", title: "S1", instructions: "Do A" };
+    executePhase(phase, store);
+
+    expect(statePersistence.saveLoopEngineState).toHaveBeenCalledWith(
+      "test-session",
+      expect.any(Object),
+    );
+  });
+});
+
+describe("triggerTurn", () => {
+  async function getTriggerTurn() {
+    const mod = await import("./loop-engine");
+    return mod.triggerTurn;
+  }
+
+  it("persists state via saveLoopEngineState() in all cases", async () => {
+    const triggerTurn = await getTriggerTurn();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentPhase: 2,
+      currentIteration: 1,
+      totalPhases: 2,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      phaseWriteAllowlist: new Map(),
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const phase = { id: "s2", title: "S2", instructions: "Do B" };
+    triggerTurn(phase, store);
+
+    expect(statePersistence.saveLoopEngineState).toHaveBeenCalledWith(
+      "test-session",
+      expect.any(Object),
+    );
+  });
+
+  it("does NOT call preparePhaseVariables() — that's already done by executePhase()", async () => {
+    const triggerTurn = await getTriggerTurn();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentPhase: 2,
+      currentIteration: 1,
+      totalPhases: 2,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      phaseWriteAllowlist: new Map(),
+    });
+
+    // Phase has static vars — if triggerTurn called preparePhaseVariables,
+    // the var would be set. We verify it's NOT set.
+    const phase = {
+      id: "p2",
+      title: "P2",
+      kind: "variable-definition" as const,
+      variables: [
+        { name: "z", type: "string", kind: "static" as const, value: "world" },
+      ],
+    };
+
+    triggerTurn(phase, store);
+
+    // triggerTurn should NOT have set the static var
+    expect(store.get("z")).toBeUndefined();
+  });
+});
+
+describe("advancePhase", () => {
+  async function getAdvancePhase() {
+    const mod = await import("./loop-engine");
+    return mod.advancePhase;
+  }
+
+  it("skips multiple consecutive programmatic phases (verifies executePhase called for each, currentPhase updated)", async () => {
+    const advancePhase = await getAdvancePhase();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    const phases = [
+      {
+        id: "p1",
+        title: "P1",
+        kind: "variable-definition" as const,
+        variables: [
+          { name: "a", type: "string", kind: "static" as const, value: "1" },
+        ],
+      },
+      {
+        id: "p2",
+        title: "P2",
+        kind: "variable-definition" as const,
+        variables: [
+          { name: "b", type: "string", kind: "static" as const, value: "2" },
+        ],
+      },
+      { id: "s3", title: "S3", instructions: "Do C" },
+    ];
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentPhase: 1,
+      currentIteration: 1,
+      totalPhases: 3,
+      phasesList: phases,
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      phaseWriteAllowlist: new Map(),
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const result = advancePhase(store, 1);
+
+    // Should have skipped phases 1 and 2 (both programmatic)
+    // and stopped at phase 3 (standard)
+    expect(result).toBe(true);
+    expect(getState().currentPhase).toBe(3);
+    // Static vars from both programmatic phases should be set
+    expect(store.get("a")).toBe("1");
+    expect(store.get("b")).toBe("2");
+    // saveLoopEngineState: executePhase for p1, p2, s3 (3) + triggerTurn for s3 (1) = 4
+    expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(4);
+  });
+
+  it("stops at first non-programmatic phase and calls triggerTurn() (returns true)", async () => {
+    const advancePhase = await getAdvancePhase();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    const phases = [{ id: "s1", title: "S1", instructions: "Do A" }];
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentPhase: 1,
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: phases,
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      phaseWriteAllowlist: new Map(),
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const result = advancePhase(store, 1);
+
+    expect(result).toBe(true);
+    expect(getState().currentPhase).toBe(1);
+    // Should have persisted (executePhase + triggerTurn each persist)
+    expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
+  });
+
+  it("returns false when all phases exhausted", async () => {
+    const advancePhase = await getAdvancePhase();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    const phases = [
+      {
+        id: "p1",
+        title: "P1",
+        kind: "variable-definition" as const,
+        variables: [
+          { name: "a", type: "string", kind: "static" as const, value: "1" },
+        ],
+      },
+    ];
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentPhase: 1,
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: phases,
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      phaseWriteAllowlist: new Map(),
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    // Start at phase 1 — it's programmatic, so it should execute and try to advance
+    // But there's no phase 2, so it returns false
+    const result = advancePhase(store, 1);
+
+    expect(result).toBe(false);
+    // The programmatic phase should have been executed
+    expect(store.get("a")).toBe("1");
+  });
+});
+
+describe("advancePhase — integration", () => {
+  it("workflow with two consecutive pure variable-definition phases followed by a standard phase", async () => {
+    const { advancePhase } = await import("./loop-engine");
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    const phases = [
+      {
+        id: "p1",
+        title: "P1",
+        kind: "variable-definition" as const,
+        variables: [
+          { name: "x", type: "string", kind: "static" as const, value: "A" },
+          {
+            name: "y",
+            type: "number",
+            kind: "computed" as const,
+            compute: () => 42,
+          },
+        ],
+      },
+      {
+        id: "p2",
+        title: "P2",
+        kind: "variable-definition" as const,
+        variables: [
+          { name: "z", type: "string", kind: "static" as const, value: "B" },
+        ],
+      },
+      { id: "s3", title: "S3", instructions: "Do the main work" },
+    ];
+
+    setState({
+      isActive: true,
+      sessionId: "integration-session",
+      currentPhase: 1,
+      currentIteration: 1,
+      totalPhases: 3,
+      phasesList: phases,
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      phaseWriteAllowlist: new Map(),
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const result = advancePhase(store, 1);
+
+    // Should skip both programmatic phases and land on the standard phase
+    expect(result).toBe(true);
+    expect(getState().currentPhase).toBe(3);
+
+    // Variables from both programmatic phases should be set
+    expect(store.get("x")).toBe("A");
+    expect(store.get("y")).toBe(42);
+    expect(store.get("z")).toBe("B");
+
+    // State persisted for each phase (executePhase for p1, p2, s3 + triggerTurn for s3)
+    expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
+  });
+});

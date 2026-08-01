@@ -358,20 +358,55 @@ export function executePhase(
 }
 
 /**
- * Persist state after stopping at a turn-triggering phase.
+ * Set up a new turn: adjust iteration, reset tracking, persist, and build payload.
  *
- * By the time `triggerTurn` is called, `executePhase` has already run
- * for this phase — so variable preparation is already done. This helper
- * only persists state.
+ * Consolidates the iteration + persistence + message-building stages that
+ * were previously scattered across replayLoop, agent_end phase advancement,
+ * and before_agent_start.
  *
- * @param phase - The WorkflowPhase where execution stopped
- * @param store - SessionVariableStore (kept for API consistency, not used)
+ * Modes:
+ * - "increment" — increments currentIteration by 1 (loop replay paths)
+ * - "reset" — sets currentIteration to 1 (phase advancement)
+ * - "preserve" — leaves currentIteration unchanged (Phase 1 entry, /continue)
+ *
+ * All modes share: per-turn tracking reset, persistence, message building.
+ * Does NOT call preparePhaseVariables() — that's the job of executePhase.
+ *
+ * @param mode - How to adjust the iteration counter
+ * @returns CustomMessage payload for caller to deliver (return or sendMessage)
  */
-export function triggerTurn(
-  _phase: WorkflowPhase,
-  _store: SessionVariableStore,
-): void {
+export function setupTurn(mode: "reset" | "increment" | "preserve"): {
+  customType: string;
+  content: string;
+  display: boolean;
+} {
+  // 1. Adjust iteration based on mode
+  const state = getState();
+  switch (mode) {
+    case "reset":
+      setState({ currentIteration: 1 });
+      break;
+    case "increment":
+      setState({ currentIteration: state.currentIteration + 1 });
+      break;
+    case "preserve":
+      // no iteration change
+      break;
+  }
+
+  // 2. Reset per-turn tracking (always, regardless of mode)
+  setState({ filesWritten: [], askUserCalled: false });
+
+  // 3. Persist state
   _persistCurrentState();
+
+  // 4. Build and return instruction payload
+  const content = buildPhaseInstructions(getState());
+  return {
+    customType: "workflow-phase-instructions",
+    content,
+    display: readDebugDisplay(),
+  };
 }
 
 /**
@@ -382,14 +417,22 @@ export function triggerTurn(
  * Uses `isProgrammatic()` as a control-flow signal to decide whether to
  * keep looping or stop.
  *
+ * When stopping at a turn-triggering phase, calls `setupTurn(mode)` to
+ * manage iteration, reset tracking, persist, and build the message payload.
+ *
  * @param store - SessionVariableStore for variable operations
  * @param startAt - 1-based phase number to start from
- * @returns `true` if stopped at a turn-triggering phase, `false` if all phases exhausted
+ * @param mode - How to adjust the iteration counter ("reset", "increment", "preserve")
+ * @returns Object with `triggered` flag and optional `payload` (CustomMessage data)
  */
 export function advancePhase(
   store: SessionVariableStore,
   startAt: number,
-): boolean {
+  mode: "reset" | "increment" | "preserve",
+): {
+  triggered: boolean;
+  payload?: { customType: string; content: string; display: boolean };
+} {
   let currentPhaseNum = startAt;
 
   while (true) {
@@ -397,7 +440,7 @@ export function advancePhase(
 
     const phase = getState().phasesList[currentPhaseNum - 1];
     if (!phase) {
-      return false;
+      return { triggered: false };
     }
 
     executePhase(phase, store);
@@ -407,8 +450,8 @@ export function advancePhase(
       continue;
     }
 
-    triggerTurn(phase, store);
-    return true;
+    const payload = setupTurn(mode);
+    return { triggered: true, payload };
   }
 }
 

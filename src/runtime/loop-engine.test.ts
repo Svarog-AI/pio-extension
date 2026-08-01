@@ -1789,6 +1789,7 @@ describe("agent_end", () => {
         phases,
       );
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 1,
@@ -1799,6 +1800,7 @@ describe("agent_end", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
+        store,
       });
 
       await fireAgentEnd(handlers, [
@@ -1898,6 +1900,7 @@ describe("agent_end", () => {
         phases,
       );
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 1,
@@ -1908,6 +1911,7 @@ describe("agent_end", () => {
         filesWritten: ["/some/file.ts"],
         askUserCalled: false,
         isAdHocInput: false,
+        store,
       });
 
       await fireAgentEnd(handlers, [
@@ -2073,6 +2077,7 @@ describe("agent_end", () => {
         phases,
       );
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 1,
@@ -2083,6 +2088,7 @@ describe("agent_end", () => {
         filesWritten: ["/some/file.ts"], // First callback returns true
         askUserCalled: true, // Second callback returns true
         isAdHocInput: false,
+        store,
       });
 
       await fireAgentEnd(handlers, [
@@ -2178,6 +2184,7 @@ describe("agent_end", () => {
         phases,
       );
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 1,
@@ -2188,6 +2195,7 @@ describe("agent_end", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
+        store,
       });
 
       await fireAgentEnd(handlers, [
@@ -2227,6 +2235,7 @@ describe("agent_end", () => {
         phases,
       );
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 1,
@@ -2237,6 +2246,7 @@ describe("agent_end", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
+        store,
       });
 
       await fireAgentEnd(handlers, [
@@ -2610,6 +2620,7 @@ describe("phase advancement state reset", () => {
       phases,
     );
 
+    const store = initializeStore({});
     setState({
       isActive: true,
       currentPhase: 1,
@@ -2620,6 +2631,7 @@ describe("phase advancement state reset", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
+      store,
     });
 
     await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
@@ -2643,6 +2655,7 @@ describe("phase advancement state reset", () => {
       phases,
     );
 
+    const store = initializeStore({});
     setState({
       isActive: true,
       currentPhase: 1,
@@ -2653,6 +2666,7 @@ describe("phase advancement state reset", () => {
       filesWritten: ["/a.ts", "/b.ts"],
       askUserCalled: false,
       isAdHocInput: false,
+      store,
     });
 
     await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
@@ -2675,6 +2689,7 @@ describe("phase advancement state reset", () => {
       phases,
     );
 
+    const store = initializeStore({});
     setState({
       isActive: true,
       currentPhase: 1,
@@ -2685,6 +2700,7 @@ describe("phase advancement state reset", () => {
       filesWritten: [],
       askUserCalled: true,
       isAdHocInput: false,
+      store,
     });
 
     await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
@@ -2711,6 +2727,7 @@ describe("phase advancement state reset", () => {
       phases,
     );
 
+    const store = initializeStore({});
     setState({
       isActive: true,
       currentPhase: 1,
@@ -2721,6 +2738,7 @@ describe("phase advancement state reset", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
+      store,
     });
 
     await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
@@ -2747,6 +2765,7 @@ describe("phase advancement state reset", () => {
       phases,
     );
 
+    const store = initializeStore({});
     setState({
       isActive: true,
       currentPhase: 1,
@@ -2757,6 +2776,7 @@ describe("phase advancement state reset", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
+      store,
     });
 
     await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
@@ -3878,6 +3898,7 @@ describe("persistence integration", () => {
         phases,
       );
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         sessionId: "test-session-id",
@@ -3889,6 +3910,7 @@ describe("persistence integration", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
+        store,
       });
 
       // Act
@@ -3903,8 +3925,8 @@ describe("persistence integration", () => {
         );
       }
 
-      // Assert: save called with advanced phase
-      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(1);
+      // Assert: save called (executePhase persists + setupTurn persists = 2 calls)
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(2);
       expect(statePersistence.saveLoopEngineState).toHaveBeenCalledWith(
         "test-session-id",
         expect.objectContaining({ currentPhase: 2, currentIteration: 1 }),
@@ -5105,6 +5127,7 @@ describe("session variable integration", () => {
             },
           ],
         },
+        { id: "p3", title: "P3", instructions: "Do C" },
       ];
       vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
         phases,
@@ -5116,7 +5139,7 @@ describe("session variable integration", () => {
         sessionId: "test-session-id",
         currentPhase: 1,
         currentIteration: 1,
-        totalPhases: 2,
+        totalPhases: 3,
         phasesList: phases,
         markCompleteCalled: false,
         filesWritten: [],
@@ -5127,11 +5150,13 @@ describe("session variable integration", () => {
 
       await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
 
-      // Advanced to phase 2
-      expect(getState().currentPhase).toBe(2);
-      // Static var for phase 2 should be set
+      // advancePhase skips purely programmatic phase 2, stops at phase 3
+      expect(getState().currentPhase).toBe(3);
+      // Static var for phase 2 should still be set (executePhase ran)
       expect(store.get("env")).toBe("staging");
+      // Message sent for phase 3 (the turn-triggering phase)
       expect(sendMessageCalls).toHaveLength(1);
+      expect(sendMessageCalls[0].message.content).toContain(`"p3"`);
     });
 
     it("runs computed callbacks using previous phase's data during advancement", async () => {
@@ -5157,6 +5182,7 @@ describe("session variable integration", () => {
             },
           ],
         },
+        { id: "p3", title: "P3", instructions: "Do C" },
       ];
       vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
         phases,
@@ -5168,7 +5194,7 @@ describe("session variable integration", () => {
         sessionId: "test-session-id",
         currentPhase: 1,
         currentIteration: 1,
-        totalPhases: 2,
+        totalPhases: 3,
         phasesList: phases,
         markCompleteCalled: false,
         filesWritten: ["/a.ts", "/b.ts", "/c.ts"], // Phase 1 wrote 3 files
@@ -5179,13 +5205,16 @@ describe("session variable integration", () => {
 
       await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
 
-      // Computed callback should have seen Phase 1's data
+      // advancePhase skips programmatic phase 2, stops at phase 3
+      expect(getState().currentPhase).toBe(3);
+      // Computed callback should have seen Phase 1's data (before tracking reset)
       expect(computeSpy).toHaveBeenCalledTimes(1);
       expect(store.get("fileCount")).toBe(3);
-      // Tracking fields should be reset after computed callbacks
+      // Tracking fields should be reset after computed callbacks (by setupTurn)
       expect(getState().filesWritten).toEqual([]);
       expect(getState().askUserCalled).toBe(false);
       expect(sendMessageCalls).toHaveLength(1);
+      expect(sendMessageCalls[0].message.content).toContain(`"p3"`);
     });
 
     it("does not prepare vars when next phase is standard", async () => {
@@ -5697,6 +5726,7 @@ describe("session variable integration", () => {
         phases,
       );
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 1,
@@ -5707,6 +5737,7 @@ describe("session variable integration", () => {
         filesWritten: ["/a.ts"], // loopWhile condition is false
         askUserCalled: false,
         isAdHocInput: false,
+        store,
       });
 
       await fireAgentEnd(handlers, [
@@ -5806,6 +5837,7 @@ describe("session variable integration", () => {
         phases,
       );
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 1,
@@ -5816,6 +5848,7 @@ describe("session variable integration", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
+        store,
       });
 
       await fireAgentEnd(handlers, [
@@ -6503,6 +6536,7 @@ describe("session variable integration", () => {
         phases,
       );
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 1,
@@ -6513,6 +6547,7 @@ describe("session variable integration", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
+        store,
       });
 
       await fireAgentEnd(handlers, [
@@ -6831,6 +6866,7 @@ describe("session variable integration", () => {
         phases,
       );
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 1,
@@ -6841,6 +6877,7 @@ describe("session variable integration", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
+        store,
       });
 
       await fireAgentEnd(handlers, [
@@ -6875,6 +6912,7 @@ describe("session variable integration", () => {
         phases,
       );
 
+      const store = initializeStore({});
       setState({
         isActive: true,
         currentPhase: 1,
@@ -6885,6 +6923,7 @@ describe("session variable integration", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
+        store,
       });
 
       await fireAgentEnd(handlers, [

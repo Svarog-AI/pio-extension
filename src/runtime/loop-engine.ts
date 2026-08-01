@@ -486,47 +486,6 @@ export function __testSetActiveSession(value?: boolean): void {
 }
 
 // ---------------------------------------------------------------------------
-// Loop replay helper
-// ---------------------------------------------------------------------------
-
-/**
- * Shared loop replay logic — increments iteration, resets tracking,
- * persists state, and sends a follow-up CustomMessage.
- *
- * Used by loopWhile, minIterations, and terminateWhen paths.
- */
-async function replayLoop(
-  pi: ExtensionAPI,
-  state: PioSessionState,
-): Promise<void> {
-  // Increment iteration and reset tracking
-  setState({
-    currentIteration: state.currentIteration + 1,
-    filesWritten: [],
-    askUserCalled: false,
-  });
-
-  // Persist incremented iteration
-  const updatedState = getState();
-  if (updatedState.sessionId) {
-    saveLoopEngineState(
-      updatedState.sessionId,
-      extractPersistedState(updatedState),
-    );
-  }
-
-  // Send CustomMessage with updated state (correct iteration number)
-  await pi.sendMessage(
-    {
-      customType: "workflow-phase-instructions",
-      content: buildPhaseInstructions(getState()),
-      display: readDebugDisplay(),
-    },
-    { deliverAs: "followUp" },
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Event handlers
 // ---------------------------------------------------------------------------
 
@@ -830,7 +789,8 @@ export function setupLoopEngine(pi: ExtensionAPI) {
 
     const minIterations = currentPhase.minIterations ?? 1;
     if (state.currentIteration < minIterations) {
-      await replayLoop(pi, state);
+      const payload = setupTurn("increment");
+      await pi.sendMessage(payload, { deliverAs: "followUp" });
       return;
     }
 
@@ -876,7 +836,8 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     }
 
     if (shouldLoop) {
-      await replayLoop(pi, state);
+      const payload = setupTurn("increment");
+      await pi.sendMessage(payload, { deliverAs: "followUp" });
       return;
     }
 
@@ -903,7 +864,8 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // No conditions defined (or empty array) → shouldReplay stays false (advance)
 
     if (shouldReplay) {
-      await replayLoop(pi, state);
+      const payload = setupTurn("increment");
+      await pi.sendMessage(payload, { deliverAs: "followUp" });
       return;
     }
 
@@ -911,51 +873,32 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // 6. Advance to next phase
     // ---------------------------------------------------------------------------
 
-    const nextPhaseNum = state.currentPhase + 1;
+    const phaseStore = getState().store;
+    if (!phaseStore) return; // no store — cannot advance
 
-    if (nextPhaseNum > state.totalPhases) {
-      // Last phase — let session end naturally
+    const result = advancePhase(phaseStore, state.currentPhase + 1, "reset");
+
+    if (!result.triggered) {
+      // All phases exhausted — reset tracking (matching old behavior)
+      // and persist, then let session end naturally
+      setState({
+        currentIteration: 1,
+        filesWritten: [],
+        askUserCalled: false,
+      });
+      _persistCurrentState();
       return;
     }
 
-    // Advance to next phase — but keep iteration data alive for computed callbacks first
-    setState({ currentPhase: nextPhaseNum });
-
-    const nextPhaseObj = getState().phasesList[nextPhaseNum - 1];
-    const phaseStore = getState().store;
-
-    // Prepare static and computed vars for next variable-defining phase (uses current state filesWritten/askUserCalled)
-    if (phaseStore && nextPhaseObj?.kind === "variable-definition") {
-      preparePhaseVariables(nextPhaseObj, phaseStore);
-    }
-
-    // Now reset iteration tracking
-    setState({
-      currentIteration: 1,
-      filesWritten: [],
-      askUserCalled: false,
-    });
-
-    // Persist phase advancement
-    const advancedState = getState();
-    if (advancedState.sessionId) {
-      saveLoopEngineState(
-        advancedState.sessionId,
-        extractPersistedState(advancedState),
-      );
-    }
-
-    // Send CustomMessage with instructions for the next phase
-    if (nextPhaseObj) {
-      await pi.sendMessage(
-        {
-          customType: "workflow-phase-instructions",
-          content: buildPhaseInstructions(getState()),
-          display: readDebugDisplay(),
-        },
-        { deliverAs: "followUp" },
-      );
-    }
+    // payload is guaranteed to exist when triggered is true
+    await pi.sendMessage(
+      result.payload as {
+        customType: string;
+        content: string;
+        display: boolean;
+      },
+      { deliverAs: "followUp" },
+    );
   });
 
   // 6. Shutdown handler — flush state on reload/quit

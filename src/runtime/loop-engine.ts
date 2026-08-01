@@ -360,10 +360,6 @@ export function executePhase(
 /**
  * Set up a new turn: adjust iteration, reset tracking, persist, and build payload.
  *
- * Consolidates the iteration + persistence + message-building stages that
- * were previously scattered across replayLoop, agent_end phase advancement,
- * and before_agent_start.
- *
  * Modes:
  * - "increment" — increments currentIteration by 1 (loop replay paths)
  * - "reset" — sets currentIteration to 1 (phase advancement)

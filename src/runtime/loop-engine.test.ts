@@ -2495,9 +2495,10 @@ describe("agent_end", () => {
   // ---- Last phase boundary ----
 
   describe("last phase boundary", () => {
-    it("does nothing when at last phase and conditions met", async () => {
-      const { pi, handlers, sendUserMessageCalls } = createMockPi();
+    it("exercises exhaustion path through advancePhase when at last phase", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
+      const { initializeStore } = await import("./loop-engine");
       setupLoopEngine(pi);
 
       const phases = [
@@ -2512,17 +2513,23 @@ describe("agent_end", () => {
         phases,
       );
 
+      const store = initializeStore({});
+
       setState({
         isActive: true,
+        sessionId: "test-session-id",
         currentPhase: 1,
-        currentIteration: 1,
+        currentIteration: 3,
         totalPhases: 1,
         phasesList: phases,
         markCompleteCalled: false,
-        filesWritten: [],
-        askUserCalled: false,
+        filesWritten: ["/some/file.ts"],
+        askUserCalled: true,
         isAdHocInput: false,
+        store,
       });
+
+      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
 
       await fireAgentEnd(handlers, [
         {
@@ -2531,9 +2538,80 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Last phase, conditions met → no follow-up, let session end naturally
-      expect(sendUserMessageCalls).toHaveLength(0);
-      expect(getState().currentPhase).toBe(1); // Not advanced
+      // advancePhase called with startAt=2 → no phase 2 → { triggered: false }
+      // Section 6 resets tracking and persists, then returns
+      expect(sendMessageCalls).toHaveLength(0);
+      expect(getState().currentPhase).toBe(2); // advancePhase set currentPhase to 2 before finding nothing
+      expect(getState().currentIteration).toBe(1); // Reset on exhaustion
+      expect(getState().filesWritten).toEqual([]); // Reset on exhaustion
+      expect(getState().askUserCalled).toBe(false); // Reset on exhaustion
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
+    });
+  });
+
+  describe("programmatic-only remaining phases", () => {
+    it("returns naturally when all remaining phases are programmatic", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      const { initializeStore } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "p1", title: "P1", instructions: "Do A" },
+        {
+          id: "p2",
+          title: "P2",
+          kind: "variable-definition" as const,
+          variables: [
+            {
+              name: "env",
+              type: "string",
+              kind: "static" as const,
+              value: "staging",
+            },
+          ],
+        },
+      ];
+
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        phases,
+      );
+
+      const store = initializeStore({});
+
+      setState({
+        isActive: true,
+        sessionId: "test-session-id",
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 2,
+        phasesList: phases,
+        markCompleteCalled: false,
+        filesWritten: ["/some/file.ts"],
+        askUserCalled: true,
+        isAdHocInput: false,
+        store,
+      });
+
+      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+      await fireAgentEnd(handlers, [
+        {
+          role: "assistant",
+          stopReason: "stop",
+        },
+      ]);
+
+      // advancePhase: executes programmatic phase 2 (sets static var),
+      // then tries phase 3 → not found → { triggered: false }
+      // Section 6 resets tracking and persists, then returns
+      expect(sendMessageCalls).toHaveLength(0);
+      expect(getState().currentPhase).toBe(3); // advancePhase advanced past p2, tried 3
+      expect(store.get("env")).toBe("staging"); // executePhase still ran
+      expect(getState().currentIteration).toBe(1); // Reset on exhaustion
+      expect(getState().filesWritten).toEqual([]);
+      expect(getState().askUserCalled).toBe(false);
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
     });
   });
 

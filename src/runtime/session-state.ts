@@ -57,6 +57,13 @@ export interface PioSessionState {
    */
   isAdHocInput: boolean;
 
+  /**
+   * Tracks whether the "Workflow Paused" notification was already sent
+   * during the current ad-hoc session. In-memory only — not persisted.
+   * Set by `before_agent_start` after first injection, reset by `/continue`.
+   */
+  adHocPhaseNotified: boolean;
+
   /** Phase-level write allowlists: phase number (1-based) → { allowedPaths (resolved absolute paths), allowedNames (original output names for error messages), allContractOutputs (all known contract output paths, used by write: [] to block). Populated during resources_discover. */
   phaseWriteAllowlist: Map<
     number,
@@ -92,6 +99,7 @@ function createInitialState(): PioSessionState {
     filesWritten: [],
     askUserCalled: false,
     isAdHocInput: false,
+    adHocPhaseNotified: false,
     phaseWriteAllowlist: new Map(),
     sessionId: undefined,
     store: undefined,

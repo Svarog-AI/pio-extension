@@ -52,12 +52,11 @@ Follow these steps:
     id: "restricted-writes",
     title: "Restricted writes test",
     write: [],
-    instructions: `This phase tests the restricted-by-default write gate model. With \`write: []\` (empty array), contract output paths are blocked, as well as non-contract files.
+    instructions: `This phase tests the restricted-by-default write gate model. With \`write: []\` (empty array), no outputs are allowed.
 
 Follow these steps:
 1. Attempt to write \`PLAYGROUND.md\` and observe it is blocked by the restricted-by-default model (the empty write array blocks known contract output paths)
-2. Write a non-contract file (e.g., \`notes.md\`) with your observations so far from Phases 1–3, and observe that non-contract files also cannot be written
-3. Report both outcomes verbatim, including the exact block message for the contract output`,
+2. Report the block message verbatim, including the exact rejection reason`,
   },
 
   // ---------------------------------------------------------------------------
@@ -76,20 +75,17 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 5: Project Files Allowed Test
+  // Phase 5: Contract Output Restriction Test
   // ---------------------------------------------------------------------------
   {
-    id: "project-files",
-    title: "Project files allowed test",
+    id: "contract-output-restriction",
+    title: "Contract output restriction test",
     write: ["playground-output"],
-    instructions: `This phase tests that non-contract project/workspace files always pass through the write gate, regardless of the \`write\` allowlist configuration.
+    instructions: `This phase tests that only the contract output explicitly listed in \`write\` is writable — other contract outputs are blocked.
 
 Follow these steps:
-1. Write a file in the workspace directory (e.g., \`workspace-test.md\` or a file under the \`.pio/goals/test-playground/\` path) and observe it succeeds — non-contract files always pass through regardless of write restrictions
-2. Attempt to write \`PLAYGROUND.md\` and observe it is allowed (because \`playground-output\` is in the allowlist for this phase), but then delete or overwrite it with a placeholder since the final report comes later
-3. Alternatively, if \`PLAYGROUND.md\` has already been created by an earlier phase, attempt to edit it and confirm it's allowed
-4. Report outcomes: project file writes pass through freely; contract outputs in the allowlist are also writable
-5. This demonstrates that the write gate only restricts specific contract output paths — all other files (including arbitrary workspace files) are always writable`,
+1. Attempt to write \`PLAYGROUND.md\` and observe it is allowed (because \`playground-output\` is in the allowlist for this phase), but then delete or overwrite it with a placeholder since the final report comes later
+2. Report that \`PLAYGROUND.md\` is writable because its contract output name (\`playground-output\`) appears in this phase's \`write\` array`,
   },
 
   // ---------------------------------------------------------------------------

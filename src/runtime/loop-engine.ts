@@ -303,6 +303,155 @@ export function buildPhaseInstructions(state: PioSessionState): string {
 }
 
 // ---------------------------------------------------------------------------
+// Phase advancement helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if a phase can execute without an agent turn.
+ *
+ * A programmatic phase is a variable-definition phase where all variables
+ * have `kind` of `"static"` or `"computed"` — meaning there's nothing for
+ * the LLM to do. Standard phases always return `false`.
+ *
+ * @param phase - WorkflowPhase to check
+ * @returns `true` if the phase is purely programmatic (no LLM involvement)
+ */
+export function isProgrammatic(phase: WorkflowPhase): boolean {
+  if (phase.kind !== "variable-definition" || !phase.variables?.length) {
+    return false;
+  }
+  return !phase.variables.some((pv) => pv.kind === "llm");
+}
+
+/**
+ * Persist the current loop engine state to disk.
+ *
+ * Internal helper — avoids duplicating the save pattern across multiple
+ * phase advancement helpers. Guards against null `sessionId`.
+ */
+function _persistCurrentState(): void {
+  const state = getState();
+  if (state.sessionId) {
+    saveLoopEngineState(state.sessionId, extractPersistedState(state));
+  }
+}
+
+/**
+ * Execute the programmatic parts of a phase.
+ *
+ * For variable-definition phases, this sets static variables and runs
+ * computed callbacks. For standard phases, `preparePhaseVariables()`
+ * is a no-op internally (kind guard returns early) but is still called.
+ * Always persists state after execution.
+ *
+ * @param phase - WorkflowPhase to execute
+ * @param store - SessionVariableStore for variable operations
+ */
+export function executePhase(
+  phase: WorkflowPhase,
+  store: SessionVariableStore,
+): void {
+  if (phase.kind === "variable-definition" && phase.variables?.length) {
+    preparePhaseVariables(phase, store);
+  }
+  _persistCurrentState();
+}
+
+/**
+ * Set up a new turn: adjust iteration, reset tracking, persist, and build payload.
+ *
+ * Modes:
+ * - "increment" — increments currentIteration by 1 (loop replay paths)
+ * - "reset" — sets currentIteration to 1 (phase advancement)
+ * - "preserve" — leaves currentIteration unchanged (Phase 1 entry, /continue)
+ *
+ * All modes share: per-turn tracking reset, persistence, message building.
+ * Does NOT call preparePhaseVariables() — that's the job of executePhase.
+ *
+ * @param mode - How to adjust the iteration counter
+ * @returns CustomMessage payload for caller to deliver (return or sendMessage)
+ */
+export function setupTurn(mode: "reset" | "increment" | "preserve"): {
+  customType: string;
+  content: string;
+  display: boolean;
+} {
+  // 1. Adjust iteration based on mode
+  const state = getState();
+  switch (mode) {
+    case "reset":
+      setState({ currentIteration: 1 });
+      break;
+    case "increment":
+      setState({ currentIteration: state.currentIteration + 1 });
+      break;
+    case "preserve":
+      // no iteration change
+      break;
+  }
+
+  // 2. Reset per-turn tracking (always, regardless of mode)
+  setState({ filesWritten: [], askUserCalled: false });
+
+  // 3. Persist state
+  _persistCurrentState();
+
+  // 4. Build and return instruction payload
+  const content = buildPhaseInstructions(getState());
+  return {
+    customType: "workflow-phase-instructions",
+    content,
+    display: readDebugDisplay(),
+  };
+}
+
+/**
+ * Advance through phases, skipping programmatic phases and stopping at the
+ * first phase that requires an agent turn.
+ *
+ * Always executes programmatic parts of each phase via `executePhase()`.
+ * Uses `isProgrammatic()` as a control-flow signal to decide whether to
+ * keep looping or stop.
+ *
+ * When stopping at a turn-triggering phase, calls `setupTurn(mode)` to
+ * manage iteration, reset tracking, persist, and build the message payload.
+ *
+ * @param store - SessionVariableStore for variable operations
+ * @param startAt - 1-based phase number to start from
+ * @param mode - How to adjust the iteration counter ("reset", "increment", "preserve")
+ * @returns Object with `triggered` flag and optional `payload` (CustomMessage data)
+ */
+export function advancePhase(
+  store: SessionVariableStore,
+  startAt: number,
+  mode: "reset" | "increment" | "preserve",
+): {
+  triggered: boolean;
+  payload?: { customType: string; content: string; display: boolean };
+} {
+  let currentPhaseNum = startAt;
+
+  while (true) {
+    setState({ currentPhase: currentPhaseNum });
+
+    const phase = getState().phasesList[currentPhaseNum - 1];
+    if (!phase) {
+      return { triggered: false };
+    }
+
+    executePhase(phase, store);
+
+    if (isProgrammatic(phase)) {
+      currentPhaseNum++;
+      continue;
+    }
+
+    const payload = setupTurn(mode);
+    return { triggered: true, payload };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Type helpers
 // ---------------------------------------------------------------------------
 
@@ -334,47 +483,6 @@ export function __testSetActiveSession(value?: boolean): void {
   if (value !== undefined) {
     setState({ isActive: value });
   }
-}
-
-// ---------------------------------------------------------------------------
-// Loop replay helper
-// ---------------------------------------------------------------------------
-
-/**
- * Shared loop replay logic — increments iteration, resets tracking,
- * persists state, and sends a follow-up CustomMessage.
- *
- * Used by loopWhile, minIterations, and terminateWhen paths.
- */
-async function replayLoop(
-  pi: ExtensionAPI,
-  state: PioSessionState,
-): Promise<void> {
-  // Increment iteration and reset tracking
-  setState({
-    currentIteration: state.currentIteration + 1,
-    filesWritten: [],
-    askUserCalled: false,
-  });
-
-  // Persist incremented iteration
-  const updatedState = getState();
-  if (updatedState.sessionId) {
-    saveLoopEngineState(
-      updatedState.sessionId,
-      extractPersistedState(updatedState),
-    );
-  }
-
-  // Send CustomMessage with updated state (correct iteration number)
-  await pi.sendMessage(
-    {
-      customType: "workflow-phase-instructions",
-      content: buildPhaseInstructions(getState()),
-      display: readDebugDisplay(),
-    },
-    { deliverAs: "followUp" },
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -516,28 +624,18 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       };
     }
 
-    // Normal mode: inject phase instructions via helper
-    const phase = state.phasesList[state.currentPhase - 1];
-    if (!phase) return; // no phase loaded — skip injection
-
-    // Prepare variables for variable-defining phases (Phase 1 entry or loop replay)
+    // Normal mode: advance through phases and inject instructions
     const phaseStore = getState().store;
-    if (
-      phase.kind === "variable-definition" &&
-      phase.variables &&
-      phase.variables.length > 0 &&
-      phaseStore
-    ) {
-      preparePhaseVariables(phase, phaseStore);
+    if (!phaseStore) return; // no store — skip injection
+
+    const result = advancePhase(phaseStore, state.currentPhase, "preserve");
+
+    if (!result.triggered) {
+      // All phases exhausted — no injection needed
+      return;
     }
 
-    return {
-      message: {
-        customType: "workflow-phase-instructions",
-        content: buildPhaseInstructions(state),
-        display: readDebugDisplay(),
-      },
-    };
+    return { message: result.payload };
   });
 
   // 4. Track file writes and ask_user calls per iteration
@@ -691,7 +789,8 @@ export function setupLoopEngine(pi: ExtensionAPI) {
 
     const minIterations = currentPhase.minIterations ?? 1;
     if (state.currentIteration < minIterations) {
-      await replayLoop(pi, state);
+      const payload = setupTurn("increment");
+      await pi.sendMessage(payload, { deliverAs: "followUp" });
       return;
     }
 
@@ -737,7 +836,8 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     }
 
     if (shouldLoop) {
-      await replayLoop(pi, state);
+      const payload = setupTurn("increment");
+      await pi.sendMessage(payload, { deliverAs: "followUp" });
       return;
     }
 
@@ -764,7 +864,8 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // No conditions defined (or empty array) → shouldReplay stays false (advance)
 
     if (shouldReplay) {
-      await replayLoop(pi, state);
+      const payload = setupTurn("increment");
+      await pi.sendMessage(payload, { deliverAs: "followUp" });
       return;
     }
 
@@ -772,51 +873,32 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // 6. Advance to next phase
     // ---------------------------------------------------------------------------
 
-    const nextPhaseNum = state.currentPhase + 1;
+    const phaseStore = getState().store;
+    if (!phaseStore) return; // no store — cannot advance
 
-    if (nextPhaseNum > state.totalPhases) {
-      // Last phase — let session end naturally
+    const result = advancePhase(phaseStore, state.currentPhase + 1, "reset");
+
+    if (!result.triggered) {
+      // All phases exhausted — reset tracking (matching old behavior)
+      // and persist, then let session end naturally
+      setState({
+        currentIteration: 1,
+        filesWritten: [],
+        askUserCalled: false,
+      });
+      _persistCurrentState();
       return;
     }
 
-    // Advance to next phase — but keep iteration data alive for computed callbacks first
-    setState({ currentPhase: nextPhaseNum });
-
-    const nextPhaseObj = getState().phasesList[nextPhaseNum - 1];
-    const phaseStore = getState().store;
-
-    // Prepare static and computed vars for next variable-defining phase (uses current state filesWritten/askUserCalled)
-    if (phaseStore && nextPhaseObj?.kind === "variable-definition") {
-      preparePhaseVariables(nextPhaseObj, phaseStore);
-    }
-
-    // Now reset iteration tracking
-    setState({
-      currentIteration: 1,
-      filesWritten: [],
-      askUserCalled: false,
-    });
-
-    // Persist phase advancement
-    const advancedState = getState();
-    if (advancedState.sessionId) {
-      saveLoopEngineState(
-        advancedState.sessionId,
-        extractPersistedState(advancedState),
-      );
-    }
-
-    // Send CustomMessage with instructions for the next phase
-    if (nextPhaseObj) {
-      await pi.sendMessage(
-        {
-          customType: "workflow-phase-instructions",
-          content: buildPhaseInstructions(getState()),
-          display: readDebugDisplay(),
-        },
-        { deliverAs: "followUp" },
-      );
-    }
+    // payload is guaranteed to exist when triggered is true
+    await pi.sendMessage(
+      result.payload as {
+        customType: string;
+        content: string;
+        display: boolean;
+      },
+      { deliverAs: "followUp" },
+    );
   });
 
   // 6. Shutdown handler — flush state on reload/quit

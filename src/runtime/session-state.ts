@@ -62,7 +62,7 @@ export interface PioSessionState {
    * during the current ad-hoc session. In-memory only — not persisted.
    * Set by `before_agent_start` after first injection, reset by `/continue`.
    */
-  adHocPhaseNotified?: boolean;
+  adHocPhaseNotified: boolean;
 
   /** Phase-level write allowlists: phase number (1-based) → { allowedPaths (resolved absolute paths), allowedNames (original output names for error messages), allContractOutputs (all known contract output paths, used by write: [] to block). Populated during resources_discover. */
   phaseWriteAllowlist: Map<
@@ -99,7 +99,7 @@ function createInitialState(): PioSessionState {
     filesWritten: [],
     askUserCalled: false,
     isAdHocInput: false,
-    adHocPhaseNotified: undefined,
+    adHocPhaseNotified: false,
     phaseWriteAllowlist: new Map(),
     sessionId: undefined,
     store: undefined,

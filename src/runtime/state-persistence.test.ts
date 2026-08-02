@@ -864,6 +864,7 @@ describe("extractPersistedState", () => {
       filesWritten: ["/some/file"],
       askUserCalled: true,
       isAdHocInput: true,
+      adHocPhaseNotified: false,
       phaseWriteAllowlist: new Map(),
     });
 
@@ -898,6 +899,7 @@ describe("extractPersistedState", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
+      adHocPhaseNotified: false,
       phaseWriteAllowlist: new Map(),
       store,
     });
@@ -930,6 +932,7 @@ describe("extractPersistedState", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
+      adHocPhaseNotified: false,
       phaseWriteAllowlist: new Map(),
       store: null,
     });
@@ -954,6 +957,7 @@ describe("extractPersistedState", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
+      adHocPhaseNotified: false,
       phaseWriteAllowlist: new Map(),
       store: undefined,
     });
@@ -981,6 +985,7 @@ describe("extractPersistedState", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
+      adHocPhaseNotified: false,
       phaseWriteAllowlist: new Map(),
       store,
     });

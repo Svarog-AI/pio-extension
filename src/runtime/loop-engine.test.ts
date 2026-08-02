@@ -1167,7 +1167,7 @@ describe("before_agent_start", () => {
             { id: "s2", title: "S2", instructions: "Do B" },
           ],
           isAdHocInput: true,
-          // adHocPhaseNotified is undefined by default
+          // adHocPhaseNotified defaults to false
           filesWritten: [],
           askUserCalled: false,
         });

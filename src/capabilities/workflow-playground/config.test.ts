@@ -190,14 +190,14 @@ describe("pio_launch_playground tool", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Workflow phases (Phases 6–11)
+// Workflow phases (Phases 6–13)
 // ---------------------------------------------------------------------------
 
 import workflowPhases from "./workflow";
 
 describe("workflow phases", () => {
-  it("contains exactly 11 phases", () => {
-    expect(workflowPhases).toHaveLength(11);
+  it("contains exactly 13 phases", () => {
+    expect(workflowPhases).toHaveLength(13);
   });
 
   // ---- Phase 6: Variable Definition — Basic Test ----
@@ -350,10 +350,76 @@ describe("workflow phases", () => {
     });
   });
 
-  // ---- Phase 11: Final Report ----
+  // ---- Phase 11: Consecutive Programmatic — First ----
 
-  describe("Phase 11: Final Report", () => {
+  describe("Phase 11: Consecutive Programmatic — First", () => {
     const phase = workflowPhases[10];
+
+    it("has id 'programmatic-chain-1'", () => {
+      expect(phase.id).toBe("programmatic-chain-1");
+    });
+
+    it("has kind 'variable-definition'", () => {
+      expect(phase.kind).toBe("variable-definition");
+    });
+
+    it("has exactly 2 variables: static 'prog_a' and computed 'prog_a_seq'", () => {
+      expect(phase.variables).toHaveLength(2);
+      const staticVar = phase.variables!.find(
+        (v: any) => v.name === "prog_a" && v.kind === "static",
+      );
+      expect(staticVar).toBeDefined();
+      expect((staticVar as any).value).toBe("phase-a-set");
+      const computedVar = phase.variables!.find(
+        (v: any) => v.name === "prog_a_seq" && v.kind === "computed",
+      );
+      expect(computedVar).toBeDefined();
+      expect(typeof (computedVar as any).compute).toBe("function");
+    });
+
+    it("has no LLM-driven variables (is programmatic)", () => {
+      const llmVars = phase.variables!.filter((v: any) => v.kind === "llm");
+      expect(llmVars).toHaveLength(0);
+    });
+  });
+
+  // ---- Phase 12: Consecutive Programmatic — Second ----
+
+  describe("Phase 12: Consecutive Programmatic — Second", () => {
+    const phase = workflowPhases[11];
+
+    it("has id 'programmatic-chain-2'", () => {
+      expect(phase.id).toBe("programmatic-chain-2");
+    });
+
+    it("has kind 'variable-definition'", () => {
+      expect(phase.kind).toBe("variable-definition");
+    });
+
+    it("has exactly 2 variables: static 'prog_b' and computed 'prog_b_seq'", () => {
+      expect(phase.variables).toHaveLength(2);
+      const staticVar = phase.variables!.find(
+        (v: any) => v.name === "prog_b" && v.kind === "static",
+      );
+      expect(staticVar).toBeDefined();
+      expect((staticVar as any).value).toBe("phase-b-set");
+      const computedVar = phase.variables!.find(
+        (v: any) => v.name === "prog_b_seq" && v.kind === "computed",
+      );
+      expect(computedVar).toBeDefined();
+      expect(typeof (computedVar as any).compute).toBe("function");
+    });
+
+    it("has no LLM-driven variables (is programmatic)", () => {
+      const llmVars = phase.variables!.filter((v: any) => v.kind === "llm");
+      expect(llmVars).toHaveLength(0);
+    });
+  });
+
+  // ---- Phase 13: Final Report ----
+
+  describe("Phase 13: Final Report", () => {
+    const phase = workflowPhases[12];
 
     it("has write: ['playground-output']", () => {
       expect(phase.write).toEqual(["playground-output"]);
@@ -361,6 +427,34 @@ describe("workflow phases", () => {
 
     it("instructions mention writing PLAYGROUND.md", () => {
       expect(phase.instructions).toContain("PLAYGROUND.md");
+    });
+
+    it("instructions include listVars verification for programmatic variables", () => {
+      expect(phase.instructions).toContain("listVars");
+      expect(phase.instructions).toContain("prog_a");
+      expect(phase.instructions).toContain("prog_a_seq");
+      expect(phase.instructions).toContain("prog_b");
+      expect(phase.instructions).toContain("prog_b_seq");
+    });
+
+    it("instructions verify static values prog_a and prog_b", () => {
+      expect(phase.instructions).toContain("phase-a-set");
+      expect(phase.instructions).toContain("phase-b-set");
+    });
+
+    it("instructions verify computed sequence values", () => {
+      expect(phase.instructions).toContain("prog_a_seq");
+      expect(phase.instructions).toContain("prog_b_seq");
+    });
+
+    it("instructions confirm no LLM turn for programmatic phases", () => {
+      const lower = phase.instructions!.toLowerCase();
+      expect(lower).toContain("no");
+      expect(lower).toContain("llm");
+    });
+
+    it("instructions reference 13 phases total", () => {
+      expect(phase.instructions).toContain("1–13");
     });
   });
 });

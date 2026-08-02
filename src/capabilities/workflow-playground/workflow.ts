@@ -218,19 +218,73 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 11: Final Report
+  // Phase 11: Consecutive Programmatic — First
+  // Purely programmatic — no LLM vars, skipped by advancePhase
+  // ---------------------------------------------------------------------------
+  {
+    id: "programmatic-chain-1",
+    title: "Consecutive Programmatic — First",
+    kind: "variable-definition",
+    variables: [
+      {
+        name: "prog_a",
+        type: "string",
+        kind: "static",
+        value: "phase-a-set",
+      },
+      {
+        name: "prog_a_seq",
+        type: "number",
+        kind: "computed",
+        compute: (state: PioSessionState) => state.currentPhase,
+      },
+    ],
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 12: Consecutive Programmatic — Second
+  // Purely programmatic — no LLM vars, skipped by advancePhase
+  // ---------------------------------------------------------------------------
+  {
+    id: "programmatic-chain-2",
+    title: "Consecutive Programmatic — Second",
+    kind: "variable-definition",
+    variables: [
+      {
+        name: "prog_b",
+        type: "string",
+        kind: "static",
+        value: "phase-b-set",
+      },
+      {
+        name: "prog_b_seq",
+        type: "number",
+        kind: "computed",
+        compute: (state: PioSessionState) => state.currentPhase,
+      },
+    ],
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 13: Final Report
   // ---------------------------------------------------------------------------
   {
     id: "final-report",
     title: "Final Report",
     write: ["playground-output"],
-    instructions: `This is the final phase. Write a comprehensive test report in \`PLAYGROUND.md\` covering all phases (1–10).
+    instructions: `This is the final phase. Write a comprehensive test report in \`PLAYGROUND.md\` covering all phases (1–13).
 
 Follow these steps:
-1. Write \`PLAYGROUND.md\` with a section for each phase (1–10) summarizing behavior observed
+1. Write \`PLAYGROUND.md\` with a section for each phase (1–13) summarizing behavior observed
 2. For Phases 6–10 specifically, include: variable values, interpolation results, loopWhile replay observations, terminateWhen AND logic behavior, and computed callback results
 3. Confirm that user-defined \`loopWhile\` uses OR logic (Phase 7) and \`terminateWhen\` uses AND logic (Phase 8) based on direct observations
-4. Include any unexpected behaviors or discrepancies
-5. This is the final phase — produce a complete, well-structured report in \`PLAYGROUND.md\``,
+4. **Programmatic chain verification (Phases 11–12):**
+   a. Call \`listVars\` and confirm that \`prog_a\`, \`prog_a_seq\`, \`prog_b\`, and \`prog_b_seq\` are all set
+   b. Verify static values: \`prog_a = "phase-a-set"\` and \`prog_b = "phase-b-set"\`
+   c. Verify computed sequence numbers: \`prog_a_seq\` should equal 11 (the currentPhase when Phase 11's executePhase ran) and \`prog_b_seq\` should equal 12 (the currentPhase when Phase 12 ran). These different values prove the computed callbacks ran during the advancePhase loop, not after — if they ran after, both would have the same value
+   d. Confirm that you received instructions for Phase 10's turn and then directly Phase 13's turn — no LLM instructions were shown for Phases 11–12. This proves the advancePhase helper correctly skipped the purely programmatic phases without triggering agent turns
+   e. Include a dedicated section in \`PLAYGROUND.md\` documenting this skip-through behavior and the verified variable values
+5. Include any unexpected behaviors or discrepancies
+6. This is the final phase — produce a complete, well-structured report in \`PLAYGROUND.md\``,
   },
 ] satisfies WorkflowPhase[];

@@ -370,6 +370,7 @@ describe("/continue command", () => {
         filesWritten: ["/old/file.ts"],
         askUserCalled: true,
         isAdHocInput: true,
+        adHocPhaseNotified: true,
       });
 
       await fireContinueCommand(registeredCommands);
@@ -380,6 +381,51 @@ describe("/continue command", () => {
       expect(state.filesWritten).toEqual([]);
       expect(state.askUserCalled).toBe(false);
       expect(state.isAdHocInput).toBe(false);
+      expect(state.adHocPhaseNotified).toBe(false);
+    });
+
+    it("resets adHocPhaseNotified so next ad-hoc entry fires message again", async () => {
+      const { pi, registeredCommands, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      // Set up: ad-hoc mode was active and notification was sent
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentIteration: 1,
+        totalPhases: 1,
+        phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: true,
+        adHocPhaseNotified: true,
+      });
+
+      // Fire /continue — should reset flags
+      await fireContinueCommand(registeredCommands);
+
+      expect(getState().isAdHocInput).toBe(false);
+      expect(getState().adHocPhaseNotified).toBe(false);
+
+      // Simulate a new ad-hoc input arriving
+      setState({ isAdHocInput: true });
+
+      // Fire before_agent_start — should fire the workflow-paused message again
+      const beforeHandlers = handlers.get("before_agent_start");
+      expect(beforeHandlers).toBeDefined();
+      const mockCtx = {} as any;
+      const results: unknown[] = [];
+      for (const handler of beforeHandlers!) {
+        const result = await handler({ type: "before_agent_start" }, mockCtx);
+        if (result) results.push(result);
+      }
+
+      expect(results).toHaveLength(1);
+      const result = results[0] as {
+        message: { customType: string };
+      };
+      expect(result.message.customType).toBe("workflow-paused");
     });
 
     it("sends empty follow-up trigger", async () => {
@@ -1101,6 +1147,106 @@ describe("before_agent_start", () => {
       });
 
       expect(results).toHaveLength(0);
+    });
+
+    // ---- Single-fire: adHocPhaseNotified guard ----
+
+    describe("single-fire guard (adHocPhaseNotified)", () => {
+      it("fires message on first ad-hoc entry and sets adHocPhaseNotified", async () => {
+        const { pi, handlers } = createMockPi();
+        const { setupLoopEngine } = await import("./loop-engine");
+        setupLoopEngine(pi);
+
+        setState({
+          isActive: true,
+          currentPhase: 1,
+          currentIteration: 1,
+          totalPhases: 2,
+          phasesList: [
+            { id: "s1", title: "S1", instructions: "Do A" },
+            { id: "s2", title: "S2", instructions: "Do B" },
+          ],
+          isAdHocInput: true,
+          // adHocPhaseNotified is undefined by default
+          filesWritten: [],
+          askUserCalled: false,
+        });
+
+        const results = await fireBeforeAgentStart(handlers, {
+          type: "before_agent_start",
+        });
+
+        // Should return the workflow-paused message
+        expect(results).toHaveLength(1);
+        const result = results[0] as {
+          message: { customType: string; content: string; display: boolean };
+        };
+        expect(result.message.customType).toBe("workflow-paused");
+
+        // Flag should now be set
+        expect(getState().adHocPhaseNotified).toBe(true);
+      });
+
+      it("does NOT fire message on second ad-hoc turn (adHocPhaseNotified=true)", async () => {
+        const { pi, handlers } = createMockPi();
+        const { setupLoopEngine } = await import("./loop-engine");
+        setupLoopEngine(pi);
+
+        const store = initializeStore({});
+        setState({
+          isActive: true,
+          currentPhase: 1,
+          currentIteration: 1,
+          totalPhases: 2,
+          phasesList: [
+            { id: "s1", title: "S1", instructions: "Do A" },
+            { id: "s2", title: "S2", instructions: "Do B" },
+          ],
+          isAdHocInput: true,
+          adHocPhaseNotified: true, // already notified
+          filesWritten: [],
+          askUserCalled: false,
+          store,
+        });
+
+        const results = await fireBeforeAgentStart(handlers, {
+          type: "before_agent_start",
+        });
+
+        // Should return nothing — no message, no fallthrough to normal mode
+        expect(results).toHaveLength(0);
+      });
+
+      it("does NOT fall through to normal-mode logic on subsequent ad-hoc turns", async () => {
+        const { pi, handlers } = createMockPi();
+        const { setupLoopEngine } = await import("./loop-engine");
+        setupLoopEngine(pi);
+
+        const store = initializeStore({});
+        setState({
+          isActive: true,
+          currentPhase: 1,
+          currentIteration: 1,
+          totalPhases: 2,
+          phasesList: [
+            { id: "s1", title: "S1", instructions: "Do A" },
+            { id: "s2", title: "S2", instructions: "Do B" },
+          ],
+          isAdHocInput: true,
+          adHocPhaseNotified: true,
+          filesWritten: [],
+          askUserCalled: false,
+          store,
+        });
+
+        const results = await fireBeforeAgentStart(handlers, {
+          type: "before_agent_start",
+        });
+
+        // Critical: should NOT return a workflow-phase-instructions message
+        // (which would indicate fallthrough to normal-mode logic)
+        expect(results).toHaveLength(0);
+      });
     });
 
     // ---- debugDisplay: true — display field verification ----

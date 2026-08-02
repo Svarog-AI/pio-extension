@@ -606,10 +606,14 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // CustomMessage injection (replaces systemPrompt for prefix cache stability)
     // -----------------------------------------------------------------------
 
-    // Ad-hoc mode: lighter context block (no phase instructions)
-    if (state.isAdHocInput) {
+    // Ad-hoc mode: inject "Workflow Paused" only on first entry,
+    // then return early on subsequent turns to prevent normal-mode fallthrough.
+    if (state.isAdHocInput && !state.adHocPhaseNotified) {
       const phase = state.phasesList[state.currentPhase - 1];
       if (!phase) return;
+
+      // Mark as notified so subsequent turns skip injection
+      setState({ adHocPhaseNotified: true });
 
       return {
         message: {
@@ -622,6 +626,12 @@ export function setupLoopEngine(pi: ExtensionAPI) {
           display: readDebugDisplay(),
         },
       };
+    }
+
+    // Subsequent ad-hoc turns: already notified — return early
+    // to prevent falling through to normal-mode logic (advancePhase, etc.)
+    if (state.isAdHocInput) {
+      return;
     }
 
     // Normal mode: advance through phases and inject instructions
@@ -923,6 +933,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
+        adHocPhaseNotified: false,
       });
 
       // Persist AFTER all state mutations

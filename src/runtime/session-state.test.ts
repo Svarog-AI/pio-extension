@@ -27,6 +27,7 @@ describe("session-state", () => {
       expect(state.filesWritten).toEqual([]);
       expect(state.askUserCalled).toBe(false);
       expect(state.isAdHocInput).toBe(false);
+      expect(state.adHocPhaseNotified).toBe(undefined);
       expect(state.store).toBe(undefined);
     });
   });
@@ -111,6 +112,7 @@ describe("session-state", () => {
       expect(state.filesWritten).toEqual([]);
       expect(state.askUserCalled).toBe(false);
       expect(state.isAdHocInput).toBe(false);
+      expect(state.adHocPhaseNotified).toBe(undefined);
       expect(state.store).toBe(undefined);
     });
   });

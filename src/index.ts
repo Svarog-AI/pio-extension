@@ -8,12 +8,13 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 // Non-directory capabilities (single .ts files, not auto-discovered)
 import { setupNextTask } from "./capabilities/next-task";
+// Test capabilities — explicitly registered to bypass auto-discovery skip rule
+import { register as registerTestFirstPhase } from "./capabilities/test-first-phase/config";
 // Auto-discovery
 import {
   discoverCapabilities,
   registerCapability,
 } from "./capability-discovery";
-
 // Shared session infrastructure (explicit imports)
 import { setupSessionInfrastructure } from "./capability-session";
 // Direct tools (non-AI tools/commands registered directly)
@@ -86,6 +87,9 @@ export default async function (pi: ExtensionAPI) {
     }
     await registerCapability(pi, descriptor);
   }
+
+  // Explicitly register test capabilities (bypass auto-discovery skip rule)
+  registerTestFirstPhase(pi);
 
   // Cache contracts for runtime lookup by resolve functions (via getCapState)
   const contracts = Object.fromEntries(

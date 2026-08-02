@@ -442,15 +442,15 @@ describe("workflow phases", () => {
       expect(phase.instructions).toContain("phase-b-set");
     });
 
-    it("instructions verify computed sequence values", () => {
+    it("instructions verify computed sequence values with expected numbers", () => {
       expect(phase.instructions).toContain("prog_a_seq");
+      expect(phase.instructions).toContain("11");
       expect(phase.instructions).toContain("prog_b_seq");
+      expect(phase.instructions).toContain("12");
     });
 
     it("instructions confirm no LLM turn for programmatic phases", () => {
-      const lower = phase.instructions!.toLowerCase();
-      expect(lower).toContain("no");
-      expect(lower).toContain("llm");
+      expect(phase.instructions).toContain("no LLM instructions were shown");
     });
 
     it("instructions reference 13 phases total", () => {

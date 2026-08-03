@@ -33,6 +33,7 @@ export function loadLoopEngineState(sessionId: string): {
   currentPhase: number;
   currentIteration: number;
   isAdHocInput: boolean;
+  currentPhaseId: string;
   vars?: { [name: string]: { value: unknown; type: string } };
 } | null {
   try {
@@ -68,6 +69,7 @@ function isValidPersistedState(obj: unknown): obj is {
   currentPhase: number;
   currentIteration: number;
   isAdHocInput: boolean;
+  currentPhaseId: string;
   vars?: { [name: string]: { value: unknown; type: string } };
 } {
   if (obj == null || typeof obj !== "object" || Array.isArray(obj)) {
@@ -83,7 +85,8 @@ function isValidPersistedState(obj: unknown): obj is {
     typeof record.currentIteration === "number" &&
     Number.isInteger(record.currentIteration) &&
     record.currentIteration > 0 &&
-    typeof record.isAdHocInput === "boolean";
+    typeof record.isAdHocInput === "boolean" &&
+    typeof record.currentPhaseId === "string";
 
   if (!coreOk) {
     return false;
@@ -130,6 +133,7 @@ export function saveLoopEngineState(
     currentPhase: number;
     currentIteration: number;
     isAdHocInput: boolean;
+    currentPhaseId: string;
     vars?: { [name: string]: { value: unknown; type: string } };
   },
 ): void {
@@ -163,12 +167,14 @@ export function extractPersistedState(state: PioSessionState): {
   currentPhase: number;
   currentIteration: number;
   isAdHocInput: boolean;
+  currentPhaseId: string;
   vars?: { [name: string]: { value: unknown; type: string } };
 } {
   const base = {
     currentPhase: state.currentPhase,
     currentIteration: state.currentIteration,
     isAdHocInput: state.isAdHocInput,
+    currentPhaseId: state.currentPhaseId,
   };
 
   if (state.store) {

@@ -3966,6 +3966,7 @@ describe("persistence integration", () => {
         currentPhase: 3,
         currentIteration: 2,
         isAdHocInput: true,
+        currentPhaseId: "",
       };
       vi.mocked(statePersistence.loadLoopEngineState).mockReturnValue(
         savedState,
@@ -4948,6 +4949,7 @@ describe("session variable integration", () => {
         currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
+        currentPhaseId: "",
         vars: { myVar: { value: "hello", type: "string" } },
       });
       setupLoopEngine(pi);
@@ -4975,6 +4977,7 @@ describe("session variable integration", () => {
         currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
+        currentPhaseId: "",
         vars: { x: { value: 10, type: "number" } },
       });
       setupLoopEngine(pi);

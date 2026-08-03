@@ -62,14 +62,19 @@ describe("loadLoopEngineState — valid file", () => {
     cleanup(tempDir);
   });
 
-  it("returns the correct object for a valid JSON file with all three fields", async () => {
+  it("returns the correct object for a valid JSON file with all four fields", async () => {
     const mod = await import("./state-persistence");
 
     // Trigger directory creation
     mod.ensureStateDir();
 
     const stateDir = getStateDir(tempDir);
-    const data = { currentPhase: 2, currentIteration: 3, isAdHocInput: true };
+    const data = {
+      currentPhase: 2,
+      currentIteration: 3,
+      isAdHocInput: true,
+      currentPhaseId: "phase-a",
+    };
     fs.writeFileSync(
       path.join(stateDir, "sess-1.json"),
       JSON.stringify(data),
@@ -82,6 +87,7 @@ describe("loadLoopEngineState — valid file", () => {
       currentPhase: 2,
       currentIteration: 3,
       isAdHocInput: true,
+      currentPhaseId: "phase-a",
     });
   });
 
@@ -343,6 +349,7 @@ describe("loadLoopEngineState — error handling", () => {
         currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
+        currentPhaseId: "create-goal",
         vars: {
           count: { value: 42, type: "number" },
           name: { value: "hello", type: "string" },
@@ -357,6 +364,7 @@ describe("loadLoopEngineState — error handling", () => {
       currentPhase: 1,
       currentIteration: 1,
       isAdHocInput: false,
+      currentPhaseId: "create-goal",
       vars: {
         count: { value: 42, type: "number" },
         name: { value: "hello", type: "string" },
@@ -375,6 +383,7 @@ describe("loadLoopEngineState — error handling", () => {
         currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
+        currentPhaseId: "",
         vars: {},
       }),
       "utf-8",
@@ -386,11 +395,12 @@ describe("loadLoopEngineState — error handling", () => {
       currentPhase: 1,
       currentIteration: 1,
       isAdHocInput: false,
+      currentPhaseId: "",
       vars: {},
     });
   });
 
-  it("accepts persisted objects without vars field (backward compat)", async () => {
+  it("accepts persisted objects without vars field (vars is optional)", async () => {
     const mod = await import("./state-persistence");
     mod.ensureStateDir();
 
@@ -401,6 +411,7 @@ describe("loadLoopEngineState — error handling", () => {
         currentPhase: 2,
         currentIteration: 3,
         isAdHocInput: true,
+        currentPhaseId: "phase-b",
       }),
       "utf-8",
     );
@@ -411,8 +422,58 @@ describe("loadLoopEngineState — error handling", () => {
       currentPhase: 2,
       currentIteration: 3,
       isAdHocInput: true,
+      currentPhaseId: "phase-b",
     });
     expect(result).not.toHaveProperty("vars");
+  });
+
+  it("rejects persisted objects without currentPhaseId (old file)", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const stateDir = getStateDir(tempDir);
+    fs.writeFileSync(
+      path.join(stateDir, "sess-old.json"),
+      JSON.stringify({
+        currentPhase: 2,
+        currentIteration: 3,
+        isAdHocInput: true,
+      }),
+      "utf-8",
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = mod.loadLoopEngineState("sess-old");
+
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("rejects persisted objects where currentPhaseId is not a string", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const stateDir = getStateDir(tempDir);
+    fs.writeFileSync(
+      path.join(stateDir, "sess-bad-phase-id.json"),
+      JSON.stringify({
+        currentPhase: 1,
+        currentIteration: 1,
+        isAdHocInput: false,
+        currentPhaseId: 123,
+      }),
+      "utf-8",
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = mod.loadLoopEngineState("sess-bad-phase-id");
+
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 
   it("rejects persisted objects where vars is an array", async () => {
@@ -619,6 +680,7 @@ describe("round-trip with vars", () => {
       currentPhase: 2,
       currentIteration: 5,
       isAdHocInput: false,
+      currentPhaseId: "phase-a",
       vars: {
         count: { value: 42, type: "number" },
         name: { value: "hello", type: "string" },
@@ -640,6 +702,7 @@ describe("round-trip with vars", () => {
       currentPhase: 1,
       currentIteration: 1,
       isAdHocInput: false,
+      currentPhaseId: "phase-a",
     };
 
     mod.saveLoopEngineState("sess-rt-no-vars", state);
@@ -669,7 +732,12 @@ describe("saveLoopEngineState — basic write", () => {
     const mod = await import("./state-persistence");
     mod.ensureStateDir();
 
-    const state = { currentPhase: 5, currentIteration: 3, isAdHocInput: true };
+    const state = {
+      currentPhase: 5,
+      currentIteration: 3,
+      isAdHocInput: true,
+      currentPhaseId: "phase-a",
+    };
     mod.saveLoopEngineState("sess-round", state);
 
     const loaded = mod.loadLoopEngineState("sess-round");
@@ -680,7 +748,12 @@ describe("saveLoopEngineState — basic write", () => {
     const mod = await import("./state-persistence");
     mod.ensureStateDir();
 
-    const state = { currentPhase: 1, currentIteration: 1, isAdHocInput: false };
+    const state = {
+      currentPhase: 1,
+      currentIteration: 1,
+      isAdHocInput: false,
+      currentPhaseId: "",
+    };
     mod.saveLoopEngineState("sess-pretty", state);
 
     const filePath = getStateFilePath(tempDir, "sess-pretty");
@@ -717,6 +790,7 @@ describe("saveLoopEngineState — atomic write", () => {
       currentPhase: 1,
       currentIteration: 1,
       isAdHocInput: false,
+      currentPhaseId: "",
     };
     mod1.saveLoopEngineState("sess-atomic", initState);
 
@@ -741,6 +815,7 @@ describe("saveLoopEngineState — atomic write", () => {
         currentPhase: 99,
         currentIteration: 99,
         isAdHocInput: true,
+        currentPhaseId: "phase-x",
       }),
     ).not.toThrow();
 
@@ -788,6 +863,7 @@ describe("saveLoopEngineState — error handling", () => {
         currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
+        currentPhaseId: "",
       }),
     ).not.toThrow();
 
@@ -826,8 +902,14 @@ describe("concurrent sessions", () => {
       currentPhase: 1,
       currentIteration: 5,
       isAdHocInput: false,
+      currentPhaseId: "phase-a",
     };
-    const stateB = { currentPhase: 3, currentIteration: 2, isAdHocInput: true };
+    const stateB = {
+      currentPhase: 3,
+      currentIteration: 2,
+      isAdHocInput: true,
+      currentPhaseId: "phase-b",
+    };
 
     mod.saveLoopEngineState("session-a", stateA);
     mod.saveLoopEngineState("session-b", stateB);
@@ -875,6 +957,7 @@ describe("extractPersistedState", () => {
       currentPhase: 4,
       currentIteration: 7,
       isAdHocInput: true,
+      currentPhaseId: "",
     });
     // No vars key when store is absent
     expect(result).not.toHaveProperty("vars");
@@ -912,6 +995,7 @@ describe("extractPersistedState", () => {
       currentPhase: 2,
       currentIteration: 3,
       isAdHocInput: false,
+      currentPhaseId: "",
       vars: {
         count: { value: 42, type: "number" },
         name: { value: "hello", type: "string" },

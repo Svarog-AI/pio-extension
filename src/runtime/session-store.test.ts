@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PhaseManager } from "./phase-manager";
 import type { PioSessionState } from "./session-state";
 import { __testSetState, getState, resetState } from "./session-state";
 import {
@@ -525,7 +526,15 @@ describe("session variable tools", () => {
 
   // Helper: merge partial updates into a full PioSessionState
   function setPartialState(partial: Partial<PioSessionState>): void {
-    __testSetState({ ...getState(), ...partial } as PioSessionState);
+    // When phasesList is provided, also set phaseManager and currentPhaseId
+    // so that the setVar tool's phase kind check works correctly
+    const extras: Partial<PioSessionState> = {};
+    if (partial.phasesList && !partial.phaseManager) {
+      extras.phaseManager = new PhaseManager(partial.phasesList);
+      const cp = partial.currentPhase ?? 1;
+      extras.currentPhaseId = partial.phasesList[cp - 1]?.id ?? "";
+    }
+    __testSetState({ ...getState(), ...partial, ...extras } as PioSessionState);
   }
 
   // Helper: extract text from tool result content

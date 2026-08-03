@@ -249,8 +249,7 @@ export const setVarTool = defineTool({
     }
 
     // 2. Phase kind check
-    const phaseIdx = state.currentPhase - 1;
-    const currentPhase = state.phasesList[phaseIdx];
+    const currentPhase = state.phaseManager?.getPhase(state.currentPhaseId);
     if (currentPhase?.kind !== "variable-definition") {
       const phaseInfo = currentPhase
         ? `Phase ${state.currentPhase} (${currentPhase.title})`

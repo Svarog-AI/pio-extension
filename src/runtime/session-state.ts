@@ -65,9 +65,9 @@ export interface PioSessionState {
    */
   adHocPhaseNotified: boolean;
 
-  /** Phase-level write allowlists: phase number (1-based) → { allowedPaths (resolved absolute paths), allowedNames (original output names for error messages), allContractOutputs (all known contract output paths, used by write: [] to block). Populated during resources_discover. */
+  /** Phase-level write allowlists: phase ID (string, e.g. "step-1") → { allowedPaths (resolved absolute paths), allowedNames (original output names for error messages), allContractOutputs (all known contract output paths, used by write: [] to block). Populated during resources_discover. */
   phaseWriteAllowlist: Map<
-    number,
+    string,
     {
       allowedPaths: Set<string>;
       allowedNames: string[];

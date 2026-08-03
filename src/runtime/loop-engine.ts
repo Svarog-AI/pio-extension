@@ -595,11 +595,12 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       phaseManager: pm,
     });
 
-    // Set currentPhaseId from resolved phase
-    const firstPhase = phasesList[getState().currentPhase - 1];
-    if (firstPhase) {
-      setState({ currentPhaseId: firstPhase.id });
-    }
+    // Set currentPhaseId: prefer saved value, fall back to reconstruction
+    const savedPhaseId = saved?.currentPhaseId;
+    const reconstructedPhaseId = phasesList[getState().currentPhase - 1]?.id;
+    setState({
+      currentPhaseId: savedPhaseId ?? reconstructedPhaseId ?? "",
+    });
 
     // Initialize session variable store — reuse saved from loadLoopEngineState() call above
     const store = initializeStore(config.sessionParams ?? {}, saved?.vars);
@@ -748,7 +749,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         }
       } else {
         console.warn(
-          `[loop-engine] Step ${state.currentPhase}: no write allowlist entry found — write gating skipped. This should not happen after resources_discover.`,
+          `[loop-engine] Phase ${state.currentPhase}: no write allowlist entry found — write gating skipped. This should not happen after resources_discover.`,
         );
       }
     }

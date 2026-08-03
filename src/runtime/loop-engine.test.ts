@@ -4257,6 +4257,37 @@ describe("persistence integration", () => {
       vi.mocked(statePersistence.loadLoopEngineState).mockReset();
     });
 
+    it("prefers saved currentPhaseId over reconstruction from numeric index", async () => {
+      const savedState = {
+        currentPhase: 2,
+        currentIteration: 1,
+        isAdHocInput: false,
+        currentPhaseId: "step-2",
+      };
+      vi.mocked(statePersistence.loadLoopEngineState).mockReturnValue(
+        savedState,
+      );
+
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      // Act
+      const discoverHandlers = handlers.get("resources_discover");
+      for (const h of discoverHandlers!) {
+        await h(
+          { type: "resources_discover", cwd: ".", reason: "startup" },
+          mockCtx,
+        );
+      }
+
+      // Assert: saved currentPhaseId is preferred over reconstruction
+      const state = getState();
+      expect(state.currentPhaseId).toBe("step-2");
+
+      vi.mocked(statePersistence.loadLoopEngineState).mockReset();
+    });
+
     it("uses defaults when loadLoopEngineState returns null", async () => {
       vi.mocked(statePersistence.loadLoopEngineState).mockReturnValue(null);
 

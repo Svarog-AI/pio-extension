@@ -656,6 +656,55 @@ describe("/goto command", () => {
       // No error notification
       expect(ctx.ui.notify).not.toHaveBeenCalled();
     });
+
+    it("clears ad-hoc mode flags (isAdHocInput, adHocPhaseNotified) when invoked from ad-hoc mode", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+        { id: "s3", title: "S3", instructions: "Do C" },
+      ];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        sessionId: "goto-session",
+        currentPhase: 1,
+        currentPhaseId: "s1",
+        currentIteration: 3,
+        totalPhases: 3,
+        phasesList: phases,
+        filesWritten: ["/old/file.ts"],
+        askUserCalled: true,
+        isAdHocInput: true, // User was in ad-hoc mode
+        adHocPhaseNotified: true, // Already notified about pause
+        phaseWriteAllowlist: new Map(),
+        phaseManager: pm,
+      });
+
+      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+      const ctx: any = { ui: { notify: vi.fn() } };
+      await fireGotoCommand(registeredCommands, "s2", ctx);
+
+      const state = getState();
+      // Phase jumped correctly
+      expect(state.currentPhase).toBe(2);
+      expect(state.currentPhaseId).toBe("s2");
+      // Ad-hoc flags cleared — follow-up will trigger normal phase instructions, not "Workflow Paused"
+      expect(state.isAdHocInput).toBe(false);
+      expect(state.adHocPhaseNotified).toBe(false);
+      // Tracking cleared
+      expect(state.currentIteration).toBe(1);
+      expect(state.filesWritten).toEqual([]);
+      expect(state.askUserCalled).toBe(false);
+      // Follow-up sent
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].options).toEqual({
+        deliverAs: "followUp",
+      });
+    });
   });
 
   // ---- Invalid phase ----

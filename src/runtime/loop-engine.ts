@@ -1024,12 +1024,15 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         state.phasesList.findIndex((p) => p.id === targetId) + 1;
 
       // Set both currentPhase and currentPhaseId, reset iteration to 1, clear tracking
+      // Also clear ad-hoc mode flags so the follow-up triggers normal phase instructions
       setState({
         currentPhase: numericIndex,
         currentPhaseId: targetId,
         currentIteration: 1,
         filesWritten: [],
         askUserCalled: false,
+        isAdHocInput: false,
+        adHocPhaseNotified: false,
       });
 
       // Persist state

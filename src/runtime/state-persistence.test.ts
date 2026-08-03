@@ -181,7 +181,11 @@ describe("loadLoopEngineState — error handling", () => {
     const stateDir = getStateDir(tempDir);
     fs.writeFileSync(
       path.join(stateDir, "sess-5.json"),
-      JSON.stringify({ currentIteration: 1, isAdHocInput: false }),
+      JSON.stringify({
+        currentIteration: 1,
+        isAdHocInput: false,
+        currentPhaseId: "",
+      }),
       "utf-8",
     );
 
@@ -205,6 +209,7 @@ describe("loadLoopEngineState — error handling", () => {
         currentPhase: "two",
         currentIteration: 1,
         isAdHocInput: false,
+        currentPhaseId: "",
       }),
       "utf-8",
     );
@@ -229,6 +234,7 @@ describe("loadLoopEngineState — error handling", () => {
         currentPhase: 1,
         currentIteration: "one",
         isAdHocInput: false,
+        currentPhaseId: "",
       }),
       "utf-8",
     );
@@ -253,6 +259,7 @@ describe("loadLoopEngineState — error handling", () => {
         currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: "true",
+        currentPhaseId: "",
       }),
       "utf-8",
     );
@@ -277,6 +284,7 @@ describe("loadLoopEngineState — error handling", () => {
         currentPhase: 2.5,
         currentIteration: 1,
         isAdHocInput: false,
+        currentPhaseId: "",
       }),
       "utf-8",
     );
@@ -301,6 +309,7 @@ describe("loadLoopEngineState — error handling", () => {
         currentPhase: 0,
         currentIteration: 0,
         isAdHocInput: false,
+        currentPhaseId: "",
       }),
       "utf-8",
     );
@@ -325,6 +334,7 @@ describe("loadLoopEngineState — error handling", () => {
         currentPhase: -1,
         currentIteration: 1,
         isAdHocInput: false,
+        currentPhaseId: "",
       }),
       "utf-8",
     );

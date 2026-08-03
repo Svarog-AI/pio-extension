@@ -539,6 +539,187 @@ describe("/continue command", () => {
 });
 
 // ---------------------------------------------------------------------------
+// /goto command — jump to a specific phase by ID
+// ---------------------------------------------------------------------------
+
+describe("/goto command", () => {
+  async function fireGotoCommand(
+    registeredCommands: Map<
+      string,
+      { description?: string; handler: (...args: unknown[]) => unknown }
+    >,
+    args: string,
+    ctx: { ui: { notify: (msg: string, type: string) => void } },
+  ) {
+    const cmd = registeredCommands.get("goto");
+    expect(cmd).toBeDefined();
+    await cmd!.handler(args, ctx);
+  }
+
+  // ---- Registration ----
+
+  describe("registration", () => {
+    it('registeredCommands.has("goto") is true after setupLoopEngine', async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      expect(registeredCommands.has("goto")).toBe(true);
+      const cmd = registeredCommands.get("goto");
+      expect(cmd).toBeDefined();
+      expect(cmd!.description?.toLowerCase()).toContain("phase");
+    });
+  });
+
+  // ---- Guards ----
+
+  describe("guards", () => {
+    it("does nothing when isActive is false", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({ isActive: false, currentPhase: 1 });
+
+      const ctx: any = { ui: { notify: vi.fn() } };
+      await fireGotoCommand(registeredCommands, "step-2", ctx);
+
+      expect(sendUserMessageCalls).toHaveLength(0);
+      expect(ctx.ui.notify).not.toHaveBeenCalled();
+    });
+
+    it("does nothing when phaseManager is null", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({ isActive: true, currentPhase: 1, phaseManager: null });
+
+      const ctx: any = { ui: { notify: vi.fn() } };
+      await fireGotoCommand(registeredCommands, "step-2", ctx);
+
+      expect(sendUserMessageCalls).toHaveLength(0);
+      expect(ctx.ui.notify).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---- Valid phase ----
+
+  describe("valid phase", () => {
+    it("sets currentPhase, currentPhaseId, resets iteration, clears tracking, persists, and sends follow-up", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+        { id: "s3", title: "S3", instructions: "Do C" },
+      ];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        sessionId: "goto-session",
+        currentPhase: 1,
+        currentPhaseId: "s1",
+        currentIteration: 5,
+        totalPhases: 3,
+        phasesList: phases,
+        filesWritten: ["/old/file.ts"],
+        askUserCalled: true,
+        isAdHocInput: false,
+        phaseWriteAllowlist: new Map(),
+        phaseManager: pm,
+      });
+
+      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+      const ctx: any = { ui: { notify: vi.fn() } };
+      await fireGotoCommand(registeredCommands, "s3", ctx);
+
+      const state = getState();
+      expect(state.currentPhase).toBe(3);
+      expect(state.currentPhaseId).toBe("s3");
+      expect(state.currentIteration).toBe(1);
+      expect(state.filesWritten).toEqual([]);
+      expect(state.askUserCalled).toBe(false);
+
+      // State persisted
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
+
+      // Follow-up message sent
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].content).toBe("");
+      expect(sendUserMessageCalls[0].options).toEqual({
+        deliverAs: "followUp",
+      });
+
+      // No error notification
+      expect(ctx.ui.notify).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---- Invalid phase ----
+
+  describe("invalid phase", () => {
+    it("shows error notification with available phases listed", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentPhaseId: "s1",
+        totalPhases: 2,
+        phasesList: phases,
+        phaseManager: pm,
+      });
+
+      const ctx: any = { ui: { notify: vi.fn() } };
+      await fireGotoCommand(registeredCommands, "nonexistent", ctx);
+
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        'Unknown phase "nonexistent". Available phases: s1, s2',
+        "error",
+      );
+    });
+  });
+
+  // ---- No arguments ----
+
+  describe("no arguments", () => {
+    it("shows warning notification with usage", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [{ id: "s1", title: "S1", instructions: "Do A" }];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhase: 1,
+        currentPhaseId: "s1",
+        phasesList: phases,
+        phaseManager: pm,
+      });
+
+      const ctx: any = { ui: { notify: vi.fn() } };
+      await fireGotoCommand(registeredCommands, "   ", ctx);
+
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        "Usage: /goto <phase-id>",
+        "warning",
+      );
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // resources_discover — pio session detection and state initialization
 // ---------------------------------------------------------------------------
 
@@ -570,6 +751,11 @@ describe("resources_discover", () => {
     expect(state.isAdHocInput).toBe(false);
     expect(state.filesWritten).toEqual([]);
     expect(state.askUserCalled).toBe(false);
+
+    // Assert: PhaseManager is set and currentPhaseId is synced
+    expect(state.phaseManager).toBeDefined();
+    expect(state.phaseManager).toBeInstanceOf(PhaseManager);
+    expect(state.currentPhaseId).toBe("step-1");
   });
 
   it("when config is absent: resets state", async () => {
@@ -7764,6 +7950,7 @@ describe("advancePhase", () => {
     expect(result.payload).toBeDefined();
     expect(result.payload!.customType).toBe("workflow-phase-instructions");
     expect(getState().currentPhase).toBe(3);
+    expect(getState().currentPhaseId).toBe("s3");
     // Static vars from both programmatic phases should be set
     expect(store.get("a")).toBe("1");
     expect(store.get("b")).toBe("2");
@@ -7802,6 +7989,7 @@ describe("advancePhase", () => {
     expect(result.payload).toBeDefined();
     expect(result.payload!.customType).toBe("workflow-phase-instructions");
     expect(getState().currentPhase).toBe(1);
+    expect(getState().currentPhaseId).toBe("s1");
     // Should have persisted (executePhase + setupTurn each persist)
     expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
   });
@@ -7888,6 +8076,7 @@ describe("advancePhase", () => {
 
       expect(result.triggered).toBe(true);
       expect(getState().currentPhase).toBe(2);
+      expect(getState().currentPhaseId).toBe("s2");
       expect(getState().currentIteration).toBe(1);
     });
 
@@ -7917,6 +8106,7 @@ describe("advancePhase", () => {
       const result = advancePhase(store, "s1", "increment");
 
       expect(result.triggered).toBe(true);
+      expect(getState().currentPhaseId).toBe("s1");
       expect(getState().currentIteration).toBe(3);
     });
 
@@ -7946,6 +8136,7 @@ describe("advancePhase", () => {
       const result = advancePhase(store, "s1", "preserve");
 
       expect(result.triggered).toBe(true);
+      expect(getState().currentPhaseId).toBe("s1");
       expect(getState().currentIteration).toBe(7);
     });
   });

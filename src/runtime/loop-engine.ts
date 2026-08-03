@@ -420,7 +420,7 @@ export function setupTurn(mode: "reset" | "increment" | "preserve"): {
  * manage iteration, reset tracking, persist, and build the message payload.
  *
  * @param store - SessionVariableStore for variable operations
- * @param startAt - 1-based phase number to start from
+ * @param startPhaseId - Phase ID string to start from
  * @param mode - How to adjust the iteration counter ("reset", "increment", "preserve")
  * @returns Object with `triggered` flag and optional `payload` (CustomMessage data)
  */
@@ -595,10 +595,15 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       phaseManager: pm,
     });
 
-    // Set currentPhaseId from resolved phase
-    const firstPhase = phasesList[getState().currentPhase - 1];
-    if (firstPhase) {
-      setState({ currentPhaseId: firstPhase.id });
+    // Set currentPhaseId — prefer saved value, reconstruct from numeric index as fallback
+    const savedPhaseId = saved?.currentPhaseId;
+    if (savedPhaseId) {
+      setState({ currentPhaseId: savedPhaseId });
+    } else {
+      const firstPhase = phasesList[getState().currentPhase - 1];
+      if (firstPhase) {
+        setState({ currentPhaseId: firstPhase.id });
+      }
     }
 
     // Initialize session variable store — reuse saved from loadLoopEngineState() call above

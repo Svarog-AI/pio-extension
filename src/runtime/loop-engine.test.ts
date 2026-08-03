@@ -3362,17 +3362,20 @@ describe("buildPhaseInstructions", () => {
 
   it("includes completed phases info via buildCompletedPhasesIds", async () => {
     const build = await getBuildPhaseInstructions();
+    const phases = [
+      { id: "s1", title: "S1", instructions: "A" },
+      { id: "s2", title: "S2", instructions: "B" },
+      { id: "s3", title: "S3", instructions: "C" },
+      { id: "s4", title: "S4", instructions: "D" },
+      { id: "s5", title: "S5", instructions: "E" },
+    ];
     setState({
       currentPhase: 3,
+      currentPhaseId: "s3",
       currentIteration: 1,
       totalPhases: 5,
-      phasesList: [
-        { id: "s1", title: "S1", instructions: "A" },
-        { id: "s2", title: "S2", instructions: "B" },
-        { id: "s3", title: "S3", instructions: "C" },
-        { id: "s4", title: "S4", instructions: "D" },
-        { id: "s5", title: "S5", instructions: "E" },
-      ],
+      phasesList: phases,
+      phaseManager: new PhaseManager(phases),
     });
     const result = build(getState());
     expect(result).toContain(`Phases "s1" and "s2" completed.`);

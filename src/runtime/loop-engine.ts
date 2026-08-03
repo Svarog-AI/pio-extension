@@ -242,13 +242,14 @@ export function buildVariablePhaseInstructions(
  * Phase 2, and "Phases \"s1\", \"s2\", and \"s3\" completed" (Oxford comma) on Phase 4+.
  */
 function buildCompletedPhasesIds(state: PioSessionState): string {
-  if (state.currentPhase <= 1) return "No previous phases completed.";
+  const pm = state.phaseManager;
+  if (!pm) return "No previous phases completed.";
 
-  const ids: string[] = [];
-  for (let i = 0; i < state.currentPhase - 1; i++) {
-    const phase = state.phasesList[i];
-    if (phase) ids.push(phase.id);
-  }
+  const allIds = pm.listIds();
+  const currentIndex = allIds.indexOf(state.currentPhaseId);
+  if (currentIndex <= 0) return "No previous phases completed.";
+
+  const ids = allIds.slice(0, currentIndex);
 
   if (ids.length === 1) {
     return `Phases "${ids[0]}" completed.`;
@@ -595,11 +596,12 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       phaseManager: pm,
     });
 
-    // Set currentPhaseId: prefer saved value, fall back to reconstruction
-    const savedPhaseId = saved?.currentPhaseId;
-    const reconstructedPhaseId = phasesList[getState().currentPhase - 1]?.id;
+    // Set currentPhaseId: prefer saved value, fall back to PhaseManager lookup
     setState({
-      currentPhaseId: savedPhaseId ?? reconstructedPhaseId ?? "",
+      currentPhaseId:
+        saved?.currentPhaseId ??
+        pm.listIds()[getState().currentPhase - 1] ??
+        "",
     });
 
     // Initialize session variable store — reuse saved from loadLoopEngineState() call above

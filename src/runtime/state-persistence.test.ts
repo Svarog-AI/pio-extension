@@ -487,6 +487,7 @@ describe("loadLoopEngineState — error handling", () => {
         currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
+        currentPhaseId: "",
         vars: [{ value: 1, type: "number" }],
       }),
       "utf-8",
@@ -512,6 +513,7 @@ describe("loadLoopEngineState — error handling", () => {
         currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
+        currentPhaseId: "",
         vars: { count: { value: 42 } },
       }),
       "utf-8",
@@ -537,6 +539,7 @@ describe("loadLoopEngineState — error handling", () => {
         currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
+        currentPhaseId: "",
         vars: { count: { type: "number" } },
       }),
     );
@@ -561,6 +564,7 @@ describe("loadLoopEngineState — error handling", () => {
         currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
+        currentPhaseId: "",
         vars: { count: { value: 42, type: 123 } },
       }),
       "utf-8",
@@ -586,6 +590,7 @@ describe("loadLoopEngineState — error handling", () => {
         currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
+        currentPhaseId: "",
         vars: null,
       }),
       "utf-8",
@@ -611,6 +616,7 @@ describe("loadLoopEngineState — error handling", () => {
         currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
+        currentPhaseId: "",
         vars: { count: "hello" },
       }),
       "utf-8",
@@ -761,6 +767,25 @@ describe("saveLoopEngineState — basic write", () => {
     // Pretty-printed JSON contains newlines
     expect(content).toContain("\n");
     expect(JSON.parse(content)).toEqual(state);
+  });
+
+  it("round-trips an empty currentPhaseId correctly", async () => {
+    const mod = await import("./state-persistence");
+    mod.ensureStateDir();
+
+    const state = {
+      currentPhase: 1,
+      currentIteration: 1,
+      isAdHocInput: false,
+      currentPhaseId: "",
+    };
+    mod.saveLoopEngineState("sess-empty-phase-id", state);
+
+    const loaded = mod.loadLoopEngineState("sess-empty-phase-id");
+
+    expect(loaded).not.toBeNull();
+    expect(loaded!.currentPhaseId).toBe("");
+    expect(loaded).toEqual(state);
   });
 });
 
@@ -931,7 +956,7 @@ describe("extractPersistedState", () => {
     vi.resetModules();
   });
 
-  it("projects exactly the 3 persisted fields when store is absent", async () => {
+  it("projects exactly the 4 persisted fields when store is absent", async () => {
     const { extractPersistedState } = await import("./state-persistence");
     const { __testSetState, getState } = await import("./session-state");
 

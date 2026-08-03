@@ -10,6 +10,7 @@
  * mutate state through the accessor functions.
  */
 
+import type { PhaseManager } from "./phase-manager";
 import type { SessionVariableStore } from "./session-store";
 import type { WorkflowPhase } from "./workflow-types";
 
@@ -79,6 +80,12 @@ export interface PioSessionState {
 
   /** Session variable store instance. Created during resources_discover, accessed via getState().store in loop engine and tools. */
   store?: SessionVariableStore | null;
+
+  /** Current phase ID (string, e.g. "create-goal"). Empty string means inactive. */
+  currentPhaseId: string;
+
+  /** PhaseManager instance created during resources_discover. In-memory only — not persisted. Reconstructed on state reload. */
+  phaseManager?: PhaseManager | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,6 +110,8 @@ function createInitialState(): PioSessionState {
     phaseWriteAllowlist: new Map(),
     sessionId: undefined,
     store: undefined,
+    currentPhaseId: "",
+    phaseManager: undefined,
   };
 }
 

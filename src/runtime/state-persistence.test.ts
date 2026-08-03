@@ -865,6 +865,7 @@ describe("extractPersistedState", () => {
       askUserCalled: true,
       isAdHocInput: true,
       adHocPhaseNotified: false,
+      currentPhaseId: "",
       phaseWriteAllowlist: new Map(),
     });
 
@@ -900,6 +901,7 @@ describe("extractPersistedState", () => {
       askUserCalled: false,
       isAdHocInput: false,
       adHocPhaseNotified: false,
+      currentPhaseId: "",
       phaseWriteAllowlist: new Map(),
       store,
     });
@@ -933,6 +935,7 @@ describe("extractPersistedState", () => {
       askUserCalled: false,
       isAdHocInput: false,
       adHocPhaseNotified: false,
+      currentPhaseId: "",
       phaseWriteAllowlist: new Map(),
       store: null,
     });
@@ -958,6 +961,7 @@ describe("extractPersistedState", () => {
       askUserCalled: false,
       isAdHocInput: false,
       adHocPhaseNotified: false,
+      currentPhaseId: "",
       phaseWriteAllowlist: new Map(),
       store: undefined,
     });
@@ -986,6 +990,7 @@ describe("extractPersistedState", () => {
       askUserCalled: false,
       isAdHocInput: false,
       adHocPhaseNotified: false,
+      currentPhaseId: "",
       phaseWriteAllowlist: new Map(),
       store,
     });

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import type { PhaseManager } from "./phase-manager";
 import {
   __testGetState,
   __testSetState,
@@ -28,6 +29,8 @@ describe("session-state", () => {
       expect(state.askUserCalled).toBe(false);
       expect(state.isAdHocInput).toBe(false);
       expect(state.adHocPhaseNotified).toBe(false);
+      expect(state.currentPhaseId).toBe("");
+      expect(state.phaseManager).toBe(undefined);
       expect(state.store).toBe(undefined);
     });
   });
@@ -96,6 +99,8 @@ describe("session-state", () => {
         filesWritten: ["/some/file"],
         askUserCalled: true,
         isAdHocInput: true,
+        currentPhaseId: "some-phase",
+        phaseManager: {} as PhaseManager,
         store,
       });
 
@@ -113,6 +118,8 @@ describe("session-state", () => {
       expect(state.askUserCalled).toBe(false);
       expect(state.isAdHocInput).toBe(false);
       expect(state.adHocPhaseNotified).toBe(false);
+      expect(state.currentPhaseId).toBe("");
+      expect(state.phaseManager).toBe(undefined);
       expect(state.store).toBe(undefined);
     });
   });
@@ -128,7 +135,8 @@ describe("session-state", () => {
 
     describe("__testSetState", () => {
       it("replaces the entire state when called with an argument", () => {
-        const newState = {
+        const newState = { ...getState() };
+        Object.assign(newState, {
           isActive: true,
           markCompleteCalled: false,
           turnCount: 10,
@@ -141,7 +149,7 @@ describe("session-state", () => {
           isAdHocInput: false,
           adHocPhaseNotified: false,
           phaseWriteAllowlist: new Map(),
-        };
+        });
 
         __testSetState(newState);
 

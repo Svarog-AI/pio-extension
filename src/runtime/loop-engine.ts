@@ -595,15 +595,10 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       phaseManager: pm,
     });
 
-    // Set currentPhaseId — prefer saved value, reconstruct from numeric index as fallback
-    const savedPhaseId = saved?.currentPhaseId;
-    if (savedPhaseId) {
-      setState({ currentPhaseId: savedPhaseId });
-    } else {
-      const firstPhase = phasesList[getState().currentPhase - 1];
-      if (firstPhase) {
-        setState({ currentPhaseId: firstPhase.id });
-      }
+    // Set currentPhaseId from resolved phase
+    const firstPhase = phasesList[getState().currentPhase - 1];
+    if (firstPhase) {
+      setState({ currentPhaseId: firstPhase.id });
     }
 
     // Initialize session variable store — reuse saved from loadLoopEngineState() call above

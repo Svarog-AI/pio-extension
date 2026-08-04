@@ -474,7 +474,7 @@ describe("/continue command", () => {
       });
     });
 
-    it("stays on current phase (no returnTo logic)", async () => {
+    it("replays current phase on /continue", async () => {
       const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
@@ -485,7 +485,7 @@ describe("/continue command", () => {
         totalPhases: 2,
         phasesList: [
           { id: "s1", title: "S1", instructions: "Do A" },
-          { id: "s2", title: "S2", instructions: "Do B" }, // no returnTo
+          { id: "s2", title: "S2", instructions: "Do B" },
         ],
         filesWritten: [],
         askUserCalled: false,

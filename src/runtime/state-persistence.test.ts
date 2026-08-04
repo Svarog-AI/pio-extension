@@ -127,7 +127,7 @@ describe("loadLoopEngineState — error handling", () => {
     const stateDir = getStateDir(tempDir);
     fs.writeFileSync(
       path.join(stateDir, "sess-2.json"),
-      '{ "currentPhase": 2',
+      '{ "currentPhaseId": null',
       "utf-8",
     );
 

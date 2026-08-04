@@ -349,7 +349,7 @@ describe("/continue command", () => {
       expect(getState().currentIteration).toBe(0); // unchanged
     });
 
-    it("executes when currentPhase is 1 (no dead guard)", async () => {
+    it("executes on first phase (no dead guard)", async () => {
       const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
@@ -1220,7 +1220,7 @@ describe("before_agent_start", () => {
       expect(results).toHaveLength(0);
     });
 
-    it("skips injection when currentPhase is out of bounds", async () => {
+    it("skips injection when currentPhaseId is unknown", async () => {
       const { pi, handlers } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
@@ -2172,7 +2172,7 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Should advance: currentPhase updated, sendMessage called with CustomMessage
+      // Should advance to next phase via sendMessage
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-phase-instructions",
@@ -2225,7 +2225,7 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Should loop: sendMessage called with CustomMessage, currentPhase unchanged
+      // Should loop on same phase via sendMessage
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-phase-instructions",
@@ -4036,7 +4036,7 @@ describe("tool_call — phase-level write gate", () => {
       );
     }
 
-    // Set currentPhase to 1 (the phase without write)
+    // Set currentPhaseId to the phase without write
 
     // Fire tool_call to write a contract output
     const toolHandlers = handlers.get("tool_call");

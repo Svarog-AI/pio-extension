@@ -593,7 +593,7 @@ describe("/goto command", () => {
   // ---- Valid phase ----
 
   describe("valid phase", () => {
-    it("sets currentPhase, currentPhaseId, resets iteration, clears tracking, persists, and sends follow-up", async () => {
+    it("sets currentPhaseId, resets iteration, clears tracking, persists, and sends follow-up", async () => {
       const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);

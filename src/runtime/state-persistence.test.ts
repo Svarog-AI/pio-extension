@@ -70,7 +70,6 @@ describe("loadLoopEngineState — valid file", () => {
 
     const stateDir = getStateDir(tempDir);
     const data = {
-      currentPhase: 2,
       currentIteration: 3,
       isAdHocInput: true,
       currentPhaseId: "phase-a",
@@ -84,7 +83,6 @@ describe("loadLoopEngineState — valid file", () => {
     const result = mod.loadLoopEngineState("sess-1");
 
     expect(result).toEqual({
-      currentPhase: 2,
       currentIteration: 3,
       isAdHocInput: true,
       currentPhaseId: "phase-a",
@@ -174,55 +172,6 @@ describe("loadLoopEngineState — error handling", () => {
     warnSpy.mockRestore();
   });
 
-  it("returns null for missing fields (no currentPhase)", async () => {
-    const mod = await import("./state-persistence");
-    mod.ensureStateDir();
-
-    const stateDir = getStateDir(tempDir);
-    fs.writeFileSync(
-      path.join(stateDir, "sess-5.json"),
-      JSON.stringify({
-        currentIteration: 1,
-        isAdHocInput: false,
-        currentPhaseId: "",
-      }),
-      "utf-8",
-    );
-
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    const result = mod.loadLoopEngineState("sess-5");
-
-    expect(result).toBeNull();
-    expect(warnSpy).toHaveBeenCalled();
-    warnSpy.mockRestore();
-  });
-
-  it("returns null for wrong types (currentPhase is a string)", async () => {
-    const mod = await import("./state-persistence");
-    mod.ensureStateDir();
-
-    const stateDir = getStateDir(tempDir);
-    fs.writeFileSync(
-      path.join(stateDir, "sess-6.json"),
-      JSON.stringify({
-        currentPhase: "two",
-        currentIteration: 1,
-        isAdHocInput: false,
-        currentPhaseId: "",
-      }),
-      "utf-8",
-    );
-
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    const result = mod.loadLoopEngineState("sess-6");
-
-    expect(result).toBeNull();
-    expect(warnSpy).toHaveBeenCalled();
-    warnSpy.mockRestore();
-  });
-
   it("returns null for wrong types (currentIteration is a string)", async () => {
     const mod = await import("./state-persistence");
     mod.ensureStateDir();
@@ -231,7 +180,6 @@ describe("loadLoopEngineState — error handling", () => {
     fs.writeFileSync(
       path.join(stateDir, "sess-7.json"),
       JSON.stringify({
-        currentPhase: 1,
         currentIteration: "one",
         isAdHocInput: false,
         currentPhaseId: "",
@@ -256,7 +204,6 @@ describe("loadLoopEngineState — error handling", () => {
     fs.writeFileSync(
       path.join(stateDir, "sess-8.json"),
       JSON.stringify({
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: "true",
         currentPhaseId: "",
@@ -273,81 +220,6 @@ describe("loadLoopEngineState — error handling", () => {
     warnSpy.mockRestore();
   });
 
-  it("returns null for non-integer numbers (currentPhase is 2.5)", async () => {
-    const mod = await import("./state-persistence");
-    mod.ensureStateDir();
-
-    const stateDir = getStateDir(tempDir);
-    fs.writeFileSync(
-      path.join(stateDir, "sess-9.json"),
-      JSON.stringify({
-        currentPhase: 2.5,
-        currentIteration: 1,
-        isAdHocInput: false,
-        currentPhaseId: "",
-      }),
-      "utf-8",
-    );
-
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    const result = mod.loadLoopEngineState("sess-9");
-
-    expect(result).toBeNull();
-    expect(warnSpy).toHaveBeenCalled();
-    warnSpy.mockRestore();
-  });
-
-  it("returns null for zero values (currentPhase is 0)", async () => {
-    const mod = await import("./state-persistence");
-    mod.ensureStateDir();
-
-    const stateDir = getStateDir(tempDir);
-    fs.writeFileSync(
-      path.join(stateDir, "sess-10.json"),
-      JSON.stringify({
-        currentPhase: 0,
-        currentIteration: 0,
-        isAdHocInput: false,
-        currentPhaseId: "",
-      }),
-      "utf-8",
-    );
-
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    const result = mod.loadLoopEngineState("sess-10");
-
-    expect(result).toBeNull();
-    expect(warnSpy).toHaveBeenCalled();
-    warnSpy.mockRestore();
-  });
-
-  it("returns null for negative values (currentPhase is -1)", async () => {
-    const mod = await import("./state-persistence");
-    mod.ensureStateDir();
-
-    const stateDir = getStateDir(tempDir);
-    fs.writeFileSync(
-      path.join(stateDir, "sess-11.json"),
-      JSON.stringify({
-        currentPhase: -1,
-        currentIteration: 1,
-        isAdHocInput: false,
-        currentPhaseId: "",
-      }),
-      "utf-8",
-    );
-
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    const result = mod.loadLoopEngineState("sess-11");
-
-    expect(result).toBeNull();
-    expect(warnSpy).toHaveBeenCalled();
-    warnSpy.mockRestore();
-  });
-
   it("accepts persisted objects with a valid vars field", async () => {
     const mod = await import("./state-persistence");
     mod.ensureStateDir();
@@ -356,7 +228,6 @@ describe("loadLoopEngineState — error handling", () => {
     fs.writeFileSync(
       path.join(stateDir, "sess-vars-ok.json"),
       JSON.stringify({
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
         currentPhaseId: "create-goal",
@@ -371,7 +242,6 @@ describe("loadLoopEngineState — error handling", () => {
     const result = mod.loadLoopEngineState("sess-vars-ok");
 
     expect(result).toEqual({
-      currentPhase: 1,
       currentIteration: 1,
       isAdHocInput: false,
       currentPhaseId: "create-goal",
@@ -390,7 +260,6 @@ describe("loadLoopEngineState — error handling", () => {
     fs.writeFileSync(
       path.join(stateDir, "sess-vars-empty.json"),
       JSON.stringify({
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
         currentPhaseId: "",
@@ -402,7 +271,6 @@ describe("loadLoopEngineState — error handling", () => {
     const result = mod.loadLoopEngineState("sess-vars-empty");
 
     expect(result).toEqual({
-      currentPhase: 1,
       currentIteration: 1,
       isAdHocInput: false,
       currentPhaseId: "",
@@ -418,7 +286,6 @@ describe("loadLoopEngineState — error handling", () => {
     fs.writeFileSync(
       path.join(stateDir, "sess-no-vars.json"),
       JSON.stringify({
-        currentPhase: 2,
         currentIteration: 3,
         isAdHocInput: true,
         currentPhaseId: "phase-b",
@@ -429,7 +296,6 @@ describe("loadLoopEngineState — error handling", () => {
     const result = mod.loadLoopEngineState("sess-no-vars");
 
     expect(result).toEqual({
-      currentPhase: 2,
       currentIteration: 3,
       isAdHocInput: true,
       currentPhaseId: "phase-b",
@@ -445,7 +311,6 @@ describe("loadLoopEngineState — error handling", () => {
     fs.writeFileSync(
       path.join(stateDir, "sess-old.json"),
       JSON.stringify({
-        currentPhase: 2,
         currentIteration: 3,
         isAdHocInput: true,
       }),
@@ -469,7 +334,6 @@ describe("loadLoopEngineState — error handling", () => {
     fs.writeFileSync(
       path.join(stateDir, "sess-bad-phase-id.json"),
       JSON.stringify({
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
         currentPhaseId: 123,
@@ -494,7 +358,6 @@ describe("loadLoopEngineState — error handling", () => {
     fs.writeFileSync(
       path.join(stateDir, "sess-vars-array.json"),
       JSON.stringify({
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
         currentPhaseId: "",
@@ -520,7 +383,6 @@ describe("loadLoopEngineState — error handling", () => {
     fs.writeFileSync(
       path.join(stateDir, "sess-vars-no-type.json"),
       JSON.stringify({
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
         currentPhaseId: "",
@@ -546,7 +408,6 @@ describe("loadLoopEngineState — error handling", () => {
     fs.writeFileSync(
       path.join(stateDir, "sess-vars-no-value.json"),
       JSON.stringify({
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
         currentPhaseId: "",
@@ -571,7 +432,6 @@ describe("loadLoopEngineState — error handling", () => {
     fs.writeFileSync(
       path.join(stateDir, "sess-vars-num-type.json"),
       JSON.stringify({
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
         currentPhaseId: "",
@@ -597,7 +457,6 @@ describe("loadLoopEngineState — error handling", () => {
     fs.writeFileSync(
       path.join(stateDir, "sess-vars-null.json"),
       JSON.stringify({
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
         currentPhaseId: "",
@@ -623,7 +482,6 @@ describe("loadLoopEngineState — error handling", () => {
     fs.writeFileSync(
       path.join(stateDir, "sess-vars-str-entry.json"),
       JSON.stringify({
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
         currentPhaseId: "",
@@ -693,7 +551,6 @@ describe("round-trip with vars", () => {
     mod.ensureStateDir();
 
     const state = {
-      currentPhase: 2,
       currentIteration: 5,
       isAdHocInput: false,
       currentPhaseId: "phase-a",
@@ -715,7 +572,6 @@ describe("round-trip with vars", () => {
     mod.ensureStateDir();
 
     const state = {
-      currentPhase: 1,
       currentIteration: 1,
       isAdHocInput: false,
       currentPhaseId: "phase-a",
@@ -749,7 +605,6 @@ describe("saveLoopEngineState — basic write", () => {
     mod.ensureStateDir();
 
     const state = {
-      currentPhase: 5,
       currentIteration: 3,
       isAdHocInput: true,
       currentPhaseId: "phase-a",
@@ -765,7 +620,6 @@ describe("saveLoopEngineState — basic write", () => {
     mod.ensureStateDir();
 
     const state = {
-      currentPhase: 1,
       currentIteration: 1,
       isAdHocInput: false,
       currentPhaseId: "",
@@ -784,7 +638,6 @@ describe("saveLoopEngineState — basic write", () => {
     mod.ensureStateDir();
 
     const state = {
-      currentPhase: 1,
       currentIteration: 1,
       isAdHocInput: false,
       currentPhaseId: "",
@@ -822,7 +675,6 @@ describe("saveLoopEngineState — atomic write", () => {
     mod1.ensureStateDir();
 
     const initState = {
-      currentPhase: 1,
       currentIteration: 1,
       isAdHocInput: false,
       currentPhaseId: "",
@@ -847,7 +699,6 @@ describe("saveLoopEngineState — atomic write", () => {
     // This should not throw
     expect(() =>
       mod2.saveLoopEngineState("sess-atomic", {
-        currentPhase: 99,
         currentIteration: 99,
         isAdHocInput: true,
         currentPhaseId: "phase-x",
@@ -895,7 +746,6 @@ describe("saveLoopEngineState — error handling", () => {
 
     expect(() =>
       mod.saveLoopEngineState("sess-err", {
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
         currentPhaseId: "",
@@ -934,13 +784,11 @@ describe("concurrent sessions", () => {
     mod.ensureStateDir();
 
     const stateA = {
-      currentPhase: 1,
       currentIteration: 5,
       isAdHocInput: false,
       currentPhaseId: "phase-a",
     };
     const stateB = {
-      currentPhase: 3,
       currentIteration: 2,
       isAdHocInput: true,
       currentPhaseId: "phase-b",
@@ -974,7 +822,7 @@ describe("extractPersistedState", () => {
       isActive: true,
       markCompleteCalled: false,
       turnCount: 10,
-      currentPhase: 4,
+
       currentIteration: 7,
       totalPhases: 5,
       phasesList: [],
@@ -989,7 +837,6 @@ describe("extractPersistedState", () => {
     const result = extractPersistedState(getState());
 
     expect(result).toEqual({
-      currentPhase: 4,
       currentIteration: 7,
       isAdHocInput: true,
       currentPhaseId: "",
@@ -1011,7 +858,7 @@ describe("extractPersistedState", () => {
       isActive: true,
       markCompleteCalled: false,
       turnCount: 10,
-      currentPhase: 2,
+
       currentIteration: 3,
       totalPhases: 5,
       phasesList: [],
@@ -1027,7 +874,6 @@ describe("extractPersistedState", () => {
     const result = extractPersistedState(getState());
 
     expect(result).toEqual({
-      currentPhase: 2,
       currentIteration: 3,
       isAdHocInput: false,
       currentPhaseId: "",
@@ -1046,7 +892,7 @@ describe("extractPersistedState", () => {
       isActive: true,
       markCompleteCalled: false,
       turnCount: 10,
-      currentPhase: 1,
+
       currentIteration: 1,
       totalPhases: 3,
       phasesList: [],
@@ -1072,7 +918,7 @@ describe("extractPersistedState", () => {
       isActive: true,
       markCompleteCalled: false,
       turnCount: 10,
-      currentPhase: 1,
+
       currentIteration: 1,
       totalPhases: 3,
       phasesList: [],
@@ -1101,7 +947,7 @@ describe("extractPersistedState", () => {
       isActive: true,
       markCompleteCalled: false,
       turnCount: 1,
-      currentPhase: 1,
+
       currentIteration: 1,
       totalPhases: 3,
       phasesList: [],

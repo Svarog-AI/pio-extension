@@ -21,7 +21,6 @@ describe("session-state", () => {
       expect(state.isActive).toBe(false);
       expect(state.markCompleteCalled).toBe(false);
       expect(state.turnCount).toBe(0);
-      expect(state.currentPhase).toBe(0);
       expect(state.currentIteration).toBe(0);
       expect(state.totalPhases).toBe(0);
       expect(state.phasesList).toEqual([]);
@@ -46,7 +45,6 @@ describe("session-state", () => {
       // Other fields should retain defaults
       expect(state.markCompleteCalled).toBe(false);
       expect(state.turnCount).toBe(0);
-      expect(state.currentPhase).toBe(0);
       expect(state.currentIteration).toBe(0);
       expect(state.phasesList).toEqual([]);
     });
@@ -92,7 +90,6 @@ describe("session-state", () => {
         isActive: true,
         markCompleteCalled: true,
         turnCount: 5,
-        currentPhase: 3,
         currentIteration: 2,
         totalPhases: 5,
         phasesList: [{ id: "s1", title: "A", instructions: "I" }],
@@ -110,7 +107,6 @@ describe("session-state", () => {
       expect(state.isActive).toBe(false);
       expect(state.markCompleteCalled).toBe(false);
       expect(state.turnCount).toBe(0);
-      expect(state.currentPhase).toBe(0);
       expect(state.currentIteration).toBe(0);
       expect(state.totalPhases).toBe(0);
       expect(state.phasesList).toEqual([]);
@@ -140,7 +136,6 @@ describe("session-state", () => {
           isActive: true,
           markCompleteCalled: false,
           turnCount: 10,
-          currentPhase: 4,
           currentIteration: 3,
           totalPhases: 6,
           phasesList: [],
@@ -156,7 +151,6 @@ describe("session-state", () => {
         const state = getState();
         expect(state.isActive).toBe(true);
         expect(state.turnCount).toBe(10);
-        expect(state.currentPhase).toBe(4);
         expect(state.currentIteration).toBe(3);
         expect(state.totalPhases).toBe(6);
         expect(state.filesWritten).toEqual(["/test/file"]);

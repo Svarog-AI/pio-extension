@@ -252,8 +252,8 @@ export const setVarTool = defineTool({
     const currentPhase = state.phaseManager?.getPhase(state.currentPhaseId);
     if (currentPhase?.kind !== "variable-definition") {
       const phaseInfo = currentPhase
-        ? `Phase ${state.currentPhase} (${currentPhase.title})`
-        : `Phase ${state.currentPhase}`;
+        ? `"${state.currentPhaseId}" (${currentPhase.title})`
+        : `"${state.currentPhaseId}"`;
       return {
         content: [
           {

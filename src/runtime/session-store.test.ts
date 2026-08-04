@@ -531,7 +531,7 @@ describe("session variable tools", () => {
     const extras: Partial<PioSessionState> = {};
     if (partial.phasesList && !partial.phaseManager) {
       extras.phaseManager = new PhaseManager(partial.phasesList);
-      const cp = partial.currentPhase ?? 1;
+      const cp = 1;
       extras.currentPhaseId = partial.phasesList[cp - 1]?.id ?? "";
     }
     __testSetState({ ...getState(), ...partial, ...extras } as PioSessionState);
@@ -694,7 +694,7 @@ describe("session variable tools", () => {
       const store = new SessionVariableStore({});
       setPartialState({
         isActive: true,
-        currentPhase: 1,
+
         totalPhases: 3,
         phasesList: [
           {
@@ -722,7 +722,7 @@ describe("session variable tools", () => {
       const store = new SessionVariableStore({});
       setPartialState({
         isActive: true,
-        currentPhase: 1,
+
         totalPhases: 3,
         phasesList: [
           {
@@ -757,7 +757,7 @@ describe("session variable tools", () => {
     it("setVar returns error when store is undefined", async () => {
       setPartialState({
         isActive: true,
-        currentPhase: 1,
+
         totalPhases: 1,
         phasesList: [
           {
@@ -784,7 +784,7 @@ describe("session variable tools", () => {
     it("getVar returns error when store is null", async () => {
       setPartialState({
         isActive: true,
-        currentPhase: 1,
+
         totalPhases: 1,
         phasesList: [],
         store: null,
@@ -804,7 +804,7 @@ describe("session variable tools", () => {
     it("listVars returns error when store is undefined", async () => {
       setPartialState({
         isActive: true,
-        currentPhase: 1,
+
         totalPhases: 1,
         phasesList: [],
         store: undefined,
@@ -834,7 +834,7 @@ describe("session variable tools", () => {
 
       setPartialState({
         isActive: true,
-        currentPhase: 1,
+
         totalPhases: 1,
         phasesList: [
           {
@@ -864,7 +864,7 @@ describe("session variable tools", () => {
 
       setPartialState({
         isActive: true,
-        currentPhase: 1,
+
         totalPhases: 1,
         phasesList: [
           {
@@ -899,7 +899,7 @@ describe("session variable tools", () => {
       const store = new SessionVariableStore({});
       setPartialState({
         isActive: true,
-        currentPhase: 1,
+
         totalPhases: 1,
         phasesList: [
           {
@@ -930,7 +930,7 @@ describe("session variable tools", () => {
       const store = new SessionVariableStore({});
       setPartialState({
         isActive: true,
-        currentPhase: 1,
+
         totalPhases: 1,
         phasesList: [
           {
@@ -959,7 +959,7 @@ describe("session variable tools", () => {
       const store = new SessionVariableStore({});
       setPartialState({
         isActive: true,
-        currentPhase: 1,
+
         totalPhases: 1,
         phasesList: [
           {
@@ -987,7 +987,7 @@ describe("session variable tools", () => {
       const store = new SessionVariableStore({});
       setPartialState({
         isActive: true,
-        currentPhase: 1,
+
         totalPhases: 1,
         phasesList: [
           {
@@ -1024,7 +1024,7 @@ describe("session variable tools", () => {
 
       setPartialState({
         isActive: true,
-        currentPhase: 1,
+
         totalPhases: 1,
         phasesList: [],
         store,
@@ -1046,7 +1046,7 @@ describe("session variable tools", () => {
 
       setPartialState({
         isActive: true,
-        currentPhase: 1,
+
         totalPhases: 1,
         phasesList: [],
         store,
@@ -1069,7 +1069,7 @@ describe("session variable tools", () => {
 
       setPartialState({
         isActive: true,
-        currentPhase: 1,
+
         totalPhases: 1,
         phasesList: [],
         store,

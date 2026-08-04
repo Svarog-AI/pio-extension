@@ -436,7 +436,6 @@ export function advancePhase(
   const state = getState();
   const phaseManager = state.phaseManager;
   if (!phaseManager) return { triggered: false };
-  const phasesList = state.phasesList;
 
   let currentId = startPhaseId;
 
@@ -446,9 +445,7 @@ export function advancePhase(
       return { triggered: false };
     }
 
-    // Set numeric index for backward compat with setState fields that still use numbers
-    const numericIndex = phasesList.findIndex((p) => p.id === currentId) + 1;
-    setState({ currentPhase: numericIndex, currentPhaseId: currentId });
+    setState({ currentPhaseId: currentId });
 
     executePhase(phase, store);
 
@@ -581,27 +578,22 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // Attempt to restore state from disk
     const saved = loadLoopEngineState(sessionId);
 
+    // Determine currentPhaseId: prefer saved value, fall back to first phase
+    const currentPhaseId = saved?.currentPhaseId ?? pm.listIds()[0] ?? "";
+
     // Initialize PioSessionState (single source of truth)
     setState({
       isActive: true,
       sessionId: sessionId,
       phasesList: phasesList,
       totalPhases: totalPhases,
-      currentPhase: saved?.currentPhase ?? 1,
+      currentPhaseId: currentPhaseId,
       currentIteration: saved?.currentIteration ?? 1,
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: saved?.isAdHocInput ?? false,
       phaseWriteAllowlist: phaseWriteAllowlist,
       phaseManager: pm,
-    });
-
-    // Set currentPhaseId: prefer saved value, fall back to PhaseManager lookup
-    setState({
-      currentPhaseId:
-        saved?.currentPhaseId ??
-        pm.listIds()[getState().currentPhase - 1] ??
-        "",
     });
 
     // Initialize session variable store — reuse saved from loadLoopEngineState() call above
@@ -733,7 +725,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
             if (entry.allContractOutputs.has(tp)) {
               return {
                 block: true,
-                reason: `Writing is not allowed during Phase ${state.currentPhase} of ${state.totalPhases} (${phaseTitle}). This phase does not produce any contract outputs.`,
+                reason: `Writing is not allowed during "${state.currentPhaseId}" (${phaseTitle}). This phase does not produce any contract outputs.`,
               };
             }
           } else {
@@ -744,14 +736,14 @@ export function setupLoopEngine(pi: ExtensionAPI) {
             ) {
               return {
                 block: true,
-                reason: `Writing is restricted during Phase ${state.currentPhase} of ${state.totalPhases} (${phaseTitle}). Allowed outputs: [${entry.allowedNames.join(", ")}]. Your target path '${tp}' is not in the allowed list.`,
+                reason: `Writing is restricted during "${state.currentPhaseId}" (${phaseTitle}). Allowed outputs: [${entry.allowedNames.join(", ")}]. Your target path '${tp}' is not in the allowed list.`,
               };
             }
           }
         }
       } else {
         console.warn(
-          `[loop-engine] Phase ${state.currentPhase}: no write allowlist entry found — write gating skipped. This should not happen after resources_discover.`,
+          `[loop-engine] Phase "${state.currentPhaseId}": no write allowlist entry found — write gating skipped. This should not happen after resources_discover.`,
         );
       }
     }
@@ -815,7 +807,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
             .map((pv) => `${pv.name} (${pv.type})`)
             .join(", ");
           console.warn(
-            `[loop-engine] Max iterations reached for Phase ${state.currentPhase} (${currentPhase.title ?? "unknown"}). Undefined variables: ${names}`,
+            `[loop-engine] Max iterations reached for "${state.currentPhaseId}" (${currentPhase.title ?? "unknown"}). Undefined variables: ${names}`,
           );
         }
       }
@@ -1022,14 +1014,9 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         return;
       }
 
-      // Compute numeric index for backward compat
-      const numericIndex =
-        state.phasesList.findIndex((p) => p.id === targetId) + 1;
-
-      // Set both currentPhase and currentPhaseId, reset iteration to 1, clear tracking
+      // Set currentPhaseId, reset iteration to 1, clear tracking
       // Also clear ad-hoc mode flags so the follow-up triggers normal phase instructions
       setState({
-        currentPhase: numericIndex,
         currentPhaseId: targetId,
         currentIteration: 1,
         filesWritten: [],

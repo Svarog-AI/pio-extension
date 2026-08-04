@@ -30,7 +30,6 @@ export function ensureStateDir(): string {
  * All errors are caught and logged — this function never throws.
  */
 export function loadLoopEngineState(sessionId: string): {
-  currentPhase: number;
   currentIteration: number;
   isAdHocInput: boolean;
   currentPhaseId: string;
@@ -66,7 +65,6 @@ export function loadLoopEngineState(sessionId: string): {
 
 /** Validates that a parsed object has the correct persisted state shape. */
 function isValidPersistedState(obj: unknown): obj is {
-  currentPhase: number;
   currentIteration: number;
   isAdHocInput: boolean;
   currentPhaseId: string;
@@ -79,9 +77,6 @@ function isValidPersistedState(obj: unknown): obj is {
   const record = obj as Record<string, unknown>;
 
   const coreOk =
-    typeof record.currentPhase === "number" &&
-    Number.isInteger(record.currentPhase) &&
-    record.currentPhase > 0 &&
     typeof record.currentIteration === "number" &&
     Number.isInteger(record.currentIteration) &&
     record.currentIteration > 0 &&
@@ -130,7 +125,6 @@ function isValidPersistedState(obj: unknown): obj is {
 export function saveLoopEngineState(
   sessionId: string,
   state: {
-    currentPhase: number;
     currentIteration: number;
     isAdHocInput: boolean;
     currentPhaseId: string;
@@ -164,14 +158,12 @@ export function saveLoopEngineState(
  * excluded — they reset safely from in-memory state each iteration.
  */
 export function extractPersistedState(state: PioSessionState): {
-  currentPhase: number;
   currentIteration: number;
   isAdHocInput: boolean;
   currentPhaseId: string;
   vars?: { [name: string]: { value: unknown; type: string } };
 } {
   const base = {
-    currentPhase: state.currentPhase,
     currentIteration: state.currentIteration,
     isAdHocInput: state.isAdHocInput,
     currentPhaseId: state.currentPhaseId,

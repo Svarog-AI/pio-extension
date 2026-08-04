@@ -116,7 +116,10 @@ Follow these steps:
         name: "current_phase_num",
         type: "number",
         kind: "computed",
-        compute: (state: PioSessionState) => state.currentPhase,
+        compute: (state: PioSessionState) =>
+          state.phaseManager
+            ? state.phaseManager.listIds().indexOf(state.currentPhaseId) + 1
+            : 0,
       },
     ],
   },
@@ -232,7 +235,10 @@ Follow these steps:
         name: "prog_a_seq",
         type: "number",
         kind: "computed",
-        compute: (state: PioSessionState) => state.currentPhase,
+        compute: (state: PioSessionState) =>
+          state.phaseManager
+            ? state.phaseManager.listIds().indexOf(state.currentPhaseId) + 1
+            : 0,
       },
     ],
   },
@@ -256,7 +262,10 @@ Follow these steps:
         name: "prog_b_seq",
         type: "number",
         kind: "computed",
-        compute: (state: PioSessionState) => state.currentPhase,
+        compute: (state: PioSessionState) =>
+          state.phaseManager
+            ? state.phaseManager.listIds().indexOf(state.currentPhaseId) + 1
+            : 0,
       },
     ],
   },

@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PhaseManager } from "../runtime/phase-manager";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -1397,14 +1398,20 @@ describe("mark-complete (setupMarkComplete)", () => {
   // -----------------------------------------------------------------------
 
   it("returns terminate on non-final step (markCompleteCalled not set)", async () => {
+    const phases = [
+      { id: "s1", title: "S1", instructions: "A" },
+      { id: "s2", title: "S2", instructions: "B" },
+    ];
+    const pm = new PhaseManager(phases);
     mockGetState.mockReturnValue({
       isActive: true,
       markCompleteCalled: false,
       turnCount: 0,
-      currentPhase: 1,
+      currentPhaseId: "s1",
       currentIteration: 0,
-      totalPhases: 7,
-      phasesList: [],
+      totalPhases: 2,
+      phasesList: phases,
+      phaseManager: pm,
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,

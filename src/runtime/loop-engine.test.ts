@@ -3990,6 +3990,33 @@ describe("tool_call — phase-level write gate", () => {
     expect(entry2.allowedNames).toEqual(["goal"]);
   });
 
+  it("keys phaseWriteAllowlist by string phase IDs", async () => {
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue([
+      { id: "step-1", title: "S1", instructions: "Do S1" },
+      { id: "step-2", title: "S2", instructions: "Do S2" },
+    ]);
+
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    const discoverHandlers = handlers.get("resources_discover");
+    for (const h of discoverHandlers!) {
+      await h(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        mockCtx,
+      );
+    }
+
+    const state = getState();
+    expect(state.phaseWriteAllowlist.has("step-1")).toBe(true);
+    expect(state.phaseWriteAllowlist.has("step-2")).toBe(true);
+    // All keys must be strings, not numbers
+    for (const key of state.phaseWriteAllowlist.keys()) {
+      expect(typeof key).toBe("string");
+    }
+  });
+
   it("integration: resources_discover + tool_call — phase without write blocks contract output", async () => {
     // Arrange: phases without write field
     vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue([

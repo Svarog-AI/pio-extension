@@ -114,12 +114,9 @@ Follow these steps:
       },
       {
         name: "current_phase_num",
-        type: "number",
+        type: "string",
         kind: "computed",
-        compute: (state: PioSessionState) =>
-          state.phaseManager
-            ? state.phaseManager.listIds().indexOf(state.currentPhaseId) + 1
-            : 0,
+        compute: (state: PioSessionState) => state.currentPhaseId,
       },
     ],
   },
@@ -187,7 +184,7 @@ Follow these steps:
 Resolved values from Phase 6:
 - \`\${phase_label}\` — should resolve to the static var value
 - \`\${llm_chosen_value}\` — should resolve to whatever you set via setVar in Phase 6
-- \`\${current_phase_num}\` — should resolve to the computed phase number from Phase 6
+- \`\${current_phase_num}\` — should resolve to the current phase ID from Phase 6
 
 Follow these steps:
 1. Call \`listVars\` to see all current variables
@@ -233,12 +230,9 @@ Follow these steps:
       },
       {
         name: "prog_a_seq",
-        type: "number",
+        type: "string",
         kind: "computed",
-        compute: (state: PioSessionState) =>
-          state.phaseManager
-            ? state.phaseManager.listIds().indexOf(state.currentPhaseId) + 1
-            : 0,
+        compute: (state: PioSessionState) => state.currentPhaseId,
       },
     ],
   },
@@ -260,12 +254,9 @@ Follow these steps:
       },
       {
         name: "prog_b_seq",
-        type: "number",
+        type: "string",
         kind: "computed",
-        compute: (state: PioSessionState) =>
-          state.phaseManager
-            ? state.phaseManager.listIds().indexOf(state.currentPhaseId) + 1
-            : 0,
+        compute: (state: PioSessionState) => state.currentPhaseId,
       },
     ],
   },
@@ -286,7 +277,7 @@ Follow these steps:
 4. **Programmatic chain verification (Phases 11–12):**
    a. Call \`listVars\` and confirm that \`prog_a\`, \`prog_a_seq\`, \`prog_b\`, and \`prog_b_seq\` are all set
    b. Verify static values: \`prog_a = "phase-a-set"\` and \`prog_b = "phase-b-set"\`
-   c. Verify computed sequence numbers: \`prog_a_seq\` should equal 11 (the currentPhase when Phase 11's executePhase ran) and \`prog_b_seq\` should equal 12 (the currentPhase when Phase 12 ran). These different values prove the computed callbacks ran during the advancePhase loop, not after — if they ran after, both would have the same value
+   c. Verify computed phase IDs: \`prog_a_seq\` should equal "programmatic-chain-1" (the currentPhaseId when Phase 11's executePhase ran) and \`prog_b_seq\` should equal "programmatic-chain-2" (the currentPhaseId when Phase 12 ran). These different values prove the computed callbacks ran during the advancePhase loop, not after — if they ran after, both would have the same value
    d. Confirm that you received instructions for Phase 10's turn and then directly Phase 13's turn — no LLM instructions were shown for Phases 11–12. This proves the advancePhase helper correctly skipped the purely programmatic phases without triggering agent turns
    e. Include a dedicated section in \`PLAYGROUND.md\` documenting this skip-through behavior and the verified variable values
 5. Include any unexpected behaviors or discrepancies

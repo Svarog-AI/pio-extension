@@ -341,6 +341,20 @@ function _persistCurrentState(): void {
 }
 
 /**
+ * Handle phase exhaustion — reset per-turn tracking and persist state.
+ *
+ * Called when all phases have been processed (no more phases to advance to).
+ */
+function _handleExhaustion(): void {
+  setState({
+    currentIteration: 1,
+    filesWritten: [],
+    askUserCalled: false,
+  });
+  _persistCurrentState();
+}
+
+/**
  * Execute the programmatic parts of a phase.
  *
  * For variable-definition phases, this sets static variables and runs
@@ -913,24 +927,14 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     );
     if (!nextId) {
       // All phases exhausted — reset tracking and persist, let session end naturally
-      setState({
-        currentIteration: 1,
-        filesWritten: [],
-        askUserCalled: false,
-      });
-      _persistCurrentState();
+      _handleExhaustion();
       return;
     }
     const result = advancePhase(phaseStore, nextId, "reset");
 
     if (!result.triggered) {
       // No more non-programmatic phases — same exhaustion handling
-      setState({
-        currentIteration: 1,
-        filesWritten: [],
-        askUserCalled: false,
-      });
-      _persistCurrentState();
+      _handleExhaustion();
       return;
     }
 

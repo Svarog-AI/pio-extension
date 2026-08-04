@@ -125,7 +125,7 @@ describe("PhaseManager", () => {
         isActive: false,
         markCompleteCalled: false,
         turnCount: 0,
-        currentPhase: 0,
+        currentPhaseId: "",
         currentIteration: 0,
         totalPhases: 0,
         phasesList: [],

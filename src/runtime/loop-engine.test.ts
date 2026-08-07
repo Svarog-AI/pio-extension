@@ -560,6 +560,99 @@ describe("/goto command", () => {
     });
   });
 
+  // ---- Blocked during active run ----
+
+  describe("blocked during active run", () => {
+    it("shows error notification and does not change state when agent is streaming", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhaseId: "s1",
+        currentIteration: 3,
+        totalPhases: 2,
+        phasesList: phases,
+        filesWritten: ["/existing/file.ts"],
+        askUserCalled: true,
+        phaseManager: pm,
+      });
+
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(false),
+      };
+      await fireGotoCommand(registeredCommands, "s2", ctx);
+
+      // Error notification shown
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        "Cannot switch phases while agent is running. Abort the current run first if you need to switch immediately.",
+        "error",
+      );
+
+      // No state mutations
+      const state = getState();
+      expect(state.currentPhaseId).toBe("s1");
+      expect(state.currentIteration).toBe(3);
+      expect(state.filesWritten).toEqual(["/existing/file.ts"]);
+      expect(state.askUserCalled).toBe(true);
+
+      // No follow-up message
+      expect(sendUserMessageCalls).toHaveLength(0);
+    });
+
+    it("proceeds normally when agent is idle", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        sessionId: "goto-session",
+        currentPhaseId: "s1",
+        currentIteration: 3,
+        totalPhases: 2,
+        phasesList: phases,
+        filesWritten: ["/old/file.ts"],
+        askUserCalled: true,
+        phaseManager: pm,
+      });
+
+      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
+      await fireGotoCommand(registeredCommands, "s2", ctx);
+
+      // State updated
+      const state = getState();
+      expect(state.currentPhaseId).toBe("s2");
+      expect(state.currentIteration).toBe(1);
+      expect(state.filesWritten).toEqual([]);
+
+      // State persisted
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
+
+      // Follow-up sent
+      expect(sendUserMessageCalls).toHaveLength(1);
+
+      // No error notification
+      expect(ctx.ui.notify).not.toHaveBeenCalled();
+    });
+  });
+
   // ---- Guards ----
 
   describe("guards", () => {
@@ -570,7 +663,10 @@ describe("/goto command", () => {
 
       setState({ isActive: false });
 
-      const ctx: any = { ui: { notify: vi.fn() } };
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
       await fireGotoCommand(registeredCommands, "step-2", ctx);
 
       expect(sendUserMessageCalls).toHaveLength(0);
@@ -582,7 +678,10 @@ describe("/goto command", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
-      const ctx: any = { ui: { notify: vi.fn() } };
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
       await fireGotoCommand(registeredCommands, "step-2", ctx);
 
       expect(sendUserMessageCalls).toHaveLength(0);
@@ -619,7 +718,10 @@ describe("/goto command", () => {
       });
 
       vi.mocked(statePersistence.saveLoopEngineState).mockClear();
-      const ctx: any = { ui: { notify: vi.fn() } };
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
       await fireGotoCommand(registeredCommands, "s3", ctx);
 
       const state = getState();
@@ -669,7 +771,10 @@ describe("/goto command", () => {
       });
 
       vi.mocked(statePersistence.saveLoopEngineState).mockClear();
-      const ctx: any = { ui: { notify: vi.fn() } };
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
       await fireGotoCommand(registeredCommands, "s2", ctx);
 
       const state = getState();
@@ -711,7 +816,10 @@ describe("/goto command", () => {
         phaseManager: pm,
       });
 
-      const ctx: any = { ui: { notify: vi.fn() } };
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
       await fireGotoCommand(registeredCommands, "nonexistent", ctx);
 
       expect(ctx.ui.notify).toHaveBeenCalledWith(
@@ -738,7 +846,10 @@ describe("/goto command", () => {
         phaseManager: pm,
       });
 
-      const ctx: any = { ui: { notify: vi.fn() } };
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
       await fireGotoCommand(registeredCommands, "   ", ctx);
 
       expect(ctx.ui.notify).toHaveBeenCalledWith(

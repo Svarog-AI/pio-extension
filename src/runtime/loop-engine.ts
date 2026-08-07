@@ -997,6 +997,15 @@ export function setupLoopEngine(pi: ExtensionAPI) {
   pi.registerCommand("goto", {
     description: "Jump to a specific workflow phase by ID",
     handler: async (args, ctx) => {
+      // Block phase switching while agent is streaming
+      if (!ctx.isIdle()) {
+        ctx.ui.notify(
+          "Cannot switch phases while agent is running. Abort the current run first if you need to switch immediately.",
+          "error",
+        );
+        return;
+      }
+
       const state = getState();
       if (!state.isActive || !state.phaseManager) return;
 

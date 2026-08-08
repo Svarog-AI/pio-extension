@@ -273,8 +273,8 @@ export class PhaseManager {
         }
         try {
           const varName = on.slice(1);
-          const value = state?.store?.get(varName);
-          if (value === undefined) {
+          const value = state.store?.get(varName);
+          if (value == null) {
             return routing.defaultFirst;
           }
           const key = String(value);

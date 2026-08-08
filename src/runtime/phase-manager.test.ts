@@ -661,6 +661,118 @@ describe("PhaseManager", () => {
       warnSpy.mockRestore();
     });
 
+    it("$varName resolves to null from store falls through to default", () => {
+      const store: any = {
+        get: (_name: string) => null,
+      };
+      const phases: WorkflowPhase[] = [
+        {
+          ...makeBranchSwitch("branch", { x: [makePhase("x1")] }, [
+            makePhase("d"),
+          ]),
+          on: "$myVar",
+        },
+      ];
+      const pm = new PhaseManager(phases);
+      const state = makeState();
+      state.store = store;
+
+      // null from store should be treated as "no value" → fall through to default
+      expect(pm.resolveNext("branch", state)).toBe("d");
+    });
+
+    // --- Defensive guards ---
+
+    it("warns and returns undefined when condition is not a function", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const phases: WorkflowPhase[] = [
+        makeBranchIf("branch", [makePhase("x")], [makePhase("y")]),
+      ];
+      const pm = new PhaseManager(phases);
+      const state = makeState();
+
+      // No condition property — typeof is "undefined"
+      const result = pm.resolveNext("branch", state);
+      expect(result).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Condition evaluation failed for branch phase "branch": condition is not a function',
+      );
+      warnSpy.mockRestore();
+    });
+
+    it("warns and returns undefined when branch:if resolveNext called without state", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const phases: WorkflowPhase[] = [
+        {
+          ...makeBranchIf("branch", [makePhase("x")], [makePhase("y")]),
+          condition: () => true,
+        },
+      ];
+      const pm = new PhaseManager(phases);
+
+      // No state passed — should warn and return undefined
+      const result = pm.resolveNext("branch");
+      expect(result).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Condition evaluation failed for branch phase "branch": state is missing',
+      );
+      warnSpy.mockRestore();
+    });
+
+    it("warns and returns undefined when switch on is neither function nor $varName string", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const phases: WorkflowPhase[] = [
+        {
+          ...makeBranchSwitch("branch", { a: [makePhase("ca")] }),
+          on: 42 as any,
+        },
+      ];
+      const pm = new PhaseManager(phases);
+      const state = makeState();
+
+      const result = pm.resolveNext("branch", state);
+      expect(result).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Condition evaluation failed for branch phase "branch": on is not a function or $varName string',
+      );
+      warnSpy.mockRestore();
+    });
+
+    it("returns undefined when switch on callback called without state", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const phases: WorkflowPhase[] = [
+        {
+          ...makeBranchSwitch("branch", { a: [makePhase("ca")] }),
+          on: () => "a",
+        },
+      ];
+      const pm = new PhaseManager(phases);
+
+      // No state — function branch should warn and return undefined
+      const result = pm.resolveNext("branch");
+      expect(result).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Condition evaluation failed for branch phase "branch": state is missing',
+      );
+      warnSpy.mockRestore();
+    });
+
+    it("routes to post-branch when else is empty array and condition is falsy", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        {
+          ...makeBranchIf("branch", [makePhase("x")], []),
+          condition: () => false,
+        },
+        makePhase("z"),
+      ];
+      const pm = new PhaseManager(phases);
+      const state = makeState();
+
+      // elseFirst was set to "z" (successor) during flattening when else was []
+      expect(pm.resolveNext("branch", state)).toBe("z");
+    });
+
     it("coerces non-string discriminant to string via String()", () => {
       const phases: WorkflowPhase[] = [
         {

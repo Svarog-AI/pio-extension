@@ -10,6 +10,7 @@
  * mutate state through the accessor functions.
  */
 
+import type { PhaseManager } from "./phase-manager";
 import type { SessionVariableStore } from "./session-store";
 import type { WorkflowPhase } from "./workflow-types";
 
@@ -32,9 +33,6 @@ export interface PioSessionState {
 
   /** Turn counter for refinement-loop detection. Increments on every turn, resets at `before_agent_start`. */
   turnCount: number;
-
-  /** Current workflow phase number (1-based). 0 means inactive. */
-  currentPhase: number;
 
   /** Current iteration count within the current phase (1-based). 0 means inactive. */
   currentIteration: number;
@@ -64,9 +62,9 @@ export interface PioSessionState {
    */
   adHocPhaseNotified: boolean;
 
-  /** Phase-level write allowlists: phase number (1-based) → { allowedPaths (resolved absolute paths), allowedNames (original output names for error messages), allContractOutputs (all known contract output paths, used by write: [] to block). Populated during resources_discover. */
+  /** Phase-level write allowlists: phase ID (string, e.g. "step-1") → { allowedPaths (resolved absolute paths), allowedNames (original output names for error messages), allContractOutputs (all known contract output paths, used by write: [] to block). Populated during resources_discover. */
   phaseWriteAllowlist: Map<
-    number,
+    string,
     {
       allowedPaths: Set<string>;
       allowedNames: string[];
@@ -79,6 +77,12 @@ export interface PioSessionState {
 
   /** Session variable store instance. Created during resources_discover, accessed via getState().store in loop engine and tools. */
   store?: SessionVariableStore | null;
+
+  /** Current phase ID (string, e.g. "create-goal"). Empty string means inactive. */
+  currentPhaseId: string;
+
+  /** PhaseManager instance created during resources_discover. In-memory only — not persisted. Reconstructed on state reload. */
+  phaseManager?: PhaseManager | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +96,6 @@ function createInitialState(): PioSessionState {
     isActive: false,
     markCompleteCalled: false,
     turnCount: 0,
-    currentPhase: 0,
     currentIteration: 0,
     totalPhases: 0,
     phasesList: [],
@@ -103,6 +106,8 @@ function createInitialState(): PioSessionState {
     phaseWriteAllowlist: new Map(),
     sessionId: undefined,
     store: undefined,
+    currentPhaseId: "",
+    phaseManager: undefined,
   };
 }
 

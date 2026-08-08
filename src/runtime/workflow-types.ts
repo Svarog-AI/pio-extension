@@ -113,7 +113,7 @@ export interface PhaseVariable {
  * are merged into the session's global skills at prompt compilation time.
  *
  * Optional loop fields (`minIterations`, `maxIterations`, `terminateWhen`,
- * `loopMessage`, `returnTo`) enable the loop engine to control phase execution.
+ * `loopMessage`) enable the loop engine to control phase execution.
  * When omitted, the phase executes once and advances — preserving backward
  * compatibility with existing capability workflows.
  */
@@ -145,9 +145,6 @@ export interface WorkflowPhase {
 
   /** Message sent as a follow-up when looping (replaying the current phase). Informs the LLM what to focus on for the retry. */
   loopMessage?: string;
-
-  /** Phase number to return to after ad-hoc mode resumption. No longer used by /continue (which stays on current phase). Kept for backward compatibility and a future goto command. */
-  returnTo?: number;
 
   /** Contract output names this phase is allowed to write (resolved during resources_discover). When absent or empty, all contract output writes are blocked (restricted-by-default). Non-contract files always pass through. */
   write?: string[];

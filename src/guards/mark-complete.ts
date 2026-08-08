@@ -226,7 +226,10 @@ export const markCompleteTool = defineTool({
     // Important: markCompleteCalled is NOT set — so agent_end runs normally and
     // handles advancement via its existing logic (not an early return).
     const loopState = getState();
-    if (loopState.isActive && loopState.currentPhase < loopState.totalPhases) {
+    if (
+      loopState.isActive &&
+      loopState.phaseManager?.resolveNext(loopState.currentPhaseId, loopState)
+    ) {
       return { content: [], details: {}, terminate: true };
     }
 

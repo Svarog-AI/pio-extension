@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PhaseManager } from "../runtime/phase-manager";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers
@@ -49,7 +50,6 @@ const mockGetState = vi.hoisted(() =>
     isActive: false,
     markCompleteCalled: false,
     turnCount: 0,
-    currentPhase: 0,
     currentIteration: 0,
     totalPhases: 0,
     phasesList: [],
@@ -119,7 +119,6 @@ describe("mark-complete (setupMarkComplete)", () => {
       isActive: false,
       markCompleteCalled: false,
       turnCount: 0,
-      currentPhase: 0,
       currentIteration: 0,
       totalPhases: 0,
       phasesList: [],
@@ -1397,14 +1396,20 @@ describe("mark-complete (setupMarkComplete)", () => {
   // -----------------------------------------------------------------------
 
   it("returns terminate on non-final step (markCompleteCalled not set)", async () => {
+    const phases = [
+      { id: "s1", title: "S1", instructions: "A" },
+      { id: "s2", title: "S2", instructions: "B" },
+    ];
+    const pm = new PhaseManager(phases);
     mockGetState.mockReturnValue({
       isActive: true,
       markCompleteCalled: false,
       turnCount: 0,
-      currentPhase: 1,
+      currentPhaseId: "s1",
       currentIteration: 0,
-      totalPhases: 7,
-      phasesList: [],
+      totalPhases: 2,
+      phasesList: phases,
+      phaseManager: pm,
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
@@ -1459,7 +1464,6 @@ describe("mark-complete (setupMarkComplete)", () => {
       isActive: true,
       markCompleteCalled: false,
       turnCount: 0,
-      currentPhase: 7,
       currentIteration: 0,
       totalPhases: 7,
       phasesList: [],
@@ -1567,7 +1571,6 @@ describe("mark-complete (setupMarkComplete)", () => {
       isActive: true,
       markCompleteCalled: false,
       turnCount: 0,
-      currentPhase: 7,
       currentIteration: 0,
       totalPhases: 7,
       phasesList: [],
@@ -1621,7 +1624,6 @@ describe("mark-complete (setupMarkComplete)", () => {
       isActive: true,
       markCompleteCalled: false,
       turnCount: 0,
-      currentPhase: 1,
       currentIteration: 0,
       totalPhases: 7,
       phasesList: [],
@@ -2233,7 +2235,6 @@ describe("applyMarkers integration (mark-complete flow)", () => {
       isActive: false,
       markCompleteCalled: false,
       turnCount: 0,
-      currentPhase: 0,
       currentIteration: 0,
       totalPhases: 0,
       phasesList: [],
@@ -2374,7 +2375,6 @@ describe("resolver-declared cleanup", () => {
       isActive: false,
       markCompleteCalled: false,
       turnCount: 0,
-      currentPhase: 0,
       currentIteration: 0,
       totalPhases: 0,
       phasesList: [],
@@ -2744,7 +2744,6 @@ describe("previousCapability in enriched params", () => {
       isActive: false,
       markCompleteCalled: false,
       turnCount: 0,
-      currentPhase: 0,
       currentIteration: 0,
       totalPhases: 0,
       phasesList: [],

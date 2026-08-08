@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import type { PhaseManager } from "./phase-manager";
 import {
   __testGetState,
   __testSetState,
@@ -20,7 +21,6 @@ describe("session-state", () => {
       expect(state.isActive).toBe(false);
       expect(state.markCompleteCalled).toBe(false);
       expect(state.turnCount).toBe(0);
-      expect(state.currentPhase).toBe(0);
       expect(state.currentIteration).toBe(0);
       expect(state.totalPhases).toBe(0);
       expect(state.phasesList).toEqual([]);
@@ -28,6 +28,8 @@ describe("session-state", () => {
       expect(state.askUserCalled).toBe(false);
       expect(state.isAdHocInput).toBe(false);
       expect(state.adHocPhaseNotified).toBe(false);
+      expect(state.currentPhaseId).toBe("");
+      expect(state.phaseManager).toBe(undefined);
       expect(state.store).toBe(undefined);
     });
   });
@@ -43,7 +45,6 @@ describe("session-state", () => {
       // Other fields should retain defaults
       expect(state.markCompleteCalled).toBe(false);
       expect(state.turnCount).toBe(0);
-      expect(state.currentPhase).toBe(0);
       expect(state.currentIteration).toBe(0);
       expect(state.phasesList).toEqual([]);
     });
@@ -89,13 +90,14 @@ describe("session-state", () => {
         isActive: true,
         markCompleteCalled: true,
         turnCount: 5,
-        currentPhase: 3,
         currentIteration: 2,
         totalPhases: 5,
         phasesList: [{ id: "s1", title: "A", instructions: "I" }],
         filesWritten: ["/some/file"],
         askUserCalled: true,
         isAdHocInput: true,
+        currentPhaseId: "some-phase",
+        phaseManager: {} as PhaseManager,
         store,
       });
 
@@ -105,7 +107,6 @@ describe("session-state", () => {
       expect(state.isActive).toBe(false);
       expect(state.markCompleteCalled).toBe(false);
       expect(state.turnCount).toBe(0);
-      expect(state.currentPhase).toBe(0);
       expect(state.currentIteration).toBe(0);
       expect(state.totalPhases).toBe(0);
       expect(state.phasesList).toEqual([]);
@@ -113,6 +114,8 @@ describe("session-state", () => {
       expect(state.askUserCalled).toBe(false);
       expect(state.isAdHocInput).toBe(false);
       expect(state.adHocPhaseNotified).toBe(false);
+      expect(state.currentPhaseId).toBe("");
+      expect(state.phaseManager).toBe(undefined);
       expect(state.store).toBe(undefined);
     });
   });
@@ -128,11 +131,11 @@ describe("session-state", () => {
 
     describe("__testSetState", () => {
       it("replaces the entire state when called with an argument", () => {
-        const newState = {
+        const newState = { ...getState() };
+        Object.assign(newState, {
           isActive: true,
           markCompleteCalled: false,
           turnCount: 10,
-          currentPhase: 4,
           currentIteration: 3,
           totalPhases: 6,
           phasesList: [],
@@ -141,14 +144,13 @@ describe("session-state", () => {
           isAdHocInput: false,
           adHocPhaseNotified: false,
           phaseWriteAllowlist: new Map(),
-        };
+        });
 
         __testSetState(newState);
 
         const state = getState();
         expect(state.isActive).toBe(true);
         expect(state.turnCount).toBe(10);
-        expect(state.currentPhase).toBe(4);
         expect(state.currentIteration).toBe(3);
         expect(state.totalPhases).toBe(6);
         expect(state.filesWritten).toEqual(["/test/file"]);

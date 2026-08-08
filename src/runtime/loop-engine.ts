@@ -12,7 +12,8 @@
  *
  * The engine registers six event handlers: `resources_discover`, `input`,
  * `before_agent_start`, `tool_call`, `agent_end`, and `session_shutdown`.
- * Additionally, it registers the `/continue` command for ad-hoc resumption.
+ * Additionally, it registers the `/continue` command for ad-hoc resumption
+ * and the `/goto` command for jumping to a specific phase by ID.
  */
 
 import * as path from "node:path";
@@ -21,6 +22,7 @@ import { getCompiledWorkflowPhases } from "../capability-session";
 import { CapState } from "../capability-state";
 import { getSessionConfig } from "../capability-utils";
 import { readDebugDisplay, resolveMaxIterations } from "../model-config";
+import { PhaseManager } from "./phase-manager";
 import type { PioSessionState } from "./session-state";
 import { getState, resetState, setState } from "./session-state";
 import { SessionVariableStore, setupSessionVariables } from "./session-store";
@@ -240,13 +242,14 @@ export function buildVariablePhaseInstructions(
  * Phase 2, and "Phases \"s1\", \"s2\", and \"s3\" completed" (Oxford comma) on Phase 4+.
  */
 function buildCompletedPhasesIds(state: PioSessionState): string {
-  if (state.currentPhase <= 1) return "No previous phases completed.";
+  const pm = state.phaseManager;
+  if (!pm) return "No previous phases completed.";
 
-  const ids: string[] = [];
-  for (let i = 0; i < state.currentPhase - 1; i++) {
-    const phase = state.phasesList[i];
-    if (phase) ids.push(phase.id);
-  }
+  const allIds = pm.listIds();
+  const currentIndex = allIds.indexOf(state.currentPhaseId);
+  if (currentIndex <= 0) return "No previous phases completed.";
+
+  const ids = allIds.slice(0, currentIndex);
 
   if (ids.length === 1) {
     return `Phases "${ids[0]}" completed.`;
@@ -282,7 +285,8 @@ function buildCompletedPhasesIds(state: PioSessionState): string {
  * @internal — Used by both `before_agent_start` (first run) and `agent_end` (phase transitions).
  */
 export function buildPhaseInstructions(state: PioSessionState): string {
-  const phase = state.phasesList[state.currentPhase - 1];
+  const phase = getState().phaseManager?.getPhase(state.currentPhaseId);
+  if (!phase) return "";
   const store = getState().store ?? undefined;
 
   // Dispatch body building to the appropriate strategy based on phase kind
@@ -334,6 +338,20 @@ function _persistCurrentState(): void {
   if (state.sessionId) {
     saveLoopEngineState(state.sessionId, extractPersistedState(state));
   }
+}
+
+/**
+ * Handle phase exhaustion — reset per-turn tracking and persist state.
+ *
+ * Called when all phases have been processed (no more phases to advance to).
+ */
+function _handleExhaustion(): void {
+  setState({
+    currentIteration: 1,
+    filesWritten: [],
+    askUserCalled: false,
+  });
+  _persistCurrentState();
 }
 
 /**
@@ -417,32 +435,40 @@ export function setupTurn(mode: "reset" | "increment" | "preserve"): {
  * manage iteration, reset tracking, persist, and build the message payload.
  *
  * @param store - SessionVariableStore for variable operations
- * @param startAt - 1-based phase number to start from
+ * @param startPhaseId - Phase ID string to start from
  * @param mode - How to adjust the iteration counter ("reset", "increment", "preserve")
  * @returns Object with `triggered` flag and optional `payload` (CustomMessage data)
  */
 export function advancePhase(
   store: SessionVariableStore,
-  startAt: number,
+  startPhaseId: string,
   mode: "reset" | "increment" | "preserve",
 ): {
   triggered: boolean;
   payload?: { customType: string; content: string; display: boolean };
 } {
-  let currentPhaseNum = startAt;
+  const state = getState();
+  const phaseManager = state.phaseManager;
+  if (!phaseManager) return { triggered: false };
+
+  let currentId = startPhaseId;
 
   while (true) {
-    setState({ currentPhase: currentPhaseNum });
-
-    const phase = getState().phasesList[currentPhaseNum - 1];
+    const phase = phaseManager.getPhase(currentId);
     if (!phase) {
       return { triggered: false };
     }
 
+    setState({ currentPhaseId: currentId });
+
     executePhase(phase, store);
 
     if (isProgrammatic(phase)) {
-      currentPhaseNum++;
+      const nextId = phaseManager.resolveNext(currentId, getState());
+      if (!nextId) {
+        return { triggered: false };
+      }
+      currentId = nextId;
       continue;
     }
 
@@ -515,6 +541,9 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     const phasesList = getCompiledWorkflowPhases() ?? [];
     const totalPhases = phasesList.length;
 
+    // Create PhaseManager for ID-based lookups
+    const pm = new PhaseManager(phasesList);
+
     // Resolve phase-level write allowlists
     const capState = new CapState(
       config.contract,
@@ -526,15 +555,14 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     );
 
     const phaseWriteAllowlist = new Map<
-      number,
+      string,
       {
         allowedPaths: Set<string>;
         allowedNames: string[];
         allContractOutputs: Set<string>;
       }
     >();
-    for (let i = 0; i < phasesList.length; i++) {
-      const phase = phasesList[i];
+    for (const phase of phasesList) {
       const allowedPaths = new Set<string>();
       const allowedNames: string[] = [];
       if (phase.write) {
@@ -545,13 +573,13 @@ export function setupLoopEngine(pi: ExtensionAPI) {
             allowedPaths.add(path.resolve(resolved.path));
           } else {
             console.warn(
-              `[loop-engine] Step ${i + 1} (${phase.title ?? "unknown"}): output name "${name}" in write[] could not be resolved — it will not be in the allowed list.`,
+              `[loop-engine] Phase "${phase.id}" (${phase.title ?? "unknown"}): output name "${name}" in write[] could not be resolved — it will not be in the allowed list.`,
             );
           }
         }
       }
       // ALWAYS create entry, even when write is undefined or empty
-      phaseWriteAllowlist.set(i + 1, {
+      phaseWriteAllowlist.set(phase.id, {
         allowedPaths,
         allowedNames,
         allContractOutputs: new Set(allContractOutputs),
@@ -564,18 +592,22 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // Attempt to restore state from disk
     const saved = loadLoopEngineState(sessionId);
 
+    // Determine currentPhaseId: prefer saved value, fall back to first phase
+    const currentPhaseId = saved?.currentPhaseId ?? pm.listIds()[0] ?? "";
+
     // Initialize PioSessionState (single source of truth)
     setState({
       isActive: true,
       sessionId: sessionId,
       phasesList: phasesList,
       totalPhases: totalPhases,
-      currentPhase: saved?.currentPhase ?? 1,
+      currentPhaseId: currentPhaseId,
       currentIteration: saved?.currentIteration ?? 1,
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: saved?.isAdHocInput ?? false,
       phaseWriteAllowlist: phaseWriteAllowlist,
+      phaseManager: pm,
     });
 
     // Initialize session variable store — reuse saved from loadLoopEngineState() call above
@@ -609,7 +641,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // Ad-hoc mode: inject "Workflow Paused" only on first entry,
     // then return early on subsequent turns to prevent normal-mode fallthrough.
     if (state.isAdHocInput && !state.adHocPhaseNotified) {
-      const phase = state.phasesList[state.currentPhase - 1];
+      const phase = getState().phaseManager?.getPhase(state.currentPhaseId);
       if (!phase) return;
 
       // Mark as notified so subsequent turns skip injection
@@ -638,7 +670,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     const phaseStore = getState().store;
     if (!phaseStore) return; // no store — skip injection
 
-    const result = advancePhase(phaseStore, state.currentPhase, "preserve");
+    const result = advancePhase(phaseStore, state.currentPhaseId, "preserve");
 
     if (!result.triggered) {
       // All phases exhausted — no injection needed
@@ -691,9 +723,11 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // --- Phase-level write gate ---
     const state = getState();
     if (targetPaths.length > 0 && state.isActive) {
-      const entry = state.phaseWriteAllowlist.get(state.currentPhase);
+      const entry = state.phaseWriteAllowlist.get(state.currentPhaseId);
       if (entry !== undefined) {
-        const currentPhaseObj = state.phasesList[state.currentPhase - 1];
+        const currentPhaseObj = getState().phaseManager?.getPhase(
+          state.currentPhaseId,
+        );
         const phaseTitle = currentPhaseObj?.title ?? "unknown";
 
         for (const tp of targetPaths) {
@@ -705,7 +739,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
             if (entry.allContractOutputs.has(tp)) {
               return {
                 block: true,
-                reason: `Writing is not allowed during Phase ${state.currentPhase} of ${state.totalPhases} (${phaseTitle}). This phase does not produce any contract outputs.`,
+                reason: `Writing is not allowed during "${state.currentPhaseId}" (${phaseTitle}). This phase does not produce any contract outputs.`,
               };
             }
           } else {
@@ -716,14 +750,14 @@ export function setupLoopEngine(pi: ExtensionAPI) {
             ) {
               return {
                 block: true,
-                reason: `Writing is restricted during Phase ${state.currentPhase} of ${state.totalPhases} (${phaseTitle}). Allowed outputs: [${entry.allowedNames.join(", ")}]. Your target path '${tp}' is not in the allowed list.`,
+                reason: `Writing is restricted during "${state.currentPhaseId}" (${phaseTitle}). Allowed outputs: [${entry.allowedNames.join(", ")}]. Your target path '${tp}' is not in the allowed list.`,
               };
             }
           }
         }
       } else {
         console.warn(
-          `[loop-engine] Step ${state.currentPhase}: no write allowlist entry found — write gating skipped. This should not happen after resources_discover.`,
+          `[loop-engine] Phase "${state.currentPhaseId}": no write allowlist entry found — write gating skipped. This should not happen after resources_discover.`,
         );
       }
     }
@@ -765,8 +799,9 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // 2. Iteration bounds enforcement
     // ---------------------------------------------------------------------------
 
-    const currentPhaseIndex = state.currentPhase - 1; // 1-based \u2192 0-based
-    const currentPhase = state.phasesList[currentPhaseIndex];
+    const currentPhase = getState().phaseManager?.getPhase(
+      state.currentPhaseId,
+    );
     if (!currentPhase) return;
 
     const resolvedMax = resolveMaxIterations(currentPhase.maxIterations);
@@ -786,7 +821,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
             .map((pv) => `${pv.name} (${pv.type})`)
             .join(", ");
           console.warn(
-            `[loop-engine] Max iterations reached for Phase ${state.currentPhase} (${currentPhase.title ?? "unknown"}). Undefined variables: ${names}`,
+            `[loop-engine] Max iterations reached for "${state.currentPhaseId}" (${currentPhase.title ?? "unknown"}). Undefined variables: ${names}`,
           );
         }
       }
@@ -886,17 +921,20 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     const phaseStore = getState().store;
     if (!phaseStore) return; // no store — cannot advance
 
-    const result = advancePhase(phaseStore, state.currentPhase + 1, "reset");
+    const nextId = getState().phaseManager?.resolveNext(
+      state.currentPhaseId,
+      getState(),
+    );
+    if (!nextId) {
+      // All phases exhausted — reset tracking and persist, let session end naturally
+      _handleExhaustion();
+      return;
+    }
+    const result = advancePhase(phaseStore, nextId, "reset");
 
     if (!result.triggered) {
-      // All phases exhausted — reset tracking (matching old behavior)
-      // and persist, then let session end naturally
-      setState({
-        currentIteration: 1,
-        filesWritten: [],
-        askUserCalled: false,
-      });
-      _persistCurrentState();
+      // No more non-programmatic phases — same exhaustion handling
+      _handleExhaustion();
       return;
     }
 
@@ -946,9 +984,88 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       }
 
       // Queue follow-up to trigger current phase (content via CustomMessage injection)
-      const currentPhaseObj = state.phasesList[state.currentPhase - 1];
+      const currentPhaseObj = getState().phaseManager?.getPhase(
+        state.currentPhaseId,
+      );
       if (!currentPhaseObj) return;
 
+      pi.sendUserMessage("", { deliverAs: "followUp" });
+    },
+  });
+
+  // 8. /goto command — jump to a specific workflow phase by ID
+  pi.registerCommand("goto", {
+    description: "Jump to a specific workflow phase by ID",
+    getArgumentCompletions: (argumentPrefix: string) => {
+      const pm = getState().phaseManager;
+      if (!pm) return null;
+
+      const ids = pm.listIds();
+      return ids
+        .filter((id) =>
+          id.toLowerCase().startsWith(argumentPrefix.toLowerCase()),
+        )
+        .map((id) => {
+          const phase = pm.getPhase(id);
+          return {
+            value: id,
+            label: id,
+            description: phase?.title,
+          };
+        });
+    },
+    handler: async (args, ctx) => {
+      // Block phase switching while agent is streaming
+      if (!ctx.isIdle()) {
+        ctx.ui.notify(
+          "Cannot switch phases while agent is running. Abort the current run first if you need to switch immediately.",
+          "error",
+        );
+        return;
+      }
+
+      const state = getState();
+      if (!state.isActive || !state.phaseManager) return;
+
+      // Parse the phase ID from args (single string argument)
+      const targetId = args.trim();
+      if (!targetId) {
+        ctx.ui.notify("Usage: /goto <phase-id>", "warning");
+        return;
+      }
+
+      // Validate the phase exists
+      const targetPhase = state.phaseManager.getPhase(targetId);
+      if (!targetPhase) {
+        const available = state.phaseManager.listIds().join(", ");
+        ctx.ui.notify(
+          `Unknown phase "${targetId}". Available phases: ${available}`,
+          "error",
+        );
+        return;
+      }
+
+      // Set currentPhaseId, reset iteration to 1, clear tracking
+      // Also clear ad-hoc mode flags so the follow-up triggers normal phase instructions
+      setState({
+        currentPhaseId: targetId,
+        currentIteration: 1,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        adHocPhaseNotified: false,
+      });
+
+      // Persist state
+      const updatedState = getState();
+      if (updatedState.sessionId) {
+        saveLoopEngineState(
+          updatedState.sessionId,
+          extractPersistedState(updatedState),
+        );
+      }
+
+      // Trigger follow-up to inject phase instructions via before_agent_start
       pi.sendUserMessage("", { deliverAs: "followUp" });
     },
   });

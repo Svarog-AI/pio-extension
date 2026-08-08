@@ -5,7 +5,30 @@ import * as capabilitySession from "../capability-session";
 import * as capabilityUtils from "../capability-utils";
 import * as modelConfig from "../model-config";
 import { initializeStore } from "./loop-engine";
-import { getState, resetState, setState } from "./session-state";
+import { PhaseManager } from "./phase-manager";
+import { getState, resetState, setState as setStateRaw } from "./session-state";
+
+// ---------------------------------------------------------------------------
+// Helper: setState with automatic phaseManager/currentPhaseId setup
+// ---------------------------------------------------------------------------
+
+/**
+ * Wrapper around setState that automatically sets phaseManager and currentPhaseId
+ * when phasesList is present. Use this instead of setState() in all tests.
+ */
+function setState(updates: Parameters<typeof setStateRaw>[0]): void {
+  if (updates.phasesList && !updates.phaseManager) {
+    const pm = new PhaseManager(updates.phasesList);
+    const cpId = updates.currentPhaseId ?? updates.phasesList[0]?.id ?? "";
+    setStateRaw({
+      ...updates,
+      phaseManager: pm,
+      currentPhaseId: cpId,
+    });
+  } else {
+    setStateRaw(updates);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Persistence module mock
@@ -17,11 +40,11 @@ vi.mock("./state-persistence", () => ({
   // Mirror real behavior: create a new object with only persisted fields
   extractPersistedState: vi.fn(
     (state: {
-      currentPhase: number;
+      currentPhaseId: string;
       currentIteration: number;
       isAdHocInput: boolean;
     }) => ({
-      currentPhase: state.currentPhase,
+      currentPhaseId: state.currentPhaseId,
       currentIteration: state.currentIteration,
       isAdHocInput: state.isAdHocInput,
     }),
@@ -81,7 +104,13 @@ function createMockPi(): {
   }>;
   registeredCommands: Map<
     string,
-    { description?: string; handler: (...args: unknown[]) => unknown }
+    {
+      description?: string;
+      getArgumentCompletions?: (
+        prefix: string,
+      ) => Array<{ value: string; label: string; description?: string }> | null;
+      handler: (...args: unknown[]) => unknown;
+    }
   >;
 } {
   const handlers = new Map<string, Array<(...args: unknown[]) => unknown>>();
@@ -95,7 +124,13 @@ function createMockPi(): {
   }> = [];
   const registeredCommands = new Map<
     string,
-    { description?: string; handler: (...args: unknown[]) => unknown }
+    {
+      description?: string;
+      getArgumentCompletions?: (
+        prefix: string,
+      ) => Array<{ value: string; label: string; description?: string }> | null;
+      handler: (...args: unknown[]) => unknown;
+    }
   >();
 
   const pi = {
@@ -302,7 +337,15 @@ describe("/continue command", () => {
   async function fireContinueCommand(
     registeredCommands: Map<
       string,
-      { description?: string; handler: (...args: unknown[]) => unknown }
+      {
+        description?: string;
+        getArgumentCompletions?: (prefix: string) => Array<{
+          value: string;
+          label: string;
+          description?: string;
+        }> | null;
+        handler: (...args: unknown[]) => unknown;
+      }
     >,
   ) {
     const cmd = registeredCommands.get("continue");
@@ -318,7 +361,7 @@ describe("/continue command", () => {
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
-      setState({ isActive: false, currentPhase: 1 });
+      setState({ isActive: false });
 
       await fireContinueCommand(registeredCommands);
 
@@ -326,14 +369,13 @@ describe("/continue command", () => {
       expect(getState().currentIteration).toBe(0); // unchanged
     });
 
-    it("executes when currentPhase is 1 (no dead guard)", async () => {
+    it("executes on first phase (no dead guard)", async () => {
       const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
@@ -360,7 +402,6 @@ describe("/continue command", () => {
 
       setState({
         isActive: true,
-        currentPhase: 2,
         currentIteration: 3,
         totalPhases: 2,
         phasesList: [
@@ -377,7 +418,6 @@ describe("/continue command", () => {
 
       const state = getState();
       expect(state.currentIteration).toBe(3); // preserved
-      expect(state.currentPhase).toBe(2); // preserved
       expect(state.filesWritten).toEqual([]);
       expect(state.askUserCalled).toBe(false);
       expect(state.isAdHocInput).toBe(false);
@@ -392,7 +432,6 @@ describe("/continue command", () => {
       // Set up: ad-hoc mode was active and notification was sent
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
@@ -435,7 +474,6 @@ describe("/continue command", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 2,
         totalPhases: 2,
         phasesList: [
@@ -456,19 +494,18 @@ describe("/continue command", () => {
       });
     });
 
-    it("stays on current phase (no returnTo logic)", async () => {
+    it("replays current phase on /continue", async () => {
       const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
 
       setState({
         isActive: true,
-        currentPhase: 2,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: [
           { id: "s1", title: "S1", instructions: "Do A" },
-          { id: "s2", title: "S2", instructions: "Do B" }, // no returnTo
+          { id: "s2", title: "S2", instructions: "Do B" },
         ],
         filesWritten: [],
         askUserCalled: false,
@@ -478,7 +515,6 @@ describe("/continue command", () => {
       await fireContinueCommand(registeredCommands);
 
       // Should stay on phase 2
-      expect(getState().currentPhase).toBe(2);
       expect(sendUserMessageCalls).toHaveLength(1);
       expect(sendUserMessageCalls[0].content).toBe("");
     });
@@ -494,7 +530,6 @@ describe("/continue command", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 0,
         phasesList: [],
@@ -508,6 +543,460 @@ describe("/continue command", () => {
 
       // No follow-up sent (no phase found)
       expect(sendUserMessageCalls).toHaveLength(0);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /goto command — jump to a specific phase by ID
+// ---------------------------------------------------------------------------
+
+describe("/goto command", () => {
+  async function fireGotoCommand(
+    registeredCommands: Map<
+      string,
+      {
+        description?: string;
+        getArgumentCompletions?: (prefix: string) => Array<{
+          value: string;
+          label: string;
+          description?: string;
+        }> | null;
+        handler: (...args: unknown[]) => unknown;
+      }
+    >,
+    args: string,
+    ctx: { ui: { notify: (msg: string, type: string) => void } },
+  ) {
+    const cmd = registeredCommands.get("goto");
+    expect(cmd).toBeDefined();
+    await cmd!.handler(args, ctx);
+  }
+
+  // ---- Registration ----
+
+  describe("registration", () => {
+    it('registeredCommands.has("goto") is true after setupLoopEngine', async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      expect(registeredCommands.has("goto")).toBe(true);
+      const cmd = registeredCommands.get("goto");
+      expect(cmd).toBeDefined();
+      expect(cmd!.description?.toLowerCase()).toContain("phase");
+    });
+  });
+
+  // ---- Blocked during active run ----
+
+  describe("blocked during active run", () => {
+    it("shows error notification and does not change state when agent is streaming", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhaseId: "s1",
+        currentIteration: 3,
+        totalPhases: 2,
+        phasesList: phases,
+        filesWritten: ["/existing/file.ts"],
+        askUserCalled: true,
+        phaseManager: pm,
+      });
+
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(false),
+      };
+      await fireGotoCommand(registeredCommands, "s2", ctx);
+
+      // Error notification shown
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        "Cannot switch phases while agent is running. Abort the current run first if you need to switch immediately.",
+        "error",
+      );
+
+      // No state mutations
+      const state = getState();
+      expect(state.currentPhaseId).toBe("s1");
+      expect(state.currentIteration).toBe(3);
+      expect(state.filesWritten).toEqual(["/existing/file.ts"]);
+      expect(state.askUserCalled).toBe(true);
+
+      // No follow-up message
+      expect(sendUserMessageCalls).toHaveLength(0);
+    });
+
+    it("proceeds normally when agent is idle", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        sessionId: "goto-session",
+        currentPhaseId: "s1",
+        currentIteration: 3,
+        totalPhases: 2,
+        phasesList: phases,
+        filesWritten: ["/old/file.ts"],
+        askUserCalled: true,
+        phaseManager: pm,
+      });
+
+      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
+      await fireGotoCommand(registeredCommands, "s2", ctx);
+
+      // State updated
+      const state = getState();
+      expect(state.currentPhaseId).toBe("s2");
+      expect(state.currentIteration).toBe(1);
+      expect(state.filesWritten).toEqual([]);
+
+      // State persisted
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
+
+      // Follow-up sent
+      expect(sendUserMessageCalls).toHaveLength(1);
+
+      // No error notification
+      expect(ctx.ui.notify).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---- Guards ----
+
+  describe("guards", () => {
+    it("does nothing when isActive is false", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      setState({ isActive: false });
+
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
+      await fireGotoCommand(registeredCommands, "step-2", ctx);
+
+      expect(sendUserMessageCalls).toHaveLength(0);
+      expect(ctx.ui.notify).not.toHaveBeenCalled();
+    });
+
+    it("does nothing when phaseManager is null", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
+      await fireGotoCommand(registeredCommands, "step-2", ctx);
+
+      expect(sendUserMessageCalls).toHaveLength(0);
+      expect(ctx.ui.notify).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---- Valid phase ----
+
+  describe("valid phase", () => {
+    it("sets currentPhaseId, resets iteration, clears tracking, persists, and sends follow-up", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+        { id: "s3", title: "S3", instructions: "Do C" },
+      ];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        sessionId: "goto-session",
+        currentPhaseId: "s1",
+        currentIteration: 5,
+        totalPhases: 3,
+        phasesList: phases,
+        filesWritten: ["/old/file.ts"],
+        askUserCalled: true,
+        isAdHocInput: false,
+        phaseWriteAllowlist: new Map(),
+        phaseManager: pm,
+      });
+
+      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
+      await fireGotoCommand(registeredCommands, "s3", ctx);
+
+      const state = getState();
+      expect(state.currentPhaseId).toBe("s3");
+      expect(state.currentIteration).toBe(1);
+      expect(state.filesWritten).toEqual([]);
+      expect(state.askUserCalled).toBe(false);
+
+      // State persisted
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
+
+      // Follow-up message sent
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].content).toBe("");
+      expect(sendUserMessageCalls[0].options).toEqual({
+        deliverAs: "followUp",
+      });
+
+      // No error notification
+      expect(ctx.ui.notify).not.toHaveBeenCalled();
+    });
+
+    it("clears ad-hoc mode flags (isAdHocInput, adHocPhaseNotified) when invoked from ad-hoc mode", async () => {
+      const { pi, registeredCommands, sendUserMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+        { id: "s3", title: "S3", instructions: "Do C" },
+      ];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        sessionId: "goto-session",
+        currentPhaseId: "s1",
+        currentIteration: 3,
+        totalPhases: 3,
+        phasesList: phases,
+        filesWritten: ["/old/file.ts"],
+        askUserCalled: true,
+        isAdHocInput: true, // User was in ad-hoc mode
+        adHocPhaseNotified: true, // Already notified about pause
+        phaseWriteAllowlist: new Map(),
+        phaseManager: pm,
+      });
+
+      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
+      await fireGotoCommand(registeredCommands, "s2", ctx);
+
+      const state = getState();
+      // Phase jumped correctly
+      expect(state.currentPhaseId).toBe("s2");
+      // Ad-hoc flags cleared — follow-up will trigger normal phase instructions, not "Workflow Paused"
+      expect(state.isAdHocInput).toBe(false);
+      expect(state.adHocPhaseNotified).toBe(false);
+      // Tracking cleared
+      expect(state.currentIteration).toBe(1);
+      expect(state.filesWritten).toEqual([]);
+      expect(state.askUserCalled).toBe(false);
+      // Follow-up sent
+      expect(sendUserMessageCalls).toHaveLength(1);
+      expect(sendUserMessageCalls[0].options).toEqual({
+        deliverAs: "followUp",
+      });
+    });
+  });
+
+  // ---- Invalid phase ----
+
+  describe("invalid phase", () => {
+    it("shows error notification with available phases listed", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhaseId: "s1",
+        totalPhases: 2,
+        phasesList: phases,
+        phaseManager: pm,
+      });
+
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
+      await fireGotoCommand(registeredCommands, "nonexistent", ctx);
+
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        'Unknown phase "nonexistent". Available phases: s1, s2',
+        "error",
+      );
+    });
+  });
+
+  // ---- No arguments ----
+
+  describe("no arguments", () => {
+    it("shows warning notification with usage", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [{ id: "s1", title: "S1", instructions: "Do A" }];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhaseId: "s1",
+        phasesList: phases,
+        phaseManager: pm,
+      });
+
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
+      await fireGotoCommand(registeredCommands, "   ", ctx);
+
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        "Usage: /goto <phase-id>",
+        "warning",
+      );
+    });
+  });
+
+  // ---- Autocomplete ----
+
+  describe("getArgumentCompletions", () => {
+    it("returns all phase IDs when prefix is empty", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "Setup", instructions: "A" },
+        { id: "s2", title: "Implement", instructions: "B" },
+        { id: "s3", title: "Review", instructions: "C" },
+      ];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhaseId: "s1",
+        phasesList: phases,
+        phaseManager: pm,
+      });
+
+      const cmd = registeredCommands.get("goto");
+      expect(cmd).toBeDefined();
+      expect(cmd!.getArgumentCompletions).toBeDefined();
+
+      const results = cmd!.getArgumentCompletions!("");
+      expect(results).toHaveLength(3);
+      expect(results).toContainEqual({
+        value: "s1",
+        label: "s1",
+        description: "Setup",
+      });
+      expect(results).toContainEqual({
+        value: "s2",
+        label: "s2",
+        description: "Implement",
+      });
+      expect(results).toContainEqual({
+        value: "s3",
+        label: "s3",
+        description: "Review",
+      });
+    });
+
+    it("filters by case-insensitive prefix", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "Setup", instructions: "A" },
+        { id: "s2", title: "Implement", instructions: "B" },
+        { id: "other", title: "Other", instructions: "C" },
+      ];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhaseId: "s1",
+        phasesList: phases,
+        phaseManager: pm,
+      });
+
+      const cmd = registeredCommands.get("goto");
+      const results = cmd!.getArgumentCompletions!("S");
+      expect(results).toHaveLength(2);
+      expect(results).toContainEqual({
+        value: "s1",
+        label: "s1",
+        description: "Setup",
+      });
+      expect(results).toContainEqual({
+        value: "s2",
+        label: "s2",
+        description: "Implement",
+      });
+    });
+
+    it("returns null when PhaseManager is unavailable", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      // Do NOT set phaseManager in state
+      setState({ isActive: false });
+
+      const cmd = registeredCommands.get("goto");
+      const results = cmd!.getArgumentCompletions!("");
+      expect(results).toBeNull();
+    });
+
+    it("returns empty array for non-matching prefix", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "Setup", instructions: "A" },
+        { id: "s2", title: "Implement", instructions: "B" },
+      ];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhaseId: "s1",
+        phasesList: phases,
+        phaseManager: pm,
+      });
+
+      const cmd = registeredCommands.get("goto");
+      const results = cmd!.getArgumentCompletions!("zzz");
+      expect(results).toEqual([]);
     });
   });
 });
@@ -536,7 +1025,6 @@ describe("resources_discover", () => {
     // Assert: PioSessionState initialized (single source of truth)
     const state = getState();
     expect(state.isActive).toBe(true);
-    expect(state.currentPhase).toBe(1);
     expect(state.currentIteration).toBe(1);
     expect(state.totalPhases).toBe(2);
     expect(state.phasesList).toHaveLength(2);
@@ -544,6 +1032,11 @@ describe("resources_discover", () => {
     expect(state.isAdHocInput).toBe(false);
     expect(state.filesWritten).toEqual([]);
     expect(state.askUserCalled).toBe(false);
+
+    // Assert: PhaseManager is set and currentPhaseId is synced
+    expect(state.phaseManager).toBeDefined();
+    expect(state.phaseManager).toBeInstanceOf(PhaseManager);
+    expect(state.currentPhaseId).toBe("step-1");
   });
 
   it("when config is absent: resets state", async () => {
@@ -555,7 +1048,6 @@ describe("resources_discover", () => {
     // Pre-set some state
     setState({
       isActive: true,
-      currentPhase: 3,
       totalPhases: 5,
       currentIteration: 2,
       isAdHocInput: true,
@@ -575,7 +1067,6 @@ describe("resources_discover", () => {
     // Assert: state reset (including loop engine fields)
     const state = getState();
     expect(state.isActive).toBe(false);
-    expect(state.currentPhase).toBe(0);
     expect(state.currentIteration).toBe(0);
     expect(state.totalPhases).toBe(0);
     expect(state.phasesList).toEqual([]);
@@ -604,7 +1095,6 @@ describe("resources_discover", () => {
     // Assert: session is still active with empty phases list (single-pass execution)
     const state = getState();
     expect(state.isActive).toBe(true);
-    expect(state.currentPhase).toBe(1);
     expect(state.totalPhases).toBe(0);
     expect(state.phasesList).toEqual([]);
   });
@@ -713,7 +1203,6 @@ describe("before_agent_start", () => {
         { id: "s2", title: "S2", instructions: "Do B" },
       ],
       totalPhases: 2,
-      currentPhase: 1,
       store,
     });
 
@@ -742,6 +1231,7 @@ describe("before_agent_start", () => {
       isAdHocInput: true,
       filesWritten: ["/some/file.ts"],
       askUserCalled: true,
+      phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
     });
 
     // Act: fire before_agent_start
@@ -782,7 +1272,6 @@ describe("before_agent_start", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1, // initialized at 1 in resources_discover
         totalPhases: 2,
         phasesList: [
@@ -821,7 +1310,7 @@ describe("before_agent_start", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 2,
+        currentPhaseId: "s2",
         currentIteration: 1, // initialized at 1 in resources_discover
         totalPhases: 3,
         phasesList: [
@@ -856,7 +1345,7 @@ describe("before_agent_start", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 4,
+        currentPhaseId: "s4",
         currentIteration: 1, // initialized at 1 in resources_discover
         totalPhases: 5,
         phasesList: [
@@ -893,7 +1382,6 @@ describe("before_agent_start", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 2, // already > 1 (no increment in before_agent_start)
         totalPhases: 1,
         phasesList: [
@@ -931,7 +1419,6 @@ describe("before_agent_start", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1, // first iteration (no increment in before_agent_start)
         totalPhases: 1,
         phasesList: [
@@ -967,7 +1454,6 @@ describe("before_agent_start", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 0,
         phasesList: [],
@@ -986,7 +1472,7 @@ describe("before_agent_start", () => {
       expect(results).toHaveLength(0);
     });
 
-    it("skips injection when currentPhase is out of bounds", async () => {
+    it("skips injection when currentPhaseId is unknown", async () => {
       const { pi, handlers } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
@@ -994,7 +1480,7 @@ describe("before_agent_start", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 99,
+        currentPhaseId: "nonexistent",
         currentIteration: 1,
         totalPhases: 2,
         phasesList: [
@@ -1045,7 +1531,6 @@ describe("before_agent_start", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 1, // Start on the programmatic phase
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -1070,7 +1555,6 @@ describe("before_agent_start", () => {
       expect(result.message.content).toContain(`You are on "s2"`);
       expect(result.message.content).not.toContain(`You are on "var-setup"`);
       // State should have advanced past the programmatic phase
-      expect(getState().currentPhase).toBe(2);
     });
   });
 
@@ -1084,7 +1568,7 @@ describe("before_agent_start", () => {
 
       setState({
         isActive: true,
-        currentPhase: 2,
+        currentPhaseId: "s2",
         currentIteration: 3,
         totalPhases: 4,
         phasesList: [
@@ -1132,7 +1616,6 @@ describe("before_agent_start", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 0,
         phasesList: [],
@@ -1159,7 +1642,6 @@ describe("before_agent_start", () => {
 
         setState({
           isActive: true,
-          currentPhase: 1,
           currentIteration: 1,
           totalPhases: 2,
           phasesList: [
@@ -1195,7 +1677,6 @@ describe("before_agent_start", () => {
         const store = initializeStore({});
         setState({
           isActive: true,
-          currentPhase: 1,
           currentIteration: 1,
           totalPhases: 2,
           phasesList: [
@@ -1225,7 +1706,6 @@ describe("before_agent_start", () => {
         const store = initializeStore({});
         setState({
           isActive: true,
-          currentPhase: 1,
           currentIteration: 1,
           totalPhases: 2,
           phasesList: [
@@ -1263,7 +1743,6 @@ describe("before_agent_start", () => {
         const store = initializeStore({});
         setState({
           isActive: true,
-          currentPhase: 1,
           currentIteration: 1,
           totalPhases: 2,
           phasesList: [
@@ -1301,7 +1780,6 @@ describe("before_agent_start", () => {
 
         setState({
           isActive: true,
-          currentPhase: 2,
           currentIteration: 3,
           totalPhases: 4,
           phasesList: [
@@ -1341,7 +1819,6 @@ describe("before_agent_start", () => {
         const store = initializeStore({});
         setState({
           isActive: true,
-          currentPhase: 1,
           currentIteration: 1,
           totalPhases: 1,
           phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
@@ -1574,7 +2051,6 @@ describe("iteration data clearing between iterations", () => {
         { id: "s2", title: "S2", instructions: "Do B" },
       ],
       totalPhases: 2,
-      currentPhase: 1,
       store,
     });
 
@@ -1721,7 +2197,6 @@ describe("agent_end", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: [
@@ -1756,7 +2231,6 @@ describe("agent_end", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: [
@@ -1790,7 +2264,6 @@ describe("agent_end", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
@@ -1843,7 +2316,6 @@ describe("agent_end", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -1862,7 +2334,6 @@ describe("agent_end", () => {
 
       // Ad-hoc guard: no follow-up injected, phase not advanced
       expect(sendUserMessageCalls).toHaveLength(0);
-      expect(getState().currentPhase).toBe(1);
     });
   });
 
@@ -1893,7 +2364,6 @@ describe("agent_end", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 3, // >= maxIterations (3) → hard stop
         totalPhases: 2,
         phasesList: phases,
@@ -1914,7 +2384,6 @@ describe("agent_end", () => {
       // Without max check: conditions met (no terminateWhen, iteration >= minIterations 1)
       // → would advance to phase 2 and send "Do B" as follow-up.
       expect(sendUserMessageCalls).toHaveLength(0);
-      expect(getState().currentPhase).toBe(1); // Not advanced
     });
   });
 
@@ -1938,7 +2407,6 @@ describe("agent_end", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -1956,8 +2424,7 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Should advance: currentPhase updated, sendMessage called with CustomMessage
-      expect(getState().currentPhase).toBe(2);
+      // Should advance to next phase via sendMessage
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-phase-instructions",
@@ -1994,7 +2461,6 @@ describe("agent_end", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 2, // < minIterations (3)
         totalPhases: 2,
         phasesList: phases,
@@ -2011,8 +2477,7 @@ describe("agent_end", () => {
         },
       ]);
 
-      // Should loop: sendMessage called with CustomMessage, currentPhase unchanged
-      expect(getState().currentPhase).toBe(1);
+      // Should loop on same phase via sendMessage
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-phase-instructions",
@@ -2049,7 +2514,6 @@ describe("agent_end", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1, // >= minIterations
         totalPhases: 2,
         phasesList: phases,
@@ -2068,7 +2532,6 @@ describe("agent_end", () => {
       ]);
 
       // Callback returns true → advance via sendMessage
-      expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-phase-instructions",
@@ -2108,7 +2571,6 @@ describe("agent_end", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -2126,7 +2588,6 @@ describe("agent_end", () => {
       ]);
 
       // All false → loop via sendMessage
-      expect(getState().currentPhase).toBe(1);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-phase-instructions",
@@ -2166,7 +2627,6 @@ describe("agent_end", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -2184,7 +2644,6 @@ describe("agent_end", () => {
       ]);
 
       // AND logic: first callback false → loop (all must pass)
-      expect(getState().currentPhase).toBe(1);
       expect(getState().currentIteration).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
@@ -2226,7 +2685,6 @@ describe("agent_end", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -2245,7 +2703,6 @@ describe("agent_end", () => {
       ]);
 
       // AND logic: all callbacks true → advance
-      expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-phase-instructions",
@@ -2283,7 +2740,6 @@ describe("agent_end", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -2301,7 +2757,6 @@ describe("agent_end", () => {
       ]);
 
       // Callback threw → fail-safe: loop via sendMessage
-      expect(getState().currentPhase).toBe(1);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-phase-instructions",
@@ -2333,7 +2788,6 @@ describe("agent_end", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 2, // >= minIterations
         totalPhases: 2,
         phasesList: phases,
@@ -2352,7 +2806,6 @@ describe("agent_end", () => {
       ]);
 
       // No terminateWhen + minIterations reached → advance via sendMessage
-      expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-phase-instructions",
@@ -2384,7 +2837,6 @@ describe("agent_end", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -2403,7 +2855,6 @@ describe("agent_end", () => {
       ]);
 
       // Empty terminateWhen + minIterations reached → advance via sendMessage
-      expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(sendMessageCalls[0].message.customType).toBe(
         "workflow-phase-instructions",
@@ -2437,7 +2888,6 @@ describe("agent_end", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1, // < minIterations (3) → loop replay
         totalPhases: 1,
         phasesList: phases,
@@ -2479,7 +2929,6 @@ describe("agent_end", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1, // < minIterations (2) → loop replay
         totalPhases: 1,
         phasesList: phases,
@@ -2521,7 +2970,6 @@ describe("agent_end", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1, // < minIterations (2) → loop replay
         totalPhases: 1,
         phasesList: phases,
@@ -2563,7 +3011,6 @@ describe("agent_end", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1, // will become 2 after replay
         totalPhases: 1,
         phasesList: phases,
@@ -2611,7 +3058,6 @@ describe("agent_end", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1, // < minIterations
         totalPhases: 1,
         phasesList: phases,
@@ -2664,7 +3110,6 @@ describe("agent_end", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 3,
         totalPhases: 1,
         phasesList: phases,
@@ -2684,10 +3129,9 @@ describe("agent_end", () => {
         },
       ]);
 
-      // advancePhase called with startAt=2 → no phase 2 → { triggered: false }
+      // resolveNext returns undefined (no next phase) → reset tracking and return
       // Section 6 resets tracking and persists, then returns
       expect(sendMessageCalls).toHaveLength(0);
-      expect(getState().currentPhase).toBe(2); // advancePhase set currentPhase to 2 before finding nothing
       expect(getState().currentIteration).toBe(1); // Reset on exhaustion
       expect(getState().filesWritten).toEqual([]); // Reset on exhaustion
       expect(getState().askUserCalled).toBe(false); // Reset on exhaustion
@@ -2728,7 +3172,6 @@ describe("agent_end", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -2748,11 +3191,10 @@ describe("agent_end", () => {
         },
       ]);
 
-      // advancePhase: executes programmatic phase 2 (sets static var),
-      // then tries phase 3 → not found → { triggered: false }
+      // resolveNext returns "p2" → advancePhase executes p2 (programmatic),
+      // then resolveNext from p2 returns undefined → { triggered: false }
       // Section 6 resets tracking and persists, then returns
       expect(sendMessageCalls).toHaveLength(0);
-      expect(getState().currentPhase).toBe(3); // advancePhase advanced past p2, tried 3
       expect(store.get("env")).toBe("staging"); // executePhase still ran
       expect(getState().currentIteration).toBe(1); // Reset on exhaustion
       expect(getState().filesWritten).toEqual([]);
@@ -2788,7 +3230,6 @@ describe("agent_end", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 5, // >= maxIterations (5) → hard stop
         totalPhases: 2,
         phasesList: phases,
@@ -2809,7 +3250,6 @@ describe("agent_end", () => {
       // Without max check: conditions met (no terminateWhen, iteration >= minIterations 1)
       // → would advance to phase 2 and send "Do B" as follow-up.
       expect(sendUserMessageCalls).toHaveLength(0);
-      expect(getState().currentPhase).toBe(1); // Not advanced
     });
   });
 });
@@ -2847,7 +3287,6 @@ describe("phase advancement state reset", () => {
     const store = initializeStore({});
     setState({
       isActive: true,
-      currentPhase: 1,
       currentIteration: 3, // Phase 1 ran for 3 iterations
       totalPhases: 2,
       phasesList: phases,
@@ -2861,7 +3300,6 @@ describe("phase advancement state reset", () => {
     await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
 
     // Phase advanced to 2, iteration reset to 1
-    expect(getState().currentPhase).toBe(2);
     expect(getState().currentIteration).toBe(1);
     expect(sendMessageCalls).toHaveLength(1);
   });
@@ -2882,7 +3320,6 @@ describe("phase advancement state reset", () => {
     const store = initializeStore({});
     setState({
       isActive: true,
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 2,
       phasesList: phases,
@@ -2895,7 +3332,6 @@ describe("phase advancement state reset", () => {
 
     await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
 
-    expect(getState().currentPhase).toBe(2);
     expect(getState().filesWritten).toEqual([]);
     expect(sendMessageCalls).toHaveLength(1);
   });
@@ -2916,7 +3352,6 @@ describe("phase advancement state reset", () => {
     const store = initializeStore({});
     setState({
       isActive: true,
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 2,
       phasesList: phases,
@@ -2929,7 +3364,6 @@ describe("phase advancement state reset", () => {
 
     await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
 
-    expect(getState().currentPhase).toBe(2);
     expect(getState().askUserCalled).toBe(false);
     expect(sendMessageCalls).toHaveLength(1);
   });
@@ -2954,7 +3388,6 @@ describe("phase advancement state reset", () => {
     const store = initializeStore({});
     setState({
       isActive: true,
-      currentPhase: 1,
       currentIteration: 3, // Phase 1 had multiple iterations
       totalPhases: 3,
       phasesList: phases,
@@ -2968,7 +3401,6 @@ describe("phase advancement state reset", () => {
     await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
 
     // After advancement: Phase 2, iteration reset to 1 (not 3)
-    expect(getState().currentPhase).toBe(2);
     expect(getState().currentIteration).toBe(1);
     // If iteration were not reset (still 3), Phase 2 would have
     // 3 >= minIterations(1) → advance to Phase 3 immediately.
@@ -2992,7 +3424,6 @@ describe("phase advancement state reset", () => {
     const store = initializeStore({});
     setState({
       isActive: true,
-      currentPhase: 1,
       currentIteration: 3, // Phase 1 had multiple iterations
       totalPhases: 2,
       phasesList: phases,
@@ -3019,7 +3450,6 @@ describe("phase advancement state reset", () => {
     const store = initializeStore({});
     setState({
       isActive: true,
-      currentPhase: 1,
       currentIteration: 5,
       totalPhases: 2,
       phasesList: [
@@ -3066,7 +3496,7 @@ describe("buildPhaseInstructions", () => {
   it("produces authority header (## Instructions for Phase N)", async () => {
     const build = await getBuildPhaseInstructions();
     setState({
-      currentPhase: 2,
+      currentPhaseId: "s2",
       currentIteration: 1,
       totalPhases: 3,
       phasesList: [
@@ -3082,7 +3512,6 @@ describe("buildPhaseInstructions", () => {
   it("contains authority text without leaking future phases", async () => {
     const build = await getBuildPhaseInstructions();
     setState({
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 2,
       phasesList: [
@@ -3099,17 +3528,19 @@ describe("buildPhaseInstructions", () => {
 
   it("includes completed phases info via buildCompletedPhasesIds", async () => {
     const build = await getBuildPhaseInstructions();
+    const phases = [
+      { id: "s1", title: "S1", instructions: "A" },
+      { id: "s2", title: "S2", instructions: "B" },
+      { id: "s3", title: "S3", instructions: "C" },
+      { id: "s4", title: "S4", instructions: "D" },
+      { id: "s5", title: "S5", instructions: "E" },
+    ];
     setState({
-      currentPhase: 3,
+      currentPhaseId: "s3",
       currentIteration: 1,
       totalPhases: 5,
-      phasesList: [
-        { id: "s1", title: "S1", instructions: "A" },
-        { id: "s2", title: "S2", instructions: "B" },
-        { id: "s3", title: "S3", instructions: "C" },
-        { id: "s4", title: "S4", instructions: "D" },
-        { id: "s5", title: "S5", instructions: "E" },
-      ],
+      phasesList: phases,
+      phaseManager: new PhaseManager(phases),
     });
     const result = build(getState());
     expect(result).toContain(`Phases "s1" and "s2" completed.`);
@@ -3118,7 +3549,6 @@ describe("buildPhaseInstructions", () => {
   it("includes phase position line", async () => {
     const build = await getBuildPhaseInstructions();
     setState({
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 2,
       phasesList: [
@@ -3133,7 +3563,6 @@ describe("buildPhaseInstructions", () => {
   it("includes separator (---) before instructions", async () => {
     const build = await getBuildPhaseInstructions();
     setState({
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 1,
       phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
@@ -3147,7 +3576,6 @@ describe("buildPhaseInstructions", () => {
   it("includes phase instructions content", async () => {
     const build = await getBuildPhaseInstructions();
     setState({
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 1,
       phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
@@ -3159,7 +3587,6 @@ describe("buildPhaseInstructions", () => {
   it("includes loopMessage as Retry focus when currentIteration > 1", async () => {
     const build = await getBuildPhaseInstructions();
     setState({
-      currentPhase: 1,
       currentIteration: 2,
       totalPhases: 1,
       phasesList: [
@@ -3178,7 +3605,6 @@ describe("buildPhaseInstructions", () => {
   it("does NOT include loopMessage on first iteration", async () => {
     const build = await getBuildPhaseInstructions();
     setState({
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 1,
       phasesList: [
@@ -3197,7 +3623,6 @@ describe("buildPhaseInstructions", () => {
   it("does NOT include loopMessage when phase has no loopMessage", async () => {
     const build = await getBuildPhaseInstructions();
     setState({
-      currentPhase: 1,
       currentIteration: 2,
       totalPhases: 1,
       phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
@@ -3212,7 +3637,6 @@ describe("buildPhaseInstructions", () => {
 
     const store = new SessionVariableStore({});
     setState({
-      currentPhase: 1,
       currentIteration: 2,
       totalPhases: 1,
       phasesList: [
@@ -3288,7 +3712,6 @@ describe("tool_call — phase-level write gate", () => {
     // Set up: Phase 1 has write: ["goal"], Phase 2 has write: ["plan"]
     setState({
       isActive: true,
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 2,
       phasesList: [
@@ -3300,7 +3723,7 @@ describe("tool_call — phase-level write gate", () => {
       isAdHocInput: false,
       phaseWriteAllowlist: new Map([
         [
-          1,
+          "s1",
           {
             allowedPaths: new Set(["/test/.pio/goals/test/GOAL.md"]),
             allowedNames: ["goal"],
@@ -3311,7 +3734,7 @@ describe("tool_call — phase-level write gate", () => {
           },
         ],
         [
-          2,
+          "s2",
           {
             allowedPaths: new Set(["/test/.pio/goals/test/PLAN.md"]),
             allowedNames: ["plan"],
@@ -3337,7 +3760,7 @@ describe("tool_call — phase-level write gate", () => {
       reason: expect.stringContaining("Writing is restricted"),
     });
     expect(blocked!.reason).toContain("Allowed outputs: [goal]");
-    expect(blocked!.reason).toContain("Phase 1 of 2");
+    expect(blocked!.reason).toContain('"s1" (S1)');
     expect(blocked!.reason).toContain(
       "Your target path '/test/.pio/goals/test/PLAN.md' is not in the allowed list",
     );
@@ -3351,7 +3774,6 @@ describe("tool_call — phase-level write gate", () => {
 
     setState({
       isActive: true,
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 2,
       phasesList: [
@@ -3363,7 +3785,7 @@ describe("tool_call — phase-level write gate", () => {
       isAdHocInput: false,
       phaseWriteAllowlist: new Map([
         [
-          1,
+          "s1",
           {
             allowedPaths: new Set(["/test/.pio/goals/test/GOAL.md"]),
             allowedNames: ["goal"],
@@ -3397,7 +3819,6 @@ describe("tool_call — phase-level write gate", () => {
     // Simulates the new behavior: every phase gets an entry, even without write
     setState({
       isActive: true,
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 1,
       phasesList: [{ id: "s1", title: "S1", instructions: "A" }], // no write
@@ -3406,7 +3827,7 @@ describe("tool_call — phase-level write gate", () => {
       isAdHocInput: false,
       phaseWriteAllowlist: new Map([
         [
-          1,
+          "s1",
           {
             allowedPaths: new Set(), // empty — no write declared
             allowedNames: [],
@@ -3441,14 +3862,13 @@ describe("tool_call — phase-level write gate", () => {
 
     setState({
       isActive: true,
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 1,
       phasesList: [{ id: "s1", title: "S1", instructions: "A" }],
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(), // empty — no entry for phase 1
+      phaseWriteAllowlist: new Map(), // empty — no entry for phase "s1"
     });
 
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -3475,7 +3895,6 @@ describe("tool_call — phase-level write gate", () => {
 
     setState({
       isActive: true,
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 2,
       phasesList: [
@@ -3487,7 +3906,7 @@ describe("tool_call — phase-level write gate", () => {
       isAdHocInput: false,
       phaseWriteAllowlist: new Map([
         [
-          1,
+          "s1",
           {
             allowedPaths: new Set(), // empty — write: []
             allowedNames: [],
@@ -3512,7 +3931,7 @@ describe("tool_call — phase-level write gate", () => {
       block: true,
       reason: expect.stringContaining("does not produce any contract outputs"),
     });
-    expect(blocked2!.reason).toContain("Phase 1 of 2");
+    expect(blocked2!.reason).toContain('"s1" (Research)');
   });
 
   // (d cont.) Empty write array passes non-contract paths through
@@ -3523,7 +3942,6 @@ describe("tool_call — phase-level write gate", () => {
 
     setState({
       isActive: true,
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 2,
       phasesList: [
@@ -3534,7 +3952,7 @@ describe("tool_call — phase-level write gate", () => {
       isAdHocInput: false,
       phaseWriteAllowlist: new Map([
         [
-          1,
+          "s1",
           {
             allowedPaths: new Set(),
             allowedNames: [],
@@ -3565,7 +3983,6 @@ describe("tool_call — phase-level write gate", () => {
 
     setState({
       isActive: true,
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 1,
       phasesList: [{ id: "s1", title: "S1", instructions: "A", write: [] }],
@@ -3574,7 +3991,7 @@ describe("tool_call — phase-level write gate", () => {
       isAdHocInput: false,
       phaseWriteAllowlist: new Map([
         [
-          1,
+          "s1",
           {
             allowedPaths: new Set(),
             allowedNames: [],
@@ -3629,9 +4046,9 @@ describe("tool_call — phase-level write gate", () => {
       );
     }
 
-    // Assert: phaseWriteAllowlist entry exists for phase 1
+    // Assert: phaseWriteAllowlist entry exists for phase "s1"
     const state = getState();
-    const entry = state.phaseWriteAllowlist.get(1);
+    const entry = state.phaseWriteAllowlist.get("s1");
     expect(entry).toBeDefined();
     // "goal" resolved, "nonexistent" skipped silently
     expect(entry!.allowedNames).toContain("goal");
@@ -3647,7 +4064,6 @@ describe("tool_call — phase-level write gate", () => {
 
     setState({
       isActive: true,
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 2,
       phasesList: [
@@ -3658,7 +4074,7 @@ describe("tool_call — phase-level write gate", () => {
       isAdHocInput: false,
       phaseWriteAllowlist: new Map([
         [
-          1,
+          "s1",
           {
             allowedPaths: new Set(["/test/.pio/goals/test/GOAL.md"]),
             allowedNames: ["goal"],
@@ -3700,7 +4116,6 @@ describe("tool_call — phase-level write gate", () => {
 
     setState({
       isActive: true,
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 2,
       phasesList: [
@@ -3711,7 +4126,7 @@ describe("tool_call — phase-level write gate", () => {
       isAdHocInput: false,
       phaseWriteAllowlist: new Map([
         [
-          1,
+          "s1",
           {
             allowedPaths: new Set(["/test/.pio/goals/test/GOAL.md"]),
             allowedNames: ["goal"],
@@ -3742,7 +4157,6 @@ describe("tool_call — phase-level write gate", () => {
 
     setState({
       isActive: true,
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 2,
       phasesList: [
@@ -3753,7 +4167,7 @@ describe("tool_call — phase-level write gate", () => {
       isAdHocInput: false,
       phaseWriteAllowlist: new Map([
         [
-          1,
+          "s1",
           {
             allowedPaths: new Set(["/test/.pio/goals/test/GOAL.md"]),
             allowedNames: ["goal"],
@@ -3813,19 +4227,46 @@ describe("tool_call — phase-level write gate", () => {
       );
     }
 
-    // Assert: every phase has an entry
+    // Assert: every phase has an entry (keyed by phase ID string)
     const state = getState();
-    expect(state.phaseWriteAllowlist.has(1)).toBe(true); // phase without write
-    expect(state.phaseWriteAllowlist.has(2)).toBe(true); // phase with write
-    // Phase 1 (no write): empty allowedPaths, populated allContractOutputs
-    const entry1 = state.phaseWriteAllowlist.get(1)!;
+    expect(state.phaseWriteAllowlist.has("s1")).toBe(true); // phase without write
+    expect(state.phaseWriteAllowlist.has("s2")).toBe(true); // phase with write
+    // Phase "s1" (no write): empty allowedPaths, populated allContractOutputs
+    const entry1 = state.phaseWriteAllowlist.get("s1")!;
     expect(entry1.allowedPaths.size).toBe(0);
     expect(entry1.allowedNames).toEqual([]);
     expect(entry1.allContractOutputs.size).toBeGreaterThan(0);
-    // Phase 2 (write: ["goal"]): populated allowedPaths
-    const entry2 = state.phaseWriteAllowlist.get(2)!;
+    // Phase "s2" (write: ["goal"]): populated allowedPaths
+    const entry2 = state.phaseWriteAllowlist.get("s2")!;
     expect(entry2.allowedPaths.size).toBe(1);
     expect(entry2.allowedNames).toEqual(["goal"]);
+  });
+
+  it("keys phaseWriteAllowlist by string phase IDs", async () => {
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue([
+      { id: "step-1", title: "S1", instructions: "Do S1" },
+      { id: "step-2", title: "S2", instructions: "Do S2" },
+    ]);
+
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    const discoverHandlers = handlers.get("resources_discover");
+    for (const h of discoverHandlers!) {
+      await h(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        mockCtx,
+      );
+    }
+
+    const state = getState();
+    expect(state.phaseWriteAllowlist.has("step-1")).toBe(true);
+    expect(state.phaseWriteAllowlist.has("step-2")).toBe(true);
+    // All keys must be strings, not numbers
+    for (const key of state.phaseWriteAllowlist.keys()) {
+      expect(typeof key).toBe("string");
+    }
   });
 
   it("integration: resources_discover + tool_call — phase without write blocks contract output", async () => {
@@ -3847,8 +4288,7 @@ describe("tool_call — phase-level write gate", () => {
       );
     }
 
-    // Set currentPhase to 1 (the phase without write)
-    setState({ currentPhase: 1, currentIteration: 1 });
+    // Set currentPhaseId to the phase without write
 
     // Fire tool_call to write a contract output
     const toolHandlers = handlers.get("tool_call");
@@ -3886,8 +4326,6 @@ describe("tool_call — phase-level write gate", () => {
         mockCtx,
       );
     }
-
-    setState({ currentPhase: 1, currentIteration: 1 });
 
     // Fire tool_call to write a non-contract file
     const toolHandlers = handlers.get("tool_call");
@@ -3963,9 +4401,9 @@ describe("persistence integration", () => {
   describe("resources_discover — state restoration", () => {
     it("restores saved state when loadLoopEngineState returns data", async () => {
       const savedState = {
-        currentPhase: 3,
         currentIteration: 2,
         isAdHocInput: true,
+        currentPhaseId: "",
       };
       vi.mocked(statePersistence.loadLoopEngineState).mockReturnValue(
         savedState,
@@ -3986,9 +4424,38 @@ describe("persistence integration", () => {
 
       // Assert: restored values used
       const state = getState();
-      expect(state.currentPhase).toBe(3);
       expect(state.currentIteration).toBe(2);
       expect(state.isAdHocInput).toBe(true);
+
+      vi.mocked(statePersistence.loadLoopEngineState).mockReset();
+    });
+
+    it("prefers saved currentPhaseId over reconstruction from numeric index", async () => {
+      const savedState = {
+        currentIteration: 1,
+        isAdHocInput: false,
+        currentPhaseId: "step-2",
+      };
+      vi.mocked(statePersistence.loadLoopEngineState).mockReturnValue(
+        savedState,
+      );
+
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      // Act
+      const discoverHandlers = handlers.get("resources_discover");
+      for (const h of discoverHandlers!) {
+        await h(
+          { type: "resources_discover", cwd: ".", reason: "startup" },
+          mockCtx,
+        );
+      }
+
+      // Assert: saved currentPhaseId is preferred over reconstruction
+      const state = getState();
+      expect(state.currentPhaseId).toBe("step-2");
 
       vi.mocked(statePersistence.loadLoopEngineState).mockReset();
     });
@@ -4011,7 +4478,6 @@ describe("persistence integration", () => {
 
       // Assert: defaults used
       const state = getState();
-      expect(state.currentPhase).toBe(1);
       expect(state.currentIteration).toBe(1);
       expect(state.isAdHocInput).toBe(false);
 
@@ -4039,7 +4505,6 @@ describe("persistence integration", () => {
       ).resolves.not.toThrow();
 
       // Assert: fresh state
-      expect(getState().currentPhase).toBe(1);
       expect(getState().sessionId).toBe("test-session-id");
 
       vi.mocked(statePersistence.loadLoopEngineState).mockReset();
@@ -4071,7 +4536,6 @@ describe("persistence integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: phases,
@@ -4126,7 +4590,6 @@ describe("persistence integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -4153,7 +4616,11 @@ describe("persistence integration", () => {
       expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(2);
       expect(statePersistence.saveLoopEngineState).toHaveBeenCalledWith(
         "test-session-id",
-        expect.objectContaining({ currentPhase: 2, currentIteration: 1 }),
+        expect.objectContaining({
+          currentPhaseId: "s2",
+          currentIteration: 1,
+          isAdHocInput: false,
+        }),
       );
 
       vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -4174,7 +4641,6 @@ describe("persistence integration", () => {
         isActive: true,
         sessionId: "test-session-id",
         isAdHocInput: false,
-        currentPhase: 1,
         currentIteration: 1,
       });
 
@@ -4208,7 +4674,6 @@ describe("persistence integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 2,
         currentIteration: 2,
         totalPhases: 2,
         phasesList: [
@@ -4231,7 +4696,6 @@ describe("persistence integration", () => {
         "test-session-id",
         expect.objectContaining({
           isAdHocInput: false,
-          currentPhase: 2, // preserved
           currentIteration: 2, // preserved
         }),
       );
@@ -4253,7 +4717,6 @@ describe("persistence integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 2,
         currentIteration: 3,
         isAdHocInput: false,
       });
@@ -4270,7 +4733,6 @@ describe("persistence integration", () => {
       expect(statePersistence.saveLoopEngineState).toHaveBeenCalledWith(
         "test-session-id",
         expect.objectContaining({
-          currentPhase: 2,
           currentIteration: 3,
           isAdHocInput: false,
         }),
@@ -4287,7 +4749,6 @@ describe("persistence integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
       });
@@ -4312,7 +4773,6 @@ describe("persistence integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
       });
@@ -4335,7 +4795,6 @@ describe("persistence integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
       });
@@ -4358,7 +4817,6 @@ describe("persistence integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
       });
@@ -4532,7 +4990,6 @@ describe("session variable integration", () => {
 
       setState({
         isActive: true,
-        currentPhase: 2,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: [],
@@ -4945,9 +5402,9 @@ describe("session variable integration", () => {
       const { pi, handlers } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       vi.mocked(statePersistence.loadLoopEngineState).mockReturnValue({
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
+        currentPhaseId: "",
         vars: { myVar: { value: "hello", type: "string" } },
       });
       setupLoopEngine(pi);
@@ -4972,9 +5429,9 @@ describe("session variable integration", () => {
       const { pi, handlers } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       vi.mocked(statePersistence.loadLoopEngineState).mockReturnValue({
-        currentPhase: 1,
         currentIteration: 1,
         isAdHocInput: false,
+        currentPhaseId: "",
         vars: { x: { value: 10, type: "number" } },
       });
       setupLoopEngine(pi);
@@ -5009,7 +5466,6 @@ describe("session variable integration", () => {
 
       const store = new SessionVariableStore({ env: "prod" });
       setState({
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: [
@@ -5033,7 +5489,6 @@ describe("session variable integration", () => {
 
       const store = new SessionVariableStore({});
       setState({
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: [
@@ -5056,7 +5511,6 @@ describe("session variable integration", () => {
 
       const store = new SessionVariableStore({ target: "edge cases" });
       setState({
-        currentPhase: 1,
         currentIteration: 2,
         totalPhases: 1,
         phasesList: [
@@ -5077,7 +5531,6 @@ describe("session variable integration", () => {
     it("uses raw instructions when store is not available", async () => {
       const { buildPhaseInstructions } = await import("./loop-engine");
       setState({
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: [
@@ -5101,7 +5554,6 @@ describe("session variable integration", () => {
       const store = new SessionVariableStore({});
       store.set("env", "string", "prod");
       setState({
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: [
@@ -5145,7 +5597,6 @@ describe("session variable integration", () => {
 
       const store = new SessionVariableStore({});
       setState({
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: [
@@ -5214,7 +5665,6 @@ describe("session variable integration", () => {
       setupLoopEngine(pi);
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: phases,
@@ -5259,7 +5709,6 @@ describe("session variable integration", () => {
       setupLoopEngine(pi);
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: phases,
@@ -5295,7 +5744,6 @@ describe("session variable integration", () => {
       setupLoopEngine(pi);
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: phases,
@@ -5361,7 +5809,6 @@ describe("session variable integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 3,
         phasesList: phases,
@@ -5375,7 +5822,6 @@ describe("session variable integration", () => {
       await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
 
       // advancePhase skips purely programmatic phase 2, stops at phase 3
-      expect(getState().currentPhase).toBe(3);
       // Static var for phase 2 should still be set (executePhase ran)
       expect(store.get("env")).toBe("staging");
       // Message sent for phase 3 (the turn-triggering phase)
@@ -5416,7 +5862,6 @@ describe("session variable integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 3,
         phasesList: phases,
@@ -5430,7 +5875,6 @@ describe("session variable integration", () => {
       await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
 
       // advancePhase skips programmatic phase 2, stops at phase 3
-      expect(getState().currentPhase).toBe(3);
       // Computed callback should have seen Phase 1's data (before tracking reset)
       expect(computeSpy).toHaveBeenCalledTimes(1);
       expect(store.get("fileCount")).toBe(3);
@@ -5459,7 +5903,6 @@ describe("session variable integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -5472,7 +5915,6 @@ describe("session variable integration", () => {
 
       await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
 
-      expect(getState().currentPhase).toBe(2);
       // No vars should have been set
       expect(store.getAll()).toEqual({});
       expect(sendMessageCalls).toHaveLength(1);
@@ -5509,7 +5951,6 @@ describe("session variable integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1, // < minIterations
         totalPhases: 1,
         phasesList: phases,
@@ -5523,7 +5964,6 @@ describe("session variable integration", () => {
       await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
 
       // Should loop (not advance)
-      expect(getState().currentPhase).toBe(1);
       expect(getState().currentIteration).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
     });
@@ -5768,7 +6208,6 @@ describe("session variable integration", () => {
       const store = new SessionVariableStore({});
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: [],
@@ -5810,7 +6249,6 @@ describe("session variable integration", () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: [],
@@ -5897,7 +6335,6 @@ describe("session variable integration", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -5915,7 +6352,6 @@ describe("session variable integration", () => {
       ]);
 
       // loopWhile true → loop replay (before terminateWhen is even evaluated)
-      expect(getState().currentPhase).toBe(1);
       expect(getState().currentIteration).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
     });
@@ -5953,7 +6389,6 @@ describe("session variable integration", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -5972,7 +6407,6 @@ describe("session variable integration", () => {
       ]);
 
       // loopWhile false → proceed to terminateWhen (which is true) → advance
-      expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
     });
 
@@ -6006,7 +6440,6 @@ describe("session variable integration", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -6024,7 +6457,6 @@ describe("session variable integration", () => {
       ]);
 
       // OR logic: second callback true → loop
-      expect(getState().currentPhase).toBe(1);
       expect(getState().currentIteration).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
     });
@@ -6064,7 +6496,6 @@ describe("session variable integration", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -6083,7 +6514,6 @@ describe("session variable integration", () => {
       ]);
 
       // Error treated as not passing → proceed to terminateWhen → advance
-      expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
     });
   });
@@ -6150,7 +6580,6 @@ describe("session variable integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -6174,7 +6603,6 @@ describe("session variable integration", () => {
       ]);
 
       // Var completeness check: feature is not defined → loop back
-      expect(getState().currentPhase).toBe(1);
       expect(getState().currentIteration).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
     });
@@ -6224,7 +6652,6 @@ describe("session variable integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -6248,7 +6675,6 @@ describe("session variable integration", () => {
       ]);
 
       // All vars defined → proceed to terminateWhen → advance
-      expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
     });
 
@@ -6287,7 +6713,6 @@ describe("session variable integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1, // Below minIterations
         totalPhases: 1,
         phasesList: phases,
@@ -6310,7 +6735,6 @@ describe("session variable integration", () => {
       ]);
 
       // minIterations gates first → loop back (var completeness NOT evaluated)
-      expect(getState().currentPhase).toBe(1);
       expect(getState().currentIteration).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
     });
@@ -6349,7 +6773,6 @@ describe("session variable integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1, // >= minIterations (1)
         totalPhases: 1,
         phasesList: phases,
@@ -6372,7 +6795,6 @@ describe("session variable integration", () => {
       ]);
 
       // minIterations met → var completeness evaluated → feature missing → loop
-      expect(getState().currentPhase).toBe(1);
       expect(getState().currentIteration).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
     });
@@ -6410,7 +6832,6 @@ describe("session variable integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: phases,
@@ -6433,7 +6854,6 @@ describe("session variable integration", () => {
       ]);
 
       // Var completeness still triggers loop
-      expect(getState().currentPhase).toBe(1);
       expect(getState().currentIteration).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
     });
@@ -6494,7 +6914,6 @@ describe("session variable integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 2, // >= maxIterations
         totalPhases: 1,
         phasesList: phases,
@@ -6570,7 +6989,6 @@ describe("session variable integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 2, // >= maxIterations
         totalPhases: 1,
         phasesList: phases,
@@ -6623,7 +7041,6 @@ describe("session variable integration", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 2, // >= maxIterations
         totalPhases: 1,
         phasesList: phases,
@@ -6700,7 +7117,6 @@ describe("session variable integration", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -6718,7 +7134,6 @@ describe("session variable integration", () => {
       ]);
 
       // loopWhile evaluated first → true → loop (terminateWhen not evaluated)
-      expect(getState().currentPhase).toBe(1);
       expect(getState().currentIteration).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
     });
@@ -6763,7 +7178,6 @@ describe("session variable integration", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -6782,7 +7196,6 @@ describe("session variable integration", () => {
       ]);
 
       // max not hit → minIterations met → loopWhile false → terminateWhen true → advance
-      expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
     });
 
@@ -6824,7 +7237,6 @@ describe("session variable integration", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1, // Below minIterations (5)
         totalPhases: 2,
         phasesList: phases,
@@ -6843,7 +7255,6 @@ describe("session variable integration", () => {
 
       // minIterations gates first → loop back
       // Conditions should NOT have been called
-      expect(getState().currentPhase).toBe(1);
       expect(getState().currentIteration).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(loopWhileCalled).not.toHaveBeenCalled();
@@ -6892,7 +7303,6 @@ describe("session variable integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: phases,
@@ -6916,7 +7326,6 @@ describe("session variable integration", () => {
 
       // Auto var completeness (first in unified list) triggers loop
       // User callback should NOT be called (short-circuited by var completeness)
-      expect(getState().currentPhase).toBe(1);
       expect(getState().currentIteration).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(userCallbackCalled).not.toHaveBeenCalled();
@@ -6971,7 +7380,6 @@ describe("session variable integration", () => {
       setState({
         isActive: true,
         sessionId: "test-session-id",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -6995,7 +7403,6 @@ describe("session variable integration", () => {
       ]);
 
       // Auto var completeness passes → user callback evaluated → returns true → loop
-      expect(getState().currentPhase).toBe(1);
       expect(getState().currentIteration).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
       expect(userCallbackCalled).toHaveBeenCalledTimes(1);
@@ -7048,7 +7455,6 @@ describe("session variable integration", () => {
 
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -7066,7 +7472,6 @@ describe("session variable integration", () => {
       ]);
 
       // Callback threw → fail-safe: loop
-      expect(getState().currentPhase).toBe(1);
       expect(getState().currentIteration).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
     });
@@ -7093,7 +7498,6 @@ describe("session variable integration", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 2, // >= minIterations
         totalPhases: 2,
         phasesList: phases,
@@ -7112,7 +7516,6 @@ describe("session variable integration", () => {
       ]);
 
       // No terminateWhen + minIterations met → advance
-      expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
     });
 
@@ -7139,7 +7542,6 @@ describe("session variable integration", () => {
       const store = initializeStore({});
       setState({
         isActive: true,
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 2,
         phasesList: phases,
@@ -7158,7 +7560,6 @@ describe("session variable integration", () => {
       ]);
 
       // Empty terminateWhen + minIterations met → advance
-      expect(getState().currentPhase).toBe(2);
       expect(sendMessageCalls).toHaveLength(1);
     });
   });
@@ -7250,7 +7651,6 @@ describe("executePhase", () => {
     setState({
       isActive: true,
       sessionId: "test-session",
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 1,
       phasesList: [],
@@ -7287,7 +7687,6 @@ describe("executePhase", () => {
     setState({
       isActive: true,
       sessionId: "test-session",
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 1,
       phasesList: [],
@@ -7317,7 +7716,6 @@ describe("executePhase", () => {
     setState({
       isActive: true,
       sessionId: "test-session",
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 1,
       phasesList: [],
@@ -7354,7 +7752,6 @@ describe("setupTurn", () => {
       setState({
         isActive: true,
         sessionId: "test-session",
-        currentPhase: 2,
         currentIteration: 5,
         totalPhases: 3,
         phasesList: [
@@ -7381,7 +7778,6 @@ describe("setupTurn", () => {
       setState({
         isActive: true,
         sessionId: "test-session",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: [{ id: "s1", title: "S1", instructions: "A" }],
@@ -7403,7 +7799,6 @@ describe("setupTurn", () => {
       setState({
         isActive: true,
         sessionId: "test-session",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: [{ id: "s1", title: "S1", instructions: "A" }],
@@ -7429,7 +7824,6 @@ describe("setupTurn", () => {
       setState({
         isActive: true,
         sessionId: "test-session",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
@@ -7459,7 +7853,6 @@ describe("setupTurn", () => {
       setState({
         isActive: true,
         sessionId: "test-session",
-        currentPhase: 1,
         currentIteration: 3,
         totalPhases: 1,
         phasesList: [{ id: "s1", title: "S1", instructions: "A" }],
@@ -7480,7 +7873,6 @@ describe("setupTurn", () => {
       setState({
         isActive: true,
         sessionId: "test-session",
-        currentPhase: 1,
         currentIteration: 2,
         totalPhases: 1,
         phasesList: [{ id: "s1", title: "S1", instructions: "A" }],
@@ -7502,7 +7894,6 @@ describe("setupTurn", () => {
       setState({
         isActive: true,
         sessionId: "test-session",
-        currentPhase: 1,
         currentIteration: 2,
         totalPhases: 1,
         phasesList: [{ id: "s1", title: "S1", instructions: "A" }],
@@ -7525,7 +7916,6 @@ describe("setupTurn", () => {
       setState({
         isActive: true,
         sessionId: "test-session",
-        currentPhase: 1,
         currentIteration: 2,
         totalPhases: 1,
         phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
@@ -7551,7 +7941,6 @@ describe("setupTurn", () => {
       setState({
         isActive: true,
         sessionId: "test-session",
-        currentPhase: 1,
         currentIteration: 7,
         totalPhases: 1,
         phasesList: [{ id: "s1", title: "S1", instructions: "A" }],
@@ -7572,7 +7961,6 @@ describe("setupTurn", () => {
       setState({
         isActive: true,
         sessionId: "test-session",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: [{ id: "s1", title: "S1", instructions: "A" }],
@@ -7594,7 +7982,6 @@ describe("setupTurn", () => {
       setState({
         isActive: true,
         sessionId: "test-session",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: [{ id: "s1", title: "S1", instructions: "A" }],
@@ -7617,7 +8004,6 @@ describe("setupTurn", () => {
       setState({
         isActive: true,
         sessionId: "test-session",
-        currentPhase: 1,
         currentIteration: 1,
         totalPhases: 1,
         phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
@@ -7646,7 +8032,6 @@ describe("setupTurn", () => {
     setState({
       isActive: true,
       sessionId: "test-session",
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 1,
       phasesList: [
@@ -7709,10 +8094,10 @@ describe("advancePhase", () => {
       { id: "s3", title: "S3", instructions: "Do C" },
     ];
 
+    const pm = new PhaseManager(phases);
     setState({
       isActive: true,
       sessionId: "test-session",
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 3,
       phasesList: phases,
@@ -7720,16 +8105,18 @@ describe("advancePhase", () => {
       askUserCalled: false,
       isAdHocInput: false,
       phaseWriteAllowlist: new Map(),
+      phaseManager: pm,
+      currentPhaseId: "p1",
     });
 
     vi.mocked(statePersistence.saveLoopEngineState).mockClear();
 
-    const result = advancePhase(store, 1, "reset");
+    const result = advancePhase(store, "p1", "reset");
 
     expect(result.triggered).toBe(true);
     expect(result.payload).toBeDefined();
     expect(result.payload!.customType).toBe("workflow-phase-instructions");
-    expect(getState().currentPhase).toBe(3);
+    expect(getState().currentPhaseId).toBe("s3");
     // Static vars from both programmatic phases should be set
     expect(store.get("a")).toBe("1");
     expect(store.get("b")).toBe("2");
@@ -7743,11 +8130,11 @@ describe("advancePhase", () => {
     const store = new SessionVariableStore({});
 
     const phases = [{ id: "s1", title: "S1", instructions: "Do A" }];
+    const pm = new PhaseManager(phases);
 
     setState({
       isActive: true,
       sessionId: "test-session",
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 1,
       phasesList: phases,
@@ -7755,16 +8142,18 @@ describe("advancePhase", () => {
       askUserCalled: false,
       isAdHocInput: false,
       phaseWriteAllowlist: new Map(),
+      phaseManager: pm,
+      currentPhaseId: "s1",
     });
 
     vi.mocked(statePersistence.saveLoopEngineState).mockClear();
 
-    const result = advancePhase(store, 1, "reset");
+    const result = advancePhase(store, "s1", "reset");
 
     expect(result.triggered).toBe(true);
     expect(result.payload).toBeDefined();
     expect(result.payload!.customType).toBe("workflow-phase-instructions");
-    expect(getState().currentPhase).toBe(1);
+    expect(getState().currentPhaseId).toBe("s1");
     // Should have persisted (executePhase + setupTurn each persist)
     expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
   });
@@ -7784,11 +8173,11 @@ describe("advancePhase", () => {
         ],
       },
     ];
+    const pm = new PhaseManager(phases);
 
     setState({
       isActive: true,
       sessionId: "test-session",
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 1,
       phasesList: phases,
@@ -7796,11 +8185,13 @@ describe("advancePhase", () => {
       askUserCalled: false,
       isAdHocInput: false,
       phaseWriteAllowlist: new Map(),
+      phaseManager: pm,
+      currentPhaseId: "p1",
     });
 
     vi.mocked(statePersistence.saveLoopEngineState).mockClear();
 
-    const result = advancePhase(store, 1, "reset");
+    const result = advancePhase(store, "p1", "reset");
 
     expect(result.triggered).toBe(false);
     expect(result.payload).toBeUndefined();
@@ -7827,11 +8218,11 @@ describe("advancePhase", () => {
         },
         { id: "s2", title: "S2", instructions: "Do B" },
       ];
+      const pm = new PhaseManager(phases);
 
       setState({
         isActive: true,
         sessionId: "test-session",
-        currentPhase: 1,
         currentIteration: 5,
         totalPhases: 2,
         phasesList: phases,
@@ -7839,12 +8230,14 @@ describe("advancePhase", () => {
         askUserCalled: false,
         isAdHocInput: false,
         phaseWriteAllowlist: new Map(),
+        phaseManager: pm,
+        currentPhaseId: "p1",
       });
 
-      const result = advancePhase(store, 1, "reset");
+      const result = advancePhase(store, "p1", "reset");
 
       expect(result.triggered).toBe(true);
-      expect(getState().currentPhase).toBe(2);
+      expect(getState().currentPhaseId).toBe("s2");
       expect(getState().currentIteration).toBe(1);
     });
 
@@ -7854,11 +8247,11 @@ describe("advancePhase", () => {
       const store = new SessionVariableStore({});
 
       const phases = [{ id: "s1", title: "S1", instructions: "Do A" }];
+      const pm = new PhaseManager(phases);
 
       setState({
         isActive: true,
         sessionId: "test-session",
-        currentPhase: 1,
         currentIteration: 2,
         totalPhases: 1,
         phasesList: phases,
@@ -7866,11 +8259,14 @@ describe("advancePhase", () => {
         askUserCalled: false,
         isAdHocInput: false,
         phaseWriteAllowlist: new Map(),
+        phaseManager: pm,
+        currentPhaseId: "s1",
       });
 
-      const result = advancePhase(store, 1, "increment");
+      const result = advancePhase(store, "s1", "increment");
 
       expect(result.triggered).toBe(true);
+      expect(getState().currentPhaseId).toBe("s1");
       expect(getState().currentIteration).toBe(3);
     });
 
@@ -7880,11 +8276,11 @@ describe("advancePhase", () => {
       const store = new SessionVariableStore({});
 
       const phases = [{ id: "s1", title: "S1", instructions: "Do A" }];
+      const pm = new PhaseManager(phases);
 
       setState({
         isActive: true,
         sessionId: "test-session",
-        currentPhase: 1,
         currentIteration: 7,
         totalPhases: 1,
         phasesList: phases,
@@ -7892,11 +8288,14 @@ describe("advancePhase", () => {
         askUserCalled: false,
         isAdHocInput: false,
         phaseWriteAllowlist: new Map(),
+        phaseManager: pm,
+        currentPhaseId: "s1",
       });
 
-      const result = advancePhase(store, 1, "preserve");
+      const result = advancePhase(store, "s1", "preserve");
 
       expect(result.triggered).toBe(true);
+      expect(getState().currentPhaseId).toBe("s1");
       expect(getState().currentIteration).toBe(7);
     });
   });
@@ -7933,11 +8332,11 @@ describe("advancePhase — integration", () => {
       },
       { id: "s3", title: "S3", instructions: "Do the main work" },
     ];
+    const pm = new PhaseManager(phases);
 
     setState({
       isActive: true,
       sessionId: "integration-session",
-      currentPhase: 1,
       currentIteration: 1,
       totalPhases: 3,
       phasesList: phases,
@@ -7945,16 +8344,17 @@ describe("advancePhase — integration", () => {
       askUserCalled: false,
       isAdHocInput: false,
       phaseWriteAllowlist: new Map(),
+      phaseManager: pm,
+      currentPhaseId: "p1",
     });
 
     vi.mocked(statePersistence.saveLoopEngineState).mockClear();
 
-    const result = advancePhase(store, 1, "reset");
+    const result = advancePhase(store, "p1", "reset");
 
     expect(result.triggered).toBe(true);
     expect(result.payload).toBeDefined();
     expect(result.payload!.customType).toBe("workflow-phase-instructions");
-    expect(getState().currentPhase).toBe(3);
 
     // Variables from both programmatic phases should be set
     expect(store.get("x")).toBe("A");

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PhaseManager } from "./phase-manager";
 import type { WorkflowPhase } from "./workflow-types";
 
@@ -178,7 +178,10 @@ describe("PhaseManager", () => {
     it("flattens a basic branch:if with then/else arms", () => {
       const phases: WorkflowPhase[] = [
         makePhase("prev"),
-        makeBranchIf("branch", [makePhase("x")], [makePhase("y")]),
+        {
+          ...makeBranchIf("branch", [makePhase("x")], [makePhase("y")]),
+          condition: () => true,
+        },
         makePhase("z"),
       ];
       const pm = new PhaseManager(phases);
@@ -192,8 +195,23 @@ describe("PhaseManager", () => {
       expect(pm.resolveNext("y")).toBe("z");
       expect(pm.resolveNext("z")).toBeUndefined();
 
-      // Branch phase itself has no linear routing
-      expect(pm.resolveNext("branch")).toBeUndefined();
+      // Branch phase evaluates condition and routes to arm
+      const state = {
+        isActive: false,
+        markCompleteCalled: false,
+        turnCount: 0,
+        currentPhaseId: "",
+        currentIteration: 0,
+        totalPhases: 0,
+        phasesList: [],
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        adHocPhaseNotified: false,
+        phaseWriteAllowlist: new Map(),
+        store: null,
+      } as any;
+      expect(pm.resolveNext("branch", state)).toBe("x");
 
       // getFirstPhaseId
       expect(pm.getFirstPhaseId()).toBe("prev");
@@ -277,11 +295,14 @@ describe("PhaseManager", () => {
     it("flattens a basic branch:switch with cases and default", () => {
       const phases: WorkflowPhase[] = [
         makePhase("prev"),
-        makeBranchSwitch(
-          "branch",
-          { a: [makePhase("ca")], b: [makePhase("cb")] },
-          [makePhase("d")],
-        ),
+        {
+          ...makeBranchSwitch(
+            "branch",
+            { a: [makePhase("ca")], b: [makePhase("cb")] },
+            [makePhase("d")],
+          ),
+          on: () => "a",
+        },
         makePhase("z"),
       ];
       const pm = new PhaseManager(phases);
@@ -293,7 +314,24 @@ describe("PhaseManager", () => {
       expect(pm.resolveNext("cb")).toBe("z");
       expect(pm.resolveNext("d")).toBe("z");
       expect(pm.resolveNext("z")).toBeUndefined();
-      expect(pm.resolveNext("branch")).toBeUndefined();
+
+      // Branch phase evaluates on and routes to matching case
+      const state = {
+        isActive: false,
+        markCompleteCalled: false,
+        turnCount: 0,
+        currentPhaseId: "",
+        currentIteration: 0,
+        totalPhases: 0,
+        phasesList: [],
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        adHocPhaseNotified: false,
+        phaseWriteAllowlist: new Map(),
+        store: null,
+      } as any;
+      expect(pm.resolveNext("branch", state)).toBe("ca");
     });
 
     it("handles empty case arms by setting caseFirst to successor", () => {
@@ -418,6 +456,240 @@ describe("PhaseManager", () => {
       ];
       const pm = new PhaseManager(phases);
       expect(pm.getFirstPhaseId()).toBe("start");
+    });
+  });
+
+  describe("resolveNext with conditional branching", () => {
+    function makeState(): any {
+      return {
+        isActive: false,
+        markCompleteCalled: false,
+        turnCount: 0,
+        currentPhaseId: "",
+        currentIteration: 0,
+        totalPhases: 0,
+        phasesList: [],
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        adHocPhaseNotified: false,
+        phaseWriteAllowlist: new Map(),
+        store: null,
+      };
+    }
+
+    // --- branch:if ---
+
+    it("routes to then arm when condition is truthy", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        {
+          ...makeBranchIf("branch", [makePhase("x")], [makePhase("y")]),
+          condition: () => true,
+        },
+        makePhase("z"),
+      ];
+      const pm = new PhaseManager(phases);
+      const state = makeState();
+
+      expect(pm.resolveNext("branch", state)).toBe("x");
+    });
+
+    it("routes to else arm when condition is falsy", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        {
+          ...makeBranchIf("branch", [makePhase("x")], [makePhase("y")]),
+          condition: () => false,
+        },
+        makePhase("z"),
+      ];
+      const pm = new PhaseManager(phases);
+      const state = makeState();
+
+      expect(pm.resolveNext("branch", state)).toBe("y");
+    });
+
+    it("routes to post-branch when else is absent and condition is falsy", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        {
+          ...makeBranchIf("branch", [makePhase("x")]),
+          condition: () => false,
+        },
+        makePhase("z"),
+      ];
+      const pm = new PhaseManager(phases);
+      const state = makeState();
+
+      // elseFirst was set to "z" (successor) during flattening
+      expect(pm.resolveNext("branch", state)).toBe("z");
+    });
+
+    it("passes state to condition callback", () => {
+      let receivedState: any = null;
+      const phases: WorkflowPhase[] = [
+        {
+          ...makeBranchIf("branch", [makePhase("x")], [makePhase("y")]),
+          condition: (s) => {
+            receivedState = s;
+            return true;
+          },
+        },
+      ];
+      const pm = new PhaseManager(phases);
+      const state = makeState();
+
+      pm.resolveNext("branch", state);
+      expect(receivedState).toBe(state);
+    });
+
+    // --- branch:switch ---
+
+    it("routes to matching case in branch:switch", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        {
+          ...makeBranchSwitch(
+            "branch",
+            { a: [makePhase("ca")], b: [makePhase("cb")] },
+            [makePhase("d")],
+          ),
+          on: () => "a",
+        },
+        makePhase("z"),
+      ];
+      const pm = new PhaseManager(phases);
+      const state = makeState();
+
+      expect(pm.resolveNext("branch", state)).toBe("ca");
+    });
+
+    it("falls through to defaultBranch when no case matches", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        {
+          ...makeBranchSwitch("branch", { a: [makePhase("ca")] }, [
+            makePhase("d"),
+          ]),
+          on: () => "c",
+        },
+        makePhase("z"),
+      ];
+      const pm = new PhaseManager(phases);
+      const state = makeState();
+
+      expect(pm.resolveNext("branch", state)).toBe("d");
+    });
+
+    it("returns undefined when no case matches and no defaultBranch", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        {
+          ...makeBranchSwitch("branch", { a: [makePhase("ca")] }),
+          on: () => "z",
+        },
+        makePhase("z"),
+      ];
+      const pm = new PhaseManager(phases);
+      const state = makeState();
+
+      expect(pm.resolveNext("branch", state)).toBeUndefined();
+    });
+
+    it("resolves $varName string form for switch on", () => {
+      const store: any = {
+        get: (name: string) => {
+          if (name === "myVar") return "x";
+          return undefined;
+        },
+      };
+      const phases: WorkflowPhase[] = [
+        {
+          ...makeBranchSwitch("branch", {
+            x: [makePhase("x1")],
+            y: [makePhase("y1")],
+          }),
+          on: "$myVar",
+        },
+      ];
+      const pm = new PhaseManager(phases);
+      const state = makeState();
+      state.store = store;
+
+      expect(pm.resolveNext("branch", state)).toBe("x1");
+    });
+
+    it("falls through to default when $varName resolves to undefined due to missing store", () => {
+      const phases: WorkflowPhase[] = [
+        {
+          ...makeBranchSwitch(
+            "branch",
+            { x: [makePhase("x1")], y: [makePhase("y1")] },
+            [makePhase("d")],
+          ),
+          on: "$myVar",
+        },
+      ];
+      const pm = new PhaseManager(phases);
+      const state = makeState();
+      state.store = null;
+
+      expect(pm.resolveNext("branch", state)).toBe("d");
+    });
+
+    // --- Error handling ---
+
+    it("logs warning and returns undefined when condition callback throws", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const phases: WorkflowPhase[] = [
+        {
+          ...makeBranchIf("branch", [makePhase("x")], [makePhase("y")]),
+          condition: () => {
+            throw new Error("boom");
+          },
+        },
+      ];
+      const pm = new PhaseManager(phases);
+      const state = makeState();
+
+      const result = pm.resolveNext("branch", state);
+      expect(result).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Condition evaluation failed for branch phase "branch": boom',
+      );
+      warnSpy.mockRestore();
+    });
+
+    it("logs warning and returns undefined when switch on callback throws", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const phases: WorkflowPhase[] = [
+        {
+          ...makeBranchSwitch("branch", { a: [makePhase("ca")] }),
+          on: () => {
+            throw new Error("fail");
+          },
+        },
+      ];
+      const pm = new PhaseManager(phases);
+      const state = makeState();
+
+      const result = pm.resolveNext("branch", state);
+      expect(result).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Condition evaluation failed for branch phase "branch": fail',
+      );
+      warnSpy.mockRestore();
+    });
+
+    // --- Backward compat: non-branch phases still work ---
+
+    it("works for non-branch phases without state parameter", () => {
+      const pm = new PhaseManager(makePhases(["a", "b", "c"]));
+
+      expect(pm.resolveNext("a")).toBe("b");
+      expect(pm.resolveNext("b")).toBe("c");
+      expect(pm.resolveNext("c")).toBeUndefined();
     });
   });
 

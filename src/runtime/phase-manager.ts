@@ -32,8 +32,7 @@ export class PhaseManager {
   /** Linear successor links: phase ID → next phase ID */
   private readonly _routing: Map<string, string>;
 
-  /** Branch-phase ID → routing data (arm first-phase IDs). Used by Step 3's resolveNext for conditional branching */
-  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: populated here, consumed by Step 3 resolveNext
+  /** Branch-phase ID → routing data (arm first-phase IDs). Used by resolveNext for conditional branching */
   private readonly _conditionalRouting: Map<string, BranchRouting>;
 
   /** First phase ID encountered during depth-first walk */
@@ -182,18 +181,114 @@ export class PhaseManager {
   /**
    * Resolve the ID of the next phase in routing order.
    *
-   * Uses the pre-built `_routing` map for O(1) lookups.
-   * Branch phases return `undefined` — the caller must check
-   * `_conditionalRouting` to evaluate branch conditions.
+   * For branch phases, evaluates the condition callback and consults
+   * `_conditionalRouting` to determine the correct arm-first target.
+   * For non-branch phases, uses the pre-built `_routing` map for O(1) lookups.
    *
+   * @param currentId - The current phase ID to resolve the successor for.
+   * @param state - Optional session state. Required for branch phases to
+   *   evaluate conditions. Accepted but unused for non-branch phases.
    * @returns The next phase ID, or `undefined` if `currentId` is not
-   *   found, is the last phase, or is a branch phase.
+   *   found, is the last phase, or the branch condition routes nowhere.
    */
-  resolveNext(
-    _currentId: string,
-    _state?: PioSessionState,
-  ): string | undefined {
-    return this._routing.get(_currentId);
+  resolveNext(currentId: string, state?: PioSessionState): string | undefined {
+    const branchTarget = this._evaluateBranch(currentId, state);
+    if (branchTarget === null) return this._routing.get(currentId);
+    return branchTarget;
+  }
+
+  /**
+   * Evaluate a branch phase condition and return the target arm-first ID.
+   *
+   * Three-way return semantics:
+   * - `null` — not a branch phase → caller delegates to linear routing
+   * - `string` — resolved arm first-phase ID (the destination to jump to)
+   * - `undefined` — branch phase, but no destination (skip/end-of-workflow)
+   */
+  private _evaluateBranch(
+    currentId: string,
+    state?: PioSessionState,
+  ): string | undefined | null {
+    const routing = this._conditionalRouting.get(currentId);
+    if (!routing) return null;
+
+    const phase = this._registry.get(currentId);
+    if (!phase) return null;
+
+    if ("thenFirst" in routing) {
+      // --- IfBranchRouting ---
+      const condition = phase.condition;
+      if (typeof condition !== "function") {
+        console.warn(
+          `Condition evaluation failed for branch phase "${currentId}": condition is not a function`,
+        );
+        return undefined;
+      }
+      if (!state) {
+        console.warn(
+          `Condition evaluation failed for branch phase "${currentId}": state is missing`,
+        );
+        return undefined;
+      }
+      try {
+        const result = condition(state);
+        const target = result ? routing.thenFirst : routing.elseFirst;
+        return target;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `Condition evaluation failed for branch phase "${currentId}": ${msg}`,
+        );
+        return undefined;
+      }
+    } else {
+      // --- SwitchBranchRouting ---
+      const on = phase.on;
+      if (typeof on === "function") {
+        if (!state) {
+          console.warn(
+            `Condition evaluation failed for branch phase "${currentId}": state is missing`,
+          );
+          return undefined;
+        }
+        try {
+          const discriminant = on(state);
+          const key = String(discriminant);
+          const target = routing.caseFirst[key];
+          if (target !== undefined) return target;
+          return routing.defaultFirst;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(
+            `Condition evaluation failed for branch phase "${currentId}": ${msg}`,
+          );
+          return undefined;
+        }
+      } else if (typeof on === "string" && on.startsWith("$")) {
+        try {
+          const varName = on.slice(1);
+          const value = state?.store?.get(varName);
+          if (value === undefined) {
+            return routing.defaultFirst;
+          }
+          const key = String(value);
+          const target = routing.caseFirst[key];
+          if (target !== undefined) return target;
+          return routing.defaultFirst;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(
+            `Condition evaluation failed for branch phase "${currentId}": ${msg}`,
+          );
+          return undefined;
+        }
+      } else {
+        console.warn(
+          `Condition evaluation failed for branch phase "${currentId}": on is not a function or $varName string`,
+        );
+        return undefined;
+      }
+    }
   }
 
   /**

@@ -36,7 +36,8 @@ import type {
  * Read workflow phases from `workflow.ts` inside a capability package directory.
  *
  * Expects a default export of type `WorkflowPhase[]`. Validates each phase has
- * at least `id`, `title`, and `instructions` fields.
+ * at least `id`, `title`, and `instructions` fields (branch phases are exempt
+ * from the instructions check).
  *
  * @param dirPath - Absolute path to the capability package directory
  * @returns Array of workflow phases
@@ -78,8 +79,12 @@ export async function readWorkflowPhases(
   }
 
   // Validate each phase has required fields
+  // Branch phases (kind starts with "branch:") are programmatic — they route
+  // based on a callback condition and never have .instructions
   for (const phase of steps) {
-    if (!phase.id || !phase.title || !phase.instructions) {
+    const isBranch = phase.kind?.startsWith("branch:");
+    const missingInstructions = !phase.instructions && !isBranch;
+    if (!phase.id || !phase.title || missingInstructions) {
       console.warn(
         `[pio] Prompt compiler: malformed workflow phase in "${dirPath}" — missing id, title, or instructions: ${JSON.stringify(phase)}`,
       );
@@ -87,53 +92,6 @@ export async function readWorkflowPhases(
   }
 
   return steps as WorkflowPhase[];
-}
-
-// ---------------------------------------------------------------------------
-// renderWorkflowPhases — pure function: WorkflowPhase[] → markdown string
-// ---------------------------------------------------------------------------
-
-/**
- * Render workflow phases into a markdown section (titles-only).
- *
- * Format per phase:
- *   ### Phase N: <title>
- *
- *   Skills: [skill-a], [skill-b]  (only when mandatory skills exist)
- *
- * Instructions are intentionally omitted — they are delivered dynamically
- * via before_agent_start system prompt injection by the loop engine.
- * The static workflow section serves as a lightweight roadmap showing phase
- * count, order, and skill requirements.
- *
- * This is a pure function — no filesystem access, deterministic output.
- *
- * @param steps - Array of workflow phases to render
- * @returns Markdown string representing the workflow section
- */
-export function renderWorkflowPhases(steps: WorkflowPhase[]): string {
-  if (steps.length === 0) {
-    return "";
-  }
-
-  const parts: string[] = [];
-
-  for (let i = 0; i < steps.length; i++) {
-    const phase = steps[i];
-    const lineNumber = i + 1;
-
-    parts.push(`### Phase ${lineNumber}: ${phase.title}`);
-
-    // Include Skills line only when phase has mandatory skills
-    const mandatorySkills = phase.skills?.mandatory;
-    if (mandatorySkills && mandatorySkills.length > 0) {
-      const skillsLine = mandatorySkills.map((s) => `[${s}]`).join(", ");
-      parts.push("");
-      parts.push(`Skills: ${skillsLine}`);
-    }
-  }
-
-  return parts.join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -272,10 +230,6 @@ export async function compilePrompt(
   if (components.role) {
     sections.role = `## Role\n\n${components.role}`;
   }
-
-  // Workflow section (always present — workflow is required)
-  const workflowContent = renderWorkflowPhases(components.phases);
-  sections.workflow = `## Workflow\n\n${workflowContent}`;
 
   // Guidelines section (optional)
   if (components.guidelines) {

@@ -296,7 +296,7 @@ describe("readWorkflowPhases", () => {
     fs.writeFileSync(
       path.join(capDir, "workflow.ts"),
       `export default [
-  { id: "branch-s", title: "Switch", kind: "branch:switch", selector: () => "a" },
+  { id: "branch-s", title: "Switch", kind: "branch:switch", on: () => "a" },
 ];`,
     );
 

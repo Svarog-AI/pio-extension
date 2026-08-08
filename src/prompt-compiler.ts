@@ -202,7 +202,7 @@ export interface CompilePromptOptions {
  * phase skills into base capability skills, and renders sections in the format
  * expected by `capability-session.ts`.
  *
- * Produces: role, workflow, guidelines sections and mergedSkills.
+ * Produces: role, guidelines sections and mergedSkills.
  * Does NOT produce projectContext or skillLoading — those are handled by capability-session.
  *
  * @param capabilityDir - Absolute path to the capability package directory

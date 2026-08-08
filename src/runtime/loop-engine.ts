@@ -236,45 +236,14 @@ export function buildVariablePhaseInstructions(
 }
 
 /**
- * Build a one-line summary of completed phases (by ID) for CustomMessage injection.
- *
- * Returns "No previous phases completed" on Phase 1, "Phases \"s1\" completed" on
- * Phase 2, and "Phases \"s1\", \"s2\", and \"s3\" completed" (Oxford comma) on Phase 4+.
- */
-function buildCompletedPhasesIds(state: PioSessionState): string {
-  const pm = state.phaseManager;
-  if (!pm) return "No previous phases completed.";
-
-  const allIds = pm.listIds();
-  const currentIndex = allIds.indexOf(state.currentPhaseId);
-  if (currentIndex <= 0) return "No previous phases completed.";
-
-  const ids = allIds.slice(0, currentIndex);
-
-  if (ids.length === 1) {
-    return `Phases "${ids[0]}" completed.`;
-  }
-  if (ids.length === 2) {
-    return `Phases "${ids[0]}" and "${ids[1]}" completed.`;
-  }
-  // 3+: Oxford comma
-  const joined = ids
-    .slice(0, -1)
-    .map((id) => `"${id}"`)
-    .join(", ");
-  return `Phases ${joined}, and "${ids[ids.length - 1]}" completed.`;
-}
-
-/**
  * Build CustomMessage content for the current phase with authority framing.
  *
  * Format:
- *   ## Instructions for Phase N
+ *   ## Instructions for "phase-id"
  *
  *   Follow the instructions below. Do not do anything outside these instructions.
  *
- *   <completed phases info>
- *   You are on Phase N of M, iteration I.
+ *   You are on "phase-id", iteration I.
  *
  *   ---
  *
@@ -295,11 +264,9 @@ export function buildPhaseInstructions(state: PioSessionState): string {
       ? buildVariablePhaseInstructions(state, phase, store)
       : buildStandardPhaseInstructions(state, phase, store);
 
-  let prompt =
+  const prompt =
     `## Instructions for "${phase.id}"\n\n` +
-    `Follow the instructions below. Do not do anything outside these instructions.\n\n`;
-  prompt +=
-    `${buildCompletedPhasesIds(state)}\n` +
+    `Follow the instructions below. Do not do anything outside these instructions.\n\n` +
     `You are on "${phase.id}", iteration ${state.currentIteration}.\n\n---\n\n` +
     instructionBody;
 
@@ -321,6 +288,8 @@ export function buildPhaseInstructions(state: PioSessionState): string {
  * @returns `true` if the phase is purely programmatic (no LLM involvement)
  */
 export function isProgrammatic(phase: WorkflowPhase): boolean {
+  // Branch phases execute inline — no agent turn needed
+  if (phase.kind?.startsWith("branch:")) return true;
   if (phase.kind !== "variable-definition" || !phase.variables?.length) {
     return false;
   }
@@ -544,47 +513,16 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     // Create PhaseManager for ID-based lookups
     const pm = new PhaseManager(phasesList);
 
-    // Resolve phase-level write allowlists
+    // Create CapState for on-demand output path resolution
     const capState = new CapState(
       config.contract,
       config.workspaceDir ?? ctx.cwd,
       config.sessionParams,
     );
+    // Compute all contract output paths once (static data)
     const allContractOutputs = new Set(
       capState.getAllOutputPaths().map((p) => path.resolve(p)),
     );
-
-    const phaseWriteAllowlist = new Map<
-      string,
-      {
-        allowedPaths: Set<string>;
-        allowedNames: string[];
-        allContractOutputs: Set<string>;
-      }
-    >();
-    for (const phase of phasesList) {
-      const allowedPaths = new Set<string>();
-      const allowedNames: string[] = [];
-      if (phase.write) {
-        for (const name of phase.write) {
-          allowedNames.push(name);
-          const resolved = capState.tryResolveOutput(name);
-          if (resolved) {
-            allowedPaths.add(path.resolve(resolved.path));
-          } else {
-            console.warn(
-              `[loop-engine] Phase "${phase.id}" (${phase.title ?? "unknown"}): output name "${name}" in write[] could not be resolved — it will not be in the allowed list.`,
-            );
-          }
-        }
-      }
-      // ALWAYS create entry, even when write is undefined or empty
-      phaseWriteAllowlist.set(phase.id, {
-        allowedPaths,
-        allowedNames,
-        allContractOutputs: new Set(allContractOutputs),
-      });
-    }
 
     // Capture session ID for persistence
     const sessionId = ctx.sessionManager.getSessionId();
@@ -593,7 +531,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     const saved = loadLoopEngineState(sessionId);
 
     // Determine currentPhaseId: prefer saved value, fall back to first phase
-    const currentPhaseId = saved?.currentPhaseId ?? pm.listIds()[0] ?? "";
+    const currentPhaseId = saved?.currentPhaseId ?? pm.getFirstPhaseId() ?? "";
 
     // Initialize PioSessionState (single source of truth)
     setState({
@@ -606,7 +544,8 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: saved?.isAdHocInput ?? false,
-      phaseWriteAllowlist: phaseWriteAllowlist,
+      capState: capState,
+      allContractOutputs: allContractOutputs,
       phaseManager: pm,
     });
 
@@ -652,7 +591,6 @@ export function setupLoopEngine(pi: ExtensionAPI) {
           customType: "workflow-paused",
           content:
             `## Workflow Paused (Ad-hoc Mode)\n\n` +
-            `${buildCompletedPhasesIds(state)}\n` +
             `You were on "${phase.id}", iteration ${state.currentIteration}.\n\n` +
             `Workflow execution is paused. Any prior instructions are no longer active — you can answer questions or help the user freely.`,
           display: readDebugDisplay(),
@@ -720,45 +658,56 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       setState({ askUserCalled: true });
     }
 
-    // --- Phase-level write gate ---
+    // --- Phase-level write gate (lazy per-phase resolution) ---
     const state = getState();
     if (targetPaths.length > 0 && state.isActive) {
-      const entry = state.phaseWriteAllowlist.get(state.currentPhaseId);
-      if (entry !== undefined) {
-        const currentPhaseObj = getState().phaseManager?.getPhase(
-          state.currentPhaseId,
+      const phase = state.phaseManager?.getPhase(state.currentPhaseId);
+      if (!phase) {
+        console.warn(
+          `[loop-engine] Phase "${state.currentPhaseId}": no phase found for write gating.`,
         );
-        const phaseTitle = currentPhaseObj?.title ?? "unknown";
+        return;
+      }
 
-        for (const tp of targetPaths) {
-          // Always allow /tmp/ writes (consistency with capability-level validation)
-          if (tp.startsWith("/tmp/")) continue;
-
-          if (entry.allowedPaths.size === 0) {
-            // write: [] — block known contract output paths
-            if (entry.allContractOutputs.has(tp)) {
-              return {
-                block: true,
-                reason: `Writing is not allowed during "${state.currentPhaseId}" (${phaseTitle}). This phase does not produce any contract outputs.`,
-              };
-            }
-          } else {
-            // Populated allowlist — block other contract output paths
-            if (
-              !entry.allowedPaths.has(tp) &&
-              entry.allContractOutputs.has(tp)
-            ) {
-              return {
-                block: true,
-                reason: `Writing is restricted during "${state.currentPhaseId}" (${phaseTitle}). Allowed outputs: [${entry.allowedNames.join(", ")}]. Your target path '${tp}' is not in the allowed list.`,
-              };
-            }
+      // Resolve allowlist on-demand from phase.write using CapState
+      const capState = state.capState;
+      const allOutputs = state.allContractOutputs;
+      const allowedNames = phase.write ?? [];
+      const allowedPaths = new Set<string>();
+      if (capState) {
+        for (const name of allowedNames) {
+          const resolved = capState.tryResolveOutput(name);
+          if (resolved) {
+            allowedPaths.add(path.resolve(resolved.path));
           }
         }
-      } else {
-        console.warn(
-          `[loop-engine] Phase "${state.currentPhaseId}": no write allowlist entry found — write gating skipped. This should not happen after resources_discover.`,
-        );
+      }
+
+      const phaseTitle = phase.title ?? "unknown";
+
+      for (const tp of targetPaths) {
+        // Always allow /tmp/ writes (consistency with capability-level validation)
+        if (tp.startsWith("/tmp/")) continue;
+
+        if (!allOutputs) continue; // no contract outputs known — skip gating
+
+        if (allowedPaths.size === 0) {
+          // write: [] — block known contract output paths
+          if (allOutputs.has(tp)) {
+            return {
+              block: true,
+              reason: `Writing is not allowed during "${state.currentPhaseId}" (${phaseTitle}). This phase does not produce any contract outputs.`,
+            };
+          }
+        } else {
+          // Populated allowlist — block other contract output paths
+          if (!allowedPaths.has(tp) && allOutputs.has(tp)) {
+            return {
+              block: true,
+              reason: `Writing is restricted during "${state.currentPhaseId}" (${phaseTitle}). Allowed outputs: [${allowedNames.join(", ")}]. Your target path '${tp}' is not in the allowed list.`,
+            };
+          }
+        }
       }
     }
   });

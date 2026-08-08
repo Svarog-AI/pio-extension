@@ -638,6 +638,51 @@ describe("PhaseManager", () => {
       expect(pm.resolveNext("branch", state)).toBe("d");
     });
 
+    it("warns and falls through when $varName is used but state is missing", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const phases: WorkflowPhase[] = [
+        {
+          ...makeBranchSwitch(
+            "branch",
+            { x: [makePhase("x1")], y: [makePhase("y1")] },
+            [makePhase("d")],
+          ),
+          on: "$myVar",
+        },
+      ];
+      const pm = new PhaseManager(phases);
+
+      // No state passed — should warn and fall through to default
+      const result = pm.resolveNext("branch");
+      expect(result).toBe("d");
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Condition evaluation failed for branch phase "branch": state is missing',
+      );
+      warnSpy.mockRestore();
+    });
+
+    it("coerces non-string discriminant to string via String()", () => {
+      const phases: WorkflowPhase[] = [
+        {
+          ...makeBranchSwitch(
+            "branch",
+            {
+              "42": [makePhase("case-42")],
+              true: [makePhase("case-true")],
+            },
+            [makePhase("d")],
+          ),
+          on: () => 42,
+        },
+        makePhase("z"),
+      ];
+      const pm = new PhaseManager(phases);
+      const state = makeState();
+
+      // on returns number 42 → String(42) → "42" → matches case "42"
+      expect(pm.resolveNext("branch", state)).toBe("case-42");
+    });
+
     // --- Error handling ---
 
     it("logs warning and returns undefined when condition callback throws", () => {

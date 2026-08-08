@@ -265,6 +265,12 @@ export class PhaseManager {
           return undefined;
         }
       } else if (typeof on === "string" && on.startsWith("$")) {
+        if (!state) {
+          console.warn(
+            `Condition evaluation failed for branch phase "${currentId}": state is missing`,
+          );
+          return routing.defaultFirst;
+        }
         try {
           const varName = on.slice(1);
           const value = state?.store?.get(varName);

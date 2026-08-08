@@ -63,16 +63,6 @@ export interface PioSessionState {
    */
   adHocPhaseNotified: boolean;
 
-  /** Phase-level write allowlists: phase ID (string, e.g. "step-1") → { allowedPaths (resolved absolute paths), allowedNames (original output names for error messages), allContractOutputs (all known contract output paths, used by write: [] to block). Deprecated — no longer populated by loop-engine (replaced by lazy per-phase resolution). Kept for backward compat with existing test code. */
-  phaseWriteAllowlist: Map<
-    string,
-    {
-      allowedPaths: Set<string>;
-      allowedNames: string[];
-      allContractOutputs: Set<string>;
-    }
-  >;
-
   /** CapState instance for on-demand output path resolution during write gating. Created during resources_discover, accessed lazily in tool_call. In-memory only — not persisted. */
   capState?: CapState | null;
 
@@ -110,7 +100,6 @@ function createInitialState(): PioSessionState {
     askUserCalled: false,
     isAdHocInput: false,
     adHocPhaseNotified: false,
-    phaseWriteAllowlist: new Map(),
     capState: undefined,
     allContractOutputs: undefined,
     sessionId: undefined,

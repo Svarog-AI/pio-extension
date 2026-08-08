@@ -741,7 +741,6 @@ describe("/goto command", () => {
         filesWritten: ["/old/file.ts"],
         askUserCalled: true,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
         phaseManager: pm,
       });
 
@@ -794,7 +793,6 @@ describe("/goto command", () => {
         askUserCalled: true,
         isAdHocInput: true, // User was in ad-hoc mode
         adHocPhaseNotified: true, // Already notified about pause
-        phaseWriteAllowlist: new Map(),
         phaseManager: pm,
       });
 
@@ -7529,7 +7527,6 @@ describe("executePhase", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(),
     });
 
     vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -7565,7 +7562,6 @@ describe("executePhase", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(),
     });
 
     vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -7594,7 +7590,6 @@ describe("executePhase", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(),
     });
 
     vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -7634,7 +7629,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -7656,7 +7650,6 @@ describe("setupTurn", () => {
         filesWritten: ["/tmp/x"],
         askUserCalled: true,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       setupTurn("reset");
@@ -7677,7 +7670,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -7702,7 +7694,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       const result = setupTurn("reset");
@@ -7731,7 +7722,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       setupTurn("increment");
@@ -7751,7 +7741,6 @@ describe("setupTurn", () => {
         filesWritten: ["/tmp/y"],
         askUserCalled: true,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       setupTurn("increment");
@@ -7772,7 +7761,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -7794,7 +7782,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       const result = setupTurn("increment");
@@ -7819,7 +7806,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       setupTurn("preserve");
@@ -7839,7 +7825,6 @@ describe("setupTurn", () => {
         filesWritten: ["/tmp/z"],
         askUserCalled: true,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       setupTurn("preserve");
@@ -7860,7 +7845,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -7882,7 +7866,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       const result = setupTurn("preserve");
@@ -7925,7 +7908,6 @@ describe("setupTurn", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(),
     });
 
     setupTurn("reset");
@@ -7976,7 +7958,6 @@ describe("advancePhase", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(),
       phaseManager: pm,
       currentPhaseId: "p1",
     });
@@ -8013,7 +7994,6 @@ describe("advancePhase", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(),
       phaseManager: pm,
       currentPhaseId: "s1",
     });
@@ -8056,7 +8036,6 @@ describe("advancePhase", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(),
       phaseManager: pm,
       currentPhaseId: "p1",
     });
@@ -8101,7 +8080,6 @@ describe("advancePhase", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
         phaseManager: pm,
         currentPhaseId: "p1",
       });
@@ -8130,7 +8108,6 @@ describe("advancePhase", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
         phaseManager: pm,
         currentPhaseId: "s1",
       });
@@ -8159,7 +8136,6 @@ describe("advancePhase", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
         phaseManager: pm,
         currentPhaseId: "s1",
       });
@@ -8215,7 +8191,6 @@ describe("advancePhase — integration", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(),
       phaseManager: pm,
       currentPhaseId: "p1",
     });

@@ -167,7 +167,6 @@ describe("PhaseManager", () => {
         askUserCalled: false,
         isAdHocInput: false,
         adHocPhaseNotified: false,
-        phaseWriteAllowlist: new Map(),
       };
       expect(() => pm.resolveNext("a", state as never)).not.toThrow();
       expect(pm.resolveNext("a", state as never)).toBe("b");
@@ -208,7 +207,6 @@ describe("PhaseManager", () => {
         askUserCalled: false,
         isAdHocInput: false,
         adHocPhaseNotified: false,
-        phaseWriteAllowlist: new Map(),
         store: null,
       } as any;
       expect(pm.resolveNext("branch", state)).toBe("x");
@@ -328,7 +326,6 @@ describe("PhaseManager", () => {
         askUserCalled: false,
         isAdHocInput: false,
         adHocPhaseNotified: false,
-        phaseWriteAllowlist: new Map(),
         store: null,
       } as any;
       expect(pm.resolveNext("branch", state)).toBe("ca");
@@ -473,7 +470,6 @@ describe("PhaseManager", () => {
         askUserCalled: false,
         isAdHocInput: false,
         adHocPhaseNotified: false,
-        phaseWriteAllowlist: new Map(),
         store: null,
       };
     }

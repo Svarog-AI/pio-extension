@@ -143,7 +143,6 @@ describe("session-state", () => {
           askUserCalled: true,
           isAdHocInput: false,
           adHocPhaseNotified: false,
-          phaseWriteAllowlist: new Map(),
         });
 
         __testSetState(newState);

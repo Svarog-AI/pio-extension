@@ -280,8 +280,7 @@ export function buildPhaseInstructions(state: PioSessionState): string {
 /**
  * Check if a phase can execute without an agent turn.
  *
- * A programmatic phase is a variable-definition phase where all variables
- * have `kind` of `"static"` or `"computed"` — meaning there's nothing for
+ * A programmatic phase is a phase where there's nothing for
  * the LLM to do. Standard phases always return `false`.
  *
  * @param phase - WorkflowPhase to check

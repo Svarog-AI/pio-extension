@@ -154,13 +154,21 @@ describe("workflow-types branch extensions", () => {
   });
 
   describe("IfBranchRouting", () => {
-    it("requires thenFirst and elseFirst as strings", () => {
+    it("requires thenFirst as string and allows optional elseFirst", () => {
       const routing: IfBranchRouting = {
         thenFirst: "then-phase-1",
         elseFirst: "else-phase-1",
       };
       expect(routing.thenFirst).toBe("then-phase-1");
       expect(routing.elseFirst).toBe("else-phase-1");
+    });
+
+    it("allows elseFirst to be omitted (trailing branch with no else and no successor)", () => {
+      const routing: IfBranchRouting = {
+        thenFirst: "then-phase-1",
+      };
+      expect(routing.thenFirst).toBe("then-phase-1");
+      expect(routing.elseFirst).toBeUndefined();
     });
   });
 

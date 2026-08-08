@@ -191,8 +191,8 @@ export interface WorkflowPhase {
 export interface IfBranchRouting {
   /** ID of the first phase in the `then` arm, or post-branch ID if then was empty */
   thenFirst: string;
-  /** ID of the first phase in the `else` arm, or post-branch ID if else was empty */
-  elseFirst: string;
+  /** ID of the first phase in the `else` arm, or post-branch ID if else was empty, or undefined for trailing branches with no else and no successor */
+  elseFirst?: string;
 }
 
 /**

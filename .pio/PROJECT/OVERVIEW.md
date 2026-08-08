@@ -39,17 +39,18 @@ pio-extension/
 │   │   ├── validation.ts        — File protection + frontmatter validation (readOnly/writeAllowlist)
 │   │   └── mark-complete.ts     — pio_mark_complete tool + setupMarkComplete() (step-aware with terminate: true)
 │   ├── runtime/               # Runtime loop engine + shared session state
-│   │   ├── loop-engine.ts       — Bounded iteration loop: resources_discover, before_agent_start, turn_end, agent_end, input handlers; ${name} template interpolation
+│   │   ├── loop-engine.ts       — Bounded iteration loop: resources_discover, before_agent_start, turn_end, agent_end, input handlers; /goto and /continue commands; ${name} template interpolation
 │   │   ├── loop-engine.test.ts  — Colocated tests for loop engine
-│   │   ├── session-state.ts     — PioSessionState singleton (markCompleteCalled, currentPhase, iteration tracking)
+│   │   ├── session-state.ts     — PioSessionState singleton (markCompleteCalled, currentPhase, currentPhaseId, phaseManager, iteration tracking)
+│   │   ├── phase-manager.ts     — PhaseManager: phase registry by string ID, resolveNext (sequential order, conditional branching hooks), listIds
 │   │   ├── session-state.test.ts
 │   │   ├── session-store.ts     — SessionVariableStore: two-layer variable system (${name} interpolation, setVar/getVar/listVars tools)
 │   │   ├── session-store.test.ts
-│   │   ├── state-persistence.ts — File-based persistence for loop engine state + writable runtime variables
+│   │   ├── state-persistence.ts     — File-based persistence for loop engine state (includes currentPhaseId) + writable runtime variables
 │   │   ├── state-persistence.test.ts
-│   │   ├── session-guard.ts     — Turn recovery + dead-turn detection (migrated from guards/)
+│   │   ├── session-guard.ts         — Turn recovery + dead-turn detection (migrated from guards/)
 │   │   ├── session-guard.test.ts
-│   │   └── workflow-types.ts    — StepState, TerminationCondition, LoopWhileCondition, PhaseVariable types + extended WorkflowPhase fields
+│   │   └── workflow-types.ts        — StepState, TerminationCondition, LoopWhileCondition, PhaseVariable types + extended WorkflowPhase fields
 │   ├── skills/                # Active discoverable skills (pio-git and test-driven-development only)
 │   │   ├── pio-git/SKILL.md     — Git operations for pio agents
 │   │   └── test-driven-development/SKILL.md — TDD methodology guide

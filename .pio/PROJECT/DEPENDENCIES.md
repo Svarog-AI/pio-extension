@@ -36,12 +36,14 @@ index.ts (async) ──┬── setupSkills()          → skills auto-discover
                    └── discoverCapabilities() → capability-discovery.ts (auto-discovers 10 directory packages + registers via registerCapability()), followed by setDiscoveredContracts() for runtime contract caching
 
 Runtime package:
-  runtime/loop-engine.ts      — Bounded iteration loop engine: resources_discover, before_agent_start, turn_end, agent_end, input handlers; ${name} template interpolation
+  runtime/loop-engine.ts      — Bounded iteration loop engine: resources_discover (creates PhaseManager), before_agent_start, turn_end, agent_end, input handlers; /goto and /continue commands; ${name} template interpolation
   runtime/session-store.ts    — SessionVariableStore (two-layer variable system, setVar/getVar/listVars tools, type enforcement + coercion)
-  runtime/state-persistence.ts — File-based persistence for loop engine state + writable runtime variables (load/save JSON by session ID, atomic writes)
-  runtime/session-state.ts    — PioSessionState singleton (markCompleteCalled, currentPhase, iteration tracking, sessionId, store, shared by guard + engine)
+  runtime/phase-manager.ts    — PhaseManager: phase registry (id → phase), resolveNext (sequential order, state param reserved for conditional branching), listIds
+
+  runtime/state-persistence.ts — File-based persistence for loop engine state + writable runtime variables + currentPhaseId (load/save JSON by session ID, atomic writes)
+  runtime/session-state.ts    — PioSessionState singleton (markCompleteCalled, currentPhase, currentPhaseId, phaseManager, iteration tracking, sessionId, store, shared by guard + engine)
   runtime/session-guard.ts    — Turn recovery + dead-turn detection (migrated from guards/)
-  runtime/workflow-types.ts   — StepState, TerminationCondition, LoopWhileCondition, PhaseVariableKind, PhaseVariable types + extended WorkflowPhase fields
+  runtime/workflow-types.ts   — StepState, TerminationCondition, LoopWhileCondition, PhaseVariableKind, PhaseVariable types + extended WorkflowPhase fields (returnTo removed)
 
 Capability infrastructure:
   capability-package.ts  — CapabilityPackageConfig, WorkflowPhase (extended with minIterations, maxIterations, terminateWhen, loopMessage, write), FrontmatterSchemaDeclaration types + layout constants

@@ -3,6 +3,40 @@ import { PhaseManager } from "./phase-manager";
 import type { WorkflowPhase } from "./workflow-types";
 
 // ---------------------------------------------------------------------------
+// Branch helpers
+// ---------------------------------------------------------------------------
+
+function makeBranchIf(
+  id: string,
+  then: WorkflowPhase[],
+  elsePhases?: WorkflowPhase[],
+): WorkflowPhase {
+  const phase: WorkflowPhase = {
+    id,
+    title: id,
+    kind: "branch:if" as const,
+    then,
+  };
+  if (elsePhases) phase.else = elsePhases;
+  return phase;
+}
+
+function makeBranchSwitch(
+  id: string,
+  cases: Record<string, WorkflowPhase[]>,
+  defaultBranch?: WorkflowPhase[],
+): WorkflowPhase {
+  const phase: WorkflowPhase = {
+    id,
+    title: id,
+    kind: "branch:switch" as const,
+    cases,
+  };
+  if (defaultBranch) phase.defaultBranch = defaultBranch;
+  return phase;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -137,6 +171,253 @@ describe("PhaseManager", () => {
       };
       expect(() => pm.resolveNext("a", state as never)).not.toThrow();
       expect(pm.resolveNext("a", state as never)).toBe("b");
+    });
+  });
+
+  describe("branch:if flattening", () => {
+    it("flattens a basic branch:if with then/else arms", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        makeBranchIf("branch", [makePhase("x")], [makePhase("y")]),
+        makePhase("z"),
+      ];
+      const pm = new PhaseManager(phases);
+
+      // listIds includes nested arm children in DFS order
+      expect(pm.listIds()).toEqual(["prev", "branch", "x", "y", "z"]);
+
+      // Routing: prev→branch, arm tails→z
+      expect(pm.resolveNext("prev")).toBe("branch");
+      expect(pm.resolveNext("x")).toBe("z");
+      expect(pm.resolveNext("y")).toBe("z");
+      expect(pm.resolveNext("z")).toBeUndefined();
+
+      // Branch phase itself has no linear routing
+      expect(pm.resolveNext("branch")).toBeUndefined();
+
+      // getFirstPhaseId
+      expect(pm.getFirstPhaseId()).toBe("prev");
+    });
+
+    it("wires multi-phase arms sequentially and routes tail to post-branch", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        makeBranchIf(
+          "branch",
+          [makePhase("x1"), makePhase("x2")],
+          [makePhase("y1"), makePhase("y2")],
+        ),
+        makePhase("z"),
+      ];
+      const pm = new PhaseManager(phases);
+
+      expect(pm.listIds()).toEqual([
+        "prev",
+        "branch",
+        "x1",
+        "x2",
+        "y1",
+        "y2",
+        "z",
+      ]);
+
+      // Inner phases wired sequentially
+      expect(pm.resolveNext("x1")).toBe("x2");
+      expect(pm.resolveNext("y1")).toBe("y2");
+      // Tails route to post-branch
+      expect(pm.resolveNext("x2")).toBe("z");
+      expect(pm.resolveNext("y2")).toBe("z");
+    });
+
+    it("handles empty else arm by setting elseFirst to successor", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        makeBranchIf("branch", [makePhase("x")], []),
+        makePhase("z"),
+      ];
+      const pm = new PhaseManager(phases);
+
+      expect(pm.resolveNext("prev")).toBe("branch");
+      expect(pm.resolveNext("x")).toBe("z");
+    });
+
+    it("handles absent else arm by setting elseFirst to successor", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        makeBranchIf("branch", [makePhase("x")]),
+        makePhase("z"),
+      ];
+      const pm = new PhaseManager(phases);
+
+      expect(pm.resolveNext("prev")).toBe("branch");
+      expect(pm.resolveNext("x")).toBe("z");
+    });
+
+    it("throws TypeError when then arm is empty", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        makeBranchIf("branch", [], [makePhase("y")]),
+        makePhase("z"),
+      ];
+      expect(() => new PhaseManager(phases)).toThrow(TypeError);
+    });
+
+    it("throws TypeError when then arm is absent", () => {
+      const phase: WorkflowPhase = {
+        id: "branch",
+        title: "branch",
+        kind: "branch:if" as const,
+        else: [makePhase("y")],
+      };
+      expect(() => new PhaseManager([phase])).toThrow(TypeError);
+    });
+  });
+
+  describe("branch:switch flattening", () => {
+    it("flattens a basic branch:switch with cases and default", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        makeBranchSwitch(
+          "branch",
+          { a: [makePhase("ca")], b: [makePhase("cb")] },
+          [makePhase("d")],
+        ),
+        makePhase("z"),
+      ];
+      const pm = new PhaseManager(phases);
+
+      expect(pm.listIds()).toEqual(["prev", "branch", "ca", "cb", "d", "z"]);
+
+      expect(pm.resolveNext("prev")).toBe("branch");
+      expect(pm.resolveNext("ca")).toBe("z");
+      expect(pm.resolveNext("cb")).toBe("z");
+      expect(pm.resolveNext("d")).toBe("z");
+      expect(pm.resolveNext("z")).toBeUndefined();
+      expect(pm.resolveNext("branch")).toBeUndefined();
+    });
+
+    it("handles empty case arms by setting caseFirst to successor", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        makeBranchSwitch("branch", { a: [makePhase("ca")], b: [] }, [
+          makePhase("d"),
+        ]),
+        makePhase("z"),
+      ];
+      const pm = new PhaseManager(phases);
+
+      expect(pm.resolveNext("prev")).toBe("branch");
+      expect(pm.resolveNext("ca")).toBe("z");
+      expect(pm.resolveNext("d")).toBe("z");
+    });
+
+    it("handles absent defaultBranch", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        makeBranchSwitch("branch", { a: [makePhase("ca")] }),
+        makePhase("z"),
+      ];
+      const pm = new PhaseManager(phases);
+
+      expect(pm.resolveNext("prev")).toBe("branch");
+      expect(pm.resolveNext("ca")).toBe("z");
+    });
+  });
+
+  describe("nested branches", () => {
+    it("handles a branch:if inside the then arm of another branch:if", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("start"),
+        makeBranchIf(
+          "outer",
+          [
+            makeBranchIf(
+              "inner",
+              [makePhase("inner-x")],
+              [makePhase("inner-y")],
+            ),
+          ],
+          [makePhase("outer-y")],
+        ),
+        makePhase("end"),
+      ];
+      const pm = new PhaseManager(phases);
+
+      expect(pm.listIds()).toEqual([
+        "start",
+        "outer",
+        "inner",
+        "inner-x",
+        "inner-y",
+        "outer-y",
+        "end",
+      ]);
+
+      // start → outer (the branch phase)
+      expect(pm.resolveNext("start")).toBe("outer");
+      // inner arm tails → end
+      expect(pm.resolveNext("inner-x")).toBe("end");
+      expect(pm.resolveNext("inner-y")).toBe("end");
+      // outer else tail → end
+      expect(pm.resolveNext("outer-y")).toBe("end");
+      expect(pm.resolveNext("end")).toBeUndefined();
+    });
+  });
+
+  describe("consecutive branches", () => {
+    it("wires first branch arm tail to second branch phase", () => {
+      const phases: WorkflowPhase[] = [
+        makeBranchIf("b1", [makePhase("x")]),
+        makeBranchIf("b2", [makePhase("y")]),
+      ];
+      const pm = new PhaseManager(phases);
+
+      expect(pm.resolveNext("x")).toBe("b2");
+      expect(pm.resolveNext("y")).toBeUndefined();
+    });
+  });
+
+  describe("ID validation", () => {
+    it("throws TypeError when a phase lacks an id", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("a"),
+        { title: "no-id" } as unknown as WorkflowPhase,
+        makePhase("c"),
+      ];
+      expect(() => new PhaseManager(phases)).toThrow(TypeError);
+    });
+
+    it("throws TypeError when a nested arm phase lacks an id", () => {
+      const phases: WorkflowPhase[] = [
+        makeBranchIf(
+          "branch",
+          [makePhase("x"), { title: "no-id" } as unknown as WorkflowPhase],
+          [makePhase("y")],
+        ),
+      ];
+      expect(() => new PhaseManager(phases)).toThrow(TypeError);
+    });
+  });
+
+  describe("getFirstPhaseId", () => {
+    it("returns the first phase ID for flat arrays", () => {
+      const pm = new PhaseManager(makePhases(["a", "b", "c"]));
+      expect(pm.getFirstPhaseId()).toBe("a");
+    });
+
+    it("returns undefined for empty phase list", () => {
+      const pm = new PhaseManager([]);
+      expect(pm.getFirstPhaseId()).toBeUndefined();
+    });
+
+    it("returns the first phase ID for branched workflows", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("start"),
+        makeBranchIf("branch", [makePhase("x")], [makePhase("y")]),
+        makePhase("end"),
+      ];
+      const pm = new PhaseManager(phases);
+      expect(pm.getFirstPhaseId()).toBe("start");
     });
   });
 

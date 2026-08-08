@@ -996,6 +996,24 @@ export function setupLoopEngine(pi: ExtensionAPI) {
   // 8. /goto command — jump to a specific workflow phase by ID
   pi.registerCommand("goto", {
     description: "Jump to a specific workflow phase by ID",
+    getArgumentCompletions: (argumentPrefix: string) => {
+      const pm = getState().phaseManager;
+      if (!pm) return null;
+
+      const ids = pm.listIds();
+      return ids
+        .filter((id) =>
+          id.toLowerCase().startsWith(argumentPrefix.toLowerCase()),
+        )
+        .map((id) => {
+          const phase = pm.getPhase(id);
+          return {
+            value: id,
+            label: id,
+            description: phase?.title,
+          };
+        });
+    },
     handler: async (args, ctx) => {
       // Block phase switching while agent is streaming
       if (!ctx.isIdle()) {

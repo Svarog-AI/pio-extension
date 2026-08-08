@@ -104,7 +104,13 @@ function createMockPi(): {
   }>;
   registeredCommands: Map<
     string,
-    { description?: string; handler: (...args: unknown[]) => unknown }
+    {
+      description?: string;
+      getArgumentCompletions?: (
+        prefix: string,
+      ) => Array<{ value: string; label: string; description?: string }> | null;
+      handler: (...args: unknown[]) => unknown;
+    }
   >;
 } {
   const handlers = new Map<string, Array<(...args: unknown[]) => unknown>>();
@@ -118,7 +124,13 @@ function createMockPi(): {
   }> = [];
   const registeredCommands = new Map<
     string,
-    { description?: string; handler: (...args: unknown[]) => unknown }
+    {
+      description?: string;
+      getArgumentCompletions?: (
+        prefix: string,
+      ) => Array<{ value: string; label: string; description?: string }> | null;
+      handler: (...args: unknown[]) => unknown;
+    }
   >();
 
   const pi = {
@@ -325,7 +337,15 @@ describe("/continue command", () => {
   async function fireContinueCommand(
     registeredCommands: Map<
       string,
-      { description?: string; handler: (...args: unknown[]) => unknown }
+      {
+        description?: string;
+        getArgumentCompletions?: (prefix: string) => Array<{
+          value: string;
+          label: string;
+          description?: string;
+        }> | null;
+        handler: (...args: unknown[]) => unknown;
+      }
     >,
   ) {
     const cmd = registeredCommands.get("continue");
@@ -535,7 +555,15 @@ describe("/goto command", () => {
   async function fireGotoCommand(
     registeredCommands: Map<
       string,
-      { description?: string; handler: (...args: unknown[]) => unknown }
+      {
+        description?: string;
+        getArgumentCompletions?: (prefix: string) => Array<{
+          value: string;
+          label: string;
+          description?: string;
+        }> | null;
+        handler: (...args: unknown[]) => unknown;
+      }
     >,
     args: string,
     ctx: { ui: { notify: (msg: string, type: string) => void } },
@@ -856,6 +884,119 @@ describe("/goto command", () => {
         "Usage: /goto <phase-id>",
         "warning",
       );
+    });
+  });
+
+  // ---- Autocomplete ----
+
+  describe("getArgumentCompletions", () => {
+    it("returns all phase IDs when prefix is empty", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "Setup", instructions: "A" },
+        { id: "s2", title: "Implement", instructions: "B" },
+        { id: "s3", title: "Review", instructions: "C" },
+      ];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhaseId: "s1",
+        phasesList: phases,
+        phaseManager: pm,
+      });
+
+      const cmd = registeredCommands.get("goto");
+      expect(cmd).toBeDefined();
+      expect(cmd!.getArgumentCompletions).toBeDefined();
+
+      const results = cmd!.getArgumentCompletions!("");
+      expect(results).toHaveLength(3);
+      expect(results).toContainEqual({
+        value: "s1",
+        label: "s1",
+        description: "Setup",
+      });
+      expect(results).toContainEqual({
+        value: "s2",
+        label: "s2",
+        description: "Implement",
+      });
+      expect(results).toContainEqual({
+        value: "s3",
+        label: "s3",
+        description: "Review",
+      });
+    });
+
+    it("filters by case-insensitive prefix", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "Setup", instructions: "A" },
+        { id: "s2", title: "Implement", instructions: "B" },
+        { id: "other", title: "Other", instructions: "C" },
+      ];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhaseId: "s1",
+        phasesList: phases,
+        phaseManager: pm,
+      });
+
+      const cmd = registeredCommands.get("goto");
+      const results = cmd!.getArgumentCompletions!("S");
+      expect(results).toHaveLength(2);
+      expect(results).toContainEqual({
+        value: "s1",
+        label: "s1",
+        description: "Setup",
+      });
+      expect(results).toContainEqual({
+        value: "s2",
+        label: "s2",
+        description: "Implement",
+      });
+    });
+
+    it("returns null when PhaseManager is unavailable", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      // Do NOT set phaseManager in state
+      setState({ isActive: false });
+
+      const cmd = registeredCommands.get("goto");
+      const results = cmd!.getArgumentCompletions!("");
+      expect(results).toBeNull();
+    });
+
+    it("returns empty array for non-matching prefix", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = [
+        { id: "s1", title: "Setup", instructions: "A" },
+        { id: "s2", title: "Implement", instructions: "B" },
+      ];
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhaseId: "s1",
+        phasesList: phases,
+        phaseManager: pm,
+      });
+
+      const cmd = registeredCommands.get("goto");
+      const results = cmd!.getArgumentCompletions!("zzz");
+      expect(results).toEqual([]);
     });
   });
 });

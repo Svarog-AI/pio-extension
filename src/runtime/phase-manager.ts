@@ -124,21 +124,24 @@ export class PhaseManager {
           // --- branch:switch processing ---
 
           const caseFirst: Record<string, string> = {};
+          let lastCaseTail: string | undefined;
 
           for (const [key, arm] of Object.entries(phase.cases ?? {})) {
             const tail = _flatten(arm, successor, `${path}.cases['${key}']`);
             if (tail && successor) routing.set(tail, successor);
+            lastCaseTail = tail;
             caseFirst[key] = arm[0]?.id ?? successor;
           }
 
+          let defaultTail: string | undefined;
           let defaultFirst: string | undefined;
           if (phase.defaultBranch !== undefined) {
-            const tail = _flatten(
+            defaultTail = _flatten(
               phase.defaultBranch,
               successor,
               `${path}.defaultBranch`,
             );
-            if (tail && successor) routing.set(tail, successor);
+            if (defaultTail && successor) routing.set(defaultTail, successor);
             defaultFirst = phase.defaultBranch[0]?.id ?? successor;
           }
           // Absent defaultBranch: defaultFirst stays undefined
@@ -146,16 +149,7 @@ export class PhaseManager {
           conditionalRouting.set(phase.id, { caseFirst, defaultFirst });
 
           // Return tail of last arm walked (default or last case)
-          lastId =
-            phase.defaultBranch !== undefined
-              ? _flatten(
-                  phase.defaultBranch,
-                  undefined,
-                  `${path}.defaultBranch`,
-                )
-              : Object.values(phase.cases ?? {})
-                  .pop()
-                  ?.reduce((_acc: string | undefined, p) => p.id, undefined);
+          lastId = defaultTail ?? lastCaseTail;
         } else {
           // --- standard / variable-definition phase ---
           if (successor) {

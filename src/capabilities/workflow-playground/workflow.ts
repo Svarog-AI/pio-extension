@@ -17,7 +17,7 @@ export default [
 Follow these steps:
 1. Report your iteration number at the start of each run (e.g., "Iteration 1", "Iteration 2")
 2. Do nothing special — just let the loop engine advance naturally
-3. Observe and report that exactly 3 iterations occur before advancing to Phase 2
+3. Observe and report that exactly 3 iterations occur before advancing to phase \`terminate-when\`
 4. Explain why: without \`terminateWhen\`, conditions default to "met" once \`minIterations\` (3) is reached`,
   },
 
@@ -179,12 +179,12 @@ Follow these steps:
   {
     id: "template-interpolation",
     title: "Template Interpolation",
-    instructions: `This phase tests template interpolation. The placeholders below reference variables set in Phase 6.
+    instructions: `This phase tests template interpolation. The placeholders below reference variables set in phase \`var-basic-test\`.
 
-Resolved values from Phase 6:
+Resolved values from \`var-basic-test\`:
 - \`\${phase_label}\` — should resolve to the static var value
-- \`\${llm_chosen_value}\` — should resolve to whatever you set via setVar in Phase 6
-- \`\${current_phase_num}\` — should resolve to the current phase ID from Phase 6
+- \`\${llm_chosen_value}\` — should resolve to whatever you set via setVar in \`var-basic-test\`
+- \`\${current_phase_num}\` — should resolve to the current phase ID from \`var-basic-test\`
 
 Follow these steps:
 1. Call \`listVars\` to see all current variables

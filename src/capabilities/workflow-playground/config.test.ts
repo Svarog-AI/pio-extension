@@ -196,8 +196,8 @@ describe("pio_launch_playground tool", () => {
 import workflowPhases from "./workflow";
 
 describe("workflow phases", () => {
-  it("contains exactly 13 phases", () => {
-    expect(workflowPhases).toHaveLength(13);
+  it("contains exactly 18 phases", () => {
+    expect(workflowPhases).toHaveLength(18);
   });
 
   // ---- Phase 6: Variable Definition — Basic Test ----
@@ -416,10 +416,178 @@ describe("workflow phases", () => {
     });
   });
 
-  // ---- Phase 13: Final Report ----
+  // ---- Phase 14: branch:if Test ----
 
-  describe("Phase 13: Final Report", () => {
+  describe("Phase 14: branch:if Test", () => {
     const phase = workflowPhases[12];
+
+    it("has id 'branch-if-test'", () => {
+      expect(phase.id).toBe("branch-if-test");
+    });
+
+    it("has kind 'branch:if'", () => {
+      expect(phase.kind).toBe("branch:if");
+    });
+
+    it("has a condition callback that returns true", () => {
+      expect(typeof phase.condition).toBe("function");
+      expect(phase.condition!(null as any)).toBe(true);
+    });
+
+    it("has a then arm with exactly 2 phases", () => {
+      expect(phase.then).toHaveLength(2);
+    });
+
+    it("then arm child 1 is a standard phase with instructions", () => {
+      const child1 = phase.then![0];
+      expect(child1.id).toBe("branch-if-then-step-1");
+      expect(child1.kind).toBeUndefined();
+      expect(child1.instructions).toBeDefined();
+      expect(child1.instructions).toContain("/tmp/branch-then-executed.txt");
+    });
+
+    it("then arm child 2 is a variable-definition phase", () => {
+      const child2 = phase.then![1];
+      expect(child2.id).toBe("branch-if-then-step-2");
+      expect(child2.kind).toBe("variable-definition");
+      expect(child2.variables).toHaveLength(1);
+      expect(child2.variables![0].name).toBe("branch_if_then_2");
+      expect((child2.variables![0] as any).value).toBe("executed");
+    });
+
+    it("has an else arm with exactly 1 phase", () => {
+      expect(phase.else).toHaveLength(1);
+    });
+
+    it("else arm sets branch_if_taken = 'else'", () => {
+      const elsePhase = phase.else![0];
+      expect(elsePhase.id).toBe("branch-if-else-step");
+      expect(elsePhase.kind).toBe("variable-definition");
+      expect(elsePhase.variables![0].name).toBe("branch_if_taken");
+      expect((elsePhase.variables![0] as any).value).toBe("else");
+    });
+  });
+
+  // ---- Phase 15: branch:if Verification ----
+
+  describe("Phase 15: branch:if Verification", () => {
+    const phase = workflowPhases[13];
+
+    it("has id 'branch-if-verify'", () => {
+      expect(phase.id).toBe("branch-if-verify");
+    });
+
+    it("instructions verify branch_if_then_2 === 'executed'", () => {
+      expect(phase.instructions).toContain("branch_if_then_2");
+      expect(phase.instructions).toContain("executed");
+    });
+
+    it("instructions verify /tmp/branch-then-executed.txt", () => {
+      expect(phase.instructions).toContain("/tmp/branch-then-executed.txt");
+    });
+
+    it("instructions verify branch_if_taken is NOT set", () => {
+      expect(phase.instructions).toContain("branch_if_taken");
+      expect(phase.instructions).toContain("NOT set");
+    });
+  });
+
+  // ---- Phase 16: branch:switch with callback on ----
+
+  describe("Phase 16: branch:switch Callback Test", () => {
+    const phase = workflowPhases[14];
+
+    it("has id 'branch-switch-callback'", () => {
+      expect(phase.id).toBe("branch-switch-callback");
+    });
+
+    it("has kind 'branch:switch'", () => {
+      expect(phase.kind).toBe("branch:switch");
+    });
+
+    it("has an on callback that returns 'approved'", () => {
+      expect(typeof phase.on).toBe("function");
+      expect((phase.on as Function)(null as any)).toBe("approved");
+    });
+
+    it("has 3 arms: approved, rejected, and defaultBranch", () => {
+      expect(phase.cases).toBeDefined();
+      expect(Object.keys(phase.cases!)).toContain("approved");
+      expect(Object.keys(phase.cases!)).toContain("rejected");
+      expect(phase.defaultBranch).toBeDefined();
+    });
+
+    it("approved arm sets switch_callback_result = 'approved-matched'", () => {
+      const approvedArm = phase.cases!["approved"]![0];
+      expect(approvedArm.variables![0].name).toBe("switch_callback_result");
+      expect((approvedArm.variables![0] as any).value).toBe("approved-matched");
+    });
+  });
+
+  // ---- Phase 17: branch:switch with $varName ----
+
+  describe("Phase 17: branch:switch $varName Test", () => {
+    const phase = workflowPhases[15];
+
+    it("has id 'branch-switch-varname'", () => {
+      expect(phase.id).toBe("branch-switch-varname");
+    });
+
+    it("has kind 'branch:switch'", () => {
+      expect(phase.kind).toBe("branch:switch");
+    });
+
+    it("has on as a $varName string", () => {
+      expect(phase.on).toBe("$llm_chosen_value");
+    });
+
+    it("has cases for 'confirmed' and 'default-choice' plus defaultBranch", () => {
+      expect(phase.cases).toBeDefined();
+      expect(Object.keys(phase.cases!)).toContain("confirmed");
+      expect(Object.keys(phase.cases!)).toContain("default-choice");
+      expect(phase.defaultBranch).toBeDefined();
+    });
+
+    it("all arms set switch_varname_result with '-matched' suffix", () => {
+      for (const [, arm] of Object.entries(phase.cases!)) {
+        const result = arm[0].variables![0];
+        expect(result.name).toBe("switch_varname_result");
+        expect((result as any).value).toMatch(/-matched$/);
+      }
+      const defaultResult = phase.defaultBranch![0].variables![0];
+      expect(defaultResult.name).toBe("switch_varname_result");
+      expect((defaultResult as any).value).toMatch(/-matched$/);
+    });
+  });
+
+  // ---- Phase 18: branch:switch Verification ----
+
+  describe("Phase 18: branch:switch Verification", () => {
+    const phase = workflowPhases[16];
+
+    it("has id 'branch-switch-verify'", () => {
+      expect(phase.id).toBe("branch-switch-verify");
+    });
+
+    it("instructions verify switch_callback_result", () => {
+      expect(phase.instructions).toContain("switch_callback_result");
+      expect(phase.instructions).toContain("approved-matched");
+    });
+
+    it("instructions verify switch_varname_result with '-matched' suffix", () => {
+      expect(phase.instructions).toContain("switch_varname_result");
+      expect(phase.instructions).toContain("-matched");
+    });
+  });
+
+  // ---- Phase 19: Final Report ----
+
+  describe("Phase 19: Final Report", () => {
+    const phase = workflowPhases[17];
+
+    it("has id 'final-report'", () => {
+      expect(phase.id).toBe("final-report");
+    });
 
     it("has write: ['playground-output']", () => {
       expect(phase.write).toEqual(["playground-output"]);
@@ -453,8 +621,19 @@ describe("workflow phases", () => {
       expect(phase.instructions).toContain("no LLM instructions were shown");
     });
 
-    it("instructions reference 13 phases total", () => {
-      expect(phase.instructions).toContain("1–13");
+    it("instructions reference 18 phases total", () => {
+      expect(phase.instructions).toContain("1–18");
+    });
+
+    it("instructions include conditional branching verification section", () => {
+      expect(phase.instructions).toContain(
+        "Conditional branching verification",
+      );
+      expect(phase.instructions).toContain("branch:if");
+      expect(phase.instructions).toContain("branch:switch");
+      expect(phase.instructions).toContain("branch_if_then_2");
+      expect(phase.instructions).toContain("switch_callback_result");
+      expect(phase.instructions).toContain("switch_varname_result");
     });
   });
 });

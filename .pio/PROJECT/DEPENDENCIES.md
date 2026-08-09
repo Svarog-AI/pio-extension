@@ -38,12 +38,12 @@ index.ts (async) ──┬── setupSkills()          → skills auto-discover
 Runtime package:
   runtime/loop-engine.ts      — Bounded iteration loop engine: resources_discover (creates PhaseManager), before_agent_start, turn_end, agent_end, input handlers; /goto and /continue commands; ${name} template interpolation
   runtime/session-store.ts    — SessionVariableStore (two-layer variable system, setVar/getVar/listVars tools, type enforcement + coercion)
-  runtime/phase-manager.ts    — PhaseManager: phase registry (id → phase), resolveNext (sequential order, state param reserved for conditional branching), listIds
+  runtime/phase-manager.ts    — PhaseManager: depth-first tree flattening, phase registry (id → phase), resolveNext (sequential via `_routing`, conditional via `_conditionalRouting` for branch:if/branch:switch), listIds, getFirstPhaseId
 
   runtime/state-persistence.ts — File-based persistence for loop engine state + writable runtime variables + currentPhaseId (load/save JSON by session ID, atomic writes)
   runtime/session-state.ts    — PioSessionState singleton (markCompleteCalled, currentPhase, currentPhaseId, phaseManager, iteration tracking, sessionId, store, shared by guard + engine)
   runtime/session-guard.ts    — Turn recovery + dead-turn detection (migrated from guards/)
-  runtime/workflow-types.ts   — StepState, TerminationCondition, LoopWhileCondition, PhaseVariableKind, PhaseVariable types + extended WorkflowPhase fields (returnTo removed)
+  runtime/workflow-types.ts   — StepState, TerminationCondition, LoopWhileCondition, PhaseVariableKind, PhaseVariable types + extended WorkflowPhase fields (kind includes `branch:if`/`branch:switch`) + branch routing types (IfBranchRouting, SwitchBranchRouting, BranchRouting)
 
 Capability infrastructure:
   capability-package.ts  — CapabilityPackageConfig, WorkflowPhase (extended with minIterations, maxIterations, terminateWhen, loopMessage, write), FrontmatterSchemaDeclaration types + layout constants

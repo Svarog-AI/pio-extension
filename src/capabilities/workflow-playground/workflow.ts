@@ -317,7 +317,7 @@ Follow these steps:
   {
     id: "branch-if-verify",
     title: "Branch:if Verification",
-    instructions: `This phase verifies the \`branch:if\` test from Phase 14.
+    instructions: `This phase verifies the \`branch:if\` test from phase \`branch-if-test\`.
 
 Follow these steps:
 1. Call \`listVars\` and confirm that \`branch_if_then_2\` is set to "executed" (proves arm child 2 ran)

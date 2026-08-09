@@ -190,7 +190,7 @@ describe("pio_launch_playground tool", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Workflow phases (Phases 6–13)
+// Workflow phases (all 18 top-level)
 // ---------------------------------------------------------------------------
 
 import workflowPhases from "./workflow";

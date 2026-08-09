@@ -17,7 +17,7 @@ export default [
 Follow these steps:
 1. Report your iteration number at the start of each run (e.g., "Iteration 1", "Iteration 2")
 2. Do nothing special — just let the loop engine advance naturally
-3. Observe and report that exactly 3 iterations occur before advancing to Phase 2
+3. Observe and report that exactly 3 iterations occur before advancing to phase \`terminate-when\`
 4. Explain why: without \`terminateWhen\`, conditions default to "met" once \`minIterations\` (3) is reached`,
   },
 
@@ -179,12 +179,12 @@ Follow these steps:
   {
     id: "template-interpolation",
     title: "Template Interpolation",
-    instructions: `This phase tests template interpolation. The placeholders below reference variables set in Phase 6.
+    instructions: `This phase tests template interpolation. The placeholders below reference variables set in phase \`var-basic-test\`.
 
-Resolved values from Phase 6:
+Resolved values from \`var-basic-test\`:
 - \`\${phase_label}\` — should resolve to the static var value
-- \`\${llm_chosen_value}\` — should resolve to whatever you set via setVar in Phase 6
-- \`\${current_phase_num}\` — should resolve to the current phase ID from Phase 6
+- \`\${llm_chosen_value}\` — should resolve to whatever you set via setVar in \`var-basic-test\`
+- \`\${current_phase_num}\` — should resolve to the current phase ID from \`var-basic-test\`
 
 Follow these steps:
 1. Call \`listVars\` to see all current variables
@@ -262,25 +262,224 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 13: Final Report
+  // Phase 14: branch:if Test
+  // ---------------------------------------------------------------------------
+  {
+    id: "branch-if-test",
+    title: "Branch:if Test",
+    kind: "branch:if",
+    condition: (_: PioSessionState) => true,
+    // biome-ignore lint/suspicious/noThenProperty: 'then' is the canonical field name from WorkflowPhase interface
+    then: [
+      {
+        id: "branch-if-then-step-1",
+        title: "Branch:if Then — Step 1",
+        instructions: `This phase is inside the \`then\` arm of a \`branch:if\` phase. Your task:
+
+1. Report "Entering branch:if then-arm step 1"
+2. Write a file to \`/tmp/branch-then-executed.txt\` with content "branch:if then-arm executed — step 1" (this is used for verification in the post-branch phase)
+3. Note that standard phases inside branch arms trigger agent turns and work normally`,
+      },
+      {
+        id: "branch-if-then-step-2",
+        title: "Branch:if Then — Step 2 (programmatic)",
+        kind: "variable-definition",
+        variables: [
+          {
+            name: "branch_if_then_2",
+            type: "string",
+            kind: "static",
+            value: "executed",
+          },
+        ],
+      },
+    ],
+    else: [
+      {
+        id: "branch-if-else-step",
+        title: "Branch:if Else (should not run)",
+        kind: "variable-definition",
+        variables: [
+          {
+            name: "branch_if_taken",
+            type: "string",
+            kind: "static",
+            value: "else",
+          },
+        ],
+      },
+    ],
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 15: branch:if Verification
+  // ---------------------------------------------------------------------------
+  {
+    id: "branch-if-verify",
+    title: "Branch:if Verification",
+    instructions: `This phase verifies the \`branch:if\` test from phase \`branch-if-test\`.
+
+Follow these steps:
+1. Call \`listVars\` and confirm that \`branch_if_then_2\` is set to "executed" (proves arm child 2 ran)
+2. Check that \`/tmp/branch-then-executed.txt\` exists and contains expected content (proves arm child 1 ran)
+3. Confirm that \`branch_if_taken\` is NOT set (proves the else arm did not execute — condition was always true, then arm taken)
+4. Report "Branch:if test PASSED" with details about which branch was taken and both arm children executed`,
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 16: branch:switch with callback on
+  // ---------------------------------------------------------------------------
+  {
+    id: "branch-switch-callback",
+    title: "Branch:switch Callback Test",
+    kind: "branch:switch",
+    on: (_: PioSessionState) => "approved",
+    cases: {
+      approved: [
+        {
+          id: "switch-callback-approved-arm",
+          title: "Switch Callback — Approved",
+          kind: "variable-definition",
+          variables: [
+            {
+              name: "switch_callback_result",
+              type: "string",
+              kind: "static",
+              value: "approved-matched",
+            },
+          ],
+        },
+      ],
+      rejected: [
+        {
+          id: "switch-callback-rejected-arm",
+          title: "Switch Callback — Rejected (should not run)",
+          kind: "variable-definition",
+          variables: [
+            {
+              name: "switch_callback_result",
+              type: "string",
+              kind: "static",
+              value: "rejected-matched",
+            },
+          ],
+        },
+      ],
+    },
+    defaultBranch: [
+      {
+        id: "switch-callback-default-arm",
+        title: "Switch Callback — Default (should not run)",
+        kind: "variable-definition",
+        variables: [
+          {
+            name: "switch_callback_result",
+            type: "string",
+            kind: "static",
+            value: "default-matched",
+          },
+        ],
+      },
+    ],
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 17: branch:switch with $varName string form
+  // ---------------------------------------------------------------------------
+  {
+    id: "branch-switch-varname",
+    title: "Branch:switch $varName Test",
+    kind: "branch:switch",
+    on: "$llm_chosen_value",
+    cases: {
+      confirmed: [
+        {
+          id: "switch-varname-confirmed-arm",
+          title: "Switch VarName — Confirmed",
+          kind: "variable-definition",
+          variables: [
+            {
+              name: "switch_varname_result",
+              type: "string",
+              kind: "static",
+              value: "confirmed-matched",
+            },
+          ],
+        },
+      ],
+      "default-choice": [
+        {
+          id: "switch-varname-default-arm",
+          title: "Switch VarName — Other",
+          kind: "variable-definition",
+          variables: [
+            {
+              name: "switch_varname_result",
+              type: "string",
+              kind: "static",
+              value: "default-choice-matched",
+            },
+          ],
+        },
+      ],
+    },
+    defaultBranch: [
+      {
+        id: "switch-varname-default-branch",
+        title: "Switch VarName — Default fallback",
+        kind: "variable-definition",
+        variables: [
+          {
+            name: "switch_varname_result",
+            type: "string",
+            kind: "static",
+            value: "default-branch-matched",
+          },
+        ],
+      },
+    ],
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 18: branch:switch Verification
+  // ---------------------------------------------------------------------------
+  {
+    id: "branch-switch-verify",
+    title: "Branch:switch Verification",
+    instructions: `This phase verifies the \`branch:switch\` tests from phases \`branch-switch-callback\` and \`branch-switch-varname\`.
+
+Follow these steps:
+1. Call \`listVars\` and confirm that \`switch_callback_result\` is set to "approved-matched" (proves the callback switch routed to the correct case — the \`on\` callback returned "approved")
+2. Confirm that \`switch_varname_result\` is set to SOME value ending in "-matched" (proves the $varName switch resolved the variable and matched a case or defaultBranch). Report which specific arm matched
+3. Explain why: \`branch-switch-callback\` used a callback \`on\` form (deterministic result), \`branch-switch-varname\` used the $varName string form (depends on what you set in \`var-basic-test\`)
+4. Report "Branch:switch tests PASSED" with details about routing behavior`,
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 19: Final Report
   // ---------------------------------------------------------------------------
   {
     id: "final-report",
     title: "Final Report",
     write: ["playground-output"],
-    instructions: `This is the final phase. Write a comprehensive test report in \`PLAYGROUND.md\` covering all phases (1–13).
+    instructions: `This is the final phase. Write a comprehensive test report in \`PLAYGROUND.md\` covering all phases (1–18).
 
 Follow these steps:
-1. Write \`PLAYGROUND.md\` with a section for each phase (1–13) summarizing behavior observed
-2. For Phases 6–10 specifically, include: variable values, interpolation results, loopWhile replay observations, terminateWhen AND logic behavior, and computed callback results
-3. Confirm that user-defined \`loopWhile\` uses OR logic (Phase 7) and \`terminateWhen\` uses AND logic (Phase 8) based on direct observations
-4. **Programmatic chain verification (Phases 11–12):**
+1. Write \`PLAYGROUND.md\` with a section for each phase summarizing behavior observed
+2. For phases \`var-basic-test\` through \`validation-gate-replay\` specifically, include: variable values, interpolation results, loopWhile replay observations, terminateWhen AND logic behavior, and computed callback results
+3. Confirm that user-defined \`loopWhile\` uses OR logic (\`loopwhile-test\`) and \`terminateWhen\` uses AND logic (\`terminate-when-and-test\`) based on direct observations
+4. **Programmatic chain verification (\`programmatic-chain-1\` and \`programmatic-chain-2\`):**
    a. Call \`listVars\` and confirm that \`prog_a\`, \`prog_a_seq\`, \`prog_b\`, and \`prog_b_seq\` are all set
    b. Verify static values: \`prog_a = "phase-a-set"\` and \`prog_b = "phase-b-set"\`
-   c. Verify computed phase IDs: \`prog_a_seq\` should equal "programmatic-chain-1" (the currentPhaseId when Phase 11's executePhase ran) and \`prog_b_seq\` should equal "programmatic-chain-2" (the currentPhaseId when Phase 12 ran). These different values prove the computed callbacks ran during the advancePhase loop, not after — if they ran after, both would have the same value
-   d. Confirm that you received instructions for Phase 10's turn and then directly Phase 13's turn — no LLM instructions were shown for Phases 11–12. This proves the advancePhase helper correctly skipped the purely programmatic phases without triggering agent turns
+   c. Verify computed phase IDs: \`prog_a_seq\` should equal "programmatic-chain-1" (the currentPhaseId when \`programmatic-chain-1\`'s executePhase ran) and \`prog_b_seq\` should equal "programmatic-chain-2" (the currentPhaseId when \`programmatic-chain-2\` ran). These different values prove the computed callbacks ran during the advancePhase loop, not after — if they ran after, both would have the same value
+   d. Confirm that you received instructions for \`validation-gate-replay\`'s turn and then directly this phase's turn — no LLM instructions were shown for \`programmatic-chain-1\` or \`programmatic-chain-2\`. This proves the advancePhase helper correctly skipped the purely programmatic phases without triggering agent turns
    e. Include a dedicated section in \`PLAYGROUND.md\` documenting this skip-through behavior and the verified variable values
-5. Include any unexpected behaviors or discrepancies
-6. This is the final phase — produce a complete, well-structured report in \`PLAYGROUND.md\``,
+5. **Conditional branching verification (\`branch-if-test\` through \`branch-switch-verify\`):**
+   a. \`branch:if\` results: confirm \`branch_if_then_2 === "executed"\`, \`/tmp/branch-then-executed.txt\` exists, and the else arm did NOT execute (\`branch_if_taken\` is not set)
+   b. \`branch:switch\` (callback form): confirm \`switch_callback_result === "approved-matched"\` — the callback \`on\` returned "approved" and routed correctly
+   c. \`branch:switch\` ($varName form): confirm \`switch_varname_result\` is set to some "-matched" value — the variable was resolved and a case or defaultBranch matched
+   d. Document branch routing observations: which paths were taken, how multi-phase arms executed sequentially (step-1 → step-2 inside then arm), and post-branch continuation behavior
+6. Include any unexpected behaviors or discrepancies
+7. This is the final phase — produce a complete, well-structured report in \`PLAYGROUND.md\` covering all 18 phases total`,
   },
 ] satisfies WorkflowPhase[];

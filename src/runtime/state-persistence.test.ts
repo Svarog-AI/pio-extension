@@ -831,7 +831,6 @@ describe("extractPersistedState", () => {
       isAdHocInput: true,
       adHocPhaseNotified: false,
       currentPhaseId: "",
-      phaseWriteAllowlist: new Map(),
     });
 
     const result = extractPersistedState(getState());
@@ -867,7 +866,6 @@ describe("extractPersistedState", () => {
       isAdHocInput: false,
       adHocPhaseNotified: false,
       currentPhaseId: "",
-      phaseWriteAllowlist: new Map(),
       store,
     });
 
@@ -901,7 +899,6 @@ describe("extractPersistedState", () => {
       isAdHocInput: false,
       adHocPhaseNotified: false,
       currentPhaseId: "",
-      phaseWriteAllowlist: new Map(),
       store: null,
     });
 
@@ -927,7 +924,6 @@ describe("extractPersistedState", () => {
       isAdHocInput: false,
       adHocPhaseNotified: false,
       currentPhaseId: "",
-      phaseWriteAllowlist: new Map(),
       store: undefined,
     });
 
@@ -956,7 +952,6 @@ describe("extractPersistedState", () => {
       isAdHocInput: false,
       adHocPhaseNotified: false,
       currentPhaseId: "",
-      phaseWriteAllowlist: new Map(),
       store,
     });
 

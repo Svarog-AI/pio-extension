@@ -10,6 +10,7 @@
  * mutate state through the accessor functions.
  */
 
+import type { CapState } from "../capability-state";
 import type { PhaseManager } from "./phase-manager";
 import type { SessionVariableStore } from "./session-store";
 import type { WorkflowPhase } from "./workflow-types";
@@ -62,15 +63,11 @@ export interface PioSessionState {
    */
   adHocPhaseNotified: boolean;
 
-  /** Phase-level write allowlists: phase ID (string, e.g. "step-1") → { allowedPaths (resolved absolute paths), allowedNames (original output names for error messages), allContractOutputs (all known contract output paths, used by write: [] to block). Populated during resources_discover. */
-  phaseWriteAllowlist: Map<
-    string,
-    {
-      allowedPaths: Set<string>;
-      allowedNames: string[];
-      allContractOutputs: Set<string>;
-    }
-  >;
+  /** CapState instance for on-demand output path resolution during write gating. Created during resources_discover, accessed lazily in tool_call. In-memory only — not persisted. */
+  capState?: CapState | null;
+
+  /** All contract output paths (resolved absolute paths). Computed once during resources_discover from CapState. Used by the write gate to determine which paths are contract outputs. */
+  allContractOutputs?: Set<string> | null;
 
   /** Session ID captured during resources_discover. Used by persistence module to load/save state files. Optional for backward compat. */
   sessionId?: string;
@@ -103,7 +100,8 @@ function createInitialState(): PioSessionState {
     askUserCalled: false,
     isAdHocInput: false,
     adHocPhaseNotified: false,
-    phaseWriteAllowlist: new Map(),
+    capState: undefined,
+    allContractOutputs: undefined,
     sessionId: undefined,
     store: undefined,
     currentPhaseId: "",

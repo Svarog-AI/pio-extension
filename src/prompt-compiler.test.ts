@@ -6,146 +6,6 @@ import type { CapabilitySkills } from "./capability-package";
 import type { WorkflowPhase } from "./runtime/workflow-types";
 
 // ---------------------------------------------------------------------------
-// renderWorkflowPhases (pure function — no filesystem)
-// ---------------------------------------------------------------------------
-
-describe("renderWorkflowPhases", () => {
-  // Lazy import to avoid circular deps during test setup
-  let renderWorkflowPhases: (steps: WorkflowPhase[]) => string;
-
-  beforeEach(async () => {
-    const mod = await import("./prompt-compiler");
-    renderWorkflowPhases = mod.renderWorkflowPhases;
-  });
-
-  it("returns empty string for empty array", () => {
-    expect(renderWorkflowPhases([])).toBe("");
-  });
-
-  it("renders a single phase without skills", () => {
-    const steps: WorkflowPhase[] = [
-      {
-        id: "step-1",
-        title: "Understand the goal",
-        instructions: "Read GOAL.md and internalize the current state.",
-      },
-    ];
-
-    const result = renderWorkflowPhases(steps);
-
-    expect(result).toContain("### Phase 1: Understand the goal");
-    expect(result).not.toContain(
-      "Read GOAL.md and internalize the current state.",
-    );
-    expect(result).not.toContain("Skills:");
-  });
-
-  it("renders a step with mandatory skills", () => {
-    const steps: WorkflowPhase[] = [
-      {
-        id: "step-1",
-        title: "Implement feature",
-        instructions: "Write the code.",
-        skills: { mandatory: ["tdd", "pio-git"] },
-      },
-    ];
-
-    const result = renderWorkflowPhases(steps);
-
-    expect(result).toContain("### Phase 1: Implement feature");
-    expect(result).toContain("Skills: [tdd], [pio-git]");
-    expect(result).not.toContain("Write the code.");
-  });
-
-  it("renders multiple phases with mixed skill declarations", () => {
-    const steps: WorkflowPhase[] = [
-      {
-        id: "step-1",
-        title: "Research",
-        instructions: "Look at the codebase.",
-        skills: { mandatory: ["source-research"] },
-      },
-      {
-        id: "step-2",
-        title: "Implement",
-        instructions: "Write tests first.",
-      },
-      {
-        id: "step-3",
-        title: "Commit",
-        instructions: "Commit changes.",
-        skills: { mandatory: ["pio-git"] },
-      },
-    ];
-
-    const result = renderWorkflowPhases(steps);
-
-    expect(result).toContain("### Phase 1: Research");
-    expect(result).toContain("Skills: [source-research]");
-    expect(result).toContain("### Phase 2: Implement");
-    // Phase 2 has no skills — no Skills line
-    const step2Section = result
-      .split("### Phase 2: Implement")[1]
-      ?.split("### Phase 3")[0]!;
-    expect(step2Section).not.toContain("Skills:");
-    expect(result).toContain("### Phase 3: Commit");
-    expect(result).toContain("Skills: [pio-git]");
-  });
-
-  it("renders phase with both mandatory and recommended skills (only mandatory shown)", () => {
-    const steps: WorkflowPhase[] = [
-      {
-        id: "step-1",
-        title: "Build",
-        instructions: "Do it.",
-        skills: {
-          mandatory: ["tdd"],
-          recommended: [{ name: "pio-git", condition: "when committing" }],
-        },
-      },
-    ];
-
-    const result = renderWorkflowPhases(steps);
-
-    expect(result).toContain("Skills: [tdd]");
-    expect(result).not.toContain("pio-git"); // recommended not shown in Skills line
-  });
-
-  it("renders phase with empty mandatory skills array (no Skills line)", () => {
-    const steps: WorkflowPhase[] = [
-      {
-        id: "step-1",
-        title: "Simple step",
-        instructions: "Just do it.",
-        skills: { mandatory: [] },
-      },
-    ];
-
-    const result = renderWorkflowPhases(steps);
-
-    expect(result).not.toContain("Skills:");
-  });
-
-  it("renders phases with multiline instructions (titles only)", () => {
-    const steps: WorkflowPhase[] = [
-      {
-        id: "step-1",
-        title: "Complex step",
-        instructions:
-          "First, read the file.\n\nThen, write tests.\n\nFinally, implement.",
-      },
-    ];
-
-    const result = renderWorkflowPhases(steps);
-
-    expect(result).toContain("### Phase 1: Complex step");
-    expect(result).not.toContain("First, read the file.");
-    expect(result).not.toContain("Then, write tests.");
-    expect(result).not.toContain("Finally, implement.");
-  });
-});
-
-// ---------------------------------------------------------------------------
 // mergeWorkflowPhaseSkills (pure function)
 // ---------------------------------------------------------------------------
 
@@ -313,6 +173,7 @@ describe("readWorkflowPhases", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
@@ -405,6 +266,68 @@ describe("readWorkflowPhases", () => {
     expect(steps).toHaveLength(2);
     expect(steps[0].id).toBe("step-1");
     expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("does not warn for branch:if phases missing .instructions", async () => {
+    const capDir = path.join(tempDir, "test-cap");
+    fs.mkdirSync(capDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(capDir, "workflow.ts"),
+      `export default [
+  { id: "step-1", title: "Setup", instructions: "Do setup." },
+  { id: "branch-a", title: "Branch A", kind: "branch:if", condition: () => true },
+];`,
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const steps = await readWorkflowPhases(capDir);
+
+    expect(steps).toHaveLength(2);
+    expect(steps[1].kind).toBe("branch:if");
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("does not warn for branch:switch phases missing .instructions", async () => {
+    const capDir = path.join(tempDir, "test-cap");
+    fs.mkdirSync(capDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(capDir, "workflow.ts"),
+      `export default [
+  { id: "branch-s", title: "Switch", kind: "branch:switch", on: () => "a" },
+];`,
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const steps = await readWorkflowPhases(capDir);
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0].kind).toBe("branch:switch");
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("still warns for non-branch phases missing .instructions (regression guard)", async () => {
+    const capDir = path.join(tempDir, "test-cap");
+    fs.mkdirSync(capDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(capDir, "workflow.ts"),
+      `export default [
+  { id: "step-1", title: "No Instructions" },
+];`,
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const steps = await readWorkflowPhases(capDir);
+
+    expect(steps).toHaveLength(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("malformed workflow phase"),
+    );
     warnSpy.mockRestore();
   });
 });
@@ -504,7 +427,7 @@ describe("compilePrompt", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("returns CompiledPromptSections with role, workflow, and guidelines", async () => {
+  it("returns CompiledPromptSections with role and guidelines", async () => {
     const capDir = path.join(tempDir, "test-cap");
     fs.mkdirSync(capDir, { recursive: true });
     fs.writeFileSync(
@@ -524,10 +447,9 @@ describe("compilePrompt", () => {
 
     expect(result.role).toContain("## Role");
     expect(result.role).toContain("I am the Goal Definition Assistant.");
-    expect(result.workflow).toContain("## Workflow");
-    expect(result.workflow).toContain("### Phase 1: Understand");
     expect(result.guidelines).toContain("## Guidelines");
     expect(result.guidelines).toContain("- Be thorough");
+    expect(result.workflow).toBeUndefined();
   });
 
   it("handles missing role.md (role is undefined)", async () => {
@@ -541,7 +463,6 @@ describe("compilePrompt", () => {
     const result = await compilePrompt(capDir, {});
 
     expect(result.role).toBeUndefined();
-    expect(result.workflow).toBeDefined();
   });
 
   it("handles missing guidelines.md (guidelines is undefined)", async () => {
@@ -555,7 +476,6 @@ describe("compilePrompt", () => {
     const result = await compilePrompt(capDir, {});
 
     expect(result.guidelines).toBeUndefined();
-    expect(result.workflow).toBeDefined();
   });
 
   it("populates mergedSkills from workflow phase skills and base skills", async () => {
@@ -579,43 +499,10 @@ describe("compilePrompt", () => {
     expect(result.mergedSkills?.mandatory).toEqual(["pio", "tdd"]);
   });
 
-  it("workflow section is always present (required)", async () => {
-    const capDir = path.join(tempDir, "test-cap");
-    fs.mkdirSync(capDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(capDir, "workflow.ts"),
-      `export default [{ id: "s1", title: "Step 1", instructions: "Do it." }];`,
-    );
-
-    const result = await compilePrompt(capDir, {});
-
-    expect(result.workflow).toBeDefined();
-    expect(result.workflow).toContain("## Workflow");
-  });
-
   it("throws when workflow.ts is missing", async () => {
     const capDir = path.join(tempDir, "test-cap");
     fs.mkdirSync(capDir, { recursive: true });
 
     await expect(compilePrompt(capDir, {})).rejects.toThrow();
-  });
-
-  it("renders skills line for phases with mandatory skills in compiled output", async () => {
-    const capDir = path.join(tempDir, "test-cap");
-    fs.mkdirSync(capDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(capDir, "workflow.ts"),
-      `export default [
-  { id: "s1", title: "Step A", instructions: "First.", skills: { mandatory: ["tdd"] } },
-  { id: "s2", title: "Step B", instructions: "Second." },
-];`,
-    );
-
-    const result = await compilePrompt(capDir, {});
-
-    expect(result.workflow).toContain("Skills: [tdd]");
-    // Phase 2 has no skills — verify no Skills line in its section
-    const stepBSection = result.workflow?.split("### Phase 2: Step B")[1]!;
-    expect(stepBSection).not.toContain("Skills:");
   });
 });

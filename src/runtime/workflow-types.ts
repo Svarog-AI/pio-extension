@@ -149,12 +149,67 @@ export interface WorkflowPhase {
   /** Contract output names this phase is allowed to write (resolved during resources_discover). When absent or empty, all contract output writes are blocked (restricted-by-default). Non-contract files always pass through. */
   write?: string[];
 
-  /** Phase execution kind — `'standard'` for normal phases, `'variable-definition'` for phases that declare and collect session variables. Defaults to `'standard'`. */
-  kind?: "standard" | "variable-definition";
+  /** Phase execution kind — `'standard'` for normal phases, `'variable-definition'` for phases that declare and collect session variables, `'branch:if'` for conditional if/else branching, `'branch:switch'` for multi-way switch branching. Defaults to `'standard'`. */
+  kind?: "standard" | "variable-definition" | "branch:if" | "branch:switch";
 
   /** Variables declared by this phase — meaningful only when `kind` is `'variable-definition'`. Each entry specifies name, type, and how the value is produced (`static`/`llm`/`computed`). */
   variables?: PhaseVariable[];
+
+  // -----------------------------------------------------------------------
+  // Branch fields (all optional — meaningful only when kind starts with "branch:")
+  // -----------------------------------------------------------------------
+
+  /** Callback for `branch:if` — receives session state, truthy result selects the `then` arm, falsy selects `else`. Returns `boolean | unknown` because the phase manager treats any truthy/falsy value. */
+  condition?: (state: PioSessionState) => boolean | unknown;
+
+  /** Phases executed when `condition` is truthy. Used only with `kind: "branch:if"`. */
+  then?: WorkflowPhase[];
+
+  /** Phases executed when `condition` is falsy. Default behavior if absent: skip (jump to post-branch phase). Used only with `kind: "branch:if"`. */
+  else?: WorkflowPhase[];
+
+  /** For `branch:switch`. Either a callback that receives state and returns a discriminant value, or a `"$varName"` string that resolves to a variable via `state.store?.get(varName)`. The `$varName` string form is evaluated at runtime by PhaseManager, not here. */
+  on?: ((state: PioSessionState) => unknown) | string;
+
+  /** Keyed arm map for `branch:switch`. Keys are matched against the result of evaluating `on`. */
+  cases?: Record<string, WorkflowPhase[]>;
+
+  /** Fallback arm when no `cases` key matches (or when `on` throws). Default if absent: skip. */
+  defaultBranch?: WorkflowPhase[];
 }
+
+// ---------------------------------------------------------------------------
+// Branch routing types (post-flattening routing data from PhaseManager)
+// ---------------------------------------------------------------------------
+
+/**
+ * Routing data for a `branch:if` phase after PhaseManager flattening.
+ *
+ * Holds both arm destinations — named "Routing" (not "Target") because
+ * each type contains multiple destinations.
+ */
+export interface IfBranchRouting {
+  /** ID of the first phase in the `then` arm, or post-branch ID if then was empty */
+  thenFirst: string;
+  /** ID of the first phase in the `else` arm, or post-branch ID if else was empty, or undefined for trailing branches with no else and no successor */
+  elseFirst?: string;
+}
+
+/**
+ * Routing data for a `branch:switch` phase after PhaseManager flattening.
+ *
+ * All `caseFirst` values are concrete strings — set to post-branch ID
+ * during flattening if an arm was empty.
+ */
+export interface SwitchBranchRouting {
+  /** Map from case key to first phase ID in that arm. All values are concrete strings — set to post-branch ID during flattening if an arm was empty */
+  caseFirst: Record<string, string>;
+  /** ID of the first phase in the default branch, or undefined if no default and no cases match */
+  defaultFirst?: string;
+}
+
+/** Union of all branch routing types — used by PhaseManager._conditionalRouting and resolveNext() */
+export type BranchRouting = IfBranchRouting | SwitchBranchRouting;
 
 // ---------------------------------------------------------------------------
 // Prompt compiler output type

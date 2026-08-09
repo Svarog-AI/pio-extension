@@ -741,7 +741,6 @@ describe("/goto command", () => {
         filesWritten: ["/old/file.ts"],
         askUserCalled: true,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
         phaseManager: pm,
       });
 
@@ -794,7 +793,6 @@ describe("/goto command", () => {
         askUserCalled: true,
         isAdHocInput: true, // User was in ad-hoc mode
         adHocPhaseNotified: true, // Already notified about pause
-        phaseWriteAllowlist: new Map(),
         phaseManager: pm,
       });
 
@@ -1297,12 +1295,11 @@ describe("before_agent_start", () => {
       expect(result.message.display).toBe(false);
       // Content should NOT contain the base system prompt
       expect(result.message.content).not.toContain("base prompt");
-      expect(result.message.content).toContain("No previous phases completed.");
       expect(result.message.content).toContain(`You are on "s1", iteration 1.`);
       expect(result.message.content).toContain("Do A");
     });
 
-    it("includes completed phases info on Phase 2", async () => {
+    it("returns message with correct phase id on Phase 2", async () => {
       const { pi, handlers } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
       setupLoopEngine(pi);
@@ -1333,45 +1330,7 @@ describe("before_agent_start", () => {
         message: { customType: string; content: string; display: boolean };
       };
       expect(result.message.customType).toBe("workflow-phase-instructions");
-      expect(result.message.content).toContain(`Phases "s1" completed.`);
       expect(result.message.content).toContain(`You are on "s2", iteration 1.`);
-    });
-
-    it("includes completed phases range on Phase 4", async () => {
-      const { pi, handlers } = createMockPi();
-      const { setupLoopEngine } = await import("./loop-engine");
-      setupLoopEngine(pi);
-
-      const store = initializeStore({});
-      setState({
-        isActive: true,
-        currentPhaseId: "s4",
-        currentIteration: 1, // initialized at 1 in resources_discover
-        totalPhases: 5,
-        phasesList: [
-          { id: "s1", title: "S1", instructions: "A" },
-          { id: "s2", title: "S2", instructions: "B" },
-          { id: "s3", title: "S3", instructions: "C" },
-          { id: "s4", title: "S4", instructions: "D" },
-          { id: "s5", title: "S5", instructions: "E" },
-        ],
-        isAdHocInput: false,
-        filesWritten: [],
-        askUserCalled: false,
-        store,
-      });
-
-      const results = await fireBeforeAgentStart(handlers, {
-        type: "before_agent_start",
-        systemPrompt: "base",
-      });
-
-      const result = results[0] as {
-        message: { customType: string; content: string; display: boolean };
-      };
-      expect(result.message.content).toContain(
-        `Phases "s1", "s2", and "s3" completed.`,
-      );
     });
 
     it("includes loopMessage as Retry focus on iteration > 1", async () => {
@@ -1598,7 +1557,6 @@ describe("before_agent_start", () => {
       expect(result.message.content).toContain(
         "## Workflow Paused (Ad-hoc Mode)",
       );
-      expect(result.message.content).toContain(`Phases "s1" completed.`);
       expect(result.message.content).toContain(
         `You were on "s2", iteration 3.`,
       );
@@ -3526,26 +3484,6 @@ describe("buildPhaseInstructions", () => {
     expect(result).not.toContain("future phases");
   });
 
-  it("includes completed phases info via buildCompletedPhasesIds", async () => {
-    const build = await getBuildPhaseInstructions();
-    const phases = [
-      { id: "s1", title: "S1", instructions: "A" },
-      { id: "s2", title: "S2", instructions: "B" },
-      { id: "s3", title: "S3", instructions: "C" },
-      { id: "s4", title: "S4", instructions: "D" },
-      { id: "s5", title: "S5", instructions: "E" },
-    ];
-    setState({
-      currentPhaseId: "s3",
-      currentIteration: 1,
-      totalPhases: 5,
-      phasesList: phases,
-      phaseManager: new PhaseManager(phases),
-    });
-    const result = build(getState());
-    expect(result).toContain(`Phases "s1" and "s2" completed.`);
-  });
-
   it("includes phase position line", async () => {
     const build = await getBuildPhaseInstructions();
     setState({
@@ -3703,6 +3641,15 @@ describe("tool_call — phase-level write gate", () => {
     }
   }
 
+  // Helper: create a mock CapState for write-gate tests
+  function makeMockCapState(
+    resolutions: Record<string, { entry: unknown; path: string }>,
+  ) {
+    return {
+      tryResolveOutput: (name: string) => resolutions[name] ?? undefined,
+    } as any;
+  }
+
   // (a) Contract output write blocked when target not in allowlist
   it("blocks contract output write when target not in allowlist", async () => {
     const { pi, handlers } = createMockPi();
@@ -3714,6 +3661,7 @@ describe("tool_call — phase-level write gate", () => {
       isActive: true,
       currentIteration: 1,
       totalPhases: 2,
+      currentPhaseId: "s1",
       phasesList: [
         { id: "s1", title: "S1", instructions: "A", write: ["goal"] },
         { id: "s2", title: "S2", instructions: "B", write: ["plan"] },
@@ -3721,29 +3669,13 @@ describe("tool_call — phase-level write gate", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map([
-        [
-          "s1",
-          {
-            allowedPaths: new Set(["/test/.pio/goals/test/GOAL.md"]),
-            allowedNames: ["goal"],
-            allContractOutputs: new Set([
-              "/test/.pio/goals/test/GOAL.md",
-              "/test/.pio/goals/test/PLAN.md",
-            ]),
-          },
-        ],
-        [
-          "s2",
-          {
-            allowedPaths: new Set(["/test/.pio/goals/test/PLAN.md"]),
-            allowedNames: ["plan"],
-            allContractOutputs: new Set([
-              "/test/.pio/goals/test/GOAL.md",
-              "/test/.pio/goals/test/PLAN.md",
-            ]),
-          },
-        ],
+      capState: makeMockCapState({
+        goal: { entry: {}, path: "/test/.pio/goals/test/GOAL.md" },
+        plan: { entry: {}, path: "/test/.pio/goals/test/PLAN.md" },
+      }),
+      allContractOutputs: new Set([
+        "/test/.pio/goals/test/GOAL.md",
+        "/test/.pio/goals/test/PLAN.md",
       ]),
     });
 
@@ -3776,6 +3708,7 @@ describe("tool_call — phase-level write gate", () => {
       isActive: true,
       currentIteration: 1,
       totalPhases: 2,
+      currentPhaseId: "s1",
       phasesList: [
         { id: "s1", title: "S1", instructions: "A", write: ["goal"] },
         { id: "s2", title: "S2", instructions: "B", write: ["plan"] },
@@ -3783,18 +3716,13 @@ describe("tool_call — phase-level write gate", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map([
-        [
-          "s1",
-          {
-            allowedPaths: new Set(["/test/.pio/goals/test/GOAL.md"]),
-            allowedNames: ["goal"],
-            allContractOutputs: new Set([
-              "/test/.pio/goals/test/GOAL.md",
-              "/test/.pio/goals/test/PLAN.md",
-            ]),
-          },
-        ],
+      capState: makeMockCapState({
+        goal: { entry: {}, path: "/test/.pio/goals/test/GOAL.md" },
+        plan: { entry: {}, path: "/test/.pio/goals/test/PLAN.md" },
+      }),
+      allContractOutputs: new Set([
+        "/test/.pio/goals/test/GOAL.md",
+        "/test/.pio/goals/test/PLAN.md",
       ]),
     });
 
@@ -3816,27 +3744,20 @@ describe("tool_call — phase-level write gate", () => {
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
 
-    // Simulates the new behavior: every phase gets an entry, even without write
+    // Phase without write field → empty allowlist → blocks all contract outputs
     setState({
       isActive: true,
       currentIteration: 1,
       totalPhases: 1,
+      currentPhaseId: "s1",
       phasesList: [{ id: "s1", title: "S1", instructions: "A" }], // no write
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map([
-        [
-          "s1",
-          {
-            allowedPaths: new Set(), // empty — no write declared
-            allowedNames: [],
-            allContractOutputs: new Set([
-              "/test/.pio/goals/test/GOAL.md",
-              "/test/.pio/goals/test/PLAN.md",
-            ]),
-          },
-        ],
+      capState: makeMockCapState({}),
+      allContractOutputs: new Set([
+        "/test/.pio/goals/test/GOAL.md",
+        "/test/.pio/goals/test/PLAN.md",
       ]),
     });
 
@@ -3854,24 +3775,24 @@ describe("tool_call — phase-level write gate", () => {
     });
   });
 
-  // (d) Empty map fallback: when phaseWriteAllowlist has no entry, warn and pass through
-  it("emits console.warn when phaseWriteAllowlist has no entry for current phase", async () => {
+  // (d) No phase found: warn and pass through
+  it("emits console.warn when no phase found for write gating", async () => {
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     setState({
       isActive: true,
       currentIteration: 1,
       totalPhases: 1,
+      currentPhaseId: "nonexistent",
       phasesList: [{ id: "s1", title: "S1", instructions: "A" }],
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(), // empty — no entry for phase "s1"
     });
-
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     // Act: try to write a contract output
     const result = await fireToolCall(handlers, {
@@ -3879,11 +3800,11 @@ describe("tool_call — phase-level write gate", () => {
       input: { path: "/test/.pio/goals/test/GOAL.md", content: "x" },
     });
 
-    // Assert: not blocked (fallback pass-through) but warning emitted
-    expect(result).toBeUndefined();
+    // Assert: warning emitted, write not blocked
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("no write allowlist entry found"),
+      expect.stringContaining("no phase found for write gating"),
     );
+    expect(result).toBeUndefined();
     warnSpy.mockRestore();
   });
 
@@ -3897,6 +3818,7 @@ describe("tool_call — phase-level write gate", () => {
       isActive: true,
       currentIteration: 1,
       totalPhases: 2,
+      currentPhaseId: "s1",
       phasesList: [
         { id: "s1", title: "Research", instructions: "A", write: [] },
         { id: "s2", title: "Write", instructions: "B", write: ["goal"] },
@@ -3904,18 +3826,10 @@ describe("tool_call — phase-level write gate", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map([
-        [
-          "s1",
-          {
-            allowedPaths: new Set(), // empty — write: []
-            allowedNames: [],
-            allContractOutputs: new Set([
-              "/test/.pio/goals/test/GOAL.md",
-              "/test/.pio/goals/test/PLAN.md",
-            ]),
-          },
-        ],
+      capState: makeMockCapState({}),
+      allContractOutputs: new Set([
+        "/test/.pio/goals/test/GOAL.md",
+        "/test/.pio/goals/test/PLAN.md",
       ]),
     });
 
@@ -3944,24 +3858,17 @@ describe("tool_call — phase-level write gate", () => {
       isActive: true,
       currentIteration: 1,
       totalPhases: 2,
+      currentPhaseId: "s1",
       phasesList: [
         { id: "s1", title: "Research", instructions: "A", write: [] },
       ],
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map([
-        [
-          "s1",
-          {
-            allowedPaths: new Set(),
-            allowedNames: [],
-            allContractOutputs: new Set([
-              "/test/.pio/goals/test/GOAL.md",
-              "/test/.pio/goals/test/PLAN.md",
-            ]),
-          },
-        ],
+      capState: makeMockCapState({}),
+      allContractOutputs: new Set([
+        "/test/.pio/goals/test/GOAL.md",
+        "/test/.pio/goals/test/PLAN.md",
       ]),
     });
 
@@ -3985,20 +3892,13 @@ describe("tool_call — phase-level write gate", () => {
       isActive: true,
       currentIteration: 1,
       totalPhases: 1,
+      currentPhaseId: "s1",
       phasesList: [{ id: "s1", title: "S1", instructions: "A", write: [] }],
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map([
-        [
-          "s1",
-          {
-            allowedPaths: new Set(),
-            allowedNames: [],
-            allContractOutputs: new Set(["/test/.pio/goals/test/GOAL.md"]),
-          },
-        ],
-      ]),
+      capState: makeMockCapState({}),
+      allContractOutputs: new Set(["/test/.pio/goals/test/GOAL.md"]),
     });
 
     // Act: write to /tmp/
@@ -4011,10 +3911,8 @@ describe("tool_call — phase-level write gate", () => {
     expect(result).toBeUndefined();
   });
 
-  // (f) Resolution of undefined output names during resources_discover (skipped silently)
-  it("resources_discover skips undefined output names silently", async () => {
-    const { pi, handlers } = createMockPi();
-    const { setupLoopEngine } = await import("./loop-engine");
+  // (f) resources_discover sets up capState regardless of write field contents
+  it("resources_discover sets capState and allContractOutputs", async () => {
     vi.mocked(capabilityUtils.getSessionConfig).mockResolvedValue({
       capability: "create-goal",
       workspaceDir: "/test/.pio/goals/test",
@@ -4035,6 +3933,8 @@ describe("tool_call — phase-level write gate", () => {
       },
     ]);
 
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
 
     // Act: fire resources_discover
@@ -4046,14 +3946,11 @@ describe("tool_call — phase-level write gate", () => {
       );
     }
 
-    // Assert: phaseWriteAllowlist entry exists for phase "s1"
+    // Assert: capState and allContractOutputs are set
     const state = getState();
-    const entry = state.phaseWriteAllowlist.get("s1");
-    expect(entry).toBeDefined();
-    // "goal" resolved, "nonexistent" skipped silently
-    expect(entry!.allowedNames).toContain("goal");
-    expect(entry!.allowedNames).toContain("nonexistent");
-    expect(entry!.allowedPaths.size).toBe(1); // only "goal" resolved
+    expect(state.capState).toBeDefined();
+    expect(state.allContractOutputs).toBeDefined();
+    expect(state.allContractOutputs!.size).toBe(1); // only "goal" output
   });
 
   // Gate blocks vscode_apply_workspace_edit with disallowed contract output
@@ -4066,24 +3963,20 @@ describe("tool_call — phase-level write gate", () => {
       isActive: true,
       currentIteration: 1,
       totalPhases: 2,
+      currentPhaseId: "s1",
       phasesList: [
         { id: "s1", title: "S1", instructions: "A", write: ["goal"] },
       ],
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map([
-        [
-          "s1",
-          {
-            allowedPaths: new Set(["/test/.pio/goals/test/GOAL.md"]),
-            allowedNames: ["goal"],
-            allContractOutputs: new Set([
-              "/test/.pio/goals/test/GOAL.md",
-              "/test/.pio/goals/test/PLAN.md",
-            ]),
-          },
-        ],
+      capState: makeMockCapState({
+        goal: { entry: {}, path: "/test/.pio/goals/test/GOAL.md" },
+        plan: { entry: {}, path: "/test/.pio/goals/test/PLAN.md" },
+      }),
+      allContractOutputs: new Set([
+        "/test/.pio/goals/test/GOAL.md",
+        "/test/.pio/goals/test/PLAN.md",
       ]),
     });
 
@@ -4118,24 +4011,20 @@ describe("tool_call — phase-level write gate", () => {
       isActive: true,
       currentIteration: 1,
       totalPhases: 2,
+      currentPhaseId: "s1",
       phasesList: [
         { id: "s1", title: "S1", instructions: "A", write: ["goal"] },
       ],
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map([
-        [
-          "s1",
-          {
-            allowedPaths: new Set(["/test/.pio/goals/test/GOAL.md"]),
-            allowedNames: ["goal"],
-            allContractOutputs: new Set([
-              "/test/.pio/goals/test/GOAL.md",
-              "/test/.pio/goals/test/PLAN.md",
-            ]),
-          },
-        ],
+      capState: makeMockCapState({
+        goal: { entry: {}, path: "/test/.pio/goals/test/GOAL.md" },
+        plan: { entry: {}, path: "/test/.pio/goals/test/PLAN.md" },
+      }),
+      allContractOutputs: new Set([
+        "/test/.pio/goals/test/GOAL.md",
+        "/test/.pio/goals/test/PLAN.md",
       ]),
     });
 
@@ -4159,24 +4048,20 @@ describe("tool_call — phase-level write gate", () => {
       isActive: true,
       currentIteration: 1,
       totalPhases: 2,
+      currentPhaseId: "s1",
       phasesList: [
         { id: "s1", title: "S1", instructions: "A", write: ["goal"] },
       ],
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map([
-        [
-          "s1",
-          {
-            allowedPaths: new Set(["/test/.pio/goals/test/GOAL.md"]),
-            allowedNames: ["goal"],
-            allContractOutputs: new Set([
-              "/test/.pio/goals/test/GOAL.md",
-              "/test/.pio/goals/test/PLAN.md",
-            ]),
-          },
-        ],
+      capState: makeMockCapState({
+        goal: { entry: {}, path: "/test/.pio/goals/test/GOAL.md" },
+        plan: { entry: {}, path: "/test/.pio/goals/test/PLAN.md" },
+      }),
+      allContractOutputs: new Set([
+        "/test/.pio/goals/test/GOAL.md",
+        "/test/.pio/goals/test/PLAN.md",
       ]),
     });
 
@@ -4199,11 +4084,11 @@ describe("tool_call — phase-level write gate", () => {
   });
 
   // -----------------------------------------------------------------------
-  // Integration tests: resources_discover → tool_call (restricted-by-default)
+  // Integration tests: resources_discover → tool_call (lazy resolution)
   // -----------------------------------------------------------------------
 
-  it("integration: resources_discover populates phaseWriteAllowlist for every phase (including phases without write)", async () => {
-    // Arrange: phases without write field
+  it("integration: resources_discover sets capState and allContractOutputs for lazy write gating", async () => {
+    // Arrange: phases with and without write field
     vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue([
       { id: "s1", title: "Research", instructions: "Do research" }, // no write
       {
@@ -4227,46 +4112,11 @@ describe("tool_call — phase-level write gate", () => {
       );
     }
 
-    // Assert: every phase has an entry (keyed by phase ID string)
+    // Assert: capState and allContractOutputs are populated
     const state = getState();
-    expect(state.phaseWriteAllowlist.has("s1")).toBe(true); // phase without write
-    expect(state.phaseWriteAllowlist.has("s2")).toBe(true); // phase with write
-    // Phase "s1" (no write): empty allowedPaths, populated allContractOutputs
-    const entry1 = state.phaseWriteAllowlist.get("s1")!;
-    expect(entry1.allowedPaths.size).toBe(0);
-    expect(entry1.allowedNames).toEqual([]);
-    expect(entry1.allContractOutputs.size).toBeGreaterThan(0);
-    // Phase "s2" (write: ["goal"]): populated allowedPaths
-    const entry2 = state.phaseWriteAllowlist.get("s2")!;
-    expect(entry2.allowedPaths.size).toBe(1);
-    expect(entry2.allowedNames).toEqual(["goal"]);
-  });
-
-  it("keys phaseWriteAllowlist by string phase IDs", async () => {
-    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue([
-      { id: "step-1", title: "S1", instructions: "Do S1" },
-      { id: "step-2", title: "S2", instructions: "Do S2" },
-    ]);
-
-    const { pi, handlers } = createMockPi();
-    const { setupLoopEngine } = await import("./loop-engine");
-    setupLoopEngine(pi);
-
-    const discoverHandlers = handlers.get("resources_discover");
-    for (const h of discoverHandlers!) {
-      await h(
-        { type: "resources_discover", cwd: ".", reason: "startup" },
-        mockCtx,
-      );
-    }
-
-    const state = getState();
-    expect(state.phaseWriteAllowlist.has("step-1")).toBe(true);
-    expect(state.phaseWriteAllowlist.has("step-2")).toBe(true);
-    // All keys must be strings, not numbers
-    for (const key of state.phaseWriteAllowlist.keys()) {
-      expect(typeof key).toBe("string");
-    }
+    expect(state.capState).toBeDefined();
+    expect(state.allContractOutputs).toBeDefined();
+    expect(state.allContractOutputs!.size).toBe(2); // goal + plan from default mock
   });
 
   it("integration: resources_discover + tool_call — phase without write blocks contract output", async () => {
@@ -4279,7 +4129,7 @@ describe("tool_call — phase-level write gate", () => {
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
 
-    // Act: fire resources_discover to populate phaseWriteAllowlist
+    // Act: fire resources_discover to set up capState and allContractOutputs
     const discoverHandlers = handlers.get("resources_discover");
     for (const h of discoverHandlers!) {
       await h(
@@ -7581,6 +7431,26 @@ describe("isProgrammatic", () => {
     expect(isProgrammatic(phase)).toBe(false);
   });
 
+  it("returns true for branch:if phase", async () => {
+    const isProgrammatic = await getIsProgrammatic();
+    const phase = { id: "b1", title: "Branch", kind: "branch:if" as const };
+    expect(isProgrammatic(phase)).toBe(true);
+  });
+
+  it("returns true for branch:switch phase", async () => {
+    const isProgrammatic = await getIsProgrammatic();
+    const phase = {
+      id: "b1",
+      title: "Switch",
+      kind: "branch:switch" as const,
+      on: () => "a",
+      cases: {
+        a: [{ id: "c1", title: "Case A", instructions: "X" }],
+      },
+    };
+    expect(isProgrammatic(phase)).toBe(true);
+  });
+
   it("returns true for variable-definition phase with only static/computed variables", async () => {
     const isProgrammatic = await getIsProgrammatic();
     const phase = {
@@ -7657,7 +7527,6 @@ describe("executePhase", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(),
     });
 
     vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -7693,7 +7562,6 @@ describe("executePhase", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(),
     });
 
     vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -7722,7 +7590,6 @@ describe("executePhase", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(),
     });
 
     vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -7762,7 +7629,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -7784,7 +7650,6 @@ describe("setupTurn", () => {
         filesWritten: ["/tmp/x"],
         askUserCalled: true,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       setupTurn("reset");
@@ -7805,7 +7670,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -7830,7 +7694,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       const result = setupTurn("reset");
@@ -7859,7 +7722,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       setupTurn("increment");
@@ -7879,7 +7741,6 @@ describe("setupTurn", () => {
         filesWritten: ["/tmp/y"],
         askUserCalled: true,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       setupTurn("increment");
@@ -7900,7 +7761,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -7922,7 +7782,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       const result = setupTurn("increment");
@@ -7947,7 +7806,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       setupTurn("preserve");
@@ -7967,7 +7825,6 @@ describe("setupTurn", () => {
         filesWritten: ["/tmp/z"],
         askUserCalled: true,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       setupTurn("preserve");
@@ -7988,7 +7845,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -8010,7 +7866,6 @@ describe("setupTurn", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
       });
 
       const result = setupTurn("preserve");
@@ -8053,7 +7908,6 @@ describe("setupTurn", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(),
     });
 
     setupTurn("reset");
@@ -8104,7 +7958,6 @@ describe("advancePhase", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(),
       phaseManager: pm,
       currentPhaseId: "p1",
     });
@@ -8141,7 +7994,6 @@ describe("advancePhase", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(),
       phaseManager: pm,
       currentPhaseId: "s1",
     });
@@ -8184,7 +8036,6 @@ describe("advancePhase", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(),
       phaseManager: pm,
       currentPhaseId: "p1",
     });
@@ -8229,7 +8080,6 @@ describe("advancePhase", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
         phaseManager: pm,
         currentPhaseId: "p1",
       });
@@ -8258,7 +8108,6 @@ describe("advancePhase", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
         phaseManager: pm,
         currentPhaseId: "s1",
       });
@@ -8287,7 +8136,6 @@ describe("advancePhase", () => {
         filesWritten: [],
         askUserCalled: false,
         isAdHocInput: false,
-        phaseWriteAllowlist: new Map(),
         phaseManager: pm,
         currentPhaseId: "s1",
       });
@@ -8343,7 +8191,6 @@ describe("advancePhase — integration", () => {
       filesWritten: [],
       askUserCalled: false,
       isAdHocInput: false,
-      phaseWriteAllowlist: new Map(),
       phaseManager: pm,
       currentPhaseId: "p1",
     });

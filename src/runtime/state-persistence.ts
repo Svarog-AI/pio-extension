@@ -154,8 +154,8 @@ export function saveLoopEngineState(
  *
  * This is the bridge between `getState()` and `saveLoopEngineState()`.
  * Per-iteration tracking (`filesWritten`, `askUserCalled`) and phase
- * metadata (`phasesList`, `phaseWriteAllowlist`) are intentionally
- * excluded — they reset safely from in-memory state each iteration.
+ * metadata (`phasesList`, `capState`, `allContractOutputs`, `phaseManager`) are
+ * intentionally excluded — they reset safely from in-memory state each iteration.
  */
 export function extractPersistedState(state: PioSessionState): {
   currentIteration: number;

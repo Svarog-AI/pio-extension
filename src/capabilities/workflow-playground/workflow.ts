@@ -446,12 +446,12 @@ Follow these steps:
   {
     id: "branch-switch-verify",
     title: "Branch:switch Verification",
-    instructions: `This phase verifies the \`branch:switch\` tests from Phases 16–17.
+    instructions: `This phase verifies the \`branch:switch\` tests from phases \`branch-switch-callback\` and \`branch-switch-varname\`.
 
 Follow these steps:
 1. Call \`listVars\` and confirm that \`switch_callback_result\` is set to "approved-matched" (proves the callback switch routed to the correct case — the \`on\` callback returned "approved")
 2. Confirm that \`switch_varname_result\` is set to SOME value ending in "-matched" (proves the $varName switch resolved the variable and matched a case or defaultBranch). Report which specific arm matched
-3. Explain why: Phase 16 used a callback \`on\` form (deterministic result), Phase 17 used the $varName string form (depends on what you set in Phase 6)
+3. Explain why: \`branch-switch-callback\` used a callback \`on\` form (deterministic result), \`branch-switch-varname\` used the $varName string form (depends on what you set in \`var-basic-test\`)
 4. Report "Branch:switch tests PASSED" with details about routing behavior`,
   },
 
@@ -465,16 +465,16 @@ Follow these steps:
     instructions: `This is the final phase. Write a comprehensive test report in \`PLAYGROUND.md\` covering all phases (1–18).
 
 Follow these steps:
-1. Write \`PLAYGROUND.md\` with a section for each phase (1–18) summarizing behavior observed
-2. For Phases 6–10 specifically, include: variable values, interpolation results, loopWhile replay observations, terminateWhen AND logic behavior, and computed callback results
-3. Confirm that user-defined \`loopWhile\` uses OR logic (Phase 7) and \`terminateWhen\` uses AND logic (Phase 8) based on direct observations
-4. **Programmatic chain verification (Phases 11–12):**
+1. Write \`PLAYGROUND.md\` with a section for each phase summarizing behavior observed
+2. For phases \`var-basic-test\` through \`validation-gate-replay\` specifically, include: variable values, interpolation results, loopWhile replay observations, terminateWhen AND logic behavior, and computed callback results
+3. Confirm that user-defined \`loopWhile\` uses OR logic (\`loopwhile-test\`) and \`terminateWhen\` uses AND logic (\`terminate-when-and-test\`) based on direct observations
+4. **Programmatic chain verification (\`programmatic-chain-1\` and \`programmatic-chain-2\`):**
    a. Call \`listVars\` and confirm that \`prog_a\`, \`prog_a_seq\`, \`prog_b\`, and \`prog_b_seq\` are all set
    b. Verify static values: \`prog_a = "phase-a-set"\` and \`prog_b = "phase-b-set"\`
-   c. Verify computed phase IDs: \`prog_a_seq\` should equal "programmatic-chain-1" (the currentPhaseId when Phase 11's executePhase ran) and \`prog_b_seq\` should equal "programmatic-chain-2" (the currentPhaseId when Phase 12 ran). These different values prove the computed callbacks ran during the advancePhase loop, not after — if they ran after, both would have the same value
-   d. Confirm that you received instructions for Phase 10's turn and then directly Phase 13's turn — no LLM instructions were shown for Phases 11–12. This proves the advancePhase helper correctly skipped the purely programmatic phases without triggering agent turns
+   c. Verify computed phase IDs: \`prog_a_seq\` should equal "programmatic-chain-1" (the currentPhaseId when \`programmatic-chain-1\`'s executePhase ran) and \`prog_b_seq\` should equal "programmatic-chain-2" (the currentPhaseId when \`programmatic-chain-2\` ran). These different values prove the computed callbacks ran during the advancePhase loop, not after — if they ran after, both would have the same value
+   d. Confirm that you received instructions for \`validation-gate-replay\`'s turn and then directly this phase's turn — no LLM instructions were shown for \`programmatic-chain-1\` or \`programmatic-chain-2\`. This proves the advancePhase helper correctly skipped the purely programmatic phases without triggering agent turns
    e. Include a dedicated section in \`PLAYGROUND.md\` documenting this skip-through behavior and the verified variable values
-5. **Conditional branching verification (Phases 14–18):**
+5. **Conditional branching verification (\`branch-if-test\` through \`branch-switch-verify\`):**
    a. \`branch:if\` results: confirm \`branch_if_then_2 === "executed"\`, \`/tmp/branch-then-executed.txt\` exists, and the else arm did NOT execute (\`branch_if_taken\` is not set)
    b. \`branch:switch\` (callback form): confirm \`switch_callback_result === "approved-matched"\` — the callback \`on\` returned "approved" and routed correctly
    c. \`branch:switch\` ($varName form): confirm \`switch_varname_result\` is set to some "-matched" value — the variable was resolved and a case or defaultBranch matched

@@ -610,11 +610,11 @@ describe("workflow phases", () => {
       expect(phase.instructions).toContain("phase-b-set");
     });
 
-    it("instructions verify computed sequence values with expected numbers", () => {
+    it("instructions verify computed sequence values reference phase IDs", () => {
       expect(phase.instructions).toContain("prog_a_seq");
-      expect(phase.instructions).toContain("11");
+      expect(phase.instructions).toContain("programmatic-chain-1");
       expect(phase.instructions).toContain("prog_b_seq");
-      expect(phase.instructions).toContain("12");
+      expect(phase.instructions).toContain("programmatic-chain-2");
     });
 
     it("instructions confirm no LLM turn for programmatic phases", () => {

@@ -705,7 +705,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         if (!state.projectRoot) continue; // no root known — skip gate
         if (
           !phase.allowProjectWrites &&
-          tp.startsWith(state.projectRoot + "/")
+          tp.startsWith(`${state.projectRoot}/`)
         ) {
           return {
             block: true,

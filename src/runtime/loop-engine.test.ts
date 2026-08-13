@@ -3871,6 +3871,7 @@ describe("tool_call — phase-level write gate", () => {
         "/test/.pio/goals/test/GOAL.md",
         "/test/.pio/goals/test/PLAN.md",
       ]),
+      projectRoot: "/test/.pio/goals/test", // /some/project/file.ts is outside this root
     });
 
     // Act: write a non-contract file
@@ -4357,7 +4358,7 @@ describe("tool_call — phase-level write gate", () => {
     expect(result).toBeUndefined();
   });
 
-  it("skips project file gate when projectRoot is undefined", async () => {
+  it("blocks non-contract writes when projectRoot is undefined", async () => {
     const { pi, handlers } = createMockPi();
     const { setupLoopEngine } = await import("./loop-engine");
     setupLoopEngine(pi);
@@ -4384,8 +4385,12 @@ describe("tool_call — phase-level write gate", () => {
       input: { path: "/any/path/foo.ts", content: "x" },
     });
 
-    // Assert: not blocked (gate skipped due to missing projectRoot)
-    expect(result).toBeUndefined();
+    // Assert: blocked (can't verify safety without projectRoot)
+    const blocked = result as { block: boolean; reason: string } | undefined;
+    expect(blocked).toEqual({
+      block: true,
+      reason: expect.stringContaining("Cannot determine project root"),
+    });
   });
 
   it("blocks non-contract .pio/ writes when allowProjectWrites is false", async () => {

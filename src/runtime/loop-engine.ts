@@ -702,7 +702,12 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         }
 
         // Non-contract files only — contract outputs handled above (blocked or skipped)
-        if (!state.projectRoot) continue; // no root known — skip gate
+        if (!state.projectRoot) {
+          return {
+            block: true,
+            reason: `Cannot determine project root for write gating during "${state.currentPhaseId}" (${phaseTitle}). Write blocked.`,
+          };
+        }
         if (
           !phase.allowProjectWrites &&
           tp.startsWith(`${state.projectRoot}/`)

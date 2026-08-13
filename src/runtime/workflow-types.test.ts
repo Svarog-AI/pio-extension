@@ -227,4 +227,43 @@ describe("workflow-types branch extensions", () => {
       expect(phase.defaultBranch).toBeUndefined();
     });
   });
+
+  describe("allowProjectWrites", () => {
+    it("accepts allowProjectWrites as boolean on WorkflowPhase", () => {
+      const phase: WorkflowPhase = {
+        id: "write-gate",
+        title: "Write Gate",
+        allowProjectWrites: true,
+      };
+      expect(phase.allowProjectWrites).toBe(true);
+    });
+
+    it("allows allowProjectWrites to be false", () => {
+      const phase: WorkflowPhase = {
+        id: "no-writes",
+        title: "No Writes",
+        allowProjectWrites: false,
+      };
+      expect(phase.allowProjectWrites).toBe(false);
+    });
+
+    it("allows allowProjectWrites to be omitted (defaults to blocked via falsy)", () => {
+      const phase: WorkflowPhase = {
+        id: "default-blocked",
+        title: "Default Blocked",
+      };
+      expect(phase.allowProjectWrites).toBeUndefined();
+    });
+
+    it("can coexist with write field on the same phase", () => {
+      const phase: WorkflowPhase = {
+        id: "combined",
+        title: "Combined",
+        write: ["TASK.md"],
+        allowProjectWrites: true,
+      };
+      expect(phase.write).toEqual(["TASK.md"]);
+      expect(phase.allowProjectWrites).toBe(true);
+    });
+  });
 });

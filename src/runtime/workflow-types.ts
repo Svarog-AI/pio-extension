@@ -149,6 +149,9 @@ export interface WorkflowPhase {
   /** Contract output names this phase is allowed to write (resolved during resources_discover). When absent or empty, all contract output writes are blocked (restricted-by-default). Non-contract files always pass through. */
   write?: string[];
 
+  /** Controls whether this phase may write non-contract project files. Default: false (blocked). Contract outputs in `write[]` always pass regardless of this flag. */
+  allowProjectWrites?: boolean;
+
   /** Phase execution kind — `'standard'` for normal phases, `'variable-definition'` for phases that declare and collect session variables, `'branch:if'` for conditional if/else branching, `'branch:switch'` for multi-way switch branching. Defaults to `'standard'`. */
   kind?: "standard" | "variable-definition" | "branch:if" | "branch:switch";
 

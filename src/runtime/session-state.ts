@@ -80,6 +80,9 @@ export interface PioSessionState {
 
   /** PhaseManager instance created during resources_discover. In-memory only — not persisted. Reconstructed on state reload. */
   phaseManager?: PhaseManager | null;
+
+  /** Resolved project root absolute path. In-memory only — not persisted. Set during resources_discover from ctx.cwd. */
+  projectRoot?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,6 +109,7 @@ function createInitialState(): PioSessionState {
     store: undefined,
     currentPhaseId: "",
     phaseManager: undefined,
+    projectRoot: undefined,
   };
 }
 

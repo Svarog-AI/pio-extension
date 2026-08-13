@@ -146,7 +146,7 @@ export interface WorkflowPhase {
   /** Message sent as a follow-up when looping (replaying the current phase). Informs the LLM what to focus on for the retry. */
   loopMessage?: string;
 
-  /** Contract output names this phase is allowed to write (resolved during resources_discover). When absent or empty, all contract output writes are blocked (restricted-by-default). Non-contract files always pass through. */
+  /** Contract output names this phase is allowed to write (resolved during resources_discover). When absent or empty, all contract output writes are blocked (restricted-by-default). Non-contract project file writes are governed by `allowProjectWrites` */
   write?: string[];
 
   /** Controls whether this phase may write non-contract project files. Default: false (blocked). Contract outputs in `write[]` always pass regardless of this flag. */

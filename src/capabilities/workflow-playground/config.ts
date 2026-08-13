@@ -25,6 +25,7 @@ const capabilityConfig = {
   capability: "workflow-playground",
   contract: CONTRACT,
   writeAllowlist: ["PLAYGROUND.md"],
+  allowProjectWrites: true,
 } satisfies CapabilityPackageConfig;
 
 export default capabilityConfig;

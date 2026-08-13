@@ -546,6 +546,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       capState: capState,
       allContractOutputs: allContractOutputs,
       phaseManager: pm,
+      projectRoot: path.resolve(ctx.cwd ?? process.cwd()),
     });
 
     // Initialize session variable store — reuse saved from loadLoopEngineState() call above
@@ -670,7 +671,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
 
       // Resolve allowlist on-demand from phase.write using CapState
       const capState = state.capState;
-      const allOutputs = state.allContractOutputs;
+      const allOutputs = state.allContractOutputs ?? new Set();
       const allowedNames = phase.write ?? [];
       const allowedPaths = new Set<string>();
       if (capState) {
@@ -688,24 +689,28 @@ export function setupLoopEngine(pi: ExtensionAPI) {
         // Always allow /tmp/ writes (consistency with capability-level validation)
         if (tp.startsWith("/tmp/")) continue;
 
-        if (!allOutputs) continue; // no contract outputs known — skip gating
+        // Contract outputs: block if not in allowedPaths, skip project gate if allowed
+        if (allOutputs.has(tp)) {
+          if (!allowedPaths.has(tp)) {
+            const msg =
+              allowedPaths.size === 0
+                ? `Writing is not allowed during "${state.currentPhaseId}" (${phaseTitle}). This phase does not produce any contract outputs.`
+                : `Writing is restricted during "${state.currentPhaseId}" (${phaseTitle}). Allowed outputs: [${allowedNames.join(", ")}]. Your target path '${tp}' is not in the allowed list.`;
+            return { block: true, reason: msg };
+          }
+          continue; // allowed contract output — skip to next target
+        }
 
-        if (allowedPaths.size === 0) {
-          // write: [] — block known contract output paths
-          if (allOutputs.has(tp)) {
-            return {
-              block: true,
-              reason: `Writing is not allowed during "${state.currentPhaseId}" (${phaseTitle}). This phase does not produce any contract outputs.`,
-            };
-          }
-        } else {
-          // Populated allowlist — block other contract output paths
-          if (!allowedPaths.has(tp) && allOutputs.has(tp)) {
-            return {
-              block: true,
-              reason: `Writing is restricted during "${state.currentPhaseId}" (${phaseTitle}). Allowed outputs: [${allowedNames.join(", ")}]. Your target path '${tp}' is not in the allowed list.`,
-            };
-          }
+        // Non-contract files only — contract outputs handled above (blocked or skipped)
+        if (!state.projectRoot) continue; // no root known — skip gate
+        if (
+          !phase.allowProjectWrites &&
+          tp.startsWith(state.projectRoot + "/")
+        ) {
+          return {
+            block: true,
+            reason: `Writing project files is not allowed during "${state.currentPhaseId}" (${phaseTitle}). This phase does not have allowProjectWrites enabled.`,
+          };
         }
       }
     }

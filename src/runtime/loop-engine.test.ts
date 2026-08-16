@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { beforeEach, vi } from "vitest";
 import * as capabilitySession from "../capability-session";
@@ -3870,6 +3871,7 @@ describe("tool_call — phase-level write gate", () => {
         "/test/.pio/goals/test/GOAL.md",
         "/test/.pio/goals/test/PLAN.md",
       ]),
+      projectRoot: "/test/.pio/goals/test", // /some/project/file.ts is outside this root
     });
 
     // Act: write a non-contract file
@@ -4189,6 +4191,349 @@ describe("tool_call — phase-level write gate", () => {
 
     // Assert: not blocked (non-contract files pass through)
     expect(result).toBeUndefined();
+  });
+
+  // -----------------------------------------------------------------------
+  // Project file write gate (allowProjectWrites)
+  // -----------------------------------------------------------------------
+
+  it("resources_discover sets projectRoot from ctx.cwd", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    const ctxWithCwd = {
+      ...mockCtx,
+      cwd: "/my/project",
+    } as any;
+
+    // Act: fire resources_discover
+    const discoverHandlers = handlers.get("resources_discover");
+    for (const h of discoverHandlers!) {
+      await h(
+        { type: "resources_discover", cwd: "/my/project", reason: "startup" },
+        ctxWithCwd,
+      );
+    }
+
+    // Assert: projectRoot is set to resolved cwd
+    const state = getState();
+    expect(state.projectRoot).toBe(path.resolve("/my/project"));
+  });
+
+  it("resources_discover sets projectRoot from process.cwd when ctx.cwd is missing", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    const ctxNoCwd = {
+      ...mockCtx,
+      cwd: undefined,
+    } as any;
+
+    // Act: fire resources_discover without cwd
+    const discoverHandlers = handlers.get("resources_discover");
+    for (const h of discoverHandlers!) {
+      await h(
+        { type: "resources_discover", cwd: undefined, reason: "startup" },
+        ctxNoCwd,
+      );
+    }
+
+    // Assert: projectRoot is set to resolved process.cwd()
+    const state = getState();
+    expect(state.projectRoot).toBe(path.resolve(process.cwd()));
+  });
+
+  it("blocks non-contract project file writes when allowProjectWrites is false", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentIteration: 1,
+      totalPhases: 1,
+      currentPhaseId: "s1",
+      phasesList: [
+        { id: "s1", title: "Research", instructions: "A", write: [] },
+      ],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      capState: makeMockCapState({}),
+      allContractOutputs: new Set([
+        "/test/.pio/goals/test/GOAL.md",
+        "/test/.pio/goals/test/PLAN.md",
+      ]),
+      projectRoot: "/test/project",
+    });
+
+    // Act: try to write a non-contract file under project root
+    const result = await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "/test/project/src/foo.ts", content: "x" },
+    });
+
+    // Assert: blocked
+    const blocked = result as { block: boolean; reason: string } | undefined;
+    expect(blocked).toEqual({
+      block: true,
+      reason: expect.stringContaining("Writing project files is not allowed"),
+    });
+    expect(blocked!.reason).toContain('"s1" (Research)');
+    expect(blocked!.reason).toContain("allowProjectWrites");
+  });
+
+  it("allows non-contract project file writes when allowProjectWrites is true", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentIteration: 1,
+      totalPhases: 1,
+      currentPhaseId: "s1",
+      phasesList: [
+        {
+          id: "s1",
+          title: "Implement",
+          instructions: "A",
+          write: ["goal"],
+          allowProjectWrites: true,
+        },
+      ],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      capState: makeMockCapState({
+        goal: { entry: {}, path: "/test/.pio/goals/test/GOAL.md" },
+      }),
+      allContractOutputs: new Set(["/test/.pio/goals/test/GOAL.md"]),
+      projectRoot: "/test/project",
+    });
+
+    // Act: write a non-contract file under project root
+    const result = await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "/test/project/src/foo.ts", content: "x" },
+    });
+
+    // Assert: not blocked
+    expect(result).toBeUndefined();
+  });
+
+  it("allows non-contract files outside project root regardless of allowProjectWrites", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentIteration: 1,
+      totalPhases: 1,
+      currentPhaseId: "s1",
+      phasesList: [
+        { id: "s1", title: "Research", instructions: "A", write: [] },
+      ],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      capState: makeMockCapState({}),
+      allContractOutputs: new Set([
+        "/test/.pio/goals/test/GOAL.md",
+        "/test/.pio/goals/test/PLAN.md",
+      ]),
+      projectRoot: "/test/project",
+    });
+
+    // Act: write a file outside project root
+    const result = await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "/other/path/src/foo.ts", content: "x" },
+    });
+
+    // Assert: not blocked (outside project root)
+    expect(result).toBeUndefined();
+  });
+
+  it("blocks non-contract writes when projectRoot is undefined", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentIteration: 1,
+      totalPhases: 1,
+      currentPhaseId: "s1",
+      phasesList: [
+        { id: "s1", title: "Research", instructions: "A", write: [] },
+      ],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      capState: makeMockCapState({}),
+      allContractOutputs: new Set(["/test/.pio/goals/test/GOAL.md"]),
+      // projectRoot is intentionally omitted
+    });
+
+    // Act: write a non-contract file
+    const result = await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "/any/path/foo.ts", content: "x" },
+    });
+
+    // Assert: blocked (can't verify safety without projectRoot)
+    const blocked = result as { block: boolean; reason: string } | undefined;
+    expect(blocked).toEqual({
+      block: true,
+      reason: expect.stringContaining("Cannot determine project root"),
+    });
+  });
+
+  it("blocks non-contract .pio/ writes when allowProjectWrites is false", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentIteration: 1,
+      totalPhases: 1,
+      currentPhaseId: "s1",
+      phasesList: [
+        { id: "s1", title: "Research", instructions: "A", write: [] },
+      ],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      capState: makeMockCapState({}),
+      allContractOutputs: new Set(["/test/project/.pio/goals/test/GOAL.md"]),
+      projectRoot: "/test/project",
+    });
+
+    // Act: try to write a non-contract .pio/ file under project root
+    const result = await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "/test/project/.pio/goals/other/notes.md", content: "x" },
+    });
+
+    // Assert: blocked (non-contract .pio/ files are also project files)
+    const blocked = result as { block: boolean; reason: string } | undefined;
+    expect(blocked).toEqual({
+      block: true,
+      reason: expect.stringContaining("Writing project files is not allowed"),
+    });
+  });
+
+  it("contract outputs in allowlist still pass even when allowProjectWrites is false", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentIteration: 1,
+      totalPhases: 1,
+      currentPhaseId: "s1",
+      phasesList: [
+        {
+          id: "s1",
+          title: "Write Goal",
+          instructions: "A",
+          write: ["goal"],
+          // allowProjectWrites is false (default)
+        },
+      ],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      capState: makeMockCapState({
+        goal: { entry: {}, path: "/test/project/.pio/goals/test/GOAL.md" },
+      }),
+      allContractOutputs: new Set([
+        "/test/project/.pio/goals/test/GOAL.md",
+        "/test/project/.pio/goals/test/PLAN.md",
+      ]),
+      projectRoot: "/test/project",
+    });
+
+    // Act: write the allowed contract output (which happens to be under project root)
+    const result = await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "/test/project/.pio/goals/test/GOAL.md", content: "x" },
+    });
+
+    // Assert: not blocked (contract output in allowlist takes precedence)
+    expect(result).toBeUndefined();
+  });
+
+  it("handles path boundary correctly — similar prefix is not blocked", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentIteration: 1,
+      totalPhases: 1,
+      currentPhaseId: "s1",
+      phasesList: [
+        { id: "s1", title: "Research", instructions: "A", write: [] },
+      ],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      capState: makeMockCapState({}),
+      allContractOutputs: new Set([]),
+      projectRoot: "/home/user/project",
+    });
+
+    // Act: write to a path with similar prefix but not under project root
+    const result = await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "/home/user/projects/other/file.ts", content: "x" },
+    });
+
+    // Assert: not blocked ("/home/user/projects" is not under "/home/user/project/")
+    expect(result).toBeUndefined();
+  });
+
+  it("allOutputs defaults to empty set when allContractOutputs is null", async () => {
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    setState({
+      isActive: true,
+      currentIteration: 1,
+      totalPhases: 1,
+      currentPhaseId: "s1",
+      phasesList: [
+        { id: "s1", title: "Research", instructions: "A", write: [] },
+      ],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      capState: makeMockCapState({}),
+      allContractOutputs: null, // explicitly null
+      projectRoot: "/test/project",
+    });
+
+    // Act: write a non-contract file — should not crash
+    const result = await fireToolCall(handlers, {
+      toolName: "write",
+      input: { path: "/test/project/src/foo.ts", content: "x" },
+    });
+
+    // Assert: no crash, result is blocked by project gate (not by null allOutputs)
+    const blocked = result as { block: boolean; reason: string } | undefined;
+    expect(blocked).toEqual({
+      block: true,
+      reason: expect.stringContaining("Writing project files is not allowed"),
+    });
   });
 });
 

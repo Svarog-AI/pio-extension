@@ -56,7 +56,9 @@ Follow these steps:
 
 Follow these steps:
 1. Attempt to write \`PLAYGROUND.md\` and observe it is blocked by the restricted-by-default model (the empty write array blocks known contract output paths)
-2. Report the block message verbatim, including the exact rejection reason`,
+2. Report the block message verbatim, including the exact rejection reason
+3. Attempt to write a non-contract project file at the project root level (e.g., \`test-project-write.txt\` — this resolves to \`<project-root>/test-project-write.txt\` via path.resolve relative to cwd). Observe and report that this write is blocked by the per-phase project write gate (this phase has no \`allowProjectWrites\` field, so it defaults to \`false\`)
+4. Report the block message verbatim for the project file write, including the exact rejection reason`,
   },
 
   // ---------------------------------------------------------------------------
@@ -75,7 +77,24 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 5: Contract Output Restriction Test
+  // Phase 5: Project Writes Allowed Test
+  // ---------------------------------------------------------------------------
+  {
+    id: "project-writes-allowed",
+    title: "Project writes allowed test",
+    allowProjectWrites: true,
+    write: ["playground-output"],
+    instructions: `This phase tests the per-phase project write gate when \`allowProjectWrites: true\` is set. With this flag enabled, non-contract project file writes are allowed.
+
+Follow these steps:
+1. Write a non-contract project file at the project root level (e.g., \`test-project-write-success.txt\` — this resolves to \`<project-root>/test-project-write-success.txt\` via path.resolve relative to cwd) and observe it succeeds because this phase has \`allowProjectWrites: true\`
+2. Report that the write succeeded with details about why: the phase has \`allowProjectWrites: true\`, which lifts the project file restriction that would normally block non-contract writes within the project root
+3. Compare this behavior to Phase 3 (\`restricted-writes\`), where the same type of write was blocked because \`allowProjectWrites\` was not set
+`,
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 6: Contract Output Restriction Test
   // ---------------------------------------------------------------------------
   {
     id: "contract-output-restriction",
@@ -87,9 +106,8 @@ Follow these steps:
 1. Attempt to write \`PLAYGROUND.md\` and observe it is allowed (because \`playground-output\` is in the allowlist for this phase), but then delete or overwrite it with a placeholder since the final report comes later
 2. Report that \`PLAYGROUND.md\` is writable because its contract output name (\`playground-output\`) appears in this phase's \`write\` array`,
   },
-
   // ---------------------------------------------------------------------------
-  // Phase 6: Variable Definition — Basic Test
+  // Phase 7: Variable Definition — Basic Test
   // instructions ignored — engine generates template from variables array
   // ---------------------------------------------------------------------------
   {
@@ -122,7 +140,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 7: loopWhile Condition Test
+  // Phase 8: loopWhile Condition Test
   // ---------------------------------------------------------------------------
   {
     id: "loopwhile-test",
@@ -146,7 +164,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 8: terminateWhen AND Logic Test
+  // Phase 9: terminateWhen AND Logic Test
   // ---------------------------------------------------------------------------
   {
     id: "terminate-when-and-test",
@@ -174,7 +192,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 9: Template Interpolation
+  // Phase 10: Template Interpolation
   // ---------------------------------------------------------------------------
   {
     id: "template-interpolation",
@@ -193,7 +211,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 10: Validation Gate Replay
+  // Phase 11: Validation Gate Replay
   // instructions ignored — engine generates template from variables array
   // ---------------------------------------------------------------------------
   {
@@ -214,7 +232,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 11: Consecutive Programmatic — First
+  // Phase 12: Consecutive Programmatic — First
   // Purely programmatic — no LLM vars, skipped by advancePhase
   // ---------------------------------------------------------------------------
   {
@@ -238,7 +256,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 12: Consecutive Programmatic — Second
+  // Phase 13: Consecutive Programmatic — Second
   // Purely programmatic — no LLM vars, skipped by advancePhase
   // ---------------------------------------------------------------------------
   {
@@ -262,7 +280,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 14: branch:if Test
+  // Phase 15: branch:if Test
   // ---------------------------------------------------------------------------
   {
     id: "branch-if-test",
@@ -312,7 +330,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 15: branch:if Verification
+  // Phase 16: branch:if Verification
   // ---------------------------------------------------------------------------
   {
     id: "branch-if-verify",
@@ -327,7 +345,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 16: branch:switch with callback on
+  // Phase 17: branch:switch with callback on
   // ---------------------------------------------------------------------------
   {
     id: "branch-switch-callback",
@@ -384,7 +402,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 17: branch:switch with $varName string form
+  // Phase 18: branch:switch with $varName string form
   // ---------------------------------------------------------------------------
   {
     id: "branch-switch-varname",
@@ -441,7 +459,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 18: branch:switch Verification
+  // Phase 19: branch:switch Verification
   // ---------------------------------------------------------------------------
   {
     id: "branch-switch-verify",
@@ -456,13 +474,13 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 19: Final Report
+  // Phase 20: Final Report
   // ---------------------------------------------------------------------------
   {
     id: "final-report",
     title: "Final Report",
     write: ["playground-output"],
-    instructions: `This is the final phase. Write a comprehensive test report in \`PLAYGROUND.md\` covering all phases (1–18).
+    instructions: `This is the final phase. Write a comprehensive test report in \`PLAYGROUND.md\` covering all phases (1–19).
 
 Follow these steps:
 1. Write \`PLAYGROUND.md\` with a section for each phase summarizing behavior observed
@@ -480,6 +498,6 @@ Follow these steps:
    c. \`branch:switch\` ($varName form): confirm \`switch_varname_result\` is set to some "-matched" value — the variable was resolved and a case or defaultBranch matched
    d. Document branch routing observations: which paths were taken, how multi-phase arms executed sequentially (step-1 → step-2 inside then arm), and post-branch continuation behavior
 6. Include any unexpected behaviors or discrepancies
-7. This is the final phase — produce a complete, well-structured report in \`PLAYGROUND.md\` covering all 18 phases total`,
+7. This is the final phase — produce a complete, well-structured report in \`PLAYGROUND.md\` covering all 19 phases total`,
   },
 ] satisfies WorkflowPhase[];

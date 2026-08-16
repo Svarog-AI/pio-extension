@@ -31,6 +31,34 @@ describe("session-state", () => {
       expect(state.currentPhaseId).toBe("");
       expect(state.phaseManager).toBe(undefined);
       expect(state.store).toBe(undefined);
+      expect(state.projectRoot).toBe(undefined);
+    });
+  });
+
+  describe("projectRoot", () => {
+    it("is undefined by default", () => {
+      expect(getState().projectRoot).toBe(undefined);
+    });
+
+    it("can be set to an absolute path", () => {
+      setState({ projectRoot: "/home/user/project" });
+
+      expect(getState().projectRoot).toBe("/home/user/project");
+    });
+
+    it("survives partial updates to other fields", () => {
+      setState({ projectRoot: "/home/user/project" });
+      setState({ isActive: true });
+
+      expect(getState().projectRoot).toBe("/home/user/project");
+      expect(getState().isActive).toBe(true);
+    });
+
+    it("is reset to undefined by resetState", () => {
+      setState({ projectRoot: "/home/user/project" });
+      resetState();
+
+      expect(getState().projectRoot).toBe(undefined);
     });
   });
 
@@ -117,6 +145,7 @@ describe("session-state", () => {
       expect(state.currentPhaseId).toBe("");
       expect(state.phaseManager).toBe(undefined);
       expect(state.store).toBe(undefined);
+      expect(state.projectRoot).toBe(undefined);
     });
   });
 

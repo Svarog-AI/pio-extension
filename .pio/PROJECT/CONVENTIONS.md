@@ -48,7 +48,7 @@ Each AI-driven capability is a directory package under `src/capabilities/<name>/
 - **`guidelines.md`** — Guidelines text
 - **`callbacks.ts`** *(optional)* — Lifecycle callbacks (validation, file protection resolvers). Was named `validators.ts` before Step 19 convention cleanup
 - **`schemas.ts`** *(optional)* — Capability-local TypeBox frontmatter schemas for output validation. Replaced shared `src/frontmatter-schemas.ts` (deleted)
-- **`config.test.ts`** — Colocated tests (follows `*.test.ts` naming convention)
+- **`config.test.ts`** — Colocated tests (follows `*.test.ts` naming convention). Behavioral scope only: contract shape, default export, and tool registration. Do not assert static config layout (phase counts, hardcoded `workflowPhases[n]` indices) — such assertions break every time phases are added or removed without adding behavioral coverage (index-based structural tests were removed from workflow-playground in goal phase-project-write-gate). Loop-engine runtime behavior is covered by `src/runtime/loop-engine.test.ts`. If per-phase structural coverage is ever needed, use id-based lookups (`workflowPhases.find(p => p.id === "...")`), never hardcoded indices
 
 Non-AI capabilities (init, delete-goal, list-goals, parent, create-issue, goal-from-issue) are consolidated in `src/direct-tools.ts`.
 

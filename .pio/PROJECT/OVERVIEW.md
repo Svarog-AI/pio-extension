@@ -28,7 +28,7 @@ pio-extension/
 │   │   ├── <name>/            # 11 capability packages (create-goal, create-plan, evolve-plan, quality-gate, workflow-playground, etc.)
 │   │   │   ├── config.ts        — CapabilityPackageConfig default export + register(pi) named export
 │   │   │   ├── role.md          — Role description (prompt component)
-│   │   │   ├── workflow.ts      — WorkflowPhase[] with per-phase skill declarations + loop fields (minIterations, maxIterations, terminateWhen, write)
+│   │   │   ├── workflow.ts      — WorkflowPhase[] with per-phase skill declarations + loop fields (minIterations, maxIterations, terminateWhen, write, allowProjectWrites)
 │   │   │   ├── guidelines.md    — Guidelines (prompt component)
 │   │   │   ├── callbacks.ts     — Lifecycle callbacks (validation, file protections) [optional]
 │   │   │   ├── schemas.ts       — Capability-local frontmatter TypeBox schemas [optional]

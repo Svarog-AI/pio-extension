@@ -831,6 +831,7 @@ describe("extractPersistedState", () => {
       isAdHocInput: true,
       adHocPhaseNotified: false,
       currentPhaseId: "",
+      programmaticLog: [],
     });
 
     const result = extractPersistedState(getState());
@@ -866,6 +867,7 @@ describe("extractPersistedState", () => {
       isAdHocInput: false,
       adHocPhaseNotified: false,
       currentPhaseId: "",
+      programmaticLog: [],
       store,
     });
 
@@ -899,6 +901,7 @@ describe("extractPersistedState", () => {
       isAdHocInput: false,
       adHocPhaseNotified: false,
       currentPhaseId: "",
+      programmaticLog: [],
       store: null,
     });
 
@@ -924,6 +927,7 @@ describe("extractPersistedState", () => {
       isAdHocInput: false,
       adHocPhaseNotified: false,
       currentPhaseId: "",
+      programmaticLog: [],
       store: undefined,
     });
 
@@ -952,6 +956,7 @@ describe("extractPersistedState", () => {
       isAdHocInput: false,
       adHocPhaseNotified: false,
       currentPhaseId: "",
+      programmaticLog: [],
       store,
     });
 

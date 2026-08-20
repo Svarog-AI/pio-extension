@@ -46,7 +46,9 @@ export class PhaseManager {
    * and wiring maps.
    *
    * @param phases - The workflow phases (from `WorkflowPhase[]`).
-   * @throws TypeError if a phase is missing a required `id` field.
+   * @throws TypeError if a phase is missing a required `id` field,
+   *   or if the `kind`/`run` pairing is invalid: a `kind: "code"` phase
+   *   must carry a function `run`, and non-code phases must not.
    */
   constructor(phases: WorkflowPhase[]) {
     const registry = new Map<string, WorkflowPhase>();
@@ -73,6 +75,19 @@ export class PhaseManager {
         if (!phase.id) {
           throw new TypeError(
             `Phase missing required "id" field at path: ${path}`,
+          );
+        }
+
+        // Validate kind/run pairing — a code phase must carry a function run;
+        // non-code phases (including omitted kind) must not carry run.
+        if (phase.kind === "code" && typeof phase.run !== "function") {
+          throw new TypeError(
+            `Code phase "${phase.id}" at path: ${path} is missing required "run" function`,
+          );
+        }
+        if (phase.kind !== "code" && phase.run !== undefined) {
+          throw new TypeError(
+            `Phase "${phase.id}" (kind: "${phase.kind ?? "standard"}") at path: ${path} must not define "run" — only "code" phases may`,
           );
         }
 
@@ -150,7 +165,7 @@ export class PhaseManager {
           // Return tail of last arm walked (default or last case)
           lastId = defaultTail ?? lastCaseTail;
         } else {
-          // --- standard / variable-definition phase ---
+          // --- standard / variable-definition / code phase ---
           if (successor) {
             routing.set(phase.id, successor);
           }

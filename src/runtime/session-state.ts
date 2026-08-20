@@ -83,6 +83,9 @@ export interface PioSessionState {
 
   /** Resolved project root absolute path. In-memory only — not persisted. Set during resources_discover from ctx.cwd. */
   projectRoot?: string;
+
+  /** Log of executed code phases (one entry per executed `kind: "code"` phase, appended at execution time). In-memory only — not persisted. `detail` carries error messages only: the thrown error's message when the phase's `run()` threw, an empty array otherwise. */
+  programmaticLog: Array<{ phaseId: string; kind: string; detail: string[] }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +113,7 @@ function createInitialState(): PioSessionState {
     currentPhaseId: "",
     phaseManager: undefined,
     projectRoot: undefined,
+    programmaticLog: [],
   };
 }
 

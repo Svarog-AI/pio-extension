@@ -32,6 +32,36 @@ describe("session-state", () => {
       expect(state.phaseManager).toBe(undefined);
       expect(state.store).toBe(undefined);
       expect(state.projectRoot).toBe(undefined);
+      expect(state.programmaticLog).toEqual([]);
+    });
+  });
+
+  describe("programmaticLog", () => {
+    it("defaults to an empty array on initial state", () => {
+      expect(getState().programmaticLog).toEqual([]);
+    });
+
+    it("is restored to [] by resetState after appending entries", () => {
+      getState().programmaticLog.push({
+        phaseId: "code-1",
+        kind: "code",
+        detail: ["boom"],
+      });
+      expect(getState().programmaticLog).toHaveLength(1);
+
+      resetState();
+
+      expect(getState().programmaticLog).toEqual([]);
+    });
+
+    it("assigns a fresh array on reset (no aliasing of the pre-reset reference)", () => {
+      const preReset = getState().programmaticLog;
+      preReset.push({ phaseId: "p", kind: "code", detail: [] });
+
+      resetState();
+
+      expect(getState().programmaticLog).toEqual([]);
+      expect(getState().programmaticLog).not.toBe(preReset);
     });
   });
 
@@ -127,6 +157,7 @@ describe("session-state", () => {
         currentPhaseId: "some-phase",
         phaseManager: {} as PhaseManager,
         store,
+        programmaticLog: [{ phaseId: "code-1", kind: "code", detail: [] }],
       });
 
       resetState();
@@ -146,6 +177,7 @@ describe("session-state", () => {
       expect(state.phaseManager).toBe(undefined);
       expect(state.store).toBe(undefined);
       expect(state.projectRoot).toBe(undefined);
+      expect(state.programmaticLog).toEqual([]);
     });
   });
 

@@ -7796,6 +7796,17 @@ describe("isProgrammatic", () => {
     expect(isProgrammatic(phase)).toBe(true);
   });
 
+  it("returns true for kind: 'code' phase (programmatic — no LLM turn)", async () => {
+    const isProgrammatic = await getIsProgrammatic();
+    const phase = {
+      id: "c1",
+      title: "Code",
+      kind: "code" as const,
+      run: vi.fn(),
+    };
+    expect(isProgrammatic(phase)).toBe(true);
+  });
+
   it("returns true for variable-definition phase with only static/computed variables", async () => {
     const isProgrammatic = await getIsProgrammatic();
     const phase = {
@@ -7885,7 +7896,7 @@ describe("executePhase", () => {
       ],
     };
 
-    executePhase(phase, store);
+    await executePhase(phase, store);
 
     // preparePhaseVariables sets static vars
     expect(store.get("x")).toBe("hello");
@@ -7913,7 +7924,7 @@ describe("executePhase", () => {
 
     const phase = { id: "s1", title: "S1", instructions: "Do A" };
 
-    executePhase(phase, store);
+    await executePhase(phase, store);
 
     // No variables set (standard phase — kind guard returns early)
     expect(store.get("x")).toBeUndefined();
@@ -7940,12 +7951,150 @@ describe("executePhase", () => {
     vi.mocked(statePersistence.saveLoopEngineState).mockClear();
 
     const phase = { id: "s1", title: "S1", instructions: "Do A" };
-    executePhase(phase, store);
+    await executePhase(phase, store);
 
     expect(statePersistence.saveLoopEngineState).toHaveBeenCalledWith(
       "test-session",
       expect.any(Object),
     );
+  });
+
+  it("for kind: 'code' phases: runs phase.run() once with the live state reference and appends a success log entry", async () => {
+    const executePhase = await getExecutePhase();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const run = vi.fn(
+      (ctx: { state: import("./session-state").PioSessionState }) => {
+        // Mutate through ctx.state.store — visible afterwards with no new plumbing
+        ctx.state.store?.declare("flag", "string");
+        ctx.state.store?.set("flag", "string", "yes");
+      },
+    );
+
+    const phase = {
+      id: "c1",
+      title: "Code",
+      kind: "code" as const,
+      run,
+    };
+
+    await executePhase(phase, store);
+
+    // run called exactly once, with the LIVE state reference (no copies)
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run.mock.calls[0][0].state).toBe(getState());
+    // Mutation through ctx.state.store is visible afterwards
+    expect(store.get("flag")).toBe("yes");
+    // Exactly one log entry per executed code phase — detail: [] on success
+    expect(getState().programmaticLog).toEqual([
+      { phaseId: "c1", kind: "code", detail: [] },
+    ]);
+    // Single trailing persist (log itself is in-memory only)
+    expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(1);
+  });
+
+  it("for kind: 'code' phases: a throwing run() is caught, warned with the phase id, and logged with the error message", async () => {
+    const executePhase = await getExecutePhase();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const run = vi.fn(() => {
+      throw new Error("boom");
+    });
+
+    const phase = {
+      id: "c-throws",
+      title: "Code",
+      kind: "code" as const,
+      run,
+    };
+
+    // Never rejects — warn-and-continue
+    await expect(executePhase(phase, store)).resolves.toBeUndefined();
+
+    expect(run).toHaveBeenCalledTimes(1);
+    // Warning mentions the phase id
+    const warnings = warnSpy.mock.calls
+      .map((c) => String(c[0]))
+      .filter((w) => w.includes("c-throws"));
+    expect(warnings.length).toBeGreaterThan(0);
+    expect(warnings[0]).toContain("boom");
+    // Log entry carries the error message
+    expect(getState().programmaticLog).toEqual([
+      { phaseId: "c-throws", kind: "code", detail: ["boom"] },
+    ]);
+    warnSpy.mockRestore();
+  });
+
+  it("for kind: 'code' phases: a non-Error throw is coerced to its string form in the log detail", async () => {
+    const executePhase = await getExecutePhase();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const run = vi.fn(() => {
+      throw "string-failure";
+    });
+
+    const phase = {
+      id: "c-str",
+      title: "Code",
+      kind: "code" as const,
+      run,
+    };
+
+    await expect(executePhase(phase, store)).resolves.toBeUndefined();
+
+    expect(getState().programmaticLog).toEqual([
+      { phaseId: "c-str", kind: "code", detail: ["string-failure"] },
+    ]);
+    warnSpy.mockRestore();
   });
 });
 
@@ -8309,7 +8458,7 @@ describe("advancePhase", () => {
 
     vi.mocked(statePersistence.saveLoopEngineState).mockClear();
 
-    const result = advancePhase(store, "p1", "reset");
+    const result = await advancePhase(store, "p1", "reset");
 
     expect(result.triggered).toBe(true);
     expect(result.payload).toBeDefined();
@@ -8345,7 +8494,7 @@ describe("advancePhase", () => {
 
     vi.mocked(statePersistence.saveLoopEngineState).mockClear();
 
-    const result = advancePhase(store, "s1", "reset");
+    const result = await advancePhase(store, "s1", "reset");
 
     expect(result.triggered).toBe(true);
     expect(result.payload).toBeDefined();
@@ -8387,7 +8536,7 @@ describe("advancePhase", () => {
 
     vi.mocked(statePersistence.saveLoopEngineState).mockClear();
 
-    const result = advancePhase(store, "p1", "reset");
+    const result = await advancePhase(store, "p1", "reset");
 
     expect(result.triggered).toBe(false);
     expect(result.payload).toBeUndefined();
@@ -8429,7 +8578,7 @@ describe("advancePhase", () => {
         currentPhaseId: "p1",
       });
 
-      const result = advancePhase(store, "p1", "reset");
+      const result = await advancePhase(store, "p1", "reset");
 
       expect(result.triggered).toBe(true);
       expect(getState().currentPhaseId).toBe("s2");
@@ -8457,7 +8606,7 @@ describe("advancePhase", () => {
         currentPhaseId: "s1",
       });
 
-      const result = advancePhase(store, "s1", "increment");
+      const result = await advancePhase(store, "s1", "increment");
 
       expect(result.triggered).toBe(true);
       expect(getState().currentPhaseId).toBe("s1");
@@ -8485,12 +8634,369 @@ describe("advancePhase", () => {
         currentPhaseId: "s1",
       });
 
-      const result = advancePhase(store, "s1", "preserve");
+      const result = await advancePhase(store, "s1", "preserve");
 
       expect(result.triggered).toBe(true);
       expect(getState().currentPhaseId).toBe("s1");
       expect(getState().currentIteration).toBe(7);
     });
+  });
+});
+
+describe("code-step execution", () => {
+  // ---- Traversal: code phase run() executes and stops at the LLM phase ----
+
+  it("executes a code phase's run() exactly once during advancePhase traversal with the live state reference, then stops at the next LLM phase", async () => {
+    const { advancePhase } = await import("./loop-engine");
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    const contexts: unknown[] = [];
+    const run = vi.fn(
+      (ctx: { state: import("./session-state").PioSessionState }) => {
+        contexts.push(ctx.state);
+        ctx.state.store?.declare("code_flag", "string");
+        ctx.state.store?.set("code_flag", "string", "from-code");
+      },
+    );
+
+    const phases = [
+      { id: "c1", title: "Code", kind: "code" as const, run },
+      { id: "s2", title: "S2", instructions: "Do B" },
+    ];
+
+    setState({
+      isActive: true,
+      sessionId: "code-session",
+      currentIteration: 1,
+      totalPhases: 2,
+      phasesList: phases,
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+      currentPhaseId: "c1",
+    });
+
+    const result = await advancePhase(store, "c1", "reset");
+
+    expect(result.triggered).toBe(true);
+    expect(getState().currentPhaseId).toBe("s2");
+    // run called exactly once with the live state reference
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(contexts[0]).toBe(getState());
+    // Mutation through ctx.state.store is visible afterwards — no new plumbing
+    expect(store.get("code_flag")).toBe("from-code");
+  });
+
+  it("a code step's variable writes persist via the existing store (extractPersistedState projection unchanged)", async () => {
+    const { advancePhase } = await import("./loop-engine");
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    const phases = [
+      {
+        id: "c1",
+        title: "Code",
+        kind: "code" as const,
+        run: (ctx: { state: import("./session-state").PioSessionState }) => {
+          ctx.state.store?.declare("persisted_var", "number");
+          ctx.state.store?.set("persisted_var", "number", 42);
+        },
+      },
+      { id: "s2", title: "S2", instructions: "Do B" },
+    ];
+
+    setState({
+      isActive: true,
+      sessionId: "code-session",
+      currentIteration: 1,
+      totalPhases: 2,
+      phasesList: phases,
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+      currentPhaseId: "c1",
+    });
+
+    await advancePhase(store, "c1", "reset");
+
+    // Value readable from the store after traversal (existing projection)
+    expect(store.get("persisted_var")).toBe(42);
+    // The persistence mock's extractPersistedState still projects only the
+    // persisted fields — programmaticLog is NOT part of it.
+    const savedArgs = vi
+      .mocked(statePersistence.saveLoopEngineState)
+      .mock.calls.map((c) => c[1])
+      .filter(Boolean);
+    expect(savedArgs.length).toBeGreaterThan(0);
+    for (const saved of savedArgs) {
+      expect(saved).not.toHaveProperty("programmaticLog");
+    }
+  });
+
+  // ---- Throw surfacing: warn-and-continue + error line in the next turn's payload ----
+
+  it("a throwing run() is caught: advancePhase resolves, warns with the phase id, stops at the LLM phase, and the payload renders the error line", async () => {
+    const { advancePhase } = await import("./loop-engine");
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const phases = [
+      {
+        id: "c-throws",
+        title: "Code",
+        kind: "code" as const,
+        run: () => {
+          throw new Error("boom");
+        },
+      },
+      { id: "s2", title: "S2", instructions: "Do B" },
+    ];
+
+    setState({
+      isActive: true,
+      sessionId: "code-session",
+      currentIteration: 1,
+      totalPhases: 2,
+      phasesList: phases,
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+      currentPhaseId: "c-throws",
+    });
+
+    // Never rejects — resolves even though run() threw
+    const result = await advancePhase(store, "c-throws", "reset");
+
+    expect(result.triggered).toBe(true);
+    expect(getState().currentPhaseId).toBe("s2");
+    // Warning contains the phase id and the error text
+    const warnings = warnSpy.mock.calls
+      .map((c) => String(c[0]))
+      .filter((w) => w.includes("c-throws"));
+    expect(warnings.length).toBeGreaterThan(0);
+    expect(warnings[0]).toContain("boom");
+    // The turn's payload (setupTurn -> buildPhaseInstructions) surfaces the error line
+    const content = result.payload?.content ?? "";
+    expect(content).toContain("## Programmatic activity since your last turn");
+    expect(content).toContain("• c-throws (code): boom");
+    // Log cleared as a single unit by the render — immediately afterwards
+    expect(getState().programmaticLog).toEqual([]);
+    warnSpy.mockRestore();
+  });
+
+  // ---- Non-throwing entry: success line without error text, log clears after render ----
+
+  it("a non-throwing code step renders a success line (no error text) and the log clears after that render", async () => {
+    const { advancePhase } = await import("./loop-engine");
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    const phases = [
+      { id: "c-ok", title: "Code", kind: "code" as const, run: () => {} },
+      { id: "s2", title: "S2", instructions: "Do B" },
+    ];
+
+    setState({
+      isActive: true,
+      sessionId: "code-session",
+      currentIteration: 1,
+      totalPhases: 2,
+      phasesList: phases,
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+      currentPhaseId: "c-ok",
+    });
+
+    const result = await advancePhase(store, "c-ok", "reset");
+
+    expect(result.triggered).toBe(true);
+    const content = result.payload?.content ?? "";
+    expect(content).toContain("## Programmatic activity since your last turn");
+    // Success line: no trailing colon/message
+    expect(content).toContain("• c-ok (code)");
+    expect(content).not.toContain("• c-ok (code):");
+    // Log cleared after the render that showed it
+    expect(getState().programmaticLog).toEqual([]);
+  });
+
+  // ---- Log lifecycle: one entry per executed code phase, in execution order ----
+
+  it("a chain of two code phases produces two entries in execution order, rendered together and cleared together", async () => {
+    const { advancePhase } = await import("./loop-engine");
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const phases = [
+      { id: "c-a", title: "A", kind: "code" as const, run: () => {} },
+      {
+        id: "c-b",
+        title: "B",
+        kind: "code" as const,
+        run: () => {
+          throw new Error("second-failure");
+        },
+      },
+      { id: "s3", title: "S3", instructions: "Do C" },
+    ];
+
+    setState({
+      isActive: true,
+      sessionId: "code-session",
+      currentIteration: 1,
+      totalPhases: 3,
+      phasesList: phases,
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+      currentPhaseId: "c-a",
+    });
+
+    const result = await advancePhase(store, "c-a", "reset");
+
+    expect(result.triggered).toBe(true);
+    const content = result.payload?.content ?? "";
+    // Both entries rendered in one section, in execution order
+    expect(content).toContain("• c-a (code)");
+    expect(content).toContain("• c-b (code): second-failure");
+    const idxA = content.indexOf("• c-a (code)");
+    const idxB = content.indexOf("• c-b (code): second-failure");
+    expect(idxA).toBeGreaterThan(-1);
+    expect(idxB).toBeGreaterThan(idxA);
+    // Cleared as a single unit — both entries gone at once
+    expect(getState().programmaticLog).toEqual([]);
+    warnSpy.mockRestore();
+  });
+
+  it("buildPhaseInstructions with an empty log returns the standard prompt byte-identical", async () => {
+    const { buildPhaseInstructions } = await import("./loop-engine");
+    setState({
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
+    });
+
+    const result = buildPhaseInstructions(getState());
+
+    expect(result).toBe(
+      '## Instructions for "s1"\n\n' +
+        "Follow the instructions below. Do not do anything outside these instructions.\n\n" +
+        'You are on "s1", iteration 1.\n\n---\n\n' +
+        "Do A",
+    );
+  });
+
+  it("buildPhaseInstructions with a non-empty log prepends the section above the existing prompt and clears the log", async () => {
+    const { buildPhaseInstructions } = await import("./loop-engine");
+    setState({
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: [{ id: "s1", title: "S1", instructions: "Do A" }],
+    });
+
+    // Seed the log via a setState merge (never direct mutation)
+    (await import("./session-state")).setState({
+      programmaticLog: [
+        { phaseId: "c-x", kind: "code", detail: ["first-err", "second-err"] },
+      ],
+    });
+
+    const result = buildPhaseInstructions(getState());
+
+    expect(result).toBe(
+      "## Programmatic activity since your last turn\n\n" +
+        "• c-x (code): first-err, second-err\n\n" +
+        '## Instructions for "s1"\n\n' +
+        "Follow the instructions below. Do not do anything outside these instructions.\n\n" +
+        'You are on "s1", iteration 1.\n\n---\n\n' +
+        "Do A",
+    );
+    // Cleared as a single unit via setState merge — fresh array reference
+    expect(getState().programmaticLog).toEqual([]);
+  });
+
+  it("buildPhaseInstructions early return (no current phase) leaves the log untouched", async () => {
+    const { buildPhaseInstructions } = await import("./loop-engine");
+    setState({
+      currentIteration: 1,
+      totalPhases: 0,
+      phasesList: [],
+      currentPhaseId: "missing-phase",
+    });
+    (await import("./session-state")).setState({
+      programmaticLog: [{ phaseId: "c-x", kind: "code", detail: [] }],
+    });
+
+    const result = buildPhaseInstructions(getState());
+
+    expect(result).toBe("");
+    // Early return does NOT clear the log (unreachable in live flows; resetState covers it)
+    expect(getState().programmaticLog).toEqual([
+      { phaseId: "c-x", kind: "code", detail: [] },
+    ]);
+  });
+
+  // ---- Recommended de-risk: code-set variable feeds a following branch:if condition ----
+
+  it("a code step's async variable write is visible to a following branch:if within the same advancePhase call", async () => {
+    const { advancePhase } = await import("./loop-engine");
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    const phases = [
+      {
+        id: "c-set",
+        title: "Set",
+        kind: "code" as const,
+        run: async (ctx: {
+          state: import("./session-state").PioSessionState;
+        }) => {
+          // Async write — completes before the branch phase is visited
+          await Promise.resolve();
+          ctx.state.store?.declare("route", "string");
+          ctx.state.store?.set("route", "string", "yes");
+        },
+      },
+      {
+        id: "b-if",
+        title: "Branch",
+        kind: "branch:if" as const,
+        condition: (state: import("./session-state").PioSessionState) =>
+          state.store?.get("route") === "yes",
+        // biome-ignore lint/suspicious/noThenProperty: intentional test of WorkflowPhase.then field
+        then: [{ id: "arm-then", title: "Then", instructions: "Take then" }],
+        else: [{ id: "arm-else", title: "Else", instructions: "Take else" }],
+      },
+    ];
+
+    setState({
+      isActive: true,
+      sessionId: "code-session",
+      currentIteration: 1,
+      totalPhases: 2,
+      phasesList: phases,
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+      currentPhaseId: "c-set",
+    });
+
+    const result = await advancePhase(store, "c-set", "reset");
+
+    expect(result.triggered).toBe(true);
+    // The sequential await made the code-set variable visible to branch evaluation
+    expect(getState().currentPhaseId).toBe("arm-then");
   });
 });
 
@@ -8542,7 +9048,7 @@ describe("advancePhase — integration", () => {
 
     vi.mocked(statePersistence.saveLoopEngineState).mockClear();
 
-    const result = advancePhase(store, "p1", "reset");
+    const result = await advancePhase(store, "p1", "reset");
 
     expect(result.triggered).toBe(true);
     expect(result.payload).toBeDefined();

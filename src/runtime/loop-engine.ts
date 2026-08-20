@@ -31,7 +31,11 @@ import {
   loadLoopEngineState,
   saveLoopEngineState,
 } from "./state-persistence";
-import type { PhaseVariable, WorkflowPhase } from "./workflow-types";
+import type {
+  CodeStepContext,
+  PhaseVariable,
+  WorkflowPhase,
+} from "./workflow-types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -239,6 +243,8 @@ export function buildVariablePhaseInstructions(
  * Build CustomMessage content for the current phase with authority framing.
  *
  * Format:
+ *   [optional: ## Programmatic activity since your last turn section]
+ *
  *   ## Instructions for "phase-id"
  *
  *   Follow the instructions below. Do not do anything outside these instructions.
@@ -250,6 +256,13 @@ export function buildVariablePhaseInstructions(
  *   <phase instructions>
  *
  *   [optional: **Retry focus:** <loopMessage>]
+ *
+ * When `state.programmaticLog` is non-empty (code steps executed since the
+ * last LLM turn), a "## Programmatic activity since your last turn" section
+ * is prepended — one bullet per entry in execution order, with the error
+ * detail after a colon when present. The log clears exactly when the section
+ * is rendered, as a single unit via setState merge. An empty log leaves the
+ * prompt unchanged; the no-phase early return leaves the log untouched.
  *
  * @internal — Used by both `before_agent_start` (first run) and `agent_end` (phase transitions).
  */
@@ -270,6 +283,22 @@ export function buildPhaseInstructions(state: PioSessionState): string {
     `You are on "${phase.id}", iteration ${state.currentIteration}.\n\n---\n\n` +
     instructionBody;
 
+  // Surface programmatic activity (code steps) executed since the last LLM
+  // turn, then clear the log as a single unit — exactly when rendered.
+  const log = state.programmaticLog;
+  if (log.length > 0) {
+    const lines = log
+      .map(
+        (e) =>
+          `• ${e.phaseId} (${e.kind})${
+            e.detail.length > 0 ? `: ${e.detail.join(", ")}` : ""
+          }`,
+      )
+      .join("\n");
+    setState({ programmaticLog: [] });
+    return `## Programmatic activity since your last turn\n\n${lines}\n\n${prompt}`;
+  }
+
   return prompt;
 }
 
@@ -281,12 +310,16 @@ export function buildPhaseInstructions(state: PioSessionState): string {
  * Check if a phase can execute without an agent turn.
  *
  * A programmatic phase is a phase where there's nothing for
- * the LLM to do. Standard phases always return `false`.
+ * the LLM to do: code phases (whose `run()` executes inline),
+ * branch phases, and pure-variable-definition phases. Standard
+ * phases always return `false`.
  *
  * @param phase - WorkflowPhase to check
  * @returns `true` if the phase is purely programmatic (no LLM involvement)
  */
 export function isProgrammatic(phase: WorkflowPhase): boolean {
+  // Code phases execute inline — no agent turn needed
+  if (phase.kind === "code") return true;
   // Branch phases execute inline — no agent turn needed
   if (phase.kind?.startsWith("branch:")) return true;
   if (phase.kind !== "variable-definition" || !phase.variables?.length) {
@@ -325,19 +358,52 @@ function _handleExhaustion(): void {
 /**
  * Execute the programmatic parts of a phase.
  *
+ * For code phases (`kind: "code"`), builds the `CodeStepContext`
+ * (`{ state }` — the single live state reference), awaits
+ * `phase.run!(ctx)`, and appends one entry to `state.programmaticLog`
+ * (`detail` holds the thrown error's message when `run()` throws,
+ * empty otherwise). A throwing `run()` never blocks traversal:
+ * it is caught, warned via console, and traversal continues.
+ *
  * For variable-definition phases, this sets static variables and runs
  * computed callbacks. For standard phases, `preparePhaseVariables()`
  * is a no-op internally (kind guard returns early) but is still called.
- * Always persists state after execution.
+ * Always persists state after execution (single trailing persist for
+ * all phase kinds — the log itself is in-memory only).
  *
  * @param phase - WorkflowPhase to execute
  * @param store - SessionVariableStore for variable operations
  */
-export function executePhase(
+export async function executePhase(
   phase: WorkflowPhase,
   store: SessionVariableStore,
-): void {
-  if (phase.kind === "variable-definition" && phase.variables?.length) {
+): Promise<void> {
+  if (phase.kind === "code") {
+    // Single live state reference — no copies, no extra fields.
+    const ctx: CodeStepContext = { state: getState() };
+
+    let detail: string[] = [];
+    try {
+      // PhaseManager construction guarantees a code phase has a function run
+      // (TypeError otherwise) — no code phase reaches traversal without one.
+      // biome-ignore lint/style/noNonNullAssertion: invariant enforced by PhaseManager
+      await phase.run!(ctx);
+    } catch (err) {
+      // Warn-and-continue — a throwing code step never blocks traversal.
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[loop-engine] Code step "${phase.id}" threw: ${message}`);
+      detail = [message];
+    }
+
+    // One log entry per executed code phase (append via setState merge —
+    // never mutate the array in place).
+    setState({
+      programmaticLog: [
+        ...getState().programmaticLog,
+        { phaseId: phase.id, kind: "code", detail },
+      ],
+    });
+  } else if (phase.kind === "variable-definition" && phase.variables?.length) {
     preparePhaseVariables(phase, store);
   }
   _persistCurrentState();
@@ -402,19 +468,23 @@ export function setupTurn(mode: "reset" | "increment" | "preserve"): {
  * When stopping at a turn-triggering phase, calls `setupTurn(mode)` to
  * manage iteration, reset tracking, persist, and build the message payload.
  *
+ * Async: each `executePhase` is awaited before the next phase is visited —
+ * a code step's variable writes (including async ones) must be visible to
+ * a later branch phase's condition within the same traversal.
+ *
  * @param store - SessionVariableStore for variable operations
  * @param startPhaseId - Phase ID string to start from
  * @param mode - How to adjust the iteration counter ("reset", "increment", "preserve")
  * @returns Object with `triggered` flag and optional `payload` (CustomMessage data)
  */
-export function advancePhase(
+export async function advancePhase(
   store: SessionVariableStore,
   startPhaseId: string,
   mode: "reset" | "increment" | "preserve",
-): {
+): Promise<{
   triggered: boolean;
   payload?: { customType: string; content: string; display: boolean };
-} {
+}> {
   const state = getState();
   const phaseManager = state.phaseManager;
   if (!phaseManager) return { triggered: false };
@@ -429,7 +499,7 @@ export function advancePhase(
 
     setState({ currentPhaseId: currentId });
 
-    executePhase(phase, store);
+    await executePhase(phase, store);
 
     if (isProgrammatic(phase)) {
       const nextId = phaseManager.resolveNext(currentId, getState());
@@ -608,7 +678,11 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     const phaseStore = getState().store;
     if (!phaseStore) return; // no store — skip injection
 
-    const result = advancePhase(phaseStore, state.currentPhaseId, "preserve");
+    const result = await advancePhase(
+      phaseStore,
+      state.currentPhaseId,
+      "preserve",
+    );
 
     if (!result.triggered) {
       // All phases exhausted — no injection needed
@@ -888,7 +962,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       _handleExhaustion();
       return;
     }
-    const result = advancePhase(phaseStore, nextId, "reset");
+    const result = await advancePhase(phaseStore, nextId, "reset");
 
     if (!result.triggered) {
       // No more non-programmatic phases — same exhaustion handling

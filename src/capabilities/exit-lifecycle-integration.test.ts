@@ -22,7 +22,7 @@ vi.mock("../prompt-compiler", () => ({
 
 function createTempDir(): string {
   return fs.mkdtempSync(
-    path.join(os.tmpdir(), "pio-mark-complete-integration-"),
+    path.join(os.tmpdir(), "pio-exit-lifecycle-integration-"),
   );
 }
 

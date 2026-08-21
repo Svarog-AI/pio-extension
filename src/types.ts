@@ -235,8 +235,9 @@ export type PostExecuteCallback = (
 //    Hook type: PrepareSessionCallback (optional).
 //
 // 3. PostValidate (postValidate hook)
-//    Triggered at: `pio_mark_complete` execution, after file-existence
-//    validation passes but before transition routing.
+//    Triggered during exit-lifecycle execution (`runExitLifecycle`, invoked by
+//    the synthesized `__pio-exit` terminal phase), after output validation
+//    passes but before transition routing.
 //    Can fail to keep the agent in the session to fix issues.
 //    Returns { success: boolean; message?: string }.
 //    Hook type: PostValidateCallback (optional).

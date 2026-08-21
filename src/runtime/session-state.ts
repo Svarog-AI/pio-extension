@@ -29,7 +29,11 @@ export interface PioSessionState {
   /** True when running inside a PIO capability sub-session. */
   isActive: boolean;
 
-  /** True when `pio_mark_complete` was called during the current agent run. */
+  /**
+   * True once the `__pio-exit` terminal code phase has completed the run
+   * (exit lifecycle succeeded, or threw-and-skipped); set by the engine-side
+   * wrapper in `loop-engine.ts`, reset at `before_agent_start`.
+   */
   markCompleteCalled: boolean;
 
   /** Turn counter for refinement-loop detection. Increments on every turn, resets at `before_agent_start`. */

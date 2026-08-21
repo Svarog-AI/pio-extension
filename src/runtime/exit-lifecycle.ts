@@ -15,8 +15,8 @@
  * `markCompleteCalled` (the caller's responsibility) and never throws for
  * flow-control reasons (guards return failure results).
  *
- * Copy-not-move: the duplicated logic in the tool body is deleted later; until
- * then both copies must stay character-faithful.
+ * The `pio_mark_complete` tool was removed — this module now owns the exit
+ * lifecycle as the single copy (invoked by the `__pio-exit` terminal phase).
  */
 
 import * as fs from "node:fs";

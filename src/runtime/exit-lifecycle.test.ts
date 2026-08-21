@@ -297,6 +297,33 @@ describe("success path (single transition)", () => {
 
     warnSpy.mockRestore();
   });
+
+  it("warns and continues when a cleanup[] input file cannot be deleted", async () => {
+    // Pre-create TASK.md as a directory: fs.rmSync({ force: true }) suppresses
+    // missing-path errors but not the file/dir mismatch, so the deletion throws
+    // ERR_FS_EISDIR deterministically — no fs mocking needed.
+    const contract = makeContract({
+      inputs: [{ name: "task-spec", file: "TASK.md" }],
+    });
+    fs.mkdirSync(path.join(tempDir, "TASK.md"));
+    mockDispatch.mockReturnValue([makeNextTask({ cleanup: ["task-spec"] })]);
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = await runExitLifecycle(makeConfig(tempDir, { contract }));
+
+    // Pin the parity-critical template + resolved path only — not the trailing
+    // Node-internal error rendering (OS/version-dependent)
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(`pio: failed to clean up '${tempDir}/TASK.md':`),
+    );
+    // Flow continued past the warn: real marker engine ran
+    expect(fs.existsSync(path.join(tempDir, "APPROVED"))).toBe(true);
+    expect(result.success).toBe(true);
+
+    warnSpy.mockRestore();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -412,6 +439,47 @@ describe("multi-transition result", () => {
       notification:
         "Multiple transitions available: execute-task, revise-plan. Transition is not supported at the moment and will be reimplemented. Transition manually via tool call.",
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// postExecute failure — non-fatal warn, lifecycle tail still runs
+// ---------------------------------------------------------------------------
+
+describe("postExecute failure", () => {
+  it("warns and continues to fileCleanup when the hook throws", async () => {
+    const postExecute = vi.fn().mockImplementation(() => {
+      throw new Error("hook exploded");
+    });
+    const cleanupTarget = path.join(tempDir, "scratch.tmp");
+    fs.writeFileSync(cleanupTarget, "x", "utf-8");
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const result = await runExitLifecycle(
+      makeConfig(tempDir, { postExecute, fileCleanup: [cleanupTarget] }),
+    );
+
+    // Exact string — the thrown value is test-controlled
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      'pio: postExecute failed for capability "review-task": Error: hook exploded',
+    );
+    // Flow continued past the catch: markers ran, fileCleanup target deleted
+    // with its success log line
+    expect(fs.existsSync(path.join(tempDir, "APPROVED"))).toBe(true);
+    expect(fs.existsSync(cleanupTarget)).toBe(false);
+    expect(logSpy).toHaveBeenCalledWith(
+      `pio: cleaned up file after validation: ${cleanupTarget}`,
+    );
+
+    warnSpy.mockRestore();
+    logSpy.mockRestore();
+
+    expect(result.success).toBe(true);
+    expect(result.message).toBe(SUCCESS_MESSAGE);
+    expect(result.notification).toBeUndefined();
   });
 });
 
@@ -544,6 +612,46 @@ describe("enqueue failure", () => {
     expect(fs.existsSync(path.join(tempDir, "APPROVED"))).toBe(true);
 
     warnSpy.mockRestore();
+
+    expect(result.success).toBe(true);
+    expect(result.message).toBe(SUCCESS_MESSAGE);
+    expect(result.notification).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fileCleanup failure — non-fatal warn, run still succeeds
+// ---------------------------------------------------------------------------
+
+describe("fileCleanup failure", () => {
+  it("warns when a fileCleanup path cannot be deleted; no success log emitted", async () => {
+    // Pre-create the target as a directory so fs.rmSync({ force: true }) throws
+    // ERR_FS_EISDIR deterministically — no fs mocking needed.
+    const stubborn = path.join(tempDir, "stubborn");
+    fs.mkdirSync(stubborn);
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const result = await runExitLifecycle(
+      makeConfig(tempDir, { fileCleanup: [stubborn] }),
+    );
+
+    // Pin the parity-critical template + path only — not the trailing
+    // Node-internal error rendering (OS/version-dependent)
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(`pio: failed to clean up file ${stubborn}:`),
+    );
+    // The success log line for that path must not have been emitted
+    expect(logSpy).not.toHaveBeenCalledWith(
+      `pio: cleaned up file after validation: ${stubborn}`,
+    );
+    // Markers still ran; the run succeeds overall
+    expect(fs.existsSync(path.join(tempDir, "APPROVED"))).toBe(true);
+
+    warnSpy.mockRestore();
+    logSpy.mockRestore();
 
     expect(result.success).toBe(true);
     expect(result.message).toBe(SUCCESS_MESSAGE);

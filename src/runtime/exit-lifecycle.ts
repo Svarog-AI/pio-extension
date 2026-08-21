@@ -15,8 +15,8 @@
  * `markCompleteCalled` (the caller's responsibility) and never throws for
  * flow-control reasons (guards return failure results).
  *
- * The `pio_mark_complete` tool was removed — this module now owns the exit
- * lifecycle as the single copy (invoked by the `__pio-exit` terminal phase).
+ * This module owns the capability exit lifecycle as the single copy,
+ * invoked by the synthesized `__pio-exit` terminal phase at workflow end.
  */
 
 import * as fs from "node:fs";

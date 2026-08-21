@@ -3,8 +3,8 @@
  *
  * `applyMarkers` runs during the capability exit lifecycle (step 4a, via
  * `runExitLifecycle`); `cleanupMarkers` runs at session startup via the
- * `resources_discover` handler. The former completion tool is removed — all
- * exit logic lives in `src/runtime/exit-lifecycle.ts`.
+ * `resources_discover` handler. All exit logic lives in
+ * `src/runtime/exit-lifecycle.ts`.
  */
 
 import * as fs from "node:fs";

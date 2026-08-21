@@ -192,6 +192,126 @@ vi.mock("./capability-config", () => ({
 // what queue key next-task.ts reads directly from session params
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// getCurrentCapabilityConfig — module cache getter
+// NOTE: this describe MUST run before any other test in this file that fires a
+// real pio resources_discover — the capability-session original module (and its
+// private currentConfig cache) is shared across vi.resetModules() cycles within
+// a file run, and there is no public way to clear the cache.
+// ---------------------------------------------------------------------------
+
+describe("getCurrentCapabilityConfig — module cache getter", () => {
+  let tempHomeDir: string;
+
+  beforeEach(() => {
+    vi.resetModules();
+    tempHomeDir = createTempDir();
+    process.env.PIO_CONFIG_TEST_HOME = tempHomeDir;
+    mockResolveCapabilityConfigForSession.mockClear();
+    // Mirror the skills passthrough of the model-resolution describe so no
+    // behavioral difference leaks into later describes.
+    mockResolveCapabilityConfigForSession.mockImplementation((_cwd, params) => {
+      const cap =
+        typeof params?.capability === "string" ? params.capability : "unknown";
+      const { capability: _cap, additionalContext, ...rest } = params ?? {};
+      return {
+        capability: cap,
+        workspaceDir: rest.workspaceDir ?? "/test/.pio/goals/test",
+        sessionParams: rest,
+        contract: { inputs: [], outputs: [] },
+        skills: rest.skills ?? undefined,
+        additionalContext:
+          typeof additionalContext === "string" ? additionalContext : undefined,
+      };
+    });
+  });
+
+  afterEach(() => {
+    cleanup(tempHomeDir);
+    delete process.env.PIO_CONFIG_TEST_HOME;
+  });
+
+  // Minimal mock pi — only resources_discover registration is needed here
+  async function setupInfra() {
+    const registeredHandlers: Record<string, Function> = {};
+    const mockPi = {
+      registerTool: vi.fn(),
+      on: (event: string, handler: Function) => {
+        registeredHandlers[event] = handler;
+      },
+      setModel: vi.fn().mockResolvedValue(true),
+      setSessionName: vi.fn(),
+    };
+    const mod = await import("./capability-session");
+    mod.setupSessionInfrastructure(mockPi as any);
+    return { mod, registeredHandlers };
+  }
+
+  // Runs first in the file — cache is still pristine (no pio discover yet)
+  it("returns null before any resources_discover", async () => {
+    // Arrange: infrastructure registered, but no discover fired yet
+    const { mod } = await setupInfra();
+
+    // Assert
+    expect(mod.getCurrentCapabilityConfig()).toBeNull();
+  });
+
+  // Still pristine — a discover without a pio-config entry early-returns
+  it("stays null when resources_discover runs without a pio-config entry", async () => {
+    // Arrange
+    const { mod, registeredHandlers } = await setupInfra();
+    const handler = registeredHandlers.resources_discover;
+    expect(handler).toBeDefined();
+
+    await handler(
+      { type: "resources_discover", cwd: process.cwd(), reason: "startup" },
+      {
+        sessionManager: { getEntries: () => [] },
+        cwd: process.cwd(),
+      },
+    );
+
+    // Assert
+    expect(mod.getCurrentCapabilityConfig()).toBeNull();
+  });
+
+  it("returns the cached config after resources_discover with a pio-config entry (stable reference)", async () => {
+    // Arrange
+    const { mod, registeredHandlers } = await setupInfra();
+    const handler = registeredHandlers.resources_discover;
+    expect(handler).toBeDefined();
+
+    await handler(
+      { type: "resources_discover", cwd: process.cwd(), reason: "startup" },
+      {
+        sessionManager: {
+          getEntries: () => [
+            {
+              type: "custom",
+              customType: "pio-config",
+              data: {
+                capability: "create-goal",
+                sessionParams: { stepNumber: 5 },
+              },
+            },
+          ],
+        },
+        cwd: process.cwd(),
+      },
+    );
+
+    // Assert: resolved config surfaced with the expected fields
+    const config = mod.getCurrentCapabilityConfig();
+    expect(config).not.toBeNull();
+    expect(config!.capability).toBe("create-goal");
+    expect(config!.workspaceDir).toBe("/test/.pio/goals/test");
+    expect(config!.sessionParams?.stepNumber).toBe(5);
+
+    // Assert: returns the same live reference (engine reads it, never re-resolves)
+    expect(mod.getCurrentCapabilityConfig()).toBe(config);
+  });
+});
+
 describe("handleNextTask — goal resolution order", () => {
   let tempDir: string;
 

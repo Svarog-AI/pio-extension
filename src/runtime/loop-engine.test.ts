@@ -5,6 +5,7 @@ import * as capabilitySession from "../capability-session";
 // Import the real modules to spy on them
 import * as capabilityUtils from "../capability-utils";
 import * as modelConfig from "../model-config";
+import type { CapabilityConfig } from "../types";
 import { initializeStore } from "./loop-engine";
 import { PhaseManager } from "./phase-manager";
 import { getState, resetState, setState as setStateRaw } from "./session-state";
@@ -52,6 +53,16 @@ vi.mock("./state-persistence", () => ({
   ),
 }));
 
+// ---------------------------------------------------------------------------
+// exit-lifecycle module mock — controllable runExitLifecycle for __pio-exit tests
+// ---------------------------------------------------------------------------
+
+vi.mock("./exit-lifecycle", () => ({
+  runExitLifecycle: vi.fn(),
+}));
+
+import * as exitLifecycle from "./exit-lifecycle";
+
 import * as statePersistence from "./state-persistence";
 
 // ---------------------------------------------------------------------------
@@ -87,6 +98,21 @@ const mockCtx = {
     getSessionId: () => "test-session-id",
   },
 } as any;
+
+// ---------------------------------------------------------------------------
+// Helpers — fake capability config for __pio-exit wrapper tests
+// ---------------------------------------------------------------------------
+
+/** Minimal resolved CapabilityConfig — enough for the exit wrapper to proceed. */
+function makeFakeCapabilityConfig(): CapabilityConfig {
+  return {
+    capability: "create-goal",
+    workspaceDir: "/test/.pio/goals/test",
+    sessionParams: {},
+    contract: { inputs: [], outputs: [] },
+    allowProjectWrites: false,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Helpers — mock ExtensionAPI
@@ -237,6 +263,18 @@ beforeEach(() => {
   ]);
   // Default: debugDisplay is false (tests that need true mock it explicitly)
   vi.spyOn(modelConfig, "readDebugDisplay").mockReturnValue(false);
+  // Default: no capability config for the __pio-exit wrapper — tests that need
+  // one set it explicitly via vi.mocked(...).mockReturnValue(fakeConfig).
+  vi.spyOn(capabilitySession, "getCurrentCapabilityConfig").mockReturnValue(
+    null,
+  );
+  vi.mocked(capabilitySession.getCurrentCapabilityConfig).mockClear();
+  // Default: exit lifecycle resolves success (S04 standard success shape)
+  vi.mocked(exitLifecycle.runExitLifecycle).mockReset();
+  vi.mocked(exitLifecycle.runExitLifecycle).mockResolvedValue({
+    success: true,
+    message: "Validation passed. All expected outputs have been produced.",
+  });
   // resetState() resets ALL PioSessionState including loop engine fields
   resetState();
   // Clear persistence mock to isolate tests
@@ -1025,9 +1063,11 @@ describe("resources_discover", () => {
     const state = getState();
     expect(state.isActive).toBe(true);
     expect(state.currentIteration).toBe(1);
-    expect(state.totalPhases).toBe(2);
-    expect(state.phasesList).toHaveLength(2);
+    // 2 declared phases + the synthesized "__pio-exit" terminal code phase
+    expect(state.totalPhases).toBe(3);
+    expect(state.phasesList).toHaveLength(3);
     expect(state.phasesList[0].id).toBe("step-1");
+    expect(state.phasesList[2].id).toBe("__pio-exit"); // synthesized tail
     expect(state.isAdHocInput).toBe(false);
     expect(state.filesWritten).toEqual([]);
     expect(state.askUserCalled).toBe(false);
@@ -2053,7 +2093,8 @@ describe("PioSessionState as single source of truth", () => {
     const state = getState();
     expect(state.isActive).toBe(true);
     expect(state.currentIteration).toBe(1);
-    expect(state.phasesList).toHaveLength(2);
+    // 2 declared phases + synthesized "__pio-exit" terminal node
+    expect(state.phasesList).toHaveLength(3);
     expect(state.filesWritten).toEqual([]);
     expect(state.askUserCalled).toBe(false);
     expect(state.isAdHocInput).toBe(false);
@@ -3049,34 +3090,41 @@ describe("agent_end", () => {
     it("exercises exhaustion path through advancePhase when at last phase", async () => {
       const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
-      const { initializeStore } = await import("./loop-engine");
       setupLoopEngine(pi);
 
-      const phases = [
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue([
         {
           id: "s1",
           title: "S1",
           instructions: "Do A",
         },
-      ];
+      ]);
 
-      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
-        phases,
+      // Fire resources_discover so the PhaseManager carries the synthesized
+      // "__pio-exit" terminal node, exactly as in production wiring.
+      const discoverHandlers = handlers.get("resources_discover");
+      for (const h of discoverHandlers!) {
+        await h(
+          { type: "resources_discover", cwd: ".", reason: "startup" },
+          mockCtx,
+        );
+      }
+
+      // Config present → the terminal exit node runs the (mocked) lifecycle
+      vi.mocked(capabilitySession.getCurrentCapabilityConfig).mockReturnValue(
+        makeFakeCapabilityConfig(),
       );
 
-      const store = initializeStore({});
-
+      // Set iteration/tracking WITHOUT phasesList — keeps the discover-built
+      // phaseManager (with synthesized tail) intact.
       setState({
         isActive: true,
         sessionId: "test-session-id",
         currentIteration: 3,
-        totalPhases: 1,
-        phasesList: phases,
         markCompleteCalled: false,
         filesWritten: ["/some/file.ts"],
         askUserCalled: true,
         isAdHocInput: false,
-        store,
       });
 
       vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -3088,9 +3136,15 @@ describe("agent_end", () => {
         },
       ]);
 
-      // resolveNext returns undefined (no next phase) → reset tracking and return
+      // resolveNext("s1") → "__pio-exit" → advancePhase runs the exit lifecycle,
+      // then resolveNext("__pio-exit") → undefined → { triggered: false }
       // Section 6 resets tracking and persists, then returns
       expect(sendMessageCalls).toHaveLength(0);
+      expect(vi.mocked(exitLifecycle.runExitLifecycle)).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(getState().exitOutcome).toBe("success");
+      expect(getState().markCompleteCalled).toBe(true); // set by __pio-exit
       expect(getState().currentIteration).toBe(1); // Reset on exhaustion
       expect(getState().filesWritten).toEqual([]); // Reset on exhaustion
       expect(getState().askUserCalled).toBe(false); // Reset on exhaustion
@@ -3102,10 +3156,9 @@ describe("agent_end", () => {
     it("returns naturally when all remaining phases are programmatic", async () => {
       const { pi, handlers, sendMessageCalls } = createMockPi();
       const { setupLoopEngine } = await import("./loop-engine");
-      const { initializeStore } = await import("./loop-engine");
       setupLoopEngine(pi);
 
-      const phases = [
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue([
         { id: "p1", title: "P1", instructions: "Do A" },
         {
           id: "p2",
@@ -3120,25 +3173,31 @@ describe("agent_end", () => {
             },
           ],
         },
-      ];
+      ]);
 
-      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
-        phases,
+      // Fire resources_discover so the PhaseManager carries the synthesized
+      // "__pio-exit" terminal node (production wiring).
+      const discoverHandlers = handlers.get("resources_discover");
+      for (const h of discoverHandlers!) {
+        await h(
+          { type: "resources_discover", cwd: ".", reason: "startup" },
+          mockCtx,
+        );
+      }
+
+      vi.mocked(capabilitySession.getCurrentCapabilityConfig).mockReturnValue(
+        makeFakeCapabilityConfig(),
       );
 
-      const store = initializeStore({});
-
+      // No phasesList here — keeps the discover-built phaseManager intact.
       setState({
         isActive: true,
         sessionId: "test-session-id",
         currentIteration: 1,
-        totalPhases: 2,
-        phasesList: phases,
         markCompleteCalled: false,
         filesWritten: ["/some/file.ts"],
         askUserCalled: true,
         isAdHocInput: false,
-        store,
       });
 
       vi.mocked(statePersistence.saveLoopEngineState).mockClear();
@@ -3150,11 +3209,16 @@ describe("agent_end", () => {
         },
       ]);
 
-      // resolveNext returns "p2" → advancePhase executes p2 (programmatic),
-      // then resolveNext from p2 returns undefined → { triggered: false }
+      // resolveNext("p1") → "p2" (programmatic variable phase), then
+      // resolveNext("p2") → "__pio-exit" (runs the exit lifecycle), then
+      // resolveNext("__pio-exit") → undefined → { triggered: false }
       // Section 6 resets tracking and persists, then returns
       expect(sendMessageCalls).toHaveLength(0);
-      expect(store.get("env")).toBe("staging"); // executePhase still ran
+      expect(getState().store!.get("env")).toBe("staging"); // executePhase still ran
+      expect(vi.mocked(exitLifecycle.runExitLifecycle)).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(getState().exitOutcome).toBe("success");
       expect(getState().currentIteration).toBe(1); // Reset on exhaustion
       expect(getState().filesWritten).toEqual([]);
       expect(getState().askUserCalled).toBe(false);
@@ -9112,5 +9176,494 @@ describe("advancePhase — integration", () => {
 
     // State persisted for each phase (executePhase for p1, p2, s3 + setupTurn for s3)
     expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// __pio-exit — automatic terminal exit phase
+// ---------------------------------------------------------------------------
+
+describe("__pio-exit — automatic terminal exit phase", () => {
+  async function fireResourcesDiscover(
+    handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+  ) {
+    const list = handlers.get("resources_discover");
+    expect(list).toBeDefined();
+    for (const h of list!) {
+      await h(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        mockCtx,
+      );
+    }
+  }
+
+  async function fireBeforeAgentStart(
+    handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+  ): Promise<unknown> {
+    const list = handlers.get("before_agent_start");
+    expect(list).toBeDefined();
+    let result: unknown;
+    for (const h of list!) {
+      result = await h({ type: "before_agent_start" }, {} as any);
+    }
+    return result;
+  }
+
+  async function fireAgentEnd(
+    handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+    messages: unknown[],
+  ) {
+    const list = handlers.get("agent_end");
+    expect(list).toBeDefined();
+    for (const h of list!) {
+      await h({ type: "agent_end", messages }, {} as any);
+    }
+  }
+
+  /**
+   * Invoke the synthesized terminal phase directly via its `run()` — same code
+   * path as traversal (executePhase's generic code branch), minus the walk.
+   */
+  async function runTerminalPhaseDirectly() {
+    const phase = getState().phaseManager!.getPhase("__pio-exit");
+    expect(phase).toBeDefined();
+    // Synthesis guarantees a code node with a function run — guard for clarity
+    if (!phase || typeof phase.run !== "function") {
+      throw new Error("__pio-exit terminal node missing or has no run()");
+    }
+    await phase.run({ state: getState() });
+  }
+
+  describe("terminal node synthesis", () => {
+    it("appends exactly one synthesized code phase after the declared phases", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      // Default fixture: 2 declared phases (step-1, step-2)
+      await fireResourcesDiscover(handlers);
+
+      const state = getState();
+      expect(state.totalPhases).toBe(3);
+      expect(state.phasesList).toHaveLength(3);
+      expect(state.phasesList[0].id).toBe("step-1");
+      expect(state.phasesList[2].id).toBe("__pio-exit");
+
+      const pm = state.phaseManager!;
+      // Traversal from the last declared phase lands on the terminal node
+      expect(pm.resolveNext("step-2")).toBe("__pio-exit");
+      // Append-only tail — first phase is unaffected
+      expect(pm.getFirstPhaseId()).toBe("step-1");
+
+      const node = pm.getPhase("__pio-exit")!;
+      expect(node.kind).toBe("code");
+      expect(typeof node.run).toBe("function");
+      expect(node.title).toBe("Exit lifecycle (automatic)");
+    });
+
+    it("skips synthesis for zero-phase capabilities (single-pass semantics preserved)", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue(
+        [],
+      );
+
+      setupLoopEngine(pi);
+      await fireResourcesDiscover(handlers);
+
+      const state = getState();
+      expect(state.totalPhases).toBe(0);
+      expect(state.phasesList).toEqual([]);
+      expect(state.phaseManager!.getPhase("__pio-exit")).toBeUndefined();
+    });
+  });
+
+  describe("setupTurn — lastLlmPhaseId capture", () => {
+    it("sets lastLlmPhaseId when an LLM phase's turn begins (before_agent_start)", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      await fireResourcesDiscover(handlers); // currentPhaseId: "step-1"
+      expect(getState().lastLlmPhaseId).toBeUndefined();
+
+      // Normal mode → advancePhase(step-1, preserve) → setupTurn on step-1
+      const result = (await fireBeforeAgentStart(handlers)) as {
+        message: { content: string };
+      };
+
+      expect(getState().lastLlmPhaseId).toBe("step-1");
+      expect(result.message.content).toContain('Instructions for "step-1"');
+    });
+
+    it("tracks the latest LLM phase across an agent_end advancement", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      await fireResourcesDiscover(handlers); // currentPhaseId: "step-1"
+
+      // Agent finishes step-1 → engine advances to step-2 (LLM phase)
+      await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+
+      expect(getState().currentPhaseId).toBe("step-2");
+      expect(getState().lastLlmPhaseId).toBe("step-2");
+    });
+  });
+
+  describe("exitLifecycleRun wrapper branches (direct invocation)", () => {
+    async function discoverWithDefaultFixture() {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+      await fireResourcesDiscover(handlers);
+    }
+
+    it("no capability config → warn + exitOutcome skipped, markCompleteCalled untouched", async () => {
+      await discoverWithDefaultFixture();
+      // Default: getCurrentCapabilityConfig returns null
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await runTerminalPhaseDirectly();
+      const warns = warnSpy.mock.calls.map((c) => String(c[0]));
+      warnSpy.mockRestore();
+
+      expect(
+        warns.some(
+          (m) => m.includes("__pio-exit") && m.includes("no capability config"),
+        ),
+      ).toBe(true);
+      expect(getState().exitOutcome).toBe("skipped");
+      expect(getState().markCompleteCalled).toBe(false);
+      expect(vi.mocked(exitLifecycle.runExitLifecycle)).not.toHaveBeenCalled();
+    });
+
+    it("lifecycle success → exitOutcome success + markCompleteCalled, notification logged", async () => {
+      await discoverWithDefaultFixture();
+      vi.mocked(capabilitySession.getCurrentCapabilityConfig).mockReturnValue(
+        makeFakeCapabilityConfig(),
+      );
+      const notification = "Next task enqueued: create-plan.";
+      vi.mocked(exitLifecycle.runExitLifecycle).mockResolvedValue({
+        success: true,
+        message: "Validation passed.",
+        notification,
+      });
+
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runTerminalPhaseDirectly();
+      const logs = logSpy.mock.calls.map((c) => String(c[0]));
+      logSpy.mockRestore();
+
+      expect(getState().exitOutcome).toBe("success");
+      expect(getState().markCompleteCalled).toBe(true);
+      expect(getState().exitFailureMessage).toBeUndefined();
+      expect(vi.mocked(exitLifecycle.runExitLifecycle)).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(logs).toContain(notification);
+    });
+
+    it("lifecycle throw → warn + exitOutcome skipped + markCompleteCalled (never blocks session end)", async () => {
+      await discoverWithDefaultFixture();
+      vi.mocked(capabilitySession.getCurrentCapabilityConfig).mockReturnValue(
+        makeFakeCapabilityConfig(),
+      );
+      vi.mocked(exitLifecycle.runExitLifecycle).mockRejectedValue(
+        new Error("lifecycle exploded"),
+      );
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      // The wrapper catches internally — direct invocation resolves cleanly
+      await runTerminalPhaseDirectly();
+      const warns = warnSpy.mock.calls.map((c) => String(c[0]));
+      warnSpy.mockRestore();
+
+      expect(
+        warns.some(
+          (m) => m.includes("__pio-exit") && m.includes("lifecycle exploded"),
+        ),
+      ).toBe(true);
+      expect(getState().exitOutcome).toBe("skipped");
+      expect(getState().markCompleteCalled).toBe(true);
+    });
+
+    it("lifecycle failure → exitOutcome failed + ad-hoc pause state, no markCompleteCalled", async () => {
+      await discoverWithDefaultFixture();
+      vi.mocked(capabilitySession.getCurrentCapabilityConfig).mockReturnValue(
+        makeFakeCapabilityConfig(),
+      );
+      // Simulate an LLM phase having run before exit (as setupTurn would have)
+      setState({ lastLlmPhaseId: "step-2" });
+      vi.mocked(exitLifecycle.runExitLifecycle).mockResolvedValue({
+        success: false,
+        message: "Missing GOAL.md",
+      });
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await runTerminalPhaseDirectly();
+      const warns = warnSpy.mock.calls.map((c) => String(c[0]));
+      warnSpy.mockRestore();
+
+      expect(getState().exitOutcome).toBe("failed");
+      expect(getState().exitFailureMessage).toBe("Missing GOAL.md");
+      expect(getState().currentPhaseId).toBe("step-2"); // pointed at last LLM phase
+      expect(getState().isAdHocInput).toBe(true);
+      expect(getState().adHocPhaseNotified).toBe(false);
+      expect(getState().markCompleteCalled).toBe(false);
+      expect(warns).toContain("Missing GOAL.md");
+    });
+  });
+
+  describe("traversal to workflow end (agent_end)", () => {
+    it("success: exit runs at traversal end, exhaustion hygiene runs, zero follow-ups", async () => {
+      const { pi, handlers, sendMessageCalls, sendUserMessageCalls } =
+        createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      await fireResourcesDiscover(handlers); // default 2-phase fixture
+      vi.mocked(capabilitySession.getCurrentCapabilityConfig).mockReturnValue(
+        makeFakeCapabilityConfig(),
+      );
+
+      // Simulate the agent having reached the last declared phase
+      setState({ currentPhaseId: "step-2", currentIteration: 1 });
+
+      vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+      await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+
+      const state = getState();
+      expect(vi.mocked(exitLifecycle.runExitLifecycle)).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(state.exitOutcome).toBe("success");
+      expect(state.markCompleteCalled).toBe(true);
+      // Exhaustion hygiene ran
+      expect(state.currentIteration).toBe(1);
+      expect(state.filesWritten).toEqual([]);
+      expect(state.askUserCalled).toBe(false);
+      expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
+      // No follow-up of any kind — the session ends naturally
+      expect(sendMessageCalls).toHaveLength(0);
+      expect(sendUserMessageCalls).toHaveLength(0);
+    });
+
+    it("no config: warns, skips lifecycle, exhaustion still runs, no throw", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      await fireResourcesDiscover(handlers);
+      // Default: getCurrentCapabilityConfig returns null
+
+      setState({ currentPhaseId: "step-2", currentIteration: 1 });
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+      const warns = warnSpy.mock.calls.map((c) => String(c[0]));
+      warnSpy.mockRestore();
+
+      expect(vi.mocked(exitLifecycle.runExitLifecycle)).not.toHaveBeenCalled();
+      expect(getState().exitOutcome).toBe("skipped");
+      expect(getState().markCompleteCalled).toBe(false);
+      expect(warns.some((m) => m.includes("no capability config"))).toBe(true);
+      // Exhaustion hygiene ran and the handler resolved without throwing
+      expect(getState().currentIteration).toBe(1);
+      expect(getState().filesWritten).toEqual([]);
+      expect(sendMessageCalls).toHaveLength(0);
+    });
+
+    it("throw: lifecycle rejection warns but traversal ends cleanly", async () => {
+      const { pi, handlers, sendMessageCalls } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      await fireResourcesDiscover(handlers);
+      vi.mocked(capabilitySession.getCurrentCapabilityConfig).mockReturnValue(
+        makeFakeCapabilityConfig(),
+      );
+      vi.mocked(exitLifecycle.runExitLifecycle).mockRejectedValue(
+        new Error("lifecycle exploded"),
+      );
+
+      setState({ currentPhaseId: "step-2", currentIteration: 1 });
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      // Resolves — no unhandled rejection, session not blocked
+      await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+      const warns = warnSpy.mock.calls.map((c) => String(c[0]));
+      warnSpy.mockRestore();
+
+      expect(warns.some((m) => m.includes("lifecycle exploded"))).toBe(true);
+      expect(getState().exitOutcome).toBe("skipped");
+      expect(getState().markCompleteCalled).toBe(true);
+      expect(sendMessageCalls).toHaveLength(0);
+    });
+  });
+
+  describe("exit failure — ad-hoc pause, no automatic retry", () => {
+    it("failure pauses in ad-hoc mode; /continue re-runs the last LLM phase and re-validates on exit (two-stage recovery)", async () => {
+      const M = "Missing GOAL.md (contract output not found)";
+      const {
+        pi,
+        handlers,
+        sendMessageCalls,
+        sendUserMessageCalls,
+        registeredCommands,
+      } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      await fireResourcesDiscover(handlers); // default 2-phase fixture
+      vi.mocked(capabilitySession.getCurrentCapabilityConfig).mockReturnValue(
+        makeFakeCapabilityConfig(),
+      );
+      // First exit run fails; the post-recovery second run succeeds
+      vi.mocked(exitLifecycle.runExitLifecycle)
+        .mockResolvedValueOnce({ success: false, message: M })
+        .mockResolvedValueOnce({
+          success: true,
+          message: "Validation passed.",
+        });
+
+      // Turn 1: agent finishes step-1 → engine advances to step-2 (LLM phase)
+      await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+      expect(getState().currentPhaseId).toBe("step-2");
+      expect(getState().lastLlmPhaseId).toBe("step-2");
+      expect(sendMessageCalls).toHaveLength(1); // step-2 instructions follow-up
+
+      // Turn 2: agent finishes step-2 → traversal reaches __pio-exit → failure
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+      const warns = warnSpy.mock.calls.map((c) => String(c[0]));
+      warnSpy.mockRestore();
+
+      // Failure state — ad-hoc pause armed, no automatic retry sent
+      expect(getState().exitOutcome).toBe("failed");
+      expect(getState().exitFailureMessage).toBe(M);
+      expect(getState().isAdHocInput).toBe(true);
+      expect(getState().adHocPhaseNotified).toBe(false);
+      expect(getState().currentPhaseId).toBe("step-2"); // = lastLlmPhaseId
+      expect(getState().markCompleteCalled).toBe(false);
+      expect(warns).toContain(M);
+      expect(sendMessageCalls).toHaveLength(1); // no new follow-up after failure
+      expect(sendUserMessageCalls).toHaveLength(0);
+      // Exhaustion hygiene ran
+      expect(getState().currentIteration).toBe(1);
+      expect(getState().filesWritten).toEqual([]);
+
+      // Live session: the ad-hoc pause message carries the failure detail
+      const paused = (await fireBeforeAgentStart(handlers)) as {
+        message: { customType: string; content: string };
+      };
+      expect(paused.message.customType).toBe("workflow-paused");
+      expect(paused.message.content).toContain(
+        "## Workflow Paused (Ad-hoc Mode)",
+      );
+      expect(paused.message.content).toContain(
+        `Session validation failed: ${M}`,
+      );
+
+      // User fixes the cause and runs /continue — clears ad-hoc flags only
+      const continueCmd = registeredCommands.get("continue");
+      expect(continueCmd).toBeDefined();
+      await continueCmd!.handler();
+      expect(getState().isAdHocInput).toBe(false);
+      expect(getState().adHocPhaseNotified).toBe(false);
+
+      // Next turn: the last LLM phase re-runs first (designed cost of recovery)
+      const resumed = (await fireBeforeAgentStart(handlers)) as {
+        message: { customType: string; content: string };
+      };
+      expect(resumed.message.customType).toBe("workflow-phase-instructions");
+      expect(resumed.message.content).toContain('Instructions for "step-2"');
+
+      // Turn 3: agent finishes step-2 again → __pio-exit re-runs → succeeds
+      await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+
+      expect(vi.mocked(exitLifecycle.runExitLifecycle)).toHaveBeenCalledTimes(
+        2,
+      );
+      expect(getState().exitOutcome).toBe("success");
+      expect(getState().markCompleteCalled).toBe(true);
+      expect(getState().exitFailureMessage).toBeUndefined(); // stale failure cleared
+      // No new follow-ups — session ends via exhaustion
+      expect(sendMessageCalls).toHaveLength(1);
+    });
+
+    it("restart after failure: persisted projection only → generic pause text, no automatic retry", async () => {
+      const M = "Missing GOAL.md (contract output not found)";
+      vi.mocked(statePersistence.loadLoopEngineState).mockReturnValue({
+        currentIteration: 1,
+        isAdHocInput: true,
+        currentPhaseId: "step-2",
+      });
+
+      const { pi, handlers, sendMessageCalls, sendUserMessageCalls } =
+        createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+      await fireResourcesDiscover(handlers); // rebuilds from persisted projection
+
+      expect(getState().isAdHocInput).toBe(true);
+      // In-memory failure fields are lost on restart by design
+      expect(getState().exitOutcome).toBeUndefined();
+      expect(getState().exitFailureMessage).toBeUndefined();
+
+      const paused = (await fireBeforeAgentStart(handlers)) as {
+        message: { content: string };
+      };
+      expect(paused.message.content).toContain(
+        "## Workflow Paused (Ad-hoc Mode)",
+      );
+      expect(paused.message.content).not.toContain("Session validation failed");
+      expect(paused.message.content).not.toContain(M);
+
+      // No automatic retry — the exit lifecycle never ran
+      expect(vi.mocked(exitLifecycle.runExitLifecycle)).not.toHaveBeenCalled();
+      expect(sendMessageCalls).toHaveLength(0);
+      expect(sendUserMessageCalls).toHaveLength(0);
+
+      vi.mocked(statePersistence.loadLoopEngineState).mockReset();
+    });
+  });
+
+  describe("no idempotency guard", () => {
+    it("re-traversal through __pio-exit re-runs the lifecycle and re-sets success state", async () => {
+      const { pi, handlers } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      await fireResourcesDiscover(handlers);
+      vi.mocked(capabilitySession.getCurrentCapabilityConfig).mockReturnValue(
+        makeFakeCapabilityConfig(),
+      );
+
+      // First traversal through the terminal node — success
+      setState({ currentPhaseId: "__pio-exit", isAdHocInput: false });
+      const first = await fireBeforeAgentStart(handlers);
+      expect(first).toBeUndefined(); // exhausted — no injection
+      expect(vi.mocked(exitLifecycle.runExitLifecycle)).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(getState().exitOutcome).toBe("success");
+      expect(getState().markCompleteCalled).toBe(true);
+
+      // Forced re-traversal (e.g. /goto __pio-exit) — runs again, no short-circuit
+      setState({
+        currentPhaseId: "__pio-exit",
+        isAdHocInput: false,
+        adHocPhaseNotified: false,
+      });
+      const second = await fireBeforeAgentStart(handlers);
+      expect(second).toBeUndefined();
+      expect(vi.mocked(exitLifecycle.runExitLifecycle)).toHaveBeenCalledTimes(
+        2,
+      );
+      expect(getState().exitOutcome).toBe("success");
+      expect(getState().markCompleteCalled).toBe(true);
+    });
   });
 });

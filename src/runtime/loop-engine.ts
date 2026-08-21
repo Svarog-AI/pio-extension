@@ -18,10 +18,15 @@
 
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { getCompiledWorkflowPhases } from "../capability-session";
+import {
+  getCompiledWorkflowPhases,
+  getCurrentCapabilityConfig,
+} from "../capability-session";
 import { CapState } from "../capability-state";
 import { getSessionConfig } from "../capability-utils";
 import { readDebugDisplay, resolveMaxIterations } from "../model-config";
+import type { ExitResult } from "./exit-lifecycle";
+import { runExitLifecycle } from "./exit-lifecycle";
 import { PhaseManager } from "./phase-manager";
 import type { PioSessionState } from "./session-state";
 import { getState, resetState, setState } from "./session-state";
@@ -410,6 +415,82 @@ export async function executePhase(
 }
 
 /**
+ * `__pio-exit` wrapper — the synthesized terminal code phase's run callback.
+ *
+ * Runs the capability exit lifecycle engine-side and is the single source of
+ * truth for exit-time session state mutation (runExitLifecycle owns no session
+ * state — it consumes only result.success / result.message).
+ *
+ * Branches, in order:
+ * 1. No capability config → warn + `{ exitOutcome: "skipped" }` (NO
+ *    markCompleteCalled — the session can't have validated anything).
+ * 2. runExitLifecycle success → `{ exitOutcome: "success", markCompleteCalled,
+ *    exitFailureMessage cleared }` + console.log(result.notification) when set
+ *    (restores the "Next task enqueued" visibility the tool result used to give).
+ * 3. Failure → warn + ad-hoc pause state pointed at lastLlmPhaseId (or the
+ *    current phase when no LLM turn ever ran). NO markCompleteCalled, NO
+ *    automatic retry — the session pauses for the user, who fixes the cause and
+ *    resumes via /continue (or a restart into persisted ad-hoc mode).
+ * 4. Throw → warn + `{ exitOutcome: "skipped", markCompleteCalled }` — never
+ *    block session end.
+ *
+ * There is NO idempotency guard: re-traversal (/continue, /goto __pio-exit,
+ * restart after done) re-runs the lifecycle, matching the removed tool's
+ * re-invocation-tolerant behavior. Accepted worst case: a duplicate
+ * transitions.json audit entry + postExecute re-run.
+ */
+async function exitLifecycleRun(ctx: CodeStepContext): Promise<void> {
+  const config = getCurrentCapabilityConfig();
+  if (!config) {
+    console.warn(
+      "[loop-engine] __pio-exit: no capability config available — skipping exit lifecycle.",
+    );
+    setState({ exitOutcome: "skipped" });
+    return;
+  }
+
+  let result: ExitResult;
+  try {
+    result = await runExitLifecycle(config);
+  } catch (err) {
+    // A throwing lifecycle must never block session end — treat as skipped.
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[loop-engine] __pio-exit: exit lifecycle threw — skipping exit lifecycle: ${message}`,
+    );
+    setState({ exitOutcome: "skipped", markCompleteCalled: true });
+    return;
+  }
+
+  if (result.success) {
+    setState({
+      exitOutcome: "success",
+      markCompleteCalled: true,
+      // Explicitly clear any stale failure text — the ad-hoc pause render also
+      // requires exitOutcome === "failed"; both guards are required.
+      exitFailureMessage: undefined,
+    });
+    // Surface the enqueue notification (reserved by runExitLifecycle for here)
+    if (result.notification) {
+      console.log(result.notification);
+    }
+    return;
+  }
+
+  // Exit failed — pause in ad-hoc mode. No automatic retry is sent by design.
+  const message = result.message ?? "Exit lifecycle failed.";
+  console.warn(message);
+  // ctx.state is the same live reference as getState() — read both fields from it.
+  setState({
+    exitOutcome: "failed",
+    exitFailureMessage: message,
+    currentPhaseId: ctx.state.lastLlmPhaseId ?? ctx.state.currentPhaseId,
+    isAdHocInput: true,
+    adHocPhaseNotified: false,
+  });
+}
+
+/**
  * Set up a new turn: adjust iteration, reset tracking, persist, and build payload.
  *
  * Modes:
@@ -442,8 +523,17 @@ export function setupTurn(mode: "reset" | "increment" | "preserve"): {
       break;
   }
 
-  // 2. Reset per-turn tracking (always, regardless of mode)
-  setState({ filesWritten: [], askUserCalled: false });
+  // 2. Reset per-turn tracking (always, regardless of mode).
+  // lastLlmPhaseId captures the phase whose LLM turn is beginning — read from
+  // live state (the caller advancePhase already set currentPhaseId before
+  // invoking setupTurn). Programmatic phases never call setupTurn, so this is
+  // only ever an LLM-phase id. __pio-exit uses it to point the ad-hoc pause
+  // at the real work phase after an exit failure.
+  setState({
+    filesWritten: [],
+    askUserCalled: false,
+    lastLlmPhaseId: state.currentPhaseId,
+  });
 
   // 3. Persist state
   _persistCurrentState();
@@ -574,9 +664,31 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       return;
     }
 
-    // Load workflow phases directly via typed getter.
+    // Load declared workflow phases via typed getter.
     // Missing phases is not an error — empty list means single-pass execution.
-    const phasesList = getCompiledWorkflowPhases() ?? [];
+    const declaredPhases = getCompiledWorkflowPhases() ?? [];
+
+    // Synthesize the terminal exit phase: one appended code node so traversal
+    // end ALWAYS runs the exit lifecycle, regardless of how the agent finished
+    // its work (no agent tool call required).
+    //
+    // Zero-declared-phase capabilities skip synthesis — synthesizing would fire
+    // exit on turn one before any work; they keep single-pass semantics.
+    // NOTE: a capability declaring its own "__pio-exit" phase id is a degenerate
+    // authoring error; PhaseManager last-wins means this synthesized node
+    // prevails (no special handling).
+    const phasesList =
+      declaredPhases.length === 0
+        ? declaredPhases
+        : [
+            ...declaredPhases,
+            {
+              id: "__pio-exit",
+              title: "Exit lifecycle (automatic)",
+              kind: "code" as const,
+              run: exitLifecycleRun,
+            },
+          ];
     const totalPhases = phasesList.length;
 
     // Create PhaseManager for ID-based lookups
@@ -656,13 +768,24 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       // Mark as notified so subsequent turns skip injection
       setState({ adHocPhaseNotified: true });
 
+      const baseContent =
+        `## Workflow Paused (Ad-hoc Mode)\n\n` +
+        `You were on "${phase.id}", iteration ${state.currentIteration}.\n\n` +
+        `Workflow execution is paused. Any prior instructions are no longer active — you can answer questions or help the user freely.`;
+
+      // Surface a LIVE exit failure (in-memory only — lost on restart by
+      // design). Both conditions are required: the success path clears
+      // exitFailureMessage, and a stale message must never render while
+      // exitOutcome is not "failed".
+      const content =
+        state.exitOutcome === "failed" && state.exitFailureMessage
+          ? `${baseContent}\n\nSession validation failed: ${state.exitFailureMessage}`
+          : baseContent;
+
       return {
         message: {
           customType: "workflow-paused",
-          content:
-            `## Workflow Paused (Ad-hoc Mode)\n\n` +
-            `You were on "${phase.id}", iteration ${state.currentIteration}.\n\n` +
-            `Workflow execution is paused. Any prior instructions are no longer active — you can answer questions or help the user freely.`,
+          content,
           display: readDebugDisplay(),
         },
       };

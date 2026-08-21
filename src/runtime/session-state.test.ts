@@ -33,6 +33,50 @@ describe("session-state", () => {
       expect(state.store).toBe(undefined);
       expect(state.projectRoot).toBe(undefined);
       expect(state.programmaticLog).toEqual([]);
+      expect(state.lastLlmPhaseId).toBeUndefined();
+      expect(state.exitOutcome).toBeUndefined();
+      expect(state.exitFailureMessage).toBeUndefined();
+    });
+  });
+
+  describe("in-memory exit fields (lastLlmPhaseId / exitOutcome / exitFailureMessage)", () => {
+    it("defaults to undefined on initial state", () => {
+      expect(getState().lastLlmPhaseId).toBeUndefined();
+      expect(getState().exitOutcome).toBeUndefined();
+      expect(getState().exitFailureMessage).toBeUndefined();
+    });
+
+    it("can be set via partial updates", () => {
+      setState({
+        lastLlmPhaseId: "step-2",
+        exitOutcome: "failed",
+        exitFailureMessage: "Validation failed.",
+      });
+
+      expect(getState().lastLlmPhaseId).toBe("step-2");
+      expect(getState().exitOutcome).toBe("failed");
+      expect(getState().exitFailureMessage).toBe("Validation failed.");
+    });
+
+    it("can clear exitFailureMessage with an explicit undefined (success path)", () => {
+      setState({ exitOutcome: "failed", exitFailureMessage: "boom" });
+      setState({ exitOutcome: "success", exitFailureMessage: undefined });
+
+      expect(getState().exitOutcome).toBe("success");
+      expect(getState().exitFailureMessage).toBeUndefined();
+    });
+
+    it("is reset to undefined by resetState (in-memory only — never persisted)", () => {
+      setState({
+        lastLlmPhaseId: "step-1",
+        exitOutcome: "skipped",
+        exitFailureMessage: "x",
+      });
+      resetState();
+
+      expect(getState().lastLlmPhaseId).toBeUndefined();
+      expect(getState().exitOutcome).toBeUndefined();
+      expect(getState().exitFailureMessage).toBeUndefined();
     });
   });
 
@@ -158,6 +202,9 @@ describe("session-state", () => {
         phaseManager: {} as PhaseManager,
         store,
         programmaticLog: [{ phaseId: "code-1", kind: "code", detail: [] }],
+        lastLlmPhaseId: "s1",
+        exitOutcome: "failed",
+        exitFailureMessage: "boom",
       });
 
       resetState();
@@ -178,6 +225,9 @@ describe("session-state", () => {
       expect(state.store).toBe(undefined);
       expect(state.projectRoot).toBe(undefined);
       expect(state.programmaticLog).toEqual([]);
+      expect(state.lastLlmPhaseId).toBeUndefined();
+      expect(state.exitOutcome).toBeUndefined();
+      expect(state.exitFailureMessage).toBeUndefined();
     });
   });
 

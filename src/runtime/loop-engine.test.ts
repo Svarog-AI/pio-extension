@@ -8998,6 +8998,57 @@ describe("code-step execution", () => {
     // The sequential await made the code-set variable visible to branch evaluation
     expect(getState().currentPhaseId).toBe("arm-then");
   });
+
+  it("a code phase as the final phase executes once and ends traversal without rendering (entry left pending)", async () => {
+    const { advancePhase } = await import("./loop-engine");
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const run = vi.fn(
+      (ctx: { state: import("./session-state").PioSessionState }) => {
+        ctx.state.store?.declare("last_flag", "string");
+        ctx.state.store?.set("last_flag", "string", "ran");
+      },
+    );
+
+    // Single-phase workflow where the only (thus final) phase is a code phase —
+    // the shape Step 5's synthesized __pio-exit terminal node takes.
+    const phases = [
+      { id: "c-last", title: "Code", kind: "code" as const, run },
+    ];
+
+    setState({
+      isActive: true,
+      sessionId: "code-session",
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: phases,
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+      currentPhaseId: "c-last",
+    });
+
+    const result = await advancePhase(store, "c-last", "reset");
+
+    // Traversal terminates — no LLM phase to stop at
+    expect(result.triggered).toBe(false);
+    expect(result.payload).toBeUndefined();
+    // run() still executes exactly once with the live state reference
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run.mock.calls[0][0].state).toBe(getState());
+    expect(store.get("last_flag")).toBe("ran");
+    // The log entry is appended but NOT rendered/cleared — no setupTurn ran.
+    // It stays pending (in-memory only) until the next render or session reset.
+    expect(getState().programmaticLog).toEqual([
+      { phaseId: "c-last", kind: "code", detail: [] },
+    ]);
+    // Single trailing persist per executePhase — same cadence as other kinds
+    expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("advancePhase — integration", () => {

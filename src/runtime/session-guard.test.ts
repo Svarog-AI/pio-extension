@@ -544,7 +544,7 @@ describe("setupSessionGuard — handler registration for new events", () => {
     setupSessionGuard(pi);
 
     // Assert: session-guard no longer registers a tool_call handler
-    // (markCompleteCalled is now set inside markCompleteTool.execute())
+    // (markCompleteCalled is set engine-side by the __pio-exit exit wrapper)
     const toolCallHandlers = handlers.get("tool_call");
     expect(toolCallHandlers).toBeUndefined();
   });

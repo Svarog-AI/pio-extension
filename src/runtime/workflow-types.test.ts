@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { getState } from "./session-state";
 import type {
   BranchRouting,
+  CodeStepContext,
   IfBranchRouting,
   SwitchBranchRouting,
   WorkflowPhase,
@@ -205,6 +207,61 @@ describe("workflow-types branch extensions", () => {
         caseFirst: { x: "x-1" },
       };
       expect(routing.caseFirst.x).toBe("x-1");
+    });
+  });
+
+  describe("code-step phase type", () => {
+    it("accepts 'code' as a valid kind", () => {
+      const phase: WorkflowPhase = {
+        id: "code-1",
+        title: "Code Step",
+        kind: "code",
+      };
+      expect(phase.kind).toBe("code");
+    });
+
+    it("accepts a synchronous run callback on a code phase", () => {
+      const phase: WorkflowPhase = {
+        id: "code-sync",
+        title: "Sync Code",
+        kind: "code",
+        run: (ctx) => {
+          // Type-level check: ctx exposes the full state
+          expect(ctx.state.isActive).toBe(false);
+        },
+      };
+      expect(typeof phase.run).toBe("function");
+    });
+
+    it("accepts an asynchronous run callback returning Promise<void>", async () => {
+      const phase: WorkflowPhase = {
+        id: "code-async",
+        title: "Async Code",
+        kind: "code",
+        run: async (ctx) => {
+          await Promise.resolve();
+          expect(ctx.state.currentPhaseId).toBe("");
+        },
+      };
+      const result = phase.run!({ state: getState() });
+      expect(result).toBeInstanceOf(Promise);
+      await result;
+    });
+
+    it("accepts a literal { state } object as CodeStepContext", () => {
+      const ctx: CodeStepContext = { state: getState() };
+      expect(ctx.state).toBe(getState());
+    });
+
+    it("has exactly the single 'state' member (compile-time shape pin)", () => {
+      // Fails to compile if a second member is added to CodeStepContext
+      type IsExact<T, U> =
+        (<G>() => G extends T ? 1 : 2) extends <G>() => G extends U ? 1 : 2
+          ? true
+          : false;
+      const hasExactlyStateMember: IsExact<keyof CodeStepContext, "state"> =
+        true;
+      expect(hasExactlyStateMember).toBe(true);
     });
   });
 

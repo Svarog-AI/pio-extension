@@ -11,6 +11,26 @@ import type { CapabilitySkills } from "../types";
 import type { PioSessionState } from "./session-state";
 
 // ---------------------------------------------------------------------------
+// Code-step context
+// ---------------------------------------------------------------------------
+
+/**
+ * Context passed to a `kind: "code"` phase's `run()` callback.
+ *
+ * A minimal additive seam exposing exactly one field — `state`. The wrapper
+ * exists purely so future additions become field additions to this interface
+ * rather than signature breaks to authored `run()` callbacks. There are no
+ * dedicated context methods and no control-flow API: code-phase authors reach
+ * everything through `ctx.state` (variables via `state.store`, contract I/O
+ * via `state.capState`, identifiers via `state.sessionId`/`state.projectRoot`),
+ * and routing is handled by variables plus declared branch phases.
+ */
+export interface CodeStepContext {
+  /** Read-only view of full loop-engine state — store, capState, sessionId, projectRoot, etc. are all reached through here */
+  readonly state: PioSessionState;
+}
+
+// ---------------------------------------------------------------------------
 // Workflow phase types
 // ---------------------------------------------------------------------------
 
@@ -152,8 +172,16 @@ export interface WorkflowPhase {
   /** Controls whether this phase may write non-contract project files. Default: false (blocked). Contract outputs in `write[]` always pass regardless of this flag. */
   allowProjectWrites?: boolean;
 
-  /** Phase execution kind — `'standard'` for normal phases, `'variable-definition'` for phases that declare and collect session variables, `'branch:if'` for conditional if/else branching, `'branch:switch'` for multi-way switch branching. Defaults to `'standard'`. */
-  kind?: "standard" | "variable-definition" | "branch:if" | "branch:switch";
+  /** Phase execution kind — `'standard'` for normal phases, `'variable-definition'` for phases that declare and collect session variables, `'branch:if'` for conditional if/else branching, `'branch:switch'` for multi-way switch branching, `'code'` for programmatic phases whose `run()` callback executes instead of an LLM turn. Defaults to `'standard'`. */
+  kind?:
+    | "standard"
+    | "variable-definition"
+    | "branch:if"
+    | "branch:switch"
+    | "code";
+
+  /** Programmatic phase callback — required when `kind` is `'code'`; must be absent for all other kinds (the pairing is enforced at runtime by `PhaseManager` construction, not by the type system). May be synchronous or asynchronous. */
+  run?: (ctx: CodeStepContext) => void | Promise<void>;
 
   /** Variables declared by this phase — meaningful only when `kind` is `'variable-definition'`. Each entry specifies name, type, and how the value is produced (`static`/`llm`/`computed`). */
   variables?: PhaseVariable[];

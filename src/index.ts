@@ -18,7 +18,6 @@ import {
 import { setupSessionInfrastructure } from "./capability-session";
 // Direct tools (non-AI tools/commands registered directly)
 import { setupDirectTools } from "./direct-tools";
-import { setupMarkComplete } from "./guards/mark-complete";
 import { setupValidation } from "./guards/validation";
 import { setupSessionGuard } from "./runtime/session-guard";
 // State machine — explicit registration (no side-effect imports)
@@ -64,7 +63,6 @@ export default async function (pi: ExtensionAPI) {
 
   // Shared session infrastructure (wired once)
   setupSessionInfrastructure(pi);
-  setupMarkComplete(pi);
   setupValidation(pi);
   setupSessionGuard(pi);
 

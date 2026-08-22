@@ -831,6 +831,7 @@ describe("extractPersistedState", () => {
       isAdHocInput: true,
       adHocPhaseNotified: false,
       currentPhaseId: "",
+      programmaticLog: [],
     });
 
     const result = extractPersistedState(getState());
@@ -866,6 +867,7 @@ describe("extractPersistedState", () => {
       isAdHocInput: false,
       adHocPhaseNotified: false,
       currentPhaseId: "",
+      programmaticLog: [],
       store,
     });
 
@@ -899,6 +901,7 @@ describe("extractPersistedState", () => {
       isAdHocInput: false,
       adHocPhaseNotified: false,
       currentPhaseId: "",
+      programmaticLog: [],
       store: null,
     });
 
@@ -924,6 +927,7 @@ describe("extractPersistedState", () => {
       isAdHocInput: false,
       adHocPhaseNotified: false,
       currentPhaseId: "",
+      programmaticLog: [],
       store: undefined,
     });
 
@@ -952,12 +956,55 @@ describe("extractPersistedState", () => {
       isAdHocInput: false,
       adHocPhaseNotified: false,
       currentPhaseId: "",
+      programmaticLog: [],
       store,
     });
 
     const result = extractPersistedState(getState());
 
     expect(result.vars).toEqual({});
+  });
+
+  it("never projects in-memory exit fields (lastLlmPhaseId / exitOutcome / exitFailureMessage)", async () => {
+    const { extractPersistedState } = await import("./state-persistence");
+    const { __testSetState, getState } = await import("./session-state");
+
+    __testSetState({
+      isActive: true,
+      markCompleteCalled: false,
+      turnCount: 10,
+
+      currentIteration: 2,
+      totalPhases: 3,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: true,
+      adHocPhaseNotified: false,
+      currentPhaseId: "step-2",
+      programmaticLog: [],
+      // All three new in-memory fields set — none may leak into the projection
+      lastLlmPhaseId: "step-2",
+      exitOutcome: "failed",
+      exitFailureMessage: "Validation failed.",
+    });
+
+    const result = extractPersistedState(getState());
+
+    expect(result).toEqual({
+      currentIteration: 2,
+      isAdHocInput: true,
+      currentPhaseId: "step-2",
+    });
+    // Exactly the persisted keys — no new fields appear as keys in the output
+    expect(Object.keys(result).sort()).toEqual([
+      "currentIteration",
+      "currentPhaseId",
+      "isAdHocInput",
+    ]);
+    expect(result).not.toHaveProperty("lastLlmPhaseId");
+    expect(result).not.toHaveProperty("exitOutcome");
+    expect(result).not.toHaveProperty("exitFailureMessage");
   });
 });
 

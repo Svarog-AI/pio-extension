@@ -94,9 +94,9 @@ const RECOVERY_PROMPT =
  * 3. `before_agent_start` — resets the completion flag at the start of each agent run.
  *
  * Note: `markCompleteCalled` is no longer set here via a `tool_call` handler.
- * The `pio_mark_complete` tool sets this flag internally (in `mark-complete.ts`)
- * only after successful validation, avoiding the race condition where validation
- * failures still set the flag.
+ * The `__pio-exit` exit wrapper (`exitLifecycleRun` in `loop-engine.ts`) sets
+ * this flag only after successful validation, avoiding the race condition where
+ * validation failures still set the flag.
  */
 export function setupSessionGuard(pi: ExtensionAPI) {
   // Read threshold once at setup time — config changes require extension reload

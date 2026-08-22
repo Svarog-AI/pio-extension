@@ -1,9 +1,10 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveCapabilityConfig } from "../capability-config";
+import type { ExitResult } from "../runtime/exit-lifecycle";
+import type { CapabilityConfig } from "../types";
 
 // Mock prompt-compiler so it doesn't interfere with integration tests
 vi.mock("../prompt-compiler", () => ({
@@ -21,7 +22,7 @@ vi.mock("../prompt-compiler", () => ({
 
 function createTempDir(): string {
   return fs.mkdtempSync(
-    path.join(os.tmpdir(), "pio-mark-complete-integration-"),
+    path.join(os.tmpdir(), "pio-exit-lifecycle-integration-"),
   );
 }
 
@@ -32,28 +33,6 @@ function cleanup(tempDir: string): void {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Create a mock ExtensionAPI that captures the registered tool.
- */
-function makeMockPi(): {
-  mockPi: ExtensionAPI;
-  getRegisteredTool: () =>
-    | { name: string; label: string; execute: Function }
-    | undefined;
-} {
-  let tool: { name: string; label: string; execute: Function } | undefined;
-
-  const mockPi = {
-    registerTool: (t: { name: string; label: string; execute: Function }) => {
-      tool = t;
-    },
-    on: vi.fn(),
-    setSessionName: vi.fn(),
-  } as unknown as ExtensionAPI;
-
-  return { mockPi, getRegisteredTool: () => tool };
-}
 
 /**
  * Set up the goal workspace structure for review-task integration tests.
@@ -90,41 +69,15 @@ function setupGoalWorkspace(
   return { goalDir, stepDir };
 }
 
-/**
- * Create a mock context with the given config data.
- * getSessionConfig() now stores only { capability, sessionParams } in the entry
- * and reconstructs the full config via resolveCapabilityConfig().
- */
-function makeMockCtx(configData: Record<string, unknown>, cwd: string) {
-  return {
-    sessionManager: {
-      getEntries: () => [
-        {
-          type: "custom" as const,
-          customType: "pio-config" as const,
-          data: {
-            capability: configData.capability,
-            workspaceDir: configData.workspaceDir,
-            sessionParams: configData.sessionParams,
-          },
-        },
-      ],
-    },
-    cwd,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Integration tests — real postValidate, real frontmatter parsing, real markers
 // ---------------------------------------------------------------------------
 
-describe("pio_mark_complete integration — review-task with real frontmatter", () => {
+describe("exit lifecycle integration — review-task with real frontmatter", () => {
   let tempCwd: string;
   let _goalDir: string;
   let stepDir: string;
-  let getRegisteredTool: () =>
-    | { name: string; label: string; execute: Function }
-    | undefined;
+  let runExitLifecycle: (config: CapabilityConfig) => Promise<ExitResult>;
   let cwdSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
@@ -154,19 +107,16 @@ describe("pio_mark_complete integration — review-task with real frontmatter", 
       "execute-task": executeTaskContract,
     });
 
-    // Import and explicitly register goalDrivenDevelopment before importing mark-complete.
+    // Import and explicitly register goalDrivenDevelopment before importing the exit lifecycle.
     const { setupPioWorkflowMachine } = await import(
       "../state-machines/pio-workflow-machine"
     );
     setupPioWorkflowMachine();
 
-    // Import mark-complete fresh (no mocks in this file)
-    const mod = await import("../guards/mark-complete");
-
-    // Capture registered tool via mockPi
-    const { mockPi, getRegisteredTool: getTool } = makeMockPi();
-    mod.setupMarkComplete(mockPi);
-    getRegisteredTool = getTool;
+    // Import the exit lifecycle fresh (after resetModules) so its state-machine
+    // imports reference the freshly registered machine registry.
+    const exitMod = await import("../runtime/exit-lifecycle");
+    runExitLifecycle = exitMod.runExitLifecycle;
 
     // Mock process.cwd() so enqueueTask writes to our temp directory
     cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempCwd);
@@ -207,19 +157,8 @@ APPROVED
       queueKey: "test-goal",
     });
 
-    const mockCtx = makeMockCtx(
-      config! as unknown as Record<string, unknown>,
-      tempCwd,
-    );
-
     // Act
-    const result = await getRegisteredTool()?.execute(
-      "test-id",
-      {},
-      new AbortController(),
-      () => {},
-      mockCtx,
-    );
+    const result = await runExitLifecycle(config!);
 
     // Assert: APPROVED marker exists
     expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(true);
@@ -238,8 +177,10 @@ APPROVED
     expect(queueData.capability).toBe("evolve-plan");
     expect(queueData.params.stepNumber).toBe(2);
 
-    // Assert: session terminated
-    expect(result.terminate).toBe(true);
+    // Assert: exit result reports success and names the enqueued capability
+    expect(result.success).toBe(true);
+    expect(result.message).toContain("Validation passed");
+    expect(result.notification).toContain("evolve-plan");
   });
 
   it("valid REJECTED frontmatter creates REJECTED marker, enqueues execute-task", async () => {
@@ -271,19 +212,8 @@ REJECTED
       queueKey: "test-goal",
     });
 
-    const mockCtx = makeMockCtx(
-      config! as unknown as Record<string, unknown>,
-      tempCwd,
-    );
-
     // Act
-    const result = await getRegisteredTool()?.execute(
-      "test-id",
-      {},
-      new AbortController(),
-      () => {},
-      mockCtx,
-    );
+    const result = await runExitLifecycle(config!);
 
     // Assert: REJECTED marker exists, APPROVED doesn't
     // COMPLETED is NOT deleted — framework auto-cleanup handles it when execute-task re-runs
@@ -303,10 +233,13 @@ REJECTED
     expect(queueData.capability).toBe("execute-task");
     expect(queueData.params.stepNumber).toBe(1);
 
-    expect(result.terminate).toBe(true);
+    // Assert: exit result reports success and names the enqueued capability
+    expect(result.success).toBe(true);
+    expect(result.message).toContain("Validation passed");
+    expect(result.notification).toContain("execute-task");
   });
 
-  it("invalid frontmatter (missing decision) returns error, no markers created", async () => {
+  it("invalid frontmatter (missing decision) fails, no markers created", async () => {
     // Arrange: create REVIEW.md with invalid frontmatter (missing decision field)
     const reviewContent = `---
 criticalIssues: 0
@@ -333,23 +266,12 @@ Missing decision field.
       queueKey: "test-goal",
     });
 
-    const mockCtx = makeMockCtx(
-      config! as unknown as Record<string, unknown>,
-      tempCwd,
-    );
-
     // Act
-    const result = await getRegisteredTool()?.execute(
-      "test-id",
-      {},
-      new AbortController(),
-      () => {},
-      mockCtx,
-    );
+    const result = await runExitLifecycle(config!);
 
-    // Assert: error message mentions the missing field
-    expect(result.content[0].text).toContain("decision");
-    expect(result.terminate).toBeFalsy();
+    // Assert: raw failure message names the missing field
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("decision");
 
     // Assert: no markers created
     expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(false);
@@ -365,7 +287,7 @@ Missing decision field.
     expect(fs.existsSync(queuePath)).toBe(false);
   });
 
-  it("invalid frontmatter (invalid decision value) returns error", async () => {
+  it("invalid frontmatter (invalid decision value) fails", async () => {
     // Arrange: create REVIEW.md with invalid decision value
     const reviewContent = `---
 decision: PENDING
@@ -393,30 +315,19 @@ Invalid decision value.
       queueKey: "test-goal",
     });
 
-    const mockCtx = makeMockCtx(
-      config! as unknown as Record<string, unknown>,
-      tempCwd,
-    );
-
     // Act
-    const result = await getRegisteredTool()?.execute(
-      "test-id",
-      {},
-      new AbortController(),
-      () => {},
-      mockCtx,
-    );
+    const result = await runExitLifecycle(config!);
 
-    // Assert: error message mentions the invalid value
-    expect(result.content[0].text).toContain("decision");
-    expect(result.terminate).toBeFalsy();
+    // Assert: raw failure message names the invalid field value
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("decision");
 
     // Assert: no markers created
     expect(fs.existsSync(path.join(stepDir, "APPROVED"))).toBe(false);
     expect(fs.existsSync(path.join(stepDir, "REJECTED"))).toBe(false);
   });
 
-  it("missing REVIEW.md file returns error", async () => {
+  it("missing REVIEW.md file fails validation", async () => {
     // Arrange: set up workspace but DON'T create REVIEW.md
     const goalDir = path.join(tempCwd, ".pio", "goals", "test-goal");
     const stepDir = path.join(goalDir, "S01");
@@ -440,24 +351,12 @@ Invalid decision value.
       queueKey: "test-goal",
     });
 
-    const mockCtx = makeMockCtx(
-      config! as unknown as Record<string, unknown>,
-      tempCwd,
-    );
-
     // Act
-    const result = await getRegisteredTool()?.execute(
-      "test-id",
-      {},
-      new AbortController(),
-      () => {},
-      mockCtx,
-    );
+    const result = await runExitLifecycle(config!);
 
-    // Assert: validation failed (missing REVIEW.md)
-    expect(result.content[0].text).toContain("Validation failed");
-    expect(result.content[0].text).toContain("REVIEW.md");
-    expect(result.terminate).toBeFalsy();
+    // Assert: validation failed (missing REVIEW.md) — raw message, no tool prefix
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("REVIEW.md");
   });
 
   it("non-review capability passes without postValidate/postExecute", async () => {
@@ -498,23 +397,12 @@ Invalid decision value.
       queueKey: "test-goal",
     });
 
-    const mockCtx = makeMockCtx(
-      config! as unknown as Record<string, unknown>,
-      tempCwd,
-    );
-
     // Act
-    const result = await getRegisteredTool()?.execute(
-      "test-id",
-      {},
-      new AbortController(),
-      () => {},
-      mockCtx,
-    );
+    const result = await runExitLifecycle(config!);
 
-    // Assert: validation passed, session terminated
-    expect(result.content[0].text).toContain("Validation passed");
-    expect(result.terminate).toBe(true);
+    // Assert: exit result reports success
+    expect(result.success).toBe(true);
+    expect(result.message).toContain("Validation passed");
 
     // Assert: next task enqueued (review-task)
     const queuePath = path.join(

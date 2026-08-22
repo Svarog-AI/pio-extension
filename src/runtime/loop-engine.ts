@@ -18,10 +18,15 @@
 
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { getCompiledWorkflowPhases } from "../capability-session";
+import {
+  getCompiledWorkflowPhases,
+  getCurrentCapabilityConfig,
+} from "../capability-session";
 import { CapState } from "../capability-state";
 import { getSessionConfig } from "../capability-utils";
 import { readDebugDisplay, resolveMaxIterations } from "../model-config";
+import type { ExitResult } from "./exit-lifecycle";
+import { runExitLifecycle } from "./exit-lifecycle";
 import { PhaseManager } from "./phase-manager";
 import type { PioSessionState } from "./session-state";
 import { getState, resetState, setState } from "./session-state";
@@ -31,7 +36,11 @@ import {
   loadLoopEngineState,
   saveLoopEngineState,
 } from "./state-persistence";
-import type { PhaseVariable, WorkflowPhase } from "./workflow-types";
+import type {
+  CodeStepContext,
+  PhaseVariable,
+  WorkflowPhase,
+} from "./workflow-types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -239,6 +248,8 @@ export function buildVariablePhaseInstructions(
  * Build CustomMessage content for the current phase with authority framing.
  *
  * Format:
+ *   [optional: ## Programmatic activity since your last turn section]
+ *
  *   ## Instructions for "phase-id"
  *
  *   Follow the instructions below. Do not do anything outside these instructions.
@@ -250,6 +261,13 @@ export function buildVariablePhaseInstructions(
  *   <phase instructions>
  *
  *   [optional: **Retry focus:** <loopMessage>]
+ *
+ * When `state.programmaticLog` is non-empty (code steps executed since the
+ * last LLM turn), a "## Programmatic activity since your last turn" section
+ * is prepended — one bullet per entry in execution order, with the error
+ * detail after a colon when present. The log clears exactly when the section
+ * is rendered, as a single unit via setState merge. An empty log leaves the
+ * prompt unchanged; the no-phase early return leaves the log untouched.
  *
  * @internal — Used by both `before_agent_start` (first run) and `agent_end` (phase transitions).
  */
@@ -270,6 +288,22 @@ export function buildPhaseInstructions(state: PioSessionState): string {
     `You are on "${phase.id}", iteration ${state.currentIteration}.\n\n---\n\n` +
     instructionBody;
 
+  // Surface programmatic activity (code steps) executed since the last LLM
+  // turn, then clear the log as a single unit — exactly when rendered.
+  const log = state.programmaticLog;
+  if (log.length > 0) {
+    const lines = log
+      .map(
+        (e) =>
+          `• ${e.phaseId} (${e.kind})${
+            e.detail.length > 0 ? `: ${e.detail.join(", ")}` : ""
+          }`,
+      )
+      .join("\n");
+    setState({ programmaticLog: [] });
+    return `## Programmatic activity since your last turn\n\n${lines}\n\n${prompt}`;
+  }
+
   return prompt;
 }
 
@@ -281,12 +315,16 @@ export function buildPhaseInstructions(state: PioSessionState): string {
  * Check if a phase can execute without an agent turn.
  *
  * A programmatic phase is a phase where there's nothing for
- * the LLM to do. Standard phases always return `false`.
+ * the LLM to do: code phases (whose `run()` executes inline),
+ * branch phases, and pure-variable-definition phases. Standard
+ * phases always return `false`.
  *
  * @param phase - WorkflowPhase to check
  * @returns `true` if the phase is purely programmatic (no LLM involvement)
  */
 export function isProgrammatic(phase: WorkflowPhase): boolean {
+  // Code phases execute inline — no agent turn needed
+  if (phase.kind === "code") return true;
   // Branch phases execute inline — no agent turn needed
   if (phase.kind?.startsWith("branch:")) return true;
   if (phase.kind !== "variable-definition" || !phase.variables?.length) {
@@ -325,22 +363,131 @@ function _handleExhaustion(): void {
 /**
  * Execute the programmatic parts of a phase.
  *
+ * For code phases (`kind: "code"`), builds the `CodeStepContext`
+ * (`{ state }` — the single live state reference), awaits
+ * `phase.run!(ctx)`, and appends one entry to `state.programmaticLog`
+ * (`detail` holds the thrown error's message when `run()` throws,
+ * empty otherwise). A throwing `run()` never blocks traversal:
+ * it is caught, warned via console, and traversal continues.
+ *
  * For variable-definition phases, this sets static variables and runs
  * computed callbacks. For standard phases, `preparePhaseVariables()`
  * is a no-op internally (kind guard returns early) but is still called.
- * Always persists state after execution.
+ * Always persists state after execution (single trailing persist for
+ * all phase kinds — the log itself is in-memory only).
  *
  * @param phase - WorkflowPhase to execute
  * @param store - SessionVariableStore for variable operations
  */
-export function executePhase(
+export async function executePhase(
   phase: WorkflowPhase,
   store: SessionVariableStore,
-): void {
-  if (phase.kind === "variable-definition" && phase.variables?.length) {
+): Promise<void> {
+  if (phase.kind === "code") {
+    // Single live state reference — no copies, no extra fields.
+    const ctx: CodeStepContext = { state: getState() };
+
+    let detail: string[] = [];
+    try {
+      // PhaseManager construction guarantees a code phase has a function run
+      // (TypeError otherwise) — no code phase reaches traversal without one.
+      // biome-ignore lint/style/noNonNullAssertion: invariant enforced by PhaseManager
+      await phase.run!(ctx);
+    } catch (err) {
+      // Warn-and-continue — a throwing code step never blocks traversal.
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[loop-engine] Code step "${phase.id}" threw: ${message}`);
+      detail = [message];
+    }
+
+    // One log entry per executed code phase (append via setState merge —
+    // never mutate the array in place).
+    setState({
+      programmaticLog: [
+        ...getState().programmaticLog,
+        { phaseId: phase.id, kind: "code", detail },
+      ],
+    });
+  } else if (phase.kind === "variable-definition" && phase.variables?.length) {
     preparePhaseVariables(phase, store);
   }
   _persistCurrentState();
+}
+
+/**
+ * `__pio-exit` wrapper — the synthesized terminal code phase's run callback.
+ *
+ * Runs the capability exit lifecycle engine-side and is the single source of
+ * truth for exit-time session state mutation (runExitLifecycle owns no session
+ * state — it consumes only result.success / result.message).
+ *
+ * Branches, in order:
+ * 1. No capability config → warn + `{ exitOutcome: "skipped" }` (NO
+ *    markCompleteCalled — the session can't have validated anything).
+ * 2. runExitLifecycle success → `{ exitOutcome: "success", markCompleteCalled,
+ *    exitFailureMessage cleared }` + console.log(result.notification) when set
+ *    (restores the "Next task enqueued" visibility the tool result used to give).
+ * 3. Failure → warn + ad-hoc pause state pointed at lastLlmPhaseId (or the
+ *    current phase when no LLM turn ever ran). NO markCompleteCalled, NO
+ *    automatic retry — the session pauses for the user, who fixes the cause and
+ *    resumes via /continue (or a restart into persisted ad-hoc mode).
+ * 4. Throw → warn + `{ exitOutcome: "skipped", markCompleteCalled }` — never
+ *    block session end.
+ *
+ * There is NO idempotency guard: re-traversal (/continue, /goto __pio-exit,
+ * restart after done) re-runs the lifecycle, matching the removed tool's
+ * re-invocation-tolerant behavior. Accepted worst case: a duplicate
+ * transitions.json audit entry + postExecute re-run.
+ */
+async function exitLifecycleRun(ctx: CodeStepContext): Promise<void> {
+  const config = getCurrentCapabilityConfig();
+  if (!config) {
+    console.warn(
+      "[loop-engine] __pio-exit: no capability config available — skipping exit lifecycle.",
+    );
+    setState({ exitOutcome: "skipped" });
+    return;
+  }
+
+  let result: ExitResult;
+  try {
+    result = await runExitLifecycle(config);
+  } catch (err) {
+    // A throwing lifecycle must never block session end — treat as skipped.
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[loop-engine] __pio-exit: exit lifecycle threw — skipping exit lifecycle: ${message}`,
+    );
+    setState({ exitOutcome: "skipped", markCompleteCalled: true });
+    return;
+  }
+
+  if (result.success) {
+    setState({
+      exitOutcome: "success",
+      markCompleteCalled: true,
+      // Explicitly clear any stale failure text — the ad-hoc pause render also
+      // requires exitOutcome === "failed"; both guards are required.
+      exitFailureMessage: undefined,
+    });
+    // Surface the enqueue notification (reserved by runExitLifecycle for here)
+    if (result.notification) {
+      console.log(result.notification);
+    }
+    return;
+  }
+
+  // Exit failed — pause in ad-hoc mode. No automatic retry is sent by design.
+  const message = result.message ?? "Exit lifecycle failed.";
+  console.warn(message);
+  // ctx.state is the same live reference as getState() — read both fields from it.
+  setState({
+    exitOutcome: "failed",
+    exitFailureMessage: message,
+    currentPhaseId: ctx.state.lastLlmPhaseId ?? ctx.state.currentPhaseId,
+    isAdHocInput: true,
+    adHocPhaseNotified: false,
+  });
 }
 
 /**
@@ -376,8 +523,17 @@ export function setupTurn(mode: "reset" | "increment" | "preserve"): {
       break;
   }
 
-  // 2. Reset per-turn tracking (always, regardless of mode)
-  setState({ filesWritten: [], askUserCalled: false });
+  // 2. Reset per-turn tracking (always, regardless of mode).
+  // lastLlmPhaseId captures the phase whose LLM turn is beginning — read from
+  // live state (the caller advancePhase already set currentPhaseId before
+  // invoking setupTurn). Programmatic phases never call setupTurn, so this is
+  // only ever an LLM-phase id. __pio-exit uses it to point the ad-hoc pause
+  // at the real work phase after an exit failure.
+  setState({
+    filesWritten: [],
+    askUserCalled: false,
+    lastLlmPhaseId: state.currentPhaseId,
+  });
 
   // 3. Persist state
   _persistCurrentState();
@@ -402,19 +558,23 @@ export function setupTurn(mode: "reset" | "increment" | "preserve"): {
  * When stopping at a turn-triggering phase, calls `setupTurn(mode)` to
  * manage iteration, reset tracking, persist, and build the message payload.
  *
+ * Async: each `executePhase` is awaited before the next phase is visited —
+ * a code step's variable writes (including async ones) must be visible to
+ * a later branch phase's condition within the same traversal.
+ *
  * @param store - SessionVariableStore for variable operations
  * @param startPhaseId - Phase ID string to start from
  * @param mode - How to adjust the iteration counter ("reset", "increment", "preserve")
  * @returns Object with `triggered` flag and optional `payload` (CustomMessage data)
  */
-export function advancePhase(
+export async function advancePhase(
   store: SessionVariableStore,
   startPhaseId: string,
   mode: "reset" | "increment" | "preserve",
-): {
+): Promise<{
   triggered: boolean;
   payload?: { customType: string; content: string; display: boolean };
-} {
+}> {
   const state = getState();
   const phaseManager = state.phaseManager;
   if (!phaseManager) return { triggered: false };
@@ -429,7 +589,7 @@ export function advancePhase(
 
     setState({ currentPhaseId: currentId });
 
-    executePhase(phase, store);
+    await executePhase(phase, store);
 
     if (isProgrammatic(phase)) {
       const nextId = phaseManager.resolveNext(currentId, getState());
@@ -504,9 +664,31 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       return;
     }
 
-    // Load workflow phases directly via typed getter.
+    // Load declared workflow phases via typed getter.
     // Missing phases is not an error — empty list means single-pass execution.
-    const phasesList = getCompiledWorkflowPhases() ?? [];
+    const declaredPhases = getCompiledWorkflowPhases() ?? [];
+
+    // Synthesize the terminal exit phase: one appended code node so traversal
+    // end ALWAYS runs the exit lifecycle, regardless of how the agent finished
+    // its work (no agent tool call required).
+    //
+    // Zero-declared-phase capabilities skip synthesis — synthesizing would fire
+    // exit on turn one before any work; they keep single-pass semantics.
+    // NOTE: a capability declaring its own "__pio-exit" phase id is a degenerate
+    // authoring error; PhaseManager last-wins means this synthesized node
+    // prevails (no special handling).
+    const phasesList =
+      declaredPhases.length === 0
+        ? declaredPhases
+        : [
+            ...declaredPhases,
+            {
+              id: "__pio-exit",
+              title: "Exit lifecycle (automatic)",
+              kind: "code" as const,
+              run: exitLifecycleRun,
+            },
+          ];
     const totalPhases = phasesList.length;
 
     // Create PhaseManager for ID-based lookups
@@ -586,13 +768,24 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       // Mark as notified so subsequent turns skip injection
       setState({ adHocPhaseNotified: true });
 
+      const baseContent =
+        `## Workflow Paused (Ad-hoc Mode)\n\n` +
+        `You were on "${phase.id}", iteration ${state.currentIteration}.\n\n` +
+        `Workflow execution is paused. Any prior instructions are no longer active — you can answer questions or help the user freely.`;
+
+      // Surface a LIVE exit failure (in-memory only — lost on restart by
+      // design). Both conditions are required: the success path clears
+      // exitFailureMessage, and a stale message must never render while
+      // exitOutcome is not "failed".
+      const content =
+        state.exitOutcome === "failed" && state.exitFailureMessage
+          ? `${baseContent}\n\nSession validation failed: ${state.exitFailureMessage}`
+          : baseContent;
+
       return {
         message: {
           customType: "workflow-paused",
-          content:
-            `## Workflow Paused (Ad-hoc Mode)\n\n` +
-            `You were on "${phase.id}", iteration ${state.currentIteration}.\n\n` +
-            `Workflow execution is paused. Any prior instructions are no longer active — you can answer questions or help the user freely.`,
+          content,
           display: readDebugDisplay(),
         },
       };
@@ -608,7 +801,11 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     const phaseStore = getState().store;
     if (!phaseStore) return; // no store — skip injection
 
-    const result = advancePhase(phaseStore, state.currentPhaseId, "preserve");
+    const result = await advancePhase(
+      phaseStore,
+      state.currentPhaseId,
+      "preserve",
+    );
 
     if (!result.triggered) {
       // All phases exhausted — no injection needed
@@ -888,7 +1085,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       _handleExhaustion();
       return;
     }
-    const result = advancePhase(phaseStore, nextId, "reset");
+    const result = await advancePhase(phaseStore, nextId, "reset");
 
     if (!result.triggered) {
       // No more non-programmatic phases — same exhaustion handling

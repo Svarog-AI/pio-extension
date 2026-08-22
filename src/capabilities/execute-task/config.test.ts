@@ -4,6 +4,8 @@ import * as path from "node:path";
 import { vi } from "vitest";
 import { stepFolderName } from "../../fs-utils";
 import { readPendingTask } from "../../queues";
+import type { ExitResult } from "../../runtime/exit-lifecycle";
+import type { CapabilityConfig } from "../../types";
 import config, { register } from "./config";
 
 // ---------------------------------------------------------------------------
@@ -275,13 +277,13 @@ describe("execute-task declarative markers", () => {
 });
 
 // ---------------------------------------------------------------------------
-// E2E: mark-complete creates marker file via declarative markers
+// E2E: exit lifecycle creates marker file via declarative markers
 // ---------------------------------------------------------------------------
 
-describe("e2e: mark-complete with declarative markers", () => {
+describe("e2e: exit lifecycle with declarative markers", () => {
   let tempDir: string;
   let goalDir: string;
-  let registeredTool: any;
+  let runExitLifecycle: (config: CapabilityConfig) => Promise<ExitResult>;
 
   beforeEach(async () => {
     vi.resetModules();
@@ -289,74 +291,24 @@ describe("e2e: mark-complete with declarative markers", () => {
     goalDir = path.join(tempDir, ".pio", "goals", "test-goal", "S01");
     fs.mkdirSync(goalDir, { recursive: true });
 
-    // Mock the dependencies
-    const mockValidateOutputs = vi.fn().mockReturnValue({ success: true });
-    const mockDispatch = vi.fn().mockReturnValue([]);
-    const mockGetMachine = vi.fn();
-    const mockRecordTransition = vi.fn();
-    const mockEnqueueTask = vi.fn();
-
+    // Mock the dependencies — dispatch returns [] so no enqueue side effects
     vi.doMock("../../guards/validation", () => ({
-      validateOutputs: mockValidateOutputs,
+      validateOutputs: vi.fn().mockReturnValue({ success: true }),
     }));
     vi.doMock("../../state-machines", () => ({
-      dispatch: mockDispatch,
-      getMachine: mockGetMachine,
+      dispatch: vi.fn().mockReturnValue([]),
+      getMachine: vi.fn(),
       goalDrivenDevelopment: {},
-      recordTransition: mockRecordTransition,
+      recordTransition: vi.fn(),
     }));
     vi.doMock("../../queues", async (importOriginal: Function) => ({
       ...(await importOriginal()),
-      enqueueTask: mockEnqueueTask,
+      enqueueTask: vi.fn(),
     }));
 
-    const mockResolveCapabilityConfig = vi
-      .fn()
-      .mockImplementation((_cwd: string, params: Record<string, unknown>) => {
-        const {
-          capability: _cap,
-          workspaceDir,
-          contract,
-          postValidate,
-          postExecute,
-          fileCleanup,
-          prepareSession,
-          ...sessionParams
-        } = params ?? {};
-        return {
-          capability: params?.capability ?? "execute-task",
-          workspaceDir: workspaceDir ?? goalDir,
-          sessionParams,
-          contract: contract ?? config.contract,
-          prepareSession,
-          postValidate,
-          postExecute,
-          fileCleanup,
-        };
-      });
-
-    vi.doMock("../../capability-config", () => ({
-      resolveCapabilityConfig: mockResolveCapabilityConfig,
-      resolveContractPath: vi
-        .fn()
-        .mockImplementation((contractPath: string, baseDir: string) => {
-          return path.join(baseDir, contractPath);
-        }),
-    }));
-
-    registeredTool = undefined;
-
-    const mod = await import("../../guards/mark-complete");
-
-    const mockPi = {
-      registerTool: (tool: { name: string; execute: Function }) => {
-        registeredTool = tool;
-      },
-      on: vi.fn(),
-      setSessionName: vi.fn(),
-    };
-
-    mod.setupMarkComplete(mockPi as any);
+    // Import the exit lifecycle fresh — config is passed in directly, no lookup
+    const exitMod = await import("../../runtime/exit-lifecycle");
+    runExitLifecycle = exitMod.runExitLifecycle;
   });
 
   afterEach(() => {
@@ -372,38 +324,23 @@ describe("e2e: mark-complete with declarative markers", () => {
       "utf-8",
     );
 
-    const mockCtx = {
-      sessionManager: {
-        getEntries: () => [
-          {
-            type: "custom",
-            customType: "pio-config",
-            data: {
-              capability: "execute-task",
-              workspaceDir: goalDir,
-              contract: config.contract,
-              sessionParams: {
-                goalName: "test-goal",
-                stepNumber: 1,
-                queueKey: "S01",
-              },
-            },
-          },
-        ],
+    const sessionConfig: CapabilityConfig = {
+      capability: "execute-task",
+      workspaceDir: goalDir,
+      contract: config.contract,
+      sessionParams: {
+        goalName: "test-goal",
+        stepNumber: 1,
+        queueKey: "S01",
       },
+      allowProjectWrites: false,
     };
 
     // Act
-    const result = await registeredTool?.execute(
-      "test-id",
-      {},
-      new AbortController(),
-      () => {},
-      mockCtx,
-    );
+    const result = await runExitLifecycle(sessionConfig);
 
     // Assert: validation passed, COMPLETED marker created
-    expect(result.terminate).toBe(true);
+    expect(result.success).toBe(true);
     expect(fs.existsSync(path.join(goalDir, "COMPLETED"))).toBe(true);
     expect(fs.existsSync(path.join(goalDir, "BLOCKED"))).toBe(false);
   });
@@ -416,38 +353,23 @@ describe("e2e: mark-complete with declarative markers", () => {
       "utf-8",
     );
 
-    const mockCtx = {
-      sessionManager: {
-        getEntries: () => [
-          {
-            type: "custom",
-            customType: "pio-config",
-            data: {
-              capability: "execute-task",
-              workspaceDir: goalDir,
-              contract: config.contract,
-              sessionParams: {
-                goalName: "test-goal",
-                stepNumber: 1,
-                queueKey: "S01",
-              },
-            },
-          },
-        ],
+    const sessionConfig: CapabilityConfig = {
+      capability: "execute-task",
+      workspaceDir: goalDir,
+      contract: config.contract,
+      sessionParams: {
+        goalName: "test-goal",
+        stepNumber: 1,
+        queueKey: "S01",
       },
+      allowProjectWrites: false,
     };
 
     // Act
-    const result = await registeredTool?.execute(
-      "test-id",
-      {},
-      new AbortController(),
-      () => {},
-      mockCtx,
-    );
+    const result = await runExitLifecycle(sessionConfig);
 
     // Assert: validation passed, BLOCKED marker created
-    expect(result.terminate).toBe(true);
+    expect(result.success).toBe(true);
     expect(fs.existsSync(path.join(goalDir, "BLOCKED"))).toBe(true);
     expect(fs.existsSync(path.join(goalDir, "COMPLETED"))).toBe(false);
   });

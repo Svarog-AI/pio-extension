@@ -1,5 +1,8 @@
 import type { PioSessionState } from "../../runtime/session-state";
-import type { WorkflowPhase } from "../../runtime/workflow-types";
+import type {
+  CodeStepContext,
+  WorkflowPhase,
+} from "../../runtime/workflow-types";
 
 export default [
   // ---------------------------------------------------------------------------
@@ -474,13 +477,57 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 20: Final Report
+  // Phase 20: Code Step — Session Variable Set
+  // kind: "code" — run() executes inline during traversal, no LLM turn
+  // ---------------------------------------------------------------------------
+  {
+    id: "code-step-set-var",
+    title: "Code Step — Session Variable Set",
+    kind: "code",
+    run: (ctx: CodeStepContext) => {
+      ctx.state.store?.set("code_step_flag", "string", "code-set");
+    },
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 21: Code Step — Intentional Failure
+  // run() throws on purpose — proves warn-and-continue traversal
+  // ---------------------------------------------------------------------------
+  {
+    id: "code-step-fail",
+    title: "Code Step — Intentional Failure",
+    kind: "code",
+    run: () => {
+      throw new Error("intentional playground failure: warn-and-continue");
+    },
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 22: Code Step — Verification (LLM turn)
+  // first agent turn after both code steps — sees the activity section
+  // ---------------------------------------------------------------------------
+  {
+    id: "code-step-verify",
+    title: "Code Step — Verification",
+    instructions: `This phase verifies the two code steps that just ran (\`code-step-set-var\` and \`code-step-fail\`) — they execute inline during traversal and never trigger agent turns of their own.
+
+Follow these steps:
+1. Call \`listVars\` and confirm \`code_step_flag\` is set to "code-set" — written by \`code-step-set-var\`'s \`run()\` via \`ctx.state.store\` (note \`setVar\` would not work here: it is restricted to variable-definition phases)
+2. Look at the "## Programmatic activity since your last turn" section at the top of these instructions — it should contain exactly two lines, in execution order:
+   - \`• code-step-set-var (code)\` — no error detail, ran without throwing
+   - \`• code-step-fail (code): intentional playground failure: warn-and-continue\` — error detail after the colon, its run threw
+   Quote both lines verbatim in your report
+3. Report "Code-step test PASSED" and explain: a throwing code step never blocks traversal — the engine caught the error, warned on the console, logged it, and continued to this phase; the error line above is the only evidence channel for the failure`,
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 23: Final Report
   // ---------------------------------------------------------------------------
   {
     id: "final-report",
     title: "Final Report",
     write: ["playground-output"],
-    instructions: `This is the final phase. Write a comprehensive test report in \`PLAYGROUND.md\` covering all phases (1–19).
+    instructions: `This is the final phase. Write a comprehensive test report in \`PLAYGROUND.md\` covering all phases (1–22).
 
 Follow these steps:
 1. Write \`PLAYGROUND.md\` with a section for each phase summarizing behavior observed
@@ -497,7 +544,11 @@ Follow these steps:
    b. \`branch:switch\` (callback form): confirm \`switch_callback_result === "approved-matched"\` — the callback \`on\` returned "approved" and routed correctly
    c. \`branch:switch\` ($varName form): confirm \`switch_varname_result\` is set to some "-matched" value — the variable was resolved and a case or defaultBranch matched
    d. Document branch routing observations: which paths were taken, how multi-phase arms executed sequentially (step-1 → step-2 inside then arm), and post-branch continuation behavior
-6. Include any unexpected behaviors or discrepancies
-7. This is the final phase — produce a complete, well-structured report in \`PLAYGROUND.md\` covering all 19 phases total`,
+6. **Code-step verification (\`code-step-set-var\`, \`code-step-fail\`, \`code-step-verify\`):**
+   a. Variable set by code: re-check with \`listVars\` that \`code_step_flag === "code-set"\` — set by the code phase's \`run()\` via \`ctx.state.store\`, not by \`setVar\` (which is restricted to variable-definition phases)
+   b. Warn-and-continue for a throwing code step: from your \`code-step-verify\` turn, quote **verbatim** both lines of the "## Programmatic activity since your last turn" section — \`• code-step-set-var (code)\` and \`• code-step-fail (code): intentional playground failure: warn-and-continue\` — and explain that traversal continued past the thrown error to reach \`code-step-verify\` and this phase; the error detail after the colon is the only evidence channel for a throwing code step
+   c. Document where each line was observed (both in one section, at the top of the \`code-step-verify\` turn's instructions, rendered in execution order) and explain why the two code phases never triggered agent turns of their own
+7. Include any unexpected behaviors or discrepancies
+8. This is the final phase — produce a complete, well-structured report in \`PLAYGROUND.md\` covering all 22 phases total`,
   },
 ] satisfies WorkflowPhase[];

@@ -29,7 +29,11 @@ export interface PioSessionState {
   /** True when running inside a PIO capability sub-session. */
   isActive: boolean;
 
-  /** True when `pio_mark_complete` was called during the current agent run. */
+  /**
+   * True once the `__pio-exit` terminal code phase has completed the run
+   * (exit lifecycle succeeded, or threw-and-skipped); set by the engine-side
+   * wrapper in `loop-engine.ts`, reset at `before_agent_start`.
+   */
   markCompleteCalled: boolean;
 
   /** Turn counter for refinement-loop detection. Increments on every turn, resets at `before_agent_start`. */
@@ -83,6 +87,18 @@ export interface PioSessionState {
 
   /** Resolved project root absolute path. In-memory only — not persisted. Set during resources_discover from ctx.cwd. */
   projectRoot?: string;
+
+  /** Log of executed code phases (one entry per executed `kind: "code"` phase, appended at execution time). In-memory only — not persisted. `detail` carries error messages only: the thrown error's message when the phase's `run()` threw, an empty array otherwise. */
+  programmaticLog: Array<{ phaseId: string; kind: string; detail: string[] }>;
+
+  /** Id of the last LLM phase whose turn began (set by setupTurn — programmatic phases never call it). In-memory only — not persisted (lost on restart by design). Used to point the ad-hoc pause message and `/continue` resumption at the real work phase after an `__pio-exit` failure. */
+  lastLlmPhaseId?: string;
+
+  /** Outcome of the most recent `__pio-exit` run: "success" | "failed" | "skipped". In-memory only — not persisted (lost on restart by design). Set by the engine-side exit wrapper in loop-engine. */
+  exitOutcome?: "success" | "failed" | "skipped";
+
+  /** The `ExitResult.message` captured when `__pio-exit` failed; rendered in the ad-hoc pause message while the session is live (lost on restart by design). Cleared (explicit undefined) when a later exit run succeeds. */
+  exitFailureMessage?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +126,10 @@ function createInitialState(): PioSessionState {
     currentPhaseId: "",
     phaseManager: undefined,
     projectRoot: undefined,
+    programmaticLog: [],
+    lastLlmPhaseId: undefined,
+    exitOutcome: undefined,
+    exitFailureMessage: undefined,
   };
 }
 

@@ -461,6 +461,18 @@ export function getSessionParams(): Record<string, unknown> | undefined {
   return { ...enrichedSessionParams };
 }
 
+/**
+ * Return the module-cached CapabilityConfig for the current session, or
+ * `null` when unset (non-pio session, or before resources_discover ran).
+ *
+ * Returns the live object reference — callers must treat it as read-only.
+ * The loop engine's `__pio-exit` wrapper uses this to reach the config at
+ * exit time without its own state.
+ */
+export function getCurrentCapabilityConfig(): CapabilityConfig | null {
+  return currentConfig === undefined ? null : currentConfig;
+}
+
 /** Exported for testing — returns the raw enrichedSessionParams (not a copy). */
 export function getEnrichedSessionParamsForTesting():
   | Record<string, unknown>

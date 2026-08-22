@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { PhaseManager } from "./phase-manager";
-import type { WorkflowPhase } from "./workflow-types";
+import type { CodeStepContext, WorkflowPhase } from "./workflow-types";
 
 // ---------------------------------------------------------------------------
 // Branch helpers
@@ -46,6 +46,14 @@ function makePhase(id: string, title = id): WorkflowPhase {
 
 function makePhases(ids: string[]): WorkflowPhase[] {
   return ids.map((id) => makePhase(id));
+}
+
+/** A valid code phase — kind "code" paired with a function run. */
+function makeCodePhase(
+  id: string,
+  run: (ctx: CodeStepContext) => void | Promise<void> = () => {},
+): WorkflowPhase {
+  return { id, title: id, kind: "code", run };
 }
 
 // ---------------------------------------------------------------------------
@@ -869,6 +877,153 @@ describe("PhaseManager", () => {
       const pm = new PhaseManager([]);
 
       expect(pm.listIds()).toEqual([]);
+    });
+  });
+
+  describe("kind/run shape validation", () => {
+    it("throws TypeError naming the phase id when a kind:code phase lacks run", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("a"),
+        { id: "no-run", title: "No Run", kind: "code" },
+        makePhase("b"),
+      ];
+
+      let error: unknown;
+      try {
+        new PhaseManager(phases);
+      } catch (e) {
+        error = e;
+      }
+
+      expect(error).toBeInstanceOf(TypeError);
+      expect(String((error as Error).message)).toContain("no-run");
+    });
+
+    it("throws TypeError when a code phase's run is not a function", () => {
+      const phases: WorkflowPhase[] = [
+        {
+          id: "bad-run",
+          title: "Bad Run",
+          kind: "code",
+          run: "not-a-function" as unknown as NonNullable<WorkflowPhase["run"]>,
+        },
+      ];
+
+      expect(() => new PhaseManager(phases)).toThrow(TypeError);
+    });
+
+    it("throws TypeError naming the phase id and kind when a standard phase carries run", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("a"),
+        {
+          id: "stray-run",
+          title: "Stray Run",
+          kind: "standard",
+          run: () => {},
+        },
+        makePhase("b"),
+      ];
+
+      let error: unknown;
+      try {
+        new PhaseManager(phases);
+      } catch (e) {
+        error = e;
+      }
+
+      expect(error).toBeInstanceOf(TypeError);
+      const message = String((error as Error).message);
+      expect(message).toContain("stray-run");
+      expect(message).toContain("standard");
+    });
+
+    it("throws TypeError when a phase with omitted kind carries run", () => {
+      const phases: WorkflowPhase[] = [
+        { id: "no-kind-run", title: "No Kind Run", run: () => {} },
+      ];
+
+      expect(() => new PhaseManager(phases)).toThrow(TypeError);
+    });
+
+    it("throws TypeError for a code phase nested in a branch arm that lacks run (recursion)", () => {
+      const phases: WorkflowPhase[] = [
+        makeBranchIf(
+          "branch",
+          [
+            makePhase("x"),
+            { id: "nested-code", title: "Nested Code", kind: "code" },
+          ],
+          [makePhase("y")],
+        ),
+      ];
+
+      let error: unknown;
+      try {
+        new PhaseManager(phases);
+      } catch (e) {
+        error = e;
+      }
+
+      expect(error).toBeInstanceOf(TypeError);
+      expect(String((error as Error).message)).toContain("nested-code");
+    });
+  });
+
+  describe("code-phase flattening and routing", () => {
+    it("flattens a valid code phase as an ordinary node in construction order", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("a"),
+        makeCodePhase("code-1"),
+        makePhase("b"),
+      ];
+      const pm = new PhaseManager(phases);
+
+      expect(pm.listIds()).toEqual(["a", "code-1", "b"]);
+      expect(pm.getPhase("code-1")).toBe(phases[1]);
+    });
+
+    it("routes through a code phase with linear successor links", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("a"),
+        makeCodePhase("code-1"),
+        makePhase("b"),
+      ];
+      const pm = new PhaseManager(phases);
+
+      expect(pm.resolveNext("a")).toBe("code-1");
+      expect(pm.resolveNext("code-1")).toBe("b");
+      expect(pm.resolveNext("b")).toBeUndefined();
+    });
+
+    it("gives a code phase identical routing semantics to an equivalent standard phase", () => {
+      const codePm = new PhaseManager([
+        makePhase("a"),
+        makeCodePhase("mid"),
+        makePhase("b"),
+      ]);
+      const stdPm = new PhaseManager([
+        makePhase("a"),
+        makePhase("mid"),
+        makePhase("b"),
+      ]);
+
+      expect(codePm.listIds()).toEqual(stdPm.listIds());
+      for (const id of codePm.listIds()) {
+        // No conditional routing: resolution without state matches standard phases exactly
+        expect(codePm.resolveNext(id)).toBe(stdPm.resolveNext(id));
+      }
+    });
+
+    it("flattens a valid code phase nested in a branch arm and routes it to post-branch", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        makeBranchIf("branch", [makeCodePhase("arm-code")], [makePhase("y")]),
+        makePhase("z"),
+      ];
+      const pm = new PhaseManager(phases);
+
+      expect(pm.listIds()).toEqual(["prev", "branch", "arm-code", "y", "z"]);
+      expect(pm.resolveNext("arm-code")).toBe("z");
     });
   });
 });

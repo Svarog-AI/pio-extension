@@ -28,7 +28,6 @@ All devDependencies run at development time or via pi's TypeScript runtime. The 
 ```
 index.ts (async) ──┬── setupSkills()          → skills auto-discovery (filesystem scan)
                    ├── setupSessionInfrastructure() → capability-session.ts (was session-capability.ts)
-                   ├── setupMarkComplete()    → guards/mark-complete.ts
                    ├── setupValidation()      → guards/validation.ts
                    ├── setupSessionGuard()    → runtime/session-guard.ts (migrated from guards/)
                    ├── setupLoopEngine()      → runtime/loop-engine.ts (bounded iteration loop, replaces step nudging)
@@ -36,14 +35,15 @@ index.ts (async) ──┬── setupSkills()          → skills auto-discover
                    └── discoverCapabilities() → capability-discovery.ts (auto-discovers 10 directory packages + registers via registerCapability()), followed by setDiscoveredContracts() for runtime contract caching
 
 Runtime package:
-  runtime/loop-engine.ts      — Bounded iteration loop engine: resources_discover (creates PhaseManager), before_agent_start, turn_end, agent_end, input handlers; /goto and /continue commands; ${name} template interpolation
+  runtime/loop-engine.ts      — Bounded iteration loop engine: resources_discover (creates PhaseManager; synthesizes __pio-exit terminal exit phase), before_agent_start, turn_end, agent_end, input handlers; /goto and /continue commands; ${name} template interpolation; kind: "code" programmatic phase execution
+  runtime/exit-lifecycle.ts   — runExitLifecycle(config): engine-side capability exit lifecycle (validateOutputs → postValidate → dispatch/enqueueTask/recordTransition + cleanup[] deletion → applyMarkers → postExecute → fileCleanup); stateless — owns no session state; invoked by the __pio-exit wrapper
   runtime/session-store.ts    — SessionVariableStore (two-layer variable system, setVar/getVar/listVars tools, type enforcement + coercion)
   runtime/phase-manager.ts    — PhaseManager: depth-first tree flattening, phase registry (id → phase), resolveNext (sequential via `_routing`, conditional via `_conditionalRouting` for branch:if/branch:switch), listIds, getFirstPhaseId
 
   runtime/state-persistence.ts — File-based persistence for loop engine state + writable runtime variables + currentPhaseId (load/save JSON by session ID, atomic writes)
-  runtime/session-state.ts    — PioSessionState singleton (markCompleteCalled, currentPhase, currentPhaseId, phaseManager, iteration tracking, sessionId, store, shared by guard + engine)
+  runtime/session-state.ts    — PioSessionState singleton (markCompleteCalled, currentPhase, currentPhaseId, phaseManager, iteration tracking, sessionId, store, shared by guard + engine; in-memory-only programmaticLog/lastLlmPhaseId/exitOutcome/exitFailureMessage)
   runtime/session-guard.ts    — Turn recovery + dead-turn detection (migrated from guards/)
-  runtime/workflow-types.ts   — StepState, TerminationCondition, LoopWhileCondition, PhaseVariableKind, PhaseVariable types + extended WorkflowPhase fields (kind includes `branch:if`/`branch:switch`) + branch routing types (IfBranchRouting, SwitchBranchRouting, BranchRouting)
+  runtime/workflow-types.ts   — StepState, TerminationCondition, LoopWhileCondition, PhaseVariableKind, PhaseVariable, CodeStepContext types + extended WorkflowPhase fields (kind includes `branch:if`/`branch:switch`/`code`) + branch routing types (IfBranchRouting, SwitchBranchRouting, BranchRouting)
 
 Capability infrastructure:
   capability-package.ts  — CapabilityPackageConfig, WorkflowPhase (extended with minIterations, maxIterations, terminateWhen, loopMessage, write), FrontmatterSchemaDeclaration types + layout constants
@@ -64,7 +64,7 @@ Shared modules:
   model-config.ts        — resolveModelForCapability(), readTurnThreshold(), readPioWorkspaceDir(). Reads ~/.pi/pio-config.yaml
 ```
 
-**Removed modules:** `src/frontmatter-schemas.ts` (schemas now in capability-local `schemas.ts`), `src/prompts/` directory (prompts are component files inside capability packages), `src/guards/step-nudging.ts` (replaced by `runtime/loop-engine.ts`). `src/guards/session-guard.ts` moved to `runtime/session-guard.ts`. Pio-specific skills (`pio`, `pio-planning`, `pio-project-knowledge`, `pio-jira`, `grill-me`, `write-a-skill`) moved from `src/skills/` to `src/skills.old/` (out of auto-discovery).
+**Removed modules:** `src/frontmatter-schemas.ts` (schemas now in capability-local `schemas.ts`), `src/prompts/` directory (prompts are component files inside capability packages), `src/guards/step-nudging.ts` (replaced by `runtime/loop-engine.ts`). `src/guards/session-guard.ts` moved to `runtime/session-guard.ts`. Pio-specific skills (`pio`, `pio-planning`, `pio-project-knowledge`, `pio-jira`, `grill-me`, `write-a-skill`) moved from `src/skills/` to `src/skills.old/` (out of auto-discovery). The `pio_mark_complete` tool (definition, `setupMarkComplete` registration, and step-position guard) was removed from `src/guards/mark-complete.ts` — the module now holds only the marker engine (`applyMarkers`, `cleanupMarkers`; name kept as a live import path); session exit runs engine-side via `runtime/exit-lifecycle.ts` invoked by the synthesized `__pio-exit` terminal code phase.
 
 ## Data Flow Between Services
 
@@ -100,14 +100,19 @@ Tool call (pio_create_goal, etc.)
 ### Validation Completion Flow
 
 ```
-Agent calls pio_mark_complete
-  → validateOutputs() checks expected files exist
-  → applyMarkers() creates markers from contract.markers declarations (reads frontmatter, creates matched marker, deletes stale markers)
-  → postExecute callback runs (backward compatibility for non-migrated capabilities)
-  → If `stateMachineId` in session params: look up machine via `getMachine()`, dispatch explicitly against that machine. Otherwise: `dispatch(undefined, ...)` queries all registered machines
-    — 1 result → auto-advance (enqueueTask) — enqueued task params include top-level `stateMachineId` from transition result
-    — >1 results → recommend /pio-transition (no auto-advance)
-    — 0 results → terminal state (no action)
-  → recordTransition() appends to transitions.json audit log
-  → writeLastTask() updates LAST_TASK.json
+Traversal reaches workflow end → synthesized `__pio-exit` terminal code phase runs automatically
+(replaces the removed pio_mark_complete tool — no agent action required)
+  → runExitLifecycle(config) in runtime/exit-lifecycle.ts, fixed step order:
+    1. validateOutputs() checks expected files exist — failure returns immediately (no side effects); session pauses in ad-hoc mode
+    2. postValidate hook (can fail to keep the session alive)
+    3. Transition routing: if `stateMachineId` in session params, look up machine via `getMachine()` and dispatch explicitly; otherwise `dispatch(undefined, ...)` queries all registered machines
+       — 1 result → auto-advance (enqueueTask) — enqueued task params include top-level `stateMachineId` from transition result
+       — >1 results → recommend /pio-transition (no auto-advance)
+       — 0 results → normal success (terminal capability; tail steps still run)
+       recordTransition() appends to transitions.json audit log (same enrichedParams object as enqueueTask); resolver-declared `cleanup[]` inputs are deleted
+    4a. applyMarkers() creates markers from contract.markers declarations (reads frontmatter, creates matched marker, deletes stale markers)
+    4b. postExecute hook runs (non-fatal — errors warn and continue)
+    5. fileCleanup deletes declared absolute paths
+  Failure recovery: NO automatic retry — ad-hoc pause with `Session validation failed: <msg>`;
+  user `/continue` (or restart into paused mode) re-runs __pio-exit → re-validates → enqueues on success
 ```

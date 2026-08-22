@@ -15,6 +15,7 @@ From code patterns observed in source files:
 - **Naming:** camelCase for functions/variables, PascalCase for interfaces/types, UPPER_SNAKE_CASE for constants
 - **File structure:** Sections separated by `// ---------------------------------------------------------------------------` comment dividers
 - **Line length:** No hard limit enforced, but long lines are typically wrapped at ~120 chars
+- **Module header comments:** Present tense — describe what the module is and does. No removal/migration narratives ("replaces X", "the former Y tool") or history in file headers
 
 No `.editorconfig`, `.prettierrc`, or ESLint configuration exists. Formatting conventions are established through code patterns rather than tooling.
 

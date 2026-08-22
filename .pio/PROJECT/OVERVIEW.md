@@ -19,7 +19,7 @@ Developed by Svarog AI. Licensed under MIT. Repository: `github.com:Svarog-AI/pi
 
 ## Repository Structure
 
-The `src/prompts/` directory was removed — prompts are now component files inside each capability directory package (`role.md`, `workflow.ts`, `guidelines.md`). Direct tools (init, delete-goal, list-goals, parent, create-issue, goal-from-issue) are consolidated in `src/direct-tools.ts`. The `src/frontmatter-schemas.ts` module was deleted — schemas now live in capability-local `schemas.ts` files. The `src/goal-state.ts` module was deleted — replaced by `src/capability-state.ts` (CapState, contract-backed lazy file access). The `src/guards/step-nudging.ts` module was deleted — replaced by the runtime loop engine (`src/runtime/loop-engine.ts`). Session-guard moved from `src/guards/` to `src/runtime/`. Most pio-specific skills were moved out of auto-discovery to `src/skills.old/`; only `pio-git` and `test-driven-development` remain in active discovery.
+The `src/prompts/` directory was removed — prompts are now component files inside each capability directory package (`role.md`, `workflow.ts`, `guidelines.md`). Direct tools (init, delete-goal, list-goals, parent, create-issue, goal-from-issue) are consolidated in `src/direct-tools.ts`. The `src/frontmatter-schemas.ts` module was deleted — schemas now live in capability-local `schemas.ts` files. The `src/goal-state.ts` module was deleted — replaced by `src/capability-state.ts` (CapState, contract-backed lazy file access). The `src/guards/step-nudging.ts` module was deleted — replaced by the runtime loop engine (`src/runtime/loop-engine.ts`). Session-guard moved from `src/guards/` to `src/runtime/`. Most pio-specific skills were moved out of auto-discovery to `src/skills.old/`; only `pio-git` and `test-driven-development` remain in active discovery. The `pio_mark_complete` tool was removed — session exit now runs automatically: the loop engine synthesizes a terminal code phase (`__pio-exit`) that invokes the exit lifecycle (`src/runtime/exit-lifecycle.ts`). The loop engine also supports a generic programmatic phase kind (`kind: "code"`) whose `run()` callback executes TypeScript in place of an LLM turn.
 
 ```
 pio-extension/
@@ -37,11 +37,13 @@ pio-extension/
 │   │   └── next-task.ts         # /pio-next-task command (legacy single-file module)
 │   ├── guards/                # Event-handling guards (file protection, session lifecycle)
 │   │   ├── validation.ts        — File protection + frontmatter validation (readOnly/writeAllowlist)
-│   │   └── mark-complete.ts     — pio_mark_complete tool + setupMarkComplete() (step-aware with terminate: true)
+│   │   └── mark-complete.ts     — Marker engine: applyMarkers/cleanupMarkers for declarative contract.markers (invoked from runtime/exit-lifecycle.ts)
 │   ├── runtime/               # Runtime loop engine + shared session state
-│   │   ├── loop-engine.ts       — Bounded iteration loop: resources_discover, before_agent_start, turn_end, agent_end, input handlers; /goto and /continue commands; ${name} template interpolation
+│   │   ├── loop-engine.ts       — Bounded iteration loop: resources_discover, before_agent_start, turn_end, agent_end, input handlers; /goto and /continue commands; ${name} template interpolation; kind: "code" programmatic phases; synthesizes the __pio-exit terminal exit phase
 │   │   ├── loop-engine.test.ts  — Colocated tests for loop engine
-│   │   ├── session-state.ts     — PioSessionState singleton (markCompleteCalled, currentPhase, currentPhaseId, phaseManager, iteration tracking)
+│   │   ├── exit-lifecycle.ts    — runExitLifecycle(): engine-side capability exit (validate → postValidate → dispatch/enqueue/record + cleanup → markers → postExecute → fileCleanup); invoked by __pio-exit
+│   │   ├── exit-lifecycle.test.ts — Colocated tests for the exit lifecycle
+│   │   ├── session-state.ts     — PioSessionState singleton (markCompleteCalled, currentPhase, currentPhaseId, phaseManager, iteration tracking; in-memory-only programmaticLog/lastLlmPhaseId/exitOutcome/exitFailureMessage)
 │   │   ├── phase-manager.ts     — PhaseManager: phase registry by string ID, resolveNext (sequential order, conditional branching hooks), listIds
 │   │   ├── session-state.test.ts
 │   │   ├── session-store.ts     — SessionVariableStore: two-layer variable system (${name} interpolation, setVar/getVar/listVars tools)
@@ -50,7 +52,7 @@ pio-extension/
 │   │   ├── state-persistence.test.ts
 │   │   ├── session-guard.ts         — Turn recovery + dead-turn detection (migrated from guards/)
 │   │   ├── session-guard.test.ts
-│   │   └── workflow-types.ts        — StepState, TerminationCondition, LoopWhileCondition, PhaseVariable types + extended WorkflowPhase fields
+│   │   └── workflow-types.ts        — StepState, TerminationCondition, LoopWhileCondition, PhaseVariable, CodeStepContext types + extended WorkflowPhase fields (kind includes "code")
 │   ├── skills/                # Active discoverable skills (pio-git and test-driven-development only)
 │   │   ├── pio-git/SKILL.md     — Git operations for pio agents
 │   │   └── test-driven-development/SKILL.md — TDD methodology guide

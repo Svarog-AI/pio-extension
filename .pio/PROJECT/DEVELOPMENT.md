@@ -26,6 +26,8 @@ Configuration: `vitest.config.ts` — Node.js environment, global `describe/it/e
 
 Tests use `fs.mkdtempSync()` for temp directories (not mocked filesystems). Most tests create real directory trees under `os.tmpdir()` and clean up in `afterEach`.
 
+**Console warn/error convention:** Tests that exercise `console.warn`/`console.error` paths must spy the console methods and restore them only *after* reading `mock.calls` (restoring earlier loses recorded calls) — keeps suite output free of leaked warnings.
+
 ## CI/CD and Release
 
 **GitHub Actions** (`.github/workflows/ci.yml`) runs on every push to `main` and every PR targeting `main`:

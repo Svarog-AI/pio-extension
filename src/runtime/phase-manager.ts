@@ -56,6 +56,37 @@ export class PhaseManager {
     const conditionalRouting = new Map<string, BranchRouting>();
     let firstPhaseId: string | undefined;
 
+    /**
+     * Derive a unique id for the synthetic branch-end merge node from a
+     * branch phase id. On collision with an existing registry entry, append
+     * an incrementing numeric suffix (-1, -2, ...) until unique.
+     */
+    const _reserveBranchEndId = (branchId: string): string => {
+      let candidate = `__branch-end-${branchId}`;
+      let suffix = 1;
+      while (registry.has(candidate)) {
+        candidate = `__branch-end-${branchId}-${suffix}`;
+        suffix += 1;
+      }
+      return candidate;
+    };
+
+    /**
+     * Register the synthetic branch-end merge node: a no-op code phase that
+     * every arm (including empty ones) converges on before routing to the
+     * branch's successor. Marked `synthetic` so downstream consumers can
+     * skip rendering/logging without special-casing ids.
+     */
+    const _registerBranchEnd = (id: string): void => {
+      registry.set(id, {
+        id,
+        title: id,
+        kind: "code",
+        run: () => {},
+        synthetic: true,
+      });
+    };
+
     const _flatten = (
       segments: WorkflowPhase[],
       postBranch?: string,
@@ -114,56 +145,60 @@ export class PhaseManager {
             );
           }
 
-          // Walk arms, each receiving successor as postBranch
-          const thenTail = _flatten(phase.then, successor, `${path}.then`);
-          if (thenTail && successor) routing.set(thenTail, successor);
+          // Synthesize the branch's single exit: a merge node all arms
+          // converge on. The id is reserved before arm flattening;
+          // registration happens after so DFS order places it after all arm
+          // descendants and before the successor.
+          const branchEndId = _reserveBranchEndId(phase.id);
 
-          const elseTail = phase.else
-            ? _flatten(phase.else, successor, `${path}.else`)
-            : undefined;
-          if (elseTail && successor) routing.set(elseTail, successor);
+          // Walk arms, each receiving the merge node as postBranch so their
+          // terminal tails link through to the single branch exit.
+          _flatten(phase.then, branchEndId, `${path}.then`);
+          if (phase.else) {
+            _flatten(phase.else, branchEndId, `${path}.else`);
+          }
 
-          // Record conditional routing
+          _registerBranchEnd(branchEndId);
+
+          // Record conditional routing; empty/absent else arms route to the merge node.
           const thenFirst = phase.then[0].id;
-          const elseFirst = phase.else?.[0]?.id ?? successor ?? undefined;
+          const elseFirst = phase.else?.[0]?.id ?? branchEndId;
 
           conditionalRouting.set(phase.id, {
             thenFirst,
             elseFirst,
           });
 
-          // Branch phase itself does NOT get a linear _routing entry
-          lastId = elseTail ?? thenTail;
+          // Branch phase itself does NOT get a linear _routing entry; the
+          // merge node carries the link to the successor.
+          if (successor) routing.set(branchEndId, successor);
+          lastId = branchEndId;
         } else if (kind === "branch:switch") {
           // --- branch:switch processing ---
 
+          // Synthesize the branch's single exit (id reserved before arm
+          // flattening, registered after — see branch:if case).
+          const branchEndId = _reserveBranchEndId(phase.id);
+
           const caseFirst: Record<string, string> = {};
-          let lastCaseTail: string | undefined;
-
           for (const [key, arm] of Object.entries(phase.cases ?? {})) {
-            const tail = _flatten(arm, successor, `${path}.cases['${key}']`);
-            if (tail && successor) routing.set(tail, successor);
-            lastCaseTail = tail;
-            caseFirst[key] = arm[0]?.id ?? successor;
+            _flatten(arm, branchEndId, `${path}.cases['${key}']`);
+            caseFirst[key] = arm[0]?.id ?? branchEndId;
           }
 
-          let defaultTail: string | undefined;
-          let defaultFirst: string | undefined;
           if (phase.defaultBranch !== undefined) {
-            defaultTail = _flatten(
-              phase.defaultBranch,
-              successor,
-              `${path}.defaultBranch`,
-            );
-            if (defaultTail && successor) routing.set(defaultTail, successor);
-            defaultFirst = phase.defaultBranch[0]?.id ?? successor;
+            _flatten(phase.defaultBranch, branchEndId, `${path}.defaultBranch`);
           }
-          // Absent defaultBranch: defaultFirst stays undefined
+          // Empty/absent arms route to the merge node
+          const defaultFirst = phase.defaultBranch?.[0]?.id ?? branchEndId;
+
+          _registerBranchEnd(branchEndId);
 
           conditionalRouting.set(phase.id, { caseFirst, defaultFirst });
 
-          // Return tail of last arm walked (default or last case)
-          lastId = defaultTail ?? lastCaseTail;
+          // The merge node is the branch's single exit — links to the successor.
+          if (successor) routing.set(branchEndId, successor);
+          lastId = branchEndId;
         } else {
           // --- standard / variable-definition / code phase ---
           if (successor) {

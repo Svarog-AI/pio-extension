@@ -193,13 +193,21 @@ describe("PhaseManager", () => {
       ];
       const pm = new PhaseManager(phases);
 
-      // listIds includes nested arm children in DFS order
-      expect(pm.listIds()).toEqual(["prev", "branch", "x", "y", "z"]);
+      // listIds includes nested arm children in DFS order, with the branch-end merge node before the successor
+      expect(pm.listIds()).toEqual([
+        "prev",
+        "branch",
+        "x",
+        "y",
+        "__branch-end-branch",
+        "z",
+      ]);
 
-      // Routing: prev→branch, arm tails→z
+      // Routing: prev→branch, arm tails→branch-end→z
       expect(pm.resolveNext("prev")).toBe("branch");
-      expect(pm.resolveNext("x")).toBe("z");
-      expect(pm.resolveNext("y")).toBe("z");
+      expect(pm.resolveNext("x")).toBe("__branch-end-branch");
+      expect(pm.resolveNext("y")).toBe("__branch-end-branch");
+      expect(pm.resolveNext("__branch-end-branch")).toBe("z");
       expect(pm.resolveNext("z")).toBeUndefined();
 
       // Branch phase evaluates condition and routes to arm
@@ -223,7 +231,7 @@ describe("PhaseManager", () => {
       expect(pm.getFirstPhaseId()).toBe("prev");
     });
 
-    it("wires multi-phase arms sequentially and routes tail to post-branch", () => {
+    it("wires multi-phase arms sequentially and routes tails to branch-end", () => {
       const phases: WorkflowPhase[] = [
         makePhase("prev"),
         makeBranchIf(
@@ -242,39 +250,84 @@ describe("PhaseManager", () => {
         "x2",
         "y1",
         "y2",
+        "__branch-end-branch",
         "z",
       ]);
 
       // Inner phases wired sequentially
       expect(pm.resolveNext("x1")).toBe("x2");
       expect(pm.resolveNext("y1")).toBe("y2");
-      // Tails route to post-branch
-      expect(pm.resolveNext("x2")).toBe("z");
-      expect(pm.resolveNext("y2")).toBe("z");
+      // Tails route to the branch-end merge node, which links to post-branch
+      expect(pm.resolveNext("x2")).toBe("__branch-end-branch");
+      expect(pm.resolveNext("y2")).toBe("__branch-end-branch");
+      expect(pm.resolveNext("__branch-end-branch")).toBe("z");
     });
 
-    it("handles empty else arm by setting elseFirst to successor", () => {
+    it("routes empty else arm to the branch-end merge node", () => {
       const phases: WorkflowPhase[] = [
         makePhase("prev"),
-        makeBranchIf("branch", [makePhase("x")], []),
+        {
+          ...makeBranchIf("branch", [makePhase("x")], []),
+          condition: () => false,
+        },
         makePhase("z"),
       ];
       const pm = new PhaseManager(phases);
 
       expect(pm.resolveNext("prev")).toBe("branch");
-      expect(pm.resolveNext("x")).toBe("z");
+      expect(pm.resolveNext("x")).toBe("__branch-end-branch");
+      expect(pm.resolveNext("__branch-end-branch")).toBe("z");
+
+      // Falsy condition with an empty else arm lands on the merge node too
+      const state = { store: null } as any;
+      expect(pm.resolveNext("branch", state)).toBe("__branch-end-branch");
     });
 
-    it("handles absent else arm by setting elseFirst to successor", () => {
+    it("routes absent else arm to the branch-end merge node", () => {
       const phases: WorkflowPhase[] = [
         makePhase("prev"),
-        makeBranchIf("branch", [makePhase("x")]),
+        {
+          ...makeBranchIf("branch", [makePhase("x")]),
+          condition: () => false,
+        },
         makePhase("z"),
       ];
       const pm = new PhaseManager(phases);
 
       expect(pm.resolveNext("prev")).toBe("branch");
-      expect(pm.resolveNext("x")).toBe("z");
+      expect(pm.resolveNext("x")).toBe("__branch-end-branch");
+      expect(pm.resolveNext("__branch-end-branch")).toBe("z");
+
+      // Falsy condition with no else arm lands on the merge node too
+      const state = { store: null } as any;
+      expect(pm.resolveNext("branch", state)).toBe("__branch-end-branch");
+    });
+
+    it("registers the branch-end merge node as a synthetic no-op code phase", () => {
+      const phases: WorkflowPhase[] = [
+        makeBranchIf("branch", [makePhase("x")], [makePhase("y")]),
+      ];
+      const pm = new PhaseManager(phases);
+
+      const endPhase = pm.getPhase("__branch-end-branch");
+      expect(endPhase).toBeDefined();
+      expect(endPhase?.synthetic).toBe(true);
+      expect(endPhase?.kind).toBe("code");
+      expect(typeof endPhase?.run).toBe("function");
+    });
+
+    it("routes arm tails to the branch-end merge node when the branch ends the workflow", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("prev"),
+        makeBranchIf("branch", [makePhase("x")], [makePhase("y")]),
+      ];
+      const pm = new PhaseManager(phases);
+
+      expect(pm.resolveNext("prev")).toBe("branch");
+      expect(pm.resolveNext("x")).toBe("__branch-end-branch");
+      expect(pm.resolveNext("y")).toBe("__branch-end-branch");
+      // No successor: the merge node is a clean terminal
+      expect(pm.resolveNext("__branch-end-branch")).toBeUndefined();
     });
 
     it("throws TypeError when then arm is empty", () => {
@@ -313,12 +366,22 @@ describe("PhaseManager", () => {
       ];
       const pm = new PhaseManager(phases);
 
-      expect(pm.listIds()).toEqual(["prev", "branch", "ca", "cb", "d", "z"]);
+      expect(pm.listIds()).toEqual([
+        "prev",
+        "branch",
+        "ca",
+        "cb",
+        "d",
+        "__branch-end-branch",
+        "z",
+      ]);
 
+      // Every arm tail routes to the branch-end merge node, which links onward
       expect(pm.resolveNext("prev")).toBe("branch");
-      expect(pm.resolveNext("ca")).toBe("z");
-      expect(pm.resolveNext("cb")).toBe("z");
-      expect(pm.resolveNext("d")).toBe("z");
+      expect(pm.resolveNext("ca")).toBe("__branch-end-branch");
+      expect(pm.resolveNext("cb")).toBe("__branch-end-branch");
+      expect(pm.resolveNext("d")).toBe("__branch-end-branch");
+      expect(pm.resolveNext("__branch-end-branch")).toBe("z");
       expect(pm.resolveNext("z")).toBeUndefined();
 
       // Branch phase evaluates on and routes to matching case
@@ -339,31 +402,48 @@ describe("PhaseManager", () => {
       expect(pm.resolveNext("branch", state)).toBe("ca");
     });
 
-    it("handles empty case arms by setting caseFirst to successor", () => {
+    it("routes empty case arms to the branch-end merge node", () => {
       const phases: WorkflowPhase[] = [
         makePhase("prev"),
-        makeBranchSwitch("branch", { a: [makePhase("ca")], b: [] }, [
-          makePhase("d"),
-        ]),
+        {
+          ...makeBranchSwitch("branch", { a: [makePhase("ca")], b: [] }, [
+            makePhase("d"),
+          ]),
+          on: () => "b",
+        },
         makePhase("z"),
       ];
       const pm = new PhaseManager(phases);
 
       expect(pm.resolveNext("prev")).toBe("branch");
-      expect(pm.resolveNext("ca")).toBe("z");
-      expect(pm.resolveNext("d")).toBe("z");
+      expect(pm.resolveNext("ca")).toBe("__branch-end-branch");
+      expect(pm.resolveNext("d")).toBe("__branch-end-branch");
+      expect(pm.resolveNext("__branch-end-branch")).toBe("z");
+
+      // Empty arm: caseFirst["b"] is the merge node itself
+      const state = { store: null } as any;
+      expect(pm.resolveNext("branch", state)).toBe("__branch-end-branch");
     });
 
-    it("handles absent defaultBranch", () => {
+    it("handles absent defaultBranch by routing to the branch-end merge node", () => {
       const phases: WorkflowPhase[] = [
         makePhase("prev"),
-        makeBranchSwitch("branch", { a: [makePhase("ca")] }),
+        {
+          ...makeBranchSwitch("branch", { a: [makePhase("ca")] }),
+          on: () => "no-match",
+        },
         makePhase("z"),
       ];
       const pm = new PhaseManager(phases);
 
       expect(pm.resolveNext("prev")).toBe("branch");
-      expect(pm.resolveNext("ca")).toBe("z");
+      expect(pm.resolveNext("ca")).toBe("__branch-end-branch");
+      expect(pm.resolveNext("__branch-end-branch")).toBe("z");
+
+      // Non-matching discriminant with no defaultBranch lands on the merge node
+      // (previously a dead end resolving to undefined)
+      const state = { store: null } as any;
+      expect(pm.resolveNext("branch", state)).toBe("__branch-end-branch");
     });
   });
 
@@ -392,31 +472,39 @@ describe("PhaseManager", () => {
         "inner",
         "inner-x",
         "inner-y",
+        "__branch-end-inner",
         "outer-y",
+        "__branch-end-outer",
         "end",
       ]);
 
       // start → outer (the branch phase)
       expect(pm.resolveNext("start")).toBe("outer");
-      // inner arm tails → end
-      expect(pm.resolveNext("inner-x")).toBe("end");
-      expect(pm.resolveNext("inner-y")).toBe("end");
-      // outer else tail → end
-      expect(pm.resolveNext("outer-y")).toBe("end");
+      // inner arm tails converge on the nested merge node, which links to the
+      // outer merge node — the single-exit chain this step introduces
+      expect(pm.resolveNext("inner-x")).toBe("__branch-end-inner");
+      expect(pm.resolveNext("inner-y")).toBe("__branch-end-inner");
+      expect(pm.resolveNext("__branch-end-inner")).toBe("__branch-end-outer");
+      // outer else tail → outer merge node → end
+      expect(pm.resolveNext("outer-y")).toBe("__branch-end-outer");
+      expect(pm.resolveNext("__branch-end-outer")).toBe("end");
       expect(pm.resolveNext("end")).toBeUndefined();
     });
   });
 
   describe("consecutive branches", () => {
-    it("wires first branch arm tail to second branch phase", () => {
+    it("routes each branch arm tail through its merge node to the next phase", () => {
       const phases: WorkflowPhase[] = [
         makeBranchIf("b1", [makePhase("x")]),
         makeBranchIf("b2", [makePhase("y")]),
       ];
       const pm = new PhaseManager(phases);
 
-      expect(pm.resolveNext("x")).toBe("b2");
-      expect(pm.resolveNext("y")).toBeUndefined();
+      expect(pm.resolveNext("x")).toBe("__branch-end-b1");
+      expect(pm.resolveNext("__branch-end-b1")).toBe("b2");
+      // b2 ends the workflow: its merge node is a clean terminal
+      expect(pm.resolveNext("y")).toBe("__branch-end-b2");
+      expect(pm.resolveNext("__branch-end-b2")).toBeUndefined();
     });
   });
 
@@ -514,7 +602,7 @@ describe("PhaseManager", () => {
       expect(pm.resolveNext("branch", state)).toBe("y");
     });
 
-    it("routes to post-branch when else is absent and condition is falsy", () => {
+    it("routes to branch-end when else is absent and condition is falsy", () => {
       const phases: WorkflowPhase[] = [
         makePhase("prev"),
         {
@@ -526,8 +614,9 @@ describe("PhaseManager", () => {
       const pm = new PhaseManager(phases);
       const state = makeState();
 
-      // elseFirst was set to "z" (successor) during flattening
-      expect(pm.resolveNext("branch", state)).toBe("z");
+      // elseFirst was set to the branch-end merge node during flattening
+      expect(pm.resolveNext("branch", state)).toBe("__branch-end-branch");
+      expect(pm.resolveNext("__branch-end-branch")).toBe("z");
     });
 
     it("passes state to condition callback", () => {
@@ -586,7 +675,7 @@ describe("PhaseManager", () => {
       expect(pm.resolveNext("branch", state)).toBe("d");
     });
 
-    it("returns undefined when no case matches and no defaultBranch", () => {
+    it("routes to branch-end when no case matches and no defaultBranch", () => {
       const phases: WorkflowPhase[] = [
         makePhase("prev"),
         {
@@ -598,7 +687,9 @@ describe("PhaseManager", () => {
       const pm = new PhaseManager(phases);
       const state = makeState();
 
-      expect(pm.resolveNext("branch", state)).toBeUndefined();
+      // Absent defaultBranch now resolves to the merge node instead of a dead end
+      expect(pm.resolveNext("branch", state)).toBe("__branch-end-branch");
+      expect(pm.resolveNext("__branch-end-branch")).toBe("z");
     });
 
     it("resolves $varName string form for switch on", () => {
@@ -761,7 +852,7 @@ describe("PhaseManager", () => {
       warnSpy.mockRestore();
     });
 
-    it("routes to post-branch when else is empty array and condition is falsy", () => {
+    it("routes to branch-end when else is empty array and condition is falsy", () => {
       const phases: WorkflowPhase[] = [
         makePhase("prev"),
         {
@@ -773,8 +864,9 @@ describe("PhaseManager", () => {
       const pm = new PhaseManager(phases);
       const state = makeState();
 
-      // elseFirst was set to "z" (successor) during flattening when else was []
-      expect(pm.resolveNext("branch", state)).toBe("z");
+      // elseFirst was set to the branch-end merge node during flattening when else was []
+      expect(pm.resolveNext("branch", state)).toBe("__branch-end-branch");
+      expect(pm.resolveNext("__branch-end-branch")).toBe("z");
     });
 
     it("coerces non-string discriminant to string via String()", () => {
@@ -877,6 +969,37 @@ describe("PhaseManager", () => {
       const pm = new PhaseManager([]);
 
       expect(pm.listIds()).toEqual([]);
+    });
+
+    it("returns depth-first construction order for branched workflows with merge nodes interleaved", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("start"),
+        makeBranchIf(
+          "outer",
+          [
+            makeBranchIf(
+              "inner",
+              [makePhase("inner-x")],
+              [makePhase("inner-y")],
+            ),
+          ],
+          [makePhase("outer-y")],
+        ),
+        makePhase("end"),
+      ];
+      const pm = new PhaseManager(phases);
+
+      expect(pm.listIds()).toEqual([
+        "start",
+        "outer",
+        "inner",
+        "inner-x",
+        "inner-y",
+        "__branch-end-inner",
+        "outer-y",
+        "__branch-end-outer",
+        "end",
+      ]);
     });
   });
 
@@ -1014,7 +1137,7 @@ describe("PhaseManager", () => {
       }
     });
 
-    it("flattens a valid code phase nested in a branch arm and routes it to post-branch", () => {
+    it("flattens a valid code phase nested in a branch arm and routes it to the branch-end merge node", () => {
       const phases: WorkflowPhase[] = [
         makePhase("prev"),
         makeBranchIf("branch", [makeCodePhase("arm-code")], [makePhase("y")]),
@@ -1022,8 +1145,16 @@ describe("PhaseManager", () => {
       ];
       const pm = new PhaseManager(phases);
 
-      expect(pm.listIds()).toEqual(["prev", "branch", "arm-code", "y", "z"]);
-      expect(pm.resolveNext("arm-code")).toBe("z");
+      expect(pm.listIds()).toEqual([
+        "prev",
+        "branch",
+        "arm-code",
+        "y",
+        "__branch-end-branch",
+        "z",
+      ]);
+      expect(pm.resolveNext("arm-code")).toBe("__branch-end-branch");
+      expect(pm.resolveNext("__branch-end-branch")).toBe("z");
     });
   });
 });

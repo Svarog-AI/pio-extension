@@ -8,8 +8,11 @@
  * instance is built from the same `phasesList`.
  *
  * Supports depth-first flattening of branch-phase trees (`branch:if`,
- * `branch:switch`) into linear routing maps. Flat arrays of phases
- * produce identical output to the previous sequential implementation.
+ * `branch:switch`) into linear routing maps. Every branch additionally
+ * synthesizes a no-op `synthetic` merge node (id `__branch-end-<id>`) that
+ * all arms — including empty ones — converge on before the branch's
+ * successor. Flat arrays of phases produce identical output to the previous
+ * sequential implementation.
  *
  * Matches the usage pattern of `SessionVariableStore` (reconstructed,
  * not serialized).

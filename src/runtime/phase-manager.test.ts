@@ -314,6 +314,27 @@ describe("PhaseManager", () => {
       expect(endPhase?.synthetic).toBe(true);
       expect(endPhase?.kind).toBe("code");
       expect(typeof endPhase?.run).toBe("function");
+
+      // The merge node registers after arm flattening — even when the branch
+      // leads the workflow, it never becomes the first phase id.
+      expect(pm.getFirstPhaseId()).toBe("branch");
+    });
+
+    it("suffixes the branch-end id when the reserved namespace is already occupied", () => {
+      const phases: WorkflowPhase[] = [
+        makePhase("__branch-end-a"),
+        makeBranchIf("a", [makePhase("x")], [makePhase("y")]),
+      ];
+      const pm = new PhaseManager(phases);
+
+      // The user-declared phase keeps the bare reserved id; the merge node
+      // takes the -1 suffix and still acts as the branch's single exit
+      expect(pm.getPhase("__branch-end-a")).toBe(phases[0]);
+      expect(pm.getPhase("__branch-end-a-1")?.synthetic).toBe(true);
+      expect(pm.resolveNext("x")).toBe("__branch-end-a-1");
+      expect(pm.resolveNext("y")).toBe("__branch-end-a-1");
+      // No successor: the suffixed merge node is a clean terminal
+      expect(pm.resolveNext("__branch-end-a-1")).toBeUndefined();
     });
 
     it("routes arm tails to the branch-end merge node when the branch ends the workflow", () => {

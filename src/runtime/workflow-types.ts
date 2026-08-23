@@ -154,7 +154,7 @@ export interface WorkflowPhase {
   /** Minimum iterations before termination conditions are evaluated. Default behavior (when omitted): phase executes once and advances. */
   minIterations?: number;
 
-  /** Hard limit on iterations regardless of termination conditions. Uses resolveMaxIterations() from model-config for resolution. */
+  /** Hard limit on iterations regardless of termination conditions. Uses resolveMaxIterations() from model-config for resolution. With `kind: "loop"` it counts full body passes, not single-phase iterations. */
   maxIterations?: number;
 
   /** Array of callback-based conditions — all passing conditions terminate the loop (AND logic) */
@@ -172,13 +172,14 @@ export interface WorkflowPhase {
   /** Controls whether this phase may write non-contract project files. Default: false (blocked). Contract outputs in `write[]` always pass regardless of this flag. */
   allowProjectWrites?: boolean;
 
-  /** Phase execution kind — `'standard'` for normal phases, `'variable-definition'` for phases that declare and collect session variables, `'branch:if'` for conditional if/else branching, `'branch:switch'` for multi-way switch branching, `'code'` for programmatic phases whose `run()` callback executes instead of an LLM turn. Defaults to `'standard'`. */
+  /** Phase execution kind — `'standard'` for normal phases, `'variable-definition'` for phases that declare and collect session variables, `'branch:if'` for conditional if/else branching, `'branch:switch'` for multi-way switch branching, `'code'` for programmatic phases whose `run()` callback executes instead of an LLM turn, `'loop'` for repeating multi-phase blocks (do-while). Defaults to `'standard'`. */
   kind?:
     | "standard"
     | "variable-definition"
     | "branch:if"
     | "branch:switch"
-    | "code";
+    | "code"
+    | "loop";
 
   /** Programmatic phase callback — required when `kind` is `'code'`; must be absent for all other kinds (the pairing is enforced at runtime by `PhaseManager` construction, not by the type system). May be synchronous or asynchronous. */
   run?: (ctx: CodeStepContext) => void | Promise<void>;
@@ -207,6 +208,19 @@ export interface WorkflowPhase {
 
   /** Fallback arm when no `cases` key matches (or when `on` throws). Default if absent: skip. */
   defaultBranch?: WorkflowPhase[];
+
+  // -----------------------------------------------------------------------
+  // Loop block fields (all optional — meaningful only when kind is "loop")
+  // -----------------------------------------------------------------------
+
+  /** The phases executed as a repeating unit (do-while body). Used only with `kind: "loop"`. */
+  body?: WorkflowPhase[];
+
+  /** Repeat condition for `kind: "loop"` — same callback shape as `condition`; evaluated at the end of each full body pass (do-while, never pre-checked). Truthy result repeats the body. */
+  repeatWhile?: (state: PioSessionState) => boolean | unknown;
+
+  /** Set true on engine-injected routing nodes (the synthesized branch-end and loop-end phases from Steps 2/3). Consumed by `executePhase` (log suppression, Step 4), `/goto` filtering (Step 5), and tests. */
+  synthetic?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -239,8 +253,30 @@ export interface SwitchBranchRouting {
   defaultFirst?: string;
 }
 
+/**
+ * Routing data for a `kind: "loop"` phase after PhaseManager flattening.
+ *
+ * Structurally discriminated — no `type` field (consistent with
+ * `IfBranchRouting`/`SwitchBranchRouting`; runtime keys on `"loopTarget" in routing`).
+ */
+export interface LoopBackRouting {
+  /** ID of the loop body's first phase — repeat target */
+  loopTarget: string;
+  /** ID of the phase after the loop, or undefined when the loop is the workflow's last element */
+  exitTarget?: string;
+  /** Repeat condition evaluated at the end of each full body pass; omitted → always repeat (bounded by maxPasses) */
+  repeatWhile?: (state: PioSessionState) => boolean | unknown;
+  /** Pass cap for this loop block (resolved per evaluation via resolveMaxIterations in Step 3) */
+  maxPasses?: number;
+  /** Loop block id the pass counter is keyed by (unique workflow-wide) */
+  loopId: string;
+}
+
 /** Union of all branch routing types — used by PhaseManager._conditionalRouting and resolveNext() */
-export type BranchRouting = IfBranchRouting | SwitchBranchRouting;
+export type BranchRouting =
+  | IfBranchRouting
+  | SwitchBranchRouting
+  | LoopBackRouting;
 
 // ---------------------------------------------------------------------------
 // Prompt compiler output type

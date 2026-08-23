@@ -91,6 +91,9 @@ export interface PioSessionState {
   /** Log of executed code phases (one entry per executed `kind: "code"` phase, appended at execution time). In-memory only — not persisted. `detail` carries error messages only: the thrown error's message when the phase's `run()` threw, an empty array otherwise. */
   programmaticLog: Array<{ phaseId: string; kind: string; detail: string[] }>;
 
+  /** Pass counter per loop block id, value = repeats chosen so far for that block. 0 or absent means no repeat has been chosen yet (the body's first pass is always already complete when the counter is read at loop-end, by do-while definition). In-memory only — not persisted. */
+  loopPasses: Record<string, number>;
+
   /** Id of the last LLM phase whose turn began (set by setupTurn — programmatic phases never call it). In-memory only — not persisted (lost on restart by design). Used to point the ad-hoc pause message and `/continue` resumption at the real work phase after an `__pio-exit` failure. */
   lastLlmPhaseId?: string;
 
@@ -127,6 +130,7 @@ function createInitialState(): PioSessionState {
     phaseManager: undefined,
     projectRoot: undefined,
     programmaticLog: [],
+    loopPasses: {},
     lastLlmPhaseId: undefined,
     exitOutcome: undefined,
     exitFailureMessage: undefined,

@@ -832,6 +832,7 @@ describe("extractPersistedState", () => {
       adHocPhaseNotified: false,
       currentPhaseId: "",
       programmaticLog: [],
+      loopPasses: {},
     });
 
     const result = extractPersistedState(getState());
@@ -868,6 +869,7 @@ describe("extractPersistedState", () => {
       adHocPhaseNotified: false,
       currentPhaseId: "",
       programmaticLog: [],
+      loopPasses: {},
       store,
     });
 
@@ -902,6 +904,7 @@ describe("extractPersistedState", () => {
       adHocPhaseNotified: false,
       currentPhaseId: "",
       programmaticLog: [],
+      loopPasses: {},
       store: null,
     });
 
@@ -928,6 +931,7 @@ describe("extractPersistedState", () => {
       adHocPhaseNotified: false,
       currentPhaseId: "",
       programmaticLog: [],
+      loopPasses: {},
       store: undefined,
     });
 
@@ -957,6 +961,7 @@ describe("extractPersistedState", () => {
       adHocPhaseNotified: false,
       currentPhaseId: "",
       programmaticLog: [],
+      loopPasses: {},
       store,
     });
 
@@ -983,6 +988,7 @@ describe("extractPersistedState", () => {
       adHocPhaseNotified: false,
       currentPhaseId: "step-2",
       programmaticLog: [],
+      loopPasses: {},
       // All three new in-memory fields set — none may leak into the projection
       lastLlmPhaseId: "step-2",
       exitOutcome: "failed",

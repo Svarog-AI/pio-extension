@@ -256,7 +256,7 @@ export class PhaseManager {
         );
         return undefined;
       }
-    } else {
+    } else if ("caseFirst" in routing) {
       // --- SwitchBranchRouting ---
       const on = phase.on;
       if (typeof on === "function") {
@@ -309,6 +309,13 @@ export class PhaseManager {
         );
         return undefined;
       }
+    } else {
+      // --- LoopBackRouting ---
+      // Unreachable until Step 3 installs its loop case — no LoopBackRouting
+      // entry can exist in _conditionalRouting before then. `null` is the
+      // "no conditional routing" signal: resolveNext falls back to the linear
+      // `_routing` map, keeping behavior neutral.
+      return null;
     }
   }
 

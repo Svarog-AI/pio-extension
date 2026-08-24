@@ -44,7 +44,11 @@ export class PhaseManager {
   /** Linear successor links: phase ID → next phase ID */
   private readonly _routing: Map<string, string>;
 
-  /** Branch-phase ID → routing data (arm first-phase IDs). Used by resolveNext for conditional branching */
+  /**
+   * Conditional-routing entries keyed by node ID: branch phases → arm
+   * first-phase IDs; synthetic loop-end merge nodes → LoopBackRouting
+   * repeat/exit data. Used by resolveNext for conditional routing.
+   */
   private readonly _conditionalRouting: Map<string, BranchRouting>;
 
   /** First phase ID encountered during depth-first walk */
@@ -54,8 +58,8 @@ export class PhaseManager {
    * Build the phase registry from the phases array.
    *
    * Performs a depth-first walk: nested branch arms (`then[]`, `else[]`,
-   * `cases[key][]`, `defaultBranch[]`) are flattened into the registry
-   * and wiring maps.
+   * `cases[key][]`, `defaultBranch[]`) and loop block bodies (`body[]`)
+   * are flattened into the registry and wiring maps.
    *
    * @param phases - The workflow phases (from `WorkflowPhase[]`).
    * @throws TypeError if a phase is missing a required `id` field,
@@ -323,15 +327,17 @@ export class PhaseManager {
   /**
    * Resolve the ID of the next phase in routing order.
    *
-   * For branch phases, evaluates the condition callback and consults
-   * `_conditionalRouting` to determine the correct arm-first target.
-   * For non-branch phases, uses the pre-built `_routing` map for O(1) lookups.
+   * For conditionally-routed nodes (branch phases and synthetic loop-end
+   * merge nodes), evaluates the callback via `_conditionalRouting` to
+   * determine the target (arm first-phase, or loop repeat/exit). For all
+   * other phases, uses the pre-built `_routing` map for O(1) lookups.
    *
    * @param currentId - The current phase ID to resolve the successor for.
-   * @param state - Optional session state. Required for branch phases to
-   *   evaluate conditions. Accepted but unused for non-branch phases.
+   * @param state - Optional session state. Required for branch phases and
+   *   loop-end nodes to evaluate conditions. Accepted but unused for plain
+   *   linear phases.
    * @returns The next phase ID, or `undefined` if `currentId` is not
-   *   found, is the last phase, or the branch condition routes nowhere.
+   *   found, is the last phase, or a conditional route resolves nowhere.
    */
   resolveNext(currentId: string, state?: PioSessionState): string | undefined {
     const branchTarget = this._evaluateBranch(currentId, state);
@@ -340,12 +346,16 @@ export class PhaseManager {
   }
 
   /**
-   * Evaluate a branch phase condition and return the target arm-first ID.
+   * Evaluate a conditionally-routed node (a branch phase or a synthetic
+   * loop-end merge node) and return its target ID.
    *
    * Three-way return semantics:
-   * - `null` — not a branch phase → caller delegates to linear routing
-   * - `string` — resolved arm first-phase ID (the destination to jump to)
-   * - `undefined` — branch phase, but no destination (skip/end-of-workflow)
+   * - `null` — no conditional routing entry → caller delegates to linear
+   *   routing
+   * - `string` — resolved destination (arm first-phase, loop body target,
+   *   or branch/loop exit target)
+   * - `undefined` — conditionally-routed node with no destination
+   *   (skip/end-of-workflow)
    */
   private _evaluateBranch(
     currentId: string,

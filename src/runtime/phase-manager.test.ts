@@ -1604,11 +1604,7 @@ describe("PhaseManager", () => {
       expect(state.loopPasses.loop).toBe(2);
 
       // Priority-1 override path: the explicit cap is passed on every evaluation
-      expect(maxIterationsMock.fn).toHaveBeenCalledTimes(3);
-      expect(maxIterationsMock.fn).toHaveBeenCalledWith(3);
-      expect(maxIterationsMock.fn.mock.calls.every((c) => c[0] === 3)).toBe(
-        true,
-      );
+      expect(maxIterationsMock.fn.mock.calls).toEqual([[3], [3], [3]]);
     });
 
     it("repeats to the built-in default cap when maxIterations is omitted", () => {
@@ -1724,6 +1720,21 @@ describe("PhaseManager", () => {
 
       const result = pm.resolveNext("__loop-end-loop");
       expect(result).toBe("next");
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      // Missing-state exit happens before cap resolution
+      expect(maxIterationsMock.fn).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it("warns and exits to undefined for a final-element loop when state is missing", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const phases: WorkflowPhase[] = [
+        makeLoop("loop", [makePhase("b1")], () => true),
+      ];
+      const pm = new PhaseManager(phases);
+
+      const result = pm.resolveNext("__loop-end-loop");
+      expect(result).toBeUndefined();
       expect(warnSpy).toHaveBeenCalledTimes(1);
       // Missing-state exit happens before cap resolution
       expect(maxIterationsMock.fn).not.toHaveBeenCalled();

@@ -11,15 +11,24 @@
  * `branch:switch`) into linear routing maps. Every branch additionally
  * synthesizes a no-op `synthetic` merge node (id `__branch-end-<id>`) that
  * all arms — including empty ones — converge on before the branch's
- * successor. Flat arrays of phases produce identical output to the previous
- * sequential implementation.
+ * successor. `kind: "loop"` blocks flatten the same way: every loop
+ * synthesizes a no-op `synthetic` loop-end merge node (id
+ * `__loop-end-<id>`) that the body tail converges on, where repeat-vs-exit
+ * is decided at runtime. Flat arrays of phases produce identical output to
+ * the previous sequential implementation.
  *
  * Matches the usage pattern of `SessionVariableStore` (reconstructed,
  * not serialized).
  */
 
+import { resolveMaxIterations } from "../model-config";
 import type { PioSessionState } from "./session-state";
-import type { BranchRouting, WorkflowPhase } from "./workflow-types";
+import { setState } from "./session-state";
+import type {
+  BranchRouting,
+  LoopBackRouting,
+  WorkflowPhase,
+} from "./workflow-types";
 
 // ---------------------------------------------------------------------------
 // PhaseManager
@@ -81,6 +90,37 @@ export class PhaseManager {
      * skip rendering/logging without special-casing ids.
      */
     const _registerBranchEnd = (id: string): void => {
+      registry.set(id, {
+        id,
+        title: id,
+        kind: "code",
+        run: () => {},
+        synthetic: true,
+      });
+    };
+
+    /**
+     * Derive a unique id for the synthetic loop-end merge node from a
+     * loop block id. On collision with an existing registry entry, append
+     * an incrementing numeric suffix (-1, -2, ...) until unique.
+     */
+    const _reserveLoopEndId = (loopId: string): string => {
+      let candidate = `__loop-end-${loopId}`;
+      let suffix = 1;
+      while (registry.has(candidate)) {
+        candidate = `__loop-end-${loopId}-${suffix}`;
+        suffix += 1;
+      }
+      return candidate;
+    };
+
+    /**
+     * Register the synthetic loop-end merge node: a no-op code phase that
+     * the body tail converges on, where repeat-vs-exit is decided at
+     * runtime. Marked `synthetic` so downstream consumers can skip
+     * rendering/logging without special-casing ids.
+     */
+    const _registerLoopEnd = (id: string): void => {
       registry.set(id, {
         id,
         title: id,
@@ -202,6 +242,55 @@ export class PhaseManager {
           // The merge node is the branch's single exit — links to the successor.
           if (successor) routing.set(branchEndId, successor);
           lastId = branchEndId;
+        } else if (kind === "loop") {
+          // --- loop (do-while block) processing ---
+
+          // Validate: body must be present and non-empty
+          if (!phase.body || phase.body.length === 0) {
+            throw new TypeError(
+              `Loop phase "${phase.id}" at path: ${path} has no "body"`,
+            );
+          }
+
+          // Synthesize the loop's single decision node: a merge node the
+          // body tail converges on, where repeat-vs-exit is decided. The id
+          // is reserved before body flattening; registration happens after
+          // so DFS order places it after all body descendants and before
+          // the successor.
+          const loopEndId = _reserveLoopEndId(phase.id);
+
+          // Flatten the body with the loop-end as postBranch so every body
+          // terminal — a plain last phase, a nested branch's branch-end, or
+          // a nested loop's loop-end — links through to this loop's
+          // decision node.
+          const bodyTail = _flatten(phase.body, loopEndId, `${path}.body`);
+
+          _registerLoopEnd(loopEndId);
+
+          // Install the loop's conditional entry keyed on the loop-end id
+          // (NOT the container, NOT the body tail): each loop decides on
+          // its own distinct id, so the last-wins map can never let an
+          // enclosing loop overwrite an inner loop's entry.
+          const loopBack: LoopBackRouting = {
+            loopTarget: phase.body[0].id,
+            repeatWhile: phase.repeatWhile,
+            maxPasses: phase.maxIterations,
+            loopId: phase.id,
+          };
+          if (successor) loopBack.exitTarget = successor;
+          conditionalRouting.set(loopEndId, loopBack);
+
+          // Linear links: container → body[0] (do-while: the first pass
+          // always runs, so the container never gets a conditional entry);
+          // body tail → loop-end (the recursion already established this
+          // link via postBranch — the explicit set is idempotent
+          // redundancy kept for wiring clarity); loop-end → successor
+          // (defensive fallback — the _evaluateBranch loop case always
+          // returns an explicit target).
+          routing.set(phase.id, phase.body[0].id);
+          if (bodyTail) routing.set(bodyTail, loopEndId);
+          if (successor) routing.set(loopEndId, successor);
+          lastId = loopEndId;
         } else {
           // --- standard / variable-definition / code phase ---
           if (successor) {
@@ -347,11 +436,61 @@ export class PhaseManager {
         );
         return undefined;
       }
-    } else {
+    } else if ("loopTarget" in routing) {
       // --- LoopBackRouting ---
-      // Unreachable until Step 3 installs its loop case — no LoopBackRouting
-      // entry can exist in _conditionalRouting before then. `null` is the
-      // "no conditional routing" signal: resolveNext falls back to the linear
+      // The loop-end merge node decides repeat-vs-exit. By do-while
+      // definition the body has already run at least once when this is
+      // evaluated, so the counter reads "repeats chosen so far".
+      if (!state) {
+        console.warn(
+          `Loop evaluation failed for loop-end "${currentId}": state is missing`,
+        );
+        return routing.exitTarget;
+      }
+
+      // Counter for this loop block (0/absent = only the implicit first
+      // pass has run). Counters accumulate across re-entries — no
+      // per-entry reset.
+      const passes = state.loopPasses?.[routing.loopId] ?? 0;
+
+      // Resolve the cap per evaluation — never cached at construction.
+      // Omitted maxPasses → global config → built-in default 15.
+      const resolvedMax = resolveMaxIterations(routing.maxPasses);
+
+      // Cap check first: repeat is allowed iff passes + 1 < resolvedMax.
+      // A loop capped at N runs exactly N full passes (N-1 repeats chosen,
+      // counter ends at N-1). The cap applies unconditionally — an
+      // always-true/omitted condition exits at the cap without evaluating
+      // repeatWhile on the capped evaluation. Cap exit is silent.
+      if (passes + 1 >= resolvedMax) {
+        return routing.exitTarget;
+      }
+
+      // Evaluate the repeat condition (only when the cap allows a repeat).
+      // Omitted repeatWhile → always repeat (bounded by the cap above).
+      if (routing.repeatWhile) {
+        try {
+          const result = routing.repeatWhile(state);
+          if (!result) return routing.exitTarget;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(
+            `Loop evaluation failed for loop-end "${currentId}": ${msg}`,
+          );
+          // Fail-safe: never repeat on error.
+          return routing.exitTarget;
+        }
+      }
+
+      // Repeat: increment the counter (in-memory only) and jump back to
+      // the body's first phase.
+      setState({
+        loopPasses: { ...state.loopPasses, [routing.loopId]: passes + 1 },
+      });
+      return routing.loopTarget;
+    } else {
+      // Defensive: no recognized routing shape — `null` is the "no
+      // conditional routing" signal: resolveNext falls back to the linear
       // `_routing` map, keeping behavior neutral.
       return null;
     }
@@ -363,6 +502,11 @@ export class PhaseManager {
    * For flat arrays, this matches the original array order.
    * For branched workflows, includes nested arm children in
    * depth-first visitation order.
+   *
+   * The returned IDs include each control structure's engine-injected
+   * synthetic merge node — branch-end (`__branch-end-<id>`) and loop-end
+   * (`__loop-end-<id>`); user-facing enumerations should filter on
+   * `synthetic`.
    *
    * @returns A copy of the IDs — callers cannot mutate internal
    *   state through the returned reference.

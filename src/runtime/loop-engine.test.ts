@@ -9,6 +9,7 @@ import type { CapabilityConfig } from "../types";
 import { initializeStore } from "./loop-engine";
 import { PhaseManager } from "./phase-manager";
 import { getState, resetState, setState as setStateRaw } from "./session-state";
+import type { WorkflowPhase } from "./workflow-types";
 
 // ---------------------------------------------------------------------------
 // Helper: setState with automatic phaseManager/currentPhaseId setup
@@ -1072,7 +1073,7 @@ describe("/goto command", () => {
      * top-level loop (injects `__loop-end-L`) — the registry holds eight
      * ids: six declared phases plus the two synthetic merge nodes.
      */
-    function makeBranchLoopPhases(): import("./workflow-types").WorkflowPhase[] {
+    function makeBranchLoopPhases(): WorkflowPhase[] {
       return [
         { id: "s1", title: "S1", instructions: "Do A" },
         {

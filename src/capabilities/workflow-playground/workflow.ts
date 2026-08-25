@@ -6,7 +6,7 @@ import type {
 
 export default [
   // ---------------------------------------------------------------------------
-  // Phase 1: minIterations Default Behavior Test
+  // minIterations Default Behavior Test
   // ---------------------------------------------------------------------------
   {
     id: "min-iterations",
@@ -25,7 +25,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 2: terminateWhen Callback Test
+  // terminateWhen Callback Test
   // ---------------------------------------------------------------------------
   {
     id: "terminate-when",
@@ -49,7 +49,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 3: Restricted Writes (empty write array)
+  // Restricted Writes (empty write array)
   // ---------------------------------------------------------------------------
   {
     id: "restricted-writes",
@@ -65,7 +65,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 4: /tmp/ Writes Test
+  // /tmp/ Writes Test
   // ---------------------------------------------------------------------------
   {
     id: "tmp-writes",
@@ -80,7 +80,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 5: Project Writes Allowed Test
+  // Project Writes Allowed Test
   // ---------------------------------------------------------------------------
   {
     id: "project-writes-allowed",
@@ -97,7 +97,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 6: Contract Output Restriction Test
+  // Contract Output Restriction Test
   // ---------------------------------------------------------------------------
   {
     id: "contract-output-restriction",
@@ -110,7 +110,7 @@ Follow these steps:
 2. Report that \`PLAYGROUND.md\` is writable because its contract output name (\`playground-output\`) appears in this phase's \`write\` array`,
   },
   // ---------------------------------------------------------------------------
-  // Phase 7: Variable Definition — Basic Test
+  // Variable Definition — Basic Test
   // instructions ignored — engine generates template from variables array
   // ---------------------------------------------------------------------------
   {
@@ -143,7 +143,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 8: loopWhile Condition Test
+  // loopWhile Condition Test
   // ---------------------------------------------------------------------------
   {
     id: "loopwhile-test",
@@ -167,7 +167,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 9: terminateWhen AND Logic Test
+  // terminateWhen AND Logic Test
   // ---------------------------------------------------------------------------
   {
     id: "terminate-when-and-test",
@@ -195,7 +195,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 10: Template Interpolation
+  // Template Interpolation
   // ---------------------------------------------------------------------------
   {
     id: "template-interpolation",
@@ -214,7 +214,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 11: Validation Gate Replay
+  // Validation Gate Replay
   // instructions ignored — engine generates template from variables array
   // ---------------------------------------------------------------------------
   {
@@ -235,7 +235,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 12: Consecutive Programmatic — First
+  // Consecutive Programmatic — First
   // Purely programmatic — no LLM vars, skipped by advancePhase
   // ---------------------------------------------------------------------------
   {
@@ -259,7 +259,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 13: Consecutive Programmatic — Second
+  // Consecutive Programmatic — Second
   // Purely programmatic — no LLM vars, skipped by advancePhase
   // ---------------------------------------------------------------------------
   {
@@ -283,7 +283,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 15: branch:if Test
+  // branch:if Test
   // ---------------------------------------------------------------------------
   {
     id: "branch-if-test",
@@ -333,7 +333,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 16: branch:if Verification
+  // branch:if Verification
   // ---------------------------------------------------------------------------
   {
     id: "branch-if-verify",
@@ -348,7 +348,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 17: branch:switch with callback on
+  // branch:switch with callback on
   // ---------------------------------------------------------------------------
   {
     id: "branch-switch-callback",
@@ -405,7 +405,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 18: branch:switch with $varName string form
+  // branch:switch with $varName string form
   // ---------------------------------------------------------------------------
   {
     id: "branch-switch-varname",
@@ -462,7 +462,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 19: branch:switch Verification
+  // branch:switch Verification
   // ---------------------------------------------------------------------------
   {
     id: "branch-switch-verify",
@@ -477,7 +477,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 20: Code Step — Session Variable Set
+  // Code Step — Session Variable Set
   // kind: "code" — run() executes inline during traversal, no LLM turn
   // ---------------------------------------------------------------------------
   {
@@ -490,7 +490,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 21: Code Step — Intentional Failure
+  // Code Step — Intentional Failure
   // run() throws on purpose — proves warn-and-continue traversal
   // ---------------------------------------------------------------------------
   {
@@ -503,7 +503,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 22: Code Step — Verification (LLM turn)
+  // Code Step — Verification (LLM turn)
   // first agent turn after both code steps — sees the activity section
   // ---------------------------------------------------------------------------
   {
@@ -521,7 +521,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 24: Do-While Loop — Var-Toggled (LLM body)
+  // Do-While Loop — Var-Toggled (LLM body)
   // kind: "loop" — do-while block; repeatWhile evaluated at the end of each
   // full body pass (never pre-checked — ≥1 pass guaranteed)
   // ---------------------------------------------------------------------------
@@ -569,7 +569,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 25: Do-While Loop — Capped All-Programmatic
+  // Do-While Loop — Capped All-Programmatic
   // kind: "loop" — body is fully programmatic: the whole loop runs inline
   // during a single traversal with zero agent turns
   // ---------------------------------------------------------------------------
@@ -616,7 +616,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 26: Do-While Verification (LLM turn)
+  // Do-While Verification (LLM turn)
   // first agent turn after the capped loop — sees its three activity bullets
   // ---------------------------------------------------------------------------
   {
@@ -636,7 +636,7 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 23: Final Report
+  // Final Report
   // ---------------------------------------------------------------------------
   {
     id: "final-report",

@@ -521,13 +521,128 @@ Follow these steps:
   },
 
   // ---------------------------------------------------------------------------
+  // Phase 24: Do-While Loop — Var-Toggled (LLM body)
+  // kind: "loop" — do-while block; repeatWhile evaluated at the end of each
+  // full body pass (never pre-checked — ≥1 pass guaranteed)
+  // ---------------------------------------------------------------------------
+  {
+    id: "dowhile-var",
+    title: "Do-While Loop — Var-Toggled",
+    kind: "loop",
+    maxIterations: 3,
+    repeatWhile: (state: PioSessionState) =>
+      state.store?.get("dowhile_pass_state") !== "stop",
+    // Never rendered (containers get no agent turns) — present for the
+    // prompt compiler's top-level validation, which only exempts branch:*
+    instructions: `This is a do-while loop block (kind: "loop"). Its two-phase body (Pass A → Pass B) runs at least once, and after each full pass the repeatWhile condition is evaluated — the loop repeats while the dowhile_pass_state variable is not "stop" and exits cleanly once it is. This container itself never receives an agent turn.`,
+    body: [
+      {
+        id: "dowhile-pass-a",
+        title: "Do-While Pass A (flip var)",
+        kind: "variable-definition",
+        maxIterations: 3,
+        variables: [
+          {
+            name: "dowhile_pass_state",
+            type: "string",
+            kind: "llm",
+            description: `Two-value flip protocol — follow exactly:
+1. Call listVars first.
+2. If dowhile_pass_state is UNSET, set it to "pass-1" via setVar.
+3. If dowhile_pass_state is already "pass-1", set it to "stop" via setVar.
+4. Report which action you took.
+No other values are allowed, and never leave it unset.`,
+          },
+        ],
+      },
+      {
+        id: "dowhile-pass-b",
+        title: "Do-While Pass B (observe)",
+        instructions: `This phase is the second phase of the dowhile-var loop body.
+
+Follow these steps:
+1. Call listVars and report the current value of dowhile_pass_state
+2. Report which pass this is — entry 1 (dowhile_pass_state is "pass-1") or entry 2 (dowhile_pass_state is "stop")
+3. Explain what happens next: after this phase, the loop's synthetic loop-end node evaluates the repeatWhile condition — while the value is still not "stop", the loop repeats back to Pass A; once "stop" is seen, the loop exits cleanly to the next declared phase (dowhile-capped)`,
+      },
+    ],
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 25: Do-While Loop — Capped All-Programmatic
+  // kind: "loop" — body is fully programmatic: the whole loop runs inline
+  // during a single traversal with zero agent turns
+  // ---------------------------------------------------------------------------
+  {
+    id: "dowhile-capped",
+    title: "Do-While Loop — Capped All-Programmatic",
+    kind: "loop",
+    maxIterations: 3,
+    repeatWhile: () => true,
+    // Never rendered (containers get no agent turns) — present for the
+    // prompt compiler's top-level validation, which only exempts branch:*
+    instructions: `This is a do-while loop block (kind: "loop") whose body is entirely programmatic (one variable-definition phase plus one code phase). The whole loop — exactly 3 full passes — executes inline during a single traversal with zero agent turns. repeatWhile is always true, so termination comes solely from the explicit maxIterations cap (3). This container itself never receives an agent turn.`,
+    body: [
+      {
+        id: "dowhile-cap-count",
+        title: "Do-While Cap Count (programmatic vars)",
+        kind: "variable-definition",
+        variables: [
+          {
+            name: "dowhile_cap_ran",
+            type: "string",
+            kind: "static",
+            value: "yes",
+          },
+          {
+            name: "dowhile_cap_phase",
+            type: "string",
+            kind: "computed",
+            compute: (state: PioSessionState) => state.currentPhaseId,
+          },
+        ],
+      },
+      {
+        id: "dowhile-cap-marker",
+        title: "Do-While Cap Marker (pass counter)",
+        kind: "code",
+        run: (ctx: CodeStepContext) => {
+          const current = ctx.state.store?.get("dowhile_cap_passes") ?? "0";
+          const next = Number(current) + 1;
+          ctx.state.store?.set("dowhile_cap_passes", "string", String(next));
+        },
+      },
+    ],
+  },
+
+  // ---------------------------------------------------------------------------
+  // Phase 26: Do-While Verification (LLM turn)
+  // first agent turn after the capped loop — sees its three activity bullets
+  // ---------------------------------------------------------------------------
+  {
+    id: "dowhile-verify",
+    title: "Do-While Verification",
+    instructions: `This phase verifies both do-while loop blocks (dowhile-var and dowhile-capped). The only observable evidence is session variables and the activity bullets below — internal loop counters are not exposed to you.
+
+Follow these steps:
+1. Call listVars and check dowhile_pass_state:
+   - "stop" → the var loop ran exactly 2 passes (the flip happened on pass 2) — the happy path
+   - "pass-1" → the flip never happened; the loop ran 3 passes and exited on the cap (the degraded path) — report it as such
+   - unset → the flip phase never set the variable — report as a discrepancy
+2. Confirm dowhile_cap_passes === "3", dowhile_cap_ran === "yes", and dowhile_cap_phase === "dowhile-cap-count" — the capped loop ran exactly 3 inline passes and terminated on the cap
+3. The top of THIS turn's instructions carries a "## Programmatic activity since your last turn" section — quote it verbatim. Expect exactly three lines, each "• dowhile-cap-marker (code)", and no line mentioning any synthetic merge-node id (the engine-internal loop-end / branch-end routing nodes, whose ids begin with double underscores). Explain what this proves: real code phases log one bullet per execution while synthetic merge nodes run their no-op with logging suppressed — no prompt noise from any branch-end or loop-end node
+4. Report "Do-While loop tests PASSED" (or list discrepancies), summarizing: the ≥1-pass do-while guarantee, repeat-then-exit on the var flip, silent cap termination, and all-programmatic inline execution of the capped body (no agent turns)
+5. Optional observational note (not a hard check): in earlier session turns (branch-if-verify, branch-switch-verify) no programmatic-activity section appeared — consistent with suppressed branch-end merge nodes and purely variable-definition arms`,
+  },
+
+  // ---------------------------------------------------------------------------
   // Phase 23: Final Report
   // ---------------------------------------------------------------------------
   {
     id: "final-report",
     title: "Final Report",
     write: ["playground-output"],
-    instructions: `This is the final phase. Write a comprehensive test report in \`PLAYGROUND.md\` covering all phases (1–22).
+    instructions: `This is the final phase. Write a comprehensive test report in \`PLAYGROUND.md\` covering all phases (1–25).
 
 Follow these steps:
 1. Write \`PLAYGROUND.md\` with a section for each phase summarizing behavior observed
@@ -548,7 +663,13 @@ Follow these steps:
    a. Variable set by code: re-check with \`listVars\` that \`code_step_flag === "code-set"\` — set by the code phase's \`run()\` via \`ctx.state.store\`, not by \`setVar\` (which is restricted to variable-definition phases)
    b. Warn-and-continue for a throwing code step: from your \`code-step-verify\` turn, quote **verbatim** both lines of the "## Programmatic activity since your last turn" section — \`• code-step-set-var (code)\` and \`• code-step-fail (code): intentional playground failure: warn-and-continue\` — and explain that traversal continued past the thrown error to reach \`code-step-verify\` and this phase; the error detail after the colon is the only evidence channel for a throwing code step
    c. Document where each line was observed (both in one section, at the top of the \`code-step-verify\` turn's instructions, rendered in execution order) and explain why the two code phases never triggered agent turns of their own
-7. Include any unexpected behaviors or discrepancies
-8. This is the final phase — produce a complete, well-structured report in \`PLAYGROUND.md\` covering all 22 phases total`,
+7. **Do-while loop verification (\`dowhile-var\`, \`dowhile-capped\`, \`dowhile-verify\`):**
+   a. Observed pass counts: from \`listVars\`, report \`dowhile_pass_state\` (the var loop's flip variable) and \`dowhile_cap_passes\` (the capped loop's pass counter)
+   b. Flip-vs-cap outcome: \`dowhile_pass_state === "stop"\` → the var loop repeated then exited on the flip after 2 passes; \`"pass-1"\` → the flip never happened and the loop exited on the cap after 3 passes; unset → discrepancy
+   c. Capped loop: confirm \`dowhile_cap_passes === "3"\`, \`dowhile_cap_ran === "yes"\`, and \`dowhile_cap_phase === "dowhile-cap-count"\` — exactly 3 inline passes with silent cap termination
+   d. From your \`dowhile-verify\` turn, quote **verbatim** the "## Programmatic activity since your last turn" section — exactly three lines, each \`• dowhile-cap-marker (code)\`, with no line mentioning any \`__loop-end-\` or \`__branch-end-\` id — and explain that real code phases log one bullet per execution while synthetic merge nodes run their no-op with logging suppressed
+   e. Document the no-synthetic-noise observation, including the note that earlier verify turns (\`branch-if-verify\`, \`branch-switch-verify\`) showed no programmatic-activity section at all
+8. Include any unexpected behaviors or discrepancies
+9. This is the final phase — produce a complete, well-structured report in \`PLAYGROUND.md\` covering all 25 phases total`,
   },
 ] satisfies WorkflowPhase[];

@@ -316,8 +316,10 @@ export function buildPhaseInstructions(state: PioSessionState): string {
  *
  * A programmatic phase is a phase where there's nothing for
  * the LLM to do: code phases (whose `run()` executes inline),
- * branch phases, and pure-variable-definition phases. Standard
- * phases always return `false`.
+ * branch phases, loop containers (which execute nothing themselves —
+ * no `run`, no variables — their body is traversed via `resolveNext`
+ * links), and pure-variable-definition phases. Standard phases always
+ * return `false`.
  *
  * @param phase - WorkflowPhase to check
  * @returns `true` if the phase is purely programmatic (no LLM involvement)
@@ -327,6 +329,9 @@ export function isProgrammatic(phase: WorkflowPhase): boolean {
   if (phase.kind === "code") return true;
   // Branch phases execute inline — no agent turn needed
   if (phase.kind?.startsWith("branch:")) return true;
+  // Loop containers execute nothing themselves — body traversal happens via
+  // resolveNext links; never an agent turn.
+  if (phase.kind === "loop") return true;
   if (phase.kind !== "variable-definition" || !phase.variables?.length) {
     return false;
   }
@@ -367,7 +372,8 @@ function _handleExhaustion(): void {
  * (`{ state }` — the single live state reference), awaits
  * `phase.run!(ctx)`, and appends one entry to `state.programmaticLog`
  * (`detail` holds the thrown error's message when `run()` throws,
- * empty otherwise). A throwing `run()` never blocks traversal:
+ * empty otherwise) — synthetic phases (`synthetic: true`) skip the
+ * append. A throwing `run()` never blocks traversal:
  * it is caught, warned via console, and traversal continues.
  *
  * For variable-definition phases, this sets static variables and runs
@@ -401,13 +407,17 @@ export async function executePhase(
     }
 
     // One log entry per executed code phase (append via setState merge —
-    // never mutate the array in place).
-    setState({
-      programmaticLog: [
-        ...getState().programmaticLog,
-        { phaseId: phase.id, kind: "code", detail },
-      ],
-    });
+    // never mutate the array in place). Synthetic merge nodes (the
+    // engine-injected branch-end/loop-end phases) run their no-op `run`
+    // but append nothing — no prompt noise per traversal.
+    if (!phase.synthetic) {
+      setState({
+        programmaticLog: [
+          ...getState().programmaticLog,
+          { phaseId: phase.id, kind: "code", detail },
+        ],
+      });
+    }
   } else if (phase.kind === "variable-definition" && phase.variables?.length) {
     preparePhaseVariables(phase, store);
   }
@@ -642,6 +652,20 @@ export function __testSetActiveSession(value?: boolean): void {
 // ---------------------------------------------------------------------------
 // Event handlers
 // ---------------------------------------------------------------------------
+
+/**
+ * Return the user-facing phase IDs from a PhaseManager's registry.
+ *
+ * Synthetic merge nodes (the engine-injected branch-end and loop-end
+ * routing nodes) are engine-internal and must not surface in user-facing
+ * enumerations. Filter on the `synthetic` flag, never on id prefixes —
+ * a future third synthetic family must be covered automatically (mirrors
+ * the PhaseManager.listIds() JSDoc contract). Null-safe: an id missing
+ * from the registry keeps its pass-through rather than being dropped.
+ */
+function listUserFacingPhaseIds(pm: PhaseManager): string[] {
+  return pm.listIds().filter((id) => !pm.getPhase(id)?.synthetic);
+}
 
 /**
  * Main registration function — installs event handlers on the pi Extension API.
@@ -1155,7 +1179,9 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       const pm = getState().phaseManager;
       if (!pm) return null;
 
-      const ids = pm.listIds();
+      // Synthetic merge nodes are engine-internal — excluded from
+      // completions (flag-keyed, see listUserFacingPhaseIds).
+      const ids = listUserFacingPhaseIds(pm);
       return ids
         .filter((id) =>
           id.toLowerCase().startsWith(argumentPrefix.toLowerCase()),
@@ -1192,7 +1218,9 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       // Validate the phase exists
       const targetPhase = state.phaseManager.getPhase(targetId);
       if (!targetPhase) {
-        const available = state.phaseManager.listIds().join(", ");
+        // Synthetic merge nodes are engine-internal — excluded from the
+        // user-facing "Available phases" list (flag-keyed).
+        const available = listUserFacingPhaseIds(state.phaseManager).join(", ");
         ctx.ui.notify(
           `Unknown phase "${targetId}". Available phases: ${available}`,
           "error",

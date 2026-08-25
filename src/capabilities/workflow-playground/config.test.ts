@@ -226,6 +226,11 @@ type CodePhase = Extract<
   { kind: "code"; run: (ctx: CodeStepContext) => void | Promise<void> }
 >;
 
+type LoopPhase = Extract<
+  (typeof workflowPhases)[number],
+  { kind: "loop"; body: WorkflowPhase[] }
+>;
+
 // The exported array is checked with `satisfies` (inferred literal-union
 // element types). Passing that union where WorkflowPhase[] is expected trips
 // TS union normalization on the two distinct branch:switch `cases` shapes —
@@ -233,14 +238,18 @@ type CodePhase = Extract<
 const phases = workflowPhases as WorkflowPhase[];
 
 describe("code-step phases (structural presence)", () => {
-  it('defines exactly two kind: "code" phases, each with a run function', () => {
-    const codePhases = workflowPhases.filter(
+  it('defines exactly three kind: "code" phases, each with a run function', () => {
+    // Top-level phases plus loop-body phases — dowhile-cap-marker lives in
+    // the dowhile-capped body, not at the top level
+    const allPhases = phases.flatMap((p) => (p.body ? [p, ...p.body] : [p]));
+    const codePhases = allPhases.filter(
       (p) => p.kind === "code" && typeof p.run === "function",
     );
-    expect(codePhases).toHaveLength(2);
+    expect(codePhases).toHaveLength(3);
     const ids = codePhases.map((p) => p.id);
     expect(ids).toContain("code-step-set-var");
     expect(ids).toContain("code-step-fail");
+    expect(ids).toContain("dowhile-cap-marker");
   });
 
   it("failing run throws the pinned message; set-var run is a no-op against a null store", async () => {
@@ -276,6 +285,104 @@ describe("code-step phases (structural presence)", () => {
       setVarThrew = true;
     }
     expect(setVarThrew).toBe(false);
+  });
+
+  it("capped-loop marker increments the pass counter against a real store", async () => {
+    const cappedLoop = workflowPhases.find(
+      (p): p is LoopPhase => p.id === "dowhile-capped",
+    );
+    expect(cappedLoop).toBeDefined();
+    // The marker is a body phase of the capped loop, not a top-level phase
+    const markerPhase = (cappedLoop!.body as WorkflowPhase[]).find(
+      (
+        p,
+      ): p is WorkflowPhase & {
+        run: (ctx: CodeStepContext) => void | Promise<void>;
+      } => p.id === "dowhile-cap-marker" && p.kind === "code",
+    );
+    expect(markerPhase).toBeDefined();
+
+    // No prior value — defaults to "0", increments to "1"
+    const freshStore = new SessionVariableStore({});
+    await markerPhase!.run({
+      state: { store: freshStore },
+    } as unknown as CodeStepContext);
+    expect(freshStore.get("dowhile_cap_passes")).toBe("1");
+
+    // Pre-seeded "2" — increments to "3"
+    const seededStore = new SessionVariableStore({});
+    seededStore.set("dowhile_cap_passes", "string", "2");
+    await markerPhase!.run({
+      state: { store: seededStore },
+    } as unknown as CodeStepContext);
+    expect(seededStore.get("dowhile_cap_passes")).toBe("3");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Do-while loop blocks — structural presence
+// ---------------------------------------------------------------------------
+
+describe("do-while loop blocks (structural presence)", () => {
+  it("declares dowhile-var: var-toggled LLM-body loop with explicit cap", () => {
+    const loop = workflowPhases.find(
+      (p): p is LoopPhase => p.id === "dowhile-var",
+    );
+    expect(loop).toBeDefined();
+    expect(loop!.kind).toBe("loop");
+    expect(loop!.maxIterations).toBe(3);
+    expect(typeof loop!.instructions).toBe("string");
+    expect(loop!.instructions!.length).toBeGreaterThan(0);
+    expect(typeof loop!.repeatWhile).toBe("function");
+
+    const body = loop!.body as WorkflowPhase[];
+    expect(body).toHaveLength(2);
+
+    // body[0] — variable-definition flip phase with exactly one llm var
+    expect(body[0].id).toBe("dowhile-pass-a");
+    expect(body[0].kind).toBe("variable-definition");
+    expect(body[0].variables).toHaveLength(1);
+    expect(body[0].variables![0].name).toBe("dowhile_pass_state");
+    expect(body[0].variables![0].kind).toBe("llm");
+
+    // body[1] — standard LLM observe phase
+    expect(body[1].id).toBe("dowhile-pass-b");
+    expect(body[1].kind).not.toBe("code");
+    expect(typeof body[1].instructions).toBe("string");
+  });
+
+  it("declares dowhile-capped: all-programmatic body, always-true repeatWhile, explicit cap", () => {
+    const loop = workflowPhases.find(
+      (p): p is LoopPhase => p.id === "dowhile-capped",
+    );
+    expect(loop).toBeDefined();
+    expect(loop!.kind).toBe("loop");
+    expect(loop!.maxIterations).toBe(3);
+    expect(typeof loop!.instructions).toBe("string");
+    expect(typeof loop!.repeatWhile).toBe("function");
+    // Always-true repeat while — termination comes solely from the cap
+    expect(loop!.repeatWhile!(getState())).toBe(true);
+
+    const body = loop!.body as WorkflowPhase[];
+    expect(body).toHaveLength(2);
+
+    // body[0] — purely programmatic variable-definition (no llm vars)
+    expect(body[0].id).toBe("dowhile-cap-count");
+    expect(body[0].kind).toBe("variable-definition");
+    const llmVars = (body[0].variables ?? []).filter((v) => v.kind === "llm");
+    expect(llmVars).toHaveLength(0);
+
+    // body[1] — real code phase (the pass counter)
+    expect(body[1].id).toBe("dowhile-cap-marker");
+    expect(body[1].kind).toBe("code");
+    expect(typeof body[1].run).toBe("function");
+  });
+
+  it("declares dowhile-verify with non-empty instructions", () => {
+    const verify = phases.find((p) => p.id === "dowhile-verify");
+    expect(verify).toBeDefined();
+    expect(typeof verify!.instructions).toBe("string");
+    expect(verify!.instructions!.length).toBeGreaterThan(0);
   });
 });
 
@@ -342,6 +449,69 @@ describe("code-step traversal (programmatic-log transfer)", () => {
     expect(
       vi.mocked(statePersistence.saveLoopEngineState),
     ).toHaveBeenCalledTimes(4);
+
+    warnSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Do-while capped loop — inline all-programmatic traversal
+// ---------------------------------------------------------------------------
+
+describe("dowhile-capped traversal (inline all-programmatic do-while)", () => {
+  beforeEach(() => {
+    // resetState() resets ALL PioSessionState including loop engine fields
+    resetState();
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+  });
+
+  it("runs exactly 3 full passes inline, stops at dowhile-verify, renders three marker bullets, and clears the log", async () => {
+    const store = new SessionVariableStore({});
+    setState({
+      isActive: true,
+      sessionId: "dowhile-capped-traversal-test",
+      currentIteration: 1,
+      totalPhases: phases.length,
+      phasesList: phases,
+      phaseManager: new PhaseManager(phases),
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+      currentPhaseId: "dowhile-capped",
+    });
+
+    // Spy immediately before the traversal — unmocked warnings would leak
+    // into suite output (the capped loop is expected to be silent)
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = await advancePhase(store, "dowhile-capped", "reset");
+
+    // 1. One call runs all three full passes inline (each visiting both body
+    //    phases plus the synthetic loop-end node) and stops at the LLM phase
+    expect(result.triggered).toBe(true);
+    expect(getState().currentPhaseId).toBe("dowhile-verify");
+
+    // 2. Counter phase ran exactly three times; static var re-set each pass
+    expect(store.get("dowhile_cap_passes")).toBe("3");
+    expect(store.get("dowhile_cap_ran")).toBe("yes");
+
+    // 3. Counter contract pinned: repeats chosen so far = cap − 1 at cap exit
+    expect(getState().loopPasses["dowhile-capped"]).toBe(2);
+
+    // 4. Log transferred — exactly three marker bullets, no synthetic ids
+    expect(
+      result.payload?.content.startsWith(
+        "## Programmatic activity since your last turn\n\n" +
+          "• dowhile-cap-marker (code)\n" +
+          "• dowhile-cap-marker (code)\n" +
+          "• dowhile-cap-marker (code)",
+      ),
+    ).toBe(true);
+    expect(result.payload?.content).not.toContain("__loop-end-");
+    expect(result.payload?.content).not.toContain("__branch-end-");
+
+    // 5. Cleared on render — the log is empty exactly when the section rendered
+    expect(getState().programmaticLog).toEqual([]);
 
     warnSpy.mockRestore();
   });

@@ -9,6 +9,7 @@ import type { CapabilityConfig } from "../types";
 import { initializeStore } from "./loop-engine";
 import { PhaseManager } from "./phase-manager";
 import { getState, resetState, setState as setStateRaw } from "./session-state";
+import type { WorkflowPhase } from "./workflow-types";
 
 // ---------------------------------------------------------------------------
 // Helper: setState with automatic phaseManager/currentPhaseId setup
@@ -1036,6 +1037,204 @@ describe("/goto command", () => {
       expect(results).toEqual([]);
     });
   });
+
+  // ---- Synthetic merge node filtering (Step 5) ----
+
+  describe("synthetic merge node filtering", () => {
+    /**
+     * Compute the expected user-facing id set from the registry — the
+     * assertion path for the flag-keyed filter contract: synthetic merge
+     * nodes are engine-internal and must not surface in user-facing
+     * enumerations (mirrors the PhaseManager.listIds() JSDoc contract).
+     */
+    function nonSyntheticIds(pm: PhaseManager): string[] {
+      return pm.listIds().filter((id) => !pm.getPhase(id)?.synthetic);
+    }
+
+    async function fireBeforeAgentStart(
+      handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+      event: { type?: string; systemPrompt?: string } = {
+        type: "before_agent_start",
+      },
+    ) {
+      const handlersList = handlers.get("before_agent_start");
+      expect(handlersList).toBeDefined();
+      const mockCtx = {} as any;
+      const results: unknown[] = [];
+      for (const handler of handlersList!) {
+        const result = await handler(event, mockCtx);
+        if (result) results.push(result);
+      }
+      return results;
+    }
+
+    /**
+     * Workflow fixture with one branch (injects `__branch-end-b1`) and one
+     * top-level loop (injects `__loop-end-L`) — the registry holds eight
+     * ids: six declared phases plus the two synthetic merge nodes.
+     */
+    function makeBranchLoopPhases(): WorkflowPhase[] {
+      return [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        {
+          id: "b1",
+          title: "B1",
+          kind: "branch:if" as const,
+          condition: () => true,
+          // biome-ignore lint/suspicious/noThenProperty: intentional test of WorkflowPhase.then field
+          then: [{ id: "t1", title: "T1", instructions: "Do T" }],
+        },
+        {
+          id: "L",
+          title: "Loop L",
+          kind: "loop" as const,
+          maxIterations: 3, // explicit cap — hermetic, no model-config
+          body: [{ id: "lp1", title: "LP1", instructions: "Do LP" }],
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+    }
+
+    it("completions exclude both synthetic merge-node families", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = makeBranchLoopPhases();
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhaseId: "s1",
+        phasesList: phases,
+        phaseManager: pm,
+      });
+
+      // The registry holds eight ids: six declared phases (including the
+      // branch container b1 and the loop body phase lp1) plus the two
+      // synthetic merge nodes.
+      expect(pm.listIds()).toHaveLength(8);
+
+      const cmd = registeredCommands.get("goto");
+      const results = cmd!.getArgumentCompletions!("");
+      expect(results).not.toBeNull();
+      expect(results!.map((r) => r.value)).toEqual(nonSyntheticIds(pm));
+      expect(results).toHaveLength(6);
+      expect(results!.some((r) => r.value.startsWith("__branch-end-"))).toBe(
+        false,
+      );
+      expect(results!.some((r) => r.value.startsWith("__loop-end-"))).toBe(
+        false,
+      );
+    });
+
+    it("loop container id stays listed with its title as description", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = makeBranchLoopPhases();
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhaseId: "s1",
+        phasesList: phases,
+        phaseManager: pm,
+      });
+
+      const cmd = registeredCommands.get("goto");
+      const results = cmd!.getArgumentCompletions!("");
+      expect(results).not.toBeNull();
+      // A loop block is a legitimate goto target — not synthetic.
+      expect(results).toContainEqual({
+        value: "L",
+        label: "L",
+        description: "Loop L",
+      });
+    });
+
+    it("unknown-phase error list excludes synthetic merge-node ids", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = makeBranchLoopPhases();
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhaseId: "s1",
+        totalPhases: 6,
+        phasesList: phases,
+        phaseManager: pm,
+      });
+
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
+      await fireGotoCommand(registeredCommands, "nonexistent", ctx);
+
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        `Unknown phase "nonexistent". Available phases: ${nonSyntheticIds(pm).join(", ")}`,
+        "error",
+      );
+      const [msg] = ctx.ui.notify.mock.calls[0];
+      expect(msg).not.toContain("__branch-end-");
+      expect(msg).not.toContain("__loop-end-");
+    });
+
+    it("/goto <loop-block-id> is accepted and lands at body[0] on the follow-up turn", async () => {
+      const { pi, registeredCommands, handlers, sendUserMessageCalls } =
+        createMockPi();
+      const { setupLoopEngine, initializeStore } = await import(
+        "./loop-engine"
+      );
+      setupLoopEngine(pi);
+
+      const phases = makeBranchLoopPhases();
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        sessionId: "goto-loop-session",
+        currentPhaseId: "s1",
+        currentIteration: 1,
+        totalPhases: 6,
+        phasesList: phases,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        phaseManager: pm,
+      });
+      // before_agent_start early-returns without a store
+      setState({ store: initializeStore({}) });
+
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
+      await fireGotoCommand(registeredCommands, "L", ctx);
+
+      // Accepted: no error, container set as current phase, follow-up queued
+      expect(ctx.ui.notify).not.toHaveBeenCalled();
+      expect(getState().currentPhaseId).toBe("L");
+      expect(sendUserMessageCalls).toHaveLength(1);
+
+      // Follow-up turn: before_agent_start traverses the programmatic
+      // container into the loop's body[0]
+      const results = await fireBeforeAgentStart(handlers);
+      expect(results).toHaveLength(1);
+      const message = (
+        results[0] as {
+          message: { customType: string; content: string };
+        }
+      ).message;
+      expect(message.customType).toBe("workflow-phase-instructions");
+      expect(message.content).toContain('## Instructions for "lp1"');
+      expect(getState().currentPhaseId).toBe("lp1");
+      // Prompt-exclusion: no synthetic merge-node id leaks into the payload
+      expect(message.content).not.toContain("__branch-end-");
+      expect(message.content).not.toContain("__loop-end-");
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1136,6 +1335,55 @@ describe("resources_discover", () => {
     expect(state.isActive).toBe(true);
     expect(state.totalPhases).toBe(0);
     expect(state.phasesList).toEqual([]);
+  });
+
+  it("totalPhases counts declared top-level phases + __pio-exit only, not synthetic merge nodes", async () => {
+    // Arrange: declared workflow with one branch and one loop block —
+    // four declared top-level phases
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue([
+      { id: "s1", title: "S1", instructions: "Do A" },
+      {
+        id: "b1",
+        title: "B1",
+        kind: "branch:if" as const,
+        condition: () => true,
+        // biome-ignore lint/suspicious/noThenProperty: intentional test of WorkflowPhase.then field
+        then: [{ id: "t1", title: "T1", instructions: "Do T" }],
+      },
+      {
+        id: "L",
+        title: "Loop L",
+        kind: "loop" as const,
+        maxIterations: 3, // explicit cap — hermetic, no model-config
+        body: [{ id: "lp1", title: "LP1", instructions: "Do LP" }],
+      },
+      { id: "s2", title: "S2", instructions: "Do B" },
+    ]);
+
+    setupLoopEngine(pi);
+
+    // Act: fire resources_discover
+    const discoverHandlers = handlers.get("resources_discover");
+    for (const handler of discoverHandlers!) {
+      await handler(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        mockCtx,
+      );
+    }
+
+    // Assert: totalPhases counts declared top-level phases + __pio-exit only
+    const state = getState();
+    expect(state.totalPhases).toBe(5);
+    expect(state.phasesList).toHaveLength(5);
+    expect(state.phasesList[4].id).toBe("__pio-exit");
+
+    // Contrast: the PhaseManager registry DOES hold the synthetic merge
+    // nodes — they exist only inside the registry, never in phasesList
+    const ids = state.phaseManager!.listIds();
+    expect(ids).toContain("__branch-end-b1");
+    expect(ids).toContain("__loop-end-L");
   });
 });
 
@@ -7925,6 +8173,42 @@ describe("isProgrammatic", () => {
     expect(isProgrammatic(phaseEmpty)).toBe(false);
     expect(isProgrammatic(phaseMissing)).toBe(false);
   });
+
+  it("returns true for a loop container (body content irrelevant)", async () => {
+    const isProgrammatic = await getIsProgrammatic();
+    const phase = {
+      id: "L",
+      title: "L",
+      kind: "loop" as const,
+      body: [{ id: "p1", title: "P1", instructions: "Do A" }],
+    };
+    expect(isProgrammatic(phase)).toBe(true);
+  });
+
+  it("returns true for a loop container even when the body contains an llm-driven phase", async () => {
+    const isProgrammatic = await getIsProgrammatic();
+    const phase = {
+      id: "L",
+      title: "L",
+      kind: "loop" as const,
+      body: [
+        {
+          id: "p1",
+          title: "P1",
+          kind: "variable-definition" as const,
+          variables: [
+            {
+              name: "feature",
+              type: "string",
+              kind: "llm" as const,
+              description: "What feature?",
+            },
+          ],
+        },
+      ],
+    };
+    expect(isProgrammatic(phase)).toBe(true);
+  });
 });
 
 describe("executePhase", () => {
@@ -8159,6 +8443,140 @@ describe("executePhase", () => {
       { phaseId: "c-str", kind: "code", detail: ["string-failure"] },
     ]);
     warnSpy.mockRestore();
+  });
+
+  it("for synthetic code phases: run() executes with the live state reference but appends nothing to programmaticLog", async () => {
+    const executePhase = await getExecutePhase();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const run = vi.fn();
+    const phase = {
+      id: "__loop-end-x",
+      title: "__loop-end-x",
+      kind: "code" as const,
+      run,
+      synthetic: true,
+    };
+
+    await executePhase(phase, store);
+
+    // run called exactly once, with the LIVE state reference (no copies)
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run.mock.calls[0][0].state).toBe(getState());
+    // Synthetic merge node appends nothing — no prompt noise
+    expect(getState().programmaticLog).toEqual([]);
+    // Single trailing persist unchanged
+    expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(1);
+  });
+
+  it("for synthetic code phases: a throwing run() is caught, warned with the phase id, and still logs nothing", async () => {
+    const executePhase = await getExecutePhase();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const run = vi.fn(() => {
+      throw new Error("boom");
+    });
+
+    const phase = {
+      id: "__loop-end-x",
+      title: "__loop-end-x",
+      kind: "code" as const,
+      run,
+      synthetic: true,
+    };
+
+    // Never rejects — warn-and-continue
+    await expect(executePhase(phase, store)).resolves.toBeUndefined();
+
+    expect(run).toHaveBeenCalledTimes(1);
+    const warnings = warnSpy.mock.calls
+      .map((c) => String(c[0]))
+      .filter((w) => w.includes("__loop-end-x"));
+    expect(warnings.length).toBeGreaterThan(0);
+    expect(warnings[0]).toContain("boom");
+    // Still no log entry — synthetic suppression is unconditional
+    expect(getState().programmaticLog).toEqual([]);
+    warnSpy.mockRestore();
+  });
+
+  it("for non-synthetic vs synthetic code phases: only the real phase logs an entry", async () => {
+    const executePhase = await getExecutePhase();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const realPhase = {
+      id: "c1",
+      title: "Code",
+      kind: "code" as const,
+      run: vi.fn(),
+    };
+    const synthPhase = {
+      id: "__loop-end-x",
+      title: "__loop-end-x",
+      kind: "code" as const,
+      run: vi.fn(),
+      synthetic: true,
+    };
+
+    await executePhase(realPhase, store);
+    expect(getState().programmaticLog).toEqual([
+      { phaseId: "c1", kind: "code", detail: [] },
+    ]);
+
+    await executePhase(synthPhase, store);
+    // Log unchanged in length — the synthetic phase added no entry
+    expect(getState().programmaticLog).toEqual([
+      { phaseId: "c1", kind: "code", detail: [] },
+    ]);
+    expect(
+      getState().programmaticLog.some((e) => e.phaseId === "__loop-end-x"),
+    ).toBe(false);
   });
 });
 
@@ -9665,5 +10083,272 @@ describe("__pio-exit — automatic terminal exit phase", () => {
       expect(getState().exitOutcome).toBe("success");
       expect(getState().markCompleteCalled).toBe(true);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Loop blocks — engine-side traversal (Step 4)
+// ---------------------------------------------------------------------------
+
+describe("advancePhase — inline all-programmatic loop traversal", () => {
+  it("traverses the loop end-to-end and terminates at the pass cap without an agent turn", async () => {
+    const { advancePhase, initializeStore } = await import("./loop-engine");
+
+    const c1Run = vi.fn(
+      (ctx: { state: import("./session-state").PioSessionState }) => {
+        const store = ctx.state.store!;
+        store.declare("passCount", "number");
+        const current = (store.get("passCount") as number | undefined) ?? 0;
+        store.set("passCount", "number", current + 1);
+      },
+    );
+
+    // Single top-level loop block — explicit cap (hermetic, no model-config).
+    const L = {
+      id: "L",
+      title: "L",
+      kind: "loop" as const,
+      maxIterations: 3,
+      body: [
+        { id: "c1", title: "C1", kind: "code" as const, run: c1Run },
+        {
+          id: "vd",
+          title: "VD",
+          kind: "variable-definition" as const,
+          variables: [
+            {
+              name: "marker",
+              type: "string",
+              kind: "static" as const,
+              value: "done",
+            },
+          ],
+        },
+      ],
+    };
+
+    const store = initializeStore({});
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: [L],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+    });
+
+    const result = await advancePhase(store, "L", "reset");
+
+    // One call terminates at the cap — no agent turn (a hang here would be
+    // the Step 3 cap-contract failure mode).
+    expect(result.triggered).toBe(false);
+    // Exactly resolvedMax - 1 repeats (3 full passes = first pass + 2 repeats)
+    expect(getState().loopPasses.L).toBe(2);
+    // The cap bounds full passes — c1 ran once per pass
+    expect(c1Run).toHaveBeenCalledTimes(3);
+    // The store variable written by the last pass is set
+    expect(store.get("passCount")).toBe(3);
+    // Exactly three log entries, all for c1 — the loop-end (traversed 3x)
+    // logged nothing
+    expect(getState().programmaticLog).toEqual([
+      { phaseId: "c1", kind: "code", detail: [] },
+      { phaseId: "c1", kind: "code", detail: [] },
+      { phaseId: "c1", kind: "code", detail: [] },
+    ]);
+    expect(
+      getState().programmaticLog.some((e) => e.phaseId === "__loop-end-L"),
+    ).toBe(false);
+  });
+});
+
+describe("loop block — agent_end-driven repeat across agent turns", () => {
+  async function fireAgentEnd(
+    handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+    messages: unknown[],
+  ) {
+    const handlersList = handlers.get("agent_end");
+    expect(handlersList).toBeDefined();
+    const mockCtx = {} as any;
+    for (const handler of handlersList!) {
+      await handler({ type: "agent_end", messages }, mockCtx);
+    }
+  }
+
+  async function fireBeforeAgentStart(
+    handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+    event: { type?: string; systemPrompt?: string } = {
+      type: "before_agent_start",
+    },
+  ) {
+    const handlersList = handlers.get("before_agent_start");
+    expect(handlersList).toBeDefined();
+    const mockCtx = {} as any;
+    const results: unknown[] = [];
+    for (const handler of handlersList!) {
+      const result = await handler(event, mockCtx);
+      if (result) results.push(result);
+    }
+    return results;
+  }
+
+  it("skips the container, repeats the body while the condition holds, and exits into __pio-exit", async () => {
+    const { pi, handlers, sendMessageCalls } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue([
+      {
+        id: "L",
+        title: "L",
+        kind: "loop" as const,
+        maxIterations: 5,
+        repeatWhile: (state) => state.store?.get("keepLooping"),
+        body: [
+          { id: "p1", title: "P1", instructions: "Do A", maxIterations: 2 },
+        ],
+      },
+    ]);
+
+    // Fire resources_discover — engine wiring: __pio-exit appended, so L's
+    // exitTarget is "__pio-exit"; currentPhaseId starts at the container "L".
+    const discoverHandlers = handlers.get("resources_discover");
+    for (const h of discoverHandlers!) {
+      await h(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        mockCtx,
+      );
+    }
+
+    // Seed AFTER discover — discover initializes the store; seed in place on
+    // the live reference it stored (the same object repeatWhile reads).
+    const store = getState().store!;
+    store.declare("keepLooping", "boolean");
+    store.set("keepLooping", "boolean", true);
+
+    // 1. First leg — the container is skipped, instructions name p1
+    const results = await fireBeforeAgentStart(handlers);
+    expect(results).toHaveLength(1);
+    const first = results[0] as {
+      message: { customType: string; content: string };
+    };
+    expect(first.message.customType).toBe("workflow-phase-instructions");
+    expect(first.message.content).toContain('You are on "p1", iteration 1');
+    expect(getState().currentPhaseId).toBe("p1");
+
+    // 2. Repeat 1 — loop-end routes back to the body
+    await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].options?.deliverAs).toBe("followUp");
+    expect(sendMessageCalls[0].message.customType).toBe(
+      "workflow-phase-instructions",
+    );
+    expect(getState().loopPasses.L).toBe(1);
+    expect(getState().currentIteration).toBe(1); // fresh pass — reset mode
+    expect(getState().currentPhaseId).toBe("p1");
+
+    // 3. Repeat 2
+    await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+    expect(sendMessageCalls).toHaveLength(2);
+    expect(getState().loopPasses.L).toBe(2);
+
+    // 4. Exit — flip the condition in place on the live store
+    store.set("keepLooping", "boolean", false);
+    vi.mocked(capabilitySession.getCurrentCapabilityConfig).mockReturnValue(
+      makeFakeCapabilityConfig(),
+    );
+    await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+
+    // Traversal exits into __pio-exit — no further agent turn
+    expect(sendMessageCalls).toHaveLength(2);
+    expect(vi.mocked(exitLifecycle.runExitLifecycle)).toHaveBeenCalledTimes(1);
+    expect(getState().exitOutcome).toBe("success");
+    expect(getState().markCompleteCalled).toBe(true);
+    // A real (non-synthetic) code phase still logs — suppression is
+    // flag-keyed, not kind-keyed
+    expect(
+      getState().programmaticLog.some((e) => e.phaseId === "__pio-exit"),
+    ).toBe(true);
+  });
+});
+
+describe("loop as last declared element — clean exit into __pio-exit", () => {
+  async function fireAgentEnd(
+    handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+    messages: unknown[],
+  ) {
+    const handlersList = handlers.get("agent_end");
+    expect(handlersList).toBeDefined();
+    const mockCtx = {} as any;
+    for (const handler of handlersList!) {
+      await handler({ type: "agent_end", messages }, mockCtx);
+    }
+  }
+
+  it("exits the capped loop into the synthesized __pio-exit without further passes", async () => {
+    const { pi, handlers, sendMessageCalls } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue([
+      {
+        id: "L",
+        title: "L",
+        kind: "loop" as const,
+        maxIterations: 1, // cap 1 — first loop-end evaluation exits at the cap
+        body: [
+          { id: "p1", title: "P1", instructions: "Do A", maxIterations: 2 },
+        ],
+      },
+    ]);
+
+    // Fire resources_discover so the PhaseManager carries the synthesized
+    // "__pio-exit" terminal node, exactly as in production wiring.
+    const discoverHandlers = handlers.get("resources_discover");
+    for (const h of discoverHandlers!) {
+      await h(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        mockCtx,
+      );
+    }
+
+    // Config present → the terminal exit node runs the (mocked) lifecycle
+    vi.mocked(capabilitySession.getCurrentCapabilityConfig).mockReturnValue(
+      makeFakeCapabilityConfig(),
+    );
+
+    // Set iteration/tracking WITHOUT phasesList — keeps the discover-built
+    // phaseManager (with synthesized tail) intact.
+    setState({
+      isActive: true,
+      sessionId: "test-session-id",
+      currentPhaseId: "p1",
+      currentIteration: 1,
+      markCompleteCalled: false,
+      filesWritten: ["/some/file.ts"],
+      askUserCalled: true,
+      isAdHocInput: false,
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    await fireAgentEnd(handlers, [
+      {
+        role: "assistant",
+        stopReason: "stop",
+      },
+    ]);
+
+    // Cap 1 → the loop-end evaluation exits silently before evaluating any
+    // repeat condition; traversal continues into __pio-exit
+    expect(sendMessageCalls).toHaveLength(0);
+    expect(vi.mocked(exitLifecycle.runExitLifecycle)).toHaveBeenCalledTimes(1);
+    expect(getState().exitOutcome).toBe("success");
+    expect(getState().currentIteration).toBe(1); // Reset on exhaustion
+    expect(getState().filesWritten).toEqual([]); // Reset on exhaustion
+    expect(getState().askUserCalled).toBe(false); // Reset on exhaustion
+    expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
   });
 });

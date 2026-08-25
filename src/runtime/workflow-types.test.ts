@@ -4,6 +4,7 @@ import type {
   BranchRouting,
   CodeStepContext,
   IfBranchRouting,
+  LoopBackRouting,
   SwitchBranchRouting,
   WorkflowPhase,
 } from "./workflow-types";
@@ -321,6 +322,143 @@ describe("workflow-types branch extensions", () => {
       };
       expect(phase.write).toEqual(["TASK.md"]);
       expect(phase.allowProjectWrites).toBe(true);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Type-level tests — verify loop block types compile and have correct shape
+// ---------------------------------------------------------------------------
+
+describe("workflow-types loop extensions", () => {
+  describe("WorkflowPhase.kind union", () => {
+    it("accepts 'loop' as a valid kind", () => {
+      const phase: WorkflowPhase = {
+        id: "loop-1",
+        title: "Loop Block",
+        kind: "loop",
+      };
+      expect(phase.kind).toBe("loop");
+    });
+
+    it("still accepts 'standard' as a valid kind (regression)", () => {
+      const phase: WorkflowPhase = {
+        id: "normal-2",
+        title: "Normal",
+        kind: "standard",
+      };
+      expect(phase.kind).toBe("standard");
+    });
+  });
+
+  describe("loop block fields on WorkflowPhase", () => {
+    it("accepts body as WorkflowPhase[]", () => {
+      const phase: WorkflowPhase = {
+        id: "loop-1",
+        title: "Loop Block",
+        kind: "loop",
+        body: [{ id: "loop-body-1", title: "Body" }],
+      };
+      expect(phase.body).toHaveLength(1);
+      expect(phase.body![0].id).toBe("loop-body-1");
+    });
+
+    it("accepts a repeatWhile callback", () => {
+      const phase: WorkflowPhase = {
+        id: "loop-2",
+        title: "Loop Block",
+        kind: "loop",
+        body: [{ id: "loop-body-2", title: "Body" }],
+        repeatWhile: () => true,
+      };
+      expect(typeof phase.repeatWhile).toBe("function");
+    });
+
+    it("accepts synthetic: true", () => {
+      const phase: WorkflowPhase = {
+        id: "synth-1",
+        title: "Synthetic Phase",
+        synthetic: true,
+      };
+      expect(phase.synthetic).toBe(true);
+    });
+
+    it("accepts synthetic: false", () => {
+      const phase: WorkflowPhase = {
+        id: "synth-2",
+        title: "Not Synthetic",
+        synthetic: false,
+      };
+      expect(phase.synthetic).toBe(false);
+    });
+
+    it("allows synthetic to be omitted", () => {
+      const phase: WorkflowPhase = {
+        id: "no-synth",
+        title: "No Synthetic Flag",
+      };
+      expect(phase.synthetic).toBeUndefined();
+    });
+  });
+
+  describe("LoopBackRouting", () => {
+    it("accepts a full object with all five fields and round-trips values", () => {
+      const routing: LoopBackRouting = {
+        loopTarget: "body-1",
+        exitTarget: "after-loop",
+        repeatWhile: () => true,
+        maxPasses: 5,
+        loopId: "loop-block-1",
+      };
+      expect(routing.loopTarget).toBe("body-1");
+      expect(routing.exitTarget).toBe("after-loop");
+      expect(typeof routing.repeatWhile).toBe("function");
+      expect(routing.maxPasses).toBe(5);
+      expect(routing.loopId).toBe("loop-block-1");
+    });
+
+    it("accepts the minimal object { loopTarget, loopId } (rest omitted)", () => {
+      const routing: LoopBackRouting = {
+        loopTarget: "body-1",
+        loopId: "loop-block-2",
+      };
+      expect(routing.loopTarget).toBe("body-1");
+      expect(routing.exitTarget).toBeUndefined();
+      expect(routing.repeatWhile).toBeUndefined();
+      expect(routing.maxPasses).toBeUndefined();
+    });
+
+    it("requires loopTarget (missing → compile error)", () => {
+      // @ts-expect-error — testing that loopTarget is required on LoopBackRouting
+      const routing: LoopBackRouting = { loopId: "loop-block-3" };
+      expect(routing.loopId).toBe("loop-block-3");
+    });
+
+    it("requires loopId (missing → compile error)", () => {
+      // @ts-expect-error — testing that loopId is required on LoopBackRouting
+      const routing: LoopBackRouting = { loopTarget: "body-1" };
+      expect(routing.loopTarget).toBe("body-1");
+    });
+
+    it("requires loopTarget to be a string (number → compile error)", () => {
+      const routing: LoopBackRouting = {
+        // @ts-expect-error — testing that loopTarget must be a string, not a number
+        loopTarget: 42,
+        loopId: "loop-block-4",
+      };
+      expect(routing.loopId).toBe("loop-block-4");
+    });
+  });
+
+  describe("BranchRouting union", () => {
+    it("accepts a LoopBackRouting literal as BranchRouting (structural discrimination)", () => {
+      const routing: BranchRouting = {
+        loopTarget: "body-1",
+        exitTarget: "after-loop",
+        maxPasses: 3,
+        loopId: "loop-block-5",
+      };
+      expect(routing.loopTarget).toBe("body-1");
     });
   });
 });

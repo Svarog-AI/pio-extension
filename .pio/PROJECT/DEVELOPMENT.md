@@ -28,6 +28,8 @@ Tests use `fs.mkdtempSync()` for temp directories (not mocked filesystems). Most
 
 **Console warn/error convention:** Tests that exercise `console.warn`/`console.error` paths must spy the console methods and restore them only *after* reading `mock.calls` (restoring earlier loses recorded calls) — keeps suite output free of leaked warnings.
 
+**Loop-cap test hermeticity:** `model-config.ts`'s `readConfig()` caches the parsed `~/.pi/pio-config.yaml` for the **module lifetime** (no invalidation export), so real config values are machine-dependent and fixed after the first read within one module instance. Cap-sensitive tests must either set an explicit per-block `maxIterations` on fixtures (priority-1 override — the convention in `loop-engine.test.ts`) or pin behavior through a file-level `vi.mock("../model-config")` spy on `resolveMaxIterations` with a `vi.hoisted` holder and restore-to-original in `beforeEach` (precedent: `phase-manager.test.ts`). Do not add that mock to files whose suites assert real model-config behavior. Related: loop-routing tests must drive `resolveNext()` through the **live singleton** state (`getState()` seeded via `__testSetState`, reset between tests) — the engine reads the pass counter from the `state` argument but writes via the `setState` singleton, so a detached stub desynchronizes reads from writes and cap tests never terminate.
+
 ## CI/CD and Release
 
 **GitHub Actions** (`.github/workflows/ci.yml`) runs on every push to `main` and every PR targeting `main`:

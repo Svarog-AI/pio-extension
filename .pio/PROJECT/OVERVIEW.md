@@ -19,7 +19,7 @@ Developed by Svarog AI. Licensed under MIT. Repository: `github.com:Svarog-AI/pi
 
 ## Repository Structure
 
-The `src/prompts/` directory was removed — prompts are now component files inside each capability directory package (`role.md`, `workflow.ts`, `guidelines.md`). Direct tools (init, delete-goal, list-goals, parent, create-issue, goal-from-issue) are consolidated in `src/direct-tools.ts`. The `src/frontmatter-schemas.ts` module was deleted — schemas now live in capability-local `schemas.ts` files. The `src/goal-state.ts` module was deleted — replaced by `src/capability-state.ts` (CapState, contract-backed lazy file access). The `src/guards/step-nudging.ts` module was deleted — replaced by the runtime loop engine (`src/runtime/loop-engine.ts`). Session-guard moved from `src/guards/` to `src/runtime/`. Most pio-specific skills were moved out of auto-discovery to `src/skills.old/`; only `pio-git` and `test-driven-development` remain in active discovery. The `pio_mark_complete` tool was removed — session exit now runs automatically: the loop engine synthesizes a terminal code phase (`__pio-exit`) that invokes the exit lifecycle (`src/runtime/exit-lifecycle.ts`). The loop engine also supports a generic programmatic phase kind (`kind: "code"`) whose `run()` callback executes TypeScript in place of an LLM turn.
+The `src/prompts/` directory was removed — prompts are now component files inside each capability directory package (`role.md`, `workflow.ts`, `guidelines.md`). Direct tools (init, delete-goal, list-goals, parent, create-issue, goal-from-issue) are consolidated in `src/direct-tools.ts`. The `src/frontmatter-schemas.ts` module was deleted — schemas now live in capability-local `schemas.ts` files. The `src/goal-state.ts` module was deleted — replaced by `src/capability-state.ts` (CapState, contract-backed lazy file access). The `src/guards/step-nudging.ts` module was deleted — replaced by the runtime loop engine (`src/runtime/loop-engine.ts`). Session-guard moved from `src/guards/` to `src/runtime/`. Most pio-specific skills were moved out of auto-discovery to `src/skills.old/`; only `pio-git` and `test-driven-development` remain in active discovery. The `pio_mark_complete` tool was removed — session exit now runs automatically: the loop engine synthesizes a terminal code phase (`__pio-exit`) that invokes the exit lifecycle (`src/runtime/exit-lifecycle.ts`). The loop engine also supports a generic programmatic phase kind (`kind: "code"`) whose `run()` callback executes TypeScript in place of an LLM turn. It also supports `kind: "loop"` do-while loop blocks (multi-phase repeating units whose `repeatWhile` condition is evaluated at the end of each full body pass); PhaseManager flattening synthesizes branch-end/loop-end merge nodes so every branch and loop has a single well-defined exit.
 
 ```
 pio-extension/
@@ -28,7 +28,7 @@ pio-extension/
 │   │   ├── <name>/            # 11 capability packages (create-goal, create-plan, evolve-plan, quality-gate, workflow-playground, etc.)
 │   │   │   ├── config.ts        — CapabilityPackageConfig default export + register(pi) named export
 │   │   │   ├── role.md          — Role description (prompt component)
-│   │   │   ├── workflow.ts      — WorkflowPhase[] with per-phase skill declarations + loop fields (minIterations, maxIterations, terminateWhen, write, allowProjectWrites)
+│   │   │   ├── workflow.ts      — WorkflowPhase[] with per-phase skill declarations + loop fields (minIterations, maxIterations, terminateWhen, body, repeatWhile, write, allowProjectWrites)
 │   │   │   ├── guidelines.md    — Guidelines (prompt component)
 │   │   │   ├── callbacks.ts     — Lifecycle callbacks (validation, file protections) [optional]
 │   │   │   ├── schemas.ts       — Capability-local frontmatter TypeBox schemas [optional]
@@ -43,8 +43,8 @@ pio-extension/
 │   │   ├── loop-engine.test.ts  — Colocated tests for loop engine
 │   │   ├── exit-lifecycle.ts    — runExitLifecycle(): engine-side capability exit (validate → postValidate → dispatch/enqueue/record + cleanup → markers → postExecute → fileCleanup); invoked by __pio-exit
 │   │   ├── exit-lifecycle.test.ts — Colocated tests for the exit lifecycle
-│   │   ├── session-state.ts     — PioSessionState singleton (markCompleteCalled, currentPhase, currentPhaseId, phaseManager, iteration tracking; in-memory-only programmaticLog/lastLlmPhaseId/exitOutcome/exitFailureMessage)
-│   │   ├── phase-manager.ts     — PhaseManager: phase registry by string ID, resolveNext (sequential order, conditional branching hooks), listIds
+│   │   ├── session-state.ts     — PioSessionState singleton (markCompleteCalled, currentPhase, currentPhaseId, phaseManager, iteration tracking; in-memory-only programmaticLog/lastLlmPhaseId/exitOutcome/exitFailureMessage; required loopPasses do-while repeat counters)
+│   │   ├── phase-manager.ts     — PhaseManager: phase registry by string ID, resolveNext (sequential order, conditional branching + do-while loop routing), branch-end/loop-end merge node synthesis, listIds
 │   │   ├── session-state.test.ts
 │   │   ├── session-store.ts     — SessionVariableStore: two-layer variable system (${name} interpolation, setVar/getVar/listVars tools)
 │   │   ├── session-store.test.ts
@@ -52,7 +52,7 @@ pio-extension/
 │   │   ├── state-persistence.test.ts
 │   │   ├── session-guard.ts         — Turn recovery + dead-turn detection (migrated from guards/)
 │   │   ├── session-guard.test.ts
-│   │   └── workflow-types.ts        — StepState, TerminationCondition, LoopWhileCondition, PhaseVariable, CodeStepContext types + extended WorkflowPhase fields (kind includes "code")
+│   │   └── workflow-types.ts        — StepState, TerminationCondition, LoopWhileCondition, PhaseVariable, CodeStepContext types + extended WorkflowPhase fields (kind includes "code"/"loop", plus body/repeatWhile/synthetic; BranchRouting union includes LoopBackRouting)
 │   ├── skills/                # Active discoverable skills (pio-git and test-driven-development only)
 │   │   ├── pio-git/SKILL.md     — Git operations for pio agents
 │   │   └── test-driven-development/SKILL.md — TDD methodology guide

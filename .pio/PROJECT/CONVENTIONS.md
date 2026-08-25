@@ -12,6 +12,7 @@ From `tsconfig.json`:
 
 From code patterns observed in source files:
 - **Imports:** Grouped by category (framework → internal modules → node builtins), with blank lines between groups
+- **Type imports:** Top-level `import type { ... }` statements only — inline `import("./module")` type annotations are not allowed (ruled during do-while-loop-block Step 5 review). Biome organizes top-level type imports with their source groups
 - **Naming:** camelCase for functions/variables, PascalCase for interfaces/types, UPPER_SNAKE_CASE for constants
 - **File structure:** Sections separated by `// ---------------------------------------------------------------------------` comment dividers
 - **Line length:** No hard limit enforced, but long lines are typically wrapped at ~120 chars
@@ -46,6 +47,7 @@ Each AI-driven capability is a directory package under `src/capabilities/<name>/
 - **paramKey forwarding convention** — When a contract input declares `paramKey`, the tool schema must include the matching field as `Type.Optional(Type.String())`. In `execute()`, forward via direct assignment (`key: params.key`) — never conditional spread. State machine transitions always provide values; direct callers who omit receive validation errors. Naming: camelCase matching the referenced file (e.g., `goalFile`, `planFile`, `taskFile`).
 - **`role.md`** — Role description text
 - **`workflow.ts`** — default exports `WorkflowPhase[]`. Each phase may declare `skills: { mandatory?: string[], recommended?: ... }`
+- **Loop container authoring:** A top-level `kind: "loop"` container must carry an `instructions` string even though containers never get agent turns — the prompt compiler's top-level validation warns on missing `id`/`title`/`instructions` and exempts only `branch:*` kinds (warn-only; keeps the console clean). Validation does not recurse into `body` or branch arms
 - **`guidelines.md`** — Guidelines text
 - **`callbacks.ts`** *(optional)* — Lifecycle callbacks (validation, file protection resolvers). Was named `validators.ts` before Step 19 convention cleanup
 - **`schemas.ts`** *(optional)* — Capability-local TypeBox frontmatter schemas for output validation. Replaced shared `src/frontmatter-schemas.ts` (deleted)

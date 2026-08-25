@@ -316,8 +316,10 @@ export function buildPhaseInstructions(state: PioSessionState): string {
  *
  * A programmatic phase is a phase where there's nothing for
  * the LLM to do: code phases (whose `run()` executes inline),
- * branch phases, and pure-variable-definition phases. Standard
- * phases always return `false`.
+ * branch phases, loop containers (which execute nothing themselves —
+ * no `run`, no variables — their body is traversed via `resolveNext`
+ * links), and pure-variable-definition phases. Standard phases always
+ * return `false`.
  *
  * @param phase - WorkflowPhase to check
  * @returns `true` if the phase is purely programmatic (no LLM involvement)
@@ -327,6 +329,9 @@ export function isProgrammatic(phase: WorkflowPhase): boolean {
   if (phase.kind === "code") return true;
   // Branch phases execute inline — no agent turn needed
   if (phase.kind?.startsWith("branch:")) return true;
+  // Loop containers execute nothing themselves — body traversal happens via
+  // resolveNext links; never an agent turn.
+  if (phase.kind === "loop") return true;
   if (phase.kind !== "variable-definition" || !phase.variables?.length) {
     return false;
   }
@@ -367,7 +372,8 @@ function _handleExhaustion(): void {
  * (`{ state }` — the single live state reference), awaits
  * `phase.run!(ctx)`, and appends one entry to `state.programmaticLog`
  * (`detail` holds the thrown error's message when `run()` throws,
- * empty otherwise). A throwing `run()` never blocks traversal:
+ * empty otherwise) — synthetic phases (`synthetic: true`) skip the
+ * append. A throwing `run()` never blocks traversal:
  * it is caught, warned via console, and traversal continues.
  *
  * For variable-definition phases, this sets static variables and runs
@@ -401,13 +407,17 @@ export async function executePhase(
     }
 
     // One log entry per executed code phase (append via setState merge —
-    // never mutate the array in place).
-    setState({
-      programmaticLog: [
-        ...getState().programmaticLog,
-        { phaseId: phase.id, kind: "code", detail },
-      ],
-    });
+    // never mutate the array in place). Synthetic merge nodes (the
+    // engine-injected branch-end/loop-end phases) run their no-op `run`
+    // but append nothing — no prompt noise per traversal.
+    if (!phase.synthetic) {
+      setState({
+        programmaticLog: [
+          ...getState().programmaticLog,
+          { phaseId: phase.id, kind: "code", detail },
+        ],
+      });
+    }
   } else if (phase.kind === "variable-definition" && phase.variables?.length) {
     preparePhaseVariables(phase, store);
   }

@@ -7925,6 +7925,42 @@ describe("isProgrammatic", () => {
     expect(isProgrammatic(phaseEmpty)).toBe(false);
     expect(isProgrammatic(phaseMissing)).toBe(false);
   });
+
+  it("returns true for a loop container (body content irrelevant)", async () => {
+    const isProgrammatic = await getIsProgrammatic();
+    const phase = {
+      id: "L",
+      title: "L",
+      kind: "loop" as const,
+      body: [{ id: "p1", title: "P1", instructions: "Do A" }],
+    };
+    expect(isProgrammatic(phase)).toBe(true);
+  });
+
+  it("returns true for a loop container even when the body contains an llm-driven phase", async () => {
+    const isProgrammatic = await getIsProgrammatic();
+    const phase = {
+      id: "L",
+      title: "L",
+      kind: "loop" as const,
+      body: [
+        {
+          id: "p1",
+          title: "P1",
+          kind: "variable-definition" as const,
+          variables: [
+            {
+              name: "feature",
+              type: "string",
+              kind: "llm" as const,
+              description: "What feature?",
+            },
+          ],
+        },
+      ],
+    };
+    expect(isProgrammatic(phase)).toBe(true);
+  });
 });
 
 describe("executePhase", () => {
@@ -8159,6 +8195,140 @@ describe("executePhase", () => {
       { phaseId: "c-str", kind: "code", detail: ["string-failure"] },
     ]);
     warnSpy.mockRestore();
+  });
+
+  it("for synthetic code phases: run() executes with the live state reference but appends nothing to programmaticLog", async () => {
+    const executePhase = await getExecutePhase();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const run = vi.fn();
+    const phase = {
+      id: "__loop-end-x",
+      title: "__loop-end-x",
+      kind: "code" as const,
+      run,
+      synthetic: true,
+    };
+
+    await executePhase(phase, store);
+
+    // run called exactly once, with the LIVE state reference (no copies)
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run.mock.calls[0][0].state).toBe(getState());
+    // Synthetic merge node appends nothing — no prompt noise
+    expect(getState().programmaticLog).toEqual([]);
+    // Single trailing persist unchanged
+    expect(statePersistence.saveLoopEngineState).toHaveBeenCalledTimes(1);
+  });
+
+  it("for synthetic code phases: a throwing run() is caught, warned with the phase id, and still logs nothing", async () => {
+    const executePhase = await getExecutePhase();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const run = vi.fn(() => {
+      throw new Error("boom");
+    });
+
+    const phase = {
+      id: "__loop-end-x",
+      title: "__loop-end-x",
+      kind: "code" as const,
+      run,
+      synthetic: true,
+    };
+
+    // Never rejects — warn-and-continue
+    await expect(executePhase(phase, store)).resolves.toBeUndefined();
+
+    expect(run).toHaveBeenCalledTimes(1);
+    const warnings = warnSpy.mock.calls
+      .map((c) => String(c[0]))
+      .filter((w) => w.includes("__loop-end-x"));
+    expect(warnings.length).toBeGreaterThan(0);
+    expect(warnings[0]).toContain("boom");
+    // Still no log entry — synthetic suppression is unconditional
+    expect(getState().programmaticLog).toEqual([]);
+    warnSpy.mockRestore();
+  });
+
+  it("for non-synthetic vs synthetic code phases: only the real phase logs an entry", async () => {
+    const executePhase = await getExecutePhase();
+    const { SessionVariableStore } = await import("./session-store");
+    const store = new SessionVariableStore({});
+
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: [],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    const realPhase = {
+      id: "c1",
+      title: "Code",
+      kind: "code" as const,
+      run: vi.fn(),
+    };
+    const synthPhase = {
+      id: "__loop-end-x",
+      title: "__loop-end-x",
+      kind: "code" as const,
+      run: vi.fn(),
+      synthetic: true,
+    };
+
+    await executePhase(realPhase, store);
+    expect(getState().programmaticLog).toEqual([
+      { phaseId: "c1", kind: "code", detail: [] },
+    ]);
+
+    await executePhase(synthPhase, store);
+    // Log unchanged in length — the synthetic phase added no entry
+    expect(getState().programmaticLog).toEqual([
+      { phaseId: "c1", kind: "code", detail: [] },
+    ]);
+    expect(
+      getState().programmaticLog.some((e) => e.phaseId === "__loop-end-x"),
+    ).toBe(false);
   });
 });
 
@@ -9665,5 +9835,272 @@ describe("__pio-exit — automatic terminal exit phase", () => {
       expect(getState().exitOutcome).toBe("success");
       expect(getState().markCompleteCalled).toBe(true);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Loop blocks — engine-side traversal (Step 4)
+// ---------------------------------------------------------------------------
+
+describe("advancePhase — inline all-programmatic loop traversal", () => {
+  it("traverses the loop end-to-end and terminates at the pass cap without an agent turn", async () => {
+    const { advancePhase, initializeStore } = await import("./loop-engine");
+
+    const c1Run = vi.fn(
+      (ctx: { state: import("./session-state").PioSessionState }) => {
+        const store = ctx.state.store!;
+        store.declare("passCount", "number");
+        const current = (store.get("passCount") as number | undefined) ?? 0;
+        store.set("passCount", "number", current + 1);
+      },
+    );
+
+    // Single top-level loop block — explicit cap (hermetic, no model-config).
+    const L = {
+      id: "L",
+      title: "L",
+      kind: "loop" as const,
+      maxIterations: 3,
+      body: [
+        { id: "c1", title: "C1", kind: "code" as const, run: c1Run },
+        {
+          id: "vd",
+          title: "VD",
+          kind: "variable-definition" as const,
+          variables: [
+            {
+              name: "marker",
+              type: "string",
+              kind: "static" as const,
+              value: "done",
+            },
+          ],
+        },
+      ],
+    };
+
+    const store = initializeStore({});
+    setState({
+      isActive: true,
+      sessionId: "test-session",
+      currentIteration: 1,
+      totalPhases: 1,
+      phasesList: [L],
+      filesWritten: [],
+      askUserCalled: false,
+      isAdHocInput: false,
+      store,
+    });
+
+    const result = await advancePhase(store, "L", "reset");
+
+    // One call terminates at the cap — no agent turn (a hang here would be
+    // the Step 3 cap-contract failure mode).
+    expect(result.triggered).toBe(false);
+    // Exactly resolvedMax - 1 repeats (3 full passes = first pass + 2 repeats)
+    expect(getState().loopPasses.L).toBe(2);
+    // The cap bounds full passes — c1 ran once per pass
+    expect(c1Run).toHaveBeenCalledTimes(3);
+    // The store variable written by the last pass is set
+    expect(store.get("passCount")).toBe(3);
+    // Exactly three log entries, all for c1 — the loop-end (traversed 3x)
+    // logged nothing
+    expect(getState().programmaticLog).toEqual([
+      { phaseId: "c1", kind: "code", detail: [] },
+      { phaseId: "c1", kind: "code", detail: [] },
+      { phaseId: "c1", kind: "code", detail: [] },
+    ]);
+    expect(
+      getState().programmaticLog.some((e) => e.phaseId === "__loop-end-L"),
+    ).toBe(false);
+  });
+});
+
+describe("loop block — agent_end-driven repeat across agent turns", () => {
+  async function fireAgentEnd(
+    handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+    messages: unknown[],
+  ) {
+    const handlersList = handlers.get("agent_end");
+    expect(handlersList).toBeDefined();
+    const mockCtx = {} as any;
+    for (const handler of handlersList!) {
+      await handler({ type: "agent_end", messages }, mockCtx);
+    }
+  }
+
+  async function fireBeforeAgentStart(
+    handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+    event: { type?: string; systemPrompt?: string } = {
+      type: "before_agent_start",
+    },
+  ) {
+    const handlersList = handlers.get("before_agent_start");
+    expect(handlersList).toBeDefined();
+    const mockCtx = {} as any;
+    const results: unknown[] = [];
+    for (const handler of handlersList!) {
+      const result = await handler(event, mockCtx);
+      if (result) results.push(result);
+    }
+    return results;
+  }
+
+  it("skips the container, repeats the body while the condition holds, and exits into __pio-exit", async () => {
+    const { pi, handlers, sendMessageCalls } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue([
+      {
+        id: "L",
+        title: "L",
+        kind: "loop" as const,
+        maxIterations: 5,
+        repeatWhile: (state) => state.store?.get("keepLooping"),
+        body: [
+          { id: "p1", title: "P1", instructions: "Do A", maxIterations: 2 },
+        ],
+      },
+    ]);
+
+    // Fire resources_discover — engine wiring: __pio-exit appended, so L's
+    // exitTarget is "__pio-exit"; currentPhaseId starts at the container "L".
+    const discoverHandlers = handlers.get("resources_discover");
+    for (const h of discoverHandlers!) {
+      await h(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        mockCtx,
+      );
+    }
+
+    // Seed AFTER discover — discover initializes the store; seed in place on
+    // the live reference it stored (the same object repeatWhile reads).
+    const store = getState().store!;
+    store.declare("keepLooping", "boolean");
+    store.set("keepLooping", "boolean", true);
+
+    // 1. First leg — the container is skipped, instructions name p1
+    const results = await fireBeforeAgentStart(handlers);
+    expect(results).toHaveLength(1);
+    const first = results[0] as {
+      message: { customType: string; content: string };
+    };
+    expect(first.message.customType).toBe("workflow-phase-instructions");
+    expect(first.message.content).toContain('You are on "p1", iteration 1');
+    expect(getState().currentPhaseId).toBe("p1");
+
+    // 2. Repeat 1 — loop-end routes back to the body
+    await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+    expect(sendMessageCalls).toHaveLength(1);
+    expect(sendMessageCalls[0].options?.deliverAs).toBe("followUp");
+    expect(sendMessageCalls[0].message.customType).toBe(
+      "workflow-phase-instructions",
+    );
+    expect(getState().loopPasses.L).toBe(1);
+    expect(getState().currentIteration).toBe(1); // fresh pass — reset mode
+    expect(getState().currentPhaseId).toBe("p1");
+
+    // 3. Repeat 2
+    await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+    expect(sendMessageCalls).toHaveLength(2);
+    expect(getState().loopPasses.L).toBe(2);
+
+    // 4. Exit — flip the condition in place on the live store
+    store.set("keepLooping", "boolean", false);
+    vi.mocked(capabilitySession.getCurrentCapabilityConfig).mockReturnValue(
+      makeFakeCapabilityConfig(),
+    );
+    await fireAgentEnd(handlers, [{ role: "assistant", stopReason: "stop" }]);
+
+    // Traversal exits into __pio-exit — no further agent turn
+    expect(sendMessageCalls).toHaveLength(2);
+    expect(vi.mocked(exitLifecycle.runExitLifecycle)).toHaveBeenCalledTimes(1);
+    expect(getState().exitOutcome).toBe("success");
+    expect(getState().markCompleteCalled).toBe(true);
+    // A real (non-synthetic) code phase still logs — suppression is
+    // flag-keyed, not kind-keyed
+    expect(
+      getState().programmaticLog.some((e) => e.phaseId === "__pio-exit"),
+    ).toBe(true);
+  });
+});
+
+describe("loop as last declared element — clean exit into __pio-exit", () => {
+  async function fireAgentEnd(
+    handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+    messages: unknown[],
+  ) {
+    const handlersList = handlers.get("agent_end");
+    expect(handlersList).toBeDefined();
+    const mockCtx = {} as any;
+    for (const handler of handlersList!) {
+      await handler({ type: "agent_end", messages }, mockCtx);
+    }
+  }
+
+  it("exits the capped loop into the synthesized __pio-exit without further passes", async () => {
+    const { pi, handlers, sendMessageCalls } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    setupLoopEngine(pi);
+
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue([
+      {
+        id: "L",
+        title: "L",
+        kind: "loop" as const,
+        maxIterations: 1, // cap 1 — first loop-end evaluation exits at the cap
+        body: [
+          { id: "p1", title: "P1", instructions: "Do A", maxIterations: 2 },
+        ],
+      },
+    ]);
+
+    // Fire resources_discover so the PhaseManager carries the synthesized
+    // "__pio-exit" terminal node, exactly as in production wiring.
+    const discoverHandlers = handlers.get("resources_discover");
+    for (const h of discoverHandlers!) {
+      await h(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        mockCtx,
+      );
+    }
+
+    // Config present → the terminal exit node runs the (mocked) lifecycle
+    vi.mocked(capabilitySession.getCurrentCapabilityConfig).mockReturnValue(
+      makeFakeCapabilityConfig(),
+    );
+
+    // Set iteration/tracking WITHOUT phasesList — keeps the discover-built
+    // phaseManager (with synthesized tail) intact.
+    setState({
+      isActive: true,
+      sessionId: "test-session-id",
+      currentPhaseId: "p1",
+      currentIteration: 1,
+      markCompleteCalled: false,
+      filesWritten: ["/some/file.ts"],
+      askUserCalled: true,
+      isAdHocInput: false,
+    });
+
+    vi.mocked(statePersistence.saveLoopEngineState).mockClear();
+
+    await fireAgentEnd(handlers, [
+      {
+        role: "assistant",
+        stopReason: "stop",
+      },
+    ]);
+
+    // Cap 1 → the loop-end evaluation exits silently before evaluating any
+    // repeat condition; traversal continues into __pio-exit
+    expect(sendMessageCalls).toHaveLength(0);
+    expect(vi.mocked(exitLifecycle.runExitLifecycle)).toHaveBeenCalledTimes(1);
+    expect(getState().exitOutcome).toBe("success");
+    expect(getState().currentIteration).toBe(1); // Reset on exhaustion
+    expect(getState().filesWritten).toEqual([]); // Reset on exhaustion
+    expect(getState().askUserCalled).toBe(false); // Reset on exhaustion
+    expect(statePersistence.saveLoopEngineState).toHaveBeenCalled();
   });
 });

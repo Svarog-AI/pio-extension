@@ -654,6 +654,20 @@ export function __testSetActiveSession(value?: boolean): void {
 // ---------------------------------------------------------------------------
 
 /**
+ * Return the user-facing phase IDs from a PhaseManager's registry.
+ *
+ * Synthetic merge nodes (the engine-injected branch-end and loop-end
+ * routing nodes) are engine-internal and must not surface in user-facing
+ * enumerations. Filter on the `synthetic` flag, never on id prefixes —
+ * a future third synthetic family must be covered automatically (mirrors
+ * the PhaseManager.listIds() JSDoc contract). Null-safe: an id missing
+ * from the registry keeps its pass-through rather than being dropped.
+ */
+function listUserFacingPhaseIds(pm: PhaseManager): string[] {
+  return pm.listIds().filter((id) => !pm.getPhase(id)?.synthetic);
+}
+
+/**
  * Main registration function — installs event handlers on the pi Extension API.
  *
  * Registers exactly six handlers:
@@ -1165,7 +1179,9 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       const pm = getState().phaseManager;
       if (!pm) return null;
 
-      const ids = pm.listIds();
+      // Synthetic merge nodes are engine-internal — excluded from
+      // completions (flag-keyed, see listUserFacingPhaseIds).
+      const ids = listUserFacingPhaseIds(pm);
       return ids
         .filter((id) =>
           id.toLowerCase().startsWith(argumentPrefix.toLowerCase()),
@@ -1202,7 +1218,9 @@ export function setupLoopEngine(pi: ExtensionAPI) {
       // Validate the phase exists
       const targetPhase = state.phaseManager.getPhase(targetId);
       if (!targetPhase) {
-        const available = state.phaseManager.listIds().join(", ");
+        // Synthetic merge nodes are engine-internal — excluded from the
+        // user-facing "Available phases" list (flag-keyed).
+        const available = listUserFacingPhaseIds(state.phaseManager).join(", ");
         ctx.ui.notify(
           `Unknown phase "${targetId}". Available phases: ${available}`,
           "error",

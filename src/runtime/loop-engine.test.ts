@@ -1036,6 +1036,204 @@ describe("/goto command", () => {
       expect(results).toEqual([]);
     });
   });
+
+  // ---- Synthetic merge node filtering (Step 5) ----
+
+  describe("synthetic merge node filtering", () => {
+    /**
+     * Compute the expected user-facing id set from the registry — the
+     * assertion path for the flag-keyed filter contract: synthetic merge
+     * nodes are engine-internal and must not surface in user-facing
+     * enumerations (mirrors the PhaseManager.listIds() JSDoc contract).
+     */
+    function nonSyntheticIds(pm: PhaseManager): string[] {
+      return pm.listIds().filter((id) => !pm.getPhase(id)?.synthetic);
+    }
+
+    async function fireBeforeAgentStart(
+      handlers: Map<string, Array<(...args: unknown[]) => unknown>>,
+      event: { type?: string; systemPrompt?: string } = {
+        type: "before_agent_start",
+      },
+    ) {
+      const handlersList = handlers.get("before_agent_start");
+      expect(handlersList).toBeDefined();
+      const mockCtx = {} as any;
+      const results: unknown[] = [];
+      for (const handler of handlersList!) {
+        const result = await handler(event, mockCtx);
+        if (result) results.push(result);
+      }
+      return results;
+    }
+
+    /**
+     * Workflow fixture with one branch (injects `__branch-end-b1`) and one
+     * top-level loop (injects `__loop-end-L`) — the registry holds eight
+     * ids: six declared phases plus the two synthetic merge nodes.
+     */
+    function makeBranchLoopPhases(): import("./workflow-types").WorkflowPhase[] {
+      return [
+        { id: "s1", title: "S1", instructions: "Do A" },
+        {
+          id: "b1",
+          title: "B1",
+          kind: "branch:if" as const,
+          condition: () => true,
+          // biome-ignore lint/suspicious/noThenProperty: intentional test of WorkflowPhase.then field
+          then: [{ id: "t1", title: "T1", instructions: "Do T" }],
+        },
+        {
+          id: "L",
+          title: "Loop L",
+          kind: "loop" as const,
+          maxIterations: 3, // explicit cap — hermetic, no model-config
+          body: [{ id: "lp1", title: "LP1", instructions: "Do LP" }],
+        },
+        { id: "s2", title: "S2", instructions: "Do B" },
+      ];
+    }
+
+    it("completions exclude both synthetic merge-node families", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = makeBranchLoopPhases();
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhaseId: "s1",
+        phasesList: phases,
+        phaseManager: pm,
+      });
+
+      // The registry holds eight ids: six declared phases (including the
+      // branch container b1 and the loop body phase lp1) plus the two
+      // synthetic merge nodes.
+      expect(pm.listIds()).toHaveLength(8);
+
+      const cmd = registeredCommands.get("goto");
+      const results = cmd!.getArgumentCompletions!("");
+      expect(results).not.toBeNull();
+      expect(results!.map((r) => r.value)).toEqual(nonSyntheticIds(pm));
+      expect(results).toHaveLength(6);
+      expect(results!.some((r) => r.value.startsWith("__branch-end-"))).toBe(
+        false,
+      );
+      expect(results!.some((r) => r.value.startsWith("__loop-end-"))).toBe(
+        false,
+      );
+    });
+
+    it("loop container id stays listed with its title as description", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = makeBranchLoopPhases();
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhaseId: "s1",
+        phasesList: phases,
+        phaseManager: pm,
+      });
+
+      const cmd = registeredCommands.get("goto");
+      const results = cmd!.getArgumentCompletions!("");
+      expect(results).not.toBeNull();
+      // A loop block is a legitimate goto target — not synthetic.
+      expect(results).toContainEqual({
+        value: "L",
+        label: "L",
+        description: "Loop L",
+      });
+    });
+
+    it("unknown-phase error list excludes synthetic merge-node ids", async () => {
+      const { pi, registeredCommands } = createMockPi();
+      const { setupLoopEngine } = await import("./loop-engine");
+      setupLoopEngine(pi);
+
+      const phases = makeBranchLoopPhases();
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        currentPhaseId: "s1",
+        totalPhases: 6,
+        phasesList: phases,
+        phaseManager: pm,
+      });
+
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
+      await fireGotoCommand(registeredCommands, "nonexistent", ctx);
+
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        `Unknown phase "nonexistent". Available phases: ${nonSyntheticIds(pm).join(", ")}`,
+        "error",
+      );
+      const [msg] = ctx.ui.notify.mock.calls[0];
+      expect(msg).not.toContain("__branch-end-");
+      expect(msg).not.toContain("__loop-end-");
+    });
+
+    it("/goto <loop-block-id> is accepted and lands at body[0] on the follow-up turn", async () => {
+      const { pi, registeredCommands, handlers, sendUserMessageCalls } =
+        createMockPi();
+      const { setupLoopEngine, initializeStore } = await import(
+        "./loop-engine"
+      );
+      setupLoopEngine(pi);
+
+      const phases = makeBranchLoopPhases();
+      const pm = new PhaseManager(phases);
+      setState({
+        isActive: true,
+        sessionId: "goto-loop-session",
+        currentPhaseId: "s1",
+        currentIteration: 1,
+        totalPhases: 6,
+        phasesList: phases,
+        filesWritten: [],
+        askUserCalled: false,
+        isAdHocInput: false,
+        phaseManager: pm,
+      });
+      // before_agent_start early-returns without a store
+      setState({ store: initializeStore({}) });
+
+      const ctx: any = {
+        ui: { notify: vi.fn() },
+        isIdle: vi.fn().mockReturnValue(true),
+      };
+      await fireGotoCommand(registeredCommands, "L", ctx);
+
+      // Accepted: no error, container set as current phase, follow-up queued
+      expect(ctx.ui.notify).not.toHaveBeenCalled();
+      expect(getState().currentPhaseId).toBe("L");
+      expect(sendUserMessageCalls).toHaveLength(1);
+
+      // Follow-up turn: before_agent_start traverses the programmatic
+      // container into the loop's body[0]
+      const results = await fireBeforeAgentStart(handlers);
+      expect(results).toHaveLength(1);
+      const message = (
+        results[0] as {
+          message: { customType: string; content: string };
+        }
+      ).message;
+      expect(message.customType).toBe("workflow-phase-instructions");
+      expect(message.content).toContain('## Instructions for "lp1"');
+      expect(getState().currentPhaseId).toBe("lp1");
+      // Prompt-exclusion: no synthetic merge-node id leaks into the payload
+      expect(message.content).not.toContain("__branch-end-");
+      expect(message.content).not.toContain("__loop-end-");
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1136,6 +1334,55 @@ describe("resources_discover", () => {
     expect(state.isActive).toBe(true);
     expect(state.totalPhases).toBe(0);
     expect(state.phasesList).toEqual([]);
+  });
+
+  it("totalPhases counts declared top-level phases + __pio-exit only, not synthetic merge nodes", async () => {
+    // Arrange: declared workflow with one branch and one loop block —
+    // four declared top-level phases
+    const { pi, handlers } = createMockPi();
+    const { setupLoopEngine } = await import("./loop-engine");
+    vi.mocked(capabilitySession.getCompiledWorkflowPhases).mockReturnValue([
+      { id: "s1", title: "S1", instructions: "Do A" },
+      {
+        id: "b1",
+        title: "B1",
+        kind: "branch:if" as const,
+        condition: () => true,
+        // biome-ignore lint/suspicious/noThenProperty: intentional test of WorkflowPhase.then field
+        then: [{ id: "t1", title: "T1", instructions: "Do T" }],
+      },
+      {
+        id: "L",
+        title: "Loop L",
+        kind: "loop" as const,
+        maxIterations: 3, // explicit cap — hermetic, no model-config
+        body: [{ id: "lp1", title: "LP1", instructions: "Do LP" }],
+      },
+      { id: "s2", title: "S2", instructions: "Do B" },
+    ]);
+
+    setupLoopEngine(pi);
+
+    // Act: fire resources_discover
+    const discoverHandlers = handlers.get("resources_discover");
+    for (const handler of discoverHandlers!) {
+      await handler(
+        { type: "resources_discover", cwd: ".", reason: "startup" },
+        mockCtx,
+      );
+    }
+
+    // Assert: totalPhases counts declared top-level phases + __pio-exit only
+    const state = getState();
+    expect(state.totalPhases).toBe(5);
+    expect(state.phasesList).toHaveLength(5);
+    expect(state.phasesList[4].id).toBe("__pio-exit");
+
+    // Contrast: the PhaseManager registry DOES hold the synthetic merge
+    // nodes — they exist only inside the registry, never in phasesList
+    const ids = state.phaseManager!.listIds();
+    expect(ids).toContain("__branch-end-b1");
+    expect(ids).toContain("__loop-end-L");
   });
 });
 

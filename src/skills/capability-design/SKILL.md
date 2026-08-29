@@ -68,8 +68,6 @@ Phase design is only part of the picture — the capability's overall shape and 
 - **Per-phase write gates.** A phase writes only what it owns (its `write[]`); read-only phases do not modify inputs.
 - **Mutual coherence.** The phase graph, the contract (inputs/outputs), and the capability/per-phase permissions must be mutually consistent: **every expected output is written by some phase under the right permission, and no phase writes outside its gates.**
 
-> **Migration constraint:** this section is general methodology for new/future capabilities. During the current migration goal, the **9 existing capabilities' contracts and permissions are fixed and must not be redesigned** — the re-derived phase graphs must still produce the same contract outputs and markers.
-
 ## Decomposition methodology (core)
 
 Start from a **single-phase assumption** — "do X" — then iterate through the decomposition questions below. Each question splits or structures the graph:

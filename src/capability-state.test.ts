@@ -1124,6 +1124,48 @@ describe("tryResolveOutput / tryResolveInput — non-throwing lookups", () => {
 });
 
 // ---------------------------------------------------------------------------
+// outputExists — disk-observable completeness check
+// ---------------------------------------------------------------------------
+
+describe("outputExists — disk-observable completeness check", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempDir();
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  it("returns false for a declared output whose file has not been written", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "plan", file: "PLAN.md" }],
+    };
+    const capState = createCapState(contract, tempDir);
+    expect(capState.outputExists("plan")).toBe(false);
+  });
+
+  it("returns true once the declared output file exists on disk", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "plan", file: "PLAN.md" }],
+    };
+    const capState = createCapState(contract, tempDir);
+    fs.writeFileSync(path.join(tempDir, "PLAN.md"), "# Plan\n", "utf8");
+    expect(capState.outputExists("plan")).toBe(true);
+  });
+
+  it("returns false for an undeclared name (total, never throws)", () => {
+    const contract: CapabilityContract = {
+      inputs: [],
+      outputs: [{ name: "plan", file: "PLAN.md" }],
+    };
+    const capState = createCapState(contract, tempDir);
+    expect(capState.outputExists("nonexistent")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Entry maps store MarkdownFileSpec references
 // ---------------------------------------------------------------------------
 

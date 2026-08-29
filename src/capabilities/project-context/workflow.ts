@@ -6,105 +6,33 @@ import type {
   WorkflowPhase,
 } from "../../runtime/workflow-types";
 
-// ---------------------------------------------------------------------------
-// Research backlog protocol
-//
-// Shared scratch-file protocol used by the `default-questions` code phase,
-// the research-loop callbacks, and `clarify`. The backlog lives at
-// /tmp/pio-project-context/<sessionId>/questions.md — session-scoped so
-// concurrent sessions never share a backlog, and under /tmp so it bypasses
-// all write gating. The absolute path is exposed to LLM phases via the
-// `questions_path` store variable + ${questions_path} interpolation, and
-// resolved by every callback from the store.
-//
-// Line grammar (one question per line; `#`-prefixed and blank lines are
-// ignored):
-//   [open] <question text>
-//   [answered] <question text> — evidence: <repo-relative path[, ...]>
-//   [needs-user] <question text> — note: <what is needed from the user>
-//
-// A line is terminal iff it is `[answered]` with all cited evidence paths
-// existing under the project root, or `[needs-user]`.
-// ---------------------------------------------------------------------------
+/** Store variable carrying the array of pending research questions. */
+const QUESTIONS_VAR = "questions";
 
-/** Store variable carrying the absolute path of this session's questions file. */
-const QUESTIONS_VAR = "questions_path";
+/** Store variable carrying the question text currently being answered. */
+const NEXT_QUESTION_VAR = "nextQuestion";
+
+/** Store variable carrying whether the current answer was judged satisfactory. */
+const QUESTION_ANSWERED_VAR = "questionAnswered";
+
+/** Store variable carrying newly-generated questions awaiting a merge. */
+const NEW_QUESTIONS_VAR = "new_questions";
+
+/** Store variable carrying the absolute path of this session's notes file. */
+const NOTES_VAR = "notes_path";
 
 /** Session-scoped scratch directory (OS-reclaimed; no cleanup logic). */
 const SCRATCH_DIR = "/tmp/pio-project-context";
 
-/** Parse result for the questions backlog file. */
-interface QuestionsParse {
-  /** Question texts of every `[open]` line */
-  open: string[];
-  /** True iff every `[answered]` line cites at least one evidence path that exists under the project root (vacuously true when there are no `[answered]` lines) */
-  terminalOk: boolean;
-  /** True iff any non-comment, non-blank line fails the line grammar (or the file is unreadable) */
-  malformed: boolean;
+/** Read the `questions` queue as an array (defensive — never throws). */
+function questionsOf(state: PioSessionState): string[] {
+  const q = state.store?.get(QUESTIONS_VAR);
+  return Array.isArray(q) ? (q as string[]) : [];
 }
 
-/** Line-grammar patterns (exact). */
-const OPEN_LINE = /^\[open\]\s+(\S.*)$/;
-const ANSWERED_LINE = /^\[answered\]\s+(.+?)\s+— evidence:\s*(\S.*)$/;
-const NEEDS_USER_LINE = /^\[needs-user\]\s+(.+?)\s+— note:\s*(\S.*)$/;
-
-/**
- * Fail-safe parse shape — returned for an unreadable file, a missing
- * `questions_path` variable, or any internal error. Polarity: keeps the
- * answer phase from advancing (terminalOk: false) and keeps the generate
- * phase looping (malformed: true).
- */
-function failSafeParse(): QuestionsParse {
-  return { open: [], terminalOk: false, malformed: true };
-}
-
-/**
- * Total parser for the questions backlog — never throws. Every loop callback
- * is built on it (total-callback rule: a throwing callback is treated as not
- * passing at agent_end).
- */
-function parseQuestions(state: PioSessionState): QuestionsParse {
-  try {
-    const rawPath = state.store?.get(QUESTIONS_VAR);
-    if (typeof rawPath !== "string" || rawPath.length === 0) {
-      return failSafeParse();
-    }
-    const content = fs.readFileSync(rawPath, "utf8");
-    const open: string[] = [];
-    let terminalOk = true;
-    let malformed = false;
-    for (const line of content.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (trimmed === "" || trimmed.startsWith("#")) continue;
-      const openMatch = trimmed.match(OPEN_LINE);
-      if (openMatch) {
-        open.push(openMatch[1]);
-        continue;
-      }
-      const answeredMatch = trimmed.match(ANSWERED_LINE);
-      if (answeredMatch) {
-        const evidence = answeredMatch[2]
-          .split(",")
-          .map((p) => p.trim())
-          .filter((p) => p.length > 0);
-        const root = state.projectRoot;
-        if (
-          evidence.length === 0 ||
-          typeof root !== "string" ||
-          root.length === 0 ||
-          evidence.some((p) => !fs.existsSync(path.resolve(root, p)))
-        ) {
-          terminalOk = false;
-        }
-        continue;
-      }
-      if (NEEDS_USER_LINE.test(trimmed)) continue;
-      malformed = true;
-    }
-    return { open, terminalOk, malformed };
-  } catch {
-    return failSafeParse();
-  }
+/** True iff any question remains in the queue. Total — never throws. */
+function hasQuestions(state: PioSessionState): boolean {
+  return questionsOf(state).length > 0;
 }
 
 /** Default open-question seed — the coverage floor that cannot be skipped. */
@@ -117,174 +45,361 @@ const DEFAULT_QUESTIONS = [
   "Which external services/integrations does the project depend on (databases, APIs, brokers, caches, SDKs)?",
   "What are the main entry points / executables / packages a contributor must know?",
   "What domain terminology or acronyms recur that a newcomer would need?",
+  "What is the deployment or release mechanism, if any (targets, pipelines, artifact distribution, environments)?",
+  "Where do documentation references live — in-repo docs and external references?",
+  "Which agentic coding instruction files exist (CLAUDE.md, AGENTS.md, CURSOR.md, .github/copilot-instructions.md, or similar), and what conventions or rules do they encode for agents working on this repo?",
+  "What is the project's purpose, who maintains it, and what license and repository reference apply?",
+  "What is needed to run the project locally (environment variables, configs, secrets, and start commands)?",
+  "What coding style and formatting conventions do the editor and lint configs encode (indentation, line length, quotes, semicolons, naming, and the lint/format tools and how to run them)?",
+  "What are the git commit and release conventions (commit message format, types and scope usage, tag/versioning scheme, branch naming, and merge or signing practices)?",
+  "What architecture patterns and key design decisions structure the project, and are there Architecture Decision Records (ADRs)?",
 ];
+
+/**
+ * Shared write-phase boilerplate appended to each file-specific write
+ * instructions. References the accumulating notes file (${notes_path}) as the
+ * research source and sets the quality bar — identical across all 7 writes.
+ */
+const WRITE_BOILERPLATE = `Your research findings are accumulated in \`\${notes_path}\` — consult them (with the \`pio-project-knowledge\` skill) as the source for this file's content.
+
+When the file has no relevant content for this project, write a brief note ("No significant findings in this category") rather than leaving it empty.
+
+Be concise — target ~2000 tokens (~1500 words) maximum. Prioritize actionable information over narrative description.
+
+**Quality bar:** Every claim should be backed by a file you actually read or confirmed with the user. If something is uncertain, note it as such rather than guessing. Dense with relevant information, not padded with boilerplate.`;
 
 export default [
   // ---------------------------------------------------------------------------
-  // Phase 1 — seed the session-scoped research backlog (programmatic, no turn)
+  // Default Questions — seed the question queue + notes file (programmatic)
   // ---------------------------------------------------------------------------
   {
     id: "default-questions",
-    title: "Phase 1: Default Questions",
+    title: "Default Questions",
     kind: "code",
     run: (ctx: CodeStepContext) => {
+      ctx.state.store?.set(QUESTIONS_VAR, "array", [...DEFAULT_QUESTIONS]);
       const dir = path.join(SCRATCH_DIR, ctx.state.sessionId ?? "unknown");
-      const filePath = path.join(dir, "questions.md");
+      const notesPath = path.join(dir, "notes.md");
       fs.mkdirSync(dir, { recursive: true });
-      const lines = [
-        "# research questions",
-        ...DEFAULT_QUESTIONS.map((q) => `[open] ${q}`),
-      ];
-      fs.writeFileSync(filePath, `${lines.join("\n")}\n`, "utf8");
-      ctx.state.store?.set(QUESTIONS_VAR, "string", filePath);
+      fs.writeFileSync(notesPath, "# Research Notes\n\n", "utf8");
+      ctx.state.store?.set(NOTES_VAR, "string", notesPath);
     },
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 2 — seeded discovery loop: answer (disk-truth) / generate (format)
+  // Research Loop — seeded discovery: drain the queue (inner loop), then
+  // generate genuinely new questions (outer do-while repeats while any remain)
   // ---------------------------------------------------------------------------
   {
     id: "research-loop",
-    title: "Phase 2: Research Loop",
+    title: "Research Loop",
     kind: "loop",
-    maxIterations: 3,
-    repeatWhile: (state: PioSessionState) =>
-      parseQuestions(state).open.length > 0,
-    // Never rendered (containers get no agent turns) — present for the
-    // prompt compiler's top-level validation, which only exempts branch:*
-    instructions: `This is a do-while research loop (kind: "loop"). Its two-phase body (answer-questions → generate-questions) runs at least once; after each full body pass the repeatWhile condition is evaluated — the loop repeats while any [open] line remains in the questions file, and exits once answering exhausts the backlog and generation produces nothing new. This container itself never receives an agent turn.`,
+    maxIterations: 10,
+    repeatWhile: hasQuestions,
     body: [
+      // -----------------------------------------------------------------------
+      // Inner loop — process the queue one question per pass (do-while)
+      // -----------------------------------------------------------------------
       {
         id: "answer-questions",
-        title: "Answer Open Questions",
-        maxIterations: 4,
-        loopMessage:
-          // biome-ignore lint/suspicious/noTemplateCurlyInString: ${questions_path} is an engine-side interpolation placeholder — must stay literal in the string
-          "Continue answering the remaining `[open]` lines in ${questions_path} — do not re-answer terminal lines; every open line must end this run as answered-with-evidence or needs-user.",
-        terminateWhen: [
+        title: "Answer the Question Queue",
+        kind: "loop",
+        maxIterations: 30,
+        repeatWhile: hasQuestions,
+        body: [
+          // Reset per-pass answer state so no stale value leaks from a prior pass
           {
-            type: "callback",
-            callback: (state: PioSessionState) => {
-              const parsed = parseQuestions(state);
-              return parsed.open.length === 0 && parsed.terminalOk;
+            id: "reset-vars",
+            title: "Reset Answer State",
+            kind: "variable-definition",
+            variables: [
+              {
+                name: QUESTION_ANSWERED_VAR,
+                type: "boolean",
+                kind: "static",
+                value: false,
+              },
+              {
+                name: NEXT_QUESTION_VAR,
+                type: "string",
+                kind: "static",
+                value: "",
+              },
+            ],
+          },
+          // Peek the front question into nextQuestion (does NOT pop — the pop
+          // is conditional on a satisfactory answer)
+          {
+            id: "get-next-question",
+            title: "Get Next Question",
+            kind: "code",
+            run: (ctx: CodeStepContext) => {
+              const questions = questionsOf(ctx.state);
+              ctx.state.store?.set(
+                NEXT_QUESTION_VAR,
+                "string",
+                questions[0] ?? "",
+              );
             },
           },
+          // LLM: research the codebase and produce the answer; user-only
+          // questions are resolved inline via ask_user
+          {
+            id: "answer-question",
+            title: "Answer the Question",
+            instructions: `Answer this research question for the project-context files:
+
+**Question:** \`\${nextQuestion}\`
+
+Research the codebase to produce a complete, well-grounded answer. Read files and run read-only commands as needed. When the question is structural (e.g. the directory tree), produce its listing via a single shell command so it lands in context for later reference (enumerate once — do not re-enumerate).
+
+If the question can only be answered by the user (it depends on external context not present in the repo), call \`ask_user\` with \`displayMode: "inline"\` to ask it, then use the user's answer.
+
+Produce the final answer in your response — it will be appended to the research notes and used to write the PROJECT files.`,
+          },
+          // LLM judgment: is the answer satisfactory? (sets questionAnswered)
+          {
+            id: "validate-answer",
+            title: "Validate the Answer",
+            kind: "variable-definition",
+            variables: [
+              {
+                name: QUESTION_ANSWERED_VAR,
+                type: "boolean",
+                kind: "llm",
+                description: `Judge whether the answer just produced for the current question is satisfactory and well-grounded. Use setVar to set questionAnswered (boolean): true if the answer is complete and adequate for the PROJECT files; false only if there are genuine gaps that warrant re-answering. Prefer true for an adequate answer.`,
+              },
+            ],
+          },
+          // Record the note first, then pop — persist before shifting so a Q&A
+          // is never dropped from both the queue and the notes if the note
+          // write is interrupted; otherwise the question stays at the front
+          // and is re-answered next pass
+          {
+            id: "branch-if-answered",
+            title: "If Answered Satisfactorily",
+            kind: "branch:if",
+            condition: (state: PioSessionState) =>
+              state.store?.get(QUESTION_ANSWERED_VAR) === true,
+            // biome-ignore lint/suspicious/noThenProperty: 'then' is the canonical field name from the WorkflowPhase interface
+            then: [
+              {
+                id: "write-notes",
+                title: "Write Research Notes",
+                instructions: `Append the Q&A for the just-answered question to the research notes file at \`\${notes_path}\`.
+
+**Question:** \`\${nextQuestion}\`
+
+Read the current notes file, then rewrite it with the answer you produced for this question appended as a new section (question heading + answer). Preserve all previously accumulated notes. The notes file lives under /tmp — writes to it are not blocked by the write gate.`,
+              },
+              {
+                id: "pop-question",
+                title: "Pop Question",
+                kind: "code",
+                run: (ctx: CodeStepContext) => {
+                  const questions = [...questionsOf(ctx.state)];
+                  questions.shift();
+                  ctx.state.store?.set(QUESTIONS_VAR, "array", questions);
+                },
+              },
+            ],
+          },
         ],
-        instructions: `Read \`\${questions_path}\` first — it is the research backlog: one question per line, prefixed with its status. Answer every \`[open]\` line from the codebase — read files, run read-only commands as needed. When answering a structural question (e.g. the directory tree), produce its listing via a single shell command so it lands in context for later passes (enumerate once — do not re-enumerate on replays).
-
-Update each line in place to a terminal state:
-- \`[answered] <question> — evidence: <repo-relative file>[, <file>...]\` — cite the file paths you actually read.
-- \`[needs-user] <question> — note: <what is needed from the user>\` — only when the codebase cannot resolve it.
-
-**Every open line must reach a terminal state this run** — answered-with-evidence or needs-user. That is the phase's exit condition.
-
-Work outward from the center, using this checklist as your method:
-- Start with \`README.md\` or equivalent entry points to get an initial sense of the project.
-- Scan the top-level directory structure. Map out every notable folder and its purpose.
-- Read dependency manifests (\`package.json\`, \`Cargo.toml\`, \`go.mod\`, \`Gemfile\`, \`pyproject.toml\`, etc.) — these reveal languages, frameworks, versions, and scripts.
-- Read build and automation files (\`Makefile\`, \`justfile\`, \`Taskfile.yml\`, \`build.gradle\`, \`CMakeLists.txt\`, etc.).
-- Read CI/CD configurations (\`.github/workflows/\`, \`.gitlab-ci.yml\`, Jenkinsfiles, etc.).
-- Read infrastructure files (\`Dockerfile\`, \`docker-compose.*\`, Kubernetes manifests, Terraform, etc.).
-- Read documentation (\`CONTRIBUTING.md\`, \`CHANGELOG.md\`, \`docs/\`).
-- Read AI instruction files if they exist (\`AGENTS.md\`, \`CLAUDE.md\`, \`CURSOR.md\`, \`.github/copilot-instructions.md\`, \`.wolf/\`, \`.roo/\`).
-- Read editor configs (\`.editorconfig\`, \`.prettierrc\`, \`tsconfig.json\`, etc.) — they encode project conventions.
-- Dive into subdirectories recursively. Understand the source layout, test structure, and any nested services or packages in a monorepo.
-- **Discover test placement conventions:** When tests exist, observe where they live relative to source files. Common patterns include: \`tests/\` mirroring \`src/\` (e.g., \`src/foo/bar.ts\` → \`tests/foo/test_bar.ts\`), colocated \`.test.ts\` alongside source files, dedicated \`__tests__/\` directories per module, or language-specific conventions like \`*_test.go\`, \`*_test.rb\`. Note the test runner and any configuration (\`jest.config.*\`, \`vitest.config.*\`, \`pytest.ini\`, etc.) that affects discovery.
-- **Discover cross-service dependencies:** Identify external API integrations (HTTP clients, SDKs, gRPC stubs), third-party service connections (databases, message brokers, caches), and internal monorepo package relationships (workspace dependencies, inter-package imports). Look at \`package.json\` dependencies, import statements, configuration files, and infrastructure definitions.
-- **Discover domain terminology:** While reading source code, documentation, and configuration, note recurring domain-specific terms, business concepts, acronyms, and jargon that a new contributor would need to understand.
-- **Analyze git history (commit conventions):** If the project has a git repository (\`git rev-parse --git-dir\` succeeds), run the following commands to discover commit and release conventions:
-  - \`git log --oneline -50\` — examine recent commit messages for patterns: Conventional Commits compliance (\`type(scope): description\`), custom prefixes or type vocabulary, message formatting conventions (imperative mood, line length limits), squash-merge vs. individual commit titles, sign-off lines (\`Signed-off-by:\`), and evidence of GPG-signed commits.
-  - \`git tag -l\` — identify versioning schemes: semantic versioning (\`v1.2.3\`), calendar versioning (\`2026.05\`), release candidates, pre-release patterns, or any naming conventions in tag descriptions.
-  - \`git branch -a\` — identify branching strategy: feature/fix prefix conventions (\`feature/\`, \`feat/\`, \`fix/\`), trunk-based development (single main/master), release branches, hotfix branches, and ticket/issue number embedding in branch names.
-  - Check for commit signing evidence: look for GPG signature indicators and DCO-style sign-off lines in the commit history.
-  - If the project is **not** a git repository, skip this step gracefully and note "no git repository found" in your findings.
-
-For each file you read, extract only what's useful. Do not copy entire files.`,
       },
+
+      // After the queue is drained, discover genuinely new questions
       {
         id: "generate-questions",
         title: "Generate New Questions",
-        loopWhile: [
+        kind: "variable-definition",
+        variables: [
           {
-            type: "callback",
-            callback: (state: PioSessionState) =>
-              parseQuestions(state).malformed,
+            name: NEW_QUESTIONS_VAR,
+            type: "array",
+            kind: "llm",
+            description: `Reflect on the questions answered during this research pass and identify genuinely new questions that emerged — unknowns about how areas of the project work, interact, or are tested that a complete PROJECT picture still needs. Use setVar to set new_questions to the array of new question strings (empty array if none emerged). Do not repeat questions already asked or answered.`,
           },
         ],
-        instructions: `Reflect on what answering surfaced in this pass — unknowns about how areas work, interact, or are tested that the answers exposed. Add genuine new \`[open]\` questions to \`\${questions_path}\`, one per line.
+      },
 
-Add only questions worth a PROJECT-grade answer; if none emerged, leave the file unchanged (untouched-but-valid is acceptable). Do not modify terminal lines.
-
-The file must end in valid grammar — every non-comment, non-blank line must be exactly one of:
-- \`[open] <question text>\`
-- \`[answered] <question text> — evidence: <repo-relative path[, ...]>\`
-- \`[needs-user] <question text> — note: <what is needed from the user>\``,
+      // Fold generated questions into the queue for the next outer pass
+      {
+        id: "merge-questions",
+        title: "Merge New Questions",
+        kind: "code",
+        run: (ctx: CodeStepContext) => {
+          const questions = [...questionsOf(ctx.state)];
+          const fresh = ctx.state.store?.get(NEW_QUESTIONS_VAR);
+          const newQs = Array.isArray(fresh) ? (fresh as string[]) : [];
+          ctx.state.store?.set(QUESTIONS_VAR, "array", [
+            ...questions,
+            ...newQs,
+          ]);
+          ctx.state.store?.set(NEW_QUESTIONS_VAR, "array", []);
+        },
       },
     ],
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 3 — summarize (lean — one run and advance)
-  // ---------------------------------------------------------------------------
-  {
-    id: "summarize",
-    title: "Phase 3: Summarization",
-    instructions: `Organize your findings into the 7 PROJECT files. Use the \`pio-project-knowledge\` skill as the sole reference for:
-- Canonical file paths
-- Section headings and subsection structure
-- Expected content for each section
-
-The skill is the single source of truth for PROJECT file structure. Do not invent sections or headings not defined in the skill.`,
-    skills: { mandatory: ["pio-project-knowledge"] },
-  },
-
-  // ---------------------------------------------------------------------------
-  // Phase 4 — clarify (exhaustion loop: silence terminates)
+  // Clarification — lean final gap-check: ask only about remaining genuine
+  // gaps before writing. No exhaustion loop (clarification is inline in the
+  // research loop; needs-user handoff removed).
   // ---------------------------------------------------------------------------
   {
     id: "clarify",
-    title: "Phase 4: Clarification",
-    maxIterations: 5,
-    loopMessage:
-      // biome-ignore lint/suspicious/noTemplateCurlyInString: ${questions_path} is an engine-side interpolation placeholder — must stay literal in the string
-      "This phase is replaying after your earlier answers. Start from what is still open — do not re-ask answered items. Ask the remaining genuine gaps one by one (including any unasked `[needs-user]` rows from ${questions_path}). If no genuine gaps remain, end without asking — silence terminates this loop.",
-    loopWhile: [
-      {
-        type: "callback",
-        callback: (state: PioSessionState) => state.askUserCalled,
-      },
-    ],
-    instructions: `Review your answers from Phase 3. Are there any gaps, ambiguities, or areas where you are uncertain? List them all. Then use the \`ask_user\` tool to clarify them one by one — ask focused, specific questions. Do not ask filler questions like "anything else?". Only ask when there is a genuine gap that would make the output files incomplete or misleading.
+    title: "Clarification",
+    instructions: `Review your research findings (accumulated in \`\${notes_path}\`) against the 7 PROJECT files, using the \`pio-project-knowledge\` skill as the sole reference for file paths, section structure, and expected content: what should each file contain, and where is it still missing or uncertain?
 
-Read \`\${questions_path}\` and ask the user every \`[needs-user]\` row (these could not be resolved from the codebase).
+If any genuine gaps, ambiguities, or uncertainties remain that only the user can resolve, ask about them one by one with the \`ask_user\` tool (\`displayMode: "inline"\`) — focused, specific questions. Do not ask filler questions like "anything else?". Only ask when there is a genuine gap that would make an output file incomplete or misleading.
 
-If no genuine gaps remain — including all \`[needs-user]\` rows answered or dismissed — finish without calling ask_user; a run that ends without asking advances the phase.`,
+If no genuine gaps remain, finish without asking. This is a single run — there is no re-loop; any remaining gap is handled by asking now or left as a noted assumption.`,
   },
 
   // ---------------------------------------------------------------------------
-  // Phase 5 — write the 7 PROJECT files (gated to the declared contract outputs)
+  // Seven single-output write phases — one contract file per phase, each with
+  // instructions tailored to that file's section structure (per
+  // pio-project-knowledge) and gated to exactly its own output with a total
+  // disk-existence validation loop.
   // ---------------------------------------------------------------------------
   {
-    id: "write-files",
-    title: "Phase 5: Write Output Files",
-    write: [
-      "overview",
-      "development",
-      "conventions",
-      "git",
-      "architecture",
-      "dependencies",
-      "glossary",
+    id: "write-overview",
+    title: "Write PROJECT/OVERVIEW.md",
+    write: ["overview"],
+    maxIterations: 2,
+    loopWhile: [
+      {
+        type: "callback",
+        callback: (state: PioSessionState) =>
+          !state.capState?.outputExists("overview"),
+      },
     ],
-    instructions: `Once all gaps are resolved, write the 7 files under \`.pio/PROJECT/\`. Follow the section structure defined in the \`pio-project-knowledge\` skill — use its section headings, subsections, and content expectations as the exact template for each file.
+    instructions: `Write \`.pio/PROJECT/OVERVIEW.md\`. Structure it exactly as defined by the \`pio-project-knowledge\` skill:
+- \`# Project Overview\` — purpose of the project (2-4 sentences); author, license, repository reference.
+- \`## Tech Stack\` — programming languages, frameworks, databases, infrastructure tools; include versions when available.
+- \`## Repository Structure\` — key directories and their purpose; tree format or concise list (top-level only).
 
-### Guidance
+${WRITE_BOILERPLATE}`,
+  },
+  {
+    id: "write-development",
+    title: "Write PROJECT/DEVELOPMENT.md",
+    write: ["development"],
+    maxIterations: 2,
+    loopWhile: [
+      {
+        type: "callback",
+        callback: (state: PioSessionState) =>
+          !state.capState?.outputExists("development"),
+      },
+    ],
+    instructions: `Write \`.pio/PROJECT/DEVELOPMENT.md\`. Structure it exactly as defined by the \`pio-project-knowledge\` skill:
+- \`# Development Guide\`
+- \`## Build and Test\` — how to build, test, and lint; commands, frameworks, prerequisites.
+- \`## Test Directory Convention\` — where test files live relative to source files; test runner and configuration details.
+- \`## CI/CD and Release\` — CI/CD pipeline stages, release cycle, deployment process.
+- \`## Local Environment Setup\` — environment variables, configs, secrets; external services required (database, message broker, etc.); commands to start locally.
 
-- **Not all files are relevant to every project.** For example: skip \`GIT.md\` for non-git repos (write "No git repository found" instead), \`GLOSSARY.md\` may be minimal for simple projects, and \`DEPENDENCIES.md\` may have little content for single-service projects with no external integrations.
-- **When a file has no relevant content**, write a brief note ("No significant findings in this category") rather than leaving the file empty. This distinguishes "analyzed and found nothing" from "not analyzed".
-- **Write all files to \`.pio/PROJECT/\`** (the directory). Do not write the old single-file format.
-- **Be concise.** Each file should target ~2000 tokens (~1500 words) maximum. Prioritize actionable information — commands, file paths, conventions — over narrative descriptions.
+${WRITE_BOILERPLATE}`,
+  },
+  {
+    id: "write-conventions",
+    title: "Write PROJECT/CONVENTIONS.md",
+    write: ["conventions"],
+    maxIterations: 2,
+    loopWhile: [
+      {
+        type: "callback",
+        callback: (state: PioSessionState) =>
+          !state.capState?.outputExists("conventions"),
+      },
+    ],
+    instructions: `Write \`.pio/PROJECT/CONVENTIONS.md\`. Structure it exactly as defined by the \`pio-project-knowledge\` skill:
+- \`# Code Conventions\`
+- \`## Coding Style\` — conventions from editor configs (tsconfig.json, .editorconfig, .prettierrc); indentation, line length, quotes, semicolons, naming conventions.
+- \`## Linting and Formatting\` — linting tools, formatting tools, how to run them; configuration files and key rules.
+- \`## AI Agent Instructions\` — conventions from AGENTS.md / CLAUDE.md / CURSOR.md or similar files; project-specific agent guidance encoded in prompts.
 
-**Quality bar:** Every claim should be backed by a file you actually read or confirmed with the user. If something is uncertain, note it as such rather than guessing. The files should be dense with relevant information — not padded with boilerplate, not essays.`,
+${WRITE_BOILERPLATE}`,
+  },
+  {
+    id: "write-git",
+    title: "Write PROJECT/GIT.md",
+    write: ["git"],
+    maxIterations: 2,
+    loopWhile: [
+      {
+        type: "callback",
+        callback: (state: PioSessionState) =>
+          !state.capState?.outputExists("git"),
+      },
+    ],
+    instructions: `Write \`.pio/PROJECT/GIT.md\`. Structure it exactly as defined by the \`pio-project-knowledge\` skill:
+- \`# Git Conventions\`
+- \`## Commit Message Format\` — format (Conventional Commits \`type(scope): description\`, custom prefixes); observed commit types and usage examples; scope usage patterns; tag/versioning scheme (semver, calver, or none detected); branch naming patterns and branching strategy; merge commit conventions (squash vs. merge PRs); signing practices (GPG, DCO sign-off, or none observed).
+
+For a project with no git repository, write "No git repository found" rather than leaving the file empty.
+
+${WRITE_BOILERPLATE}`,
+  },
+  {
+    id: "write-architecture",
+    title: "Write PROJECT/ARCHITECTURE.md",
+    write: ["architecture"],
+    maxIterations: 2,
+    loopWhile: [
+      {
+        type: "callback",
+        callback: (state: PioSessionState) =>
+          !state.capState?.outputExists("architecture"),
+      },
+    ],
+    instructions: `Write \`.pio/PROJECT/ARCHITECTURE.md\`. Structure it exactly as defined by the \`pio-project-knowledge\` skill:
+- \`# Architecture\`
+- \`## Patterns and Design Decisions\` — architecture patterns (MVC, layered, event-driven, microservices, etc.); capability pattern (if applicable): module structure, registration, lifecycle; key design decisions and trade-offs; ADRs (Architecture Decision Records) if they exist.
+- \`## Service Integrations\` — how the project integrates with other services; deployment topology; ecosystem context — how the project fits into larger systems.
+
+${WRITE_BOILERPLATE}`,
+  },
+  {
+    id: "write-dependencies",
+    title: "Write PROJECT/DEPENDENCIES.md",
+    write: ["dependencies"],
+    maxIterations: 2,
+    loopWhile: [
+      {
+        type: "callback",
+        callback: (state: PioSessionState) =>
+          !state.capState?.outputExists("dependencies"),
+      },
+    ],
+    instructions: `Write \`.pio/PROJECT/DEPENDENCIES.md\`. Structure it exactly as defined by the \`pio-project-knowledge\` skill:
+- \`# Dependencies\`
+- \`## External APIs\` — third-party APIs and services the project integrates with; endpoints, versions, authentication methods.
+- \`## Third-Party Libraries\` — key libraries and frameworks, why they are used; typically a table: Package | Version | Purpose.
+- \`## Internal Package Graph\` — if a monorepo: how internal packages depend on each other; module dependency tree or ASCII diagram.
+- \`## Data Flow Between Services\` — how data moves across service boundaries; workflow pipeline diagrams (ASCII art).
+
+${WRITE_BOILERPLATE}`,
+  },
+  {
+    id: "write-glossary",
+    title: "Write PROJECT/GLOSSARY.md",
+    write: ["glossary"],
+    maxIterations: 2,
+    loopWhile: [
+      {
+        type: "callback",
+        callback: (state: PioSessionState) =>
+          !state.capState?.outputExists("glossary"),
+      },
+    ],
+    instructions: `Write \`.pio/PROJECT/GLOSSARY.md\`. Structure it exactly as defined by the \`pio-project-knowledge\` skill:
+- \`# Glossary\`
+- \`## Terms\` — domain-specific terminology with definitions.
+- \`## Acronyms\` — acronyms and their full expansions (typically a table).
+- \`## Business Concepts\` — key business concepts relevant to understanding the codebase.
+
+${WRITE_BOILERPLATE}`,
   },
 ] satisfies WorkflowPhase[];

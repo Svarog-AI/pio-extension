@@ -310,7 +310,68 @@ describe("readWorkflowPhases", () => {
     warnSpy.mockRestore();
   });
 
-  it("still warns for non-branch phases missing .instructions (regression guard)", async () => {
+  it("does not warn for kind: code phases missing .instructions", async () => {
+    const capDir = path.join(tempDir, "test-cap");
+    fs.mkdirSync(capDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(capDir, "workflow.ts"),
+      `export default [
+  { id: "step-1", title: "Setup", instructions: "Do setup." },
+  { id: "code-a", title: "Code A", kind: "code", run: () => {} },
+];`,
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const steps = await readWorkflowPhases(capDir);
+
+    expect(steps).toHaveLength(2);
+    expect(steps[1].kind).toBe("code");
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("does not warn for kind: loop phases missing .instructions", async () => {
+    const capDir = path.join(tempDir, "test-cap");
+    fs.mkdirSync(capDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(capDir, "workflow.ts"),
+      `export default [
+  { id: "loop-a", title: "Loop A", kind: "loop", repeatWhile: () => false, body: [] },
+];`,
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const steps = await readWorkflowPhases(capDir);
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0].kind).toBe("loop");
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("does not warn for kind: variable-definition phases missing .instructions", async () => {
+    const capDir = path.join(tempDir, "test-cap");
+    fs.mkdirSync(capDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(capDir, "workflow.ts"),
+      `export default [
+  { id: "var-a", title: "Var A", kind: "variable-definition", variables: [{ name: "x", type: "string", kind: "static", value: "1" }] },
+];`,
+    );
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const steps = await readWorkflowPhases(capDir);
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0].kind).toBe("variable-definition");
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("still warns for standard phases missing .instructions (regression guard)", async () => {
     const capDir = path.join(tempDir, "test-cap");
     fs.mkdirSync(capDir, { recursive: true });
     fs.writeFileSync(

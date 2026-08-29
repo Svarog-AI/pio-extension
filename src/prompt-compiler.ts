@@ -36,8 +36,10 @@ import type {
  * Read workflow phases from `workflow.ts` inside a capability package directory.
  *
  * Expects a default export of type `WorkflowPhase[]`. Validates each phase has
- * at least `id`, `title`, and `instructions` fields (branch phases are exempt
- * from the instructions check).
+ * at least `id`, `title`, and `instructions` fields. Only standard (or
+ * kind-omitted) phases require `instructions` — programmatic kinds
+ * (`branch:*`, `code`, `loop`, `variable-definition`) never render authored
+ * instructions, so they are exempt from the check.
  *
  * @param dirPath - Absolute path to the capability package directory
  * @returns Array of workflow phases
@@ -79,11 +81,14 @@ export async function readWorkflowPhases(
   }
 
   // Validate each phase has required fields
-  // Branch phases (kind starts with "branch:") are programmatic — they route
-  // based on a callback condition and never have .instructions
+  // Only standard (or kind-omitted) phases receive an agent turn and render
+  // authored .instructions. Programmatic kinds are exempt: branch:* route via
+  // callbacks, code/loop execute inline without turns, and
+  // variable-definition phases have engine-generated instructions.
   for (const phase of steps) {
-    const isBranch = phase.kind?.startsWith("branch:");
-    const missingInstructions = !phase.instructions && !isBranch;
+    const requiresInstructions =
+      phase.kind === undefined || phase.kind === "standard";
+    const missingInstructions = requiresInstructions && !phase.instructions;
     if (!phase.id || !phase.title || missingInstructions) {
       console.warn(
         `[pio] Prompt compiler: malformed workflow phase in "${dirPath}" — missing id, title, or instructions: ${JSON.stringify(phase)}`,

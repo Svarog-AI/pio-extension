@@ -51,7 +51,7 @@ A finished design is a `WorkflowPhase[]` graph. Every phase has required `id`/`t
 - **`"branch:if"`** — `condition(state)` (truthy selects `then`, falsy selects `else`), `then: WorkflowPhase[]`, `else: WorkflowPhase[]`. A missing `else` arm **skips** (jumps to the post-branch phase).
 - **`"branch:switch"`** — `on`: either a callback `(state) => unknown` or a `"$varName"` string resolved via `state.store`; `cases: Record<string, WorkflowPhase[]>` keyed against the `on` result; `defaultBranch` fallback when no case matches (or `on` throws). A missing `defaultBranch` skips.
 - **`"code"`** — `run(ctx: CodeStepContext)` executes **TypeScript in place of an LLM turn**. Everything is reached through `ctx.state`: variables via `state.store`, contract I/O via `state.capState`, identifiers via `state.sessionId` / `state.projectRoot`. `run` must be present for `kind: "code"` and absent for all other kinds (enforced at `PhaseManager` construction). A throwing `run()` never blocks traversal — it is caught, warned, logged, and traversal continues.
-- **`"loop"`** — a do-while block: `body: WorkflowPhase[]` (the repeating unit) + `repeatWhile(state)` evaluated **at the end of each full body pass** (do-while — never pre-checked, so ≥1 pass is guaranteed). `maxIterations` on the block counts full body passes. The container itself never receives an agent turn (its `instructions`, if present, exist only for top-level prompt-compiler validation).
+- **`"loop"`** — a do-while block: `body: WorkflowPhase[]` (the repeating unit) + `repeatWhile(state)` evaluated **at the end of each full body pass** (do-while — never pre-checked, so ≥1 pass is guaranteed). `maxIterations` on the block counts full body passes. The container itself never receives an agent turn and requires no `instructions` (the prompt compiler's top-level validation exempts programmatic kinds).
 
 ### Write gates (per phase)
 
@@ -71,6 +71,8 @@ Phase design is only part of the picture — the capability's overall shape and 
 ## Decomposition methodology (core)
 
 Start from a **single-phase assumption** — "do X" — then iterate through the decomposition questions below. Each question splits or structures the graph:
+
+0. **Phase = micro-task.** Split until each phase carries **one small, verifiable objective**. A checklist-shaped mega-prompt (LLM-responsibility for many items in one turn, with no per-item validation) is an anti-pattern. Prefer disk-observable, per-item validation where available so each item's completion is mechanically verifiable rather than self-reported. Because the engine re-serves a phase's full `instructions` on **every** entry and replay (`loopMessage` is only an addendum), instructions must stay short and valid on every entry — static lookup data (e.g. a per-theme method map) is fine, long action lists are not.
 
 1. **Validation points → phases.** How many validation points does "X" have? Y validation points → Y phase boundaries: each validation point becomes a phase boundary, so work is verifiable per phase.
 2. **Pure-code logic → `kind: "code"` phases.** Is there logic that needs no LLM judgment (setting variables, checking files, counting passes, preparing routing data)? That logic becomes a programmatic `kind: "code"` phase whose `run()` executes inline — not an LLM turn.
@@ -93,27 +95,28 @@ Work the questions in order: split by validation points first (phase count), ext
 
 **Lean by design.** Omitted loop fields = one run and advance. Do **not** bolt `minIterations: 1` onto single-pass phases — a lean phase has no loop fields at all. Add loop fields only where the decomposition (or the user) identifies real iteration.
 
-**Seeded discovery loop — THE standard research-loop pattern.** The canonical shape for *any* research/refinement capability (project analysis, dependency research, anything whose job is to discover unknowns and then answer them):
+**Seeded discovery loop — THE standard research-loop pattern.** The canonical shape for *any* research/refinement capability (project analysis, dependency research, anything whose job is to discover unknowns and then answer them). Two layers:
 
-1. **Seed — `kind: "code"` phase.** Writes a **session-scoped** scratch question file (e.g. `/tmp/<capability>/<sessionId>/questions.md`) fresh with a **default open set** — an explicit coverage floor that cannot be skipped — then sets a store variable (e.g. `questions_path`) to the absolute path. LLM phases reference the path via `${questions_path}` interpolation; callbacks resolve it from `state.store` (undefined ⇒ fail-safe parse). Session scoping is mandatory: concurrent sessions of the same capability must not share or overwrite each other's backlog.
-2. **Answer — body phase 1.** Consumes the backlog; `terminateWhen`: no `[open]` lines remain on disk, with completed items **validated by cited evidence files existing** (claims checked against disk, not self-reported). Every open line must reach a terminal state each run.
-3. **Generate — body phase 2.** Appends genuinely new questions; `loopWhile`: file **malformed** — parse-validity of the LLM-authored file is enforced mechanically, not trusted. No other loop fields.
-4. **Block — do-while `kind: "loop"`** around the two body phases; `repeatWhile`: any `[open]` line remains; `maxIterations` caps full passes.
+1. **Seed — `kind: "code"` phase.** Seeds a store **array variable** (e.g. `questions`) with a **default open-question set** — an explicit coverage floor that cannot be skipped — and sets up an accumulating notes file. No file parsing determines open questions: the queue lives entirely in session variables. The notes file is **session-scoped** (`/tmp/<capability>/<sessionId>/notes.md`), exposed to LLM phases via a store variable (e.g. `notes_path`) + `${var}` interpolation. Session scoping is mandatory: concurrent sessions of the same capability must not share a backlog.
+2. **Inner loop — `kind: "loop"` block that drains the queue one question per pass** (do-while, ~30-pass cap). Body:
+   - **reset-vars** — `variable-definition` phase with `static` variables that reset per-pass state (`questionAnswered` → `false`, `nextQuestion` → empty) at the start of every pass, so no stale value leaks from the prior iteration.
+   - **get-next-question** — `kind: "code"` phase that **peeks** the front of `questions` into `nextQuestion` (does **not** pop — the pop is conditional on a satisfactory answer).
+   - **answer-question** — LLM phase that researches and answers `nextQuestion`; user-only questions are resolved **inline** via `ask_user` and captured.
+   - **validate-answer** — LLM-judgment `variable-definition` phase that sets `questionAnswered` (`llm` boolean) — a judgment of satisfactory-vs-gaps, not a mechanical disk-evidence check.
+   - **branch:if `questionAnswered`** — **then**: `write-notes` (append the Q&A to the accumulating notes file) **then** `pop-question` (shift the queue) — **write-then-pop**, so a Q&A is never dropped from both the queue and the notes if the note write is interrupted; **else**: empty arm (no notes, no pop — the question stays at the front and is re-answered next pass).
+   The inner loop's `repeatWhile`: queue non-empty — it drains the queue, exiting when empty (or at the pass cap).
+3. **Generate — LLM `variable-definition` phase** (after the inner loop): reflects on what was answered and sets `new_questions` (`llm` array); a following `kind: "code"` `merge-questions` phase folds them into the queue. Write each seeded question to be **self-guiding** about where to look rather than attaching a separate lookup table or checklist (instructions re-serve on every entry).
+4. **Outer loop — do-while `kind: "loop"`** around [inner loop, generate, merge]; `repeatWhile`: queue non-empty (repeat only while discovery produced new questions).
 
-**Line-grammar convention** (the seed writes it, the callbacks parse it):
+**Notes file as the write reference.** The accumulating Q&A notes file replaces a parsed backlog as the source the output-writing phases consult for content.
 
-    # research questions
-    [open] <question text>
-    [answered] <question text> — evidence: <repo-relative path[, ...]>
-    [needs-user] <question text> — note: <what is needed from the user>
+**Why variables for the queue, a file for the notes:** the queue's open/answered state is *control flow* driven by per-pass LLM judgment and lives naturally in session variables; the **accumulated content** (the Q&A notes) is *monotonic across runs* — `filesWritten`/`askUserCalled` reset per run in `setupTurn`, so durable research output belongs in a file, not in per-run engine signals.
 
-One question per line; status in brackets at line start; `#`-prefixed and blank lines ignored. A line is **terminal** iff it is `[answered]` with all cited evidence paths existing, or `[needs-user]`.
+**Inline user clarification.** User-only questions are resolved inline in the answer phase via `ask_user` — no `[needs-user]` backlog handoff to a later clarify phase.
 
-**Why disk state:** `filesWritten`/`askUserCalled` reset per run in `setupTurn`, so they cannot carry research progress across runs — **disk state is monotonic across runs**, which is why the backlog lives in a file, not in variables.
+**Total-callback rule.** A throwing loop callback is treated as *not passing* at `agent_end`. Callbacks must catch internally and return the fail-safe value — for `loopWhile`: `true` (keep looping on unreadable input); for `terminateWhen`: `false` (do not advance).
 
-**User-only items are terminal.** Questions only the user can answer get the `[needs-user]` status — a terminal state that keeps **no** loop alive (treating them as open would guarantee an idle at the cap) — and hand off to a later phase via file read.
-
-**Total-callback rule.** A throwing loop callback is treated as *not passing* at `agent_end`. Parsing callbacks must catch internally and return the fail-safe value — for `loopWhile`: `true` (keep looping on unreadable input); for `terminateWhen`: `false` (do not advance).
+**Single-output write phases.** One phase per contract output, gated to exactly that output (`write: [name]`), with a **total disk-existence/non-emptiness `loopWhile`** (missing or empty file → `true`, keep looping; fail-safe on any error, bounded by `maxIterations`). The anti-pattern is one phase writing many large files in a single turn — split it so each output gets its own phase, its own gate, and its own mechanical completeness check.
 
 ## User co-design protocol
 

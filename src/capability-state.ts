@@ -160,6 +160,18 @@ export class CapState {
   }
 
   /**
+   * Non-throwing, disk-observable completeness check for an output file by name.
+   * Returns true only if the output is declared AND its resolved file exists on
+   * disk; false for an undeclared name or a declared-but-not-yet-written file.
+   * Built on `tryResolveOutput` — total, never throws. Useful as a write-gate
+   * signal (e.g. replay a phase while `!outputExists(name)`).
+   */
+  outputExists(name: string): boolean {
+    const out = this.tryResolveOutput(name);
+    return !!out && fs.existsSync(out.path);
+  }
+
+  /**
    * Non-throwing lookup for an input file by name.
    * Returns the contract entry and its resolved path, or undefined if not found.
    * Uses the pre-built inputNames map — O(1) lookup, zero iteration.

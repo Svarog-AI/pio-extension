@@ -44,6 +44,44 @@ describe("config.writeAllowlist", () => {
 });
 
 // ---------------------------------------------------------------------------
+// config.contract.outputs
+// ---------------------------------------------------------------------------
+
+describe("config.contract.outputs", () => {
+  const expected: Array<[string, string]> = [
+    ["overview", "PROJECT/OVERVIEW.md"],
+    ["development", "PROJECT/DEVELOPMENT.md"],
+    ["conventions", "PROJECT/CONVENTIONS.md"],
+    ["git", "PROJECT/GIT.md"],
+    ["architecture", "PROJECT/ARCHITECTURE.md"],
+    ["dependencies", "PROJECT/DEPENDENCIES.md"],
+    ["glossary", "PROJECT/GLOSSARY.md"],
+  ];
+
+  it("declares exactly 7 contract outputs", () => {
+    expect(config.contract.outputs).toHaveLength(7);
+  });
+
+  it.each(expected)("declares %s → %s", (name, file) => {
+    const entry = (
+      config.contract.outputs as Array<{ name: string; file?: string }>
+    ).find((o) => o.name === name);
+    expect(entry).toBeDefined();
+    expect(entry?.file).toBe(file);
+  });
+
+  it("marks every output projectRelative and not required", () => {
+    for (const output of config.contract.outputs as Array<{
+      projectRelative?: boolean;
+      requiredWhen?: (params?: Record<string, unknown>) => boolean;
+    }>) {
+      expect(output.projectRelative).toBe(true);
+      expect(output.requiredWhen?.()).toBe(false);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // register
 // ---------------------------------------------------------------------------
 

@@ -13,7 +13,50 @@ const capabilityConfig = {
   capability: "project-context",
   contract: {
     inputs: [],
-    outputs: [],
+    outputs: [
+      {
+        name: "overview",
+        file: "PROJECT/OVERVIEW.md",
+        projectRelative: true,
+        requiredWhen: () => false,
+      },
+      {
+        name: "development",
+        file: "PROJECT/DEVELOPMENT.md",
+        projectRelative: true,
+        requiredWhen: () => false,
+      },
+      {
+        name: "conventions",
+        file: "PROJECT/CONVENTIONS.md",
+        projectRelative: true,
+        requiredWhen: () => false,
+      },
+      {
+        name: "git",
+        file: "PROJECT/GIT.md",
+        projectRelative: true,
+        requiredWhen: () => false,
+      },
+      {
+        name: "architecture",
+        file: "PROJECT/ARCHITECTURE.md",
+        projectRelative: true,
+        requiredWhen: () => false,
+      },
+      {
+        name: "dependencies",
+        file: "PROJECT/DEPENDENCIES.md",
+        projectRelative: true,
+        requiredWhen: () => false,
+      },
+      {
+        name: "glossary",
+        file: "PROJECT/GLOSSARY.md",
+        projectRelative: true,
+        requiredWhen: () => false,
+      },
+    ],
   },
   skills: {
     mandatory: ["pio-project-knowledge"],

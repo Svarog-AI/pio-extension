@@ -47,7 +47,7 @@ A finished design is a `WorkflowPhase[]` graph. Every phase has required `id`/`t
 `kind` defaults to `"standard"`. Non-standard kinds and the fields that go with them:
 
 - **`"standard"`** (default) — a normal LLM phase with `instructions`.
-- **`"variable-definition"`** — declares `variables: PhaseVariable[]`. Each entry: `name`, `type` (e.g. `"string"`, `"number"`, `"boolean"`), `kind: "static" | "llm" | "computed"`, plus `value` (static), `description` (llm — what the agent should determine and set via `setVar`), or `compute(state)` (computed — callback at `agent_end`). `instructions` is ignored; the engine generates the phase's instructions from the `variables` array. A variable-definition phase with **no `llm` variables is purely programmatic** — it runs inline with no agent turn.
+- **`"variable-definition"`** — declares `variables: PhaseVariable[]`. Each entry: `name`, `type` (e.g. `"string"`, `"number"`, `"boolean"`), `kind: "static" | "llm" | "computed"`, plus `value` (static), `description` (llm — what the agent should determine and set via `setVar`), or `compute(state)` (computed — callback at `agent_end`). `instructions` is ignored; the engine generates the phase's instructions from the `variables` array. A variable-definition phase declaring **only `static`/`computed` variables (no `llm`) is purely programmatic** — it runs inline with no agent turn.
 - **`"branch:if"`** — `condition(state)` (truthy selects `then`, falsy selects `else`), `then: WorkflowPhase[]`, `else: WorkflowPhase[]`. A missing `else` arm **skips** (jumps to the post-branch phase).
 - **`"branch:switch"`** — `on`: either a callback `(state) => unknown` or a `"$varName"` string resolved via `state.store`; `cases: Record<string, WorkflowPhase[]>` keyed against the `on` result; `defaultBranch` fallback when no case matches (or `on` throws). A missing `defaultBranch` skips.
 - **`"code"`** — `run(ctx: CodeStepContext)` executes **TypeScript in place of an LLM turn**. Everything is reached through `ctx.state`: variables via `state.store`, contract I/O via `state.capState`, identifiers via `state.sessionId` / `state.projectRoot`. `run` must be present for `kind: "code"` and absent for all other kinds (enforced at `PhaseManager` construction). A throwing `run()` never blocks traversal — it is caught, warned, logged, and traversal continues.
@@ -87,11 +87,33 @@ Work the questions in order: split by validation points first (phase count), ext
 **Choosing the termination signal** (the `terminateWhen`/`loopWhile` callback reads `PioSessionState`):
 
 - **Prefer `filesWritten`-based callbacks** when the phase's success is observable as file writes — e.g. `state.filesWritten.some((f) => f.endsWith("TEST.md"))`.
-- **`askUserCalled`** for manual/user gates — the phase advances once the agent has asked the user.
+- **`askUserCalled` — exhaustion loops.** For interview/clarify/Q&A phases where **silence is a legitimate end state**, use `loopWhile(askUserCalled)`: a run that contained questions may have more un-exhausted, so keep running; the first silent run terminates the phase. **Stall warning:** `terminateWhen(askUserCalled)` on such phases makes no-ask runs replay to `maxIterations` and then idle-pause (the engine does not force-advance at the cap) because the flag resets per run. Reserve `terminateWhen(askUserCalled)` for **mandatory gates** where every run must ask (e.g. manual testing/review checkpoints).
 - **Variable-definition phases** (with their variables) for non-file judgments — declare the judgment as an `llm` variable and branch on it (`on: "$varName"`) or loop on it (`state.store?.get(...)`).
 - `currentIteration` (per-phase, 1-based) for iteration-count logic; `state.store` for variables set in earlier phases.
 
 **Lean by design.** Omitted loop fields = one run and advance. Do **not** bolt `minIterations: 1` onto single-pass phases — a lean phase has no loop fields at all. Add loop fields only where the decomposition (or the user) identifies real iteration.
+
+**Seeded discovery loop — THE standard research-loop pattern.** The canonical shape for *any* research/refinement capability (project analysis, dependency research, anything whose job is to discover unknowns and then answer them):
+
+1. **Seed — `kind: "code"` phase.** Writes a **session-scoped** scratch question file (e.g. `/tmp/<capability>/<sessionId>/questions.md`) fresh with a **default open set** — an explicit coverage floor that cannot be skipped — then sets a store variable (e.g. `questions_path`) to the absolute path. LLM phases reference the path via `${questions_path}` interpolation; callbacks resolve it from `state.store` (undefined ⇒ fail-safe parse). Session scoping is mandatory: concurrent sessions of the same capability must not share or overwrite each other's backlog.
+2. **Answer — body phase 1.** Consumes the backlog; `terminateWhen`: no `[open]` lines remain on disk, with completed items **validated by cited evidence files existing** (claims checked against disk, not self-reported). Every open line must reach a terminal state each run.
+3. **Generate — body phase 2.** Appends genuinely new questions; `loopWhile`: file **malformed** — parse-validity of the LLM-authored file is enforced mechanically, not trusted. No other loop fields.
+4. **Block — do-while `kind: "loop"`** around the two body phases; `repeatWhile`: any `[open]` line remains; `maxIterations` caps full passes.
+
+**Line-grammar convention** (the seed writes it, the callbacks parse it):
+
+    # research questions
+    [open] <question text>
+    [answered] <question text> — evidence: <repo-relative path[, ...]>
+    [needs-user] <question text> — note: <what is needed from the user>
+
+One question per line; status in brackets at line start; `#`-prefixed and blank lines ignored. A line is **terminal** iff it is `[answered]` with all cited evidence paths existing, or `[needs-user]`.
+
+**Why disk state:** `filesWritten`/`askUserCalled` reset per run in `setupTurn`, so they cannot carry research progress across runs — **disk state is monotonic across runs**, which is why the backlog lives in a file, not in variables.
+
+**User-only items are terminal.** Questions only the user can answer get the `[needs-user]` status — a terminal state that keeps **no** loop alive (treating them as open would guarantee an idle at the cap) — and hand off to a later phase via file read.
+
+**Total-callback rule.** A throwing loop callback is treated as *not passing* at `agent_end`. Parsing callbacks must catch internally and return the fail-safe value — for `loopWhile`: `true` (keep looping on unreadable input); for `terminateWhen`: `false` (do not advance).
 
 ## User co-design protocol
 

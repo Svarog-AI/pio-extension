@@ -24,7 +24,7 @@ The methodology starts from two inputs:
 1. **The narrative workflow description** — the capability's `workflow.ts` prose instructions plus the intent of its `role.md` / `guidelines.md`. This is the algorithm in prose: what the agent does, in what order, with what quality bar, and where it asks the user.
 2. **The capability's contract** — its declared inputs, expected outputs, and `excludedFiles` from its `config.ts`. The contract defines what the capability reads and must produce; the exit lifecycle validates outputs against it.
 
-An exemplar of the narrative input shape is `src/capabilities/project-context/workflow.ts` (prose phases with no loop fields, ending in a stale `signal-completion` phase that the migration removes).
+The pre-migration production workflows share a recognizable shape: prose `instructions` per phase, no loop fields, and a trailing `signal-completion` phase that the migration removes.
 
 ## Structured output
 

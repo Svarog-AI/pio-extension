@@ -115,7 +115,7 @@ You need to be confident about implementation details before writing the plan. *
 
 **Execution preferences:** Ask about step sizing (granular vs. larger) and any specific tools or approaches to use or avoid.
 
-Do not re-ask already-confirmed items. Resolve only what remains genuinely open.`,
+Resolve only what remains genuinely open.`,
     skills: {
       mandatory: ["grill-me"],
     },

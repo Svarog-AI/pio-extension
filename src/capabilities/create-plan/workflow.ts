@@ -62,7 +62,7 @@ This is a single-pass entry phase — gather the contract now; research follows 
           state.filesWritten.some((f) => f.endsWith("notes.md")),
       },
     ],
-    loopMessage: `Have another look — any missed files, dependencies, or assumptions? Re-scan the repo, referenced files, and test setup for anything not yet recorded. If you find something new, record it to \`\${notes_path}\` (under /tmp — writes there are not blocked). If you find nothing new, make **no changes** to \`\${notes_path}\` and finish — a run that writes nothing new proves research is exhausted.`,
+    loopMessage: `Have another look — any missed files, dependencies, or assumptions? Re-scan the repo, referenced files, and test setup for anything not yet recorded. If you find something new, record it to \`\${notes_path}\` (under /tmp — writes there are not blocked). If you find nothing new, make **no changes** to \`\${notes_path}\` and finish.`,
     instructions: `Conduct thorough research using your tools (\`read\`, \`bash\`, \`web_search\`), following the research process in the \`pio-planning\` skill. Read \`.pio/PROJECT/OVERVIEW.md\`, every file referenced in the \`goal\` input, trace dependencies, understand existing patterns and test setup, and identify hidden complexity.
 
 **Record every finding as evidence to the scratch notes file at \`\${notes_path}\`** (under /tmp — writes there are not blocked). Append each finding with its evidence source, one per entry:
@@ -100,7 +100,7 @@ You need to be confident about implementation details before writing the plan. *
         callback: (state: PioSessionState) => state.askUserCalled,
       },
     ],
-    loopMessage: `Any remaining assumptions to confirm? If none, finish without asking — a run that asks nothing advances. Do not re-ask already-confirmed items.`,
+    loopMessage: `Any remaining assumptions to confirm? If none, finish without asking. Do not re-ask already-confirmed items.`,
     instructions: `Before designing implementation steps, confirm your findings and assumptions with the user and close any gaps that research alone cannot resolve. Follow the \`grill-me\` skill for probing technique — walk decision trees, follow implications, and ask one question at a time.
 
 **Verify dimensions before designing steps:**
@@ -140,7 +140,7 @@ Resolve only what remains genuinely open.`,
           state.filesWritten.some((f) => f.endsWith("PLAN.md")),
       },
     ],
-    loopMessage: `Have another look — it doesn't matter how many times you've reviewed. Re-scan the whole plan for consequential inconsistencies. If you find a consequential issue, fix it in PLAN.md (a run that changes PLAN.md replays for another review). If the review finds nothing consequential, make **no changes** to PLAN.md and report it — a clean pass advances.`,
+    loopMessage: `Have another look — it doesn't matter how many times you've reviewed. Re-scan the whole plan for consequential inconsistencies. If you find a consequential issue, fix it in PLAN.md. If the review finds nothing consequential, make **no changes** to PLAN.md and report it.`,
     instructions: `**Design the steps AND write \`PLAN.md\`** into the goal workspace directory, from the research notes (\`\${notes_path}\`) and the validated assumptions, then run the **final consistency review** over the whole written plan before this pass ends.
 
 **Step design (from the \`pio-planning\` skill):**

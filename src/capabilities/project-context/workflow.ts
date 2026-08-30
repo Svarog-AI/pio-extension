@@ -47,6 +47,12 @@ function notePersisted(state: PioSessionState): boolean {
   if (typeof notesPath !== "string" || typeof question !== "string") {
     return false;
   }
+  // Nothing to persist yet (no current question) — vacuously persisted so the
+  // write-notes completeness loop advances. Without this guard the
+  // `includes("")` below would always match, making the check vacuous.
+  if (question === "") {
+    return true;
+  }
   try {
     return fs.readFileSync(notesPath, "utf8").includes(question);
   } catch {

@@ -244,6 +244,19 @@ describe("write-notes completeness loop", () => {
     store.set("nextQuestion", "string", "q");
     expect(cb(makeState({ store }))).toBe(true);
   });
+
+  it("advances when there is no current question (empty nextQuestion)", () => {
+    const cb = writeNotes.loopWhile?.[0].callback as (
+      s: PioSessionState,
+    ) => boolean;
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pio-notes-"));
+    const notesPath = path.join(root, "notes.md");
+    const store = makeStore();
+    store.set("notes_path", "string", notesPath);
+    store.set("nextQuestion", "string", "");
+    // loopWhile is !notePersisted; empty question → notePersisted true → advance
+    expect(cb(makeState({ store }))).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

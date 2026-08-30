@@ -28,7 +28,7 @@ const ANSWERS_DIR_VAR = "answers_dir";
 /** Store variable carrying the absolute path of the current question's answer file. */
 const ANSWER_PATH_VAR = "answer_path";
 
-/** Session-scoped scratch directory (OS-reclaimed; no cleanup logic). */
+/** Session-scoped scratch directory (removed by the cleanup phase; OS also reclaims /tmp). */
 const SCRATCH_DIR = "/tmp/pio-project-context";
 
 /** Read the `questions` queue as an array (defensive — never throws). */
@@ -538,5 +538,27 @@ For a project with no git repository, write "No git repository found" rather tha
 - \`## Terms\` — domain-specific terminology with definitions.
 - \`## Acronyms\` — acronyms and their full expansions (typically a table).
 - \`## Business Concepts\` — key business concepts relevant to understanding the codebase.`,
+  },
+
+  // ---------------------------------------------------------------------------
+  // Cleanup — remove this session's scratch directory after all files are
+  // written (best-effort, total — /tmp is OS-reclaimed anyway).
+  // ---------------------------------------------------------------------------
+  {
+    id: "cleanup",
+    title: "Cleanup Scratch Files",
+    kind: "code",
+    run: (ctx: CodeStepContext) => {
+      const notesPath = ctx.state.store?.get(NOTES_VAR);
+      const root =
+        typeof notesPath === "string"
+          ? path.dirname(notesPath)
+          : path.join(SCRATCH_DIR, ctx.state.sessionId ?? "unknown");
+      try {
+        fs.rmSync(root, { recursive: true, force: true });
+      } catch {
+        // best-effort — /tmp is OS-reclaimed anyway
+      }
+    },
   },
 ] satisfies WorkflowPhase[];

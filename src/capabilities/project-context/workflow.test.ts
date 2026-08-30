@@ -99,7 +99,8 @@ const popPhase = branchThen[0];
 const branchElse = branchPhase.else as WorkflowPhase[];
 const refinePhase = branchElse[0];
 const popElsePhase = branchElse[1];
-const writePhases = workflow.slice(3) as WorkflowPhase[];
+const writePhases = workflow.slice(3, 10) as WorkflowPhase[];
+const cleanupPhase = workflow[10];
 
 // ---------------------------------------------------------------------------
 // default-questions seed
@@ -628,6 +629,30 @@ describe("write-phase loopWhile", () => {
 });
 
 // ---------------------------------------------------------------------------
+// cleanup — removes the session-scoped scratch directory after the writes
+// ---------------------------------------------------------------------------
+
+describe("cleanup", () => {
+  it("is a code phase that removes the scratch directory (from notes_path) after writes", () => {
+    expect(cleanupPhase.kind).toBe("code");
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pio-clean-"));
+    const notesPath = path.join(root, "notes.md");
+    fs.mkdirSync(path.join(root, "answers"));
+    fs.writeFileSync(notesPath, "# Research Notes\n\n", "utf8");
+    fs.writeFileSync(path.join(root, "answers", "q-deadbeef.md"), "x", "utf8");
+    const store = makeStore();
+    store.set("notes_path", "string", notesPath);
+    runCode(cleanupPhase, makeState({ store }));
+    // the scratch root (parent of notes_path) is gone
+    expect(fs.existsSync(root)).toBe(false);
+  });
+
+  it("is total — missing notes_path does not throw", () => {
+    expect(() => runCode(cleanupPhase, makeState())).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Structure pins
 // ---------------------------------------------------------------------------
 
@@ -643,9 +668,10 @@ describe("workflow structure", () => {
     "write-architecture",
     "write-dependencies",
     "write-glossary",
+    "cleanup",
   ];
 
-  it("has 10 top-level phases in order with correct kinds", () => {
+  it("has 11 top-level phases in order with correct kinds", () => {
     expect(workflow.map((p) => p.id)).toEqual(expectedTopLevel);
     expect(workflow[0].kind).toBe("code");
     expect(workflow[1].kind).toBe("loop");
@@ -653,6 +679,7 @@ describe("workflow structure", () => {
     for (const p of writePhases) {
       expect(p.kind).toBeUndefined();
     }
+    expect(workflow[10].kind).toBe("code");
   });
 
   it("carries no number-prefixed titles anywhere", () => {

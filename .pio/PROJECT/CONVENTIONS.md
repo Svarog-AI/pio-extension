@@ -2,83 +2,79 @@
 
 ## Coding Style
 
-From `tsconfig.json`:
+The project's style and formatting are enforced by **Biome** (configured in `biome.json`) plus documented code patterns. There is **no `.editorconfig`, `.prettierrc`, or ESLint config**, and the editor config (`.vscode/settings.json`) is empty (`{}`) — so conventions come from Biome and established code patterns, not the editor.
+
+### From `tsconfig.json`
+
 - **Target:** ES2022
 - **Module:** ESNext with bundler resolution
 - **Strict mode:** `true` — all strict TypeScript checks enabled
 - **No emit:** `noEmit: true` (type-checking only; pi runs TS directly)
 - **Force consistent casing in file names**
-- **ES module imports:** Use bare specifiers without `.ts` extensions. Resolve `__dirname` via `fileURLToPath(import.meta.url)`.
 
-From code patterns observed in source files:
-- **Imports:** Grouped by category (framework → internal modules → node builtins), with blank lines between groups
-- **Type imports:** Top-level `import type { ... }` statements only — inline `import("./module")` type annotations are not allowed (ruled during do-while-loop-block Step 5 review). Biome organizes top-level type imports with their source groups
-- **Naming:** camelCase for functions/variables, PascalCase for interfaces/types, UPPER_SNAKE_CASE for constants
-- **File structure:** Sections separated by `// ---------------------------------------------------------------------------` comment dividers
-- **Line length:** No hard limit enforced, but long lines are typically wrapped at ~120 chars
-- **Module header comments:** Present tense — describe what the module is and does. No removal/migration narratives ("replaces X", "the former Y tool") or history in file headers
+### Formatting (from `biome.json`)
 
-No `.editorconfig`, `.prettierrc`, or ESLint configuration exists. Formatting conventions are established through code patterns rather than tooling.
+- **Indentation:** spaces, width **2** (`indentStyle: "space"`, `indentWidth: 2`)
+- **Quotes:** **double quotes** (Biome default)
+- **Semicolons:** **always** (Biome default)
+- **Trailing commas:** **always** (Biome default)
+- **Line length:** **no enforced limit**; long lines are typically wrapped at ~120 chars by convention (Biome not configured with a max width)
+- **Imports:** auto-organized via `assist.actions.source.organizeImports: "on"`
+
+### From code patterns (established conventions)
+
+- **ES module imports:** bare specifiers without `.ts` extensions; resolve `__dirname` via `fileURLToPath(import.meta.url)`.
+- **Import grouping:** imports grouped by category (framework → internal modules → node builtins), with blank lines between groups.
+- **Type imports:** top-level `import type { ... }` statements only — inline `import("./module")` type annotations are not allowed. Biome organizes top-level type imports with their source groups.
+- **Naming:** `camelCase` for functions/variables, `PascalCase` for interfaces/types, `UPPER_SNAKE_CASE` for constants.
+- **File structure:** sections separated by `// ---------------------------------------------------------------------------` comment dividers.
+- **Module header comments:** present tense — describe what the module is and does; no removal/migration narratives ("replaces X", "the former Y tool") or history in file headers.
+- **Line length:** long lines typically wrapped at ~120 chars (no hard limit).
 
 ## Linting and Formatting
 
 **Biome** (`@biomejs/biome` ^2.5.1) is the project linter and formatter, configured in `biome.json`:
 
-- **Format:** 2-space indent, double quotes, semicolons always, trailing commas (all Biome defaults match existing code)
-- **Imports:** Auto-organized via `assist.actions.source.organizeImports: "on"` — alphabetical ordering, grouped by source type
-- **Lint preset:** `recommended` with test file overrides for `noExplicitAny`, `noBannedTypes`, `noNonNullAssertion`, `noDuplicateTestHooks`, `noNonNullAssertedOptionalChain`
-- **File scope:** All files (`"**"`) except `.pio/`, `dist/`, and `package-lock.json` (force-ignored with `!!`). `files.ignoreUnknown: true` suppresses diagnostics for non-code files
-- **Commands:** `npm run lint` (strict, CI), `npm run lint:fix` (auto-fix, local dev)
-- **Pre-commit hook:** lefthook runs Biome on staged `.ts`/`.json` files with auto-stage of fixes. Installed automatically by `npm install` via the `prepare` script (CI guard: `[ -n "$CI" ] && exit 0`)
-- **CI enforces:** Lint, type checking, and tests must all pass (`.github/workflows/ci.yml`)
+- **Format:** 2-space indent, double quotes, semicolons always, trailing commas.
+- **Imports:** auto-organized via `assist.actions.source.organizeImports: "on"` — alphabetical ordering, grouped by source type.
+- **Lint preset:** `recommended`, with test-file overrides for `noExplicitAny`, `noBannedTypes`, `noNonNullAssertion`, `noDuplicateTestHooks`, `noNonNullAssertedOptionalChain`.
+- **File scope:** all files (`"**"`) except `.pio/`, `dist/`, and `package-lock.json` (force-ignored with `!!`). `files.ignoreUnknown: true` suppresses diagnostics for non-code files.
+
+### How to run
+
+| Action | Command |
+|--------|---------|
+| Lint (strict, CI) | `npm run lint` → `biome check --error-on-warnings .` |
+| Lint + auto-fix (local) | `npm run lint:fix` → `biome check --write .` |
+| Type check | `npm run check` → `tsc --noEmit` |
+| Pre-commit hook | Lefthook (`lefthook.yml`) runs `npx @biomejs/biome check --write --error-on-warnings --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}` on staged `*.{ts,json,jsonc}` with `stage_fixed: true` (auto-re-stages fixes). Installed automatically by `npm install` via the `prepare` script (skipped in CI). Reinstall manually with `npx lefthook install`. |
+
+**CI enforcement:** lint, type checking, and tests must all pass (`.github/workflows/ci.yml`).
 
 ## AI Agent Instructions
 
-**No dedicated agent instruction files exist** at the project root (no `AGENTS.md`, `CLAUDE.md`, `CURSOR.md`). The prompts in `src/prompts/` serve as de facto agent guidance — each defines detailed rules for its respective workflow role.
+**No dedicated agent instruction files exist** at the project root (no `AGENTS.md`, `CLAUDE.md`, `CURSOR.md`, `.github/copilot-instructions.md`). The `pio-git` skill explicitly defers to `.pio/PROJECT/GIT.md` for git conventions. Agent guidance is encoded in the capability prompts and skills instead:
 
 ### Capability Package Structure
 
 Each AI-driven capability is a directory package under `src/capabilities/<name>/`:
 
-- **`config.ts`** — default exports `CapabilityPackageConfig` (fields: `name`, `skills`, `contract` (mandatory), `readOnlyFiles`, `writeAllowlist`, `allowProjectWrites` (opt-in, default `false`), `prepareSession`, `postValidate`, `postExecute`, `preValidate`). The `CONTRACT: CapabilityContract` is exported as a named constant and referenced by the config. Old fields (`validation`, `frontmatterSchemas`, `inputValidation`) were removed — contract replaces all three. Named export `register(pi)` registers only a tool (tool-only architecture — no command handlers).
-- **Declarative markers via `contract.markers`:** Prefer declarative markers over `postExecute` callbacks for creating step-level marker files (COMPLETED/BLOCKED/APPROVED/REJECTED). Declare `markers: [{ outputFile, field, values }]` on the CONTRACT object. The framework handles creation and cleanup automatically. Use imperative logic only when marker behavior requires complex state management that doesn't fit the declarative model.
-- **`MarkdownFileSpec.name` is required** — Every entry in `contract.inputs[]` and `contract.outputs[]` must declare a `name: string` (kebab-case, e.g., `"completion-summary"`). Names must be unique across inputs/outputs unless they share the same name and file path (same name + same file → silent dedup, first wins; same name + different file → throw). This allows multiple OneOfGroups to reference the same output entry. Files are accessed via named accessors — `capState.input(name)`, `capState.output(name)` — not by path.
-- **`MarkdownFileSpec.projectRelative`** — When `true`, the file resolves from the global `pioRootDir` (`<cwd>/.pio/`) instead of the workspace directory. Used by capabilities like `finalize-goal` and `project-context` to declare `.pio/PROJECT/*.md` files in their contracts without workarounds.
-- **paramKey forwarding convention** — When a contract input declares `paramKey`, the tool schema must include the matching field as `Type.Optional(Type.String())`. In `execute()`, forward via direct assignment (`key: params.key`) — never conditional spread. State machine transitions always provide values; direct callers who omit receive validation errors. Naming: camelCase matching the referenced file (e.g., `goalFile`, `planFile`, `taskFile`).
-- **`role.md`** — Role description text
-- **`workflow.ts`** — default exports `WorkflowPhase[]`. Each phase may declare `skills: { mandatory?: string[], recommended?: ... }`
-- **Loop container authoring:** A top-level `kind: "loop"` container must carry an `instructions` string even though containers never get agent turns — the prompt compiler's top-level validation warns on missing `id`/`title`/`instructions` and exempts only `branch:*` kinds (warn-only; keeps the console clean). Validation does not recurse into `body` or branch arms
-- **`guidelines.md`** — Guidelines text
-- **`callbacks.ts`** *(optional)* — Lifecycle callbacks (validation, file protection resolvers). Was named `validators.ts` before Step 19 convention cleanup
-- **`schemas.ts`** *(optional)* — Capability-local TypeBox frontmatter schemas for output validation. Replaced shared `src/frontmatter-schemas.ts` (deleted)
-- **`config.test.ts`** — Colocated tests (follows `*.test.ts` naming convention). Behavioral scope only: contract shape, default export, and tool registration. Do not assert static config layout (phase counts, hardcoded `workflowPhases[n]` indices) — such assertions break every time phases are added or removed without adding behavioral coverage (index-based structural tests were removed from workflow-playground in goal phase-project-write-gate). Loop-engine runtime behavior is covered by `src/runtime/loop-engine.test.ts`. If per-phase structural coverage is ever needed, use id-based lookups (`workflowPhases.find(p => p.id === "...")`), never hardcoded indices
+- **`config.ts`** — default exports `CapabilityPackageConfig` (fields: `name`, `skills`, `contract` (mandatory), `readOnlyFiles`, `writeAllowlist`, `allowProjectWrites` (opt-in, default `false`), `prepareSession`, `postValidate`, `postExecute`, `preValidate`). Named export `register(pi)` registers a tool (tool-only architecture — no command handlers).
+- **Declarative markers via `contract.markers`:** Prefer declarative markers over `postExecute` callbacks for creating step-level marker files (COMPLETED/BLOCKED/APPROVED/REJECTED). Declare `markers: [{ outputFile, field, values }]` on the contract; the framework handles creation and cleanup automatically.
+- **`MarkdownFileSpec.name` is required** — every entry in `contract.inputs[]`/`contract.outputs[]` must declare a `name: string` (kebab-case). Names must be unique across inputs/outputs unless they share the same name and file path. Files are accessed via named accessors — `capState.input(name)`, `capState.output(name)` — not by path.
+- **`MarkdownFileSpec.projectRelative`** — when `true`, resolves from the global `pioRootDir` (`<cwd>/.pio/`) instead of the workspace directory (used by `finalize-goal` and `project-context`).
+- **`paramKey` forwarding** — when a contract input declares `paramKey`, the tool schema must include the matching field as `Type.Optional(Type.String())`; forward via direct assignment (`key: params.key`), never conditional spread. Naming: camelCase matching the referenced file (e.g., `goalFile`, `planFile`, `taskFile`).
+- **`role.md`** — role description text.
+- **`workflow.ts`** — default exports `WorkflowPhase[]`. Each phase may declare `skills: { mandatory?: string[], recommended?: ... }`.
+- **`guidelines.md`** — guidelines text.
+- **`callbacks.ts`** *(optional)* — lifecycle callbacks (validation, file protection resolvers).
+- **`schemas.ts`** *(optional)* — capability-local TypeBox frontmatter schemas for output validation.
+- **`config.test.ts`** — colocated tests. Behavioral scope only: contract shape, default export, and tool registration. Do not assert static config layout (phase counts, hardcoded `workflowPhases[n]` indices). If per-phase structural coverage is needed, use id-based lookups (`workflowPhases.find(p => p.id === "...")`).
 
 Non-AI capabilities (init, delete-goal, list-goals, parent, create-issue, goal-from-issue) are consolidated in `src/direct-tools.ts`.
 
 Registration is via auto-discovery: `discoverCapabilities()` scans `src/capabilities/` for directories with `config.ts`, then calls `registerCapability(pi, descriptor)`. No hardcoded imports in `index.ts`.
 
-### Capability Skills Configuration
+### Skills
 
-Each capability declares skills via the `skills` field in its `CapabilityPackageConfig`. Shape: `mandatory?: string[]` (force-injected) and `recommended?: { name: string; condition: string }[]` (instruction-based). Both fields optional — a capability can declare only one, or neither. When no recommended skills exist, omit the key entirely (not empty array).
-
-Skills can also be declared per-phase in `workflow.ts` (`WorkflowPhase.skills`). At runtime, `buildSkillLoadingSection()` reads base config skills, prepends global defaults (`pio`, `ask-user`), and injects them dynamically into session prompts. Per-phase skills are merged via `mergeCapabilitySkills()` from `capability-utils.ts`.
-
-The `_skill-loading.md` file was removed along with the old `src/prompts/` directory — skill loading is now handled entirely at runtime.
-
-### Conventions encoded in capability prompts:
-
-- **No source code in planning docs:** GOAL.md, PLAN.md, TASK.md contain descriptions and interface signatures only — never full implementations
-- **Programmatic verification preferred:** Acceptance criteria should be verifiable via `npm run check`, test execution, or file existence checks
-- **Stay within scope:** Each capability prompt forbids out-of-scope changes (refactoring unrelated code, "while you're at it" improvements)
-- **Reference real files:** Every file path in generated documents must correspond to a file the agent actually read
-- **Test-first discipline:** `execute-task` follows TDD (RED → GREEN → REFACTOR) per the `test-driven-development` skill
-- **Skill reference convention:** Skills are declared dynamically via `CapabilityPackageConfig.skills` and per-step in `workflow.ts`. Capability prompts may reference shared skills by name throughout process steps — these are legitimate procedural instructions. Dedicated "Skill References" sections have been removed from prompt files; skill loading is handled automatically at runtime via `buildSkillLoadingSection()` in `capability-session.ts`. Shared methodology lives in skills; prompts retain only capability-specific instructions
-- **Delegation over duplication:** When a prompt needs to invoke shared behavior (e.g., git commit), it references the relevant skill by name and instructs the agent to load it. The prompt does not duplicate skill internals — the loaded skill provides protocol details at runtime. Example: execute-task prompts reference `pio-git` for commits without explaining staging or message construction
-- **Prompt compilation:** Prompts are assembled from component files (`role.md`, `workflow.ts`, `guidelines.md`) by `compilePrompt()` at runtime. The old `src/prompts/` directory no longer exists.
-
-### TASK.md Skills
-
-Every `TASK.md` produced by `evolve-plan` includes skills in **both** YAML frontmatter and a body `## Skills` section:
-
-- **Frontmatter `skills` (required):** Machine-readable. `skills.mandatory` (string array) for force-injected skills; `skills.recommended` (`{ name, condition }` array) for conditional loading. Consumed at runtime by `execute-task` and `review-task` via `StepStatus.taskSkills()` during `prepareSession`. Merged with base capability skills via `mergeCapabilitySkills()` from `capability-utils.ts`. YAML frontmatter delimiters (`---`) are always present — even when no skills are declared. When no recommended skills exist, omit the key entirely.
-- **Body `## Skills` section (informational):** Human-readable reasoning justifying skill choices for the step. Preserved alongside frontmatter — both coexist and serve different purposes.
+Bundled skills live in `src/skills/` (each a directory with `SKILL.md`): `pio-git` (git protocol — always defers to GIT.md), `tdd` (test-driven development), `capability-design` (loop-engine workflow design). Retired skills are archived in `src/skills.old/`. Skills are auto-discovered at startup by scanning for `SKILL.md`.

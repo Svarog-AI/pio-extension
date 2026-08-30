@@ -162,10 +162,10 @@ describe("question queue code steps", () => {
     expect(state.store?.get("nextQuestion")).toBe(SEEDED_THEMES[0]);
     const answersDir = state.store?.get("answers_dir") as string;
     const answerPath = state.store?.get("answer_path") as string;
-    // content-addressed: under the answers dir, ends .md, slug + 8-hex hash
+    // content-addressed: under the answers dir, ends .md, an 8-hex hash name
     expect(answerPath.startsWith(answersDir + path.sep)).toBe(true);
     expect(answerPath.endsWith(".md")).toBe(true);
-    expect(answerPath).toMatch(/q-[-a-z0-9]+-[0-9a-f]{8}\.md$/);
+    expect(answerPath).toMatch(/q-[0-9a-f]{8}\.md$/);
     // queue unchanged — peek does not pop
     expect(state.store?.get("questions")).toEqual(SEEDED_THEMES);
   });

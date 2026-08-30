@@ -42,15 +42,6 @@ function hasQuestions(state: PioSessionState): boolean {
   return questionsOf(state).length > 0;
 }
 
-/** Slugify a question into a filesystem-safe, readable fragment (lowercase, dashes). */
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
-}
-
 /** mtime of a file in milliseconds (0 on stat failure) — total, never throws. */
 function mtimeOf(file: string): number {
   try {
@@ -62,14 +53,15 @@ function mtimeOf(file: string): number {
 
 /**
  * Content-addressed name for a question's dedicated answer file. A pure
- * function of the question text: a readable slug plus an 8-hex hash suffix,
- * so the same question always maps to the same file (refine-answer rewrites
- * it) with no counter to keep aligned.
+ * function of the question text: a short hash of the question, so the same
+ * question always maps to the same file (refine-answer rewrites it) with no
+ * counter to keep aligned. A single hash is unambiguous — a slug would
+ * reintroduce a truncation-collision risk that could silently merge two
+ * questions into one file.
  */
 function answerFileName(question: string): string {
-  const slug = slugify(question) || "q";
   const hash = createHash("sha256").update(question).digest("hex").slice(0, 8);
-  return `q-${slug}-${hash}.md`;
+  return `q-${hash}.md`;
 }
 
 /**

@@ -21,8 +21,14 @@ const NEW_QUESTIONS_VAR = "new_questions";
 /** Store variable carrying the absolute path of this session's notes file. */
 const NOTES_VAR = "notes_path";
 
-/** Store variable carrying the notes file size captured before the write attempt. */
-const NOTES_BASELINE_VAR = "notes_baseline";
+/** Store variable carrying the absolute path of this session's answers directory. */
+const ANSWERS_DIR_VAR = "answers_dir";
+
+/** Store variable carrying the per-question answer-file index (advances only on pop). */
+const ANSWER_INDEX_VAR = "answer_index";
+
+/** Store variable carrying the absolute path of the current question's answer file. */
+const ANSWER_PATH_VAR = "answer_path";
 
 /** Session-scoped scratch directory (OS-reclaimed; no cleanup logic). */
 const SCRATCH_DIR = "/tmp/pio-project-context";
@@ -39,37 +45,68 @@ function hasQuestions(state: PioSessionState): boolean {
 }
 
 /**
- * True iff the notes file's size on disk differs from the baseline captured
- * by the snapshot-notes phase — i.e. the Q&A note was durably persisted
- * before the queue is shifted. Edit detection by size (not substring match)
- * removes the collision risk where the current question's text is a substring
- * of an earlier-written note. Total — never throws (missing baseline or
- * unreadable file ⇒ false, so the write-notes completeness loop keeps
- * replaying until the note lands).
+ * True iff the current question's dedicated answer file exists and is
+ * non-empty on disk. Each question owns its own file (`q-<n>.md`), so a
+ * non-empty existence check is unambiguous — no substring or size-baseline
+ * detection needed. Total — never throws (missing/empty/unreadable file ⇒
+ * false, so the durability loop keeps replaying until the answer lands).
  */
-function notesEdited(state: PioSessionState): boolean {
-  const question = state.store?.get(NEXT_QUESTION_VAR);
-  // Nothing to persist yet (no current question) — vacuously edited so the
-  // write-notes completeness loop advances. Without this guard the size
-  // comparison would never pass for an empty question.
-  if (question === "") {
-    return true;
-  }
-  const baseline = state.store?.get(NOTES_BASELINE_VAR);
-  if (typeof baseline !== "number") {
+function answerFileWritten(state: PioSessionState): boolean {
+  const answerPath = state.store?.get(ANSWER_PATH_VAR);
+  if (typeof answerPath !== "string" || answerPath === "") {
     return false;
   }
-  const notesPath = state.store?.get(NOTES_VAR);
-  if (typeof notesPath !== "string") {
-    return false;
-  }
-  let currentSize = -1;
   try {
-    currentSize = fs.statSync(notesPath).size;
+    const stat = fs.statSync(answerPath);
+    return stat.isFile() && stat.size > 0;
   } catch {
-    currentSize = -1;
+    return false;
   }
-  return currentSize !== baseline;
+}
+
+/**
+ * Best-effort, total consolidation: concatenate every per-question answer
+ * file (`q-<n>.md`) in numeric order into the notes file, preserving the
+ * `# Research Notes` header. Unreadable/missing files and a missing
+ * answers dir are skipped — never throws.
+ */
+function mergeAnswersIntoNotes(state: PioSessionState): void {
+  const notesPath = state.store?.get(NOTES_VAR);
+  const answersDir = state.store?.get(ANSWERS_DIR_VAR);
+  if (typeof notesPath !== "string" || typeof answersDir !== "string") {
+    return;
+  }
+  // Extract the numeric index from a `q-<n>.md` filename (0 for non-matches).
+  const fileIndex = (name: string): number => {
+    const m = name.match(/^q-(\d+)\.md$/);
+    return m ? Number.parseInt(m[1], 10) : 0;
+  };
+  let files: string[] = [];
+  try {
+    files = fs
+      .readdirSync(answersDir)
+      .filter((f) => /^q-\d+\.md$/.test(f))
+      .sort((a, b) => fileIndex(a) - fileIndex(b));
+  } catch {
+    // answers dir missing/unreadable — best-effort, leave notes unchanged
+  }
+  const sections: string[] = [];
+  for (const f of files) {
+    try {
+      const content = fs.readFileSync(path.join(answersDir, f), "utf8");
+      if (content.trim() !== "") {
+        sections.push(content.trim());
+      }
+    } catch {
+      // skip unreadable answer file
+    }
+  }
+  const body = sections.length > 0 ? `\n\n${sections.join("\n\n")}` : "";
+  try {
+    fs.writeFileSync(notesPath, `# Research Notes\n${body}\n`, "utf8");
+  } catch {
+    // best-effort — notes write failure is non-fatal
+  }
 }
 
 /** Default open-question seed — the coverage floor that cannot be skipped. */
@@ -107,7 +144,8 @@ Be concise — target ~2000 tokens (~1500 words) maximum. Prioritize actionable 
 
 export default [
   // ---------------------------------------------------------------------------
-  // Default Questions — seed the question queue + notes file (programmatic)
+  // Default Questions — seed the question queue + answers dir + notes file
+  // (programmatic)
   // ---------------------------------------------------------------------------
   {
     id: "default-questions",
@@ -116,15 +154,19 @@ export default [
     run: (ctx: CodeStepContext) => {
       ctx.state.store?.set(QUESTIONS_VAR, "array", [...DEFAULT_QUESTIONS]);
       const dir = path.join(SCRATCH_DIR, ctx.state.sessionId ?? "unknown");
+      const answersDir = path.join(dir, "answers");
       const notesPath = path.join(dir, "notes.md");
-      fs.mkdirSync(dir, { recursive: true });
+      fs.mkdirSync(answersDir, { recursive: true });
       fs.writeFileSync(notesPath, "# Research Notes\n\n", "utf8");
       ctx.state.store?.set(NOTES_VAR, "string", notesPath);
+      ctx.state.store?.set(ANSWERS_DIR_VAR, "string", answersDir);
+      ctx.state.store?.set(ANSWER_INDEX_VAR, "number", 0);
     },
   },
 
   // ---------------------------------------------------------------------------
-  // Research Loop — seeded discovery: drain the queue (inner loop), then
+  // Research Loop — seeded discovery: drain the queue (inner loop, one
+  // dedicated per-question answer file each), consolidate into notes, then
   // generate genuinely new questions (outer do-while repeats while any remain)
   // ---------------------------------------------------------------------------
   {
@@ -164,8 +206,10 @@ export default [
               },
             ],
           },
-          // Peek the front question into nextQuestion (does NOT pop — the pop
-          // is conditional on a satisfactory answer)
+          // Peek the front question into nextQuestion and derive this
+          // question's dedicated answer file path. Does NOT pop — the pop is
+          // conditional on a satisfactory answer. The answer_index advances
+          // only on pop, so refine-answer rewrites the same file.
           {
             id: "get-next-question",
             title: "Get Next Question",
@@ -177,14 +221,38 @@ export default [
                 "string",
                 questions[0] ?? "",
               );
+              const rawIndex = ctx.state.store?.get(ANSWER_INDEX_VAR);
+              const index = typeof rawIndex === "number" ? rawIndex : 0;
+              const rawDir = ctx.state.store?.get(ANSWERS_DIR_VAR);
+              const dir =
+                typeof rawDir === "string"
+                  ? rawDir
+                  : path.join(
+                      SCRATCH_DIR,
+                      ctx.state.sessionId ?? "unknown",
+                      "answers",
+                    );
+              ctx.state.store?.set(
+                ANSWER_PATH_VAR,
+                "string",
+                path.join(dir, `q-${index}.md`),
+              );
             },
           },
-          // LLM: research the codebase and produce the answer; user-only
-          // questions are resolved inline via ask_user
+          // LLM: research the codebase, produce the answer, and write it to
+          // this question's dedicated file. Mechanical completeness: replays
+          // until the file exists and is non-empty.
           {
             id: "answer-question",
             title: "Answer the Question",
-            instructions: `Answer this research question for the project-context files:
+            maxIterations: 2,
+            loopWhile: [
+              {
+                type: "callback",
+                callback: (state: PioSessionState) => !answerFileWritten(state),
+              },
+            ],
+            instructions: `Answer this research question for the project-context files and write the answer to its dedicated file at \`\${answer_path}\`.
 
 **Question:** \`\${nextQuestion}\`
 
@@ -192,7 +260,7 @@ Research the codebase to produce a complete, well-grounded answer. Read files an
 
 If the question can only be answered by the user (it depends on external context not present in the repo), call \`ask_user\` with \`displayMode: "inline"\` to ask it, then use the user's answer.
 
-Produce the final answer in your response — it will be appended to the research notes and used to write the PROJECT files.`,
+Write the final answer to \`\${answer_path}\` (under /tmp — writes there are not blocked by the write gate), with a question heading plus your answer. The phase advances only once the answer file exists and is non-empty on disk; if the write fails, retry.`,
           },
           // LLM judgment: is the answer satisfactory? (sets questionAnswered)
           {
@@ -204,14 +272,13 @@ Produce the final answer in your response — it will be appended to the researc
                 name: QUESTION_ANSWERED_VAR,
                 type: "boolean",
                 kind: "llm",
-                description: `Judge whether the answer just produced for the current question is satisfactory and well-grounded. Use setVar to set questionAnswered (boolean): true if the answer is complete and adequate for the PROJECT files; false only if there are genuine gaps that warrant re-answering. Prefer true for an adequate answer.`,
+                description: `Judge whether the answer just produced for the current question is satisfactory and well-grounded. Use setVar to set questionAnswered (boolean): true if the answer is complete and adequate for the PROJECT files; false only if there are genuine gaps that warrant refining. Prefer true for an adequate answer.`,
               },
             ],
           },
-          // Record the note first, then pop — persist before shifting so a Q&A
-          // is never dropped from both the queue and the notes if the note
-          // write is interrupted; otherwise the question stays at the front
-          // and is re-answered next pass
+          // A satisfactory answer pops the question (advancing the answer
+          // index to the next dedicated file); an unsatisfactory answer is
+          // refined in place (rewriting the same file) before popping.
           {
             id: "branch-if-answered",
             title: "If Answered Satisfactorily",
@@ -220,43 +287,37 @@ Produce the final answer in your response — it will be appended to the researc
               state.store?.get(QUESTION_ANSWERED_VAR) === true,
             // biome-ignore lint/suspicious/noThenProperty: 'then' is the canonical field name from the WorkflowPhase interface
             then: [
-              // Capture the notes file size before the write attempt, so the
-              // write-notes completeness loop can detect a durable edit by
-              // size change rather than by substring content match.
               {
-                id: "snapshot-notes",
-                title: "Snapshot Notes Size",
+                id: "pop-question",
+                title: "Pop Question",
                 kind: "code",
                 run: (ctx: CodeStepContext) => {
-                  const notesPath = ctx.state.store?.get(NOTES_VAR);
-                  let baseline = -1;
-                  if (typeof notesPath === "string") {
-                    try {
-                      baseline = fs.statSync(notesPath).size;
-                    } catch {
-                      baseline = -1;
-                    }
-                  }
-                  ctx.state.store?.set(NOTES_BASELINE_VAR, "number", baseline);
+                  const questions = [...questionsOf(ctx.state)];
+                  questions.shift();
+                  ctx.state.store?.set(QUESTIONS_VAR, "array", questions);
+                  const rawIndex = ctx.state.store?.get(ANSWER_INDEX_VAR);
+                  const index = typeof rawIndex === "number" ? rawIndex : 0;
+                  ctx.state.store?.set(ANSWER_INDEX_VAR, "number", index + 1);
                 },
               },
+            ],
+            else: [
               {
-                id: "write-notes",
-                title: "Write Research Notes",
+                id: "refine-answer",
+                title: "Refine the Answer",
                 maxIterations: 2,
                 loopWhile: [
                   {
                     type: "callback",
-                    callback: (state: PioSessionState) => !notesEdited(state),
+                    callback: (state: PioSessionState) =>
+                      !answerFileWritten(state),
                   },
                 ],
-                instructions: `Append the Q&A for the just-answered question to the research notes file at \`\${notes_path}\`.
+                instructions: `The answer to the current question was judged unsatisfactory. Read the draft at \`\${answer_path}\`, improve it (fill gaps, strengthen grounding in files you actually read), and rewrite it to the same file at \`\${answer_path}\`.
 
 **Question:** \`\${nextQuestion}\`
 
-Read the current notes file, then rewrite it with the answer you produced for this question appended as a new section (question heading + answer). Preserve all previously accumulated notes. The notes file lives under /tmp — writes to it are not blocked by the write gate.
-
-You must actually write the question text (verbatim, as in \`nextQuestion\`) into the notes file — the phase advances only once the note is durably on disk. If the write fails, retry.`,
+Keep the question heading and improve the answer body. The phase advances only once the answer file exists and is non-empty on disk; if the write fails, retry.`,
               },
               {
                 id: "pop-question",
@@ -266,6 +327,9 @@ You must actually write the question text (verbatim, as in \`nextQuestion\`) int
                   const questions = [...questionsOf(ctx.state)];
                   questions.shift();
                   ctx.state.store?.set(QUESTIONS_VAR, "array", questions);
+                  const rawIndex = ctx.state.store?.get(ANSWER_INDEX_VAR);
+                  const index = typeof rawIndex === "number" ? rawIndex : 0;
+                  ctx.state.store?.set(ANSWER_INDEX_VAR, "number", index + 1);
                 },
               },
             ],
@@ -273,7 +337,20 @@ You must actually write the question text (verbatim, as in \`nextQuestion\`) int
         ],
       },
 
-      // After the queue is drained, discover genuinely new questions
+      // After the queue is drained, consolidate every per-question answer
+      // file into the single notes file (best-effort, total).
+      {
+        id: "merge-notes",
+        title: "Merge Answers into Notes",
+        kind: "code",
+        run: (ctx: CodeStepContext) => {
+          mergeAnswersIntoNotes(ctx.state);
+        },
+      },
+
+      // After consolidation, discover genuinely new questions. The coverage
+      // mandate directs the agent to verify complete architecture coverage
+      // before concluding discovery.
       {
         id: "generate-questions",
         title: "Generate New Questions",
@@ -283,7 +360,11 @@ You must actually write the question text (verbatim, as in \`nextQuestion\`) int
             name: NEW_QUESTIONS_VAR,
             type: "array",
             kind: "llm",
-            description: `Reflect on the questions answered during this research pass and identify genuinely new questions that emerged — unknowns about how areas of the project work, interact, or are tested that a complete PROJECT picture still needs. Use setVar to set new_questions to the array of new question strings (empty array if none emerged). Do not repeat questions already asked or answered.`,
+            description: `Reflect on the questions answered during this research pass (answers are consolidated in \`\${notes_path}\`) and identify genuinely new questions that emerged — unknowns about how areas of the project work, interact, or are tested that a complete PROJECT picture still needs.
+
+Before concluding, **verify complete architecture coverage**: check that every component/area of the architecture (per the accumulated findings) is covered by an answered question, and that no further questions remain about it. Generate any genuinely new questions needed to close coverage gaps, and only then stop.
+
+Use setVar to set new_questions to the array of new question strings (empty array if none emerged). Do not repeat questions already asked or answered.`,
           },
         ],
       },

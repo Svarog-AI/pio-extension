@@ -85,16 +85,20 @@ function seedState(): PioSessionState {
 
 const researchLoop = workflow[1];
 const innerLoop = (researchLoop.body as WorkflowPhase[])[0];
-const generateQuestions = (researchLoop.body as WorkflowPhase[])[1];
-const mergeQuestions = (researchLoop.body as WorkflowPhase[])[2];
+const mergeNotesPhase = (researchLoop.body as WorkflowPhase[])[1];
+const generateQuestions = (researchLoop.body as WorkflowPhase[])[2];
+const mergeQuestions = (researchLoop.body as WorkflowPhase[])[3];
 const innerBody = innerLoop.body as WorkflowPhase[];
 const resetPhase = innerBody[0];
 const getNextPhase = innerBody[1];
+const answerPhase = innerBody[2];
 const validatePhase = innerBody[3];
 const branchPhase = innerBody[4];
 const branchThen = branchPhase.then as WorkflowPhase[];
-const snapshotPhase = branchThen[0];
-const popPhase = branchThen[2];
+const popPhase = branchThen[0];
+const branchElse = branchPhase.else as WorkflowPhase[];
+const refinePhase = branchElse[0];
+const popElsePhase = branchElse[1];
 const writePhases = workflow.slice(3) as WorkflowPhase[];
 
 // ---------------------------------------------------------------------------
@@ -102,7 +106,7 @@ const writePhases = workflow.slice(3) as WorkflowPhase[];
 // ---------------------------------------------------------------------------
 
 describe("default-questions seed", () => {
-  it("seeds the questions queue with exactly 16 default themes and creates the notes file", () => {
+  it("seeds the questions queue with exactly 16 default themes and creates the notes file + answers dir", () => {
     const state = seedState();
     const questions = state.store?.get("questions") as string[];
     expect(Array.isArray(questions)).toBe(true);
@@ -113,9 +117,15 @@ describe("default-questions seed", () => {
     expect(typeof notesPath).toBe("string");
     expect(fs.existsSync(notesPath)).toBe(true);
     expect(fs.readFileSync(notesPath, "utf8")).toContain("# Research Notes");
+
+    const answersDir = state.store?.get("answers_dir") as string;
+    expect(typeof answersDir).toBe("string");
+    expect(fs.existsSync(answersDir)).toBe(true);
+
+    expect(state.store?.get("answer_index")).toBe(0);
   });
 
-  it("re-seeds fresh (overwriting any stale queue and notes file) on re-run", () => {
+  it("re-seeds fresh (overwriting any stale queue, answers dir, and notes file) on re-run", () => {
     const state = seedState();
     state.store?.set("questions", "array", ["stale"]);
     fs.writeFileSync(
@@ -133,18 +143,23 @@ describe("default-questions seed", () => {
     );
     expect(content).toContain("# Research Notes");
     expect(content).not.toContain("stale notes");
+    expect(state.store?.get("answer_index")).toBe(0);
   });
 });
 
 // ---------------------------------------------------------------------------
-// get-next-question (peek) and pop-question (shift)
+// get-next-question (peek) and pop-question (shift + index advance)
 // ---------------------------------------------------------------------------
 
 describe("question queue code steps", () => {
-  it("get-next-question peeks the front into nextQuestion WITHOUT popping", () => {
+  it("get-next-question peeks the front into nextQuestion and sets the per-question answer_path WITHOUT popping", () => {
     const state = seedState();
     runCode(getNextPhase, state);
     expect(state.store?.get("nextQuestion")).toBe(SEEDED_THEMES[0]);
+    const answersDir = state.store?.get("answers_dir") as string;
+    expect(state.store?.get("answer_path")).toBe(
+      path.join(answersDir, "q-0.md"),
+    );
     // queue unchanged — peek does not pop
     expect(state.store?.get("questions")).toEqual(SEEDED_THEMES);
   });
@@ -155,12 +170,20 @@ describe("question queue code steps", () => {
     expect(state.store?.get("nextQuestion")).toBe("");
   });
 
-  it("pop-question shifts the front of the queue", () => {
+  it("pop-question shifts the front of the queue and advances the answer index", () => {
     const state = seedState();
     runCode(popPhase, state);
     const questions = state.store?.get("questions") as string[];
     expect(questions).toHaveLength(15);
     expect(questions[0]).toBe(SEEDED_THEMES[1]);
+    expect(state.store?.get("answer_index")).toBe(1);
+  });
+
+  it("the else-arm pop advances the answer index identically to the then-arm pop", () => {
+    const state = seedState();
+    runCode(popElsePhase, state);
+    expect(state.store?.get("questions")).toHaveLength(15);
+    expect(state.store?.get("answer_index")).toBe(1);
   });
 });
 
@@ -186,135 +209,169 @@ describe("branch-if-answered", () => {
     expect(condition(makeState())).toBeFalsy();
   });
 
-  it("then arm is exactly [snapshot-notes, write-notes, pop-question] (snapshot-then-write-then-pop); else arm is absent (skip)", () => {
+  it("then arm is exactly [pop-question]; else arm is exactly [refine-answer, pop-question]", () => {
     expect(branchPhase.kind).toBe("branch:if");
-    expect(branchThen.map((p) => p.id)).toEqual([
-      "snapshot-notes",
-      "write-notes",
+    expect(branchThen.map((p) => p.id)).toEqual(["pop-question"]);
+    expect(branchElse.map((p) => p.id)).toEqual([
+      "refine-answer",
       "pop-question",
     ]);
-    expect(branchPhase.else).toBeUndefined();
   });
 });
 
 // ---------------------------------------------------------------------------
-// snapshot-notes — captures the notes file size before the write attempt
+// answer-question — writes to its dedicated file with a non-empty existence
+// durability loop (answerFileWritten)
 // ---------------------------------------------------------------------------
 
-describe("snapshot-notes", () => {
-  it("records the current notes file size into notes_baseline", () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pio-snap-"));
-    const notesPath = path.join(root, "notes.md");
-    fs.writeFileSync(notesPath, "# Research Notes\n\n", "utf8");
-    const store = makeStore();
-    store.set("notes_path", "string", notesPath);
-    runCode(snapshotPhase, makeState({ store }));
-    expect(store.get("notes_baseline")).toBe(fs.statSync(notesPath).size);
-  });
-
-  it("records the sentinel -1 when the notes file is unreadable or path is missing", () => {
-    // unreadable/missing file
-    const store = makeStore();
-    store.set("notes_path", "string", "/nonexistent/path/notes.md");
-    runCode(snapshotPhase, makeState({ store }));
-    expect(store.get("notes_baseline")).toBe(-1);
-
-    // no notes_path variable at all
-    const store2 = makeStore();
-    runCode(snapshotPhase, makeState({ store: store2 }));
-    expect(store2.get("notes_baseline")).toBe(-1);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// write-notes — mechanical completeness loop (size-based edit detection)
-// ---------------------------------------------------------------------------
-
-describe("write-notes completeness loop", () => {
-  const writeNotes = branchThen[1] as WorkflowPhase;
-
-  it("replays until the note's file size changes from baseline (loopWhile on !notesEdited)", () => {
-    expect(writeNotes.id).toBe("write-notes");
-    expect(writeNotes.maxIterations).toBe(2);
-    const cb = writeNotes.loopWhile?.[0].callback as (
+describe("answer-question durability loop", () => {
+  it("replays until the answer file exists and is non-empty (loopWhile on !answerFileWritten)", () => {
+    expect(answerPhase.id).toBe("answer-question");
+    expect(answerPhase.maxIterations).toBe(2);
+    const cb = answerPhase.loopWhile?.[0].callback as (
       s: PioSessionState,
     ) => boolean;
     expect(typeof cb).toBe("function");
 
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pio-notes-"));
-    const notesPath = path.join(root, "notes.md");
-    const store = makeStore();
-    store.set("notes_path", "string", notesPath);
-    store.set("nextQuestion", "string", "What is the tree?");
-
-    // size unchanged from baseline → not edited → keep looping
-    fs.writeFileSync(notesPath, "# Research Notes\n\n", "utf8");
-    store.set("notes_baseline", "number", fs.statSync(notesPath).size);
-    expect(cb(makeState({ store }))).toBe(true);
-
-    // size changed (note appended) → edited → advance
-    fs.writeFileSync(
-      notesPath,
-      "# Research Notes\n\n**Question:** What is the tree?\nAnswer.\n",
-      "utf8",
-    );
-    expect(cb(makeState({ store }))).toBe(false);
-  });
-
-  it("keeps looping when the note is a substring of an earlier-written note (no false positive)", () => {
-    const cb = writeNotes.loopWhile?.[0].callback as (
-      s: PioSessionState,
-    ) => boolean;
-    // current question B is a strict substring of an earlier-written note A.
-    // Substring matching would falsely advance; size-based detection keeps
-    // looping because the file has not grown.
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pio-notes-"));
-    const notesPath = path.join(root, "notes.md");
-    const store = makeStore();
-    store.set("notes_path", "string", notesPath);
-    store.set("nextQuestion", "string", "What is the build command?");
-    // Earlier note already contains B as a substring
-    fs.writeFileSync(
-      notesPath,
-      "# Research Notes\n\n**Question:** What is the build command and test setup?\nAnswer.\n",
-      "utf8",
-    );
-    store.set("notes_baseline", "number", fs.statSync(notesPath).size);
-    // size unchanged → keep looping (no false-positive advance)
-    expect(cb(makeState({ store }))).toBe(true);
-  });
-
-  it("is total — missing baseline or unreadable file keep looping without throwing", () => {
-    const cb = writeNotes.loopWhile?.[0].callback as (
-      s: PioSessionState,
-    ) => boolean;
-    // no store vars → no baseline → keep looping
+    // no answer_path → not written → keep looping
     expect(cb(makeState())).toBe(true);
-    // notes_path + nextQuestion set but no baseline → keep looping
+
+    // path set but file missing → keep looping
     const store = makeStore();
-    store.set("notes_path", "string", "/nonexistent/path/notes.md");
-    store.set("nextQuestion", "string", "q");
+    store.set("answer_path", "string", "/nonexistent/answers/q-0.md");
     expect(cb(makeState({ store }))).toBe(true);
-    // baseline is sentinel -1 and file still unreadable → keep looping
+
+    // file exists but is empty → keep looping
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pio-ans-"));
+    const file = path.join(root, "q-0.md");
+    fs.writeFileSync(file, "", "utf8");
     const store2 = makeStore();
-    store2.set("notes_path", "string", "/nonexistent/path/notes.md");
-    store2.set("nextQuestion", "string", "q");
-    store2.set("notes_baseline", "number", -1);
+    store2.set("answer_path", "string", file);
+    expect(cb(makeState({ store: store2 }))).toBe(true);
+
+    // file exists and is non-empty → advance
+    fs.writeFileSync(file, "**Question:** Q\nAnswer.\n", "utf8");
+    expect(cb(makeState({ store: store2 }))).toBe(false);
+  });
+
+  it("is total — missing or unreadable answer file keeps looping without throwing", () => {
+    const cb = answerPhase.loopWhile?.[0].callback as (
+      s: PioSessionState,
+    ) => boolean;
+    // no store vars at all
+    expect(cb(makeState())).toBe(true);
+    // answer_path empty string
+    const store = makeStore();
+    store.set("answer_path", "string", "");
+    expect(cb(makeState({ store }))).toBe(true);
+    // answer_path is a directory (statSync succeeds but not a file)
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pio-dir-"));
+    const store2 = makeStore();
+    store2.set("answer_path", "string", root);
     expect(cb(makeState({ store: store2 }))).toBe(true);
   });
 
-  it("advances when there is no current question (empty nextQuestion)", () => {
-    const cb = writeNotes.loopWhile?.[0].callback as (
+  it("instructions reference the dedicated answer file path and the current question", () => {
+    const instr = answerPhase.instructions as string;
+    expect(instr).toContain(`\${answer_path}`);
+    expect(instr).toContain(`\${nextQuestion}`);
+    expect(instr).toContain('displayMode: "inline"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// refine-answer — second-chance phase rewriting the same dedicated file
+// ---------------------------------------------------------------------------
+
+describe("refine-answer", () => {
+  it("is a standard LLM phase with a non-empty-existence durability loop and maxIterations 2", () => {
+    expect(refinePhase.kind).toBeUndefined();
+    expect(refinePhase.maxIterations).toBe(2);
+    const cb = refinePhase.loopWhile?.[0].callback as (
       s: PioSessionState,
     ) => boolean;
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pio-notes-"));
-    const notesPath = path.join(root, "notes.md");
+    expect(typeof cb).toBe("function");
+
+    // missing path → not written → keep looping
+    expect(cb(makeState())).toBe(true);
+
+    // non-empty file → advance
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pio-ref-"));
+    const file = path.join(root, "q-0.md");
+    fs.writeFileSync(file, "improved answer", "utf8");
     const store = makeStore();
-    store.set("notes_path", "string", notesPath);
-    store.set("notes_baseline", "number", 0);
-    store.set("nextQuestion", "string", "");
-    // loopWhile is !notesEdited; empty question → notesEdited true → advance
+    store.set("answer_path", "string", file);
     expect(cb(makeState({ store }))).toBe(false);
+  });
+
+  it("instructions direct rewriting the same answer file for the current question", () => {
+    const instr = refinePhase.instructions as string;
+    expect(instr).toContain(`\${answer_path}`);
+    expect(instr).toContain(`\${nextQuestion}`);
+    expect(instr).toContain("rewrite it to the same file");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// merge-notes — post-loop consolidation of per-question files into the notes
+// ---------------------------------------------------------------------------
+
+describe("merge-notes", () => {
+  it("concatenates every per-question answer file in numeric order into the notes file preserving the header", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pio-merge-"));
+    const answersDir = path.join(root, "answers");
+    fs.mkdirSync(answersDir);
+    const notesPath = path.join(root, "notes.md");
+    fs.writeFileSync(notesPath, "# Research Notes\n\n", "utf8");
+    // written out of numeric order on disk — merge must sort numerically
+    fs.writeFileSync(path.join(answersDir, "q-1.md"), "Answer B", "utf8");
+    fs.writeFileSync(path.join(answersDir, "q-0.md"), "Answer A", "utf8");
+
+    const store = makeStore();
+    store.set("answers_dir", "string", answersDir);
+    store.set("notes_path", "string", notesPath);
+    runCode(mergeNotesPhase, makeState({ store }));
+
+    const content = fs.readFileSync(notesPath, "utf8");
+    expect(content).toContain("# Research Notes");
+    expect(content.indexOf("Answer A")).toBeLessThan(
+      content.indexOf("Answer B"),
+    );
+    expect(content).toContain("Answer A");
+    expect(content).toContain("Answer B");
+  });
+
+  it("ignores non-matching files in the answers dir and skips unreadable ones", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pio-merge2-"));
+    const answersDir = path.join(root, "answers");
+    fs.mkdirSync(answersDir);
+    const notesPath = path.join(root, "notes.md");
+    fs.writeFileSync(notesPath, "# Research Notes\n\n", "utf8");
+    fs.writeFileSync(path.join(answersDir, "q-0.md"), "Real answer", "utf8");
+    fs.writeFileSync(
+      path.join(answersDir, "stray.txt"),
+      "not an answer",
+      "utf8",
+    );
+
+    const store = makeStore();
+    store.set("answers_dir", "string", answersDir);
+    store.set("notes_path", "string", notesPath);
+    runCode(mergeNotesPhase, makeState({ store }));
+
+    const content = fs.readFileSync(notesPath, "utf8");
+    expect(content).toContain("Real answer");
+    expect(content).not.toContain("not an answer");
+  });
+
+  it("is total — missing answers dir or notes path does not throw", () => {
+    // no store vars at all
+    expect(() => runCode(mergeNotesPhase, makeState())).not.toThrow();
+    // answers dir missing but notes_path set → no write, no throw
+    const store = makeStore();
+    store.set("notes_path", "string", "/tmp/does-not-exist-pio/notes.md");
+    expect(() => runCode(mergeNotesPhase, makeState({ store }))).not.toThrow();
+    expect(fs.existsSync("/tmp/does-not-exist-pio/notes.md")).toBe(false);
   });
 });
 
@@ -396,6 +453,14 @@ describe("generate-questions and merge-questions", () => {
     });
   });
 
+  it("generate-questions carries the complete-architecture-coverage mandate", () => {
+    const description = (
+      generateQuestions.variables as Array<{ description?: string }>
+    )[0]?.description as string;
+    expect(description).toContain("complete architecture coverage");
+    expect(description).toContain("coverage gaps");
+  });
+
   it("merge-questions appends new_questions to the queue and resets new_questions to []", () => {
     const state = seedState();
     state.store?.set("new_questions", "array", ["Q-new-1", "Q-new-2"]);
@@ -437,7 +502,7 @@ describe("repeatWhile polarity", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Inner-loop body structure
+// Loop-body structure
 // ---------------------------------------------------------------------------
 
 describe("research-loop structure", () => {
@@ -454,19 +519,20 @@ describe("research-loop structure", () => {
     expect(innerBody[2].kind).toBeUndefined();
   });
 
-  it("outer loop body is exactly [answer-questions, generate-questions, merge-questions]", () => {
+  it("outer loop body is exactly [answer-questions, merge-notes, generate-questions, merge-questions]", () => {
     expect(researchLoop.kind).toBe("loop");
     expect((researchLoop.body as WorkflowPhase[]).map((p) => p.id)).toEqual([
       "answer-questions",
+      "merge-notes",
       "generate-questions",
       "merge-questions",
     ]);
   });
 
-  it("answer-question interpolates the next question and notes reference", () => {
-    const instr = innerBody[2].instructions as string;
-    expect(instr).toContain(`\${nextQuestion}`);
-    expect(instr).toContain('displayMode: "inline"');
+  it("merge-notes is a code phase in the outer body (after the inner loop)", () => {
+    expect(mergeNotesPhase.kind).toBe("code");
+    expect(mergeNotesPhase.id).toBe("merge-notes");
+    expect(innerLoop.id).toBe("answer-questions");
   });
 });
 

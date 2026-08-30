@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { PioSessionState } from "../../runtime/session-state";
@@ -24,9 +25,6 @@ const NOTES_VAR = "notes_path";
 /** Store variable carrying the absolute path of this session's answers directory. */
 const ANSWERS_DIR_VAR = "answers_dir";
 
-/** Store variable carrying the per-question answer-file index (advances only on pop). */
-const ANSWER_INDEX_VAR = "answer_index";
-
 /** Store variable carrying the absolute path of the current question's answer file. */
 const ANSWER_PATH_VAR = "answer_path";
 
@@ -44,9 +42,40 @@ function hasQuestions(state: PioSessionState): boolean {
   return questionsOf(state).length > 0;
 }
 
+/** Slugify a question into a filesystem-safe, readable fragment (lowercase, dashes). */
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
+/** mtime of a file in milliseconds (0 on stat failure) — total, never throws. */
+function mtimeOf(file: string): number {
+  try {
+    return fs.statSync(file).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Content-addressed name for a question's dedicated answer file. A pure
+ * function of the question text: a readable slug plus an 8-hex hash suffix,
+ * so the same question always maps to the same file (refine-answer rewrites
+ * it) with no counter to keep aligned.
+ */
+function answerFileName(question: string): string {
+  const slug = slugify(question) || "q";
+  const hash = createHash("sha256").update(question).digest("hex").slice(0, 8);
+  return `q-${slug}-${hash}.md`;
+}
+
 /**
  * True iff the current question's dedicated answer file exists and is
- * non-empty on disk. Each question owns its own file (`q-<n>.md`), so a
+ * non-empty on disk. Each question owns its own file (a content-addressed
+ * name derived from the question text), so a
  * non-empty existence check is unambiguous — no substring or size-baseline
  * detection needed. Total — never throws (missing/empty/unreadable file ⇒
  * false, so the durability loop keeps replaying until the answer lands).
@@ -66,9 +95,9 @@ function answerFileWritten(state: PioSessionState): boolean {
 
 /**
  * Best-effort, total consolidation: concatenate every per-question answer
- * file (`q-<n>.md`) in numeric order into the notes file, preserving the
- * `# Research Notes` header. Unreadable/missing files and a missing
- * answers dir are skipped — never throws.
+ * file (`q-*.md`) in mtime order (approximating answer order) into the notes
+ * file, preserving the `# Research Notes` header. Unreadable/missing files
+ * and a missing answers dir are skipped — never throws.
  */
 function mergeAnswersIntoNotes(state: PioSessionState): void {
   const notesPath = state.store?.get(NOTES_VAR);
@@ -76,17 +105,15 @@ function mergeAnswersIntoNotes(state: PioSessionState): void {
   if (typeof notesPath !== "string" || typeof answersDir !== "string") {
     return;
   }
-  // Extract the numeric index from a `q-<n>.md` filename (0 for non-matches).
-  const fileIndex = (name: string): number => {
-    const m = name.match(/^q-(\d+)\.md$/);
-    return m ? Number.parseInt(m[1], 10) : 0;
-  };
   let files: string[] = [];
   try {
     files = fs
       .readdirSync(answersDir)
-      .filter((f) => /^q-\d+\.md$/.test(f))
-      .sort((a, b) => fileIndex(a) - fileIndex(b));
+      .filter((f) => /^q-.+\.md$/.test(f))
+      .sort(
+        (a, b) =>
+          mtimeOf(path.join(answersDir, a)) - mtimeOf(path.join(answersDir, b)),
+      );
   } catch {
     // answers dir missing/unreadable — best-effort, leave notes unchanged
   }
@@ -157,10 +184,13 @@ export default [
       const answersDir = path.join(dir, "answers");
       const notesPath = path.join(dir, "notes.md");
       fs.mkdirSync(answersDir, { recursive: true });
+      // Fresh start — clear any stale answer files from a prior seed in this dir.
+      for (const f of fs.readdirSync(answersDir)) {
+        fs.rmSync(path.join(answersDir, f), { force: true });
+      }
       fs.writeFileSync(notesPath, "# Research Notes\n\n", "utf8");
       ctx.state.store?.set(NOTES_VAR, "string", notesPath);
       ctx.state.store?.set(ANSWERS_DIR_VAR, "string", answersDir);
-      ctx.state.store?.set(ANSWER_INDEX_VAR, "number", 0);
     },
   },
 
@@ -208,21 +238,17 @@ export default [
           },
           // Peek the front question into nextQuestion and derive this
           // question's dedicated answer file path. Does NOT pop — the pop is
-          // conditional on a satisfactory answer. The answer_index advances
-          // only on pop, so refine-answer rewrites the same file.
+          // conditional on a satisfactory answer. The filename is a pure
+          // function of the question text, so refine-answer rewrites the same
+          // file with no counter to keep aligned.
           {
             id: "get-next-question",
             title: "Get Next Question",
             kind: "code",
             run: (ctx: CodeStepContext) => {
               const questions = questionsOf(ctx.state);
-              ctx.state.store?.set(
-                NEXT_QUESTION_VAR,
-                "string",
-                questions[0] ?? "",
-              );
-              const rawIndex = ctx.state.store?.get(ANSWER_INDEX_VAR);
-              const index = typeof rawIndex === "number" ? rawIndex : 0;
+              const question = questions[0] ?? "";
+              ctx.state.store?.set(NEXT_QUESTION_VAR, "string", question);
               const rawDir = ctx.state.store?.get(ANSWERS_DIR_VAR);
               const dir =
                 typeof rawDir === "string"
@@ -235,7 +261,7 @@ export default [
               ctx.state.store?.set(
                 ANSWER_PATH_VAR,
                 "string",
-                path.join(dir, `q-${index}.md`),
+                path.join(dir, answerFileName(question)),
               );
             },
           },
@@ -276,9 +302,9 @@ Write the final answer to \`\${answer_path}\` (under /tmp — writes there are n
               },
             ],
           },
-          // A satisfactory answer pops the question (advancing the answer
-          // index to the next dedicated file); an unsatisfactory answer is
-          // refined in place (rewriting the same file) before popping.
+          // A satisfactory answer pops the question; an unsatisfactory answer
+          // is refined in place (rewriting the same file, whose name derives
+          // from the question text) before popping.
           {
             id: "branch-if-answered",
             title: "If Answered Satisfactorily",
@@ -295,9 +321,6 @@ Write the final answer to \`\${answer_path}\` (under /tmp — writes there are n
                   const questions = [...questionsOf(ctx.state)];
                   questions.shift();
                   ctx.state.store?.set(QUESTIONS_VAR, "array", questions);
-                  const rawIndex = ctx.state.store?.get(ANSWER_INDEX_VAR);
-                  const index = typeof rawIndex === "number" ? rawIndex : 0;
-                  ctx.state.store?.set(ANSWER_INDEX_VAR, "number", index + 1);
                 },
               },
             ],
@@ -327,9 +350,6 @@ Keep the question heading and improve the answer body. The phase advances only o
                   const questions = [...questionsOf(ctx.state)];
                   questions.shift();
                   ctx.state.store?.set(QUESTIONS_VAR, "array", questions);
-                  const rawIndex = ctx.state.store?.get(ANSWER_INDEX_VAR);
-                  const index = typeof rawIndex === "number" ? rawIndex : 0;
-                  ctx.state.store?.set(ANSWER_INDEX_VAR, "number", index + 1);
                 },
               },
             ],

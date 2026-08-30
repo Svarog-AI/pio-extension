@@ -121,11 +121,9 @@ describe("default-questions seed", () => {
     const answersDir = state.store?.get("answers_dir") as string;
     expect(typeof answersDir).toBe("string");
     expect(fs.existsSync(answersDir)).toBe(true);
-
-    expect(state.store?.get("answer_index")).toBe(0);
   });
 
-  it("re-seeds fresh (overwriting any stale queue, answers dir, and notes file) on re-run", () => {
+  it("re-seeds fresh (overwriting any stale queue/notes, clearing the answers dir) on re-run", () => {
     const state = seedState();
     state.store?.set("questions", "array", ["stale"]);
     fs.writeFileSync(
@@ -133,6 +131,11 @@ describe("default-questions seed", () => {
       "stale notes\n",
       "utf8",
     );
+    const staleAnswer = path.join(
+      state.store?.get("answers_dir") as string,
+      "q-stale-deadbeef.md",
+    );
+    fs.writeFileSync(staleAnswer, "stale answer", "utf8");
     runCode(workflow[0], state);
     const questions = state.store?.get("questions") as string[];
     expect(questions).toHaveLength(16);
@@ -143,7 +146,8 @@ describe("default-questions seed", () => {
     );
     expect(content).toContain("# Research Notes");
     expect(content).not.toContain("stale notes");
-    expect(state.store?.get("answer_index")).toBe(0);
+    // stale answer file cleared on a fresh seed
+    expect(fs.existsSync(staleAnswer)).toBe(false);
   });
 });
 
@@ -152,16 +156,28 @@ describe("default-questions seed", () => {
 // ---------------------------------------------------------------------------
 
 describe("question queue code steps", () => {
-  it("get-next-question peeks the front into nextQuestion and sets the per-question answer_path WITHOUT popping", () => {
+  it("get-next-question peeks the front into nextQuestion and sets a content-addressed answer_path WITHOUT popping", () => {
     const state = seedState();
     runCode(getNextPhase, state);
     expect(state.store?.get("nextQuestion")).toBe(SEEDED_THEMES[0]);
     const answersDir = state.store?.get("answers_dir") as string;
-    expect(state.store?.get("answer_path")).toBe(
-      path.join(answersDir, "q-0.md"),
-    );
+    const answerPath = state.store?.get("answer_path") as string;
+    // content-addressed: under the answers dir, ends .md, slug + 8-hex hash
+    expect(answerPath.startsWith(answersDir + path.sep)).toBe(true);
+    expect(answerPath.endsWith(".md")).toBe(true);
+    expect(answerPath).toMatch(/q-[-a-z0-9]+-[0-9a-f]{8}\.md$/);
     // queue unchanged — peek does not pop
     expect(state.store?.get("questions")).toEqual(SEEDED_THEMES);
+  });
+
+  it("get-next-question derives a deterministic answer_path for the same question (same file, no counter)", () => {
+    const state = seedState();
+    runCode(getNextPhase, state);
+    const first = state.store?.get("answer_path");
+    // same front question → same content-addressed file (what makes
+    // refine-answer rewrite the same file without a counter)
+    runCode(getNextPhase, state);
+    expect(state.store?.get("answer_path")).toBe(first);
   });
 
   it("get-next-question is total on an empty/undefined queue (nextQuestion = '')", () => {
@@ -170,20 +186,20 @@ describe("question queue code steps", () => {
     expect(state.store?.get("nextQuestion")).toBe("");
   });
 
-  it("pop-question shifts the front of the queue and advances the answer index", () => {
+  it("pop-question shifts the front of the queue", () => {
     const state = seedState();
     runCode(popPhase, state);
     const questions = state.store?.get("questions") as string[];
     expect(questions).toHaveLength(15);
     expect(questions[0]).toBe(SEEDED_THEMES[1]);
-    expect(state.store?.get("answer_index")).toBe(1);
   });
 
-  it("the else-arm pop advances the answer index identically to the then-arm pop", () => {
+  it("the else-arm pop shifts the front of the queue identically to the then-arm pop", () => {
     const state = seedState();
     runCode(popElsePhase, state);
-    expect(state.store?.get("questions")).toHaveLength(15);
-    expect(state.store?.get("answer_index")).toBe(1);
+    const questions = state.store?.get("questions") as string[];
+    expect(questions).toHaveLength(15);
+    expect(questions[0]).toBe(SEEDED_THEMES[1]);
   });
 });
 
@@ -317,15 +333,20 @@ describe("refine-answer", () => {
 // ---------------------------------------------------------------------------
 
 describe("merge-notes", () => {
-  it("concatenates every per-question answer file in numeric order into the notes file preserving the header", () => {
+  it("concatenates every per-question answer file in mtime order into the notes file preserving the header", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "pio-merge-"));
     const answersDir = path.join(root, "answers");
     fs.mkdirSync(answersDir);
     const notesPath = path.join(root, "notes.md");
     fs.writeFileSync(notesPath, "# Research Notes\n\n", "utf8");
-    // written out of numeric order on disk — merge must sort numerically
-    fs.writeFileSync(path.join(answersDir, "q-1.md"), "Answer B", "utf8");
-    fs.writeFileSync(path.join(answersDir, "q-0.md"), "Answer A", "utf8");
+    const fA = path.join(answersDir, "q-aaa-11111111.md");
+    const fB = path.join(answersDir, "q-bbb-22222222.md");
+    fs.writeFileSync(fA, "Answer A", "utf8");
+    fs.writeFileSync(fB, "Answer B", "utf8");
+    // B answered earlier (earlier mtime) than A — merge follows mtime order,
+    // not filename order ("bbb" > "aaa" would otherwise put A first)
+    fs.utimesSync(fB, new Date(1000), new Date(1000));
+    fs.utimesSync(fA, new Date(2000), new Date(2000));
 
     const store = makeStore();
     store.set("answers_dir", "string", answersDir);
@@ -334,8 +355,9 @@ describe("merge-notes", () => {
 
     const content = fs.readFileSync(notesPath, "utf8");
     expect(content).toContain("# Research Notes");
-    expect(content.indexOf("Answer A")).toBeLessThan(
-      content.indexOf("Answer B"),
+    // mtime order: B (earlier mtime) before A (later mtime)
+    expect(content.indexOf("Answer B")).toBeLessThan(
+      content.indexOf("Answer A"),
     );
     expect(content).toContain("Answer A");
     expect(content).toContain("Answer B");
@@ -347,7 +369,11 @@ describe("merge-notes", () => {
     fs.mkdirSync(answersDir);
     const notesPath = path.join(root, "notes.md");
     fs.writeFileSync(notesPath, "# Research Notes\n\n", "utf8");
-    fs.writeFileSync(path.join(answersDir, "q-0.md"), "Real answer", "utf8");
+    fs.writeFileSync(
+      path.join(answersDir, "q-real-11111111.md"),
+      "Real answer",
+      "utf8",
+    );
     fs.writeFileSync(
       path.join(answersDir, "stray.txt"),
       "not an answer",

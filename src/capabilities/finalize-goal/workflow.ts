@@ -54,12 +54,6 @@ const steps: WorkflowPhase[] = [
 
 **Per-step completion summaries:** Scan the subdirectories in the goal workspace. Read completion summaries from each one that exists. These provide ground truth of what was actually built: files created, modified, or deleted per step; decisions made during implementation; test coverage details. If a subdirectory has no completion summary, skip it gracefully.
 
-**Subgoal-aware reading:** When scanning subdirectories, check for a \`subgoals/\` subdirectory inside each one. If present, this step spawned nested subgoals. For each subgoal workspace under \`subgoals/<name>/\`:
-- Read the subgoal's requirements file for context on what was built
-- Read per-sub-step completion summaries from the subgoal workspace
-
-Treat the subgoal as a single unit — don't confuse subgoal subdirectories with parent subdirectories. The subgoal's completion marker signals that the parent step is complete.
-
 **Decisions file (if provided):** If the initial user message provides a path to an accumulated decisions file, read it for explicit architectural decisions, file placement changes, and prompt reference mappings captured during the goal lifecycle. The decisions file may be missing, empty, or incomplete — if it doesn't exist or has no relevant content, proceed using the other sources and note this in your final summary.
 
 **Git commit history:** Read the git commit history (the changes that were made during this goal) as an additional ground-truth source of what actually changed. If the workspace is not a git repository or \`git\` is unavailable, skip this gracefully.

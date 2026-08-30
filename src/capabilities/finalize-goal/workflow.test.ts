@@ -102,8 +102,8 @@ describe("read-context", () => {
   it("instructs reading all change drivers and cross-referencing sources", () => {
     const instr = readContextPhase.instructions as string;
     expect(instr).toContain("completion summaries");
-    expect(instr).toContain("subgoals/");
     expect(instr).toContain("Decisions file");
+    expect(instr).not.toContain("subgoals");
     expect(instr).toContain("git commit history");
     expect(instr).toContain("plan");
     expect(instr).toContain("goal");

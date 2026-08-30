@@ -222,7 +222,7 @@ describe("validate-assumptions", () => {
     expect(instr).toContain("grill-me");
     expect(instr).toContain('displayMode: "inline"');
     expect(instr).toContain("evidence");
-    expect(instr).toContain("without asking");
+    expect(instr).toContain("genuinely open");
   });
 
   it("preserves the per-phase grill-me skill", () => {

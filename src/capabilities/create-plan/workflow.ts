@@ -71,7 +71,7 @@ This is a single-pass entry phase — gather the contract now; research follows 
 - Do **not** require a web link for codebase facts. Web research is for assumptions genuinely unanswerable from code/tests — use \`web_search\` and cite the URL.
 - If a step's acceptance criteria can't be made programmatic because you don't understand the test setup, go learn the test setup and record it as evidence.
 
-You need to be confident about implementation details before writing the plan. On a replay, re-scan for anything missed and **dedupe** (do not re-add entries already present in \`\${notes_path}\`); if nothing is new, write **nothing** — a silent run advances.`,
+You need to be confident about implementation details before writing the plan. **Dedupe** — do not re-add findings already present in \`\${notes_path}\`.`,
     skills: {
       mandatory: ["pio-planning"],
       recommended: [
@@ -115,7 +115,7 @@ You need to be confident about implementation details before writing the plan. O
 
 **Execution preferences:** Ask about step sizing (granular vs. larger) and any specific tools or approaches to use or avoid.
 
-On a replay, confirm only what remains genuinely open; when nothing remains, finish **without asking** — a silent run advances.`,
+Do not re-ask already-confirmed items. Resolve only what remains genuinely open.`,
     skills: {
       mandatory: ["grill-me"],
     },
@@ -151,7 +151,7 @@ On a replay, confirm only what remains genuinely open; when nothing remains, fin
 
 **PLAN.md structure (from the \`pio-planning\` skill):** YAML frontmatter with \`totalSteps\` and a \`steps\` array (each entry \`name\`, optional \`complexity\`); document title; Prerequisites section; numbered \`### Step N:\` headings (each with Description, Acceptance Criteria, and Files Affected); and a Notes section. \`totalSteps\` must equal the count of \`### Step N:\` headings and the length of the \`steps\` array.
 
-**Final consistency review (run over the WHOLE plan each pass; do not advance until a pass finds nothing consequential):**
+**Final consistency review (run over the WHOLE plan each pass):**
 1. Find major inconsistencies and missed decisions in the plan steps:
    - (a) **outcomes not covered** — steps fail to cover all goal outcomes;
    - (b) **order of steps wrong or impossible** — dependencies/ordering broken;
@@ -159,7 +159,7 @@ On a replay, confirm only what remains genuinely open; when nothing remains, fin
    - (d) **explicit unit-test steps** — dedicated verification/test steps that should be handled by the TDD process (no step whose sole purpose is Verify/Validate/Check/Test/Confirm; test-updating steps and a final integration-verification step are permitted).
 2. **Filter** to issues/decisions with important consequences only — skip trivialities (renamed variables, trivial implementation details like variable naming, minor test/implementation changes). If none pass the filter, report it and move on.
 3. **Resolve:** if consequential issues remain, before any \`ask_user\` do a \`web_search\` (no workflow) and a code_search to gather information and try to resolve on your own. If still unresolved, use \`ask_user\` one-by-one (\`displayMode: "inline"\`).
-4. **End:** each pass must either make a change to PLAN.md, call \`ask_user\`, or explicitly report that there is nothing to change. The exhaustion loop advances only on a pass that makes **no consequential change** (a clean review).`,
+4. **End:** each pass must either make a change to PLAN.md, call \`ask_user\`, or explicitly report that there is nothing to change.`,
     skills: {
       mandatory: ["pio-planning"],
     },

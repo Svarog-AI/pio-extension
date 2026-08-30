@@ -74,7 +74,7 @@ const steps: WorkflowPhase[] = [
   {
     id: "draft-updates",
     title: "Identify and draft PROJECT file updates",
-    maxIterations: 4,
+    maxIterations: 10,
     loopWhile: [
       {
         type: "callback",
@@ -114,7 +114,7 @@ This phase only **drafts** the update list — it does not modify the PROJECT fi
     id: "write-overview",
     title: "Write PROJECT/OVERVIEW.md updates",
     write: ["overview"],
-    maxIterations: 4,
+    maxIterations: 5,
     loopWhile: [
       {
         type: "callback",
@@ -136,7 +136,7 @@ If there are no records for this file (or the file is missing), make no changes.
     id: "write-development",
     title: "Write PROJECT/DEVELOPMENT.md updates",
     write: ["development"],
-    maxIterations: 4,
+    maxIterations: 5,
     loopWhile: [
       {
         type: "callback",
@@ -158,7 +158,7 @@ If there are no records for this file (or the file is missing), make no changes.
     id: "write-conventions",
     title: "Write PROJECT/CONVENTIONS.md updates",
     write: ["conventions"],
-    maxIterations: 4,
+    maxIterations: 5,
     loopWhile: [
       {
         type: "callback",
@@ -180,7 +180,7 @@ If there are no records for this file (or the file is missing), make no changes.
     id: "write-git",
     title: "Write PROJECT/GIT.md updates",
     write: ["git"],
-    maxIterations: 4,
+    maxIterations: 5,
     loopWhile: [
       {
         type: "callback",
@@ -202,7 +202,7 @@ If there are no records for this file (or the file is missing), make no changes.
     id: "write-architecture",
     title: "Write PROJECT/ARCHITECTURE.md updates",
     write: ["architecture"],
-    maxIterations: 4,
+    maxIterations: 5,
     loopWhile: [
       {
         type: "callback",
@@ -224,7 +224,7 @@ If there are no records for this file (or the file is missing), make no changes.
     id: "write-dependencies",
     title: "Write PROJECT/DEPENDENCIES.md updates",
     write: ["dependencies"],
-    maxIterations: 4,
+    maxIterations: 5,
     loopWhile: [
       {
         type: "callback",
@@ -246,7 +246,7 @@ If there are no records for this file (or the file is missing), make no changes.
     id: "write-glossary",
     title: "Write PROJECT/GLOSSARY.md updates",
     write: ["glossary"],
-    maxIterations: 4,
+    maxIterations: 5,
     loopWhile: [
       {
         type: "callback",

@@ -35,6 +35,25 @@ function hasQuestions(state: PioSessionState): boolean {
   return questionsOf(state).length > 0;
 }
 
+/**
+ * True iff the notes file on disk already contains the current question
+ * text — i.e. the Q&A note was durably persisted before the queue is
+ * shifted. Total — never throws (missing/unreadable ⇒ false, so the
+ * write-notes completeness loop keeps replaying until the note lands).
+ */
+function notePersisted(state: PioSessionState): boolean {
+  const notesPath = state.store?.get(NOTES_VAR);
+  const question = state.store?.get(NEXT_QUESTION_VAR);
+  if (typeof notesPath !== "string" || typeof question !== "string") {
+    return false;
+  }
+  try {
+    return fs.readFileSync(notesPath, "utf8").includes(question);
+  } catch {
+    return false;
+  }
+}
+
 /** Default open-question seed — the coverage floor that cannot be skipped. */
 const DEFAULT_QUESTIONS = [
   "What is the top-level directory tree of the project, and what is each top-level area for?",
@@ -186,11 +205,20 @@ Produce the final answer in your response — it will be appended to the researc
               {
                 id: "write-notes",
                 title: "Write Research Notes",
+                maxIterations: 2,
+                loopWhile: [
+                  {
+                    type: "callback",
+                    callback: (state: PioSessionState) => !notePersisted(state),
+                  },
+                ],
                 instructions: `Append the Q&A for the just-answered question to the research notes file at \`\${notes_path}\`.
 
 **Question:** \`\${nextQuestion}\`
 
-Read the current notes file, then rewrite it with the answer you produced for this question appended as a new section (question heading + answer). Preserve all previously accumulated notes. The notes file lives under /tmp — writes to it are not blocked by the write gate.`,
+Read the current notes file, then rewrite it with the answer you produced for this question appended as a new section (question heading + answer). Preserve all previously accumulated notes. The notes file lives under /tmp — writes to it are not blocked by the write gate.
+
+You must actually write the question text (verbatim, as in \`nextQuestion\`) into the notes file — the phase advances only once the note is durably on disk. If the write fails, retry.`,
               },
               {
                 id: "pop-question",

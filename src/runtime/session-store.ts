@@ -173,6 +173,17 @@ export function coerceValue(value: unknown, declaredType: string): unknown {
     }
     case "array": {
       if (Array.isArray(value)) return value;
+      // Structured values arrive from the setVar tool as JSON-encoded strings
+      // (the tool's `value` param is a Type.Union including Type.String()).
+      // Parse and accept iff the result is actually an array.
+      if (typeof value === "string") {
+        try {
+          const parsed: unknown = JSON.parse(value);
+          if (Array.isArray(parsed)) return parsed;
+        } catch {
+          // malformed JSON — fall through to throw
+        }
+      }
       throw new Error(`Cannot coerce '${typeof value}' to array`);
     }
     case "object": {
@@ -182,6 +193,22 @@ export function coerceValue(value: unknown, declaredType: string): unknown {
         !Array.isArray(value)
       ) {
         return value;
+      }
+      // Same JSON-string transport as the array case — parse and accept iff
+      // the result is a non-array object.
+      if (typeof value === "string") {
+        try {
+          const parsed: unknown = JSON.parse(value);
+          if (
+            typeof parsed === "object" &&
+            parsed !== null &&
+            !Array.isArray(parsed)
+          ) {
+            return parsed;
+          }
+        } catch {
+          // malformed JSON — fall through to throw
+        }
       }
       throw new Error(`Cannot coerce '${typeof value}' to object`);
     }

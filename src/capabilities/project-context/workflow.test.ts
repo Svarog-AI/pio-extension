@@ -196,6 +196,57 @@ describe("branch-if-answered", () => {
 });
 
 // ---------------------------------------------------------------------------
+// write-notes — mechanical completeness loop (persist before pop)
+// ---------------------------------------------------------------------------
+
+describe("write-notes completeness loop", () => {
+  const writeNotes = branchThen[0] as WorkflowPhase;
+
+  it("replays until the note is durably persisted on disk (loopWhile on notePersisted)", () => {
+    expect(writeNotes.id).toBe("write-notes");
+    expect(writeNotes.maxIterations).toBe(2);
+    const cb = writeNotes.loopWhile?.[0].callback as (
+      s: PioSessionState,
+    ) => boolean;
+    expect(typeof cb).toBe("function");
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pio-notes-"));
+    const notesPath = path.join(root, "notes.md");
+    const store = makeStore();
+    store.set("notes_path", "string", notesPath);
+    store.set("nextQuestion", "string", "What is the tree?");
+
+    // no file on disk yet → keep looping
+    expect(cb(makeState({ store }))).toBe(true);
+
+    // file exists but does not contain the question → keep looping
+    fs.writeFileSync(notesPath, "# Research Notes\n\nother content\n", "utf8");
+    expect(cb(makeState({ store }))).toBe(true);
+
+    // question now durably present → advance
+    fs.writeFileSync(
+      notesPath,
+      "# Research Notes\n\n**Question:** What is the tree?\nAnswer.\n",
+      "utf8",
+    );
+    expect(cb(makeState({ store }))).toBe(false);
+  });
+
+  it("is total — missing store vars or unreadable file keep looping without throwing", () => {
+    const cb = writeNotes.loopWhile?.[0].callback as (
+      s: PioSessionState,
+    ) => boolean;
+    // no store vars → keep looping
+    expect(cb(makeState())).toBe(true);
+    // notes_path set but file missing → keep looping
+    const store = makeStore();
+    store.set("notes_path", "string", "/nonexistent/path/notes.md");
+    store.set("nextQuestion", "string", "q");
+    expect(cb(makeState({ store }))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // reset-vars (static variable reset at the start of every pass)
 // ---------------------------------------------------------------------------
 

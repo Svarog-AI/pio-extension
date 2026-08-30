@@ -461,6 +461,26 @@ describe("coerceValue", () => {
         /Cannot coerce.*string.*to array/,
       );
     });
+
+    it("parses a JSON-encoded array string into a real array", () => {
+      expect(coerceValue('["a","b"]', "array")).toEqual(["a", "b"]);
+      expect(coerceValue("[]", "array")).toEqual([]);
+    });
+
+    it("throws when a JSON string does not decode to an array", () => {
+      // JSON object decodes but is not an array
+      expect(() => coerceValue('{"a":1}', "array")).toThrow(
+        /Cannot coerce.*string.*to array/,
+      );
+      // JSON string decodes but is not an array
+      expect(() => coerceValue('"just a string"', "array")).toThrow(
+        /Cannot coerce.*string.*to array/,
+      );
+      // malformed JSON string
+      expect(() => coerceValue("not json", "array")).toThrow(
+        /Cannot coerce.*string.*to array/,
+      );
+    });
   });
 
   // --- object ---
@@ -473,6 +493,29 @@ describe("coerceValue", () => {
 
     it("throws for string input", () => {
       expect(() => coerceValue("x", "object")).toThrow(
+        /Cannot coerce.*string.*to object/,
+      );
+    });
+
+    it("parses a JSON-encoded object string into a plain object", () => {
+      expect(coerceValue('{"a":1}', "object")).toEqual({ a: 1 });
+    });
+
+    it("throws when a JSON string does not decode to a plain object", () => {
+      // JSON array decodes but is not a plain object
+      expect(() => coerceValue('["a"]', "object")).toThrow(
+        /Cannot coerce.*string.*to object/,
+      );
+      // JSON string decodes but is not an object
+      expect(() => coerceValue('"not an object"', "object")).toThrow(
+        /Cannot coerce.*string.*to object/,
+      );
+      // JSON scalar decodes but is not an object
+      expect(() => coerceValue("5", "object")).toThrow(
+        /Cannot coerce.*string.*to object/,
+      );
+      // malformed JSON string
+      expect(() => coerceValue("not json", "object")).toThrow(
         /Cannot coerce.*string.*to object/,
       );
     });
@@ -981,6 +1024,65 @@ describe("session variable tools", () => {
       );
 
       expect(resultText(result)).toContain("Cannot coerce");
+    });
+
+    it("setVar stores an array variable from a JSON-encoded string as a real array", async () => {
+      const store = new SessionVariableStore({});
+      setPartialState({
+        isActive: true,
+
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "i",
+            kind: "variable-definition",
+          },
+        ],
+        store,
+      });
+
+      const result = await setVarTool.execute(
+        "tc-1",
+        { name: "new_questions", type: "array", value: '["Q1","Q2"]' },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      // Tool should succeed and store the value as a real array
+      expect(resultText(result)).toContain("new_questions");
+      expect(store.get("new_questions")).toEqual(["Q1", "Q2"]);
+    });
+
+    it("setVar stores an object variable from a JSON-encoded string as a real object", async () => {
+      const store = new SessionVariableStore({});
+      setPartialState({
+        isActive: true,
+
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "i",
+            kind: "variable-definition",
+          },
+        ],
+        store,
+      });
+
+      const result = await setVarTool.execute(
+        "tc-1",
+        { name: "meta", type: "object", value: '{"a":1}' },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("meta");
+      expect(store.get("meta")).toEqual({ a: 1 });
     });
 
     it("setVar success message references original params.value, not coerced value", async () => {

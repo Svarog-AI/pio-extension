@@ -4,6 +4,7 @@ import { PhaseManager } from "./phase-manager";
 import type { PioSessionState } from "./session-state";
 import { __testSetState, getState, resetState } from "./session-state";
 import {
+  appendVarTool,
   coerceValue,
   getVarTool,
   listVarsTool,
@@ -601,6 +602,17 @@ describe("session variable tools", () => {
       expect(typeof setVarTool.execute).toBe("function");
     });
 
+    it("appendVarTool is defined with name, label, description, parameters, and execute", () => {
+      expect(appendVarTool).toBeDefined();
+      expect(appendVarTool.name).toBe("appendVar");
+      expect(appendVarTool.label).toBeDefined();
+      expect(typeof appendVarTool.label).toBe("string");
+      expect(appendVarTool.description).toBeDefined();
+      expect(typeof appendVarTool.description).toBe("string");
+      expect(appendVarTool.parameters).toBeDefined();
+      expect(typeof appendVarTool.execute).toBe("function");
+    });
+
     it("getVarTool is defined with name, label, description, parameters, and execute", () => {
       expect(getVarTool).toBeDefined();
       expect(getVarTool.name).toBe("getVar");
@@ -640,6 +652,16 @@ describe("session variable tools", () => {
       expect(Array.isArray(params.properties.value.anyOf)).toBe(true);
     });
 
+    it("appendVar parameters include name (string) and value (union of JSON types)", () => {
+      const params = appendVarTool.parameters;
+      expect(params.type).toBe("object");
+      expect(Object.keys(params.properties)).toEqual(["name", "value"]);
+      expect(params.properties.name.type).toBe("string");
+      // TypeBox uses anyOf for unions
+      expect(params.properties.value.anyOf).toBeDefined();
+      expect(Array.isArray(params.properties.value.anyOf)).toBe(true);
+    });
+
     it("getVar parameters include only name (string)", () => {
       const params = getVarTool.parameters;
       expect(params.type).toBe("object");
@@ -659,7 +681,7 @@ describe("session variable tools", () => {
   // -----------------------------------------------------------------------
 
   describe("setupSessionVariables", () => {
-    it("registers exactly 3 tools via pi.registerTool", () => {
+    it("registers exactly 4 tools via pi.registerTool", () => {
       const registeredTools: any[] = [];
       const mockPi = {
         registerTool: vi.fn((tool: any) => registeredTools.push(tool)),
@@ -667,8 +689,9 @@ describe("session variable tools", () => {
 
       setupSessionVariables(mockPi);
 
-      expect(mockPi.registerTool).toHaveBeenCalledTimes(3);
+      expect(mockPi.registerTool).toHaveBeenCalledTimes(4);
       expect(registeredTools).toContain(setVarTool);
+      expect(registeredTools).toContain(appendVarTool);
       expect(registeredTools).toContain(getVarTool);
       expect(registeredTools).toContain(listVarsTool);
     });
@@ -1112,6 +1135,248 @@ describe("session variable tools", () => {
 
       // The success text should reference the original value "true" (string)
       expect(resultText(result)).toContain('"true"');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // appendVar — session gating
+  // -----------------------------------------------------------------------
+
+  describe("appendVar session gating", () => {
+    it("appendVar returns error when isActive is false", async () => {
+      setPartialState({ isActive: false, store: null });
+
+      const result = await appendVarTool.execute(
+        "tc-1",
+        { name: "x", value: "item" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain(
+        "only available inside a pio session",
+      );
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // appendVar — phase gating
+  // -----------------------------------------------------------------------
+
+  describe("appendVar phase gating", () => {
+    it("appendVar returns error when current phase kind is not variable-definition", async () => {
+      const store = new SessionVariableStore({});
+      setPartialState({
+        isActive: true,
+
+        totalPhases: 3,
+        phasesList: [
+          {
+            id: "p1",
+            title: "Phase 1",
+            instructions: "Do stuff",
+            kind: "standard",
+          },
+        ],
+        store,
+      });
+
+      const result = await appendVarTool.execute(
+        "tc-1",
+        { name: "x", value: "item" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("variable-defining");
+    });
+
+    it("appendVar proceeds past phase check when current phase kind is variable-definition", async () => {
+      const store = new SessionVariableStore({});
+      setPartialState({
+        isActive: true,
+
+        totalPhases: 3,
+        phasesList: [
+          {
+            id: "p1",
+            title: "Define Variables",
+            instructions: "Set vars",
+            kind: "variable-definition",
+          },
+        ],
+        store,
+      });
+
+      const result = await appendVarTool.execute(
+        "tc-1",
+        { name: "x", value: "item" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).not.toContain("variable-defining");
+      expect(resultText(result)).toContain("x");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // appendVar — store null safety
+  // -----------------------------------------------------------------------
+
+  describe("appendVar store null safety", () => {
+    it("appendVar returns error when store is undefined", async () => {
+      setPartialState({
+        isActive: true,
+
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "i",
+            kind: "variable-definition",
+          },
+        ],
+        store: undefined,
+      });
+
+      const result = await appendVarTool.execute(
+        "tc-1",
+        { name: "x", value: "item" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("Variable store not initialized");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // appendVar — behavior (append to array variables)
+  // -----------------------------------------------------------------------
+
+  describe("appendVar behavior", () => {
+    it("appends a single item to an existing array variable", async () => {
+      const store = new SessionVariableStore({});
+      store.set("list", "array", ["a"]);
+      setPartialState({
+        isActive: true,
+
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "i",
+            kind: "variable-definition",
+          },
+        ],
+        store,
+      });
+
+      const result = await appendVarTool.execute(
+        "tc-1",
+        { name: "list", value: "b" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("list");
+      expect(store.get("list")).toEqual(["a", "b"]);
+    });
+
+    it("appends multiple items when value is an array", async () => {
+      const store = new SessionVariableStore({});
+      store.set("list", "array", ["a"]);
+      setPartialState({
+        isActive: true,
+
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "i",
+            kind: "variable-definition",
+          },
+        ],
+        store,
+      });
+
+      const result = await appendVarTool.execute(
+        "tc-1",
+        { name: "list", value: ["b", "c"] },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("3 items");
+      expect(store.get("list")).toEqual(["a", "b", "c"]);
+    });
+
+    it("initializes an array variable from nothing on first append", async () => {
+      const store = new SessionVariableStore({});
+      setPartialState({
+        isActive: true,
+
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "i",
+            kind: "variable-definition",
+          },
+        ],
+        store,
+      });
+
+      const result = await appendVarTool.execute(
+        "tc-1",
+        { name: "fresh", value: "first" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("fresh");
+      expect(store.get("fresh")).toEqual(["first"]);
+    });
+
+    it("returns an error when the target variable is not an array", async () => {
+      const store = new SessionVariableStore({});
+      store.set("x", "string", "not-an-array");
+      setPartialState({
+        isActive: true,
+
+        totalPhases: 1,
+        phasesList: [
+          {
+            id: "p1",
+            title: "P1",
+            instructions: "i",
+            kind: "variable-definition",
+          },
+        ],
+        store,
+      });
+
+      const result = await appendVarTool.execute(
+        "tc-1",
+        { name: "x", value: "item" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("not an array");
     });
   });
 

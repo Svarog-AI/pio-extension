@@ -342,6 +342,113 @@ export const setVarTool = defineTool({
   },
 });
 
+export const appendVarTool = defineTool({
+  name: "appendVar",
+  label: "Append to Session Variable",
+  description:
+    "Append one or more items to an existing array session variable during a variable-defining phase. Use this to accumulate values into an array variable (e.g. a growing list of discovered questions) instead of replacing it wholesale with setVar. Pass a single item or an array of items to append. If the variable has not been set yet, it is initialized as an array containing the appended item(s).",
+  parameters: Type.Object({
+    name: Type.String({
+      description: "Variable name to append to (must be an array variable)",
+    }),
+    value: Type.Union(
+      [
+        Type.String(),
+        Type.Number(),
+        Type.Boolean(),
+        Type.Null(),
+        Type.Array(Type.String()),
+      ],
+      {
+        description:
+          "The item(s) to append — a single scalar or an array of items",
+      },
+    ),
+  }),
+
+  async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+    const state = getState();
+
+    // 1. Session active check
+    if (!state.isActive) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "appendVar is only available inside a pio session.",
+          },
+        ],
+        details: {},
+      };
+    }
+
+    // 2. Phase kind check
+    const currentPhase = state.phaseManager?.getPhase(state.currentPhaseId);
+    if (currentPhase?.kind !== "variable-definition") {
+      const phaseInfo = currentPhase
+        ? `"${state.currentPhaseId}" (${currentPhase.title})`
+        : `"${state.currentPhaseId}"`;
+      return {
+        content: [
+          {
+            type: "text",
+            text: `appendVar can only be used during variable-defining phases. Current phase: ${phaseInfo}.`,
+          },
+        ],
+        details: {},
+      };
+    }
+
+    // 3. Store check
+    if (!state.store) {
+      return {
+        content: [{ type: "text", text: "Variable store not initialized." }],
+        details: {},
+      };
+    }
+
+    // 4. Append — normalize to a list of items; initialize absent vars to [].
+    const items = Array.isArray(params.value) ? params.value : [params.value];
+    const current = state.store.get(params.name);
+    if (current !== undefined && !Array.isArray(current)) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Cannot append to variable '${params.name}': it is not an array variable.`,
+          },
+        ],
+        details: {},
+      };
+    }
+    const base = Array.isArray(current) ? current : [];
+    try {
+      state.store.set(params.name, "array", [...base, ...items]);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Variable '${params.name}' appended; now has ${
+              base.length + items.length
+            } items.`,
+          },
+        ],
+        details: {},
+      };
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: err instanceof Error ? err.message : String(err),
+          },
+        ],
+        details: {},
+      };
+    }
+  },
+});
+
 export const getVarTool = defineTool({
   name: "getVar",
   label: "Get Session Variable",
@@ -448,6 +555,7 @@ export const listVarsTool = defineTool({
 
 export function setupSessionVariables(pi: ExtensionAPI): void {
   pi.registerTool(setVarTool);
+  pi.registerTool(appendVarTool);
   pi.registerTool(getVarTool);
   pi.registerTool(listVarsTool);
 }

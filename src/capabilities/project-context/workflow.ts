@@ -292,7 +292,7 @@ Write the final answer to \`\${answer_path}\` (under /tmp — writes there are n
                     name: QUESTION_ANSWERED_VAR,
                     type: "boolean",
                     kind: "llm",
-                    description: `Judge whether the answer just produced for the current question is satisfactory and well-grounded. Use setVar to set questionAnswered (boolean): true if the answer is complete and adequate for the PROJECT files; false only if there are genuine gaps that warrant refining. Prefer true for an adequate answer.`,
+                    description: `Judge the answer just produced for the current question. Use setVar to set questionAnswered (boolean): true only if the answer is complete (no information gaps identified) and factual (every claim is grounded in files or sources you actually read). Set false if there is a genuine information gap left open or a claim you cannot substantiate — those warrant refining. Prefer true for an answer that is both complete and factual.`,
                   },
                 ],
               },

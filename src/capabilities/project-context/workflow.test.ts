@@ -93,7 +93,8 @@ const getNextPhase = innerBody[1];
 const validatePhase = innerBody[3];
 const branchPhase = innerBody[4];
 const branchThen = branchPhase.then as WorkflowPhase[];
-const popPhase = branchThen[1];
+const snapshotPhase = branchThen[0];
+const popPhase = branchThen[2];
 const writePhases = workflow.slice(3) as WorkflowPhase[];
 
 // ---------------------------------------------------------------------------
@@ -185,9 +186,10 @@ describe("branch-if-answered", () => {
     expect(condition(makeState())).toBeFalsy();
   });
 
-  it("then arm is exactly [write-notes, pop-question] (write-then-pop); else arm is absent (skip)", () => {
+  it("then arm is exactly [snapshot-notes, write-notes, pop-question] (snapshot-then-write-then-pop); else arm is absent (skip)", () => {
     expect(branchPhase.kind).toBe("branch:if");
     expect(branchThen.map((p) => p.id)).toEqual([
+      "snapshot-notes",
       "write-notes",
       "pop-question",
     ]);
@@ -196,13 +198,42 @@ describe("branch-if-answered", () => {
 });
 
 // ---------------------------------------------------------------------------
-// write-notes — mechanical completeness loop (persist before pop)
+// snapshot-notes — captures the notes file size before the write attempt
+// ---------------------------------------------------------------------------
+
+describe("snapshot-notes", () => {
+  it("records the current notes file size into notes_baseline", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pio-snap-"));
+    const notesPath = path.join(root, "notes.md");
+    fs.writeFileSync(notesPath, "# Research Notes\n\n", "utf8");
+    const store = makeStore();
+    store.set("notes_path", "string", notesPath);
+    runCode(snapshotPhase, makeState({ store }));
+    expect(store.get("notes_baseline")).toBe(fs.statSync(notesPath).size);
+  });
+
+  it("records the sentinel -1 when the notes file is unreadable or path is missing", () => {
+    // unreadable/missing file
+    const store = makeStore();
+    store.set("notes_path", "string", "/nonexistent/path/notes.md");
+    runCode(snapshotPhase, makeState({ store }));
+    expect(store.get("notes_baseline")).toBe(-1);
+
+    // no notes_path variable at all
+    const store2 = makeStore();
+    runCode(snapshotPhase, makeState({ store: store2 }));
+    expect(store2.get("notes_baseline")).toBe(-1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// write-notes — mechanical completeness loop (size-based edit detection)
 // ---------------------------------------------------------------------------
 
 describe("write-notes completeness loop", () => {
-  const writeNotes = branchThen[0] as WorkflowPhase;
+  const writeNotes = branchThen[1] as WorkflowPhase;
 
-  it("replays until the note is durably persisted on disk (loopWhile on notePersisted)", () => {
+  it("replays until the note's file size changes from baseline (loopWhile on !notesEdited)", () => {
     expect(writeNotes.id).toBe("write-notes");
     expect(writeNotes.maxIterations).toBe(2);
     const cb = writeNotes.loopWhile?.[0].callback as (
@@ -216,14 +247,12 @@ describe("write-notes completeness loop", () => {
     store.set("notes_path", "string", notesPath);
     store.set("nextQuestion", "string", "What is the tree?");
 
-    // no file on disk yet → keep looping
+    // size unchanged from baseline → not edited → keep looping
+    fs.writeFileSync(notesPath, "# Research Notes\n\n", "utf8");
+    store.set("notes_baseline", "number", fs.statSync(notesPath).size);
     expect(cb(makeState({ store }))).toBe(true);
 
-    // file exists but does not contain the question → keep looping
-    fs.writeFileSync(notesPath, "# Research Notes\n\nother content\n", "utf8");
-    expect(cb(makeState({ store }))).toBe(true);
-
-    // question now durably present → advance
+    // size changed (note appended) → edited → advance
     fs.writeFileSync(
       notesPath,
       "# Research Notes\n\n**Question:** What is the tree?\nAnswer.\n",
@@ -232,17 +261,46 @@ describe("write-notes completeness loop", () => {
     expect(cb(makeState({ store }))).toBe(false);
   });
 
-  it("is total — missing store vars or unreadable file keep looping without throwing", () => {
+  it("keeps looping when the note is a substring of an earlier-written note (no false positive)", () => {
     const cb = writeNotes.loopWhile?.[0].callback as (
       s: PioSessionState,
     ) => boolean;
-    // no store vars → keep looping
+    // current question B is a strict substring of an earlier-written note A.
+    // Substring matching would falsely advance; size-based detection keeps
+    // looping because the file has not grown.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pio-notes-"));
+    const notesPath = path.join(root, "notes.md");
+    const store = makeStore();
+    store.set("notes_path", "string", notesPath);
+    store.set("nextQuestion", "string", "What is the build command?");
+    // Earlier note already contains B as a substring
+    fs.writeFileSync(
+      notesPath,
+      "# Research Notes\n\n**Question:** What is the build command and test setup?\nAnswer.\n",
+      "utf8",
+    );
+    store.set("notes_baseline", "number", fs.statSync(notesPath).size);
+    // size unchanged → keep looping (no false-positive advance)
+    expect(cb(makeState({ store }))).toBe(true);
+  });
+
+  it("is total — missing baseline or unreadable file keep looping without throwing", () => {
+    const cb = writeNotes.loopWhile?.[0].callback as (
+      s: PioSessionState,
+    ) => boolean;
+    // no store vars → no baseline → keep looping
     expect(cb(makeState())).toBe(true);
-    // notes_path set but file missing → keep looping
+    // notes_path + nextQuestion set but no baseline → keep looping
     const store = makeStore();
     store.set("notes_path", "string", "/nonexistent/path/notes.md");
     store.set("nextQuestion", "string", "q");
     expect(cb(makeState({ store }))).toBe(true);
+    // baseline is sentinel -1 and file still unreadable → keep looping
+    const store2 = makeStore();
+    store2.set("notes_path", "string", "/nonexistent/path/notes.md");
+    store2.set("nextQuestion", "string", "q");
+    store2.set("notes_baseline", "number", -1);
+    expect(cb(makeState({ store: store2 }))).toBe(true);
   });
 
   it("advances when there is no current question (empty nextQuestion)", () => {
@@ -253,8 +311,9 @@ describe("write-notes completeness loop", () => {
     const notesPath = path.join(root, "notes.md");
     const store = makeStore();
     store.set("notes_path", "string", notesPath);
+    store.set("notes_baseline", "number", 0);
     store.set("nextQuestion", "string", "");
-    // loopWhile is !notePersisted; empty question → notePersisted true → advance
+    // loopWhile is !notesEdited; empty question → notesEdited true → advance
     expect(cb(makeState({ store }))).toBe(false);
   });
 });

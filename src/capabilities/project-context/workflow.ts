@@ -21,6 +21,9 @@ const NEW_QUESTIONS_VAR = "new_questions";
 /** Store variable carrying the absolute path of this session's notes file. */
 const NOTES_VAR = "notes_path";
 
+/** Store variable carrying the notes file size captured before the write attempt. */
+const NOTES_BASELINE_VAR = "notes_baseline";
+
 /** Session-scoped scratch directory (OS-reclaimed; no cleanup logic). */
 const SCRATCH_DIR = "/tmp/pio-project-context";
 
@@ -36,28 +39,37 @@ function hasQuestions(state: PioSessionState): boolean {
 }
 
 /**
- * True iff the notes file on disk already contains the current question
- * text — i.e. the Q&A note was durably persisted before the queue is
- * shifted. Total — never throws (missing/unreadable ⇒ false, so the
- * write-notes completeness loop keeps replaying until the note lands).
+ * True iff the notes file's size on disk differs from the baseline captured
+ * by the snapshot-notes phase — i.e. the Q&A note was durably persisted
+ * before the queue is shifted. Edit detection by size (not substring match)
+ * removes the collision risk where the current question's text is a substring
+ * of an earlier-written note. Total — never throws (missing baseline or
+ * unreadable file ⇒ false, so the write-notes completeness loop keeps
+ * replaying until the note lands).
  */
-function notePersisted(state: PioSessionState): boolean {
-  const notesPath = state.store?.get(NOTES_VAR);
+function notesEdited(state: PioSessionState): boolean {
   const question = state.store?.get(NEXT_QUESTION_VAR);
-  if (typeof notesPath !== "string" || typeof question !== "string") {
-    return false;
-  }
-  // Nothing to persist yet (no current question) — vacuously persisted so the
-  // write-notes completeness loop advances. Without this guard the
-  // `includes("")` below would always match, making the check vacuous.
+  // Nothing to persist yet (no current question) — vacuously edited so the
+  // write-notes completeness loop advances. Without this guard the size
+  // comparison would never pass for an empty question.
   if (question === "") {
     return true;
   }
-  try {
-    return fs.readFileSync(notesPath, "utf8").includes(question);
-  } catch {
+  const baseline = state.store?.get(NOTES_BASELINE_VAR);
+  if (typeof baseline !== "number") {
     return false;
   }
+  const notesPath = state.store?.get(NOTES_VAR);
+  if (typeof notesPath !== "string") {
+    return false;
+  }
+  let currentSize = -1;
+  try {
+    currentSize = fs.statSync(notesPath).size;
+  } catch {
+    currentSize = -1;
+  }
+  return currentSize !== baseline;
 }
 
 /** Default open-question seed — the coverage floor that cannot be skipped. */
@@ -208,6 +220,26 @@ Produce the final answer in your response — it will be appended to the researc
               state.store?.get(QUESTION_ANSWERED_VAR) === true,
             // biome-ignore lint/suspicious/noThenProperty: 'then' is the canonical field name from the WorkflowPhase interface
             then: [
+              // Capture the notes file size before the write attempt, so the
+              // write-notes completeness loop can detect a durable edit by
+              // size change rather than by substring content match.
+              {
+                id: "snapshot-notes",
+                title: "Snapshot Notes Size",
+                kind: "code",
+                run: (ctx: CodeStepContext) => {
+                  const notesPath = ctx.state.store?.get(NOTES_VAR);
+                  let baseline = -1;
+                  if (typeof notesPath === "string") {
+                    try {
+                      baseline = fs.statSync(notesPath).size;
+                    } catch {
+                      baseline = -1;
+                    }
+                  }
+                  ctx.state.store?.set(NOTES_BASELINE_VAR, "number", baseline);
+                },
+              },
               {
                 id: "write-notes",
                 title: "Write Research Notes",
@@ -215,7 +247,7 @@ Produce the final answer in your response — it will be appended to the researc
                 loopWhile: [
                   {
                     type: "callback",
-                    callback: (state: PioSessionState) => !notePersisted(state),
+                    callback: (state: PioSessionState) => !notesEdited(state),
                   },
                 ],
                 instructions: `Append the Q&A for the just-answered question to the research notes file at \`\${notes_path}\`.

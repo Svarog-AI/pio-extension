@@ -119,7 +119,7 @@ describe("read-context", () => {
 // ---------------------------------------------------------------------------
 
 describe("draft-updates", () => {
-  it("is a standard phase with maxIterations 4 and a single loopWhile callback on updates.md", () => {
+  it("is a standard phase with maxIterations 10 and a single loopWhile callback on updates.md", () => {
     expect(draftPhase.kind).toBeUndefined();
     expect(draftPhase.maxIterations).toBe(10);
     expect(draftPhase.minIterations).toBeUndefined();

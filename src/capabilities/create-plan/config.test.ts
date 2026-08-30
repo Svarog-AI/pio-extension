@@ -721,25 +721,31 @@ describe("create-plan tool execute — pre-launch validation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Workflow phases — self-review step exists
+// Workflow phases — re-derived 5-phase graph; write-plan is the
+// contract-output-writing phase; signal-completion/self-review are removed
 // ---------------------------------------------------------------------------
 
 describe("create-plan workflow phases", () => {
-  it("contains a self-review step between write-plan and signal-completion", () => {
+  it("has 5 top-level phases in order (default-setup, read-goal, deep-research, validate-assumptions, write-plan)", () => {
     const ids = workflowSteps.map((s) => s.id);
-    const writePlanIdx = ids.indexOf("write-plan");
-    const selfReviewIdx = ids.indexOf("self-review");
-    const signalCompletionIdx = ids.indexOf("signal-completion");
-
-    expect(selfReviewIdx).toBeGreaterThan(-1);
-    expect(selfReviewIdx).toBe(writePlanIdx + 1);
-    expect(signalCompletionIdx).toBe(selfReviewIdx + 1);
+    expect(ids).toEqual([
+      "default-setup",
+      "read-goal",
+      "deep-research",
+      "validate-assumptions",
+      "write-plan",
+    ]);
   });
 
-  it("self-review step has instructions mentioning verification patterns", () => {
-    const step = workflowSteps.find((s) => s.id === "self-review");
+  it("write-plan is the contract-output-writing phase gated to exactly ['plan']", () => {
+    const step = workflowSteps.find((s) => s.id === "write-plan");
     expect(step).toBeDefined();
-    const instructions = step!.instructions.toLowerCase();
-    expect(instructions).toMatch(/verify|validate|check|test|confirm/i);
+    expect(step!.write).toEqual(["plan"]);
+  });
+
+  it("contains no signal-completion or self-review phase", () => {
+    const ids = workflowSteps.map((s) => s.id);
+    expect(ids).not.toContain("signal-completion");
+    expect(ids).not.toContain("self-review");
   });
 });

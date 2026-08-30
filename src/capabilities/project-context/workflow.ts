@@ -148,11 +148,6 @@ const DEFAULT_QUESTIONS = [
   "What architecture patterns and key design decisions structure the project, and are there Architecture Decision Records (ADRs)?",
 ];
 
-/**
- * Shared write-phase boilerplate appended to each file-specific write
- * instructions. References the accumulating notes file (${notes_path}) as the
- * research source and sets the quality bar — identical across all 7 writes.
- */
 export default [
   // ---------------------------------------------------------------------------
   // Default Questions — seed the question queue + answers dir + notes file
@@ -272,71 +267,78 @@ If the question can only be answered by the user (it depends on external context
 
 Write the final answer to \`\${answer_path}\` (under /tmp — writes there are not blocked by the write gate), with a question heading plus your answer. The phase advances only once the answer file exists and is non-empty on disk; if the write fails, retry.`,
           },
-          // LLM judgment: is the answer satisfactory? (sets questionAnswered)
+          // Refinement loop: judge the answer (validate), and if it is
+          // unsatisfactory refine it in place (rewriting the same file, whose
+          // name derives from the question text) — then loop back to re-judge
+          // the refined draft. The loop exits only once validate-answer judges
+          // it satisfactory; a single pop-question runs AFTER the loop (never
+          // inside the arms), so no refined-but-still-unsatisfactory answer is
+          // ever consumed.
           {
-            id: "validate-answer",
-            title: "Validate the Answer",
-            kind: "variable-definition",
-            variables: [
+            id: "refine-loop",
+            title: "Refine Until Satisfactory",
+            kind: "loop",
+            maxIterations: 3,
+            repeatWhile: (state: PioSessionState) =>
+              state.store?.get(QUESTION_ANSWERED_VAR) !== true,
+            body: [
+              // LLM judgment: is the answer satisfactory? (sets questionAnswered)
               {
-                name: QUESTION_ANSWERED_VAR,
-                type: "boolean",
-                kind: "llm",
-                description: `Judge whether the answer just produced for the current question is satisfactory and well-grounded. Use setVar to set questionAnswered (boolean): true if the answer is complete and adequate for the PROJECT files; false only if there are genuine gaps that warrant refining. Prefer true for an adequate answer.`,
-              },
-            ],
-          },
-          // A satisfactory answer pops the question; an unsatisfactory answer
-          // is refined in place (rewriting the same file, whose name derives
-          // from the question text) before popping.
-          {
-            id: "branch-if-answered",
-            title: "If Answered Satisfactorily",
-            kind: "branch:if",
-            condition: (state: PioSessionState) =>
-              state.store?.get(QUESTION_ANSWERED_VAR) === true,
-            // biome-ignore lint/suspicious/noThenProperty: 'then' is the canonical field name from the WorkflowPhase interface
-            then: [
-              {
-                id: "pop-question",
-                title: "Pop Question",
-                kind: "code",
-                run: (ctx: CodeStepContext) => {
-                  const questions = [...questionsOf(ctx.state)];
-                  questions.shift();
-                  ctx.state.store?.set(QUESTIONS_VAR, "array", questions);
-                },
-              },
-            ],
-            else: [
-              {
-                id: "refine-answer",
-                title: "Refine the Answer",
-                maxIterations: 2,
-                loopWhile: [
+                id: "validate-answer",
+                title: "Validate the Answer",
+                kind: "variable-definition",
+                variables: [
                   {
-                    type: "callback",
-                    callback: (state: PioSessionState) =>
-                      !answerFileWritten(state),
+                    name: QUESTION_ANSWERED_VAR,
+                    type: "boolean",
+                    kind: "llm",
+                    description: `Judge whether the answer just produced for the current question is satisfactory and well-grounded. Use setVar to set questionAnswered (boolean): true if the answer is complete and adequate for the PROJECT files; false only if there are genuine gaps that warrant refining. Prefer true for an adequate answer.`,
                   },
                 ],
-                instructions: `The answer to the current question was judged unsatisfactory. Read the draft at \`\${answer_path}\`, improve it (fill gaps, strengthen grounding in files you actually read), and rewrite it to the same file at \`\${answer_path}\`.
+              },
+              // If the answer is not satisfactory, refine it in place. The
+              // absent else arm skips to the loop-end, where repeatWhile
+              // re-judges the refined draft on the next pass.
+              {
+                id: "branch-if-unanswered",
+                title: "If Answer Needs Refining",
+                kind: "branch:if",
+                condition: (state: PioSessionState) =>
+                  state.store?.get(QUESTION_ANSWERED_VAR) === false,
+                // biome-ignore lint/suspicious/noThenProperty: 'then' is the canonical field name from the WorkflowPhase interface
+                then: [
+                  {
+                    id: "refine-answer",
+                    title: "Refine the Answer",
+                    maxIterations: 2,
+                    loopWhile: [
+                      {
+                        type: "callback",
+                        callback: (state: PioSessionState) =>
+                          !answerFileWritten(state),
+                      },
+                    ],
+                    instructions: `The answer to the current question was judged unsatisfactory. Read the draft at \`\${answer_path}\`, improve it (fill gaps, strengthen grounding in files you actually read), and rewrite it to the same file at \`\${answer_path}\`.
 
 **Question:** \`\${nextQuestion}\`
 
 Keep the question heading and improve the answer body. The phase advances only once the answer file exists and is non-empty on disk; if the write fails, retry.`,
-              },
-              {
-                id: "pop-question",
-                title: "Pop Question",
-                kind: "code",
-                run: (ctx: CodeStepContext) => {
-                  const questions = [...questionsOf(ctx.state)];
-                  questions.shift();
-                  ctx.state.store?.set(QUESTIONS_VAR, "array", questions);
-                },
+                  },
+                ],
               },
             ],
+          },
+          // The question is consumed only after the answer is judged
+          // satisfactory (refine-loop exited with questionAnswered === true).
+          {
+            id: "pop-question",
+            title: "Pop Question",
+            kind: "code",
+            run: (ctx: CodeStepContext) => {
+              const questions = [...questionsOf(ctx.state)];
+              questions.shift();
+              ctx.state.store?.set(QUESTIONS_VAR, "array", questions);
+            },
           },
         ],
       },

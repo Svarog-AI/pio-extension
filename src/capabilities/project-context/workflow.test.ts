@@ -92,13 +92,13 @@ const innerBody = innerLoop.body as WorkflowPhase[];
 const resetPhase = innerBody[0];
 const getNextPhase = innerBody[1];
 const answerPhase = innerBody[2];
-const validatePhase = innerBody[3];
-const branchPhase = innerBody[4];
+const refineLoop = innerBody[3] as WorkflowPhase;
+const popPhase = innerBody[4] as WorkflowPhase;
+const refineBody = refineLoop.body as WorkflowPhase[];
+const validatePhase = refineBody[0];
+const branchPhase = refineBody[1];
 const branchThen = branchPhase.then as WorkflowPhase[];
-const popPhase = branchThen[0];
-const branchElse = branchPhase.else as WorkflowPhase[];
-const refinePhase = branchElse[0];
-const popElsePhase = branchElse[1];
+const refinePhase = branchThen[0];
 const writePhases = workflow.slice(3, 10) as WorkflowPhase[];
 const cleanupPhase = workflow[10];
 
@@ -194,45 +194,34 @@ describe("question queue code steps", () => {
     expect(questions).toHaveLength(15);
     expect(questions[0]).toBe(SEEDED_THEMES[1]);
   });
-
-  it("the else-arm pop shifts the front of the queue identically to the then-arm pop", () => {
-    const state = seedState();
-    runCode(popElsePhase, state);
-    const questions = state.store?.get("questions") as string[];
-    expect(questions).toHaveLength(15);
-    expect(questions[0]).toBe(SEEDED_THEMES[1]);
-  });
 });
 
 // ---------------------------------------------------------------------------
 // branch-if-answered condition (questionAnswered === true)
 // ---------------------------------------------------------------------------
 
-describe("branch-if-answered", () => {
-  it("routes to the then arm only when questionAnswered is exactly true", () => {
+describe("branch-if-unanswered", () => {
+  it("routes to the refine arm only when questionAnswered is exactly false", () => {
     const condition = branchPhase.condition as (
       s: PioSessionState,
     ) => boolean | unknown;
     expect(
       condition(
-        makeState({ store: withVar("questionAnswered", "boolean", true) }),
+        makeState({ store: withVar("questionAnswered", "boolean", false) }),
       ),
     ).toBeTruthy();
     expect(
       condition(
-        makeState({ store: withVar("questionAnswered", "boolean", false) }),
+        makeState({ store: withVar("questionAnswered", "boolean", true) }),
       ),
     ).toBeFalsy();
     expect(condition(makeState())).toBeFalsy();
   });
 
-  it("then arm is exactly [pop-question]; else arm is exactly [refine-answer, pop-question]", () => {
+  it("then arm is exactly [refine-answer]; else arm is absent (skip to loop-end)", () => {
     expect(branchPhase.kind).toBe("branch:if");
-    expect(branchThen.map((p) => p.id)).toEqual(["pop-question"]);
-    expect(branchElse.map((p) => p.id)).toEqual([
-      "refine-answer",
-      "pop-question",
-    ]);
+    expect(branchThen.map((p) => p.id)).toEqual(["refine-answer"]);
+    expect(branchPhase.else).toBeUndefined();
   });
 });
 
@@ -533,17 +522,80 @@ describe("repeatWhile polarity", () => {
 // ---------------------------------------------------------------------------
 
 describe("research-loop structure", () => {
-  it("inner loop body is exactly [reset-vars, get-next-question, answer-question, validate-answer, branch-if-answered]", () => {
+  it("inner loop body is exactly [reset-vars, get-next-question, answer-question, refine-loop, pop-question]", () => {
     expect(innerLoop.kind).toBe("loop");
     expect(innerBody.map((p) => p.id)).toEqual([
       "reset-vars",
       "get-next-question",
       "answer-question",
-      "validate-answer",
-      "branch-if-answered",
+      "refine-loop",
+      "pop-question",
     ]);
     // answer-question is the sole standard (LLM) phase in the inner body
     expect(innerBody[2].kind).toBeUndefined();
+    // pop-question is a code phase AFTER the refinement loop — never inside arms
+    expect(popPhase.kind).toBe("code");
+  });
+
+  it("refine-loop body is exactly [validate-answer, branch-if-unanswered]; repeatWhile loops while questionAnswered !== true", () => {
+    expect(refineLoop.kind).toBe("loop");
+    expect(refineLoop.maxIterations).toBe(3);
+    expect(refineBody.map((p) => p.id)).toEqual([
+      "validate-answer",
+      "branch-if-unanswered",
+    ]);
+    const repeat = refineLoop.repeatWhile as (
+      s: PioSessionState,
+    ) => boolean | unknown;
+    // unsatisfied → keep refining (loop back to re-judge)
+    expect(
+      repeat(
+        makeState({ store: withVar("questionAnswered", "boolean", false) }),
+      ),
+    ).toBeTruthy();
+    // satisfied → exit the refinement loop
+    expect(
+      repeat(
+        makeState({ store: withVar("questionAnswered", "boolean", true) }),
+      ),
+    ).toBeFalsy();
+    // undefined → not satisfactory → keep refining
+    expect(repeat(makeState())).toBeTruthy();
+  });
+
+  it("a refined answer is re-validated before the question is popped (false → refine → re-judge true → only then pop)", () => {
+    const cond = branchPhase.condition as (
+      s: PioSessionState,
+    ) => boolean | unknown;
+    const repeat = refineLoop.repeatWhile as (
+      s: PioSessionState,
+    ) => boolean | unknown;
+
+    const state = seedState();
+    const firstQ = (state.store?.get("questions") as string[])[0];
+
+    // Pass 1: validate-answer judges unsatisfactory (questionAnswered = false).
+    state.store?.set("questionAnswered", "boolean", false);
+    // branch-if-unanswered: false → refine arm selected (refine rewrites the file)
+    expect(cond(state)).toBeTruthy();
+    // repeatWhile: questionAnswered !== true → loop back to re-judge
+    expect(repeat(state)).toBeTruthy();
+
+    // The refined draft is NOT popped while it is still judged unsatisfactory.
+    expect((state.store?.get("questions") as string[])[0]).toBe(firstQ);
+
+    // Pass 2: validate-answer re-judges the refined draft satisfactory.
+    state.store?.set("questionAnswered", "boolean", true);
+    // branch-if-unanswered: true → skip refine arm (absent else → loop-end)
+    expect(cond(state)).toBeFalsy();
+    // repeatWhile: questionAnswered === true → exit the loop
+    expect(repeat(state)).toBeFalsy();
+
+    // The single pop-question runs only after re-validation passes.
+    expect((state.store?.get("questions") as string[])[0]).toBe(firstQ);
+    runCode(popPhase, state);
+    const remaining = state.store?.get("questions") as string[];
+    expect(remaining[0]).toBe(SEEDED_THEMES[1]);
   });
 
   it("outer loop body is exactly [answer-questions, merge-notes, generate-questions, merge-questions]", () => {

@@ -89,36 +89,20 @@ Work the questions in order: split by validation points first (phase count), ext
 **Choosing the termination signal** (the `terminateWhen`/`loopWhile` callback reads `PioSessionState`):
 
 - **Prefer `filesWritten`-based callbacks** when the phase's success is observable as file writes — e.g. `state.filesWritten.some((f) => f.endsWith("TEST.md"))`.
-- **`askUserCalled` — exhaustion loops.** For interview/clarify/Q&A phases where **silence is a legitimate end state**, use `loopWhile(askUserCalled)`: a run that contained questions may have more un-exhausted, so keep running; the first silent run terminates the phase. **Stall warning:** `terminateWhen(askUserCalled)` on such phases makes no-ask runs replay to `maxIterations` and then idle-pause (the engine does not force-advance at the cap) because the flag resets per run. Reserve `terminateWhen(askUserCalled)` for **mandatory gates** where every run must ask (e.g. manual testing/review checkpoints).
-- **Variable-definition phases** (with their variables) for non-file judgments — declare the judgment as an `llm` variable and branch on it (`on: "$varName"`) or loop on it (`state.store?.get(...)`).
+- **`askUserCalled` — exhaustion loops.** For interview/clarify/Q&A phases where **silence is a legitimate end state**, use `loopWhile(askUserCalled)`: a run that contained questions may have more un-exhausted, so keep running; the first silent run terminates the phase. **Stall warning:** `terminateWhen(askUserCalled)` on such phases makes no-ask runs replay to `maxIterations` and then idle-pause (the engine does not force-advance at the cap) because the flag resets per run. Reserve `terminateWhen(askUserCalled)` for **mandatory gates** where every run must ask (e.g. manual testing/review checkpoints). See `patterns/exhaustion-loop.md`.
+- **Variable-definition phases** (with their variables) for non-file judgments — declare the judgment as an `llm` variable and branch on it (`on: "$varName"`) or loop on it (`state.store?.get(...)`). A **refinement loop** wraps a produce → judge → refine → re-judge → consume cycle: loop while the judgment is negative, terminate on the positive judgment, never consume inside the arms. See `patterns/refinement-loop.md`.
 - `currentIteration` (per-phase, 1-based) for iteration-count logic; `state.store` for variables set in earlier phases.
 
 **Lean by design.** Omitted loop fields = one run and advance. Do **not** bolt `minIterations: 1` onto single-pass phases — a lean phase has no loop fields at all. Add loop fields only where the decomposition (or the user) identifies real iteration.
 
-**Seeded discovery loop — THE standard research-loop pattern.** The canonical shape for *any* research/refinement capability (project analysis, dependency research, anything whose job is to discover unknowns and then answer them).
+**Canonical loop patterns.** Recurring phase shapes are documented as first-class patterns under `src/skills/capability-design/patterns/`:
 
-1. **Seed — `kind: "code"` phase.** Seeds a store **array variable** (e.g. `questions`) with a **default open-question set** — an explicit coverage floor that cannot be skipped — and sets up the session-scoped scratch area. No file parsing determines open questions: the queue lives entirely in session variables. Each question gets its **own dedicated answer file** whose name is **content-addressed** — a pure function of the question text (a short hash, e.g. `answers/q-<hash8>.md`), so no counter needs to be kept aligned; a `notes_path` store variable points at the accumulating notes file. Scratch paths are **session-scoped** (`/tmp/<capability>/<sessionId>/...`), exposed to LLM phases via store variables + `${var}` interpolation. Session scoping is mandatory: concurrent sessions of the same capability must not share a backlog.
-2. **Inner loop — `kind: "loop"` block that drains the queue one question per pass** (do-while, ~30-pass cap). Body:
-   - **reset-vars** — `variable-definition` phase with `static` variables that reset per-pass state (`questionAnswered` → `false`, `nextQuestion` → empty) at the start of every pass, so no stale value leaks from the prior iteration.
-   - **get-next-question** — `kind: "code"` phase that **peeks** the front of `questions` into `nextQuestion` and derives this question's **dedicated answer file** `answer_path` from the question text (does **not** pop — the pop is conditional on a satisfactory answer).
-   - **answer-question** — LLM phase that researches and **writes the answer to its dedicated `${answer_path}` file**, with a mechanical **non-empty-existence `loopWhile`** (`!answerFileWritten` — file exists and is non-empty; total, never throws; `maxIterations: 2`). Because each question owns its file, a plain existence check is unambiguous — no shared-file size-baseline or substring detection needed. User-only questions are resolved **inline** via `ask_user` and captured.
-   - **validate-answer** — LLM-judgment `variable-definition` phase that sets `questionAnswered` (`llm` boolean) — a judgment of satisfactory-vs-gaps, not a mechanical disk-evidence check.
-   - **branch:if `questionAnswered`** — **then**: `pop-question` (shift the queue); **else**: `refine-answer` (LLM phase that reads the draft at `${answer_path}`, improves it, and rewrites the **same file** — `loopWhile: !answerFileWritten`, `maxIterations: 2`; because the filename is a pure function of the question text, the second-chance rewrite targets the same file) **then** `pop-question`. A satisfactory answer pops; an unsatisfactory one is refined in place before popping.
-   The inner loop's `repeatWhile`: queue non-empty — it drains the queue, exiting when empty (or at the pass cap).
-3. **Merge-notes — `kind: "code"` phase** immediately after the inner loop (before generate): concatenates every per-question answer file (`q-*.md`) in **mtime order** (approximating answer order, since each file is written when its question is answered) into the single notes file, preserving its header. **Best-effort and total** — unreadable/missing files are skipped, never throws. This consolidates the per-question drafts into the durable notes source the output-writing phases consult.
-4. **Generate — LLM `variable-definition` phase**: reflects on what was answered and sets `new_questions` (`llm` array); before concluding it **verifies complete architecture coverage** — every component/area of the architecture (per the accumulated findings) is covered by an answered question, with genuinely new questions generated to close any gaps and only then stopping. A following `kind: "code"` `merge-questions` phase folds them into the queue. Write each seeded question to be **self-guiding** about where to look rather than attaching a separate lookup table or checklist (instructions re-serve on every entry).
-5. **Outer loop — do-while `kind: "loop"`** around [inner loop, merge-notes, generate, merge-questions]; `repeatWhile`: queue non-empty (repeat only while discovery produced new questions).
-6. **Cleanup — trailing `kind: "code"` phase** after the output-writing phases: removes the session-scoped scratch directory once the writes are done. Best-effort and total (never throws — /tmp is OS-reclaimed anyway).
-
-**Notes file as the write reference.** The merged Q&A notes file (consolidated from the per-question answer files) replaces a parsed backlog as the source the output-writing phases consult for content.
-
-**Why variables for the queue, a file for the notes:** the queue's open/answered state is *control flow* driven by per-pass LLM judgment and lives naturally in session variables; the **accumulated content** (the Q&A notes) is *monotonic across runs* — `filesWritten`/`askUserCalled` reset per run in `setupTurn`, so durable research output belongs in a file, not in per-run engine signals.
-
-**Inline user clarification.** User-only questions are resolved inline in the answer phase via `ask_user` — no `[needs-user]` backlog handoff to a later clarify phase.
-
-**Total-callback rule.** A throwing loop callback is treated as *not passing* at `agent_end`. Callbacks must catch internally and return the fail-safe value — for `loopWhile`: `true` (keep looping on unreadable input); for `terminateWhen`: `false` (do not advance).
-
-**Single-output write phases.** One phase per contract output, gated to exactly that output (`write: [name]`), with a **total disk-existence/non-emptiness `loopWhile`** (missing or empty file → `true`, keep looping; fail-safe on any error, bounded by `maxIterations`). The anti-pattern is one phase writing many large files in a single turn — split it so each output gets its own phase, its own gate, and its own mechanical completeness check.
+- `seeded-discovery-loop.md` — **THE standard research-loop pattern**: code-phase seed, inner drain loop (with a refinement loop per question), merge-notes, generate-with-coverage-mandate, outer do-while, cleanup. The canonical shape for any research/refinement capability.
+- `refinement-loop.md` — produce → judge → refine → re-judge → consume; loop while the judgment is negative, single consume after the loop.
+- `exhaustion-loop.md` — `loopWhile(askUserCalled)` interview/clarify loops; stall warning; mandatory-gate exception.
+- `single-output-write-phases.md` — one phase per contract output, gated `write: [name]`, total disk-existence `loopWhile`.
+- `total-callback-rule.md` — **load-bearing**: a throwing loop callback is treated as not passing at `agent_end`; callbacks must catch internally and return the fail-safe value.
+- `inline-user-clarification.md` — resolve user-only questions inline via `ask_user` (`displayMode: "inline"`).
 
 ## User co-design protocol
 
@@ -141,10 +125,12 @@ Co-design sessions run on the **separate, currently-running pio**, which does **
 - **No changes to state-machine edges, contracts (inputs/outputs/`excludedFiles`), or marker declarations/behavior.** The phase graph is freely re-derived; the contract and dispatch are not.
 - **No `signal-completion` phase and no `pio_mark_complete` instruction** in any designed workflow — exit is automatic (see below).
 - **No `minIterations: 1` on single-pass phases** — lean by design.
+- **Never consume inside a branch arm of a refinement loop** — a refined-but-still-unsatisfactory artifact must be re-judged before consumption.
 
 ## Reference material
 
 - **`src/capabilities/workflow-playground/workflow.ts`** — the worked example of every field and `kind` in action: loops with bounds/steering/termination (`minIterations`, `maxIterations`, `loopMessage`, `terminateWhen`, `loopWhile`), `variable-definition` phases (static/llm/computed), `branch:if` and `branch:switch` (callback and `"$varName"` forms), `kind: "code"` steps, do-while `kind: "loop"` blocks, and the **verify-phase pattern** (an LLM phase after programmatic work that checks variables/files and reports).
+- **`src/skills/capability-design/patterns/`** — the canonical loop-pattern library (seeded-discovery-loop, refinement-loop, exhaustion-loop, single-output-write-phases, total-callback-rule, inline-user-clarification).
 - **`src/runtime/workflow-types.ts`** — the source of truth for all `WorkflowPhase` field and `kind` definitions.
 - Supporting sources: `src/runtime/session-state.ts` (termination signals on `PioSessionState`), `src/runtime/loop-engine.ts` (`__pio-exit` synthesis, write gating), `src/runtime/session-store.ts` (`setVar` gating).
 

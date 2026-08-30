@@ -104,6 +104,32 @@ Work the questions in order: split by validation points first (phase count), ext
 - `total-callback-rule.md` — **load-bearing**: a throwing loop callback is treated as not passing at `agent_end`; callbacks must catch internally and return the fail-safe value.
 - `inline-user-clarification.md` — resolve user-only questions inline via `ask_user` (`displayMode: "inline"`).
 
+### Discovery character decides the pattern
+
+Before choosing a pattern, classify the capability's **discovery character**:
+
+- **Open-ended discovery** — the item count is unknowable in advance, per-item durable progress matters, and work must be resumable across reloads. This is the legitimate home of the seeded-discovery loop / per-item content-addressed records with **code-owned naming** / refinement loops / mechanical drain. **project-context is the canonical legitimate instance.**
+- **Closed-enumeration synthesis** — the inputs are fully enumerable in one scan and fit one context window, with no open-ended item discovery, small N, and low-stakes unattended runs. The canonical shape is **single-pass identify + per-output gated write phases**. These are **NOT** candidates for seeded-discovery/mechanical-drain.
+
+### Single-pass full-context is the strongest exhaustiveness mechanism for closed tasks
+
+For holistic / cross-referential synthesis, one full-context pass beats replays over static files: replays cannot surface information the first pass didn't have. Keep closed tasks lean — read everything in one phase, then act.
+
+### Exhaustion loops are double-check mechanisms, not completeness proofs
+
+`loopWhile` on "this run wrote X" proves a **fixpoint** (a run made no further change), not that every item was handled. Use them where a phase's output is "keep re-checking until nothing more found" (missed updates, no-change termination) with a `loopMessage` that explicitly nudges re-checking; do not claim mechanical completeness from them.
+
+### Keep per-output write gates even in lean capabilities
+
+`write: ["<name>"], one output per phase` gives per-file isolation, attribution, and restricted-by-default enforcement cheaply. Keep the documented `single-output-write-phases` shape even in otherwise-lean capabilities.
+
+### Methodology hygiene
+
+- **Codify the closed-enumeration non-use case** so the drain pattern isn't re-applied by inertia to a task it doesn't fit.
+- **Empty-queue behavior:** if a do-while drain's queue can be empty, define the empty-queue body behavior explicitly — a do-while guarantees one confusing pass on an empty input.
+- **Code-owned naming:** content-addressed intermediate naming must be owned by code phases, never by an LLM naming convention.
+- **Fixpoint ≠ completeness:** verify any "all updates applied" completion claim against what `filesWritten` actually measures (a write occurred). A genuine completeness check needs content-side evidence (a verify phase or code-phase assertion).
+
 ## User co-design protocol
 
 Each capability is designed **together with the user** during its evolve-plan (specification) session, not in isolation:

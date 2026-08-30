@@ -161,14 +161,6 @@ const DEFAULT_QUESTIONS = [
  * instructions. References the accumulating notes file (${notes_path}) as the
  * research source and sets the quality bar — identical across all 7 writes.
  */
-const WRITE_BOILERPLATE = `Your research findings are accumulated in \`\${notes_path}\` — consult them (with the \`pio-project-knowledge\` skill) as the source for this file's content.
-
-When the file has no relevant content for this project, write a brief note ("No significant findings in this category") rather than leaving it empty.
-
-Be concise — target ~2000 tokens (~1500 words) maximum. Prioritize actionable information over narrative description.
-
-**Quality bar:** Every claim should be backed by a file you actually read or confirmed with the user. If something is uncertain, note it as such rather than guessing. Dense with relevant information, not padded with boilerplate.`;
-
 export default [
   // ---------------------------------------------------------------------------
   // Default Questions — seed the question queue + answers dir + notes file
@@ -444,9 +436,7 @@ If no genuine gaps remain, finish without asking. This is a single run — there
     instructions: `Write \`.pio/PROJECT/OVERVIEW.md\`. Structure it exactly as defined by the \`pio-project-knowledge\` skill:
 - \`# Project Overview\` — purpose of the project (2-4 sentences); author, license, repository reference.
 - \`## Tech Stack\` — programming languages, frameworks, databases, infrastructure tools; include versions when available.
-- \`## Repository Structure\` — key directories and their purpose; tree format or concise list (top-level only).
-
-${WRITE_BOILERPLATE}`,
+- \`## Repository Structure\` — key directories and their purpose; tree format or concise list (top-level only).`,
   },
   {
     id: "write-development",
@@ -465,9 +455,7 @@ ${WRITE_BOILERPLATE}`,
 - \`## Build and Test\` — how to build, test, and lint; commands, frameworks, prerequisites.
 - \`## Test Directory Convention\` — where test files live relative to source files; test runner and configuration details.
 - \`## CI/CD and Release\` — CI/CD pipeline stages, release cycle, deployment process.
-- \`## Local Environment Setup\` — environment variables, configs, secrets; external services required (database, message broker, etc.); commands to start locally.
-
-${WRITE_BOILERPLATE}`,
+- \`## Local Environment Setup\` — environment variables, configs, secrets; external services required (database, message broker, etc.); commands to start locally.`,
   },
   {
     id: "write-conventions",
@@ -485,9 +473,7 @@ ${WRITE_BOILERPLATE}`,
 - \`# Code Conventions\`
 - \`## Coding Style\` — conventions from editor configs (tsconfig.json, .editorconfig, .prettierrc); indentation, line length, quotes, semicolons, naming conventions.
 - \`## Linting and Formatting\` — linting tools, formatting tools, how to run them; configuration files and key rules.
-- \`## AI Agent Instructions\` — conventions from AGENTS.md / CLAUDE.md / CURSOR.md or similar files; project-specific agent guidance encoded in prompts.
-
-${WRITE_BOILERPLATE}`,
+- \`## AI Agent Instructions\` — conventions from AGENTS.md / CLAUDE.md / CURSOR.md or similar files; project-specific agent guidance encoded in prompts.`,
   },
   {
     id: "write-git",
@@ -505,9 +491,7 @@ ${WRITE_BOILERPLATE}`,
 - \`# Git Conventions\`
 - \`## Commit Message Format\` — format (Conventional Commits \`type(scope): description\`, custom prefixes); observed commit types and usage examples; scope usage patterns; tag/versioning scheme (semver, calver, or none detected); branch naming patterns and branching strategy; merge commit conventions (squash vs. merge PRs); signing practices (GPG, DCO sign-off, or none observed).
 
-For a project with no git repository, write "No git repository found" rather than leaving the file empty.
-
-${WRITE_BOILERPLATE}`,
+For a project with no git repository, write "No git repository found" rather than leaving the file empty.`,
   },
   {
     id: "write-architecture",
@@ -524,9 +508,7 @@ ${WRITE_BOILERPLATE}`,
     instructions: `Write \`.pio/PROJECT/ARCHITECTURE.md\`. Structure it exactly as defined by the \`pio-project-knowledge\` skill:
 - \`# Architecture\`
 - \`## Patterns and Design Decisions\` — architecture patterns (MVC, layered, event-driven, microservices, etc.); capability pattern (if applicable): module structure, registration, lifecycle; key design decisions and trade-offs; ADRs (Architecture Decision Records) if they exist.
-- \`## Service Integrations\` — how the project integrates with other services; deployment topology; ecosystem context — how the project fits into larger systems.
-
-${WRITE_BOILERPLATE}`,
+- \`## Service Integrations\` — how the project integrates with other services; deployment topology; ecosystem context — how the project fits into larger systems.`,
   },
   {
     id: "write-dependencies",
@@ -545,9 +527,7 @@ ${WRITE_BOILERPLATE}`,
 - \`## External APIs\` — third-party APIs and services the project integrates with; endpoints, versions, authentication methods.
 - \`## Third-Party Libraries\` — key libraries and frameworks, why they are used; typically a table: Package | Version | Purpose.
 - \`## Internal Package Graph\` — if a monorepo: how internal packages depend on each other; module dependency tree or ASCII diagram.
-- \`## Data Flow Between Services\` — how data moves across service boundaries; workflow pipeline diagrams (ASCII art).
-
-${WRITE_BOILERPLATE}`,
+- \`## Data Flow Between Services\` — how data moves across service boundaries; workflow pipeline diagrams (ASCII art).`,
   },
   {
     id: "write-glossary",
@@ -565,8 +545,6 @@ ${WRITE_BOILERPLATE}`,
 - \`# Glossary\`
 - \`## Terms\` — domain-specific terminology with definitions.
 - \`## Acronyms\` — acronyms and their full expansions (typically a table).
-- \`## Business Concepts\` — key business concepts relevant to understanding the codebase.
-
-${WRITE_BOILERPLATE}`,
+- \`## Business Concepts\` — key business concepts relevant to understanding the codebase.`,
   },
 ] satisfies WorkflowPhase[];

@@ -7,9 +7,10 @@
 ```
 kind: "code"   default-questions — seed the queue + scratch area
 kind: "loop"   research-loop (outer, do-while)
-  body: [ answer-questions (inner loop), merge-notes, generate-questions, merge-questions ]
+  body: [ answer-questions (inner loop), generate-questions, merge-questions ]
   repeatWhile: queue non-empty (any open question remains)
   maxIterations: <pass cap>
+kind: "code"   merge-notes — final consolidation AFTER the loop
 ```
 
 ### 1. Seed — `kind: "code"` phase
@@ -30,17 +31,17 @@ Body (do-while, bounded pass cap):
 
 The inner loop's `repeatWhile`: queue non-empty — it drains the queue, exiting when empty (or at the pass cap).
 
-### 3. Merge-notes — `kind: "code"` phase
+### 3. Generate — LLM `variable-definition` phase
 
-Immediately after the inner loop (before generate): concatenates every per-question answer file (`q-*.md`) in **mtime order** (approximating answer order) into the single notes file, preserving its header. **Best-effort and total** — unreadable/missing files are skipped, never throws. This consolidates the per-question drafts into the durable notes source the output-writing phases consult.
+Reflects on what was answered (read the per-question answer files under the `answers_dir`) and sets `new_questions` (`llm` array); before concluding it **verifies complete architecture coverage** — every component/area of the architecture (per the accumulated findings) is covered by an answered question, with genuinely new questions generated to close any gaps, and only then stopping. A following `kind: "code"` **merge-questions** phase folds them into the queue. Write each seeded question to be **self-guiding** about where to look rather than attaching a separate lookup table or checklist (instructions re-serve on every entry).
 
-### 4. Generate — LLM `variable-definition` phase
+### 4. Outer loop — do-while `kind: "loop"`
 
-Reflects on what was answered and sets `new_questions` (`llm` array); before concluding it **verifies complete architecture coverage** — every component/area of the architecture (per the accumulated findings) is covered by an answered question, with genuinely new questions generated to close any gaps, and only then stopping. A following `kind: "code"` **merge-questions** phase folds them into the queue. Write each seeded question to be **self-guiding** about where to look rather than attaching a separate lookup table or checklist (instructions re-serve on every entry).
+Around `[inner loop, generate-questions, merge-questions]`; `repeatWhile`: queue non-empty (repeat only while discovery produced new questions).
 
-### 5. Outer loop — do-while `kind: "loop"`
+### 5. Merge-notes — `kind: "code"` phase (top-level, after the loop)
 
-Around `[inner loop, merge-notes, generate-questions, merge-questions]`; `repeatWhile`: queue non-empty (repeat only while discovery produced new questions).
+Runs **once after the outer loop drains the queue** (not inside it): concatenates every per-question answer file (`q-*.md`) in **mtime order** (approximating answer order) into the single notes file, preserving its header. **Best-effort and total** — unreadable/missing files are skipped, never throws. This is the final consolidation into the durable notes source the output-writing phases consult; during the loop, generate-questions reads the per-question answer files directly.
 
 ### 6. Cleanup — trailing `kind: "code"` phase
 

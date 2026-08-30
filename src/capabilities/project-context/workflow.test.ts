@@ -85,9 +85,8 @@ function seedState(): PioSessionState {
 
 const researchLoop = workflow[1];
 const innerLoop = (researchLoop.body as WorkflowPhase[])[0];
-const mergeNotesPhase = (researchLoop.body as WorkflowPhase[])[1];
-const generateQuestions = (researchLoop.body as WorkflowPhase[])[2];
-const mergeQuestions = (researchLoop.body as WorkflowPhase[])[3];
+const generateQuestions = (researchLoop.body as WorkflowPhase[])[1];
+const mergeQuestions = (researchLoop.body as WorkflowPhase[])[2];
 const innerBody = innerLoop.body as WorkflowPhase[];
 const resetPhase = innerBody[0];
 const getNextPhase = innerBody[1];
@@ -99,8 +98,9 @@ const validatePhase = refineBody[0];
 const branchPhase = refineBody[1];
 const branchThen = branchPhase.then as WorkflowPhase[];
 const refinePhase = branchThen[0];
-const writePhases = workflow.slice(3, 10) as WorkflowPhase[];
-const cleanupPhase = workflow[10];
+const mergeNotesPhase = workflow[2] as WorkflowPhase;
+const writePhases = workflow.slice(4, 11) as WorkflowPhase[];
+const cleanupPhase = workflow[11];
 
 // ---------------------------------------------------------------------------
 // default-questions seed
@@ -598,20 +598,20 @@ describe("research-loop structure", () => {
     expect(remaining[0]).toBe(SEEDED_THEMES[1]);
   });
 
-  it("outer loop body is exactly [answer-questions, merge-notes, generate-questions, merge-questions]", () => {
+  it("outer loop body is exactly [answer-questions, generate-questions, merge-questions]", () => {
     expect(researchLoop.kind).toBe("loop");
     expect((researchLoop.body as WorkflowPhase[]).map((p) => p.id)).toEqual([
       "answer-questions",
-      "merge-notes",
       "generate-questions",
       "merge-questions",
     ]);
   });
 
-  it("merge-notes is a code phase in the outer body (after the inner loop)", () => {
+  it("merge-notes is a top-level code phase after the research-loop (final consolidation)", () => {
     expect(mergeNotesPhase.kind).toBe("code");
     expect(mergeNotesPhase.id).toBe("merge-notes");
-    expect(innerLoop.id).toBe("answer-questions");
+    expect(workflow[1].id).toBe("research-loop");
+    expect(workflow[2].id).toBe("merge-notes");
   });
 });
 
@@ -621,7 +621,7 @@ describe("research-loop structure", () => {
 
 describe("clarify", () => {
   it("is a lean single-run phase (no loop fields, no write gates)", () => {
-    const clarify = workflow[2] as WorkflowPhase;
+    const clarify = workflow[3] as WorkflowPhase;
     expect(clarify.id).toBe("clarify");
     expect(clarify.kind).toBeUndefined();
     expect(clarify.maxIterations).toBeUndefined();
@@ -712,6 +712,7 @@ describe("workflow structure", () => {
   const expectedTopLevel = [
     "default-questions",
     "research-loop",
+    "merge-notes",
     "clarify",
     "write-overview",
     "write-development",
@@ -723,15 +724,16 @@ describe("workflow structure", () => {
     "cleanup",
   ];
 
-  it("has 11 top-level phases in order with correct kinds", () => {
+  it("has 12 top-level phases in order with correct kinds", () => {
     expect(workflow.map((p) => p.id)).toEqual(expectedTopLevel);
     expect(workflow[0].kind).toBe("code");
     expect(workflow[1].kind).toBe("loop");
-    expect(workflow[2].kind).toBeUndefined();
+    expect(workflow[2].kind).toBe("code");
+    expect(workflow[3].kind).toBeUndefined();
     for (const p of writePhases) {
       expect(p.kind).toBeUndefined();
     }
-    expect(workflow[10].kind).toBe("code");
+    expect(workflow[11].kind).toBe("code");
   });
 
   it("carries no number-prefixed titles anywhere", () => {

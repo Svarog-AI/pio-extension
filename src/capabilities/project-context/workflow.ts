@@ -343,20 +343,10 @@ Keep the question heading and improve the answer body. The phase advances only o
         ],
       },
 
-      // After the queue is drained, consolidate every per-question answer
-      // file into the single notes file (best-effort, total).
-      {
-        id: "merge-notes",
-        title: "Merge Answers into Notes",
-        kind: "code",
-        run: (ctx: CodeStepContext) => {
-          mergeAnswersIntoNotes(ctx.state);
-        },
-      },
-
-      // After consolidation, discover genuinely new questions. The coverage
+      // After the queue drains, discover genuinely new questions. The coverage
       // mandate directs the agent to verify complete architecture coverage
-      // before concluding discovery.
+      // before concluding discovery. Answers live in per-question files under
+      // the answers dir (consolidated into notes only after the loop).
       {
         id: "generate-questions",
         title: "Generate New Questions",
@@ -366,7 +356,7 @@ Keep the question heading and improve the answer body. The phase advances only o
             name: NEW_QUESTIONS_VAR,
             type: "array",
             kind: "llm",
-            description: `Reflect on the questions answered during this research pass (answers are consolidated in \`\${notes_path}\`) and identify genuinely new questions that emerged — unknowns about how areas of the project work, interact, or are tested that a complete PROJECT picture still needs.
+            description: `Reflect on the questions answered during this research pass (read the per-question answer files in \`\${answers_dir}\`) and identify genuinely new questions that emerged — unknowns about how areas of the project work, interact, or are tested that a complete PROJECT picture still needs.
 
 Before concluding, **verify complete architecture coverage**: check that every component/area of the architecture (per the accumulated findings) is covered by an answered question, and that no further questions remain about it. Generate any genuinely new questions needed to close coverage gaps, and only then stop.
 
@@ -392,6 +382,20 @@ Use setVar to set new_questions to the array of new question strings (empty arra
         },
       },
     ],
+  },
+
+  // ---------------------------------------------------------------------------
+  // Merge Notes — final consolidation of every per-question answer file into
+  // the single notes file, run once AFTER the research loop drains the queue
+  // (best-effort, total).
+  // ---------------------------------------------------------------------------
+  {
+    id: "merge-notes",
+    title: "Merge Answers into Notes",
+    kind: "code",
+    run: (ctx: CodeStepContext) => {
+      mergeAnswersIntoNotes(ctx.state);
+    },
   },
 
   // ---------------------------------------------------------------------------

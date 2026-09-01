@@ -391,7 +391,9 @@ function setNestedLeaf(
         );
       }
       const obj = current as Record<string, unknown>;
-      if (!isLast && !(seg in obj)) {
+      // Own-property check (not `in`, which also matches inherited keys) so a
+      // pathological prototype-chain key yields a precise "missing" error.
+      if (!isLast && !Object.hasOwn(obj, seg)) {
         throw new Error(
           `Missing object key '${seg}' — cannot auto-create intermediate segments.`,
         );
@@ -453,43 +455,10 @@ export const setVarTool = defineTool({
   async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
     const state = getState();
 
-    // 1. Session active check
-    if (!state.isActive) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: "setVar is only available inside a pio session.",
-          },
-        ],
-        details: {},
-      };
-    }
-
-    // 2. Phase kind check
-    const currentPhase = state.phaseManager?.getPhase(state.currentPhaseId);
-    if (currentPhase?.kind !== "variable-definition") {
-      const phaseInfo = currentPhase
-        ? `"${state.currentPhaseId}" (${currentPhase.title})`
-        : `"${state.currentPhaseId}"`;
-      return {
-        content: [
-          {
-            type: "text",
-            text: `setVar can only be used during variable-defining phases. Current phase: ${phaseInfo}.`,
-          },
-        ],
-        details: {},
-      };
-    }
-
-    // 3. Store check
-    if (!state.store) {
-      return {
-        content: [{ type: "text", text: "Variable store not initialized." }],
-        details: {},
-      };
-    }
+    // 1-3. Gating (session active + variable-definition phase + store).
+    // Mirrors the shared gatingErrorText helper exactly.
+    const gateErr = gatingErrorText("setVar", state);
+    if (gateErr !== null) return errorResult(gateErr);
 
     // 3a. Path mode — set a nested leaf field (e.g. tasks[0].status).
     // Reads the current value of `name`, mutates the leaf in place, then
@@ -650,43 +619,10 @@ export const appendVarTool = defineTool({
   async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
     const state = getState();
 
-    // 1. Session active check
-    if (!state.isActive) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: "appendVar is only available inside a pio session.",
-          },
-        ],
-        details: {},
-      };
-    }
-
-    // 2. Phase kind check
-    const currentPhase = state.phaseManager?.getPhase(state.currentPhaseId);
-    if (currentPhase?.kind !== "variable-definition") {
-      const phaseInfo = currentPhase
-        ? `"${state.currentPhaseId}" (${currentPhase.title})`
-        : `"${state.currentPhaseId}"`;
-      return {
-        content: [
-          {
-            type: "text",
-            text: `appendVar can only be used during variable-defining phases. Current phase: ${phaseInfo}.`,
-          },
-        ],
-        details: {},
-      };
-    }
-
-    // 3. Store check
-    if (!state.store) {
-      return {
-        content: [{ type: "text", text: "Variable store not initialized." }],
-        details: {},
-      };
-    }
+    // 1-3. Gating (session active + variable-definition phase + store).
+    // Mirrors the shared gatingErrorText helper exactly.
+    const gateErr = gatingErrorText("appendVar", state);
+    if (gateErr !== null) return errorResult(gateErr);
 
     // 4. Append — normalize to a list of items; initialize absent vars to [].
     const items = Array.isArray(params.value) ? params.value : [params.value];
@@ -742,36 +678,21 @@ export const getVarTool = defineTool({
   async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
     const state = getState();
 
-    // 1. Session active check
+    // 1. Session active check. getVar is readable in any phase, so it skips
+    // the variable-definition phase gate used by the writing tools.
     if (!state.isActive) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: "getVar is only available inside a pio session.",
-          },
-        ],
-        details: {},
-      };
+      return errorResult("getVar is only available inside a pio session.");
     }
 
     // 2. Store check
     if (!state.store) {
-      return {
-        content: [{ type: "text", text: "Variable store not initialized." }],
-        details: {},
-      };
+      return errorResult("Variable store not initialized.");
     }
 
     // 3. Get the variable
     const value = state.store.get(params.name);
     if (value === undefined) {
-      return {
-        content: [
-          { type: "text", text: `Variable '${params.name}' is undefined.` },
-        ],
-        details: {},
-      };
+      return errorResult(`Variable '${params.name}' is undefined.`);
     }
     return {
       content: [
@@ -795,25 +716,15 @@ export const listVarsTool = defineTool({
   async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
     const state = getState();
 
-    // 1. Session active check
+    // 1. Session active check. listVars is readable in any phase, so it skips
+    // the variable-definition phase gate used by the writing tools.
     if (!state.isActive) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: "listVars is only available inside a pio session.",
-          },
-        ],
-        details: {},
-      };
+      return errorResult("listVars is only available inside a pio session.");
     }
 
     // 2. Store check
     if (!state.store) {
-      return {
-        content: [{ type: "text", text: "Variable store not initialized." }],
-        details: {},
-      };
+      return errorResult("Variable store not initialized.");
     }
 
     // 3. List all variables

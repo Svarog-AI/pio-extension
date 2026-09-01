@@ -30,8 +30,15 @@ This step re-derives `src/capabilities/execute-task/workflow.ts` into a 9-phase 
 ## Programmatic verification
 
 - Given the workspace, when `npm run check` is run, then tsc reports no type errors.
-- Given the workspace, when `npm test` is run, then the full vitest suite passes (1824 tests).
+- Given the workspace, when `npm test` is run, then the full vitest suite passes (1820 tests).
 - Given the workspace, when `npm run lint` is run, then biome reports no warnings/errors.
 - Given the workspace, when `grep -rn "pio_mark_complete\|signal-completion" src/capabilities/execute-task/workflow.ts` is run, then it returns zero hits.
 - Given the workspace, when `grep -rn "pio_mark_complete" src/capabilities/execute-task/role.md` is run, then it returns zero hits.
 - Given the workspace, when `git diff -- src/capabilities/execute-task/config.ts` is run, then it is empty (config.ts byte-identical).
+
+## User-requested changes (post-implementation)
+
+Two post-implementation change requests were applied and re-verified:
+
+- **Markers removed (execute-task only).** The `markers` declaration was removed from `execute-task`'s `CONTRACT` (`config.ts`), and the marker tests in `config.test.ts` (the "declarative markers" and "e2e: exit lifecycle with declarative markers" describes) were deleted along with the now-unused `config` import. The `status` field in `EXECUTION_SUMMARY_SCHEMA` is unchanged. Given the marker tests are removed and the suite re-run, then all remaining tests pass (1820).
+- **Do-while loop containers carry no `instructions`.** Removed the dead `instructions` field from `execute-task`'s `iterative-tdd`/`tdd-process` containers and from the `workflow-playground` reference's `dowhile-var`/`dowhile-capped` containers, and updated the playground test to assert containers have no `instructions`. Given a `kind:"loop"` container, when its fields are inspected, then its `instructions` is `undefined` (it never receives an agent turn). Given the capability-design skill, when its `"loop"` bullet is read, then it states a do-while loop container must not carry an `instructions` field.

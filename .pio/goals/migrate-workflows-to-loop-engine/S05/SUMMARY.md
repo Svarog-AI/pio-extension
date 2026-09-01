@@ -1,6 +1,6 @@
 ---
 status: completed
-commit: fba5c4c5c09d61b3a9cc96db524a53780f475480
+commit: adb125e43f1e6072687540c2d8a14f23590912b8
 ---
 
 # Step 5: Migrate execute-task to the loop engine
@@ -20,6 +20,11 @@ commit: fba5c4c5c09d61b3a9cc96db524a53780f475480
 - `src/capabilities/execute-task/role.md` — rewrote the completion definition: removed the two `pio_mark_complete` references (lines 1 and 3); exit is now automatic ("Exit is handled automatically by the framework once your final phase completes"). Kept the test-first emphasis and the `## Skills`-section-loading guidance.
 - `src/capabilities/execute-task/schemas.ts` — added `commit: Type.Optional(Type.String())` to `EXECUTION_SUMMARY_SCHEMA` alongside the unchanged `status` union (user-directed contract change).
 - `src/capabilities/execute-task/schemas.test.ts` — added cases for the `commit` field (accepts with commit, accepts without, rejects non-string commit; type-derivation carries the optional field).
+- `src/capabilities/execute-task/config.ts` — removed the `markers` declaration from `CONTRACT` (user-requested marker removal; see User-Requested Changes).
+- `src/capabilities/execute-task/config.test.ts` — removed the marker tests (the "declarative markers" and "e2e: exit lifecycle with declarative markers" describes) and the now-unused `config` import.
+- `src/capabilities/workflow-playground/workflow.ts` — removed the dead `instructions` field from the `dowhile-var`/`dowhile-capped` do-while containers.
+- `src/capabilities/workflow-playground/config.test.ts` — updated the do-while structural assertions to expect no `instructions` on loop containers.
+- `src/skills/capability-design/SKILL.md` — the `"loop"` bullet now states a do-while loop container must not carry an `instructions` field (never rendered / does nothing).
 
 ## Files Deleted
 
@@ -43,7 +48,18 @@ The `commit` phase instruction says "commit the implementation + TEST.md". In th
 
 ## User-Requested Changes
 
-- None during this session (no post-implementation change requests received).
+Two post-implementation change requests were received and applied (committed in `adb125e`, on top of the original implementation `fba5c4c`):
+
+1. **Remove contract markers (execute-task only).** The user directed removing the `COMPLETED`/`BLOCKED` marker files that the exit lifecycle auto-creates ("We will remove support for them in the future. For now, remove them from the capability code and validation requirements."). Applied to execute-task only (user-confirmed scope via `ask_user`):
+   - `src/capabilities/execute-task/config.ts` — removed the `markers` declaration from `CONTRACT`.
+   - `src/capabilities/execute-task/config.test.ts` — deleted the "declarative markers" and "e2e: exit lifecycle with declarative markers" describes and the now-unused `config` import.
+   - Note: this overrides the plan's "config.ts byte-identical" hard constraint and is recorded as a user-directed contract change (like the `commit`-field change). Downstream impact (accepted): `review-task`'s `completed` input (the COMPLETED marker) will no longer be satisfiable by execute-task until review-task's own migration adjusts it. The `status` field in `EXECUTION_SUMMARY_SCHEMA` is summary content and is unchanged.
+
+2. **Drop `instructions` from do-while loop containers.** The user directed removing the `instructions` field from `kind:"loop"` containers ("they do nothing") and updating the skill to memorize that convention. A loop container never receives an agent turn, so its `instructions` is never rendered (the prompt compiler validates `instructions` only on standard phases and exempts loop containers).
+   - `src/capabilities/execute-task/workflow.ts` — removed the `instructions` field from the `iterative-tdd` and `tdd-process` containers.
+   - `src/capabilities/workflow-playground/workflow.ts` — removed the dead `instructions` from the `dowhile-var`/`dowhile-capped` containers (the reference example, kept consistent).
+   - `src/capabilities/workflow-playground/config.test.ts` — updated to assert containers have no `instructions`.
+   - `src/skills/capability-design/SKILL.md` — updated the `"loop"` bullet to memorize that do-while loop containers carry no `instructions`.
 
 ## Test Coverage
 

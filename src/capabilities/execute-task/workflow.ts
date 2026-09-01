@@ -172,7 +172,11 @@ Maintain each task's status (pending / done / verified / blocked) in \`tasks.md\
               },
             ],
             loopMessage: `Have another look — any test cases, edge cases, or acceptance criteria still missed for the current task? Add them (and note the change to \`\${write-tests-changed}\`), else make no changes and finish.`,
-            instructions: `For the current task, write failing tests that express its expected behavior, per the \`tdd\` skill's tracer-bullet → RED→GREEN methodology. Use the project's domain glossary so test names match the domain language.
+            instructions: `For the current task, write failing tests that express its **behavior** — what the system does through its public interface, not how it's implemented — per the \`tdd\` skill's tracer-bullet → RED→GREEN methodology. Use the project's domain glossary so test names and interface vocabulary match the domain language.
+
+**Prefer tracer bullet tests:** start with the smallest test that confirms one real thing about the system end-to-end through a public API, then grow incrementally (one test → one implementation → repeat). A tracer bullet proves the path works before you add coverage.
+
+**Test behavior, not implementation.** A good test still passes after an internal refactor as long as behavior is unchanged. Avoid asserting string-literal content (descriptions, labels, error text), internal data-structure shapes, function signatures/parameter counts, or reading source files as raw strings. If renaming an internal function would break the test, it is testing implementation, not behavior. Before writing a test, ask: "if I changed the internals but the system still did the right thing, would this test still pass?" If not, test the outcome instead.
 
 **Whenever you add or change a test this pass, append a line to \`/tmp/pio-execute-task/<sessionId>/write-tests-changed.txt\`** (under /tmp — writes there are not blocked). When a pass adds no new tests, make **no write** — only note the change when you actually made one.
 

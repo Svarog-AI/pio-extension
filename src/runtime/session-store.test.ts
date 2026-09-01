@@ -56,9 +56,9 @@ describe("SessionVariableStore", () => {
       expect(store.get("foo")).toBe(42);
     });
 
-    it("get returns undefined for declared but not set", () => {
+    it("get returns a type-appropriate empty default for declared but not set", () => {
       store.declare("foo", "number");
-      expect(store.get("foo")).toBe(undefined);
+      expect(store.get("foo")).toBe(0);
     });
 
     it("calling declare() twice with same name and type is a no-op (idempotent)", () => {
@@ -187,9 +187,19 @@ describe("SessionVariableStore", () => {
       expect(s.get("y")).toBe("B");
     });
 
-    it("returns undefined for declared-but-unset vars", () => {
+    it("returns a type-appropriate empty default for declared-but-unset vars", () => {
       store.declare("foo", "number");
-      expect(store.get("foo")).toBe(undefined);
+      expect(store.get("foo")).toBe(0);
+      store.declare("flag", "boolean");
+      expect(store.get("flag")).toBe(false);
+      store.declare("str", "string");
+      expect(store.get("str")).toBe("");
+      store.declare("arr", "array");
+      expect(store.get("arr")).toEqual([]);
+      store.declare("obj", "object");
+      expect(store.get("obj")).toEqual({});
+      store.declare("nil", "null");
+      expect(store.get("nil")).toBe(null);
     });
 
     it("returns undefined for unknown names", () => {

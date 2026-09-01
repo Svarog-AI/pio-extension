@@ -94,6 +94,13 @@ export class SessionVariableStore {
     if (name in this._params) {
       return this._params[name];
     }
+    // Declared-but-unset vars resolve to a type-appropriate empty default so
+    // consumers (e.g. code phases) can read an array/string/number safely
+    // without a wrapper helper. Truly unknown names still return undefined.
+    const declaredType = this._declarations.get(name);
+    if (declaredType !== undefined) {
+      return emptyDefaultOf(declaredType);
+    }
     return undefined;
   }
 
@@ -141,6 +148,34 @@ export class SessionVariableStore {
         return _match; // Pass through unchanged
       },
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Type-appropriate empty defaults — returned by get() for declared-but-unset
+// variables, so consumers get a usable value instead of undefined.
+// ---------------------------------------------------------------------------
+
+/**
+ * Empty value for a declared type, returned by `get()` for declared-but-unset
+ * vars. Unknown types fall back to `undefined` (no default known).
+ */
+export function emptyDefaultOf(type: string): unknown {
+  switch (type) {
+    case "string":
+      return "";
+    case "number":
+      return 0;
+    case "boolean":
+      return false;
+    case "array":
+      return [];
+    case "object":
+      return {};
+    case "null":
+      return null;
+    default:
+      return undefined;
   }
 }
 

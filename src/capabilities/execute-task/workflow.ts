@@ -40,10 +40,13 @@ function tasksJsonPathOf(state: PioSessionState): string {
 /** In-memory task array entry. */
 type TaskEntry = { name: string; status: string };
 
-/** Read the in-memory task array from the store (empty when unset). Total. */
-function tasksArrayOf(state: PioSessionState): TaskEntry[] {
-  const v = state.store?.get(TASKS_VAR);
-  return Array.isArray(v) ? (v as TaskEntry[]) : [];
+/**
+ * Read the in-memory task array from the store. `tasks` is declared as an
+ * "array" in `default-setup`, so the store's get() resolves it to an empty
+ * array when unset — the `?? []` only guards a missing store. Total.
+ */
+function tasksOf(state: PioSessionState): TaskEntry[] {
+  return (state.store?.get(TASKS_VAR) as TaskEntry[]) ?? [];
 }
 
 /**
@@ -69,7 +72,7 @@ const wroteVerifiedOrBlocked = (s: PioSessionState) =>
  * task is blocked. Never throws (store reads are total).
  */
 function iterativeTddShouldContinue(state: PioSessionState): boolean {
-  const tasks = tasksArrayOf(state);
+  const tasks = tasksOf(state);
   if (tasks.length === 0) return true; // nothing seeded yet — first pass
   const hasBlocked = tasks.some((t) => t.status === "blocked");
   const allVerified = tasks.every((t) => t.status === "verified");
@@ -112,6 +115,9 @@ Skim \`.pio/PROJECT/OVERVIEW.md\` if available for background. This is a single-
       const root = path.join(SCRATCH_DIR, ctx.state.sessionId ?? "unknown");
       fs.mkdirSync(root, { recursive: true });
       ctx.state.store?.set(NOTES_VAR, "string", path.join(root, "notes.md"));
+      // Declare the durable in-memory task array so store.get(TASKS_VAR)
+      // resolves to [] when unset (rather than undefined).
+      ctx.state.store?.declare(TASKS_VAR, "array");
     },
   },
 
@@ -198,7 +204,7 @@ The in-memory task array (with statuses) is maintained by the code phases. **Do 
         kind: "code",
         run: (ctx: CodeStepContext) => {
           const state = ctx.state;
-          const merged = tasksArrayOf(state);
+          const merged = tasksOf(state);
           try {
             // Merge any LLM-authored task names (tasks.json) into the durable
             // store array. The array is the source of truth (survives
@@ -405,7 +411,7 @@ You do **not** write the terminal markers — the \`finalize-tasks\` code phase 
           const root = scratchRootOf(state);
           const verifiedPath = path.join(root, "verified.txt");
           const blockedPath = path.join(root, "blocked.txt");
-          const array = tasksArrayOf(state);
+          const array = tasksOf(state);
           if (!array.length) return;
           try {
             // Reconcile the current (in-progress) task's status from the

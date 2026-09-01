@@ -22,6 +22,9 @@ const TASKS_VAR = "tasks";
 /** Store variable carrying the task-name list (persisted) set by the task-list LLM phases. */
 const TASK_NAMES_VAR = "task_names";
 
+/** Store variable set true once the task list is well-formed (order, feasibility). */
+const TASK_LIST_REFINED_VAR = "task_list_refined";
+
 /** Store variable set true by the research-complete phase once research is done. */
 const RESEARCH_COMPLETE_VAR = "research_complete";
 
@@ -178,19 +181,45 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
     loopMessage: `Continue with the next task, or finish when all tasks are verified and the acceptance criteria are met. A task that is genuinely blocked should be marked as such rather than re-attempted forever.`,
     body: [
       // ---------------------------------------------------------------------
-      // Task Generation — maintain the durable /tmp tasks.md task list
-      // (create on first pass; add newly-identified tasks on later passes).
+      // Task Generation — a do-while refinement loop over the task list. A
+      // generate-tasks phase sets the persisted task_names list; a tasks-refined
+      // variable phase reviews ordering/feasibility and sets task_list_refined
+      // true once the list is well-formed. The loop repeats while not refined.
       // ---------------------------------------------------------------------
       {
         id: "task-generation",
-        title: "Decompose the task into discrete TDD tasks",
-        kind: "variable-definition",
-        variables: [
+        title: "Generate and refine the task list",
+        kind: "loop",
+        maxIterations: 6,
+        repeatWhile: (state: PioSessionState) =>
+          state.store.get(TASK_LIST_REFINED_VAR) !== true,
+        loopMessage: `The task list is not yet well-formed — review the ordering (dependencies before dependents), feasibility, and completeness of \`task_names\`, refine it in the generate phase, then re-assess in the next phase.`,
+        body: [
           {
-            name: TASK_NAMES_VAR,
-            type: "array",
-            kind: "llm",
-            description: `Decompose the \`task\` input into a numbered list of discrete TDD tasks, each a nameable, verifiable unit, and set \`task_names\` (via \`setVar\`) to the array of task names. On a later pass, first read the current \`task_names\` (via \`getVar\`/\`listVars\`), preserve existing names, and append any newly-identified tasks (e.g. gaps surfaced by the acceptance review); do not re-add already-completed tasks. Do not select a task yourself — the \`select-task\` code phase picks the first pending one. If you find a genuine blocker here, note it; the \`finalize-tasks\` code phase handles the terminal decision.`,
+            id: "generate-tasks",
+            title: "Generate the task list",
+            kind: "variable-definition",
+            variables: [
+              {
+                name: TASK_NAMES_VAR,
+                type: "array",
+                kind: "llm",
+                description: `Decompose the \`task\` input into a numbered list of discrete TDD tasks, each a nameable, verifiable unit, and set \`task_names\` (via \`setVar\`) to the array of task names. On a later pass, read the current \`task_names\` (via \`getVar\`/\`listVars\`) and refine it: fix the ordering (dependencies before dependents), split oversized/infeasible units, and preserve already-completed tasks; do not re-add completed tasks. Do not select a task yourself — the \`select-task\` code phase picks the first pending one.`,
+              },
+            ],
+          },
+          {
+            id: "tasks-refined",
+            title: "Assess whether the task list is well-formed",
+            kind: "variable-definition",
+            variables: [
+              {
+                name: TASK_LIST_REFINED_VAR,
+                type: "boolean",
+                kind: "llm",
+                description: `Review the \`task_names\` list: are tasks ordered by real dependency (each task's prerequisites come first)? are all units feasible and nameable? does the list cover the whole \`task\` input? Set \`task_list_refined\` to \`true\` only when the list is well-formed; otherwise set it to \`false\` so the generate phase refines it again. Always set it explicitly.`,
+              },
+            ],
           },
         ],
       },

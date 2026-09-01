@@ -281,6 +281,62 @@ describe("iterative-tdd (outer loop)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// task-generation — do-while refinement loop over the task list
+// ---------------------------------------------------------------------------
+
+describe("task-generation", () => {
+  const phase = iterativeTddPhase.body?.[0];
+
+  it("is a kind:loop refinement block with a total repeatWhile on task_list_refined", () => {
+    expect(phase?.id).toBe("task-generation");
+    expect(phase?.kind).toBe("loop");
+    expect(phase?.maxIterations).toBeGreaterThanOrEqual(4);
+    expect(phase?.body).toHaveLength(2);
+  });
+
+  it("repeats while task_list_refined is not true; advances when true (total)", () => {
+    const cb = phase?.repeatWhile as (s: PioSessionState) => boolean;
+    const withRefined = (val?: boolean) => {
+      const state = makeState();
+      if (val !== undefined) {
+        state.store?.set("task_list_refined", "boolean", val);
+      }
+      return state;
+    };
+    // unset (not declared) or false → repeat (list not well-formed)
+    expect(cb(makeState())).toBe(true);
+    expect(cb(withRefined(false))).toBe(true);
+    // true → advance (list well-formed)
+    expect(cb(withRefined(true))).toBe(false);
+    // total — never throws on missing state/store
+    expect(() => cb(makeState())).not.toThrow();
+  });
+
+  it("body is generate-tasks (sets task_names) followed by tasks-refined (sets task_list_refined)", () => {
+    expect(phase?.body?.[0].id).toBe("generate-tasks");
+    expect(phase?.body?.[0].kind).toBe("variable-definition");
+    expect(phase?.body?.[0].variables?.[0]).toMatchObject({
+      name: "task_names",
+      type: "array",
+      kind: "llm",
+    });
+    expect(phase?.body?.[1].id).toBe("tasks-refined");
+    expect(phase?.body?.[1].kind).toBe("variable-definition");
+    expect(phase?.body?.[1].variables?.[0]).toMatchObject({
+      name: "task_list_refined",
+      type: "boolean",
+      kind: "llm",
+    });
+  });
+
+  it("tasks-refined description directs reviewing ordering and feasibility", () => {
+    const desc = phase?.body?.[1].variables?.[0].description as string;
+    expect(desc).toContain("dependency");
+    expect(desc).toContain("feasible");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // select-task — programmatic task selection (code phase)
 // ---------------------------------------------------------------------------
 
@@ -729,7 +785,8 @@ describe("workflow structure", () => {
         if (p.kind === "variable-definition") {
           expect([
             "research-complete",
-            "task-generation",
+            "generate-tasks",
+            "tasks-refined",
             "verify-acceptance-criteria",
           ]).toContain(p.id);
         }

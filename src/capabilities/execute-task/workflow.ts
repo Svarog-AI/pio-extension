@@ -136,10 +136,12 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
         title: "Decompose the task into discrete TDD tasks",
         instructions: `Maintain the scratch task list at \`/tmp/pio-execute-task/<sessionId>/tasks.md\` (under /tmp — writes there are not blocked):
 
-- **First pass:** decompose the \`task\` input into a numbered list of discrete TDD tasks, each a nameable, verifiable unit. Write the list to \`tasks.md\`.
+- **First pass:** decompose the \`task\` input into a numbered list of discrete TDD tasks, each a nameable, verifiable unit. Write the list to \`tasks.md\`, each entry with status \`pending\`.
 - **Later passes:** read \`tasks.md\` and add any newly-identified tasks (e.g. gaps surfaced by the acceptance review). Do not re-add already-completed tasks.
 
-Maintain each task's status (pending / done / verified / blocked) in \`tasks.md\`. If a genuine blocker is found here, **mark it in \`tasks.md\`** — do not write \`blocked.txt\` directly (only \`verify-acceptance-criteria\` writes the outer terminal markers).`,
+**Select the current task:** pick the first task still marked \`pending\` and designate it as the current task for the inner \`tdd-process\` loop. Mark it as in progress (e.g. \`in-progress\`) so the next pass selects a different task; \`verify-final\` then sets it to \`verified\` (or \`blocked\` on a genuine blocker). Each outer-loop pass picks the next pending task until none remain.
+
+Maintain each task's status (pending / in-progress / verified / blocked) in \`tasks.md\`. If a genuine blocker is found here, **mark it in \`tasks.md\`** — do not write \`blocked.txt\` directly (only \`verify-acceptance-criteria\` writes the outer terminal markers).`,
       },
 
       // ---------------------------------------------------------------------

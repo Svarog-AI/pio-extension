@@ -133,68 +133,76 @@ describe("default-setup", () => {
 });
 
 // ---------------------------------------------------------------------------
-// research-context — exhaustion loop (evidence-fixpoint) on the scratch notes
+// research-context — do-while block: research + research-complete variable
+// phase that sets research_complete; repeats while not complete
 // ---------------------------------------------------------------------------
 
 describe("research-context", () => {
-  it("is a standard phase with maxIterations and a single loopWhile callback on notes.md", () => {
+  it("is a kind:loop do-while block with maxIterations and a total repeatWhile on research_complete", () => {
     expect(researchPhase.id).toBe("research-context");
-    expect(researchPhase.kind).toBeUndefined();
+    expect(researchPhase.kind).toBe("loop");
     expect(researchPhase.maxIterations).toBe(8);
-    expect(researchPhase.minIterations).toBeUndefined();
-    expect(researchPhase.terminateWhen).toBeUndefined();
+    expect(researchPhase.loopWhile).toBeUndefined();
     expect(researchPhase.write).toBeUndefined();
     expect(researchPhase.allowProjectWrites).toBeUndefined();
-    expect(researchPhase.loopWhile).toHaveLength(1);
+    expect(researchPhase.body).toHaveLength(2);
   });
 
-  it("replays when the just-finished run wrote notes.md; advances on silence (total)", () => {
-    const cb = researchPhase.loopWhile?.[0].callback as (
-      s: PioSessionState,
-    ) => boolean;
-    // nothing written → advance (silent run = evidence-fixpoint)
-    expect(cb(makeState())).toBe(false);
-    // some other file written → advance (only notes.md counts)
-    expect(cb(makeState({ filesWritten: ["/tmp/other.md"] }))).toBe(false);
-    // notes.md written → replay (more research to record)
-    expect(
-      cb(makeState({ filesWritten: ["/tmp/pio-execute-task/s/notes.md"] })),
-    ).toBe(true);
-  });
-
-  it("is total — never throws on any filesWritten shape", () => {
-    const cb = researchPhase.loopWhile?.[0].callback as (
-      s: PioSessionState,
-    ) => boolean;
+  it("repeats while research_complete is not true; advances when true (total)", () => {
+    const cb = researchPhase.repeatWhile as (s: PioSessionState) => boolean;
+    const withComplete = (val?: boolean) => {
+      const state = makeState();
+      if (val !== undefined) {
+        state.store?.set("research_complete", "boolean", val);
+      }
+      return state;
+    };
+    // unset (not declared yet) or false → repeat (research not complete)
+    expect(cb(makeState())).toBe(true);
+    expect(cb(withComplete(false))).toBe(true);
+    // true → advance (research complete)
+    expect(cb(withComplete(true))).toBe(false);
+    // total — never throws on missing state/store
     expect(() => cb(makeState())).not.toThrow();
-    expect(() =>
-      cb(makeState({ filesWritten: ["a", "b", "c/notes.md"] })),
-    ).not.toThrow();
   });
 
-  it("carries a non-empty evidence-fixpoint loopMessage that nudges re-checking", () => {
-    const msg = researchPhase.loopMessage as string;
-    expect(typeof msg).toBe("string");
-    expect(msg.length).toBeGreaterThan(0);
-    expect(msg).toContain(`\${notes_path}`);
-    expect(msg.toLowerCase()).toContain("another look");
-    expect(msg).toContain("nothing new");
+  it("body is a research phase followed by a research-complete variable-definition phase", () => {
+    expect(researchPhase.body?.[0].id).toBe("research");
+    expect(researchPhase.body?.[0].kind).toBeUndefined();
+    expect(researchPhase.body?.[1].id).toBe("research-complete");
+    expect(researchPhase.body?.[1].kind).toBe("variable-definition");
+    expect(researchPhase.body?.[1].variables?.[0]).toMatchObject({
+      name: "research_complete",
+      type: "boolean",
+      kind: "llm",
+    });
   });
 
-  it("instructions demand evidence with a source and reference notes_path", () => {
-    const instr = researchPhase.instructions as string;
+  it("research phase demands evidence with a source and reference notes_path, with the source-research skill", () => {
+    const instr = researchPhase.body?.[0].instructions as string;
     expect(instr).toContain(`\${notes_path}`);
     expect(instr).toContain("evidence");
     expect(instr).toContain("repo path");
     expect(instr).toContain("web URL");
     expect(instr).toContain("web_search");
     expect(instr).toContain('displayMode: "inline"');
-  });
-
-  it("preserves the per-phase source-research skill for external libraries", () => {
-    expect(researchPhase.skills?.recommended).toEqual([
+    expect(researchPhase.body?.[0].skills?.recommended).toEqual([
       { name: "source-research", condition: expect.any(String) },
     ]);
+  });
+
+  it("research-complete description directs setting true only when nothing is missing/unanswered", () => {
+    const desc = researchPhase.body?.[1].variables?.[0].description as string;
+    expect(desc).toContain(`\${notes_path}`);
+    expect(desc).toContain("true");
+    expect(desc).toContain("nothing missing");
+    expect(desc).toContain("web_search");
+  });
+
+  it("carries a non-empty loopMessage nudging further research", () => {
+    const msg = researchPhase.loopMessage as string;
+    expect(typeof msg).toBe("string");
+    expect(msg.length).toBeGreaterThan(0);
   });
 });
 
@@ -723,11 +731,11 @@ describe("workflow structure", () => {
     "write-summary-file",
   ];
 
-  it("has 9 top-level phases in order with correct kinds (3 code, 1 loop, 5 standard)", () => {
+  it("has 9 top-level phases in order with correct kinds (3 code, 2 loop, 4 standard)", () => {
     expect(workflow.map((p) => p.id)).toEqual(expectedTopLevel);
     expect(workflow[0].kind).toBeUndefined(); // read-task
     expect(workflow[1].kind).toBe("code"); // default-setup
-    expect(workflow[2].kind).toBeUndefined(); // research-context
+    expect(workflow[2].kind).toBe("loop"); // research-context (do-while)
     expect(workflow[3].kind).toBe("loop"); // iterative-tdd
     expect(workflow[4].kind).toBeUndefined(); // write-test-file
     expect(workflow[5].kind).toBeUndefined(); // commit
@@ -736,11 +744,14 @@ describe("workflow structure", () => {
     expect(workflow[8].kind).toBeUndefined(); // write-summary-file
   });
 
-  it("declares no allowProjectWrites and no variable-definition phases anywhere", () => {
+  it("declares no allowProjectWrites anywhere and only the intended research-complete variable-definition phase", () => {
     const visit = (phases: WorkflowPhase[]): void => {
       for (const p of phases) {
         expect(p.allowProjectWrites).toBeUndefined();
-        expect(p.kind).not.toBe("variable-definition");
+        // The only variable-definition phase is the research-complete sub-phase.
+        if (p.kind === "variable-definition") {
+          expect(p.id).toBe("research-complete");
+        }
         if (p.body) visit(p.body);
       }
     };

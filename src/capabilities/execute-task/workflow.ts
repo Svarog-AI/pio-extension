@@ -19,6 +19,9 @@ const CURRENT_TASK_VAR = "current_task";
 /** Store variable carrying the in-memory task array: [{ name, status }]. */
 const TASKS_VAR = "tasks";
 
+/** Store variable set true by the research-complete phase once research is done. */
+const RESEARCH_COMPLETE_VAR = "research_complete";
+
 /** Session-scoped scratch directory (OS reclaims /tmp; no cleanup phase needed). */
 const SCRATCH_DIR = "/tmp/pio-execute-task";
 
@@ -70,9 +73,6 @@ function iterativeTddShouldContinue(state: PioSessionState): boolean {
   return !(hasBlocked || allVerified);
 }
 
-/** True when the run appended to the research-notes evidence file. */
-const wroteNotes = (s: PioSessionState) => wroteMarker(s, ["notes.md"]);
-
 /** True when the run appended to a per-phase refinement change-marker. */
 const wroteChangeMarker = (s: PioSessionState, suffix: string) =>
   wroteMarker(s, [suffix]);
@@ -113,23 +113,24 @@ Skim \`.pio/PROJECT/OVERVIEW.md\` if available for background. This is a single-
   },
 
   // -------------------------------------------------------------------------
-  // Research Context — thorough research over the repo, tests, and web, with
-  // every finding recorded as evidence to the scratch notes file. An
-  // exhaustion loop (evidence-fixpoint): a run that appended new notes
-  // replays; a silent run (nothing new to record) advances.
+  // Research Context — a do-while block: a research phase + a research-complete
+  // variable-definition phase that sets `research_complete` true once nothing
+  // is missing, no questions remain unanswered, and no topics are left to
+  // investigate with web_search. The loop repeats while not complete.
   // -------------------------------------------------------------------------
   {
     id: "research-context",
     title: "Research supporting context",
+    kind: "loop",
     maxIterations: 8,
-    loopWhile: [
+    repeatWhile: (state: PioSessionState) =>
+      state.store.get(RESEARCH_COMPLETE_VAR) !== true,
+    loopMessage: `Research is not complete yet — look for anything still missing: unread files, unresolved dependencies, unverified assumptions, unanswered questions, or topics left to investigate with \`web_search\`. Do another research pass, then re-assess in the next phase.`,
+    body: [
       {
-        type: "callback",
-        callback: wroteNotes,
-      },
-    ],
-    loopMessage: `Have another look — any missed files, dependencies, or assumptions? Re-scan the repo, referenced files, and test setup for anything not yet recorded. If you find something new, record it to \`\${notes_path}\` (under /tmp — writes there are not blocked). If you find nothing new, make **no changes** to \`\${notes_path}\` and finish.`,
-    instructions: `Conduct thorough research using your tools (\`read\`, \`bash\`, \`web_search\`), following the research process in the \`pio-planning\` skill. Read the files listed in the \`task\` input's "Files affected" section, trace imports and dependencies, understand the testing setup (how things are tested today, what tools are available), and look at similar code to follow existing patterns.
+        id: "research",
+        title: "Research the codebase, tests, and web",
+        instructions: `Conduct thorough research using your tools (\`read\`, \`bash\`, \`web_search\`), following the research process in the \`pio-planning\` skill. Read the files listed in the \`task\` input's "Files affected" section, trace imports and dependencies, understand the testing setup (how things are tested today, what tools are available), and look at similar code to follow existing patterns.
 
 **Record every finding as evidence to the scratch notes file at \`\${notes_path}\`** (under /tmp — writes there are not blocked). Append each finding with its evidence source:
 
@@ -138,15 +139,30 @@ Skim \`.pio/PROJECT/OVERVIEW.md\` if available for background. This is a single-
 - If a phase's acceptance criteria can't be made programmatic because you don't understand the test setup, go learn the test setup and record it as evidence.
 
 Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inline"\`, \`grill-me\` probing), recording the answer as evidence. **Dedupe** — do not re-add findings already present in \`\${notes_path}\`.`,
-    skills: {
-      recommended: [
-        {
-          name: "source-research",
-          condition:
-            "when researching existing solutions or external libraries",
+        skills: {
+          recommended: [
+            {
+              name: "source-research",
+              condition:
+                "when researching existing solutions or external libraries",
+            },
+          ],
         },
-      ],
-    },
+      },
+      {
+        id: "research-complete",
+        title: "Assess whether research is complete",
+        kind: "variable-definition",
+        variables: [
+          {
+            name: RESEARCH_COMPLETE_VAR,
+            type: "boolean",
+            kind: "llm",
+            description: `Revisit the findings recorded in \`\${notes_path}\` and the open questions. Set \`research_complete\` to \`true\` only when there is nothing missing, no unanswered questions, and no topics left to investigate with \`web_search\`. Otherwise set it to \`false\` so another research pass runs. Always set it explicitly.`,
+          },
+        ],
+      },
+    ],
   },
 
   // -------------------------------------------------------------------------

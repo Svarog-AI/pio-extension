@@ -14,7 +14,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { getState } from "./session-state";
+import { getState, type PioSessionState } from "./session-state";
 
 // ---------------------------------------------------------------------------
 // SessionVariableStore class
@@ -257,6 +257,156 @@ export function coerceValue(value: unknown, declaredType: string): unknown {
 }
 
 // ---------------------------------------------------------------------------
+// Shared collection helpers — gating, value transport, path navigation
+// ---------------------------------------------------------------------------
+
+/**
+ * Union of JSON values a collection tool can store as an element (object/
+ * array values arrive as native deserialized values from the tool framework).
+ */
+const collectionValueUnion = Type.Union([
+  Type.String(),
+  Type.Number(),
+  Type.Boolean(),
+  Type.Null(),
+  Type.Object({}),
+  Type.Array(Type.Any()),
+]);
+
+/**
+ * Shared gating for the session-variable tools — mirrors `setVar` exactly:
+ * the tool is usable only when the session is active and the current phase's
+ * kind is `variable-definition`. Returns an error text, or `null` to proceed.
+ */
+function gatingErrorText(
+  toolName: string,
+  state: PioSessionState,
+): string | null {
+  if (!state.isActive) {
+    return `${toolName} is only available inside a pio session.`;
+  }
+  const currentPhase = state.phaseManager?.getPhase(state.currentPhaseId);
+  if (currentPhase?.kind !== "variable-definition") {
+    const phaseInfo = currentPhase
+      ? `"${state.currentPhaseId}" (${currentPhase.title})`
+      : `"${state.currentPhaseId}"`;
+    return `${toolName} can only be used during variable-defining phases. Current phase: ${phaseInfo}.`;
+  }
+  if (!state.store) {
+    return "Variable store not initialized.";
+  }
+  return null;
+}
+
+/** Build an error text result. */
+function errorResult(text: string): {
+  content: Array<{ type: "text"; text: string }>;
+  details: Record<string, never>;
+} {
+  return { content: [{ type: "text", text }], details: {} };
+}
+
+/** A single path segment — an array index (number) or an object key (string). */
+type PathSegment = number | string;
+
+/**
+ * Parse a minimal dot/bracket path into segments. An integer segment addresses
+ * an array index; any other segment addresses an object key. No general
+ * expression language. Rejects malformed paths and empty segments.
+ */
+function parsePath(path: string): PathSegment[] {
+  const segments: PathSegment[] = [];
+  let rest = path;
+  const firstSeg = /^(?:\[(\d+)\]|(\d+)|([a-zA-Z_$][a-zA-Z0-9_$]*))/;
+  const first = firstSeg.exec(rest);
+  if (!first) {
+    throw new Error(
+      `Invalid path '${path}': unexpected segment near '${rest}'`,
+    );
+  }
+  if (first[1] !== undefined) segments.push(parseInt(first[1], 10));
+  else if (first[2] !== undefined) segments.push(parseInt(first[2], 10));
+  else segments.push(first[3]);
+  rest = rest.slice(first[0].length);
+
+  while (rest.length > 0) {
+    const seg = /^(?:\[(\d+)\]|\.(\d+)|\.([a-zA-Z_$][a-zA-Z0-9_$]*))/.exec(
+      rest,
+    );
+    if (!seg) {
+      throw new Error(
+        `Invalid path '${path}': unexpected segment near '${rest}'`,
+      );
+    }
+    if (seg[1] !== undefined) segments.push(parseInt(seg[1], 10));
+    else if (seg[2] !== undefined) segments.push(parseInt(seg[2], 10));
+    else segments.push(seg[3]);
+    rest = rest.slice(seg[0].length);
+  }
+  return segments;
+}
+
+/**
+ * Deep-clone the root container, navigate into it along the segments, set the
+ * leaf value, and return the new container. Missing/un-navigable intermediate
+ * segments throw (no auto-creation). The leaf may be created/overwritten.
+ */
+function setNestedLeaf(
+  root: unknown,
+  segments: PathSegment[],
+  leafValue: unknown,
+): unknown {
+  const clone = structuredClone(root);
+  let current: unknown = clone;
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const isLast = i === segments.length - 1;
+    if (typeof seg === "number") {
+      // Array index segment.
+      if (!Array.isArray(current)) {
+        throw new Error(
+          `Path segment '${seg}' targets an array index but value is not an array.`,
+        );
+      }
+      if (seg < 0 || seg >= current.length) {
+        throw new Error(
+          `Index ${seg} out of bounds for array of length ${current.length}.`,
+        );
+      }
+      const arr = current as Array<unknown>;
+      if (isLast) {
+        arr[seg] = leafValue;
+      } else {
+        current = arr[seg];
+      }
+    } else {
+      // Object key segment.
+      if (
+        current === null ||
+        typeof current !== "object" ||
+        Array.isArray(current)
+      ) {
+        throw new Error(
+          `Path segment '${seg}' targets an object key but value is not an object.`,
+        );
+      }
+      const obj = current as Record<string, unknown>;
+      if (!isLast && !(seg in obj)) {
+        throw new Error(
+          `Missing object key '${seg}' — cannot auto-create intermediate segments.`,
+        );
+      }
+      if (isLast) {
+        obj[seg] = leafValue;
+      } else {
+        current = obj[seg];
+      }
+    }
+  }
+  return clone;
+}
+
+// ---------------------------------------------------------------------------
 // Agent-facing tools: setVar, getVar, listVars
 // ---------------------------------------------------------------------------
 
@@ -291,6 +441,12 @@ export const setVarTool = defineTool({
         Type.Object({}),
       ],
       { description: "The value to store" },
+    ),
+    path: Type.Optional(
+      Type.String({
+        description:
+          "Optional dot/bracket path into an array/object variable to set a nested leaf field (e.g. '0.status' or '[0].status'). When omitted, the whole variable is replaced exactly as before.",
+      }),
     ),
   }),
 
@@ -333,6 +489,96 @@ export const setVarTool = defineTool({
         content: [{ type: "text", text: "Variable store not initialized." }],
         details: {},
       };
+    }
+
+    // 3a. Path mode — set a nested leaf field (e.g. tasks[0].status).
+    // Reads the current value of `name`, mutates the leaf in place, then
+    // writes the updated container back under the container's declared type
+    // (NOT `params.type`, which describes the leaf and is used only to coerce
+    // the leaf value). This avoids store.set's type-mismatch check firing
+    // against the parent variable's declared type.
+    if (params.path !== undefined) {
+      if (!state.store.isDefined(params.name)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Variable '${params.name}' is not set.`,
+            },
+          ],
+          details: {},
+        };
+      }
+      const rootContainer = state.store.get(params.name);
+      if (
+        !Array.isArray(rootContainer) &&
+        (rootContainer === null || typeof rootContainer !== "object")
+      ) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Variable '${params.name}' is not an array or object; cannot navigate a path into it.`,
+            },
+          ],
+          details: {},
+        };
+      }
+      let segments: PathSegment[];
+      try {
+        segments = parsePath(params.path);
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: err instanceof Error ? err.message : String(err),
+            },
+          ],
+          details: {},
+        };
+      }
+      let leafValue: unknown;
+      try {
+        leafValue = coerceValue(params.value, params.type);
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: err instanceof Error ? err.message : String(err),
+            },
+          ],
+          details: {},
+        };
+      }
+      if (typeof leafValue === "string") {
+        leafValue = state.store.interpolate(leafValue);
+      }
+      const containerType = Array.isArray(rootContainer) ? "array" : "object";
+      try {
+        const updated = setNestedLeaf(rootContainer, segments, leafValue);
+        state.store.set(params.name, containerType, updated);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Variable '${params.name}' path '${params.path}' set to ${JSON.stringify(leafValue)}.`,
+            },
+          ],
+          details: {},
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: err instanceof Error ? err.message : String(err),
+            },
+          ],
+          details: {},
+        };
+      }
     }
 
     // 3b. Coerce value to match declared type
@@ -584,6 +830,224 @@ export const listVarsTool = defineTool({
   },
 });
 
+export const setVarAtTool = defineTool({
+  name: "setVarAt",
+  label: "Set Array Element",
+  description:
+    "Replace the element at a given integer index of an array session variable during a variable-defining phase. Use this to set a specific element of an array (e.g. the object at tasks[0]) without replacing the whole array. Does not grow the array — appending is enqueue/appendVar's job.",
+  parameters: Type.Object({
+    name: Type.String({
+      description:
+        "Variable name to set an element of (must be an array variable)",
+    }),
+    index: Type.Number({
+      description: "Zero-based integer index of the element to replace",
+    }),
+    value: collectionValueUnion,
+  }),
+
+  async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+    const state = getState();
+
+    // 1-3. Gating (session active + variable-definition phase + store)
+    const gateErr = gatingErrorText("setVarAt", state);
+    if (gateErr !== null) return errorResult(gateErr);
+
+    // 4. Element-set — must be an already-set array, index in bounds.
+    const current = state.store.get(params.name);
+    if (current === undefined || !Array.isArray(current)) {
+      return errorResult(`Variable '${params.name}' is not an array variable.`);
+    }
+    if (!Number.isInteger(params.index)) {
+      return errorResult(
+        `Index for '${params.name}' must be an integer, got ${params.index}.`,
+      );
+    }
+    if (params.index < 0 || params.index >= current.length) {
+      return errorResult(
+        `Index ${params.index} out of bounds for array '${params.name}' of length ${current.length}.`,
+      );
+    }
+
+    // Interpolate top-level string values like setVar; store objects/arrays as-is.
+    let element = params.value;
+    if (typeof element === "string") {
+      element = state.store.interpolate(element);
+    }
+    const updated = [...current];
+    updated[params.index] = element;
+    try {
+      state.store.set(params.name, "array", updated);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Variable '${params.name}' element at index ${params.index} set to ${JSON.stringify(element)}.`,
+          },
+        ],
+        details: {},
+      };
+    } catch (err) {
+      return errorResult(err instanceof Error ? err.message : String(err));
+    }
+  },
+});
+
+export const enqueueTool = defineTool({
+  name: "enqueue",
+  label: "Enqueue",
+  description:
+    "Append an item to the back of an array session variable, treating it as a FIFO queue (front = index 0). If the variable is unset it is initialized to an empty array first. Returns the new queue size. Use this to accumulate pending work items for later dequeuing.",
+  parameters: Type.Object({
+    name: Type.String({
+      description: "Variable name to enqueue to (must be an array variable)",
+    }),
+    value: collectionValueUnion,
+  }),
+
+  async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+    const state = getState();
+
+    const gateErr = gatingErrorText("enqueue", state);
+    if (gateErr !== null) return errorResult(gateErr);
+
+    const current = state.store.get(params.name);
+    if (current !== undefined && !Array.isArray(current)) {
+      return errorResult(
+        `Cannot enqueue to variable '${params.name}': it is not an array variable.`,
+      );
+    }
+    const base = Array.isArray(current) ? current : [];
+    let item = params.value;
+    if (typeof item === "string") {
+      item = state.store.interpolate(item);
+    }
+    try {
+      state.store.set(params.name, "array", [...base, item]);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Variable '${params.name}' enqueued; queue size is ${base.length + 1}.`,
+          },
+        ],
+        details: {},
+      };
+    } catch (err) {
+      return errorResult(err instanceof Error ? err.message : String(err));
+    }
+  },
+});
+
+export const dequeueTool = defineTool({
+  name: "dequeue",
+  label: "Dequeue",
+  description:
+    "Remove and return the front (index-0) element of an array session variable, shifting the remainder left. Treats the array as a FIFO queue. Returns an error if the queue is empty or unset. Use this to consume the next pending work item.",
+  parameters: Type.Object({
+    name: Type.String({
+      description: "Variable name to dequeue from (must be an array variable)",
+    }),
+  }),
+
+  async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+    const state = getState();
+
+    const gateErr = gatingErrorText("dequeue", state);
+    if (gateErr !== null) return errorResult(gateErr);
+
+    const current = state.store.get(params.name);
+    if (current === undefined) {
+      return errorResult(`Queue '${params.name}' is empty.`);
+    }
+    if (!Array.isArray(current)) {
+      return errorResult(
+        `Cannot dequeue from variable '${params.name}': it is not an array variable.`,
+      );
+    }
+    if (current.length === 0) {
+      return errorResult(`Queue '${params.name}' is empty.`);
+    }
+    const [front, ...rest] = current;
+    try {
+      state.store.set(params.name, "array", rest);
+      const display = typeof front === "string" ? front : JSON.stringify(front);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Dequeued '${params.name}': ${display}`,
+          },
+        ],
+        details: {},
+      };
+    } catch (err) {
+      return errorResult(err instanceof Error ? err.message : String(err));
+    }
+  },
+});
+
+export const peekTool = defineTool({
+  name: "peek",
+  label: "Peek Queue Front",
+  description:
+    "Return the front (index-0) element of an array session variable without removing it. Treats the array as a FIFO queue. Returns an error if the queue is empty or unset. Use this to inspect the next pending work item without consuming it.",
+  parameters: Type.Object({
+    name: Type.String({
+      description: "Variable name to peek at (must be an array variable)",
+    }),
+  }),
+
+  async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+    const state = getState();
+
+    const gateErr = gatingErrorText("peek", state);
+    if (gateErr !== null) return errorResult(gateErr);
+
+    const current = state.store.get(params.name);
+    if (current === undefined || !Array.isArray(current)) {
+      return errorResult(`Queue '${params.name}' is empty.`);
+    }
+    if (current.length === 0) {
+      return errorResult(`Queue '${params.name}' is empty.`);
+    }
+    const front = current[0];
+    const display = typeof front === "string" ? front : JSON.stringify(front);
+    return {
+      content: [
+        { type: "text", text: `Front of '${params.name}': ${display}` },
+      ],
+      details: {},
+    };
+  },
+});
+
+export const sizeTool = defineTool({
+  name: "size",
+  label: "Queue Size",
+  description:
+    "Return the current length of an array session variable (treating it as a FIFO queue). Returns 0 for an empty or unset queue. Use this to check whether any work items remain.",
+  parameters: Type.Object({
+    name: Type.String({
+      description: "Variable name to measure (must be an array variable)",
+    }),
+  }),
+
+  async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+    const state = getState();
+
+    const gateErr = gatingErrorText("size", state);
+    if (gateErr !== null) return errorResult(gateErr);
+
+    const current = state.store.get(params.name);
+    const size = Array.isArray(current) ? current.length : 0;
+    return {
+      content: [{ type: "text", text: `Queue '${params.name}' size: ${size}` }],
+      details: {},
+    };
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Setup — registers all session variable tools
 // ---------------------------------------------------------------------------
@@ -593,4 +1057,9 @@ export function setupSessionVariables(pi: ExtensionAPI): void {
   pi.registerTool(appendVarTool);
   pi.registerTool(getVarTool);
   pi.registerTool(listVarsTool);
+  pi.registerTool(setVarAtTool);
+  pi.registerTool(enqueueTool);
+  pi.registerTool(dequeueTool);
+  pi.registerTool(peekTool);
+  pi.registerTool(sizeTool);
 }

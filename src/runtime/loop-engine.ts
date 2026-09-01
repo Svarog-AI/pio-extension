@@ -1260,6 +1260,7 @@ export function setupLoopEngine(pi: ExtensionAPI) {
     },
   });
 
-  // Register session variable tools (setVar, getVar, listVars)
+  // Register session variable tools (setVar, appendVar, getVar, listVars,
+  // setVarAt, enqueue, dequeue, peek, size) — registered via setupSessionVariables
   setupSessionVariables(pi);
 }

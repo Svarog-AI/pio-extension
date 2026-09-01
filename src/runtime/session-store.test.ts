@@ -6,11 +6,16 @@ import { __testSetState, getState, resetState } from "./session-state";
 import {
   appendVarTool,
   coerceValue,
+  dequeueTool,
+  enqueueTool,
   getVarTool,
   listVarsTool,
+  peekTool,
   SessionVariableStore,
   setupSessionVariables,
+  setVarAtTool,
   setVarTool,
+  sizeTool,
 } from "./session-store";
 
 describe("SessionVariableStore", () => {
@@ -644,6 +649,61 @@ describe("session variable tools", () => {
       expect(listVarsTool.parameters).toBeDefined();
       expect(typeof listVarsTool.execute).toBe("function");
     });
+
+    it("setVarAtTool is defined with name, label, description, parameters, and execute", () => {
+      expect(setVarAtTool).toBeDefined();
+      expect(setVarAtTool.name).toBe("setVarAt");
+      expect(setVarAtTool.label).toBeDefined();
+      expect(typeof setVarAtTool.label).toBe("string");
+      expect(setVarAtTool.description).toBeDefined();
+      expect(typeof setVarAtTool.description).toBe("string");
+      expect(setVarAtTool.parameters).toBeDefined();
+      expect(typeof setVarAtTool.execute).toBe("function");
+    });
+
+    it("enqueueTool is defined with name, label, description, parameters, and execute", () => {
+      expect(enqueueTool).toBeDefined();
+      expect(enqueueTool.name).toBe("enqueue");
+      expect(enqueueTool.label).toBeDefined();
+      expect(typeof enqueueTool.label).toBe("string");
+      expect(enqueueTool.description).toBeDefined();
+      expect(typeof enqueueTool.description).toBe("string");
+      expect(enqueueTool.parameters).toBeDefined();
+      expect(typeof enqueueTool.execute).toBe("function");
+    });
+
+    it("dequeueTool is defined with name, label, description, parameters, and execute", () => {
+      expect(dequeueTool).toBeDefined();
+      expect(dequeueTool.name).toBe("dequeue");
+      expect(dequeueTool.label).toBeDefined();
+      expect(typeof dequeueTool.label).toBe("string");
+      expect(dequeueTool.description).toBeDefined();
+      expect(typeof dequeueTool.description).toBe("string");
+      expect(dequeueTool.parameters).toBeDefined();
+      expect(typeof dequeueTool.execute).toBe("function");
+    });
+
+    it("peekTool is defined with name, label, description, parameters, and execute", () => {
+      expect(peekTool).toBeDefined();
+      expect(peekTool.name).toBe("peek");
+      expect(peekTool.label).toBeDefined();
+      expect(typeof peekTool.label).toBe("string");
+      expect(peekTool.description).toBeDefined();
+      expect(typeof peekTool.description).toBe("string");
+      expect(peekTool.parameters).toBeDefined();
+      expect(typeof peekTool.execute).toBe("function");
+    });
+
+    it("sizeTool is defined with name, label, description, parameters, and execute", () => {
+      expect(sizeTool).toBeDefined();
+      expect(sizeTool.name).toBe("size");
+      expect(sizeTool.label).toBeDefined();
+      expect(typeof sizeTool.label).toBe("string");
+      expect(sizeTool.description).toBeDefined();
+      expect(typeof sizeTool.description).toBe("string");
+      expect(sizeTool.parameters).toBeDefined();
+      expect(typeof sizeTool.execute).toBe("function");
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -684,6 +744,49 @@ describe("session variable tools", () => {
       expect(params.type).toBe("object");
       expect(Object.keys(params.properties)).toEqual([]);
     });
+
+    it("setVar parameters include an optional path (string) alongside name, type, and value", () => {
+      const params = setVarTool.parameters;
+      expect(Object.keys(params.properties)).toEqual([
+        "name",
+        "type",
+        "value",
+        "path",
+      ]);
+      expect(params.properties.path.type).toBe("string");
+    });
+
+    it("setVarAt parameters include name (string), index (number), and value (union of JSON types)", () => {
+      const params = setVarAtTool.parameters;
+      expect(params.type).toBe("object");
+      expect(Object.keys(params.properties)).toEqual([
+        "name",
+        "index",
+        "value",
+      ]);
+      expect(params.properties.name.type).toBe("string");
+      expect(params.properties.index.type).toBe("number");
+      expect(params.properties.value.anyOf).toBeDefined();
+      expect(Array.isArray(params.properties.value.anyOf)).toBe(true);
+    });
+
+    it("enqueue parameters include name (string) and value (union of JSON types)", () => {
+      const params = enqueueTool.parameters;
+      expect(params.type).toBe("object");
+      expect(Object.keys(params.properties)).toEqual(["name", "value"]);
+      expect(params.properties.name.type).toBe("string");
+      expect(params.properties.value.anyOf).toBeDefined();
+      expect(Array.isArray(params.properties.value.anyOf)).toBe(true);
+    });
+
+    it("dequeue/peek/size parameters include only name (string)", () => {
+      expect(Object.keys(dequeueTool.parameters.properties)).toEqual(["name"]);
+      expect(Object.keys(peekTool.parameters.properties)).toEqual(["name"]);
+      expect(Object.keys(sizeTool.parameters.properties)).toEqual(["name"]);
+      expect(dequeueTool.parameters.properties.name.type).toBe("string");
+      expect(peekTool.parameters.properties.name.type).toBe("string");
+      expect(sizeTool.parameters.properties.name.type).toBe("string");
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -691,7 +794,7 @@ describe("session variable tools", () => {
   // -----------------------------------------------------------------------
 
   describe("setupSessionVariables", () => {
-    it("registers exactly 4 tools via pi.registerTool", () => {
+    it("registers exactly 9 tools via pi.registerTool", () => {
       const registeredTools: any[] = [];
       const mockPi = {
         registerTool: vi.fn((tool: any) => registeredTools.push(tool)),
@@ -699,11 +802,16 @@ describe("session variable tools", () => {
 
       setupSessionVariables(mockPi);
 
-      expect(mockPi.registerTool).toHaveBeenCalledTimes(4);
+      expect(mockPi.registerTool).toHaveBeenCalledTimes(9);
       expect(registeredTools).toContain(setVarTool);
       expect(registeredTools).toContain(appendVarTool);
       expect(registeredTools).toContain(getVarTool);
       expect(registeredTools).toContain(listVarsTool);
+      expect(registeredTools).toContain(setVarAtTool);
+      expect(registeredTools).toContain(enqueueTool);
+      expect(registeredTools).toContain(dequeueTool);
+      expect(registeredTools).toContain(peekTool);
+      expect(registeredTools).toContain(sizeTool);
     });
   });
 
@@ -750,6 +858,86 @@ describe("session variable tools", () => {
       const result = await listVarsTool.execute(
         "tc-1",
         {},
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain(
+        "only available inside a pio session",
+      );
+    });
+
+    it("setVarAt returns error when isActive is false", async () => {
+      setPartialState({ isActive: false, store: new SessionVariableStore({}) });
+
+      const result = await setVarAtTool.execute(
+        "tc-1",
+        { name: "x", index: 0, value: "v" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain(
+        "only available inside a pio session",
+      );
+    });
+
+    it("enqueue returns error when isActive is false", async () => {
+      setPartialState({ isActive: false, store: new SessionVariableStore({}) });
+
+      const result = await enqueueTool.execute(
+        "tc-1",
+        { name: "x", value: "v" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain(
+        "only available inside a pio session",
+      );
+    });
+
+    it("dequeue returns error when isActive is false", async () => {
+      setPartialState({ isActive: false, store: new SessionVariableStore({}) });
+
+      const result = await dequeueTool.execute(
+        "tc-1",
+        { name: "x" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain(
+        "only available inside a pio session",
+      );
+    });
+
+    it("peek returns error when isActive is false", async () => {
+      setPartialState({ isActive: false, store: new SessionVariableStore({}) });
+
+      const result = await peekTool.execute(
+        "tc-1",
+        { name: "x" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain(
+        "only available inside a pio session",
+      );
+    });
+
+    it("size returns error when isActive is false", async () => {
+      setPartialState({ isActive: false, store: new SessionVariableStore({}) });
+
+      const result = await sizeTool.execute(
+        "tc-1",
+        { name: "x" },
         undefined,
         undefined,
         { cwd: "/tmp" } as any,
@@ -1362,6 +1550,745 @@ describe("session variable tools", () => {
       expect(resultText(result)).toContain("val");
       expect(resultText(result)).toContain("w");
       expect(resultText(result)).toContain("writable");
+    });
+  });
+
+  // Helper for setting up an active, variable-definition-phase state
+  function activeVariableState(store: SessionVariableStore): void {
+    setPartialState({
+      isActive: true,
+      totalPhases: 1,
+      phasesList: [
+        {
+          id: "p1",
+          title: "P1",
+          instructions: "i",
+          kind: "variable-definition" as const,
+        },
+      ],
+      store,
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // Collection tools — phase gating (identical to setVar)
+  // -----------------------------------------------------------------------
+
+  describe("collection tool phase gating", () => {
+    it("setVarAt returns error when current phase kind is not variable-definition", async () => {
+      const store = new SessionVariableStore({});
+      setPartialState({
+        isActive: true,
+        totalPhases: 3,
+        phasesList: [
+          {
+            id: "p1",
+            title: "Phase 1",
+            instructions: "Do stuff",
+            kind: "standard",
+          },
+        ],
+        store,
+      });
+
+      const result = await setVarAtTool.execute(
+        "tc-1",
+        { name: "x", index: 0, value: "v" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("variable-defining");
+    });
+
+    it("enqueue returns error when current phase kind is not variable-definition", async () => {
+      const store = new SessionVariableStore({});
+      setPartialState({
+        isActive: true,
+        totalPhases: 3,
+        phasesList: [
+          {
+            id: "p1",
+            title: "Phase 1",
+            instructions: "Do stuff",
+            kind: "standard",
+          },
+        ],
+        store,
+      });
+
+      const result = await enqueueTool.execute(
+        "tc-1",
+        { name: "x", value: "v" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("variable-defining");
+    });
+
+    it("dequeue returns error when current phase kind is not variable-definition", async () => {
+      const store = new SessionVariableStore({});
+      setPartialState({
+        isActive: true,
+        totalPhases: 3,
+        phasesList: [
+          {
+            id: "p1",
+            title: "Phase 1",
+            instructions: "Do stuff",
+            kind: "standard",
+          },
+        ],
+        store,
+      });
+
+      const result = await dequeueTool.execute(
+        "tc-1",
+        { name: "x" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("variable-defining");
+    });
+
+    it("peek returns error when current phase kind is not variable-definition", async () => {
+      const store = new SessionVariableStore({});
+      setPartialState({
+        isActive: true,
+        totalPhases: 3,
+        phasesList: [
+          {
+            id: "p1",
+            title: "Phase 1",
+            instructions: "Do stuff",
+            kind: "standard",
+          },
+        ],
+        store,
+      });
+
+      const result = await peekTool.execute(
+        "tc-1",
+        { name: "x" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("variable-defining");
+    });
+
+    it("size returns error when current phase kind is not variable-definition", async () => {
+      const store = new SessionVariableStore({});
+      setPartialState({
+        isActive: true,
+        totalPhases: 3,
+        phasesList: [
+          {
+            id: "p1",
+            title: "Phase 1",
+            instructions: "Do stuff",
+            kind: "standard",
+          },
+        ],
+        store,
+      });
+
+      const result = await sizeTool.execute(
+        "tc-1",
+        { name: "x" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("variable-defining");
+    });
+
+    it("all five tools proceed past the phase check when in a variable-definition phase", async () => {
+      const store = new SessionVariableStore({});
+      store.set("arr", "array", ["a"]);
+      activeVariableState(store);
+
+      const atResult = await setVarAtTool.execute(
+        "tc-1",
+        { name: "arr", index: 0, value: "b" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+      const enqResult = await enqueueTool.execute(
+        "tc-1",
+        { name: "arr", value: "c" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+      const deqResult = await dequeueTool.execute(
+        "tc-1",
+        { name: "arr" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+      const peekResult = await peekTool.execute(
+        "tc-1",
+        { name: "arr" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+      const sizeResult = await sizeTool.execute(
+        "tc-1",
+        { name: "arr" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(atResult)).not.toContain("variable-defining");
+      expect(resultText(enqResult)).not.toContain("variable-defining");
+      expect(resultText(deqResult)).not.toContain("variable-defining");
+      expect(resultText(peekResult)).not.toContain("variable-defining");
+      expect(resultText(sizeResult)).not.toContain("variable-defining");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // setVarAt — behavior
+  // -----------------------------------------------------------------------
+
+  describe("setVarAt behavior", () => {
+    it("replaces the element at a valid integer index of an array variable", async () => {
+      const store = new SessionVariableStore({});
+      store.set("tasks", "array", [
+        { id: "t1", status: "pending" },
+        { id: "t2", status: "pending" },
+      ]);
+      activeVariableState(store);
+
+      const result = await setVarAtTool.execute(
+        "tc-1",
+        { name: "tasks", index: 0, value: { id: "t1", status: "done" } },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("tasks");
+      expect(resultText(result)).toContain("0");
+      expect(store.get("tasks")).toEqual([
+        { id: "t1", status: "done" },
+        { id: "t2", status: "pending" },
+      ]);
+    });
+
+    it("keeps the parent variable's declared type as array", async () => {
+      const store = new SessionVariableStore({});
+      store.set("tasks", "array", ["a", "b"]);
+      activeVariableState(store);
+
+      await setVarAtTool.execute(
+        "tc-1",
+        { name: "tasks", index: 1, value: "x" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(store.toSerializableVars().tasks.type).toBe("array");
+    });
+
+    it("interpolates top-level string values before storing", async () => {
+      const store = new SessionVariableStore({});
+      store.set("name", "string", "World");
+      store.set("arr", "array", ["a", "b"]);
+      activeVariableState(store);
+
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test of interpolation placeholder
+      const value = "Hello ${name}";
+      await setVarAtTool.execute(
+        "tc-1",
+        { name: "arr", index: 0, value },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(store.get("arr")).toEqual(["Hello World", "b"]);
+    });
+
+    it("returns an error for an unset variable", async () => {
+      const store = new SessionVariableStore({});
+      activeVariableState(store);
+
+      const result = await setVarAtTool.execute(
+        "tc-1",
+        { name: "tasks", index: 0, value: "v" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("not an array");
+    });
+
+    it("returns an error for a non-array variable", async () => {
+      const store = new SessionVariableStore({});
+      store.set("x", "string", "not-an-array");
+      activeVariableState(store);
+
+      const result = await setVarAtTool.execute(
+        "tc-1",
+        { name: "x", index: 0, value: "v" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("not an array");
+    });
+
+    it("returns an error for a negative index", async () => {
+      const store = new SessionVariableStore({});
+      store.set("arr", "array", ["a", "b"]);
+      activeVariableState(store);
+
+      const result = await setVarAtTool.execute(
+        "tc-1",
+        { name: "arr", index: -1, value: "v" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("out of bounds");
+    });
+
+    it("returns an error for an index at or beyond the current length and never grows the array", async () => {
+      const store = new SessionVariableStore({});
+      store.set("arr", "array", ["a", "b"]);
+      activeVariableState(store);
+
+      const oob = await setVarAtTool.execute(
+        "tc-1",
+        { name: "arr", index: 2, value: "v" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(oob)).toContain("out of bounds");
+      expect(store.get("arr")).toEqual(["a", "b"]);
+    });
+
+    it("returns an error for a non-integer index", async () => {
+      const store = new SessionVariableStore({});
+      store.set("arr", "array", ["a", "b"]);
+      activeVariableState(store);
+
+      const result = await setVarAtTool.execute(
+        "tc-1",
+        { name: "arr", index: 1.5, value: "v" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("integer");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // setVar path mode — nested-field set
+  // -----------------------------------------------------------------------
+
+  describe("setVar path mode", () => {
+    it("sets a nested leaf field via a dot path (tasks[0].status)", async () => {
+      const store = new SessionVariableStore({});
+      store.set("tasks", "array", [{ id: "t1", status: "pending" }]);
+      activeVariableState(store);
+
+      const result = await setVarTool.execute(
+        "tc-1",
+        { name: "tasks", type: "string", value: "done", path: "0.status" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("tasks");
+      expect(resultText(result)).toContain("0.status");
+      expect(store.get("tasks")).toEqual([{ id: "t1", status: "done" }]);
+    });
+
+    it("sets a nested leaf field via a bracket path ([0].status)", async () => {
+      const store = new SessionVariableStore({});
+      store.set("tasks", "array", [{ id: "t1", status: "pending" }]);
+      activeVariableState(store);
+
+      await setVarTool.execute(
+        "tc-1",
+        { name: "tasks", type: "string", value: "done", path: "[0].status" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(store.get("tasks")).toEqual([{ id: "t1", status: "done" }]);
+    });
+
+    it("sets an object-key leaf on an object variable", async () => {
+      const store = new SessionVariableStore({});
+      store.set("meta", "object", { a: 1, nested: { b: 2 } });
+      activeVariableState(store);
+
+      await setVarTool.execute(
+        "tc-1",
+        { name: "meta", type: "number", value: 5, path: "nested.b" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(store.get("meta")).toEqual({ a: 1, nested: { b: 5 } });
+    });
+
+    it("coerces the leaf value to the declared leaf type (string 'true' to boolean)", async () => {
+      const store = new SessionVariableStore({});
+      store.set("tasks", "array", [{ id: "t1", status: "pending" }]);
+      activeVariableState(store);
+
+      await setVarTool.execute(
+        "tc-1",
+        { name: "tasks", type: "boolean", value: "true", path: "0.active" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(
+        (store.get("tasks") as Array<Record<string, unknown>>)[0].active,
+      ).toBe(true);
+    });
+
+    it("returns an error when the named variable is not set", async () => {
+      const store = new SessionVariableStore({});
+      activeVariableState(store);
+
+      const result = await setVarTool.execute(
+        "tc-1",
+        { name: "tasks", type: "string", value: "done", path: "0.status" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("not set");
+    });
+
+    it("returns an error for a missing/un-navigable intermediate segment (no auto-creation)", async () => {
+      const store = new SessionVariableStore({});
+      store.set("tasks", "array", [{ id: "t1", status: "pending" }]);
+      activeVariableState(store);
+
+      const missingKey = await setVarTool.execute(
+        "tc-1",
+        {
+          name: "tasks",
+          type: "string",
+          value: "done",
+          path: "0.missing.status",
+        },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(missingKey)).toContain("missing");
+
+      const badIndex = await setVarTool.execute(
+        "tc-1",
+        { name: "tasks", type: "string", value: "done", path: "5.status" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+      expect(resultText(badIndex)).toContain("out of bounds");
+    });
+
+    it("returns an error for a malformed path", async () => {
+      const store = new SessionVariableStore({});
+      store.set("tasks", "array", [{ id: "t1", status: "pending" }]);
+      activeVariableState(store);
+
+      const result = await setVarTool.execute(
+        "tc-1",
+        { name: "tasks", type: "string", value: "done", path: "0..status" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("Invalid path");
+    });
+
+    it("behaves exactly as today when path is omitted (whole-variable set)", async () => {
+      const store = new SessionVariableStore({});
+      store.set("label", "string", "before");
+      activeVariableState(store);
+
+      const result = await setVarTool.execute(
+        "tc-1",
+        { name: "label", type: "string", value: "after" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("label");
+      expect(store.get("label")).toBe("after");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // enqueue — FIFO back-append
+  // -----------------------------------------------------------------------
+
+  describe("enqueue behavior", () => {
+    it("appends an item to the back of an array variable and returns the new size", async () => {
+      const store = new SessionVariableStore({});
+      store.set("queue", "array", ["a"]);
+      activeVariableState(store);
+
+      const result = await enqueueTool.execute(
+        "tc-1",
+        { name: "queue", value: "b" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("2");
+      expect(store.get("queue")).toEqual(["a", "b"]);
+    });
+
+    it("initializes an unset variable to [] on first enqueue", async () => {
+      const store = new SessionVariableStore({});
+      activeVariableState(store);
+
+      const result = await enqueueTool.execute(
+        "tc-1",
+        { name: "fresh", value: "first" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("1");
+      expect(store.get("fresh")).toEqual(["first"]);
+    });
+
+    it("interpolates top-level string values", async () => {
+      const store = new SessionVariableStore({});
+      store.set("name", "string", "World");
+      activeVariableState(store);
+
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: intentional test of interpolation placeholder
+      const value = "Hello ${name}";
+      await enqueueTool.execute(
+        "tc-1",
+        { name: "queue", value },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(store.get("queue")).toEqual(["Hello World"]);
+    });
+
+    it("returns an error when the target variable is set but not an array", async () => {
+      const store = new SessionVariableStore({});
+      store.set("x", "string", "not-an-array");
+      activeVariableState(store);
+
+      const result = await enqueueTool.execute(
+        "tc-1",
+        { name: "x", value: "item" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("not an array");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // dequeue — FIFO front-remove
+  // -----------------------------------------------------------------------
+
+  describe("dequeue behavior", () => {
+    it("removes and returns the front element, shifting the rest left", async () => {
+      const store = new SessionVariableStore({});
+      store.set("queue", "array", ["a", "b", "c"]);
+      activeVariableState(store);
+
+      const result = await dequeueTool.execute(
+        "tc-1",
+        { name: "queue" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("a");
+      expect(store.get("queue")).toEqual(["b", "c"]);
+    });
+
+    it("returns JSON for object/array front elements", async () => {
+      const store = new SessionVariableStore({});
+      store.set("queue", "array", [{ id: "t1", status: "pending" }]);
+      activeVariableState(store);
+
+      const result = await dequeueTool.execute(
+        "tc-1",
+        { name: "queue" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain('"id"');
+      expect(store.get("queue")).toEqual([]);
+    });
+
+    it("returns an error on an empty queue", async () => {
+      const store = new SessionVariableStore({});
+      store.set("queue", "array", []);
+      activeVariableState(store);
+
+      const result = await dequeueTool.execute(
+        "tc-1",
+        { name: "queue" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("empty");
+    });
+
+    it("returns an error on an unset queue", async () => {
+      const store = new SessionVariableStore({});
+      activeVariableState(store);
+
+      const result = await dequeueTool.execute(
+        "tc-1",
+        { name: "queue" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("empty");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // peek — FIFO front without removal
+  // -----------------------------------------------------------------------
+
+  describe("peek behavior", () => {
+    it("returns the front element without removing it", async () => {
+      const store = new SessionVariableStore({});
+      store.set("queue", "array", ["a", "b"]);
+      activeVariableState(store);
+
+      const result = await peekTool.execute(
+        "tc-1",
+        { name: "queue" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("a");
+      expect(store.get("queue")).toEqual(["a", "b"]);
+    });
+
+    it("returns an error on an empty queue", async () => {
+      const store = new SessionVariableStore({});
+      store.set("queue", "array", []);
+      activeVariableState(store);
+
+      const result = await peekTool.execute(
+        "tc-1",
+        { name: "queue" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("empty");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // size — FIFO length
+  // -----------------------------------------------------------------------
+
+  describe("size behavior", () => {
+    it("returns the current length", async () => {
+      const store = new SessionVariableStore({});
+      store.set("queue", "array", ["a", "b", "c"]);
+      activeVariableState(store);
+
+      const result = await sizeTool.execute(
+        "tc-1",
+        { name: "queue" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("3");
+    });
+
+    it("returns 0 for an empty queue", async () => {
+      const store = new SessionVariableStore({});
+      store.set("queue", "array", []);
+      activeVariableState(store);
+
+      const result = await sizeTool.execute(
+        "tc-1",
+        { name: "queue" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("0");
+    });
+
+    it("returns 0 for an unset queue", async () => {
+      const store = new SessionVariableStore({});
+      activeVariableState(store);
+
+      const result = await sizeTool.execute(
+        "tc-1",
+        { name: "queue" },
+        undefined,
+        undefined,
+        { cwd: "/tmp" } as any,
+      );
+
+      expect(resultText(result)).toContain("0");
     });
   });
 });

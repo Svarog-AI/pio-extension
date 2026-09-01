@@ -6606,6 +6606,11 @@ describe("session variable integration", () => {
       expect(registeredTools).toContain("setVar");
       expect(registeredTools).toContain("getVar");
       expect(registeredTools).toContain("listVars");
+      expect(registeredTools).toContain("setVarAt");
+      expect(registeredTools).toContain("enqueue");
+      expect(registeredTools).toContain("dequeue");
+      expect(registeredTools).toContain("peek");
+      expect(registeredTools).toContain("size");
     });
   });
 

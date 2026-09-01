@@ -46,7 +46,7 @@ function isSet(state: PioSessionState, name: string): boolean {
 /**
  * Total repeatWhile condition for the `iterative-tdd` loop. Reads the
  * persisted in-memory task array (the store survives session interruption):
- * keep looping while pending/in-progress work remains and no task is blocked;
+ * keep looping while pending work remains and no task is blocked;
  * stop when every task is verified or any task is blocked. Never throws
  * (store reads are total).
  */
@@ -209,11 +209,11 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
       },
 
       // ---------------------------------------------------------------------
-      // Select Task — PROGRAMMATIC selection of the next task. Reads the
-      // persisted tasks store array, picks the first pending task, sets the
-      // current_task store var (interpolated into the inner loop's
-      // instructions), and marks it in-progress so the next pass selects a
-      // different one.
+      // Select Task — PROGRAMMATIC selection of the next task. Sets
+      // current_task to the first pending task in the persisted tasks store
+      // array. It does not modify statuses — an interrupted task stays pending
+      // and is re-picked, and finalize-tasks reconciles the current task
+      // (matched by name) after the TDD pass.
       // ---------------------------------------------------------------------
       {
         id: "select-task",
@@ -222,28 +222,10 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
         run: (ctx: CodeStepContext) => {
           const state = ctx.state;
           const tasks = state.store.get(TASKS_VAR) as TaskEntry[];
-          if (!tasks.length) return;
           try {
-            // Resume-safe: if a task is already in-progress (e.g. the session
-            // was interrupted mid-task), keep it as the current task rather than
-            // selecting a different one.
-            const inProgress = tasks.findIndex(
-              (t) => t.status === "in-progress",
-            );
-            if (inProgress >= 0) {
-              state.store.set(
-                CURRENT_TASK_VAR,
-                "string",
-                tasks[inProgress].name,
-              );
-              return;
-            }
             const idx = tasks.findIndex((t) => t.status === "pending");
             if (idx < 0) return;
-            const current = tasks[idx].name;
-            tasks[idx] = { ...tasks[idx], status: "in-progress" };
-            state.store.set(TASKS_VAR, "array", tasks);
-            state.store.set(CURRENT_TASK_VAR, "string", current);
+            state.store.set(CURRENT_TASK_VAR, "string", tasks[idx].name);
           } catch {
             // total — never throw
           }
@@ -479,8 +461,8 @@ You do **not** write any terminal marker — the \`finalize-tasks\` code phase d
 
       // ---------------------------------------------------------------------
       // Finalize Tasks — PROGRAMMATIC terminal decision over the in-memory
-      // store array. Reconciles the current (in-progress) task's status from
-      // the store verdict booleans (task_verified / task_blocked /
+      // store array. Reconciles the current task (matched by current_task name)
+      // from the store verdict booleans (task_verified / task_blocked /
       // acceptance_blocked), then resets the per-task verdict booleans so the
       // next task starts clean. The outer loop's repeatWhile reads the
       // persisted store array.
@@ -497,9 +479,10 @@ You do **not** write any terminal marker — the \`finalize-tasks\` code phase d
             const verified = isSet(state, TASK_VERIFIED_VAR);
             const blocked = isSet(state, TASK_BLOCKED_VAR);
             const acceptanceBlocked = isSet(state, ACCEPTANCE_BLOCKED_VAR);
+            const current = state.store.get(CURRENT_TASK_VAR) as string;
             let changed = false;
             const next = array.map((t) => {
-              if (t.status === "in-progress") {
+              if (t.name === current) {
                 if (blocked || acceptanceBlocked) {
                   changed = true;
                   return { ...t, status: "blocked" };
@@ -511,7 +494,7 @@ You do **not** write any terminal marker — the \`finalize-tasks\` code phase d
               }
               return t;
             });
-            // If acceptanceBlocked but no in-progress task was reconciled to
+            // If acceptanceBlocked but the current task wasn't reconciled to
             // blocked (e.g. the blocker arose outside the current task), ensure
             // the outer loop terminates by blocking the first non-verified task.
             if (

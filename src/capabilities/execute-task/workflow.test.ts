@@ -248,7 +248,7 @@ describe("iterative-tdd (outer loop)", () => {
         ]),
       ),
     ).toBe(false);
-    // pending/in-progress work remains → repeat
+    // pending work remains → repeat
     expect(
       cb(
         withTasks([
@@ -257,11 +257,12 @@ describe("iterative-tdd (outer loop)", () => {
         ]),
       ),
     ).toBe(true);
+    // any task neither verified nor blocked (e.g. an unrecognized status) → repeat
     expect(
       cb(
         withTasks([
           { name: "A", status: "verified" },
-          { name: "B", status: "in-progress" },
+          { name: "B", status: "queued" },
         ]),
       ),
     ).toBe(true);
@@ -354,7 +355,7 @@ describe("select-task", () => {
     expect(phase?.kind).toBe("code");
   });
 
-  it("selects the first pending task from the tasks array, sets current_task, and marks it in-progress", () => {
+  it("selects the first pending task and sets current_task without modifying statuses", () => {
     const state = makeState();
     state.store?.set("tasks", "array", [
       { name: "First", status: "pending" },
@@ -362,8 +363,9 @@ describe("select-task", () => {
     ]);
     runCode(phase!, state);
     expect(state.store?.get("current_task")).toBe("First");
+    // select-task only sets current_task; it does not touch statuses.
     expect(state.store?.get("tasks")).toEqual([
-      { name: "First", status: "in-progress" },
+      { name: "First", status: "pending" },
       { name: "Second", status: "pending" },
     ]);
   });
@@ -378,21 +380,7 @@ describe("select-task", () => {
     expect(state.store?.get("current_task")).toBe("Next");
   });
 
-  it("resumes an in-progress task (interrupted session) instead of selecting a new one", () => {
-    const state = makeState();
-    state.store?.set("tasks", "array", [
-      { name: "A", status: "in-progress" },
-      { name: "B", status: "pending" },
-    ]);
-    runCode(phase!, state);
-    expect(state.store?.get("current_task")).toBe("A");
-    expect(state.store?.get("tasks")).toEqual([
-      { name: "A", status: "in-progress" },
-      { name: "B", status: "pending" },
-    ]);
-  });
-
-  it("is total when there is no task list and no in-memory array", () => {
+  it("is total when there is no task array", () => {
     const state = makeState();
     expect(() => runCode(phase!, state)).not.toThrow();
   });
@@ -411,11 +399,10 @@ describe("finalize-tasks", () => {
     expect(phase?.kind).toBe("code");
   });
 
-  it("reconciles the current in-progress task to verified from task_verified and resets the verdicts", () => {
+  it("reconciles the current task (matched by name) to verified from task_verified and resets the verdicts", () => {
     const state = makeState();
-    state.store?.set("tasks", "array", [
-      { name: "One", status: "in-progress" },
-    ]);
+    state.store?.set("tasks", "array", [{ name: "One", status: "pending" }]);
+    state.store?.set("current_task", "string", "One");
     setBool(state, "task_verified", true);
     runCode(phase!, state);
     expect(state.store?.get("tasks")).toEqual([
@@ -426,11 +413,10 @@ describe("finalize-tasks", () => {
     expect(state.store?.get("task_blocked")).toBe(false);
   });
 
-  it("reconciles the current in-progress task to blocked from task_blocked", () => {
+  it("reconciles the current task (matched by name) to blocked from task_blocked", () => {
     const state = makeState();
-    state.store?.set("tasks", "array", [
-      { name: "One", status: "in-progress" },
-    ]);
+    state.store?.set("tasks", "array", [{ name: "One", status: "pending" }]);
+    state.store?.set("current_task", "string", "One");
     setBool(state, "task_blocked", true);
     runCode(phase!, state);
     expect(state.store?.get("tasks")).toEqual([
@@ -438,11 +424,10 @@ describe("finalize-tasks", () => {
     ]);
   });
 
-  it("reconciles the current in-progress task to blocked from acceptance_blocked", () => {
+  it("reconciles the current task (matched by name) to blocked from acceptance_blocked", () => {
     const state = makeState();
-    state.store?.set("tasks", "array", [
-      { name: "One", status: "in-progress" },
-    ]);
+    state.store?.set("tasks", "array", [{ name: "One", status: "pending" }]);
+    state.store?.set("current_task", "string", "One");
     setBool(state, "acceptance_blocked", true);
     runCode(phase!, state);
     expect(state.store?.get("tasks")).toEqual([
@@ -450,9 +435,11 @@ describe("finalize-tasks", () => {
     ]);
   });
 
-  it("blocks a non-verified task when acceptance_blocked is set but no in-progress task exists", () => {
+  it("blocks a non-verified task when acceptance_blocked is set but the current task is not matched", () => {
     const state = makeState();
     state.store?.set("tasks", "array", [{ name: "One", status: "pending" }]);
+    // no current_task → no name match, so acceptance_blocked blocks the first
+    // non-verified task.
     setBool(state, "acceptance_blocked", true);
     runCode(phase!, state);
     expect(state.store?.get("tasks")).toEqual([
@@ -463,9 +450,10 @@ describe("finalize-tasks", () => {
   it("leaves pending work untouched when the current task is verified, and resets verdicts", () => {
     const state = makeState();
     state.store?.set("tasks", "array", [
-      { name: "One", status: "in-progress" },
+      { name: "One", status: "pending" },
       { name: "Two", status: "pending" },
     ]);
+    state.store?.set("current_task", "string", "One");
     setBool(state, "task_verified", true);
     runCode(phase!, state);
     expect(state.store?.get("tasks")).toEqual([

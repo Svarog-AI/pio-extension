@@ -123,13 +123,13 @@ Skim \`.pio/PROJECT/OVERVIEW.md\` if available for background. This is a single-
             kind: "llm",
             description: `Conduct thorough research using your tools (\`read\`, \`bash\`, \`web_search\`), following the research process in the \`pio-planning\` skill. Read the files listed in the \`task\` input's "Files affected" section, trace imports and dependencies, understand the testing setup (how things are tested today, what tools are available), and look at similar code to follow existing patterns.
 
-Accumulate every finding into the \`research_notes\` array (read the current value via \`getVar\`, then set the full accumulated array via \`setVar\`, or append via \`appendVar\`). Each finding records its evidence source:
+Accumulate every finding into the \`${RESEARCH_NOTES_VAR}\` array (read the current value via \`getVar\`, then set the full accumulated array via \`setVar\`, or append via \`appendVar\`). Each finding records its evidence source:
 
 - **Evidence = repo path | web URL | recorded test output | explicit user statement.** A source is required — "just saying something" is not evidence.
 - Do **not** require a web link for codebase facts. Use \`web_search\` for assumptions genuinely unanswerable from code/tests, and cite the URL.
 - If a phase's acceptance criteria can't be made programmatic because you don't understand the test setup, go learn the test setup and record it as evidence.
 
-Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inline"\`, \`grill-me\` probing), recording the answer as evidence. **Dedupe** — do not re-add findings already present in \`research_notes\`. Set \`research_notes\` to the full array of findings gathered so far.`,
+Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inline"\`, \`grill-me\` probing), recording the answer as evidence. **Dedupe** — do not re-add findings already present in \`${RESEARCH_NOTES_VAR}\`. Set \`${RESEARCH_NOTES_VAR}\` to the full array of findings gathered so far.`,
           },
         ],
       },
@@ -142,7 +142,7 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
             name: RESEARCH_COMPLETE_VAR,
             type: "boolean",
             kind: "llm",
-            description: `Revisit the findings recorded in \`research_notes\` (via \`getVar\`) and the open questions. Set \`research_complete\` to \`true\` only when there is nothing missing, no unanswered questions, and no topics left to investigate with \`web_search\`. Otherwise set it to \`false\` so another research pass runs. Always set it explicitly.`,
+            description: `Revisit the findings recorded in \`${RESEARCH_NOTES_VAR}\` (via \`getVar\`) and the open questions. Set \`${RESEARCH_COMPLETE_VAR}\` to \`true\` only when there is nothing missing, no unanswered questions, and no topics left to investigate with \`web_search\`. Otherwise set it to \`false\` so another research pass runs. Always set it explicitly.`,
           },
         ],
       },
@@ -181,7 +181,7 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
         maxIterations: 6,
         repeatWhile: (state: PioSessionState) =>
           state.store.get(TASK_LIST_REFINED_VAR) !== true,
-        loopMessage: `The task list is not yet well-formed — review the ordering (dependencies before dependents), feasibility, and completeness of \`task_names\`, refine it in the generate phase, then re-assess in the next phase.`,
+        loopMessage: `The task list is not yet well-formed — review the ordering (dependencies before dependents), feasibility, and completeness of \`${TASK_NAMES_VAR}\`, refine it in the generate phase, then re-assess in the next phase.`,
         body: [
           {
             id: "generate-tasks",
@@ -192,7 +192,7 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
                 name: TASK_NAMES_VAR,
                 type: "array",
                 kind: "llm",
-                description: `Decompose the \`task\` input into a numbered list of discrete TDD tasks, each a nameable, verifiable unit, and set \`task_names\` (via \`setVar\`) to the array of task names. On a later pass, read the current \`task_names\` (via \`getVar\`/\`listVars\`) and refine it: fix the ordering (dependencies before dependents), split oversized/infeasible units, and preserve already-completed tasks; do not re-add completed tasks. Do not select a task yourself — the \`select-task\` code phase picks the first pending one.`,
+                description: `Decompose the \`task\` input into a numbered list of discrete TDD tasks, each a nameable, verifiable unit, and set \`${TASK_NAMES_VAR}\` (via \`setVar\`) to the array of task names. On a later pass, read the current \`${TASK_NAMES_VAR}\` (via \`getVar\`/\`listVars\`) and refine it: fix the ordering (dependencies before dependents), split oversized/infeasible units, and preserve already-completed tasks; do not re-add completed tasks. Do not select a task yourself — the \`select-task\` code phase picks the first pending one.`,
               },
             ],
           },
@@ -205,7 +205,7 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
                 name: TASK_LIST_REFINED_VAR,
                 type: "boolean",
                 kind: "llm",
-                description: `Review the \`task_names\` list: are tasks ordered by real dependency (each task's prerequisites come first)? are all units feasible and nameable? does the list cover the whole \`task\` input? Set \`task_list_refined\` to \`true\` only when the list is well-formed; otherwise set it to \`false\` so the generate phase refines it again. Always set it explicitly.`,
+                description: `Review the \`${TASK_NAMES_VAR}\` list: are tasks ordered by real dependency (each task's prerequisites come first)? are all units feasible and nameable? does the list cover the whole \`task\` input? Set \`${TASK_LIST_REFINED_VAR}\` to \`true\` only when the list is well-formed; otherwise set it to \`false\` so the generate phase refines it again. Always set it explicitly.`,
               },
             ],
           },
@@ -281,7 +281,7 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
         maxIterations: 6,
         repeatWhile: (state: PioSessionState) =>
           !(isSet(state, TASK_VERIFIED_VAR) || isSet(state, TASK_BLOCKED_VAR)),
-        loopMessage: `The current task is not yet verified — keep iterating (fix failing tests, then run the final verification). Record \`task_verified\` only when all tests + programmatic checks pass, or \`task_blocked\` on a genuine blocker.`,
+        loopMessage: `The current task is not yet verified — keep iterating (fix failing tests, then run the final verification). Record \`${TASK_VERIFIED_VAR}\` only when all tests + programmatic checks pass, or \`${TASK_BLOCKED_VAR}\` on a genuine blocker.`,
         body: [
           // -----------------------------------------------------------------
           // Write Tests — RED phase inside a do-while refinement loop. A
@@ -295,7 +295,7 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
             maxIterations: 4,
             repeatWhile: (state: PioSessionState) =>
               isSet(state, WRITE_TESTS_CHANGED_VAR),
-            loopMessage: `Have another look — any test cases, edge cases, or acceptance criteria still missed for the current task? If you add or change any test, you will mark \`write_tests_changed\` true in the next phase; if you add nothing, mark it false and finish.`,
+            loopMessage: `Have another look — any test cases, edge cases, or acceptance criteria still missed for the current task? If you add or change any test, you will mark \`${WRITE_TESTS_CHANGED_VAR}\` true in the next phase; if you add nothing, mark it false and finish.`,
             body: [
               {
                 id: "write-tests",
@@ -306,7 +306,7 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
 
 **Test behavior, not implementation.** A good test still passes after an internal refactor as long as behavior is unchanged. Avoid asserting string-literal content (descriptions, labels, error text), internal data-structure shapes, function signatures/parameter counts, or reading source files as raw strings. If renaming an internal function would break the test, it is testing implementation, not behavior. Before writing a test, ask: "if I changed the internals but the system still did the right thing, would this test still pass?" If not, test the outcome instead.
 
-Track whether you add or change any test this pass — you will set the \`write_tests_changed\` variable in the next phase accordingly.
+Track whether you add or change any test this pass — you will set the \`${WRITE_TESTS_CHANGED_VAR}\` variable in the next phase accordingly.
 
 Treat an inner-loop replay as "tests likely already exist — proceed to fix the implementation/verification," not a re-write from scratch.`,
                 skills: { mandatory: ["tdd"] },
@@ -320,7 +320,7 @@ Treat an inner-loop replay as "tests likely already exist — proceed to fix the
                     name: WRITE_TESTS_CHANGED_VAR,
                     type: "boolean",
                     kind: "llm",
-                    description: `Did you add or modify any tests in the write-tests phase you just completed? Set \`write_tests_changed\` to \`true\` if you made a test change this pass (so the loop gives you another look for anything missed); set it to \`false\` if you made no test changes. Always set it explicitly.`,
+                    description: `Did you add or modify any tests in the write-tests phase you just completed? Set \`${WRITE_TESTS_CHANGED_VAR}\` to \`true\` if you made a test change this pass (so the loop gives you another look for anything missed); set it to \`false\` if you made no test changes. Always set it explicitly.`,
                   },
                 ],
               },
@@ -339,14 +339,14 @@ Treat an inner-loop replay as "tests likely already exist — proceed to fix the
             maxIterations: 4,
             repeatWhile: (state: PioSessionState) =>
               isSet(state, IMPLEMENT_CHANGED_VAR),
-            loopMessage: `Have another look — any missing branches, inputs, or edge cases in the implementation for the current task? If you change the implementation, you will mark \`implement_changed\` true in the next phase; if you change nothing, mark it false and finish.`,
+            loopMessage: `Have another look — any missing branches, inputs, or edge cases in the implementation for the current task? If you change the implementation, you will mark \`${IMPLEMENT_CHANGED_VAR}\` true in the next phase; if you change nothing, mark it false and finish.`,
             body: [
               {
                 id: "implement",
                 title: "Implement the current task",
                 instructions: `Write the minimal implementation to make the current task's (\`\${current_task}\`) tests pass (per the \`tdd\` skill's GREEN step). Keep it minimal — only enough code to pass the current tests; do not anticipate future tests.
 
-Track whether you change the implementation this pass — you will set the \`implement_changed\` variable in the next phase accordingly.
+Track whether you change the implementation this pass — you will set the \`${IMPLEMENT_CHANGED_VAR}\` variable in the next phase accordingly.
 
 Treat an inner-loop replay as "tests already exist — proceed to fix the implementation," not a re-write from scratch.`,
                 skills: { mandatory: ["tdd"] },
@@ -360,7 +360,7 @@ Treat an inner-loop replay as "tests already exist — proceed to fix the implem
                     name: IMPLEMENT_CHANGED_VAR,
                     type: "boolean",
                     kind: "llm",
-                    description: `Did you change the implementation in the implement phase you just completed? Set \`implement_changed\` to \`true\` if you made a change this pass (so the loop gives you another look for anything missed); set it to \`false\` if you made no changes. Always set it explicitly.`,
+                    description: `Did you change the implementation in the implement phase you just completed? Set \`${IMPLEMENT_CHANGED_VAR}\` to \`true\` if you made a change this pass (so the loop gives you another look for anything missed); set it to \`false\` if you made no changes. Always set it explicitly.`,
                   },
                 ],
               },
@@ -389,14 +389,14 @@ Treat an inner-loop replay as "tests already exist — proceed to fix the implem
             maxIterations: 4,
             repeatWhile: (state: PioSessionState) =>
               isSet(state, REFACTOR_CHANGED_VAR),
-            loopMessage: `Have another look — any remaining duplication, naming, or structural cleanup worth doing for the current task? If you change the code, you will mark \`refactor_changed\` true in the next phase; if you change nothing, mark it false and finish.`,
+            loopMessage: `Have another look — any remaining duplication, naming, or structural cleanup worth doing for the current task? If you change the code, you will mark \`${REFACTOR_CHANGED_VAR}\` true in the next phase; if you change nothing, mark it false and finish.`,
             body: [
               {
                 id: "refactor",
                 title: "Refactor the implementation",
                 instructions: `Refactor for clarity, keeping the tests green. Use \`web_search\` (no workflow) to look up good refactoring practices / idiomatic patterns for the codebase's language and libraries before restructuring — cite what you find; do not refactor blind.
 
-Track whether you change the code this pass — you will set the \`refactor_changed\` variable in the next phase accordingly.
+Track whether you change the code this pass — you will set the \`${REFACTOR_CHANGED_VAR}\` variable in the next phase accordingly.
 
 Never refactor while RED — get to GREEN first.`,
                 skills: { mandatory: ["tdd"] },
@@ -410,7 +410,7 @@ Never refactor while RED — get to GREEN first.`,
                     name: REFACTOR_CHANGED_VAR,
                     type: "boolean",
                     kind: "llm",
-                    description: `Did you change the code in the refactor phase you just completed? Set \`refactor_changed\` to \`true\` if you made a change this pass (so the loop gives you another look for anything missed); set it to \`false\` if you made no changes. Always set it explicitly.`,
+                    description: `Did you change the code in the refactor phase you just completed? Set \`${REFACTOR_CHANGED_VAR}\` to \`true\` if you made a change this pass (so the loop gives you another look for anything missed); set it to \`false\` if you made no changes. Always set it explicitly.`,
                   },
                 ],
               },
@@ -450,13 +450,13 @@ The next phase (\`task-verdict\`) records your conclusion as store variables —
                 name: TASK_VERIFIED_VAR,
                 type: "boolean",
                 kind: "llm",
-                description: `Based on the final verification you just completed for the current task (\`\${current_task}\`), set \`task_verified\` to \`true\` **only when ALL formal tests and programmatic checks pass**. Never set it true on failure.`,
+                description: `Based on the final verification you just completed for the current task (\`\${current_task}\`), set \`${TASK_VERIFIED_VAR}\` to \`true\` **only when ALL formal tests and programmatic checks pass**. Never set it true on failure.`,
               },
               {
                 name: TASK_BLOCKED_VAR,
                 type: "boolean",
                 kind: "llm",
-                description: `Set \`task_blocked\` to \`true\` **only** when a genuine blocker is present (external dependency unavailable, environmental constraint, ambiguous spec with no reasonable default). Test failures, compile/type errors, and difficulty are NOT blockers — set it \`false\` and iterate again via TDD. Set exactly one of \`task_verified\`/\`task_blocked\` true when that verdict holds, or both \`false\` when a check failed but is fixable (so the inner loop iterates again). Always set both explicitly.`,
+                description: `Set \`${TASK_BLOCKED_VAR}\` to \`true\` **only** when a genuine blocker is present (external dependency unavailable, environmental constraint, ambiguous spec with no reasonable default). Test failures, compile/type errors, and difficulty are NOT blockers — set it \`false\` and iterate again via TDD. Set exactly one of \`${TASK_VERIFIED_VAR}\`/\`${TASK_BLOCKED_VAR}\` true when that verdict holds, or both \`false\` when a check failed but is fixable (so the inner loop iterates again). Always set both explicitly.`,
               },
             ],
           },
@@ -480,7 +480,7 @@ The next phase (\`task-verdict\`) records your conclusion as store variables —
             name: TASK_NAMES_VAR,
             type: "array",
             kind: "llm",
-            description: `Cross-reference the \`task\` input's acceptance criteria against your implementation: are all listed files created/modified/deleted as specified? do integration points (imports, exports, wiring) work correctly? are conventions followed (naming, patterns, styles matching existing code)? have you stayed within scope? Read the current \`task_names\` (via \`getVar\`/\`listVars\`), preserve existing names, and re-set \`task_names\` (via \`setVar\`) to include any missing work as new task names.
+            description: `Cross-reference the \`task\` input's acceptance criteria against your implementation: are all listed files created/modified/deleted as specified? do integration points (imports, exports, wiring) work correctly? are conventions followed (naming, patterns, styles matching existing code)? have you stayed within scope? Read the current \`${TASK_NAMES_VAR}\` (via \`getVar\`/\`listVars\`), preserve existing names, and re-set \`${TASK_NAMES_VAR}\` (via \`setVar\`) to include any missing work as new task names.
 
 You do **not** write any terminal marker — the \`finalize-tasks\` code phase decides the terminal outcome from the store. Your job is only the judgment of which work remains.`,
           },
@@ -488,7 +488,7 @@ You do **not** write any terminal marker — the \`finalize-tasks\` code phase d
             name: ACCEPTANCE_BLOCKED_VAR,
             type: "boolean",
             kind: "llm",
-            description: `Set \`acceptance_blocked\` to \`true\` only when a genuine blocker is present (external dependency unavailable, environmental constraint, ambiguous spec with no reasonable default) OR a task did not succeed (remains unverified — e.g. it hit the inner TDD max-iteration cap) and is genuinely unresolvable in this session. **Assess first** per blocked discipline: if the stuck task reflects a quick-fixable bug, compile/type error, or plain difficulty, add it to \`task_names\` and set \`acceptance_blocked\` to \`false\` so the outer loop iterates via TDD; only set it \`true\` when the work is genuinely unresolvable. Set it \`false\` when no blocker exists. Always set it explicitly.`,
+            description: `Set \`${ACCEPTANCE_BLOCKED_VAR}\` to \`true\` only when a genuine blocker is present (external dependency unavailable, environmental constraint, ambiguous spec with no reasonable default) OR a task did not succeed (remains unverified — e.g. it hit the inner TDD max-iteration cap) and is genuinely unresolvable in this session. **Assess first** per blocked discipline: if the stuck task reflects a quick-fixable bug, compile/type error, or plain difficulty, add it to \`${TASK_NAMES_VAR}\` and set \`${ACCEPTANCE_BLOCKED_VAR}\` to \`false\` so the outer loop iterates via TDD; only set it \`true\` when the work is genuinely unresolvable. Set it \`false\` when no blocker exists. Always set it explicitly.`,
           },
         ],
       },

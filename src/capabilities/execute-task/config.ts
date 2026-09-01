@@ -28,13 +28,6 @@ export const CONTRACT: CapabilityContract = {
     { name: "test", file: "TEST.md" },
     { name: "summary", file: "SUMMARY.md", schema: EXECUTION_SUMMARY_SCHEMA },
   ],
-  markers: [
-    {
-      outputFile: "summary",
-      field: "status",
-      values: { completed: "COMPLETED", blocked: "BLOCKED" },
-    },
-  ],
 };
 
 // ---------------------------------------------------------------------------

@@ -4,9 +4,7 @@ import * as path from "node:path";
 import { vi } from "vitest";
 import { stepFolderName } from "../../fs-utils";
 import { readPendingTask } from "../../queues";
-import type { ExitResult } from "../../runtime/exit-lifecycle";
-import type { CapabilityConfig } from "../../types";
-import config, { register } from "./config";
+import { register } from "./config";
 
 // ---------------------------------------------------------------------------
 // Shared temp-dir helpers (unified across merged sources)
@@ -251,126 +249,5 @@ describe("executeTaskTool.execute", () => {
 
     const task = readPendingTask(tempDir, "S01");
     expect(task?.params?.taskFile).toBeUndefined();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// execute-task declarative markers
-// ---------------------------------------------------------------------------
-
-describe("execute-task declarative markers", () => {
-  it("config has no postExecute callback (markers via contract.markers)", () => {
-    expect((config as Record<string, unknown>).postExecute).toBeUndefined();
-  });
-
-  it("contract has markers declaration with correct values", () => {
-    expect(config.contract.markers).toBeDefined();
-    expect(config.contract.markers).toHaveLength(1);
-    const marker = config.contract.markers![0];
-    expect(marker.outputFile).toBe("summary");
-    expect(marker.field).toBe("status");
-    expect(marker.values).toEqual({
-      completed: "COMPLETED",
-      blocked: "BLOCKED",
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// E2E: exit lifecycle creates marker file via declarative markers
-// ---------------------------------------------------------------------------
-
-describe("e2e: exit lifecycle with declarative markers", () => {
-  let tempDir: string;
-  let goalDir: string;
-  let runExitLifecycle: (config: CapabilityConfig) => Promise<ExitResult>;
-
-  beforeEach(async () => {
-    vi.resetModules();
-    tempDir = createTempDir();
-    goalDir = path.join(tempDir, ".pio", "goals", "test-goal", "S01");
-    fs.mkdirSync(goalDir, { recursive: true });
-
-    // Mock the dependencies — dispatch returns [] so no enqueue side effects
-    vi.doMock("../../guards/validation", () => ({
-      validateOutputs: vi.fn().mockReturnValue({ success: true }),
-    }));
-    vi.doMock("../../state-machines", () => ({
-      dispatch: vi.fn().mockReturnValue([]),
-      getMachine: vi.fn(),
-      goalDrivenDevelopment: {},
-      recordTransition: vi.fn(),
-    }));
-    vi.doMock("../../queues", async (importOriginal: Function) => ({
-      ...(await importOriginal()),
-      enqueueTask: vi.fn(),
-    }));
-
-    // Import the exit lifecycle fresh — config is passed in directly, no lookup
-    const exitMod = await import("../../runtime/exit-lifecycle");
-    runExitLifecycle = exitMod.runExitLifecycle;
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-    cleanup(tempDir);
-  });
-
-  it("creates COMPLETED marker via declarative markers (execute-task)", async () => {
-    // Arrange: SUMMARY.md with status: completed
-    fs.writeFileSync(
-      path.join(goalDir, "SUMMARY.md"),
-      "---\nstatus: completed\n---\n# Summary\nDone.",
-      "utf-8",
-    );
-
-    const sessionConfig: CapabilityConfig = {
-      capability: "execute-task",
-      workspaceDir: goalDir,
-      contract: config.contract,
-      sessionParams: {
-        goalName: "test-goal",
-        stepNumber: 1,
-        queueKey: "S01",
-      },
-      allowProjectWrites: false,
-    };
-
-    // Act
-    const result = await runExitLifecycle(sessionConfig);
-
-    // Assert: validation passed, COMPLETED marker created
-    expect(result.success).toBe(true);
-    expect(fs.existsSync(path.join(goalDir, "COMPLETED"))).toBe(true);
-    expect(fs.existsSync(path.join(goalDir, "BLOCKED"))).toBe(false);
-  });
-
-  it("creates BLOCKED marker via declarative markers (execute-task)", async () => {
-    // Arrange: SUMMARY.md with status: blocked
-    fs.writeFileSync(
-      path.join(goalDir, "SUMMARY.md"),
-      "---\nstatus: blocked\n---\n# Summary\nBlocked.",
-      "utf-8",
-    );
-
-    const sessionConfig: CapabilityConfig = {
-      capability: "execute-task",
-      workspaceDir: goalDir,
-      contract: config.contract,
-      sessionParams: {
-        goalName: "test-goal",
-        stepNumber: 1,
-        queueKey: "S01",
-      },
-      allowProjectWrites: false,
-    };
-
-    // Act
-    const result = await runExitLifecycle(sessionConfig);
-
-    // Assert: validation passed, BLOCKED marker created
-    expect(result.success).toBe(true);
-    expect(fs.existsSync(path.join(goalDir, "BLOCKED"))).toBe(true);
-    expect(fs.existsSync(path.join(goalDir, "COMPLETED"))).toBe(false);
   });
 });

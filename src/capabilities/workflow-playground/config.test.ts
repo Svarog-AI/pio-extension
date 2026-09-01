@@ -331,8 +331,9 @@ describe("do-while loop blocks (structural presence)", () => {
     expect(loop).toBeDefined();
     expect(loop!.kind).toBe("loop");
     expect(loop!.maxIterations).toBe(3);
-    expect(typeof loop!.instructions).toBe("string");
-    expect(loop!.instructions!.length).toBeGreaterThan(0);
+    // A do-while loop container never receives an agent turn, so it carries
+    // no instructions field (it would never be rendered).
+    expect(loop!.instructions).toBeUndefined();
     expect(typeof loop!.repeatWhile).toBe("function");
 
     const body = loop!.body as WorkflowPhase[];
@@ -358,7 +359,9 @@ describe("do-while loop blocks (structural presence)", () => {
     expect(loop).toBeDefined();
     expect(loop!.kind).toBe("loop");
     expect(loop!.maxIterations).toBe(3);
-    expect(typeof loop!.instructions).toBe("string");
+    // A do-while loop container never receives an agent turn, so it carries
+    // no instructions field (it would never be rendered).
+    expect(loop!.instructions).toBeUndefined();
     expect(typeof loop!.repeatWhile).toBe("function");
     // Always-true repeat while — termination comes solely from the cap
     expect(loop!.repeatWhile!(getState())).toBe(true);

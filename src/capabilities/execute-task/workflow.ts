@@ -125,9 +125,6 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
     maxIterations: 12,
     repeatWhile: (state: PioSessionState) =>
       !wroteTasksCompleteOrBlocked(state),
-    // Never rendered (the container gets no agent turns) — present for the
-    // prompt compiler's top-level validation.
-    instructions: `This is the outer do-while loop block. It repeats while tasks remain: generate/manage the task list, run the inner TDD loop for the current task, then verify acceptance criteria and either finish or add more tasks.`,
     loopMessage: `Continue with the next task, or finish when all tasks are verified and the acceptance criteria are met. A task that is genuinely blocked should be marked as such rather than re-attempted forever.`,
     body: [
       // ---------------------------------------------------------------------
@@ -158,9 +155,6 @@ Maintain each task's status (pending / done / verified / blocked) in \`tasks.md\
         minIterations: 1,
         maxIterations: 6,
         repeatWhile: (state: PioSessionState) => !wroteVerifiedOrBlocked(state),
-        // Never rendered (the container gets no agent turns) — present for
-        // the prompt compiler's top-level validation.
-        instructions: `This is the inner do-while loop block. It repeats the TDD sequence for the current task until the task's verification passes or a genuine blocker is found.`,
         loopMessage: `The current task is not yet verified — keep iterating (fix failing tests, then run the final verification). Write \`verified.txt\` only when all tests + programmatic checks pass, or \`blocked.txt\` on a genuine blocker.`,
         body: [
           // -----------------------------------------------------------------

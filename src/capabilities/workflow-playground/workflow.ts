@@ -532,9 +532,8 @@ Follow these steps:
     maxIterations: 3,
     repeatWhile: (state: PioSessionState) =>
       state.store?.get("dowhile_pass_state") !== "stop",
-    // Never rendered (containers get no agent turns) — present for the
-    // prompt compiler's top-level validation, which only exempts branch:*
-    instructions: `This is a do-while loop block (kind: "loop"). Its two-phase body (Pass A → Pass B) runs at least once, and after each full pass the repeatWhile condition is evaluated — the loop repeats while the dowhile_pass_state variable is not "stop" and exits cleanly once it is. This container itself never receives an agent turn.`,
+    // No instructions: a do-while loop container never receives an agent turn,
+    // so an `instructions` field would never be rendered (it does nothing).
     body: [
       {
         id: "dowhile-pass-a",
@@ -579,9 +578,8 @@ Follow these steps:
     kind: "loop",
     maxIterations: 3,
     repeatWhile: () => true,
-    // Never rendered (containers get no agent turns) — present for the
-    // prompt compiler's top-level validation, which only exempts branch:*
-    instructions: `This is a do-while loop block (kind: "loop") whose body is entirely programmatic (one variable-definition phase plus one code phase). The whole loop — exactly 3 full passes — executes inline during a single traversal with zero agent turns. repeatWhile is always true, so termination comes solely from the explicit maxIterations cap (3). This container itself never receives an agent turn.`,
+    // No instructions: a do-while loop container never receives an agent turn,
+    // so an `instructions` field would never be rendered (it does nothing).
     body: [
       {
         id: "dowhile-cap-count",

@@ -23,13 +23,6 @@ const RESEARCH_NOTES_VAR = "research_notes";
 /** Store variable set true once research is complete. */
 const RESEARCH_COMPLETE_VAR = "research_complete";
 
-/** Inner-loop verdict booleans set by the task-verdict variable phase. */
-const TASK_VERIFIED_VAR = "task_verified";
-const TASK_BLOCKED_VAR = "task_blocked";
-
-/** Store variable set true by verify-acceptance-criteria when a genuine blocker is found. */
-const ACCEPTANCE_BLOCKED_VAR = "acceptance_blocked";
-
 /** Store variable set by the verify-green phases once the current task's tests + checks pass. */
 const TESTS_PASS_VAR = "tests_pass";
 
@@ -42,18 +35,30 @@ function isSet(state: PioSessionState, name: string): boolean {
 }
 
 /**
+ * Total repeatWhile condition for the inner `tdd-process` loop. Reads the
+ * persisted in-memory task array: keep looping while the front (current) task
+ * is `in-progress`; stop once it is `verified`/`blocked` or the queue is empty.
+ * Never throws (store reads are total).
+ */
+function currentTaskInProgress(state: PioSessionState): boolean {
+  const tasks = state.store.get(TASKS_VAR) as TaskEntry[];
+  return tasks[0]?.status === "in-progress";
+}
+
+/**
  * Total repeatWhile condition for the `iterative-tdd` loop. Reads the
- * persisted in-memory task array (the store survives session interruption):
- * keep looping while pending work remains and no task is blocked;
- * stop when every task is verified or any task is blocked. Never throws
- * (store reads are total).
+ * persisted in-memory task array (the store survives session interruption).
+ * Do-while semantics: the body runs once (pass 0) before repeatWhile is
+ * evaluated at the loop-end, so by the first loop-end check task-generation
+ * has seeded `tasks` — an empty `tasks` at loop-end therefore means all tasks
+ * were verified and dequeued (done). Keep looping while tasks are non-empty
+ * and no task is blocked. Never throws (store reads are total).
  */
 function iterativeTddShouldContinue(state: PioSessionState): boolean {
   const tasks = state.store.get(TASKS_VAR) as TaskEntry[];
-  if (tasks.length === 0) return true; // nothing seeded yet — first pass
   const hasBlocked = tasks.some((t) => t.status === "blocked");
-  const allVerified = tasks.every((t) => t.status === "verified");
-  return !(hasBlocked || allVerified);
+  if (hasBlocked) return false;
+  return tasks.length > 0;
 }
 
 const steps: WorkflowPhase[] = [
@@ -91,9 +96,6 @@ Skim \`.pio/PROJECT/OVERVIEW.md\` if available for background. This is a single-
       store.declare(RESEARCH_COMPLETE_VAR, "boolean");
       store.declare(TASK_LIST_REFINED_VAR, "boolean");
       store.declare(CURRENT_TASK_VAR, "string");
-      store.declare(TASK_VERIFIED_VAR, "boolean");
-      store.declare(TASK_BLOCKED_VAR, "boolean");
-      store.declare(ACCEPTANCE_BLOCKED_VAR, "boolean");
       store.declare(TESTS_PASS_VAR, "boolean");
       store.declare(COMMIT_VAR, "string");
     },
@@ -153,11 +155,12 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
   },
 
   // -------------------------------------------------------------------------
-  // Iterative TDD — OUTER do-while block. Repeats while tasks remain; the
-  // container never gets an agent turn. Body: task-generation → inner
-  // tdd-process → verify-acceptance-criteria → finalize-tasks. The repeat
-  // condition reads the persisted in-memory task array, which finalize-tasks
-  // updates from the store verdict booleans.
+  // Iterative TDD — OUTER do-while block. Repeats while tasks remain (and no
+  // task is blocked); the container never gets an agent turn. Body:
+  // task-generation → select-task → inner tdd-process →
+  // verify-acceptance-criteria → complete-current. The repeat condition reads
+  // the persisted in-memory task array, which complete-current advances by
+  // dequeuing each verified front task.
   // -------------------------------------------------------------------------
   {
     id: "iterative-tdd",
@@ -216,35 +219,36 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
       },
 
       // ---------------------------------------------------------------------
-      // Select Task — PROGRAMMATIC selection of the next task. Sets
-      // current_task to the first pending task in the persisted tasks store
-      // array. It does not modify statuses — an interrupted task stays pending
-      // and is re-picked, and finalize-tasks reconciles the current task
-      // (matched by name) after the TDD pass.
+      // Select Task — variable-definition phase that peeks the front of the
+      // tasks queue and marks the current task in-progress. Uses the LLM-gated
+      // collection primitives (peek / setVarAt / setVar) so the current task
+      // is always the front (index-0) element; complete-current dequeues it
+      // once verified.
       // ---------------------------------------------------------------------
       {
         id: "select-task",
-        title: "Select the next pending task",
-        kind: "code",
-        run: (ctx: CodeStepContext) => {
-          const state = ctx.state;
-          const tasks = state.store.get(TASKS_VAR) as TaskEntry[];
-          try {
-            const idx = tasks.findIndex((t) => t.status === "pending");
-            if (idx < 0) return;
-            state.store.set(CURRENT_TASK_VAR, "string", tasks[idx].name);
-          } catch {
-            // total — never throw
-          }
-        },
+        title: "Select the current task (mark in-progress)",
+        kind: "variable-definition",
+        variables: [
+          {
+            name: CURRENT_TASK_VAR,
+            type: "string",
+            kind: "llm",
+            description: `Peek the front of \`${TASKS_VAR}\` via \`peek("${TASKS_VAR}")\` — the current task is always the front element (index 0). If the front status is \`pending\`, mark it \`in-progress\` directly via \`setVarAt("${TASKS_VAR}", 0, { name, status: "in-progress" })\` — do **not** replace the whole array.
+
+**Always set \`${CURRENT_TASK_VAR}\` explicitly via \`setVar\`**: to the front task's \`name\` when there is a selectable front (\`pending\` or \`in-progress\`), or to \`""\` when the queue is empty or the front is \`blocked\`/\`verified\` (defensive — the outer loop terminates or \`complete-current\`/re-attempt handles the front). \`${CURRENT_TASK_VAR}\` is only declared-with-default (not set), so this phase's variable-completeness signal requires writing it explicitly to resolve in a single pass.
+
+Make no other change to \`${TASKS_VAR}\` when the front is not \`pending\` (e.g. already \`in-progress\` on a re-attempt, or \`verified\`/\`blocked\`).`,
+          },
+        ],
       },
 
       // ---------------------------------------------------------------------
       // TDD Process — INNER do-while block: the red→green→refactor→final-
-      // verify sequence for the current task, terminated by the task-verdict
-      // store booleans. The container never gets an agent turn. Advances when
-      // the task-verdict variable phase sets task_verified or task_blocked
-      // true; a pass leaving both false replays.
+      // verify sequence for the current task, terminated by the front task's
+      // status in the store. The container never gets an agent turn. Advances
+      // when the task-verdict variable phase sets the front task's status to
+      // verified or blocked; a pass leaving it in-progress replays.
       // ---------------------------------------------------------------------
       {
         id: "tdd-process",
@@ -252,9 +256,8 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
         kind: "loop",
         minIterations: 1,
         maxIterations: 6,
-        repeatWhile: (state: PioSessionState) =>
-          !(isSet(state, TASK_VERIFIED_VAR) || isSet(state, TASK_BLOCKED_VAR)),
-        loopMessage: `The current task is not yet verified — keep iterating (fix failing tests, then run the final verification). Record \`${TASK_VERIFIED_VAR}\` only when all tests + programmatic checks pass, or \`${TASK_BLOCKED_VAR}\` on a genuine blocker.`,
+        repeatWhile: currentTaskInProgress,
+        loopMessage: `The current task is still \`in-progress\` — keep iterating (fix failing tests, then run the final verification). Mark the front task's \`status\` as \`verified\` only when all tests + programmatic checks pass, or \`blocked\` on a genuine blocker; leave it \`in-progress\` when a check failed but is fixable.`,
         body: [
           // -----------------------------------------------------------------
           // Write Tests — RED phase, a single-phase exhaustion loop on
@@ -404,9 +407,10 @@ The next phase (\`task-verdict\`) records your conclusion as store variables —
           },
 
           // -----------------------------------------------------------------
-          // Task Verdict — records the inner loop's terminal decision as store
-          // booleans. Sets task_verified only when everything passes, or
-          // task_blocked only on a genuine blocker; both false replays.
+          // Task Verdict — records the inner loop's terminal decision directly
+          // on the front (current) task's status. Sets it to verified only
+          // when everything passes, or blocked only on a genuine blocker;
+          // leaves it in-progress (so the loop replays) otherwise.
           // -----------------------------------------------------------------
           {
             id: "task-verdict",
@@ -414,16 +418,13 @@ The next phase (\`task-verdict\`) records your conclusion as store variables —
             kind: "variable-definition",
             variables: [
               {
-                name: TASK_VERIFIED_VAR,
-                type: "boolean",
+                name: TASKS_VAR,
+                type: "array",
                 kind: "llm",
-                description: `Based on the final verification you just completed for the current task (\`\${current_task}\`), set \`${TASK_VERIFIED_VAR}\` to \`true\` **only when ALL formal tests and programmatic checks genuinely pass**. Be critical and honest — do not mark the task verified unless you actually observed every check passing. Never set it true on failure.`,
-              },
-              {
-                name: TASK_BLOCKED_VAR,
-                type: "boolean",
-                kind: "llm",
-                description: `Set \`${TASK_BLOCKED_VAR}\` to \`true\` **only** when a genuine blocker is present (external dependency unavailable, environmental constraint, ambiguous spec with no reasonable default). Be critical here too — a blocker must be a real external constraint, not a test failure, compile/type error, or difficulty (those are NOT blockers — set it \`false\` and iterate again via TDD). Set exactly one of \`${TASK_VERIFIED_VAR}\`/\`${TASK_BLOCKED_VAR}\` true when that verdict holds, or both \`false\` when a check failed but is fixable (so the inner loop iterates again). Always set both explicitly.`,
+                description: `Record the inner loop's terminal verdict for the current (front, index-0) task by setting its \`status\` **directly on the element** via \`setVarAt("${TASKS_VAR}", 0, { ... })\` (or path-\`setVar("${TASKS_VAR}", "string", \`\${...}\`, { path: "0.status" })\`) — never replace the whole array:
+- \`verified\` — **only** when ALL formal tests and programmatic checks genuinely pass. Be critical/honest — never set on failure.
+- \`blocked\` — **only** on a genuine blocker (external dependency unavailable, environmental constraint, ambiguous spec with no reasonable default). A test failure, compile/type error, or difficulty is NOT a blocker (those are NOT blockers).
+- leave it \`in-progress\` — when a check failed but is fixable (so the inner loop iterates again).`,
               },
             ],
           },
@@ -433,10 +434,10 @@ The next phase (\`task-verdict\`) records your conclusion as store variables —
       // ---------------------------------------------------------------------
       // Verify Acceptance Criteria — LLM judgment (variable-definition phase).
       // Cross-references the task's acceptance criteria against the
-      // implementation, re-sets the persisted `tasks` store array to
-      // include any missing work, and records whether a genuine blocker or an
-      // unresolvable stuck task exists (acceptance_blocked). The finalize-tasks
-      // code phase decides the terminal outcome from the store.
+      // implementation, appends any missing work to the back of the `tasks`
+      // queue, and sets a genuinely unresolvable stuck front task's status to
+      // blocked. The complete-current phase advances the queue and the outer
+      // loop's repeatWhile decides termination from the store.
       // ---------------------------------------------------------------------
       {
         id: "verify-acceptance-criteria",
@@ -447,76 +448,40 @@ The next phase (\`task-verdict\`) records your conclusion as store variables —
             name: TASKS_VAR,
             type: "array",
             kind: "llm",
-            description: `Cross-reference the \`task\` input's acceptance criteria against your implementation: are all listed files created/modified/deleted as specified? do integration points (imports, exports, wiring) work correctly? are conventions followed (naming, patterns, styles matching existing code)? have you stayed within scope? Read the current \`${TASKS_VAR}\` (via \`getVar\`/\`listVars\`), preserve every existing entry and its status, and re-set \`${TASKS_VAR}\` (via \`setVar\`) to include any missing work as new task objects with \`status: "pending"\`.
+            description: `Cross-reference the \`task\` input's acceptance criteria against your implementation: are all listed files created/modified/deleted as specified? do integration points (imports, exports, wiring) work correctly? are conventions followed (naming, patterns, styles matching existing code)? have you stayed within scope?
 
-You do **not** write any terminal marker — the \`finalize-tasks\` code phase decides the terminal outcome from the store. Your job is only the judgment of which work remains.`,
-          },
-          {
-            name: ACCEPTANCE_BLOCKED_VAR,
-            type: "boolean",
-            kind: "llm",
-            description: `Set \`${ACCEPTANCE_BLOCKED_VAR}\` to \`true\` only when a genuine blocker is present (external dependency unavailable, environmental constraint, ambiguous spec with no reasonable default) OR a task did not succeed (remains unverified — e.g. it hit the inner TDD max-iteration cap) and is genuinely unresolvable in this session. **Be critical** — a blocker must be a real external constraint or a truly unresolvable stuck task, not a quick-fixable bug, compile/type error, or plain difficulty. **Assess first** per blocked discipline: if the stuck task is quick-fixable, add it to \`${TASKS_VAR}\` with \`status: "pending"\` and set \`${ACCEPTANCE_BLOCKED_VAR}\` to \`false\` so the outer loop iterates via TDD; only set it \`true\` when the work is genuinely unresolvable. Set it \`false\` when no blocker exists. Always set it explicitly.`,
+Append any missing work to the back of \`${TASKS_VAR}\` as \`{ name, status: "pending" }\` via \`enqueue("${TASKS_VAR}", { name, status: "pending" })\` (or preserve the array and append). Do not re-add or re-pend already-completed tasks.
+
+If the current (front) task remains \`in-progress\` after the inner loop (e.g. it hit the max-iteration cap) and is **genuinely unresolvable** in this session (a real external constraint or a truly stuck task, not a quick-fixable bug/compile/type error), set its \`status\` to \`blocked\` directly on \`tasks[0]\` via \`setVarAt("${TASKS_VAR}", 0, { name, status: "blocked" })\`. If it is quick-fixable, leave it \`in-progress\` (the outer loop re-attempts via TDD).
+
+You do **not** write any terminal marker — the \`complete-current\` phase advances the queue and the outer loop's \`repeatWhile\` decides termination from the store.`,
           },
         ],
       },
 
       // ---------------------------------------------------------------------
-      // Finalize Tasks — PROGRAMMATIC terminal decision over the in-memory
-      // store array. Reconciles the current task (matched by current_task name)
-      // from the store verdict booleans (task_verified / task_blocked /
-      // acceptance_blocked), then resets the per-task verdict booleans so the
-      // next task starts clean. The outer loop's repeatWhile reads the
-      // persisted store array.
+      // Complete Current — variable-definition phase that advances the tasks
+      // queue: peeks the front and dequeues it once verified (shifting the
+      // queue left); leaves a blocked/in-progress front in place so the outer
+      // loop sees termination or re-attempts.
       // ---------------------------------------------------------------------
       {
-        id: "finalize-tasks",
-        title: "Reconcile the current task and decide done vs blocked",
-        kind: "code",
-        run: (ctx: CodeStepContext) => {
-          const state = ctx.state;
-          const array = state.store.get(TASKS_VAR) as TaskEntry[];
-          if (!array.length) return;
-          try {
-            const verified = isSet(state, TASK_VERIFIED_VAR);
-            const blocked = isSet(state, TASK_BLOCKED_VAR);
-            const acceptanceBlocked = isSet(state, ACCEPTANCE_BLOCKED_VAR);
-            const current = state.store.get(CURRENT_TASK_VAR) as string;
-            let changed = false;
-            const next = array.map((t) => {
-              if (t.name === current) {
-                if (blocked || acceptanceBlocked) {
-                  changed = true;
-                  return { ...t, status: "blocked" };
-                }
-                if (verified) {
-                  changed = true;
-                  return { ...t, status: "verified" };
-                }
-              }
-              return t;
-            });
-            // If acceptanceBlocked but the current task wasn't reconciled to
-            // blocked (e.g. the blocker arose outside the current task), ensure
-            // the outer loop terminates by blocking the first non-verified task.
-            if (
-              acceptanceBlocked &&
-              !next.some((t) => t.status === "blocked")
-            ) {
-              const idx = next.findIndex((t) => t.status !== "verified");
-              if (idx >= 0) {
-                next[idx] = { ...next[idx], status: "blocked" };
-                changed = true;
-              }
-            }
-            if (changed) state.store.set(TASKS_VAR, "array", next);
-            // Reset the per-task verdict booleans so the next task starts clean.
-            state.store.set(TASK_VERIFIED_VAR, "boolean", false);
-            state.store.set(TASK_BLOCKED_VAR, "boolean", false);
-            state.store.set(ACCEPTANCE_BLOCKED_VAR, "boolean", false);
-          } catch {
-            // total — never throw
-          }
-        },
+        id: "complete-current",
+        title: "Advance the task queue once the current task is verified",
+        kind: "variable-definition",
+        variables: [
+          {
+            name: TASKS_VAR,
+            type: "array",
+            kind: "llm",
+            description: `Advance the \`${TASKS_VAR}\` queue:
+- \`peek\` the front of \`${TASKS_VAR}\` via \`peek("${TASKS_VAR}")\`.
+- If the front status is \`verified\`, \`dequeue\` it via \`dequeue("${TASKS_VAR}")\` (removes it, shifting the queue left) so the next pending task becomes the front.
+- If the front status is \`blocked\` or \`in-progress\`, leave it in place (do not dequeue) — a blocked task signals outer-loop termination; an in-progress task will be re-attempted.
+
+Do not replace the whole array.`,
+          },
+        ],
       },
     ],
   },

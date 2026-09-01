@@ -32,9 +32,6 @@ function makeState(
   store.declare("research_complete", "boolean");
   store.declare("task_list_refined", "boolean");
   store.declare("current_task", "string");
-  store.declare("task_verified", "boolean");
-  store.declare("task_blocked", "boolean");
-  store.declare("acceptance_blocked", "boolean");
   store.declare("tests_pass", "boolean");
   store.declare("commit_hash", "string");
   return {
@@ -121,9 +118,6 @@ describe("default-setup", () => {
     expect(state.store?.get("research_complete")).toBe(false);
     expect(state.store?.get("task_list_refined")).toBe(false);
     expect(state.store?.get("current_task")).toBe("");
-    expect(state.store?.get("task_verified")).toBe(false);
-    expect(state.store?.get("task_blocked")).toBe(false);
-    expect(state.store?.get("acceptance_blocked")).toBe(false);
     expect(state.store?.get("tests_pass")).toBe(false);
     expect(state.store?.get("commit_hash")).toBe("");
   });
@@ -244,15 +238,15 @@ describe("iterative-tdd (outer loop)", () => {
     expect(iterativeTddPhase.body).toHaveLength(5);
   });
 
-  it("advances when all tasks are verified or any is blocked; repeats otherwise (total, store-backed)", () => {
+  it("advances when tasks is empty or any task is blocked; repeats when non-empty non-blocked work remains (total, store-backed)", () => {
     const cb = iterativeTddPhase.repeatWhile as (s: PioSessionState) => boolean;
     const withTasks = (tasks: unknown[]) => {
       const state = makeState();
       state.store?.set("tasks", "array", tasks);
       return state;
     };
-    // all verified → advance (stop repeating)
-    expect(cb(withTasks([{ name: "A", status: "verified" }]))).toBe(false);
+    // empty array → advance (all tasks were verified and dequeued; do-while)
+    expect(cb(makeState())).toBe(false);
     // any blocked → advance
     expect(
       cb(
@@ -262,7 +256,9 @@ describe("iterative-tdd (outer loop)", () => {
         ]),
       ),
     ).toBe(false);
-    // pending work remains → repeat
+    // a single blocked task → advance
+    expect(cb(withTasks([{ name: "A", status: "blocked" }]))).toBe(false);
+    // pending/in-progress work remains → repeat
     expect(
       cb(
         withTasks([
@@ -271,28 +267,25 @@ describe("iterative-tdd (outer loop)", () => {
         ]),
       ),
     ).toBe(true);
-    // any task neither verified nor blocked (e.g. an unrecognized status) → repeat
     expect(
       cb(
         withTasks([
           { name: "A", status: "verified" },
-          { name: "B", status: "queued" },
+          { name: "B", status: "in-progress" },
         ]),
       ),
     ).toBe(true);
-    // empty array (nothing seeded yet) → repeat (first pass)
-    expect(cb(makeState())).toBe(true);
     // total — never throws on missing state/store
     expect(() => cb(makeState())).not.toThrow();
   });
 
-  it("body contains task-generation, select-task, the inner tdd-process loop, verify-acceptance-criteria, and finalize-tasks", () => {
+  it("body contains task-generation, select-task, the inner tdd-process loop, verify-acceptance-criteria, and complete-current", () => {
     expect(iterativeTddPhase.body?.map((p) => p.id)).toEqual([
       "task-generation",
       "select-task",
       "tdd-process",
       "verify-acceptance-criteria",
-      "finalize-tasks",
+      "complete-current",
     ]);
   });
 
@@ -358,128 +351,64 @@ describe("task-generation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// select-task — programmatic task selection (code phase)
+// select-task — variable-definition phase that peeks the front of the tasks
+// queue, marks it in-progress, and sets current_task
 // ---------------------------------------------------------------------------
 
 describe("select-task", () => {
   const phase = iterativeTddPhase.body?.[1];
 
-  it("is a code phase", () => {
+  it("is a variable-definition phase declaring current_task", () => {
     expect(phase?.id).toBe("select-task");
-    expect(phase?.kind).toBe("code");
+    expect(phase?.kind).toBe("variable-definition");
+    expect(phase?.variables?.map((v) => v.name)).toEqual(["current_task"]);
+    expect(phase?.variables?.[0]).toMatchObject({
+      name: "current_task",
+      type: "string",
+      kind: "llm",
+    });
   });
 
-  it("selects the first pending task and sets current_task without modifying statuses", () => {
-    const state = makeState();
-    state.store?.set("tasks", "array", [
-      { name: "First", status: "pending" },
-      { name: "Second", status: "pending" },
-    ]);
-    runCode(phase!, state);
-    expect(state.store?.get("current_task")).toBe("First");
-    // select-task only sets current_task; it does not touch statuses.
-    expect(state.store?.get("tasks")).toEqual([
-      { name: "First", status: "pending" },
-      { name: "Second", status: "pending" },
-    ]);
-  });
-
-  it("skips already-verified tasks and picks the next pending one", () => {
-    const state = makeState();
-    state.store?.set("tasks", "array", [
-      { name: "Done", status: "verified" },
-      { name: "Next", status: "pending" },
-    ]);
-    runCode(phase!, state);
-    expect(state.store?.get("current_task")).toBe("Next");
-  });
-
-  it("is total when there is no task array", () => {
-    const state = makeState();
-    expect(() => runCode(phase!, state)).not.toThrow();
+  it("description instructs peeking the front, marking it in-progress via setVarAt, and setting current_task explicitly", () => {
+    const desc = phase?.variables?.[0].description as string;
+    expect(desc).toContain("peek");
+    expect(desc).toContain("setVarAt");
+    expect(desc).toContain("in-progress");
+    expect(desc).toContain("setVar");
+    expect(desc).toContain("index 0");
+    expect(desc).toContain("replace the whole array");
   });
 });
 
 // ---------------------------------------------------------------------------
-// finalize-tasks — programmatic terminal decision from the store verdict
-// booleans (code phase)
+// complete-current — variable-definition phase that advances the tasks queue:
+// peeks the front and dequeues it once verified
 // ---------------------------------------------------------------------------
 
-describe("finalize-tasks", () => {
+describe("complete-current", () => {
   const phase = iterativeTddPhase.body?.[4];
 
-  it("is a code phase", () => {
-    expect(phase?.id).toBe("finalize-tasks");
-    expect(phase?.kind).toBe("code");
+  it("is a variable-definition phase declaring tasks (replaces finalize-tasks)", () => {
+    expect(phase?.id).toBe("complete-current");
+    expect(phase?.kind).toBe("variable-definition");
+    expect(phase?.variables?.map((v) => v.name)).toEqual(["tasks"]);
+    expect(phase?.variables?.[0]).toMatchObject({
+      name: "tasks",
+      type: "array",
+      kind: "llm",
+    });
   });
 
-  it("reconciles the current task (matched by name) to verified from task_verified and resets the verdicts", () => {
-    const state = makeState();
-    state.store?.set("tasks", "array", [{ name: "One", status: "pending" }]);
-    state.store?.set("current_task", "string", "One");
-    setBool(state, "task_verified", true);
-    runCode(phase!, state);
-    expect(state.store?.get("tasks")).toEqual([
-      { name: "One", status: "verified" },
-    ]);
-    // verdict booleans are reset for the next task
-    expect(state.store?.get("task_verified")).toBe(false);
-    expect(state.store?.get("task_blocked")).toBe(false);
-  });
-
-  it("reconciles the current task (matched by name) to blocked from task_blocked", () => {
-    const state = makeState();
-    state.store?.set("tasks", "array", [{ name: "One", status: "pending" }]);
-    state.store?.set("current_task", "string", "One");
-    setBool(state, "task_blocked", true);
-    runCode(phase!, state);
-    expect(state.store?.get("tasks")).toEqual([
-      { name: "One", status: "blocked" },
-    ]);
-  });
-
-  it("reconciles the current task (matched by name) to blocked from acceptance_blocked", () => {
-    const state = makeState();
-    state.store?.set("tasks", "array", [{ name: "One", status: "pending" }]);
-    state.store?.set("current_task", "string", "One");
-    setBool(state, "acceptance_blocked", true);
-    runCode(phase!, state);
-    expect(state.store?.get("tasks")).toEqual([
-      { name: "One", status: "blocked" },
-    ]);
-  });
-
-  it("blocks a non-verified task when acceptance_blocked is set but the current task is not matched", () => {
-    const state = makeState();
-    state.store?.set("tasks", "array", [{ name: "One", status: "pending" }]);
-    // no current_task → no name match, so acceptance_blocked blocks the first
-    // non-verified task.
-    setBool(state, "acceptance_blocked", true);
-    runCode(phase!, state);
-    expect(state.store?.get("tasks")).toEqual([
-      { name: "One", status: "blocked" },
-    ]);
-  });
-
-  it("leaves pending work untouched when the current task is verified, and resets verdicts", () => {
-    const state = makeState();
-    state.store?.set("tasks", "array", [
-      { name: "One", status: "pending" },
-      { name: "Two", status: "pending" },
-    ]);
-    state.store?.set("current_task", "string", "One");
-    setBool(state, "task_verified", true);
-    runCode(phase!, state);
-    expect(state.store?.get("tasks")).toEqual([
-      { name: "One", status: "verified" },
-      { name: "Two", status: "pending" },
-    ]);
-    expect(state.store?.get("task_verified")).toBe(false);
-  });
-
-  it("is total when there is no in-memory task array", () => {
-    const state = makeState();
-    expect(() => runCode(phase!, state)).not.toThrow();
+  it("description instructs peeking and dequeuing a verified front while leaving blocked/in-progress in place", () => {
+    const desc = phase?.variables?.[0].description as string;
+    expect(desc).toContain("peek");
+    expect(desc).toContain("dequeue");
+    expect(desc).toContain("verified");
+    expect(desc).toContain("blocked");
+    expect(desc).toContain("in-progress");
+    expect(desc).toContain("shift");
+    expect(desc).toContain("leave it in place");
+    expect(desc).toContain("not replace the whole array");
   });
 });
 
@@ -499,20 +428,24 @@ describe("tdd-process (inner loop)", () => {
     expect(inner?.body).toHaveLength(5);
   });
 
-  it("advances when task_verified or task_blocked is set; repeats otherwise (total, store-backed)", () => {
+  it("advances when the front task is verified/blocked or the queue is empty; repeats while the front is in-progress (total, store-backed)", () => {
     const cb = inner?.repeatWhile as (s: PioSessionState) => boolean;
-    const withVerdict = (verified?: boolean, blocked?: boolean) => {
+    const withFront = (status?: string) => {
       const state = makeState();
-      if (verified !== undefined) setBool(state, "task_verified", verified);
-      if (blocked !== undefined) setBool(state, "task_blocked", blocked);
+      if (status !== undefined) {
+        state.store?.set("tasks", "array", [{ name: "A", status }]);
+      }
       return state;
     };
-    // neither verdict → repeat (task not yet verified)
-    expect(cb(makeState())).toBe(true);
-    expect(cb(withVerdict(false, false))).toBe(true);
-    // verified or blocked → advance
-    expect(cb(withVerdict(true))).toBe(false);
-    expect(cb(withVerdict(undefined, true))).toBe(false);
+    // front is in-progress → repeat (task not yet resolved)
+    expect(cb(withFront("in-progress"))).toBe(true);
+    // verified or blocked front → advance
+    expect(cb(withFront("verified"))).toBe(false);
+    expect(cb(withFront("blocked"))).toBe(false);
+    // pending front (not yet selected) → advance (select-task marks in-progress)
+    expect(cb(withFront("pending"))).toBe(false);
+    // empty/unset queue → advance
+    expect(cb(makeState())).toBe(false);
     // total — never throws on missing store
     expect(() => cb(makeState())).not.toThrow();
   });
@@ -684,27 +617,24 @@ describe("TDD sub-phases", () => {
     expect(phase.skills?.mandatory).toEqual(["tdd"]);
   });
 
-  it("task-verdict is a variable phase setting task_verified/task_blocked with the blocked discipline", () => {
+  it("task-verdict is a variable phase declaring tasks and setting the front task's status directly with the blocked discipline", () => {
     const phase = tddBodyById("task-verdict");
     expect(phase.kind).toBe("variable-definition");
     const names = phase.variables?.map((v) => v.name);
-    expect(names).toEqual(["task_verified", "task_blocked"]);
+    expect(names).toEqual(["tasks"]);
     expect(phase.variables?.[0]).toMatchObject({
-      name: "task_verified",
-      type: "boolean",
-      kind: "llm",
-    });
-    expect(phase.variables?.[1]).toMatchObject({
-      name: "task_blocked",
-      type: "boolean",
+      name: "tasks",
+      type: "array",
       kind: "llm",
     });
     const desc = phase.variables?.[0].description as string;
-    expect(desc).toContain("only when ALL formal tests");
-    expect(desc).toContain("critical");
-    const blockedDesc = phase.variables?.[1].description as string;
-    expect(blockedDesc).toContain("genuine blocker");
-    expect(blockedDesc).toContain("NOT blockers");
+    expect(desc).toContain("setVarAt");
+    expect(desc).toContain("verified");
+    expect(desc).toContain("blocked");
+    expect(desc).toContain("in-progress");
+    expect(desc).toContain("ALL formal tests");
+    expect(desc).toContain("NOT blockers");
+    expect(desc).toContain("never replace the whole array");
   });
 });
 
@@ -716,38 +646,30 @@ describe("TDD sub-phases", () => {
 describe("verify-acceptance-criteria", () => {
   const phase = iterativeTddPhase.body?.[3];
 
-  it("is a variable-definition judgment phase (tasks + acceptance_blocked) before finalize-tasks", () => {
+  it("is a variable-definition judgment phase declaring only tasks, before complete-current", () => {
     expect(phase?.id).toBe("verify-acceptance-criteria");
     expect(phase?.kind).toBe("variable-definition");
-    expect(phase?.variables?.map((v) => v.name)).toEqual([
-      "tasks",
-      "acceptance_blocked",
-    ]);
+    expect(phase?.variables?.map((v) => v.name)).toEqual(["tasks"]);
     expect(phase?.variables?.[0]).toMatchObject({
       name: "tasks",
       type: "array",
       kind: "llm",
     });
-    expect(phase?.variables?.[1]).toMatchObject({
-      name: "acceptance_blocked",
-      type: "boolean",
-      kind: "llm",
-    });
-    expect(iterativeTddPhase.body?.[4].id).toBe("finalize-tasks");
+    expect(iterativeTddPhase.body?.[4].id).toBe("complete-current");
   });
 
-  it("description carries judgment-only discipline and stuck-task blocker handling (no marker files)", () => {
+  it("description carries judgment-only discipline: enqueues missing work and sets a genuinely unresolvable stuck front task to blocked (no marker files)", () => {
     const tasksDesc = phase?.variables?.[0].description as string;
-    expect(tasksDesc).toContain("finalize-tasks");
+    expect(tasksDesc).toContain("enqueue");
+    expect(tasksDesc).toContain("pending");
     expect(tasksDesc).toContain("missing work");
-    const blockedDesc = phase?.variables?.[1].description as string;
-    expect(blockedDesc).toContain("stuck");
-    expect(blockedDesc).toContain("max-iteration");
-    expect(blockedDesc).toContain("genuine blocker");
-    expect(blockedDesc).toContain("tasks");
+    expect(tasksDesc).toContain("stuck");
+    expect(tasksDesc).toContain("setVarAt");
+    expect(tasksDesc).toContain("blocked");
+    expect(tasksDesc).toContain("complete-current");
     // no terminal-marker file writing
     expect(tasksDesc).not.toContain("tasks-complete.txt");
-    expect(blockedDesc).not.toContain("blocked.txt");
+    expect(tasksDesc).not.toContain("blocked.txt");
   });
 });
 
@@ -893,8 +815,10 @@ describe("workflow structure", () => {
             "tasks-refined",
             "verify-green",
             "refactor-verify-green",
+            "select-task",
             "task-verdict",
             "verify-acceptance-criteria",
+            "complete-current",
           ]).toContain(p.id);
         }
         if (p.body) visit(p.body);

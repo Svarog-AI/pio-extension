@@ -19,6 +19,9 @@ const CURRENT_TASK_VAR = "current_task";
 /** Store variable carrying the in-memory task array: [{ name, status }]. */
 const TASKS_VAR = "tasks";
 
+/** Store variable carrying the task-name list (persisted) set by the task-list LLM phases. */
+const TASK_NAMES_VAR = "task_names";
+
 /** Store variable set true by the research-complete phase once research is done. */
 const RESEARCH_COMPLETE_VAR = "research_complete";
 
@@ -28,16 +31,6 @@ const SCRATCH_DIR = "/tmp/pio-execute-task";
 /** Resolve the session-scoped scratch root. Total — never throws. */
 function scratchRootOf(state: PioSessionState): string {
   return path.join(SCRATCH_DIR, state.sessionId ?? "unknown");
-}
-
-/**
- * Resolve the LLM->code task handoff file. The LLM phases (task-generation,
- * verify-acceptance-criteria) cannot write the store (setVar is gated to
- * variable-definition phases), so they write the task NAMES here as a JSON
- * array; the code phases load them into the in-memory store array. Total.
- */
-function tasksJsonPathOf(state: PioSessionState): string {
-  return path.join(scratchRootOf(state), "tasks.json");
 }
 
 /** In-memory task array entry. */
@@ -106,9 +99,10 @@ Skim \`.pio/PROJECT/OVERVIEW.md\` if available for background. This is a single-
       const root = path.join(SCRATCH_DIR, ctx.state.sessionId ?? "unknown");
       fs.mkdirSync(root, { recursive: true });
       ctx.state.store.set(NOTES_VAR, "string", path.join(root, "notes.md"));
-      // Declare the durable in-memory task array so store.get(TASKS_VAR)
-      // resolves to [] when unset (rather than undefined).
+      // Declare the durable in-memory task arrays so store.get(...) resolves
+      // to [] when unset (rather than undefined).
       ctx.state.store.declare(TASKS_VAR, "array");
+      ctx.state.store.declare(TASK_NAMES_VAR, "array");
     },
   },
 
@@ -190,20 +184,24 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
       {
         id: "task-generation",
         title: "Decompose the task into discrete TDD tasks",
-        instructions: `Maintain the scratch task list at \`/tmp/pio-execute-task/<sessionId>/tasks.json\` (under /tmp — writes there are not blocked). **tasks.json is a JSON array of task-name strings** that the programmatic \`select-task\`/\`finalize-tasks\` phases load into the in-memory task array — keep it valid JSON:
-
-- **First pass:** decompose the \`task\` input into a numbered list of discrete TDD tasks, each a nameable, verifiable unit. Write them to \`tasks.json\` as a JSON array, e.g. \`["Implement the public API", "Add error handling"]\`.
-- **Later passes:** read \`tasks.json\` and append any newly-identified tasks (e.g. gaps surfaced by the acceptance review) to the array. Do not re-add already-completed tasks.
-
-The in-memory task array (with statuses) is maintained by the code phases. **Do not select a task yourself** — \`select-task\` picks the first pending task. If you find a genuine blocker here, note it; do not write \`blocked.txt\` directly (the \`finalize-tasks\` code phase writes the terminal markers).`,
+        kind: "variable-definition",
+        variables: [
+          {
+            name: TASK_NAMES_VAR,
+            type: "array",
+            kind: "llm",
+            description: `Decompose the \`task\` input into a numbered list of discrete TDD tasks, each a nameable, verifiable unit, and set \`task_names\` (via \`setVar\`) to the array of task names. On a later pass, first read the current \`task_names\` (via \`getVar\`/\`listVars\`), preserve existing names, and append any newly-identified tasks (e.g. gaps surfaced by the acceptance review); do not re-add already-completed tasks. Do not select a task yourself — the \`select-task\` code phase picks the first pending one. If you find a genuine blocker here, note it; the \`finalize-tasks\` code phase handles the terminal decision.`,
+          },
+        ],
       },
 
       // ---------------------------------------------------------------------
-      // Select Task — PROGRAMMATIC selection of the next task. Loads the task
-      // names from tasks.json into the in-memory store array (preserving any
-      // existing statuses), picks the first pending task, sets the current_task
-      // store var (interpolated into the inner loop's instructions), and marks
-      // it in-progress so the next pass selects a different one.
+      // Select Task — PROGRAMMATIC selection of the next task. Merges the
+      // persisted task_names store list into the code-managed tasks array
+      // (preserving statuses), picks the first pending task, sets the
+      // current_task store var (interpolated into the inner loop's
+      // instructions), and marks it in-progress so the next pass selects a
+      // different one.
       // ---------------------------------------------------------------------
       {
         id: "select-task",
@@ -213,21 +211,13 @@ The in-memory task array (with statuses) is maintained by the code phases. **Do 
           const state = ctx.state;
           const merged = state.store.get(TASKS_VAR) as TaskEntry[];
           try {
-            // Merge any LLM-authored task names (tasks.json) into the durable
-            // store array. The array is the source of truth (survives
-            // interruption); tasks.json is only a transient seed/append channel
-            // because LLM phases cannot write the store.
-            const jsonPath = tasksJsonPathOf(state);
-            if (fs.existsSync(jsonPath)) {
-              const parsed = JSON.parse(
-                fs.readFileSync(jsonPath, "utf-8"),
-              ) as unknown;
-              if (Array.isArray(parsed)) {
-                const seen = new Set(merged.map((t) => t.name));
-                for (const n of parsed.map((n) => String(n))) {
-                  if (!seen.has(n)) merged.push({ name: n, status: "pending" });
-                }
-              }
+            // Merge the persisted task-name list (set by the variable-definition
+            // task-list phases) into the code-managed tasks array, preserving
+            // existing statuses. The store array survives interruption.
+            const names = state.store.get(TASK_NAMES_VAR) as string[];
+            const seen = new Set(merged.map((t) => t.name));
+            for (const n of names) {
+              if (!seen.has(n)) merged.push({ name: n, status: "pending" });
             }
             // Resume-safe: if a task is already in-progress (e.g. the session
             // was interrupted mid-task), keep it as the current task rather than
@@ -377,26 +367,29 @@ Never refactor while RED — get to GREEN first.`,
       },
 
       // ---------------------------------------------------------------------
-      // Verify Acceptance Criteria — LLM judgment only. Cross-references the
-      // task's acceptance criteria against the implementation and updates
-      // tasks.md (adds missing `[ ]` tasks, marks a genuinely-unresolvable
-      // task `[!]`). Does NOT write the terminal markers — the `finalize-tasks`
-      // code phase decides those from tasks.md.
+      // Verify Acceptance Criteria — LLM judgment (variable-definition phase).
+      // Cross-references the task's acceptance criteria against the
+      // implementation and re-sets the persisted `task_names` store list to
+      // include any missing work. Does NOT write the terminal markers — the
+      // `finalize-tasks` code phase decides those from the tasks array.
       // ---------------------------------------------------------------------
       {
         id: "verify-acceptance-criteria",
         title: "Verify non-test acceptance criteria",
-        instructions: `Cross-reference the \`task\` input's acceptance criteria against your implementation:
-
-- Are all listed files created, modified, or deleted as specified?
-- Do integration points (imports, exports, wiring) work correctly?
-- Are conventions followed (naming, patterns, styles matching existing code)?
-- Have you stayed within scope — no unplanned refactoring or out-of-scope changes?
+        kind: "variable-definition",
+        variables: [
+          {
+            name: TASK_NAMES_VAR,
+            type: "array",
+            kind: "llm",
+            description: `Cross-reference the \`task\` input's acceptance criteria against your implementation: are all listed files created/modified/deleted as specified? do integration points (imports, exports, wiring) work correctly? are conventions followed (naming, patterns, styles matching existing code)? have you stayed within scope? Read the current \`task_names\` (via \`getVar\`/\`listVars\`), preserve existing names, and re-set \`task_names\` (via \`setVar\`) to include any missing work as new task names.
 
 You do **not** write the terminal markers — the \`finalize-tasks\` code phase decides those from the in-memory task array. Your job is only the judgment:
 
-- If acceptance is unmet, append the missing work as new task names to \`/tmp/pio-execute-task/<sessionId>/tasks.json\`.
-- If a genuine blocker is present, or a task did not succeed (remains unverified — e.g. it hit the inner TDD max-iteration cap), **assess first** per blocked discipline: if the stuck task is a quick-fixable bug, compile/type error, or plain difficulty, append it to \`tasks.json\` and iterate via TDD; only when it is genuinely unresolvable in this session, write \`blocked.txt\` to the scratch dir. Do not re-add a permanently-stuck task and spin the outer loop forever.`,
+- If acceptance is unmet, add the missing work as new task names to \`task_names\`.
+- If a genuine blocker is present, or a task did not succeed (remains unverified — e.g. it hit the inner TDD max-iteration cap), **assess first** per blocked discipline: if the stuck task is a quick-fixable bug, compile/type error, or plain difficulty, add it to \`task_names\` and iterate via TDD; only when it is genuinely unresolvable in this session, write \`blocked.txt\` to the scratch dir. Do not re-add a permanently-stuck task and spin the outer loop forever.`,
+          },
+        ],
       },
 
       // ---------------------------------------------------------------------

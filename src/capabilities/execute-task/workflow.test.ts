@@ -26,9 +26,10 @@ function makeState(
   } = {},
 ): PioSessionState {
   const store = overrides.store ?? makeStore();
-  // Mirror default-setup: declare the durable task array so store.get("tasks")
+  // Mirror default-setup: declare the durable task arrays so store.get(...)
   // resolves to [] when unset rather than undefined.
   store.declare("tasks", "array");
+  store.declare("task_names", "array");
   return {
     store,
     sessionId: overrides.sessionId,
@@ -291,76 +292,46 @@ describe("select-task", () => {
     expect(phase?.kind).toBe("code");
   });
 
-  it("loads tasks.json into the in-memory array, selects the first pending task, sets current_task, and marks it in-progress", () => {
-    const sid = `select-${Date.now()}`;
-    const root = makeScratchRoot(sid);
-    try {
-      fs.writeFileSync(
-        path.join(root, "tasks.json"),
-        JSON.stringify(["First", "Second"]),
-        "utf-8",
-      );
-      const state = makeState({ sessionId: sid });
-      runCode(phase!, state);
-      expect(state.store?.get("current_task")).toBe("First");
-      expect(state.store?.get("tasks")).toEqual([
-        { name: "First", status: "in-progress" },
-        { name: "Second", status: "pending" },
-      ]);
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
+  it("merges persisted task_names, selects the first pending task, sets current_task, and marks it in-progress", () => {
+    const state = makeState();
+    state.store?.set("task_names", "array", ["First", "Second"]);
+    runCode(phase!, state);
+    expect(state.store?.get("current_task")).toBe("First");
+    expect(state.store?.get("tasks")).toEqual([
+      { name: "First", status: "in-progress" },
+      { name: "Second", status: "pending" },
+    ]);
   });
 
   it("skips already-verified tasks (in the in-memory array) and picks the next pending one", () => {
-    const sid = `select-${Date.now()}-v`;
-    const root = makeScratchRoot(sid);
-    try {
-      fs.writeFileSync(
-        path.join(root, "tasks.json"),
-        JSON.stringify(["Done", "Next"]),
-        "utf-8",
-      );
-      const state = makeState({ sessionId: sid });
-      state.store?.set("tasks", "array", [
-        { name: "Done", status: "verified" },
-        { name: "Next", status: "pending" },
-      ]);
-      runCode(phase!, state);
-      expect(state.store?.get("current_task")).toBe("Next");
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
+    const state = makeState();
+    state.store?.set("task_names", "array", ["Done", "Next"]);
+    state.store?.set("tasks", "array", [
+      { name: "Done", status: "verified" },
+      { name: "Next", status: "pending" },
+    ]);
+    runCode(phase!, state);
+    expect(state.store?.get("current_task")).toBe("Next");
   });
 
   it("resumes an in-progress task (interrupted session) instead of selecting a new one", () => {
-    const sid = `select-${Date.now()}-resume`;
-    const root = makeScratchRoot(sid);
-    try {
-      fs.writeFileSync(
-        path.join(root, "tasks.json"),
-        JSON.stringify(["A", "B"]),
-        "utf-8",
-      );
-      const state = makeState({ sessionId: sid });
-      // Simulate a persisted array from a session interrupted mid-task-A
-      state.store?.set("tasks", "array", [
-        { name: "A", status: "in-progress" },
-        { name: "B", status: "pending" },
-      ]);
-      runCode(phase!, state);
-      expect(state.store?.get("current_task")).toBe("A");
-      expect(state.store?.get("tasks")).toEqual([
-        { name: "A", status: "in-progress" },
-        { name: "B", status: "pending" },
-      ]);
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
+    const state = makeState();
+    state.store?.set("task_names", "array", ["A", "B"]);
+    // Simulate a persisted array from a session interrupted mid-task-A
+    state.store?.set("tasks", "array", [
+      { name: "A", status: "in-progress" },
+      { name: "B", status: "pending" },
+    ]);
+    runCode(phase!, state);
+    expect(state.store?.get("current_task")).toBe("A");
+    expect(state.store?.get("tasks")).toEqual([
+      { name: "A", status: "in-progress" },
+      { name: "B", status: "pending" },
+    ]);
   });
 
-  it("is total when tasks.json is missing and there is no in-memory array", () => {
-    const state = makeState({ sessionId: `nofile-${Date.now()}` });
+  it("is total when there is no task list and no in-memory array", () => {
+    const state = makeState();
     expect(() => runCode(phase!, state)).not.toThrow();
   });
 });
@@ -582,17 +553,23 @@ describe("TDD sub-phase refinement loops", () => {
 describe("verify-acceptance-criteria", () => {
   const phase = iterativeTddPhase.body?.[3];
 
-  it("is a judgment phase before finalize-tasks", () => {
+  it("is a variable-definition judgment phase (sets task_names) before finalize-tasks", () => {
     expect(phase?.id).toBe("verify-acceptance-criteria");
+    expect(phase?.kind).toBe("variable-definition");
+    expect(phase?.variables?.[0]).toMatchObject({
+      name: "task_names",
+      type: "array",
+      kind: "llm",
+    });
     expect(iterativeTddPhase.body?.[4].id).toBe("finalize-tasks");
   });
 
-  it("instructions carry judgment-only discipline and stuck-task blocker handling (no terminal-marker writing)", () => {
-    const instr = phase?.instructions as string;
-    expect(instr).toContain("finalize-tasks");
-    expect(instr).toContain("do **not** write");
-    expect(instr).toContain("stuck");
-    expect(instr).toContain("max-iteration");
+  it("description carries judgment-only discipline and stuck-task blocker handling (no terminal-marker writing)", () => {
+    const desc = phase?.variables?.[0].description as string;
+    expect(desc).toContain("finalize-tasks");
+    expect(desc).toContain("do **not** write");
+    expect(desc).toContain("stuck");
+    expect(desc).toContain("max-iteration");
   });
 });
 
@@ -744,13 +721,17 @@ describe("workflow structure", () => {
     expect(workflow[8].kind).toBeUndefined(); // write-summary-file
   });
 
-  it("declares no allowProjectWrites anywhere and only the intended research-complete variable-definition phase", () => {
+  it("declares no allowProjectWrites anywhere and only the intended variable-definition phases", () => {
     const visit = (phases: WorkflowPhase[]): void => {
       for (const p of phases) {
         expect(p.allowProjectWrites).toBeUndefined();
-        // The only variable-definition phase is the research-complete sub-phase.
+        // The only variable-definition phases are the task-list + research-complete phases.
         if (p.kind === "variable-definition") {
-          expect(p.id).toBe("research-complete");
+          expect([
+            "research-complete",
+            "task-generation",
+            "verify-acceptance-criteria",
+          ]).toContain(p.id);
         }
         if (p.body) visit(p.body);
       }

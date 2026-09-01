@@ -62,13 +62,13 @@ const wroteVerifiedOrBlocked = (s: PioSessionState) =>
   wroteMarker(s, ["verified.txt", "blocked.txt"]);
 
 /**
- * Total terminal check for the OUTER loop. Reads the persisted in-memory task
- * array (the store survives session interruption, unlike the lossy /tmp
- * scratch dir): keep looping while pending/in-progress work remains and no
- * task is blocked; stop when every task is verified or any task is blocked.
- * Never throws (store reads are total).
+ * Total repeatWhile condition for the `iterative-tdd` loop. Reads the
+ * persisted in-memory task array (the store survives session interruption,
+ * unlike the lossy /tmp scratch dir): keep looping while pending/in-progress
+ * work remains and no task is blocked; stop when every task is verified or any
+ * task is blocked. Never throws (store reads are total).
  */
-function outerLoopShouldContinue(state: PioSessionState): boolean {
+function iterativeTddShouldContinue(state: PioSessionState): boolean {
   const tasks = tasksArrayOf(state);
   if (tasks.length === 0) return true; // nothing seeded yet — first pass
   const hasBlocked = tasks.some((t) => t.status === "blocked");
@@ -167,7 +167,7 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
     // found). Unbounded is not supported (resolveMaxIterations requires a
     // positive integer), so use a high cap as a safety net.
     maxIterations: 1000,
-    repeatWhile: outerLoopShouldContinue,
+    repeatWhile: iterativeTddShouldContinue,
     loopMessage: `Continue with the next task, or finish when all tasks are verified and the acceptance criteria are met. A task that is genuinely blocked should be marked as such rather than re-attempted forever.`,
     body: [
       // ---------------------------------------------------------------------

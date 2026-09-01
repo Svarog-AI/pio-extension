@@ -14,9 +14,6 @@ const CURRENT_TASK_VAR = "current_task";
 /** Store variable carrying the in-memory task array: [{ name, status }]. */
 const TASKS_VAR = "tasks";
 
-/** Store variable carrying the task-name list (persisted) set by the task-list LLM phases. */
-const TASK_NAMES_VAR = "task_names";
-
 /** Store variable set true once the task list is well-formed (order, feasibility). */
 const TASK_LIST_REFINED_VAR = "task_list_refined";
 
@@ -91,7 +88,6 @@ Skim \`.pio/PROJECT/OVERVIEW.md\` if available for background. This is a single-
     run: (ctx: CodeStepContext) => {
       const store = ctx.state.store;
       store.declare(TASKS_VAR, "array");
-      store.declare(TASK_NAMES_VAR, "array");
       store.declare(RESEARCH_NOTES_VAR, "array");
     },
   },
@@ -169,7 +165,7 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
     body: [
       // ---------------------------------------------------------------------
       // Task Generation — a do-while refinement loop over the task list. A
-      // generate-tasks variable phase sets the persisted task_names list; a
+      // generate-tasks variable phase sets the persisted tasks list; a
       // tasks-refined variable phase reviews ordering/feasibility and sets
       // task_list_refined true once the list is well-formed. The loop repeats
       // while not refined.
@@ -181,7 +177,7 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
         maxIterations: 6,
         repeatWhile: (state: PioSessionState) =>
           state.store.get(TASK_LIST_REFINED_VAR) !== true,
-        loopMessage: `The task list is not yet well-formed — review the ordering (dependencies before dependents), feasibility, and completeness of \`${TASK_NAMES_VAR}\`, refine it in the generate phase, then re-assess in the next phase.`,
+        loopMessage: `The task list is not yet well-formed — review the ordering (dependencies before dependents), feasibility, and completeness of \`${TASKS_VAR}\`, refine it in the generate phase, then re-assess in the next phase.`,
         body: [
           {
             id: "generate-tasks",
@@ -189,10 +185,10 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
             kind: "variable-definition",
             variables: [
               {
-                name: TASK_NAMES_VAR,
+                name: TASKS_VAR,
                 type: "array",
                 kind: "llm",
-                description: `Decompose the \`task\` input into a numbered list of discrete TDD tasks, each a nameable, verifiable unit, and set \`${TASK_NAMES_VAR}\` (via \`setVar\`) to the array of task names. On a later pass, read the current \`${TASK_NAMES_VAR}\` (via \`getVar\`/\`listVars\`) and refine it: fix the ordering (dependencies before dependents), split oversized/infeasible units, and preserve already-completed tasks; do not re-add completed tasks. Do not select a task yourself — the \`select-task\` code phase picks the first pending one.`,
+                description: `Decompose the \`task\` input into a numbered list of discrete TDD tasks, each a nameable, verifiable unit, and set \`${TASKS_VAR}\` (via \`setVar\`) to the array of task objects \`[{ name, status }]\`, each with \`status: "pending"\`. On a later pass, read the current \`${TASKS_VAR}\` (via \`getVar\`/\`listVars\`), preserve every existing entry and its status, and refine it: fix the ordering (dependencies before dependents), split oversized/infeasible units, and preserve already-completed tasks; do not re-add or re-pend completed tasks. Do not select a task yourself — the \`select-task\` code phase picks the first pending one.`,
               },
             ],
           },
@@ -205,7 +201,7 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
                 name: TASK_LIST_REFINED_VAR,
                 type: "boolean",
                 kind: "llm",
-                description: `Review the \`${TASK_NAMES_VAR}\` list: are tasks ordered by real dependency (each task's prerequisites come first)? are all units feasible and nameable? does the list cover the whole \`task\` input? Set \`${TASK_LIST_REFINED_VAR}\` to \`true\` only when the list is well-formed; otherwise set it to \`false\` so the generate phase refines it again. Always set it explicitly.`,
+                description: `Review the \`${TASKS_VAR}\` list: are tasks ordered by real dependency (each task's prerequisites come first)? are all units feasible and nameable? does the list cover the whole \`task\` input? Set \`${TASK_LIST_REFINED_VAR}\` to \`true\` only when the list is well-formed; otherwise set it to \`false\` so the generate phase refines it again. Always set it explicitly.`,
               },
             ],
           },
@@ -213,9 +209,8 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
       },
 
       // ---------------------------------------------------------------------
-      // Select Task — PROGRAMMATIC selection of the next task. Merges the
-      // persisted task_names store list into the code-managed tasks array
-      // (preserving statuses), picks the first pending task, sets the
+      // Select Task — PROGRAMMATIC selection of the next task. Reads the
+      // persisted tasks store array, picks the first pending task, sets the
       // current_task store var (interpolated into the inner loop's
       // instructions), and marks it in-progress so the next pass selects a
       // different one.
@@ -226,39 +221,28 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
         kind: "code",
         run: (ctx: CodeStepContext) => {
           const state = ctx.state;
-          const merged = state.store.get(TASKS_VAR) as TaskEntry[];
+          const tasks = state.store.get(TASKS_VAR) as TaskEntry[];
+          if (!tasks.length) return;
           try {
-            // Merge the persisted task-name list (set by the variable-definition
-            // task-list phases) into the code-managed tasks array, preserving
-            // existing statuses. The store array survives interruption.
-            const names = state.store.get(TASK_NAMES_VAR) as string[];
-            const seen = new Set(merged.map((t) => t.name));
-            for (const n of names) {
-              if (!seen.has(n)) merged.push({ name: n, status: "pending" });
-            }
             // Resume-safe: if a task is already in-progress (e.g. the session
             // was interrupted mid-task), keep it as the current task rather than
             // selecting a different one.
-            const inProgress = merged.findIndex(
+            const inProgress = tasks.findIndex(
               (t) => t.status === "in-progress",
             );
             if (inProgress >= 0) {
               state.store.set(
                 CURRENT_TASK_VAR,
                 "string",
-                merged[inProgress].name,
+                tasks[inProgress].name,
               );
-              state.store.set(TASKS_VAR, "array", merged);
               return;
             }
-            const idx = merged.findIndex((t) => t.status === "pending");
-            if (idx < 0) {
-              state.store.set(TASKS_VAR, "array", merged);
-              return;
-            }
-            const current = merged[idx].name;
-            merged[idx] = { ...merged[idx], status: "in-progress" };
-            state.store.set(TASKS_VAR, "array", merged);
+            const idx = tasks.findIndex((t) => t.status === "pending");
+            if (idx < 0) return;
+            const current = tasks[idx].name;
+            tasks[idx] = { ...tasks[idx], status: "in-progress" };
+            state.store.set(TASKS_VAR, "array", tasks);
             state.store.set(CURRENT_TASK_VAR, "string", current);
           } catch {
             // total — never throw
@@ -466,7 +450,7 @@ The next phase (\`task-verdict\`) records your conclusion as store variables —
       // ---------------------------------------------------------------------
       // Verify Acceptance Criteria — LLM judgment (variable-definition phase).
       // Cross-references the task's acceptance criteria against the
-      // implementation, re-sets the persisted `task_names` store list to
+      // implementation, re-sets the persisted `tasks` store array to
       // include any missing work, and records whether a genuine blocker or an
       // unresolvable stuck task exists (acceptance_blocked). The finalize-tasks
       // code phase decides the terminal outcome from the store.
@@ -477,10 +461,10 @@ The next phase (\`task-verdict\`) records your conclusion as store variables —
         kind: "variable-definition",
         variables: [
           {
-            name: TASK_NAMES_VAR,
+            name: TASKS_VAR,
             type: "array",
             kind: "llm",
-            description: `Cross-reference the \`task\` input's acceptance criteria against your implementation: are all listed files created/modified/deleted as specified? do integration points (imports, exports, wiring) work correctly? are conventions followed (naming, patterns, styles matching existing code)? have you stayed within scope? Read the current \`${TASK_NAMES_VAR}\` (via \`getVar\`/\`listVars\`), preserve existing names, and re-set \`${TASK_NAMES_VAR}\` (via \`setVar\`) to include any missing work as new task names.
+            description: `Cross-reference the \`task\` input's acceptance criteria against your implementation: are all listed files created/modified/deleted as specified? do integration points (imports, exports, wiring) work correctly? are conventions followed (naming, patterns, styles matching existing code)? have you stayed within scope? Read the current \`${TASKS_VAR}\` (via \`getVar\`/\`listVars\`), preserve every existing entry and its status, and re-set \`${TASKS_VAR}\` (via \`setVar\`) to include any missing work as new task objects with \`status: "pending"\`.
 
 You do **not** write any terminal marker — the \`finalize-tasks\` code phase decides the terminal outcome from the store. Your job is only the judgment of which work remains.`,
           },
@@ -488,7 +472,7 @@ You do **not** write any terminal marker — the \`finalize-tasks\` code phase d
             name: ACCEPTANCE_BLOCKED_VAR,
             type: "boolean",
             kind: "llm",
-            description: `Set \`${ACCEPTANCE_BLOCKED_VAR}\` to \`true\` only when a genuine blocker is present (external dependency unavailable, environmental constraint, ambiguous spec with no reasonable default) OR a task did not succeed (remains unverified — e.g. it hit the inner TDD max-iteration cap) and is genuinely unresolvable in this session. **Assess first** per blocked discipline: if the stuck task reflects a quick-fixable bug, compile/type error, or plain difficulty, add it to \`${TASK_NAMES_VAR}\` and set \`${ACCEPTANCE_BLOCKED_VAR}\` to \`false\` so the outer loop iterates via TDD; only set it \`true\` when the work is genuinely unresolvable. Set it \`false\` when no blocker exists. Always set it explicitly.`,
+            description: `Set \`${ACCEPTANCE_BLOCKED_VAR}\` to \`true\` only when a genuine blocker is present (external dependency unavailable, environmental constraint, ambiguous spec with no reasonable default) OR a task did not succeed (remains unverified — e.g. it hit the inner TDD max-iteration cap) and is genuinely unresolvable in this session. **Assess first** per blocked discipline: if the stuck task reflects a quick-fixable bug, compile/type error, or plain difficulty, add it to \`${TASKS_VAR}\` with \`status: "pending"\` and set \`${ACCEPTANCE_BLOCKED_VAR}\` to \`false\` so the outer loop iterates via TDD; only set it \`true\` when the work is genuinely unresolvable. Set it \`false\` when no blocker exists. Always set it explicitly.`,
           },
         ],
       },

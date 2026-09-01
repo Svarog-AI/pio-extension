@@ -28,7 +28,6 @@ function makeState(
   // Mirror default-setup: declare the durable arrays so store.get(...)
   // resolves to [] when unset rather than undefined.
   store.declare("tasks", "array");
-  store.declare("task_names", "array");
   store.declare("research_notes", "array");
   return {
     store,
@@ -114,7 +113,6 @@ describe("default-setup", () => {
     const state = makeState({ sessionId: "sess-123" });
     runCode(setupPhase, state);
     expect(state.store?.get("tasks")).toEqual([]);
-    expect(state.store?.get("task_names")).toEqual([]);
     expect(state.store?.get("research_notes")).toEqual([]);
   });
 
@@ -320,11 +318,11 @@ describe("task-generation", () => {
     expect(() => cb(makeState())).not.toThrow();
   });
 
-  it("body is generate-tasks (sets task_names) followed by tasks-refined (sets task_list_refined)", () => {
+  it("body is generate-tasks (sets tasks) followed by tasks-refined (sets task_list_refined)", () => {
     expect(phase?.body?.[0].id).toBe("generate-tasks");
     expect(phase?.body?.[0].kind).toBe("variable-definition");
     expect(phase?.body?.[0].variables?.[0]).toMatchObject({
-      name: "task_names",
+      name: "tasks",
       type: "array",
       kind: "llm",
     });
@@ -356,9 +354,12 @@ describe("select-task", () => {
     expect(phase?.kind).toBe("code");
   });
 
-  it("merges persisted task_names, selects the first pending task, sets current_task, and marks it in-progress", () => {
+  it("selects the first pending task from the tasks array, sets current_task, and marks it in-progress", () => {
     const state = makeState();
-    state.store?.set("task_names", "array", ["First", "Second"]);
+    state.store?.set("tasks", "array", [
+      { name: "First", status: "pending" },
+      { name: "Second", status: "pending" },
+    ]);
     runCode(phase!, state);
     expect(state.store?.get("current_task")).toBe("First");
     expect(state.store?.get("tasks")).toEqual([
@@ -367,9 +368,8 @@ describe("select-task", () => {
     ]);
   });
 
-  it("skips already-verified tasks (in the in-memory array) and picks the next pending one", () => {
+  it("skips already-verified tasks and picks the next pending one", () => {
     const state = makeState();
-    state.store?.set("task_names", "array", ["Done", "Next"]);
     state.store?.set("tasks", "array", [
       { name: "Done", status: "verified" },
       { name: "Next", status: "pending" },
@@ -380,7 +380,6 @@ describe("select-task", () => {
 
   it("resumes an in-progress task (interrupted session) instead of selecting a new one", () => {
     const state = makeState();
-    state.store?.set("task_names", "array", ["A", "B"]);
     state.store?.set("tasks", "array", [
       { name: "A", status: "in-progress" },
       { name: "B", status: "pending" },
@@ -700,22 +699,22 @@ describe("TDD sub-phase refinement loops", () => {
 });
 
 // ---------------------------------------------------------------------------
-// verify-acceptance-criteria — judgment; adds missing work to task_names and
+// verify-acceptance-criteria — judgment; adds missing work to tasks and
 // records the acceptance-blocked verdict as a store boolean
 // ---------------------------------------------------------------------------
 
 describe("verify-acceptance-criteria", () => {
   const phase = iterativeTddPhase.body?.[3];
 
-  it("is a variable-definition judgment phase (task_names + acceptance_blocked) before finalize-tasks", () => {
+  it("is a variable-definition judgment phase (tasks + acceptance_blocked) before finalize-tasks", () => {
     expect(phase?.id).toBe("verify-acceptance-criteria");
     expect(phase?.kind).toBe("variable-definition");
     expect(phase?.variables?.map((v) => v.name)).toEqual([
-      "task_names",
+      "tasks",
       "acceptance_blocked",
     ]);
     expect(phase?.variables?.[0]).toMatchObject({
-      name: "task_names",
+      name: "tasks",
       type: "array",
       kind: "llm",
     });
@@ -728,16 +727,16 @@ describe("verify-acceptance-criteria", () => {
   });
 
   it("description carries judgment-only discipline and stuck-task blocker handling (no marker files)", () => {
-    const taskNamesDesc = phase?.variables?.[0].description as string;
-    expect(taskNamesDesc).toContain("finalize-tasks");
-    expect(taskNamesDesc).toContain("missing work");
+    const tasksDesc = phase?.variables?.[0].description as string;
+    expect(tasksDesc).toContain("finalize-tasks");
+    expect(tasksDesc).toContain("missing work");
     const blockedDesc = phase?.variables?.[1].description as string;
     expect(blockedDesc).toContain("stuck");
     expect(blockedDesc).toContain("max-iteration");
     expect(blockedDesc).toContain("genuine blocker");
-    expect(blockedDesc).toContain("task_names");
+    expect(blockedDesc).toContain("tasks");
     // no terminal-marker file writing
-    expect(taskNamesDesc).not.toContain("tasks-complete.txt");
+    expect(tasksDesc).not.toContain("tasks-complete.txt");
     expect(blockedDesc).not.toContain("blocked.txt");
   });
 });

@@ -713,7 +713,7 @@ describe("session variable tools", () => {
 
   describe("session gating", () => {
     it("setVar returns error when isActive is false", async () => {
-      setPartialState({ isActive: false, store: null });
+      setPartialState({ isActive: false, store: new SessionVariableStore({}) });
 
       const result = await setVarTool.execute(
         "tc-1",
@@ -729,7 +729,7 @@ describe("session variable tools", () => {
     });
 
     it("getVar returns error when isActive is false", async () => {
-      setPartialState({ isActive: false, store: null });
+      setPartialState({ isActive: false, store: new SessionVariableStore({}) });
 
       const result = await getVarTool.execute(
         "tc-1",
@@ -745,7 +745,7 @@ describe("session variable tools", () => {
     });
 
     it("listVars returns error when isActive is false", async () => {
-      setPartialState({ isActive: false, store: null });
+      setPartialState({ isActive: false, store: new SessionVariableStore({}) });
 
       const result = await listVarsTool.execute(
         "tc-1",
@@ -828,75 +828,6 @@ describe("session variable tools", () => {
   // -----------------------------------------------------------------------
   // Store null safety
   // -----------------------------------------------------------------------
-
-  describe("store null safety", () => {
-    it("setVar returns error when store is undefined", async () => {
-      setPartialState({
-        isActive: true,
-
-        totalPhases: 1,
-        phasesList: [
-          {
-            id: "p1",
-            title: "P1",
-            instructions: "i",
-            kind: "variable-definition",
-          },
-        ],
-        store: undefined,
-      });
-
-      const result = await setVarTool.execute(
-        "tc-1",
-        { name: "x", type: "string", value: "hello" },
-        undefined,
-        undefined,
-        { cwd: "/tmp" } as any,
-      );
-
-      expect(resultText(result)).toContain("Variable store not initialized");
-    });
-
-    it("getVar returns error when store is null", async () => {
-      setPartialState({
-        isActive: true,
-
-        totalPhases: 1,
-        phasesList: [],
-        store: null,
-      });
-
-      const result = await getVarTool.execute(
-        "tc-1",
-        { name: "x" },
-        undefined,
-        undefined,
-        { cwd: "/tmp" } as any,
-      );
-
-      expect(resultText(result)).toContain("Variable store not initialized");
-    });
-
-    it("listVars returns error when store is undefined", async () => {
-      setPartialState({
-        isActive: true,
-
-        totalPhases: 1,
-        phasesList: [],
-        store: undefined,
-      });
-
-      const result = await listVarsTool.execute(
-        "tc-1",
-        {},
-        undefined,
-        undefined,
-        { cwd: "/tmp" } as any,
-      );
-
-      expect(resultText(result)).toContain("Variable store not initialized");
-    });
-  });
 
   // -----------------------------------------------------------------------
   // Error conversion (setVar catches store errors)
@@ -1154,7 +1085,7 @@ describe("session variable tools", () => {
 
   describe("appendVar session gating", () => {
     it("appendVar returns error when isActive is false", async () => {
-      setPartialState({ isActive: false, store: null });
+      setPartialState({ isActive: false, store: new SessionVariableStore({}) });
 
       const result = await appendVarTool.execute(
         "tc-1",
@@ -1230,39 +1161,6 @@ describe("session variable tools", () => {
 
       expect(resultText(result)).not.toContain("variable-defining");
       expect(resultText(result)).toContain("x");
-    });
-  });
-
-  // -----------------------------------------------------------------------
-  // appendVar — store null safety
-  // -----------------------------------------------------------------------
-
-  describe("appendVar store null safety", () => {
-    it("appendVar returns error when store is undefined", async () => {
-      setPartialState({
-        isActive: true,
-
-        totalPhases: 1,
-        phasesList: [
-          {
-            id: "p1",
-            title: "P1",
-            instructions: "i",
-            kind: "variable-definition",
-          },
-        ],
-        store: undefined,
-      });
-
-      const result = await appendVarTool.execute(
-        "tc-1",
-        { name: "x", value: "item" },
-        undefined,
-        undefined,
-        { cwd: "/tmp" } as any,
-      );
-
-      expect(resultText(result)).toContain("Variable store not initialized");
     });
   });
 

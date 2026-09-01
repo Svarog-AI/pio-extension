@@ -12,7 +12,7 @@
 
 import type { CapState } from "../capability-state";
 import type { PhaseManager } from "./phase-manager";
-import type { SessionVariableStore } from "./session-store";
+import { SessionVariableStore } from "./session-store";
 import type { WorkflowPhase } from "./workflow-types";
 
 // ---------------------------------------------------------------------------
@@ -76,8 +76,8 @@ export interface PioSessionState {
   /** Session ID captured during resources_discover. Used by persistence module to load/save state files. Optional for backward compat. */
   sessionId?: string;
 
-  /** Session variable store instance. Created during resources_discover, accessed via getState().store in loop engine and tools. */
-  store?: SessionVariableStore | null;
+  /** Session variable store instance. Created during resources_discover, accessed via getState().store in loop engine and tools. Always present (the initial state holds an empty store). */
+  store: SessionVariableStore;
 
   /** Current phase ID (string, e.g. "create-goal"). Empty string means inactive. */
   currentPhaseId: string;
@@ -111,7 +111,13 @@ export interface PioSessionState {
 let _state: PioSessionState = createInitialState();
 
 function createInitialState(): PioSessionState {
-  return {
+  // `store` is lazily initialized on first access to break the circular import
+  // (session-store.ts imports getState from this module, and this module needs
+  // SessionVariableStore to build the default store). By the time any code
+  // reads state.store, session-store.ts is fully loaded.
+  let store: SessionVariableStore | undefined;
+
+  const state = {
     isActive: false,
     markCompleteCalled: false,
     turnCount: 0,
@@ -125,7 +131,6 @@ function createInitialState(): PioSessionState {
     capState: undefined,
     allContractOutputs: undefined,
     sessionId: undefined,
-    store: undefined,
     currentPhaseId: "",
     phaseManager: undefined,
     projectRoot: undefined,
@@ -134,7 +139,21 @@ function createInitialState(): PioSessionState {
     lastLlmPhaseId: undefined,
     exitOutcome: undefined,
     exitFailureMessage: undefined,
-  };
+  } as Omit<PioSessionState, "store">;
+
+  Object.defineProperty(state, "store", {
+    enumerable: true,
+    configurable: true,
+    get(): SessionVariableStore {
+      if (!store) store = new SessionVariableStore({});
+      return store;
+    },
+    set(v: SessionVariableStore): void {
+      store = v;
+    },
+  });
+
+  return state as PioSessionState;
 }
 
 // ---------------------------------------------------------------------------

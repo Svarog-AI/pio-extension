@@ -25,8 +25,12 @@ function makeState(
     askUserCalled?: boolean;
   } = {},
 ): PioSessionState {
+  const store = overrides.store ?? makeStore();
+  // Mirror default-setup: declare the durable task array so store.get("tasks")
+  // resolves to [] when unset rather than undefined.
+  store.declare("tasks", "array");
   return {
-    store: overrides.store ?? makeStore(),
+    store,
     sessionId: overrides.sessionId,
     projectRoot: overrides.projectRoot,
     filesWritten: overrides.filesWritten ?? [],

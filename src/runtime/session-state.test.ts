@@ -30,7 +30,7 @@ describe("session-state", () => {
       expect(state.adHocPhaseNotified).toBe(false);
       expect(state.currentPhaseId).toBe("");
       expect(state.phaseManager).toBe(undefined);
-      expect(state.store).toBe(undefined);
+      expect(state.store).toBeInstanceOf(SessionVariableStore);
       expect(state.projectRoot).toBe(undefined);
       expect(state.programmaticLog).toEqual([]);
       expect(state.lastLlmPhaseId).toBeUndefined();
@@ -222,7 +222,7 @@ describe("session-state", () => {
       expect(state.adHocPhaseNotified).toBe(false);
       expect(state.currentPhaseId).toBe("");
       expect(state.phaseManager).toBe(undefined);
-      expect(state.store).toBe(undefined);
+      expect(state.store).toBeInstanceOf(SessionVariableStore);
       expect(state.projectRoot).toBe(undefined);
       expect(state.programmaticLog).toEqual([]);
       expect(state.lastLlmPhaseId).toBeUndefined();

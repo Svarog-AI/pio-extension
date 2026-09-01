@@ -41,15 +41,6 @@ function tasksJsonPathOf(state: PioSessionState): string {
 type TaskEntry = { name: string; status: string };
 
 /**
- * Read the in-memory task array from the store. `tasks` is declared as an
- * "array" in `default-setup`, so the store's get() resolves it to an empty
- * array when unset — the `?? []` only guards a missing store. Total.
- */
-function tasksOf(state: PioSessionState): TaskEntry[] {
-  return (state.store?.get(TASKS_VAR) as TaskEntry[]) ?? [];
-}
-
-/**
  * Total helper — true when the just-finished run wrote any of the given
  * marker filenames (suffix match). Never throws: a missing/undefined
  * filesWritten array fails safe to `false`.
@@ -72,7 +63,7 @@ const wroteVerifiedOrBlocked = (s: PioSessionState) =>
  * task is blocked. Never throws (store reads are total).
  */
 function iterativeTddShouldContinue(state: PioSessionState): boolean {
-  const tasks = tasksOf(state);
+  const tasks = state.store.get(TASKS_VAR) as TaskEntry[];
   if (tasks.length === 0) return true; // nothing seeded yet — first pass
   const hasBlocked = tasks.some((t) => t.status === "blocked");
   const allVerified = tasks.every((t) => t.status === "verified");
@@ -114,10 +105,10 @@ Skim \`.pio/PROJECT/OVERVIEW.md\` if available for background. This is a single-
     run: (ctx: CodeStepContext) => {
       const root = path.join(SCRATCH_DIR, ctx.state.sessionId ?? "unknown");
       fs.mkdirSync(root, { recursive: true });
-      ctx.state.store?.set(NOTES_VAR, "string", path.join(root, "notes.md"));
+      ctx.state.store.set(NOTES_VAR, "string", path.join(root, "notes.md"));
       // Declare the durable in-memory task array so store.get(TASKS_VAR)
       // resolves to [] when unset (rather than undefined).
-      ctx.state.store?.declare(TASKS_VAR, "array");
+      ctx.state.store.declare(TASKS_VAR, "array");
     },
   },
 
@@ -204,7 +195,7 @@ The in-memory task array (with statuses) is maintained by the code phases. **Do 
         kind: "code",
         run: (ctx: CodeStepContext) => {
           const state = ctx.state;
-          const merged = tasksOf(state);
+          const merged = state.store.get(TASKS_VAR) as TaskEntry[];
           try {
             // Merge any LLM-authored task names (tasks.json) into the durable
             // store array. The array is the source of truth (survives
@@ -229,23 +220,23 @@ The in-memory task array (with statuses) is maintained by the code phases. **Do 
               (t) => t.status === "in-progress",
             );
             if (inProgress >= 0) {
-              state.store?.set(
+              state.store.set(
                 CURRENT_TASK_VAR,
                 "string",
                 merged[inProgress].name,
               );
-              state.store?.set(TASKS_VAR, "array", merged);
+              state.store.set(TASKS_VAR, "array", merged);
               return;
             }
             const idx = merged.findIndex((t) => t.status === "pending");
             if (idx < 0) {
-              state.store?.set(TASKS_VAR, "array", merged);
+              state.store.set(TASKS_VAR, "array", merged);
               return;
             }
             const current = merged[idx].name;
             merged[idx] = { ...merged[idx], status: "in-progress" };
-            state.store?.set(TASKS_VAR, "array", merged);
-            state.store?.set(CURRENT_TASK_VAR, "string", current);
+            state.store.set(TASKS_VAR, "array", merged);
+            state.store.set(CURRENT_TASK_VAR, "string", current);
           } catch {
             // total — never throw
           }
@@ -411,7 +402,7 @@ You do **not** write the terminal markers — the \`finalize-tasks\` code phase 
           const root = scratchRootOf(state);
           const verifiedPath = path.join(root, "verified.txt");
           const blockedPath = path.join(root, "blocked.txt");
-          const array = tasksOf(state);
+          const array = state.store.get(TASKS_VAR) as TaskEntry[];
           if (!array.length) return;
           try {
             // Reconcile the current (in-progress) task's status from the
@@ -430,7 +421,7 @@ You do **not** write the terminal markers — the \`finalize-tasks\` code phase 
               }
               return t;
             });
-            if (changed) state.store?.set(TASKS_VAR, "array", next);
+            if (changed) state.store.set(TASKS_VAR, "array", next);
             // The outer loop's terminal decision reads the persisted store
             // array, not marker files. Clear the transient per-pass markers so
             // the next task starts clean.
@@ -484,7 +475,7 @@ Start with a single short paragraph describing what is tested. Then list test ca
           cwd,
           encoding: "utf-8",
         }).trim();
-        if (hash) ctx.state.store?.set(COMMIT_VAR, "string", hash);
+        if (hash) ctx.state.store.set(COMMIT_VAR, "string", hash);
       } catch {
         // leave commit_hash unset — the summary simply omits the commit field
       }

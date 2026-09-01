@@ -814,38 +814,6 @@ describe("extractPersistedState", () => {
     vi.resetModules();
   });
 
-  it("projects exactly the 4 persisted fields when store is absent", async () => {
-    const { extractPersistedState } = await import("./state-persistence");
-    const { __testSetState, getState } = await import("./session-state");
-
-    __testSetState({
-      isActive: true,
-      markCompleteCalled: false,
-      turnCount: 10,
-
-      currentIteration: 7,
-      totalPhases: 5,
-      phasesList: [],
-      filesWritten: ["/some/file"],
-      askUserCalled: true,
-      isAdHocInput: true,
-      adHocPhaseNotified: false,
-      currentPhaseId: "",
-      programmaticLog: [],
-      loopPasses: {},
-    });
-
-    const result = extractPersistedState(getState());
-
-    expect(result).toEqual({
-      currentIteration: 7,
-      isAdHocInput: true,
-      currentPhaseId: "",
-    });
-    // No vars key when store is absent
-    expect(result).not.toHaveProperty("vars");
-  });
-
   it("includes vars field when store exists and has writable vars", async () => {
     const { extractPersistedState } = await import("./state-persistence");
     const { __testSetState, getState } = await import("./session-state");
@@ -886,60 +854,6 @@ describe("extractPersistedState", () => {
     });
   });
 
-  it("omits vars field when store is null", async () => {
-    const { extractPersistedState } = await import("./state-persistence");
-    const { __testSetState, getState } = await import("./session-state");
-
-    __testSetState({
-      isActive: true,
-      markCompleteCalled: false,
-      turnCount: 10,
-
-      currentIteration: 1,
-      totalPhases: 3,
-      phasesList: [],
-      filesWritten: [],
-      askUserCalled: false,
-      isAdHocInput: false,
-      adHocPhaseNotified: false,
-      currentPhaseId: "",
-      programmaticLog: [],
-      loopPasses: {},
-      store: null,
-    });
-
-    const result = extractPersistedState(getState());
-
-    expect(result).not.toHaveProperty("vars");
-  });
-
-  it("omits vars field when store is undefined", async () => {
-    const { extractPersistedState } = await import("./state-persistence");
-    const { __testSetState, getState } = await import("./session-state");
-
-    __testSetState({
-      isActive: true,
-      markCompleteCalled: false,
-      turnCount: 10,
-
-      currentIteration: 1,
-      totalPhases: 3,
-      phasesList: [],
-      filesWritten: [],
-      askUserCalled: false,
-      isAdHocInput: false,
-      adHocPhaseNotified: false,
-      currentPhaseId: "",
-      programmaticLog: [],
-      loopPasses: {},
-      store: undefined,
-    });
-
-    const result = extractPersistedState(getState());
-
-    expect(result).not.toHaveProperty("vars");
-  });
-
   it("includes empty vars object when store exists but has no writable vars", async () => {
     const { extractPersistedState } = await import("./state-persistence");
     const { __testSetState, getState } = await import("./session-state");
@@ -973,6 +887,7 @@ describe("extractPersistedState", () => {
   it("never projects in-memory exit fields (lastLlmPhaseId / exitOutcome / exitFailureMessage)", async () => {
     const { extractPersistedState } = await import("./state-persistence");
     const { __testSetState, getState } = await import("./session-state");
+    const { SessionVariableStore } = await import("./session-store");
 
     __testSetState({
       isActive: true,
@@ -989,6 +904,7 @@ describe("extractPersistedState", () => {
       currentPhaseId: "step-2",
       programmaticLog: [],
       loopPasses: {},
+      store: new SessionVariableStore({}),
       // All three new in-memory fields set — none may leak into the projection
       lastLlmPhaseId: "step-2",
       exitOutcome: "failed",
@@ -1001,12 +917,14 @@ describe("extractPersistedState", () => {
       currentIteration: 2,
       isAdHocInput: true,
       currentPhaseId: "step-2",
+      vars: {},
     });
     // Exactly the persisted keys — no new fields appear as keys in the output
     expect(Object.keys(result).sort()).toEqual([
       "currentIteration",
       "currentPhaseId",
       "isAdHocInput",
+      "vars",
     ]);
     expect(result).not.toHaveProperty("lastLlmPhaseId");
     expect(result).not.toHaveProperty("exitOutcome");

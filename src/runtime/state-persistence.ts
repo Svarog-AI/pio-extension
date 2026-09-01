@@ -169,8 +169,7 @@ export function extractPersistedState(state: PioSessionState): {
     currentPhaseId: state.currentPhaseId,
   };
 
-  if (state.store) {
-    return { ...base, vars: state.store.toSerializableVars() };
-  }
-  return base;
+  // `store` is always present (the initial state holds an empty store), so
+  // vars are always included.
+  return { ...base, vars: state.store.toSerializableVars() };
 }

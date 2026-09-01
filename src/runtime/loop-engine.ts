@@ -219,7 +219,14 @@ export function buildVariablePhaseInstructions(
   if (llmVars.length > 0) {
     body += "### Variables\n\n";
     for (const pv of llmVars) {
-      body += `- **${pv.name}** (\`${pv.type}\`): ${pv.description ?? "(no description)"}\n`;
+      // Interpolate the description so a variable-definition phase can reference
+      // other store values (e.g. \`${current_task}\`) just like standard-phase
+      // instructions do. The variable \`name\`/\`type\` are identifiers, never
+      // interpolated. Unresolved placeholders pass through unchanged.
+      const description = store.interpolate(
+        pv.description ?? "(no description)",
+      );
+      body += `- **${pv.name}** (\`${pv.type}\`): ${description}\n`;
     }
     body += "\n";
   }

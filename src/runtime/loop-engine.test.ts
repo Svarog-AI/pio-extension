@@ -5872,6 +5872,94 @@ describe("session variable integration", () => {
 
       expect(result).not.toContain("Undefined Variables");
     });
+
+    it("interpolates store placeholders in variable descriptions", async () => {
+      const { buildVariablePhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      store.set("current_task", "string", "Write the parser");
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [
+          {
+            name: "verdict",
+            type: "boolean",
+            kind: "llm" as const,
+            description: `For task \`\${current_task}\`, set true when done.`,
+          },
+        ],
+      };
+
+      setState({ currentIteration: 1 });
+      const result = buildVariablePhaseInstructions(getState(), phase, store);
+
+      // The placeholder is substituted with the store value.
+      expect(result).toContain(
+        "For task `Write the parser`, set true when done.",
+      );
+      expect(result).not.toContain(`\${current_task}`);
+    });
+
+    it("passes unresolved placeholders in variable descriptions through unchanged", async () => {
+      const { buildVariablePhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [
+          {
+            name: "verdict",
+            type: "boolean",
+            kind: "llm" as const,
+            description: `Unknown \`\${missing}\` stays literal.`,
+          },
+        ],
+      };
+
+      setState({ currentIteration: 1 });
+      const result = buildVariablePhaseInstructions(getState(), phase, store);
+
+      expect(result).toContain(`\${missing}`);
+    });
+
+    it("does not interpolate the variable name or type", async () => {
+      const { buildVariablePhaseInstructions } = await import("./loop-engine");
+      const { SessionVariableStore } = await import("./session-store");
+
+      const store = new SessionVariableStore({});
+      // A param that would collide with the variable name if interpolation
+      // wrongly applied to the name.
+      store.set("verdict", "string", "should-not-appear-in-name");
+      const phase = {
+        id: "p1",
+        title: "P1",
+        instructions: "Do A",
+        kind: "variable-definition" as const,
+        variables: [
+          {
+            name: "verdict",
+            type: "boolean",
+            kind: "llm" as const,
+            description: "What?",
+          },
+        ],
+      };
+
+      setState({ currentIteration: 1 });
+      const result = buildVariablePhaseInstructions(getState(), phase, store);
+
+      // The bullet header uses the literal variable name and type, not a value.
+      expect(result).toContain("**verdict** (`boolean`)");
+      expect(result).not.toContain("should-not-appear-in-name");
+    });
   });
 
   // -----------------------------------------------------------------------

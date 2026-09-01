@@ -200,10 +200,12 @@ describe("research-context", () => {
 // ---------------------------------------------------------------------------
 
 describe("iterative-tdd (outer loop)", () => {
-  it("is a kind:loop do-while block with maxIterations and a total repeatWhile on the terminal markers", () => {
+  it("is a kind:loop do-while block with a high maxIterations cap and a total repeatWhile on the terminal markers", () => {
     expect(iterativeTddPhase.id).toBe("iterative-tdd");
     expect(iterativeTddPhase.kind).toBe("loop");
-    expect(iterativeTddPhase.maxIterations).toBe(12);
+    // Unbounded iterations aren't supported, so the outer loop uses a high
+    // safety-net cap (it should normally end via the repeatWhile store check).
+    expect(iterativeTddPhase.maxIterations).toBeGreaterThanOrEqual(1000);
     expect(iterativeTddPhase.body).toHaveLength(5);
   });
 

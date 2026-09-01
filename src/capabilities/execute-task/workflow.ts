@@ -163,7 +163,10 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
     id: "iterative-tdd",
     title: "Iterative TDD",
     kind: "loop",
-    maxIterations: 12,
+    // The outer loop repeats until every task is verified (or a blocker is
+    // found). Unbounded is not supported (resolveMaxIterations requires a
+    // positive integer), so use a high cap as a safety net.
+    maxIterations: 1000,
     repeatWhile: outerLoopShouldContinue,
     loopMessage: `Continue with the next task, or finish when all tasks are verified and the acceptance criteria are met. A task that is genuinely blocked should be marked as such rather than re-attempted forever.`,
     body: [

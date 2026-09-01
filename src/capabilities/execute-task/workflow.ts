@@ -285,10 +285,12 @@ Treat an inner-loop replay as "tests likely already exist — proceed to fix the
           },
 
           // -----------------------------------------------------------------
-          // Implement — do-while block: implement until the tests pass. The
-          // body runs implement, then a verify-green variable phase that runs
-          // the suite and records whether it is green (tests_pass). The loop
-          // repeats while tests_pass is false.
+          // Implement — do-while block: implement until the tests + checks
+          // pass. The body runs an `implement` phase loop (exhaustion on
+          // filesWritten: give another look while a file is edited), then a
+          // verify-green variable phase that runs the suite and records
+          // whether it is green (tests_pass). The loop repeats while
+          // tests_pass is false.
           // -----------------------------------------------------------------
           {
             id: "implement-loop",
@@ -302,6 +304,15 @@ Treat an inner-loop replay as "tests likely already exist — proceed to fix the
               {
                 id: "implement",
                 title: "Implement the current task",
+                maxIterations: 4,
+                loopWhile: [
+                  {
+                    type: "callback",
+                    callback: (state: PioSessionState) =>
+                      (state.filesWritten?.length ?? 0) > 0,
+                  },
+                ],
+                loopMessage: `Have another look — any missing branches, inputs, or edge cases in the implementation for the current task? If you edited a file this pass, the loop continues for another look; if you have nothing more to change, make no file changes and finish.`,
                 instructions: `Write the minimal implementation to make the current task's (\`\${current_task}\`) tests pass (per the \`tdd\` skill's GREEN step). Keep it minimal — only enough code to pass the current tests; do not anticipate future tests.
 
 Treat an inner-loop replay as "tests already exist — proceed to fix the implementation," not a re-write from scratch.`,
@@ -325,10 +336,11 @@ Treat an inner-loop replay as "tests already exist — proceed to fix the implem
 
           // -----------------------------------------------------------------
           // Refactor — do-while block informed by web research. The body runs
-          // refactor, then a refactor-verify-green variable phase that runs the
-          // suite and records whether it is still green (tests_pass). The loop
-          // repeats while tests_pass is false — refactor must not pass while
-          // the tests are failing.
+          // a `refactor` phase loop (exhaustion on filesWritten: give another
+          // look while a file is edited), then a refactor-verify-green variable
+          // phase that runs the suite and records whether it is still green
+          // (tests_pass). The loop repeats while tests_pass is false — refactor
+          // must not pass while the tests are failing.
           // -----------------------------------------------------------------
           {
             id: "refactor-loop",
@@ -342,6 +354,15 @@ Treat an inner-loop replay as "tests already exist — proceed to fix the implem
               {
                 id: "refactor",
                 title: "Refactor the implementation",
+                maxIterations: 4,
+                loopWhile: [
+                  {
+                    type: "callback",
+                    callback: (state: PioSessionState) =>
+                      (state.filesWritten?.length ?? 0) > 0,
+                  },
+                ],
+                loopMessage: `Have another look — any remaining duplication, naming, or structural cleanup worth doing for the current task? If you edited a file this pass, the loop continues for another look; if you have nothing more to change, make no file changes and finish.`,
                 instructions: `Refactor for clarity, keeping the tests green. Use \`web_search\` (no workflow) to look up good refactoring practices / idiomatic patterns for the codebase's language and libraries before restructuring — cite what you find; do not refactor blind.
 
 Never refactor while RED — get to GREEN first.`,

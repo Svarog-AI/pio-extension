@@ -592,6 +592,16 @@ describe("TDD sub-phases", () => {
       kind: "llm",
     });
     expect(loop.body?.[0].skills?.mandatory).toEqual(["tdd"]);
+    // the inner implement phase is itself an exhaustion loop on filesWritten
+    const inner = loop.body?.[0];
+    expect(inner?.maxIterations).toBe(4);
+    expect(inner?.loopWhile).toHaveLength(1);
+    const innerCb = inner?.loopWhile?.[0].callback as (
+      s: PioSessionState,
+    ) => boolean;
+    expect(innerCb(makeState({ filesWritten: ["/src/a.ts"] }))).toBe(true);
+    expect(innerCb(makeState())).toBe(false);
+    expect(() => innerCb(makeState())).not.toThrow();
   });
 
   it("implement rich phase carries the minimal GREEN guidance", () => {
@@ -626,6 +636,16 @@ describe("TDD sub-phases", () => {
       kind: "llm",
     });
     expect(loop.body?.[0].skills?.mandatory).toEqual(["tdd"]);
+    // the inner refactor phase is itself an exhaustion loop on filesWritten
+    const inner = loop.body?.[0];
+    expect(inner?.maxIterations).toBe(4);
+    expect(inner?.loopWhile).toHaveLength(1);
+    const innerCb = inner?.loopWhile?.[0].callback as (
+      s: PioSessionState,
+    ) => boolean;
+    expect(innerCb(makeState({ filesWritten: ["/src/a.ts"] }))).toBe(true);
+    expect(innerCb(makeState())).toBe(false);
+    expect(() => innerCb(makeState())).not.toThrow();
   });
 
   it("refactor rich phase carries the keep-tests-green + web_search guidance", () => {

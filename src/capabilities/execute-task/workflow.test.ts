@@ -25,10 +25,18 @@ function makeState(
   } = {},
 ): PioSessionState {
   const store = overrides.store ?? makeStore();
-  // Mirror default-setup: declare the durable arrays so store.get(...)
-  // resolves to [] when unset rather than undefined.
+  // Mirror default-setup: declare every session variable so store.get(...)
+  // resolves to a type-appropriate default ([] / "" / false) when unset.
   store.declare("tasks", "array");
   store.declare("research_notes", "array");
+  store.declare("research_complete", "boolean");
+  store.declare("task_list_refined", "boolean");
+  store.declare("current_task", "string");
+  store.declare("task_verified", "boolean");
+  store.declare("task_blocked", "boolean");
+  store.declare("acceptance_blocked", "boolean");
+  store.declare("tests_pass", "boolean");
+  store.declare("commit_hash", "string");
   return {
     store,
     sessionId: overrides.sessionId,
@@ -105,11 +113,19 @@ describe("default-setup", () => {
     expect(setupPhase.kind).toBe("code");
   });
 
-  it("declares the durable arrays so store.get resolves to [] when unset", () => {
+  it("declares every session variable so store.get resolves to a type default when unset", () => {
     const state = makeState({ sessionId: "sess-123" });
     runCode(setupPhase, state);
     expect(state.store?.get("tasks")).toEqual([]);
     expect(state.store?.get("research_notes")).toEqual([]);
+    expect(state.store?.get("research_complete")).toBe(false);
+    expect(state.store?.get("task_list_refined")).toBe(false);
+    expect(state.store?.get("current_task")).toBe("");
+    expect(state.store?.get("task_verified")).toBe(false);
+    expect(state.store?.get("task_blocked")).toBe(false);
+    expect(state.store?.get("acceptance_blocked")).toBe(false);
+    expect(state.store?.get("tests_pass")).toBe(false);
+    expect(state.store?.get("commit_hash")).toBe("");
   });
 
   it("does not create a scratch dir or set a notes_path variable", () => {
@@ -787,7 +803,7 @@ describe("capture-commit-hash", () => {
       // Not a git repository → git rev-parse HEAD fails
       const state = makeState({ projectRoot: tempDir, sessionId: "s" });
       expect(() => runCode(captureHashPhase, state)).not.toThrow();
-      expect(state.store?.get("commit_hash")).toBeUndefined();
+      expect(state.store?.isDefined("commit_hash")).toBe(false);
     } finally {
       fsRmrf(tempDir);
     }

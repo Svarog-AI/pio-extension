@@ -74,10 +74,11 @@ Skim \`.pio/PROJECT/OVERVIEW.md\` if available for background. This is a single-
   },
 
   // -------------------------------------------------------------------------
-  // Default Setup — programmatic (no agent turn). Declares the durable
-  // in-memory arrays so store.get(...) resolves to [] when unset rather than
-  // undefined. All durable state lives in the session variable store — there
-  // are no /tmp scratch files.
+  // Default Setup — programmatic (no agent turn). Declares every session
+  // variable up front so store.get(...) resolves to a type-appropriate empty
+  // default ([] / "" / false) when unset, and so setVar/store.set type
+  // enforcement is consistent from the start. All durable state lives in the
+  // session variable store — there are no /tmp scratch files.
   // -------------------------------------------------------------------------
   {
     id: "default-setup",
@@ -87,6 +88,14 @@ Skim \`.pio/PROJECT/OVERVIEW.md\` if available for background. This is a single-
       const store = ctx.state.store;
       store.declare(TASKS_VAR, "array");
       store.declare(RESEARCH_NOTES_VAR, "array");
+      store.declare(RESEARCH_COMPLETE_VAR, "boolean");
+      store.declare(TASK_LIST_REFINED_VAR, "boolean");
+      store.declare(CURRENT_TASK_VAR, "string");
+      store.declare(TASK_VERIFIED_VAR, "boolean");
+      store.declare(TASK_BLOCKED_VAR, "boolean");
+      store.declare(ACCEPTANCE_BLOCKED_VAR, "boolean");
+      store.declare(TESTS_PASS_VAR, "boolean");
+      store.declare(COMMIT_VAR, "string");
     },
   },
 

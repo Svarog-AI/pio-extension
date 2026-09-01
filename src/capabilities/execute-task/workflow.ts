@@ -62,17 +62,18 @@ const wroteVerifiedOrBlocked = (s: PioSessionState) =>
   wroteMarker(s, ["verified.txt", "blocked.txt"]);
 
 /**
- * Total terminal check for the OUTER loop. The outer terminal markers
- * (tasks-complete.txt / blocked.txt) are written programmatically by the
- * `finalize-tasks` code phase via fs — and code-phase fs writes are NOT
- * tracked in state.filesWritten (only LLM tool writes are). So this reads the
- * filesystem directly. Never throws (fs.existsSync is total).
+ * Total terminal check for the OUTER loop. Reads the persisted in-memory task
+ * array (the store survives session interruption, unlike the lossy /tmp
+ * scratch dir): keep looping while pending/in-progress work remains and no
+ * task is blocked; stop when every task is verified or any task is blocked.
+ * Never throws (store reads are total).
  */
 function outerLoopShouldContinue(state: PioSessionState): boolean {
-  const root = scratchRootOf(state);
-  const done = fs.existsSync(path.join(root, "tasks-complete.txt"));
-  const blocked = fs.existsSync(path.join(root, "blocked.txt"));
-  return !(done || blocked);
+  const tasks = tasksArrayOf(state);
+  if (tasks.length === 0) return true; // nothing seeded yet — first pass
+  const hasBlocked = tasks.some((t) => t.status === "blocked");
+  const allVerified = tasks.every((t) => t.status === "verified");
+  return !(hasBlocked || allVerified);
 }
 
 /** True when the run appended to the research-notes evidence file. */
@@ -194,19 +195,38 @@ The in-memory task array (with statuses) is maintained by the code phases. **Do 
         kind: "code",
         run: (ctx: CodeStepContext) => {
           const state = ctx.state;
-          const jsonPath = tasksJsonPathOf(state);
-          if (!fs.existsSync(jsonPath)) return;
+          const merged = tasksArrayOf(state);
           try {
-            const parsed = JSON.parse(
-              fs.readFileSync(jsonPath, "utf-8"),
-            ) as unknown;
-            if (!Array.isArray(parsed)) return;
-            const names = parsed.map((n) => String(n));
-            const existing = tasksArrayOf(state);
-            const seen = new Set(existing.map((t) => t.name));
-            const merged = [...existing];
-            for (const n of names) {
-              if (!seen.has(n)) merged.push({ name: n, status: "pending" });
+            // Merge any LLM-authored task names (tasks.json) into the durable
+            // store array. The array is the source of truth (survives
+            // interruption); tasks.json is only a transient seed/append channel
+            // because LLM phases cannot write the store.
+            const jsonPath = tasksJsonPathOf(state);
+            if (fs.existsSync(jsonPath)) {
+              const parsed = JSON.parse(
+                fs.readFileSync(jsonPath, "utf-8"),
+              ) as unknown;
+              if (Array.isArray(parsed)) {
+                const seen = new Set(merged.map((t) => t.name));
+                for (const n of parsed.map((n) => String(n))) {
+                  if (!seen.has(n)) merged.push({ name: n, status: "pending" });
+                }
+              }
+            }
+            // Resume-safe: if a task is already in-progress (e.g. the session
+            // was interrupted mid-task), keep it as the current task rather than
+            // selecting a different one.
+            const inProgress = merged.findIndex(
+              (t) => t.status === "in-progress",
+            );
+            if (inProgress >= 0) {
+              state.store?.set(
+                CURRENT_TASK_VAR,
+                "string",
+                merged[inProgress].name,
+              );
+              state.store?.set(TASKS_VAR, "array", merged);
+              return;
             }
             const idx = merged.findIndex((t) => t.status === "pending");
             if (idx < 0) {
@@ -375,17 +395,18 @@ You do **not** write the terminal markers — the \`finalize-tasks\` code phase 
       // ---------------------------------------------------------------------
       {
         id: "finalize-tasks",
-        title: "Decide whether all tasks are done or blocked",
+        title: "Reconcile the current task and decide done vs blocked",
         kind: "code",
         run: (ctx: CodeStepContext) => {
           const state = ctx.state;
           const root = scratchRootOf(state);
           const verifiedPath = path.join(root, "verified.txt");
           const blockedPath = path.join(root, "blocked.txt");
-          const completePath = path.join(root, "tasks-complete.txt");
           const array = tasksArrayOf(state);
           if (!array.length) return;
           try {
+            // Reconcile the current (in-progress) task's status from the
+            // transient per-pass markers written by verify-final.
             let changed = false;
             const next = array.map((t) => {
               if (t.status === "in-progress") {
@@ -401,17 +422,11 @@ You do **not** write the terminal markers — the \`finalize-tasks\` code phase 
               return t;
             });
             if (changed) state.store?.set(TASKS_VAR, "array", next);
-            const hasBlocked = next.some((t) => t.status === "blocked");
-            const allVerified =
-              next.length > 0 && next.every((t) => t.status === "verified");
-            if (hasBlocked) {
-              fs.writeFileSync(blockedPath, "", "utf-8");
-            } else if (allVerified) {
-              fs.writeFileSync(completePath, "", "utf-8");
-            } else {
-              fs.rmSync(verifiedPath, { force: true });
-              fs.rmSync(blockedPath, { force: true });
-            }
+            // The outer loop's terminal decision reads the persisted store
+            // array, not marker files. Clear the transient per-pass markers so
+            // the next task starts clean.
+            fs.rmSync(verifiedPath, { force: true });
+            fs.rmSync(blockedPath, { force: true });
           } catch {
             // total — never throw
           }

@@ -207,19 +207,44 @@ describe("iterative-tdd (outer loop)", () => {
     expect(iterativeTddPhase.body).toHaveLength(5);
   });
 
-  it("advances when tasks-complete.txt or blocked.txt exists on disk; repeats otherwise (total)", () => {
+  it("advances when all tasks are verified or any is blocked; repeats otherwise (total, store-backed)", () => {
     const cb = iterativeTddPhase.repeatWhile as (s: PioSessionState) => boolean;
-    // terminal marker present on disk → advance (stop repeating)
-    makeScratchRoot("s");
-    fs.writeFileSync("/tmp/pio-execute-task/s/tasks-complete.txt", "", "utf-8");
-    expect(cb(makeState({ sessionId: "s" }))).toBe(false);
-    fs.rmSync("/tmp/pio-execute-task/s/tasks-complete.txt", { force: true });
-    fs.writeFileSync("/tmp/pio-execute-task/s/blocked.txt", "", "utf-8");
-    expect(cb(makeState({ sessionId: "s" }))).toBe(false);
-    fs.rmSync("/tmp/pio-execute-task/s/blocked.txt", { force: true });
-    // no terminal marker → repeat (more tasks remain)
-    expect(cb(makeState({ sessionId: "s" }))).toBe(true);
-    // total — never throws on missing state/scratch dir
+    const withTasks = (tasks: unknown[]) => {
+      const state = makeState();
+      state.store?.set("tasks", "array", tasks);
+      return state;
+    };
+    // all verified → advance (stop repeating)
+    expect(cb(withTasks([{ name: "A", status: "verified" }]))).toBe(false);
+    // any blocked → advance
+    expect(
+      cb(
+        withTasks([
+          { name: "A", status: "verified" },
+          { name: "B", status: "blocked" },
+        ]),
+      ),
+    ).toBe(false);
+    // pending/in-progress work remains → repeat
+    expect(
+      cb(
+        withTasks([
+          { name: "A", status: "verified" },
+          { name: "B", status: "pending" },
+        ]),
+      ),
+    ).toBe(true);
+    expect(
+      cb(
+        withTasks([
+          { name: "A", status: "verified" },
+          { name: "B", status: "in-progress" },
+        ]),
+      ),
+    ).toBe(true);
+    // empty array (nothing seeded yet) → repeat (first pass)
+    expect(cb(makeState())).toBe(true);
+    // total — never throws on missing state/store
     expect(() => cb(makeState())).not.toThrow();
   });
 
@@ -294,7 +319,33 @@ describe("select-task", () => {
     }
   });
 
-  it("is total when tasks.json is missing or unreadable", () => {
+  it("resumes an in-progress task (interrupted session) instead of selecting a new one", () => {
+    const sid = `select-${Date.now()}-resume`;
+    const root = makeScratchRoot(sid);
+    try {
+      fs.writeFileSync(
+        path.join(root, "tasks.json"),
+        JSON.stringify(["A", "B"]),
+        "utf-8",
+      );
+      const state = makeState({ sessionId: sid });
+      // Simulate a persisted array from a session interrupted mid-task-A
+      state.store?.set("tasks", "array", [
+        { name: "A", status: "in-progress" },
+        { name: "B", status: "pending" },
+      ]);
+      runCode(phase!, state);
+      expect(state.store?.get("current_task")).toBe("A");
+      expect(state.store?.get("tasks")).toEqual([
+        { name: "A", status: "in-progress" },
+        { name: "B", status: "pending" },
+      ]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("is total when tasks.json is missing and there is no in-memory array", () => {
     const state = makeState({ sessionId: `nofile-${Date.now()}` });
     expect(() => runCode(phase!, state)).not.toThrow();
   });
@@ -312,7 +363,7 @@ describe("finalize-tasks", () => {
     expect(phase?.kind).toBe("code");
   });
 
-  it("reconciles the current in-progress task from verified.txt and writes tasks-complete.txt when all tasks are verified", () => {
+  it("reconciles the current in-progress task to verified in the store array and clears the marker", () => {
     const sid = `final-${Date.now()}-done`;
     const root = makeScratchRoot(sid);
     try {
@@ -325,14 +376,13 @@ describe("finalize-tasks", () => {
       expect(state.store?.get("tasks")).toEqual([
         { name: "One", status: "verified" },
       ]);
-      expect(fs.existsSync(path.join(root, "tasks-complete.txt"))).toBe(true);
-      expect(fs.existsSync(path.join(root, "blocked.txt"))).toBe(false);
+      expect(fs.existsSync(path.join(root, "verified.txt"))).toBe(false);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("reconciles the current in-progress task from blocked.txt and writes blocked.txt", () => {
+  it("reconciles the current in-progress task to blocked in the store array and clears the marker", () => {
     const sid = `final-${Date.now()}-blocked`;
     const root = makeScratchRoot(sid);
     try {
@@ -345,14 +395,13 @@ describe("finalize-tasks", () => {
       expect(state.store?.get("tasks")).toEqual([
         { name: "One", status: "blocked" },
       ]);
-      expect(fs.existsSync(path.join(root, "blocked.txt"))).toBe(true);
-      expect(fs.existsSync(path.join(root, "tasks-complete.txt"))).toBe(false);
+      expect(fs.existsSync(path.join(root, "blocked.txt"))).toBe(false);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("writes nothing while pending work remains and clears the per-pass markers", () => {
+  it("reconciles the current task but leaves pending work untouched, and clears the per-pass markers", () => {
     const sid = `final-${Date.now()}-pending`;
     const root = makeScratchRoot(sid);
     try {
@@ -367,9 +416,8 @@ describe("finalize-tasks", () => {
         { name: "One", status: "verified" },
         { name: "Two", status: "pending" },
       ]);
-      expect(fs.existsSync(path.join(root, "tasks-complete.txt"))).toBe(false);
-      expect(fs.existsSync(path.join(root, "blocked.txt"))).toBe(false);
       expect(fs.existsSync(path.join(root, "verified.txt"))).toBe(false);
+      expect(fs.existsSync(path.join(root, "blocked.txt"))).toBe(false);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

@@ -58,7 +58,14 @@ const writeSummaryPhase = workflow[8];
 
 /** The 5 TDD sub-phases inside the inner tdd-process loop, keyed by id. */
 const tddBodyById = (id: string): WorkflowPhase =>
-  (iterativeTddPhase.body?.[1].body ?? []).find((p) => p.id === id)!;
+  (iterativeTddPhase.body?.[2].body ?? []).find((p) => p.id === id)!;
+
+/** Create a session-scoped scratch dir for a session id and return its root. */
+function makeScratchRoot(sessionId: string): string {
+  const root = `/tmp/pio-execute-task/${sessionId}`;
+  fs.mkdirSync(root, { recursive: true });
+  return root;
+}
 
 // ---------------------------------------------------------------------------
 // read-task — lean single-pass contract entry (no goal/plan, no loop fields)
@@ -197,35 +204,33 @@ describe("iterative-tdd (outer loop)", () => {
     expect(iterativeTddPhase.id).toBe("iterative-tdd");
     expect(iterativeTddPhase.kind).toBe("loop");
     expect(iterativeTddPhase.maxIterations).toBe(12);
-    expect(iterativeTddPhase.body).toHaveLength(3);
+    expect(iterativeTddPhase.body).toHaveLength(5);
   });
 
-  it("advances when tasks-complete.txt or blocked.txt was written; repeats otherwise (total)", () => {
+  it("advances when tasks-complete.txt or blocked.txt exists on disk; repeats otherwise (total)", () => {
     const cb = iterativeTddPhase.repeatWhile as (s: PioSessionState) => boolean;
-    // terminal marker written → advance (stop repeating)
-    expect(
-      cb(
-        makeState({
-          filesWritten: ["/tmp/pio-execute-task/s/tasks-complete.txt"],
-        }),
-      ),
-    ).toBe(false);
-    expect(
-      cb(makeState({ filesWritten: ["/tmp/pio-execute-task/s/blocked.txt"] })),
-    ).toBe(false);
-    // nothing terminal written → repeat (more tasks remain)
-    expect(
-      cb(makeState({ filesWritten: ["/tmp/pio-execute-task/s/notes.md"] })),
-    ).toBe(true);
-    expect(cb(makeState())).toBe(true);
-    // total — never throws on missing filesWritten
+    // terminal marker present on disk → advance (stop repeating)
+    makeScratchRoot("s");
+    fs.writeFileSync("/tmp/pio-execute-task/s/tasks-complete.txt", "", "utf-8");
+    expect(cb(makeState({ sessionId: "s" }))).toBe(false);
+    fs.rmSync("/tmp/pio-execute-task/s/tasks-complete.txt", { force: true });
+    fs.writeFileSync("/tmp/pio-execute-task/s/blocked.txt", "", "utf-8");
+    expect(cb(makeState({ sessionId: "s" }))).toBe(false);
+    fs.rmSync("/tmp/pio-execute-task/s/blocked.txt", { force: true });
+    // no terminal marker → repeat (more tasks remain)
+    expect(cb(makeState({ sessionId: "s" }))).toBe(true);
+    // total — never throws on missing state/scratch dir
     expect(() => cb(makeState())).not.toThrow();
   });
 
-  it("body contains task-generation, the inner tdd-process loop, and verify-acceptance-criteria", () => {
-    expect(iterativeTddPhase.body?.[0].id).toBe("task-generation");
-    expect(iterativeTddPhase.body?.[1].id).toBe("tdd-process");
-    expect(iterativeTddPhase.body?.[2].id).toBe("verify-acceptance-criteria");
+  it("body contains task-generation, select-task, the inner tdd-process loop, verify-acceptance-criteria, and finalize-tasks", () => {
+    expect(iterativeTddPhase.body?.map((p) => p.id)).toEqual([
+      "task-generation",
+      "select-task",
+      "tdd-process",
+      "verify-acceptance-criteria",
+      "finalize-tasks",
+    ]);
   });
 
   it("carries a non-empty loopMessage nudging continuation", () => {
@@ -236,12 +241,129 @@ describe("iterative-tdd (outer loop)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// select-task — programmatic task selection (code phase)
+// ---------------------------------------------------------------------------
+
+describe("select-task", () => {
+  const phase = iterativeTddPhase.body?.[1];
+
+  it("is a code phase", () => {
+    expect(phase?.id).toBe("select-task");
+    expect(phase?.kind).toBe("code");
+  });
+
+  it("selects the first pending task, sets current_task, and marks it in-progress", () => {
+    const sid = `select-${Date.now()}`;
+    const root = makeScratchRoot(sid);
+    try {
+      const tasksPath = path.join(root, "tasks.md");
+      fs.writeFileSync(tasksPath, "- [ ] 1. First\n- [ ] 2. Second\n", "utf-8");
+      const state = makeState({ sessionId: sid });
+      runCode(phase!, state);
+      expect(state.store?.get("current_task")).toBe("First");
+      expect(fs.readFileSync(tasksPath, "utf-8")).toContain("- [~] 1. First");
+      expect(fs.readFileSync(tasksPath, "utf-8")).toContain("- [ ] 2. Second");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("skips already-verified tasks and picks the next pending one", () => {
+    const sid = `select-${Date.now()}-v`;
+    const root = makeScratchRoot(sid);
+    try {
+      const tasksPath = path.join(root, "tasks.md");
+      fs.writeFileSync(tasksPath, "- [x] 1. Done\n- [ ] 2. Next\n", "utf-8");
+      const state = makeState({ sessionId: sid });
+      runCode(phase!, state);
+      expect(state.store?.get("current_task")).toBe("Next");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("is total when tasks.md is missing or unreadable", () => {
+    const state = makeState({ sessionId: `nofile-${Date.now()}` });
+    expect(() => runCode(phase!, state)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// finalize-tasks — programmatic terminal-marker decision (code phase)
+// ---------------------------------------------------------------------------
+
+describe("finalize-tasks", () => {
+  const phase = iterativeTddPhase.body?.[4];
+
+  it("is a code phase", () => {
+    expect(phase?.id).toBe("finalize-tasks");
+    expect(phase?.kind).toBe("code");
+  });
+
+  it("writes tasks-complete.txt when all tasks are verified", () => {
+    const sid = `final-${Date.now()}-done`;
+    const root = makeScratchRoot(sid);
+    try {
+      fs.writeFileSync(
+        path.join(root, "tasks.md"),
+        "- [x] 1. One\n- [x] 2. Two\n",
+        "utf-8",
+      );
+      runCode(phase!, makeState({ sessionId: sid }));
+      expect(fs.existsSync(path.join(root, "tasks-complete.txt"))).toBe(true);
+      expect(fs.existsSync(path.join(root, "blocked.txt"))).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("writes blocked.txt when any task is blocked", () => {
+    const sid = `final-${Date.now()}-blocked`;
+    const root = makeScratchRoot(sid);
+    try {
+      fs.writeFileSync(
+        path.join(root, "tasks.md"),
+        "- [x] 1. One\n- [!] 2. Two\n",
+        "utf-8",
+      );
+      runCode(phase!, makeState({ sessionId: sid }));
+      expect(fs.existsSync(path.join(root, "blocked.txt"))).toBe(true);
+      expect(fs.existsSync(path.join(root, "tasks-complete.txt"))).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("writes nothing while pending work remains", () => {
+    const sid = `final-${Date.now()}-pending`;
+    const root = makeScratchRoot(sid);
+    try {
+      fs.writeFileSync(
+        path.join(root, "tasks.md"),
+        "- [x] 1. One\n- [ ] 2. Two\n",
+        "utf-8",
+      );
+      runCode(phase!, makeState({ sessionId: sid }));
+      expect(fs.existsSync(path.join(root, "tasks-complete.txt"))).toBe(false);
+      expect(fs.existsSync(path.join(root, "blocked.txt"))).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("is total when tasks.md is missing or unreadable", () => {
+    const state = makeState({ sessionId: `nofile-${Date.now()}` });
+    expect(() => runCode(phase!, state)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // tdd-process (inner loop) — the 5-phase TDD sequence; advances when the
 // current task's verification passes (verified/blocked marker)
 // ---------------------------------------------------------------------------
 
 describe("tdd-process (inner loop)", () => {
-  const inner = iterativeTddPhase.body?.[1];
+  const inner = iterativeTddPhase.body?.[2];
 
   it("is a kind:loop do-while block with min/max iterations and a total repeatWhile", () => {
     expect(inner?.id).toBe("tdd-process");
@@ -368,24 +490,21 @@ describe("TDD sub-phase refinement loops", () => {
 });
 
 // ---------------------------------------------------------------------------
-// verify-acceptance-criteria — sole writer of the outer terminal markers
+// verify-acceptance-criteria — judgment-only; finalize-tasks writes markers
 // ---------------------------------------------------------------------------
 
 describe("verify-acceptance-criteria", () => {
-  const phase = iterativeTddPhase.body?.[2];
+  const phase = iterativeTddPhase.body?.[3];
 
-  it("is the outer body's last phase", () => {
+  it("is a judgment phase before finalize-tasks", () => {
     expect(phase?.id).toBe("verify-acceptance-criteria");
-    expect(iterativeTddPhase.body?.at(-1)?.id).toBe(
-      "verify-acceptance-criteria",
-    );
+    expect(iterativeTddPhase.body?.[4].id).toBe("finalize-tasks");
   });
 
-  it("instructions carry the sole-writer discipline and stuck-task blocker handling", () => {
+  it("instructions carry judgment-only discipline and stuck-task blocker handling (no terminal-marker writing)", () => {
     const instr = phase?.instructions as string;
-    expect(instr).toContain("tasks-complete.txt");
-    expect(instr).toContain("blocked.txt");
-    expect(instr).toContain("sole");
+    expect(instr).toContain("finalize-tasks");
+    expect(instr).toContain("do **not** write");
     expect(instr).toContain("stuck");
     expect(instr).toContain("max-iteration");
   });

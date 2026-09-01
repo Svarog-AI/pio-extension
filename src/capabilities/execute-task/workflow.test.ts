@@ -212,12 +212,14 @@ describe("research-context", () => {
     expect(desc).not.toContain("/tmp/");
   });
 
-  it("research-complete description directs setting true only when nothing is missing/unanswered", () => {
+  it("research-complete description directs setting true only when nothing is missing/unanswered, with critical evaluation", () => {
     const desc = researchPhase.body?.[1].variables?.[0].description as string;
     expect(desc).toContain("research_notes");
     expect(desc).toContain("true");
     expect(desc).toContain("nothing missing");
     expect(desc).toContain("web_search");
+    // Gating verdicts must instruct critical evaluation, not rubber-stamping.
+    expect(desc).toContain("critical");
   });
 
   it("carries a non-empty loopMessage nudging further research", () => {
@@ -645,6 +647,7 @@ describe("TDD sub-phases", () => {
     expect(desc).toContain("Run the test suite");
     expect(desc).toContain("npm run check");
     expect(desc).toContain("npm run lint");
+    expect(desc).toContain("honest");
   });
 
   it("verify-final runs formal tests + programmatic checks without writing markers", () => {
@@ -678,6 +681,7 @@ describe("TDD sub-phases", () => {
     });
     const desc = phase.variables?.[0].description as string;
     expect(desc).toContain("only when ALL formal tests");
+    expect(desc).toContain("critical");
     const blockedDesc = phase.variables?.[1].description as string;
     expect(blockedDesc).toContain("genuine blocker");
     expect(blockedDesc).toContain("NOT blockers");

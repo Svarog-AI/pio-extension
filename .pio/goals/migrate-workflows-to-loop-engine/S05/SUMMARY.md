@@ -61,6 +61,9 @@ Two post-implementation change requests were received and applied (committed in 
    - `src/capabilities/workflow-playground/config.test.ts` — updated to assert containers have no `instructions`.
    - `src/skills/capability-design/SKILL.md` — updated the `"loop"` bullet to memorize that do-while loop containers carry no `instructions`.
 
+3. **Emphasize behavioral / tracer-bullet tests in `write-tests`.** The user directed putting emphasis on tests that actually test behaviour, ideally tracer bullet tests.
+   - `src/capabilities/execute-task/workflow.ts` — rewrote the `write-tests` instructions to emphasize behavioral testing: prefer tracer-bullet tests (smallest end-to-end test confirming one real behavior through a public API), test behavior not implementation (avoid string-literal content, internal data-structure shapes, function signatures, raw source reads; a test should survive an internal refactor), and use the project's domain glossary. The change-marker discipline and replay guidance are unchanged.
+
 ## Test Coverage
 
 - **56 execute-task tests pass**, including the new `workflow.test.ts` structural pins and the updated `schemas.test.ts` `commit`-field cases; full suite green (1824 tests).

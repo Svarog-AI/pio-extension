@@ -351,64 +351,111 @@ describe("task-generation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// select-task — variable-definition phase that peeks the front of the tasks
-// queue, marks it in-progress, and sets current_task
+// select-task — programmatic selection: marks a pending front in-progress and
+// sets current_task to the front's name (or "" defensively)
 // ---------------------------------------------------------------------------
 
 describe("select-task", () => {
   const phase = iterativeTddPhase.body?.[1];
 
-  it("is a variable-definition phase declaring current_task", () => {
+  it("is a code phase", () => {
     expect(phase?.id).toBe("select-task");
-    expect(phase?.kind).toBe("variable-definition");
-    expect(phase?.variables?.map((v) => v.name)).toEqual(["current_task"]);
-    expect(phase?.variables?.[0]).toMatchObject({
-      name: "current_task",
-      type: "string",
-      kind: "llm",
-    });
+    expect(phase?.kind).toBe("code");
   });
 
-  it("description instructs peeking the front, marking it in-progress via setVarAt, and setting current_task explicitly", () => {
-    const desc = phase?.variables?.[0].description as string;
-    expect(desc).toContain("peek");
-    expect(desc).toContain("setVarAt");
-    expect(desc).toContain("in-progress");
-    expect(desc).toContain("setVar");
-    expect(desc).toContain("index 0");
-    expect(desc).toContain("replace the whole array");
+  it("marks a pending front in-progress and sets current_task to its name", () => {
+    const state = makeState();
+    state.store?.set("tasks", "array", [
+      { name: "First", status: "pending" },
+      { name: "Second", status: "pending" },
+    ]);
+    runCode(phase!, state);
+    expect(state.store?.get("current_task")).toBe("First");
+    expect(state.store?.get("tasks")).toEqual([
+      { name: "First", status: "in-progress" },
+      { name: "Second", status: "pending" },
+    ]);
+  });
+
+  it("sets current_task to an already-in-progress front's name without changing statuses (re-attempt)", () => {
+    const state = makeState();
+    state.store?.set("tasks", "array", [
+      { name: "One", status: "in-progress" },
+      { name: "Two", status: "pending" },
+    ]);
+    runCode(phase!, state);
+    expect(state.store?.get("current_task")).toBe("One");
+    expect(state.store?.get("tasks")).toEqual([
+      { name: "One", status: "in-progress" },
+      { name: "Two", status: "pending" },
+    ]);
+  });
+
+  it('sets current_task to "" when the queue is empty (total)', () => {
+    const state = makeState();
+    expect(() => runCode(phase!, state)).not.toThrow();
+    expect(state.store?.get("current_task")).toBe("");
+  });
+
+  it('sets current_task to "" and leaves a blocked/verified front untouched (defensive)', () => {
+    const state = makeState();
+    state.store?.set("tasks", "array", [{ name: "A", status: "blocked" }]);
+    runCode(phase!, state);
+    expect(state.store?.get("current_task")).toBe("");
+    expect(state.store?.get("tasks")).toEqual([
+      { name: "A", status: "blocked" },
+    ]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// complete-current — variable-definition phase that advances the tasks queue:
-// peeks the front and dequeues it once verified
+// complete-current — programmatic advancement: dequeues a verified front
+// (shifting the queue left); leaves blocked/in-progress fronts in place
 // ---------------------------------------------------------------------------
 
 describe("complete-current", () => {
   const phase = iterativeTddPhase.body?.[4];
 
-  it("is a variable-definition phase declaring tasks (replaces finalize-tasks)", () => {
+  it("is a code phase (replaces the finalize-tasks slot)", () => {
     expect(phase?.id).toBe("complete-current");
-    expect(phase?.kind).toBe("variable-definition");
-    expect(phase?.variables?.map((v) => v.name)).toEqual(["tasks"]);
-    expect(phase?.variables?.[0]).toMatchObject({
-      name: "tasks",
-      type: "array",
-      kind: "llm",
-    });
+    expect(phase?.kind).toBe("code");
   });
 
-  it("description instructs peeking and dequeuing a verified front while leaving blocked/in-progress in place", () => {
-    const desc = phase?.variables?.[0].description as string;
-    expect(desc).toContain("peek");
-    expect(desc).toContain("dequeue");
-    expect(desc).toContain("verified");
-    expect(desc).toContain("blocked");
-    expect(desc).toContain("in-progress");
-    expect(desc).toContain("shift");
-    expect(desc).toContain("leave it in place");
-    expect(desc).toContain("not replace the whole array");
+  it("dequeues the front when it is verified", () => {
+    const state = makeState();
+    state.store?.set("tasks", "array", [
+      { name: "One", status: "verified" },
+      { name: "Two", status: "pending" },
+    ]);
+    runCode(phase!, state);
+    expect(state.store?.get("tasks")).toEqual([
+      { name: "Two", status: "pending" },
+    ]);
+  });
+
+  it("leaves a blocked front in place (outer-loop termination signal)", () => {
+    const state = makeState();
+    state.store?.set("tasks", "array", [{ name: "One", status: "blocked" }]);
+    runCode(phase!, state);
+    expect(state.store?.get("tasks")).toEqual([
+      { name: "One", status: "blocked" },
+    ]);
+  });
+
+  it("leaves an in-progress front in place (re-attempt)", () => {
+    const state = makeState();
+    state.store?.set("tasks", "array", [
+      { name: "One", status: "in-progress" },
+    ]);
+    runCode(phase!, state);
+    expect(state.store?.get("tasks")).toEqual([
+      { name: "One", status: "in-progress" },
+    ]);
+  });
+
+  it("is total when the queue is empty", () => {
+    const state = makeState();
+    expect(() => runCode(phase!, state)).not.toThrow();
   });
 });
 
@@ -815,10 +862,8 @@ describe("workflow structure", () => {
             "tasks-refined",
             "verify-green",
             "refactor-verify-green",
-            "select-task",
             "task-verdict",
             "verify-acceptance-criteria",
-            "complete-current",
           ]).toContain(p.id);
         }
         if (p.body) visit(p.body);

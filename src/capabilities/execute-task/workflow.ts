@@ -219,28 +219,46 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
       },
 
       // ---------------------------------------------------------------------
-      // Select Task — variable-definition phase that peeks the front of the
-      // tasks queue and marks the current task in-progress. Uses the LLM-gated
-      // collection primitives (peek / setVarAt / setVar) so the current task
-      // is always the front (index-0) element; complete-current dequeues it
-      // once verified.
+      // Select Task — PROGRAMMATIC selection of the current task. Reads the
+      // persisted tasks store array: the current task is always the front
+      // (index-0) element. Marks a pending front in-progress (so the inner
+      // tdd-process loop repeats while the current task is in-progress) and
+      // sets current_task to the front's name, or "" when the queue is empty
+      // or the front is blocked/verified (defensive). Does not dequeue —
+      // complete-current advances the queue once verified.
       // ---------------------------------------------------------------------
       {
         id: "select-task",
         title: "Select the current task (mark in-progress)",
-        kind: "variable-definition",
-        variables: [
-          {
-            name: CURRENT_TASK_VAR,
-            type: "string",
-            kind: "llm",
-            description: `Peek the front of \`${TASKS_VAR}\` via \`peek("${TASKS_VAR}")\` — the current task is always the front element (index 0). If the front status is \`pending\`, mark it \`in-progress\` directly via \`setVarAt("${TASKS_VAR}", 0, { name, status: "in-progress" })\` — do **not** replace the whole array.
-
-**Always set \`${CURRENT_TASK_VAR}\` explicitly via \`setVar\`**: to the front task's \`name\` when there is a selectable front (\`pending\` or \`in-progress\`), or to \`""\` when the queue is empty or the front is \`blocked\`/\`verified\` (defensive — the outer loop terminates or \`complete-current\`/re-attempt handles the front). \`${CURRENT_TASK_VAR}\` is only declared-with-default (not set), so this phase's variable-completeness signal requires writing it explicitly to resolve in a single pass.
-
-Make no other change to \`${TASKS_VAR}\` when the front is not \`pending\` (e.g. already \`in-progress\` on a re-attempt, or \`verified\`/\`blocked\`).`,
-          },
-        ],
+        kind: "code",
+        run: (ctx: CodeStepContext) => {
+          const state = ctx.state;
+          const tasks = state.store.get(TASKS_VAR) as TaskEntry[];
+          try {
+            const front = tasks[0];
+            if (!front) {
+              state.store.set(CURRENT_TASK_VAR, "string", "");
+              return;
+            }
+            if (front.status === "pending") {
+              state.store.set(TASKS_VAR, "array", [
+                { ...front, status: "in-progress" },
+                ...tasks.slice(1),
+              ]);
+            }
+            // current_task = front name when selectable (pending or
+            // in-progress), else "" (defensive).
+            state.store.set(
+              CURRENT_TASK_VAR,
+              "string",
+              front.status === "pending" || front.status === "in-progress"
+                ? front.name
+                : "",
+            );
+          } catch {
+            // total — never throw
+          }
+        },
       },
 
       // ---------------------------------------------------------------------
@@ -460,28 +478,30 @@ You do **not** write any terminal marker — the \`complete-current\` phase adva
       },
 
       // ---------------------------------------------------------------------
-      // Complete Current — variable-definition phase that advances the tasks
-      // queue: peeks the front and dequeues it once verified (shifting the
-      // queue left); leaves a blocked/in-progress front in place so the outer
-      // loop sees termination or re-attempts.
+      // Complete Current — PROGRAMMATIC advancement of the tasks queue. Reads
+      // the persisted tasks store array and dequeues the front (shifting the
+      // queue left) only when it is verified, so the next pending task becomes
+      // the front. Leaves a blocked/in-progress front in place — a blocked
+      // task signals outer-loop termination; an in-progress task is re-attempted.
       // ---------------------------------------------------------------------
       {
         id: "complete-current",
         title: "Advance the task queue once the current task is verified",
-        kind: "variable-definition",
-        variables: [
-          {
-            name: TASKS_VAR,
-            type: "array",
-            kind: "llm",
-            description: `Advance the \`${TASKS_VAR}\` queue:
-- \`peek\` the front of \`${TASKS_VAR}\` via \`peek("${TASKS_VAR}")\`.
-- If the front status is \`verified\`, \`dequeue\` it via \`dequeue("${TASKS_VAR}")\` (removes it, shifting the queue left) so the next pending task becomes the front.
-- If the front status is \`blocked\` or \`in-progress\`, leave it in place (do not dequeue) — a blocked task signals outer-loop termination; an in-progress task will be re-attempted.
-
-Do not replace the whole array.`,
-          },
-        ],
+        kind: "code",
+        run: (ctx: CodeStepContext) => {
+          const state = ctx.state;
+          const tasks = state.store.get(TASKS_VAR) as TaskEntry[];
+          try {
+            const front = tasks[0];
+            if (!front) return;
+            if (front.status === "verified") {
+              state.store.set(TASKS_VAR, "array", tasks.slice(1));
+            }
+            // blocked / in-progress front left in place (do not dequeue)
+          } catch {
+            // total — never throw
+          }
+        },
       },
     ],
   },

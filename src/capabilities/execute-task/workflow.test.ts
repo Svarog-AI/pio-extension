@@ -252,29 +252,41 @@ describe("select-task", () => {
     expect(phase?.kind).toBe("code");
   });
 
-  it("selects the first pending task, sets current_task, and marks it in-progress", () => {
+  it("loads tasks.json into the in-memory array, selects the first pending task, sets current_task, and marks it in-progress", () => {
     const sid = `select-${Date.now()}`;
     const root = makeScratchRoot(sid);
     try {
-      const tasksPath = path.join(root, "tasks.md");
-      fs.writeFileSync(tasksPath, "- [ ] 1. First\n- [ ] 2. Second\n", "utf-8");
+      fs.writeFileSync(
+        path.join(root, "tasks.json"),
+        JSON.stringify(["First", "Second"]),
+        "utf-8",
+      );
       const state = makeState({ sessionId: sid });
       runCode(phase!, state);
       expect(state.store?.get("current_task")).toBe("First");
-      expect(fs.readFileSync(tasksPath, "utf-8")).toContain("- [~] 1. First");
-      expect(fs.readFileSync(tasksPath, "utf-8")).toContain("- [ ] 2. Second");
+      expect(state.store?.get("tasks")).toEqual([
+        { name: "First", status: "in-progress" },
+        { name: "Second", status: "pending" },
+      ]);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("skips already-verified tasks and picks the next pending one", () => {
+  it("skips already-verified tasks (in the in-memory array) and picks the next pending one", () => {
     const sid = `select-${Date.now()}-v`;
     const root = makeScratchRoot(sid);
     try {
-      const tasksPath = path.join(root, "tasks.md");
-      fs.writeFileSync(tasksPath, "- [x] 1. Done\n- [ ] 2. Next\n", "utf-8");
+      fs.writeFileSync(
+        path.join(root, "tasks.json"),
+        JSON.stringify(["Done", "Next"]),
+        "utf-8",
+      );
       const state = makeState({ sessionId: sid });
+      state.store?.set("tasks", "array", [
+        { name: "Done", status: "verified" },
+        { name: "Next", status: "pending" },
+      ]);
       runCode(phase!, state);
       expect(state.store?.get("current_task")).toBe("Next");
     } finally {
@@ -282,7 +294,7 @@ describe("select-task", () => {
     }
   });
 
-  it("is total when tasks.md is missing or unreadable", () => {
+  it("is total when tasks.json is missing or unreadable", () => {
     const state = makeState({ sessionId: `nofile-${Date.now()}` });
     expect(() => runCode(phase!, state)).not.toThrow();
   });
@@ -300,16 +312,19 @@ describe("finalize-tasks", () => {
     expect(phase?.kind).toBe("code");
   });
 
-  it("writes tasks-complete.txt when all tasks are verified", () => {
+  it("reconciles the current in-progress task from verified.txt and writes tasks-complete.txt when all tasks are verified", () => {
     const sid = `final-${Date.now()}-done`;
     const root = makeScratchRoot(sid);
     try {
-      fs.writeFileSync(
-        path.join(root, "tasks.md"),
-        "- [x] 1. One\n- [x] 2. Two\n",
-        "utf-8",
-      );
-      runCode(phase!, makeState({ sessionId: sid }));
+      const state = makeState({ sessionId: sid });
+      state.store?.set("tasks", "array", [
+        { name: "One", status: "in-progress" },
+      ]);
+      fs.writeFileSync(path.join(root, "verified.txt"), "", "utf-8");
+      runCode(phase!, state);
+      expect(state.store?.get("tasks")).toEqual([
+        { name: "One", status: "verified" },
+      ]);
       expect(fs.existsSync(path.join(root, "tasks-complete.txt"))).toBe(true);
       expect(fs.existsSync(path.join(root, "blocked.txt"))).toBe(false);
     } finally {
@@ -317,16 +332,19 @@ describe("finalize-tasks", () => {
     }
   });
 
-  it("writes blocked.txt when any task is blocked", () => {
+  it("reconciles the current in-progress task from blocked.txt and writes blocked.txt", () => {
     const sid = `final-${Date.now()}-blocked`;
     const root = makeScratchRoot(sid);
     try {
-      fs.writeFileSync(
-        path.join(root, "tasks.md"),
-        "- [x] 1. One\n- [!] 2. Two\n",
-        "utf-8",
-      );
-      runCode(phase!, makeState({ sessionId: sid }));
+      const state = makeState({ sessionId: sid });
+      state.store?.set("tasks", "array", [
+        { name: "One", status: "in-progress" },
+      ]);
+      fs.writeFileSync(path.join(root, "blocked.txt"), "", "utf-8");
+      runCode(phase!, state);
+      expect(state.store?.get("tasks")).toEqual([
+        { name: "One", status: "blocked" },
+      ]);
       expect(fs.existsSync(path.join(root, "blocked.txt"))).toBe(true);
       expect(fs.existsSync(path.join(root, "tasks-complete.txt"))).toBe(false);
     } finally {
@@ -334,24 +352,30 @@ describe("finalize-tasks", () => {
     }
   });
 
-  it("writes nothing while pending work remains", () => {
+  it("writes nothing while pending work remains and clears the per-pass markers", () => {
     const sid = `final-${Date.now()}-pending`;
     const root = makeScratchRoot(sid);
     try {
-      fs.writeFileSync(
-        path.join(root, "tasks.md"),
-        "- [x] 1. One\n- [ ] 2. Two\n",
-        "utf-8",
-      );
-      runCode(phase!, makeState({ sessionId: sid }));
+      const state = makeState({ sessionId: sid });
+      state.store?.set("tasks", "array", [
+        { name: "One", status: "in-progress" },
+        { name: "Two", status: "pending" },
+      ]);
+      fs.writeFileSync(path.join(root, "verified.txt"), "", "utf-8");
+      runCode(phase!, state);
+      expect(state.store?.get("tasks")).toEqual([
+        { name: "One", status: "verified" },
+        { name: "Two", status: "pending" },
+      ]);
       expect(fs.existsSync(path.join(root, "tasks-complete.txt"))).toBe(false);
       expect(fs.existsSync(path.join(root, "blocked.txt"))).toBe(false);
+      expect(fs.existsSync(path.join(root, "verified.txt"))).toBe(false);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("is total when tasks.md is missing or unreadable", () => {
+  it("is total when there is no in-memory task array", () => {
     const state = makeState({ sessionId: `nofile-${Date.now()}` });
     expect(() => runCode(phase!, state)).not.toThrow();
   });

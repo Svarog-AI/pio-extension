@@ -16,6 +16,9 @@ const COMMIT_VAR = "commit_hash";
 /** Store variable carrying the currently-selected task name for the inner TDD loop. */
 const CURRENT_TASK_VAR = "current_task";
 
+/** Store variable carrying the in-memory task array: [{ name, status }]. */
+const TASKS_VAR = "tasks";
+
 /** Session-scoped scratch directory (OS reclaims /tmp; no cleanup phase needed). */
 const SCRATCH_DIR = "/tmp/pio-execute-task";
 
@@ -24,9 +27,23 @@ function scratchRootOf(state: PioSessionState): string {
   return path.join(SCRATCH_DIR, state.sessionId ?? "unknown");
 }
 
-/** Resolve the durable task-list path. Total — never throws. */
-function tasksPathOf(state: PioSessionState): string {
-  return path.join(scratchRootOf(state), "tasks.md");
+/**
+ * Resolve the LLM->code task handoff file. The LLM phases (task-generation,
+ * verify-acceptance-criteria) cannot write the store (setVar is gated to
+ * variable-definition phases), so they write the task NAMES here as a JSON
+ * array; the code phases load them into the in-memory store array. Total.
+ */
+function tasksJsonPathOf(state: PioSessionState): string {
+  return path.join(scratchRootOf(state), "tasks.json");
+}
+
+/** In-memory task array entry. */
+type TaskEntry = { name: string; status: string };
+
+/** Read the in-memory task array from the store (empty when unset). Total. */
+function tasksArrayOf(state: PioSessionState): TaskEntry[] {
+  const v = state.store?.get(TASKS_VAR);
+  return Array.isArray(v) ? (v as TaskEntry[]) : [];
 }
 
 /**
@@ -156,38 +173,50 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
       {
         id: "task-generation",
         title: "Decompose the task into discrete TDD tasks",
-        instructions: `Maintain the scratch task list at \`/tmp/pio-execute-task/<sessionId>/tasks.md\` (under /tmp — writes there are not blocked). **tasks.md is a numbered checklist** that the programmatic \`select-task\`/\`finalize-tasks\` phases parse, so keep the format exact — one task per line:
+        instructions: `Maintain the scratch task list at \`/tmp/pio-execute-task/<sessionId>/tasks.json\` (under /tmp — writes there are not blocked). **tasks.json is a JSON array of task-name strings** that the programmatic \`select-task\`/\`finalize-tasks\` phases load into the in-memory task array — keep it valid JSON:
 
-- **First pass:** decompose the \`task\` input into a numbered list of discrete TDD tasks, each a nameable, verifiable unit. Write the list to \`tasks.md\`, one \`- [ ] N. <task>\` line per task.
-- **Later passes:** read \`tasks.md\` and add any newly-identified tasks (e.g. gaps surfaced by the acceptance review) as new \`- [ ] N. <task>\` lines. Do not re-add already-completed tasks.
+- **First pass:** decompose the \`task\` input into a numbered list of discrete TDD tasks, each a nameable, verifiable unit. Write them to \`tasks.json\` as a JSON array, e.g. \`["Implement the public API", "Add error handling"]\`.
+- **Later passes:** read \`tasks.json\` and append any newly-identified tasks (e.g. gaps surfaced by the acceptance review) to the array. Do not re-add already-completed tasks.
 
-**Status markers (exact):** \`[ ]\` pending, \`[~]\` in-progress, \`[x]\` verified, \`[!]\` blocked. The \`select-task\` code phase picks the first \`[ ]\` pending task and marks it \`[~]\`; \`verify-final\` sets it to \`[x]\` (verified) or \`[!]\` (blocked); \`finalize-tasks\` computes the terminal decision. **Do not select a task yourself** — selection is programmatic. If you find a genuine blocker here, mark the task \`[!]\` in \`tasks.md\`; do not write \`blocked.txt\` directly (the \`finalize-tasks\` code phase writes the terminal markers).`,
+The in-memory task array (with statuses) is maintained by the code phases. **Do not select a task yourself** — \`select-task\` picks the first pending task. If you find a genuine blocker here, note it; do not write \`blocked.txt\` directly (the \`finalize-tasks\` code phase writes the terminal markers).`,
       },
 
       // ---------------------------------------------------------------------
-      // Select Task — PROGRAMMATIC selection of the next task. Reads tasks.md
-      // (a checklist), picks the first `[ ]` pending task, sets the current_task
+      // Select Task — PROGRAMMATIC selection of the next task. Loads the task
+      // names from tasks.json into the in-memory store array (preserving any
+      // existing statuses), picks the first pending task, sets the current_task
       // store var (interpolated into the inner loop's instructions), and marks
-      // it `[~]` in-progress so the next pass selects a different one.
+      // it in-progress so the next pass selects a different one.
       // ---------------------------------------------------------------------
       {
         id: "select-task",
         title: "Select the next pending task",
         kind: "code",
         run: (ctx: CodeStepContext) => {
-          const tasksPath = tasksPathOf(ctx.state);
-          if (!fs.existsSync(tasksPath)) return;
+          const state = ctx.state;
+          const jsonPath = tasksJsonPathOf(state);
+          if (!fs.existsSync(jsonPath)) return;
           try {
-            const lines = fs.readFileSync(tasksPath, "utf-8").split("\n");
-            for (let i = 0; i < lines.length; i++) {
-              const m = lines[i].match(/^-\s*\[ \]\s*(\d+)\.\s*(.+)$/);
-              if (m) {
-                ctx.state.store?.set(CURRENT_TASK_VAR, "string", m[2].trim());
-                lines[i] = lines[i].replace(/\[ \]/, "[~]");
-                fs.writeFileSync(tasksPath, lines.join("\n"), "utf-8");
-                return;
-              }
+            const parsed = JSON.parse(
+              fs.readFileSync(jsonPath, "utf-8"),
+            ) as unknown;
+            if (!Array.isArray(parsed)) return;
+            const names = parsed.map((n) => String(n));
+            const existing = tasksArrayOf(state);
+            const seen = new Set(existing.map((t) => t.name));
+            const merged = [...existing];
+            for (const n of names) {
+              if (!seen.has(n)) merged.push({ name: n, status: "pending" });
             }
+            const idx = merged.findIndex((t) => t.status === "pending");
+            if (idx < 0) {
+              state.store?.set(TASKS_VAR, "array", merged);
+              return;
+            }
+            const current = merged[idx].name;
+            merged[idx] = { ...merged[idx], status: "in-progress" };
+            state.store?.set(TASKS_VAR, "array", merged);
+            state.store?.set(CURRENT_TASK_VAR, "string", current);
           } catch {
             // total — never throw
           }
@@ -300,10 +329,10 @@ Never refactor while RED — get to GREEN first.`,
             title: "Final verification for the current task",
             instructions: `Run the final verification for the current task (\`\${current_task}\`): formal tests + programmatic checks from the \`task\` input's acceptance criteria.
 
-**Only when all tests + programmatic checks pass, write \`verified.txt\` to the scratch dir (\`/tmp/pio-execute-task/<sessionId>/verified.txt\`)** (under /tmp — writes there are not blocked) and mark the current task \`[x]\` (verified) in \`tasks.md\`.
+**Only when all tests + programmatic checks pass, write \`verified.txt\` to the scratch dir (\`/tmp/pio-execute-task/<sessionId>/verified.txt\`)** (under /tmp — writes there are not blocked). The in-memory task status is reconciled by \`finalize-tasks\`.
 
 - If a check fails but is fixable, write **nothing** and continue iterating (fix it in the next TDD pass).
-- On a genuine blocker (external dependency unavailable, environmental constraint, ambiguous spec with no reasonable default), write \`blocked.txt\` to \`/tmp/pio-execute-task/<sessionId>/blocked.txt\` and mark the current task \`[!]\` (blocked) in \`tasks.md\`.
+- On a genuine blocker (external dependency unavailable, environmental constraint, ambiguous spec with no reasonable default), write \`blocked.txt\` to \`/tmp/pio-execute-task/<sessionId>/blocked.txt\`.
 
 **Never write \`verified.txt\` on failure** — the inner loop's advance depends on that file being absent on a failing run.`,
             skills: { mandatory: ["tdd"] },
@@ -328,44 +357,60 @@ Never refactor while RED — get to GREEN first.`,
 - Are conventions followed (naming, patterns, styles matching existing code)?
 - Have you stayed within scope — no unplanned refactoring or out-of-scope changes?
 
-You do **not** write the terminal markers — the \`finalize-tasks\` code phase decides those from \`tasks.md\`. Your job is only the judgment:
+You do **not** write the terminal markers — the \`finalize-tasks\` code phase decides those from the in-memory task array. Your job is only the judgment:
 
-- If acceptance is unmet, add the missing work as new \`[ ]\` tasks in \`/tmp/pio-execute-task/<sessionId>/tasks.md\`.
-- If any task is marked \`[!]\` (blocked), or a genuine blocker is present, or a task did not succeed (remains unverified — e.g. it hit the inner TDD max-iteration cap), **assess first** per blocked discipline: if the stuck task is a quick-fixable bug, compile/type error, or plain difficulty, re-add it as a \`[ ]\` task and iterate via TDD; only mark it \`[!]\` (blocked) when it is genuinely unresolvable in this session. Do not re-add a permanently-stuck task and spin the outer loop forever.`,
+- If acceptance is unmet, append the missing work as new task names to \`/tmp/pio-execute-task/<sessionId>/tasks.json\`.
+- If a genuine blocker is present, or a task did not succeed (remains unverified — e.g. it hit the inner TDD max-iteration cap), **assess first** per blocked discipline: if the stuck task is a quick-fixable bug, compile/type error, or plain difficulty, append it to \`tasks.json\` and iterate via TDD; only when it is genuinely unresolvable in this session, write \`blocked.txt\` to the scratch dir. Do not re-add a permanently-stuck task and spin the outer loop forever.`,
       },
 
       // ---------------------------------------------------------------------
-      // Finalize Tasks — PROGRAMMATIC terminal decision. Reads tasks.md and
-      // writes the outer terminal marker: blocked.txt when any task is `[!]`,
-      // tasks-complete.txt when all tasks are `[x]`, or nothing when pending
-      // work remains. The outer loop's repeatWhile reads these files from disk
-      // (code-phase fs writes are not tracked in filesWritten).
+      // Finalize Tasks — PROGRAMMATIC terminal decision over the in-memory
+      // store array. Reconciles the current (in-progress) task's status from
+      // the per-pass marker files (verified.txt / blocked.txt written by
+      // verify-final), then writes the outer terminal marker: blocked.txt when
+      // any task is blocked, tasks-complete.txt when all tasks are verified, or
+      // nothing while pending work remains (clearing the per-pass markers so
+      // the next task starts clean). The outer loop's repeatWhile reads the
+      // terminal markers from disk (code-phase fs writes are not in filesWritten).
       // ---------------------------------------------------------------------
       {
         id: "finalize-tasks",
         title: "Decide whether all tasks are done or blocked",
         kind: "code",
         run: (ctx: CodeStepContext) => {
-          const root = scratchRootOf(ctx.state);
-          const tasksPath = tasksPathOf(ctx.state);
-          if (!fs.existsSync(tasksPath)) return;
+          const state = ctx.state;
+          const root = scratchRootOf(state);
+          const verifiedPath = path.join(root, "verified.txt");
+          const blockedPath = path.join(root, "blocked.txt");
+          const completePath = path.join(root, "tasks-complete.txt");
+          const array = tasksArrayOf(state);
+          if (!array.length) return;
           try {
-            const taskLines = fs
-              .readFileSync(tasksPath, "utf-8")
-              .split("\n")
-              .filter((l) => /^-\s*\[.\]/.test(l));
-            const hasBlocked = taskLines.some((l) => /^-\s*\[!\]/.test(l));
+            let changed = false;
+            const next = array.map((t) => {
+              if (t.status === "in-progress") {
+                if (fs.existsSync(blockedPath)) {
+                  changed = true;
+                  return { ...t, status: "blocked" };
+                }
+                if (fs.existsSync(verifiedPath)) {
+                  changed = true;
+                  return { ...t, status: "verified" };
+                }
+              }
+              return t;
+            });
+            if (changed) state.store?.set(TASKS_VAR, "array", next);
+            const hasBlocked = next.some((t) => t.status === "blocked");
             const allVerified =
-              taskLines.length > 0 &&
-              taskLines.every((l) => /^-\s*\[x\]/.test(l));
+              next.length > 0 && next.every((t) => t.status === "verified");
             if (hasBlocked) {
-              fs.writeFileSync(path.join(root, "blocked.txt"), "", "utf-8");
+              fs.writeFileSync(blockedPath, "", "utf-8");
             } else if (allVerified) {
-              fs.writeFileSync(
-                path.join(root, "tasks-complete.txt"),
-                "",
-                "utf-8",
-              );
+              fs.writeFileSync(completePath, "", "utf-8");
+            } else {
+              fs.rmSync(verifiedPath, { force: true });
+              fs.rmSync(blockedPath, { force: true });
             }
           } catch {
             // total — never throw

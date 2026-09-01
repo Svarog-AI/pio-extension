@@ -1,6 +1,6 @@
 ---
 status: completed
-commit: adb125e43f1e6072687540c2d8a14f23590912b8
+commit: 1660fde4d2268e92cca01381d73b650200f8afa0
 ---
 
 # Step 5: Migrate execute-task to the loop engine

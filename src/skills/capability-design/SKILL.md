@@ -70,7 +70,17 @@ The engine's loop semantics (when a run replays vs. advances) are the **designer
 
 - **`write[]`** lists contract output **names** only (resolved to paths via `CapState` during `resources_discover`). Gating is **restricted-by-default**: an absent or empty `write[]` blocks **all** contract-output writes from that phase.
 - **`allowProjectWrites`** (default `false`) governs **non-contract** project-root file writes. Contract outputs listed in `write[]` pass regardless of this flag.
-- **`/tmp/` paths bypass all write gating** (scratch space).
+- **`/tmp/` paths bypass all write gating.** Use `/tmp` only for unavoidable intermediate **handoffs** (e.g. a large artifact the LLM must write and a code phase must later read) — not for durable state, per-pass signals, or loop control, which belong in the session store.
+
+### Variables-first state management
+
+Durable state and loop-control signals live in the **session variable store**, not in scratch files:
+
+- **Store variables for everything the loops or later phases must read back.** Task lists, accumulated evidence/notes, per-pass change flags, completion booleans, and captured values (e.g. a commit hash) are store variables (`variable-definition` phases via `setVar`/`appendVar`, or `kind: "code"` phases via `state.store`).
+- **A standard phase cannot `setVar`.** When a standard phase produces a signal the loop must read, follow it with a `variable-definition` completion phase that records that outcome as a boolean/array in the store; the loop reads the variable.
+- **`variable-definition` phases still get an agent turn** — the LLM can run its normal tools (`read`, `bash`, `web_search`) and then record results via `setVar`. A research/evidence phase can be a `variable-definition` phase that accumulates findings into an array variable, eliminating the scratch notes file.
+- **`kind: "code"` phases write the store programmatically** (`ctx.state.store.set`) for values that need no LLM judgment, and `declare` durable arrays so `store.get(...)` resolves to `[]` when unset.
+- **Limit `/tmp` scratch files to the unavoidable LLM→code handoff.** If a large intermediate artifact must cross from an agent turn to a programmatic phase and cannot be represented as a store variable, a `/tmp` file is justified; otherwise prefer a variable. Do not use `/tmp` for task state, loop markers, or refinement signals when a `variable-definition` phase can carry them.
 
 ## Capability-level contract design (general methodology)
 
@@ -107,9 +117,10 @@ Work the questions in order: split by validation points first (phase count), ext
 
 Add `kind: "loop"` do-while blocks, `branch:if`/`branch:switch`, or `variable-definition` phases only when a single-phase exhaustion loop genuinely cannot express the required shape. They are complexity, not defaults — do not reach for them first.
 
-**Choosing the termination signal** (the `loopWhile`/`terminateWhen` callback reads `PioSessionState`):
+**Choosing the termination signal** (the `loopWhile`/`terminateWhen`/`repeatWhile` callback reads `PioSessionState`):
 
-- **Prefer `filesWritten`-based `loopWhile`** when the phase's success is observable as file writes — e.g. `loopWhile: state.filesWritten.some((f) => f.endsWith("TEST.md"))`. A run that wrote the target file replays; a run that wrote nothing relevant advances. This is a **fixpoint**, not a completeness proof — the `loopMessage` must nudge the LLM to genuinely re-scan for anything missed, and never claim mechanical completeness.
+- **Prefer store variables, not `filesWritten` markers.** Durable state, per-pass signals, and loop-control conditions should be expressed as **session store variables** (via `variable-definition` phases / `setVar`, or `kind: "code"` phases via `state.store`), not as `/tmp` scratch files or `filesWritten` markers. `filesWritten` resets every agent run and only records paths actually written — it cannot carry a durable condition across passes. A store variable (e.g. `research_complete`, `task_verified`, `write_tests_changed`) persists across replays and is read directly by the loop callback: `repeatWhile: (state) => state.store.get("task_verified") !== true`. When the loop signal originates in a **standard phase** (which cannot `setVar`), append a `variable-definition` completion phase that records the just-finished phase's outcome as a boolean (e.g. a `*_changed` or `*_verified` variable), and read that variable in the loop condition.
+- **`filesWritten`-based loops only where genuinely unavoidable.** If a loop signal is truly only observable as a file write (e.g. a contract output is produced), `loopWhile: state.filesWritten.some((f) => f.endsWith("TEST.md"))` is acceptable. A run that wrote the target file replays; a run that wrote nothing relevant advances. This is a **fixpoint**, not a completeness proof — the `loopMessage` must nudge the LLM to genuinely re-scan for anything missed, and never claim mechanical completeness. Prefer a variable-definition phase whenever the condition can be recorded in the store.
 - **`askUserCalled` — exhaustion loops.** For interview/clarify/Q&A phases where **silence is a legitimate end state**, use `loopWhile(askUserCalled)`: a run that contained questions may have more un-exhausted, so keep running; the first silent run terminates the phase. **Stall warning:** `terminateWhen(askUserCalled)` on such phases makes no-ask runs replay to `maxIterations` and then idle-pause (the engine does not force-advance at the cap) because the flag resets per run. Reserve `terminateWhen(askUserCalled)` for **mandatory gates** where every run must ask (e.g. manual testing/review checkpoints).
 
 **Lean by design.** Omitted loop fields = one run and advance. Do **not** bolt `minIterations: 1` onto single-pass phases — a lean phase has no loop fields at all. Add loop fields only where the decomposition (or the user) identifies real iteration.
@@ -122,8 +133,8 @@ Add `kind: "loop"` do-while blocks, `branch:if`/`branch:switch`, or `variable-de
 
 - **Fixpoint ≠ completeness:** terminating on "no relevant file written this run" proves a fixpoint (a run made no further change), not that every area was covered. Verify any "all updates applied" completion claim against what `filesWritten` actually measures (a write occurred). A genuine completeness check needs content-side evidence (a verify phase or code-phase assertion).
 - **`filesWritten` resets per run:** a `loopWhile`/`terminateWhen` callback at `agent_end` sees only the just-finished run; base callbacks on files written during that run.
-- **Code-owned naming:** content-addressed intermediate naming (e.g. a scratch notes path) must be owned by code phases, never by an LLM naming convention.
-- **`/tmp/` scratch bypasses write gating** — use it for session-scoped intermediate files that no phase needs to own as a contract output.
+- **Code-owned naming:** content-addressed intermediate naming must be owned by code phases, never by an LLM naming convention.
+- **Store over scratch:** durable state, per-pass signals, and loop-control conditions are store variables; `/tmp` scratch files are limited to unavoidable LLM→code handoffs (and eliminated where a `variable-definition` phase can carry the state).
 
 ## User co-design protocol
 
@@ -147,6 +158,7 @@ Co-design sessions run on the **separate, currently-running pio**, which does **
 - **No changes to state-machine edges, contracts (inputs/outputs/`excludedFiles`), or marker declarations/behavior.** The phase graph is freely re-derived; the contract and dispatch are not.
 - **No `signal-completion` phase and no `pio_mark_complete` instruction** in any designed workflow — exit is automatic (see below).
 - **No `minIterations: 1` on single-pass phases** — lean by design.
+- **No scratch files for durable state or loop control.** Task lists, per-pass change signals, completion flags, and accumulated evidence are session store variables, not `/tmp` files or `filesWritten` markers. Use a `variable-definition` completion phase to record a standard phase's outcome, and read the store in loop callbacks.
 - **Never consume inside a branch arm of a refinement loop** — a refined-but-still-unsatisfactory artifact must be re-judged before consumption.
 
 ## Reference material

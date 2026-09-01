@@ -1,4 +1,3 @@
-import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -26,10 +25,11 @@ function makeState(
   } = {},
 ): PioSessionState {
   const store = overrides.store ?? makeStore();
-  // Mirror default-setup: declare the durable task arrays so store.get(...)
+  // Mirror default-setup: declare the durable arrays so store.get(...)
   // resolves to [] when unset rather than undefined.
   store.declare("tasks", "array");
   store.declare("task_names", "array");
+  store.declare("research_notes", "array");
   return {
     store,
     sessionId: overrides.sessionId,
@@ -47,6 +47,11 @@ function runCode(phase: WorkflowPhase, state: PioSessionState): void {
   run?.({ state });
 }
 
+/** Set a boolean store variable (mirrors what the LLM does via setVar). */
+function setBool(state: PioSessionState, name: string, value: boolean): void {
+  state.store?.set(name, "boolean", value);
+}
+
 // ---------------------------------------------------------------------------
 // Phase references by structural position
 // ---------------------------------------------------------------------------
@@ -61,16 +66,13 @@ const captureHashPhase = workflow[6];
 const pushPhase = workflow[7];
 const writeSummaryPhase = workflow[8];
 
-/** The 5 TDD sub-phases inside the inner tdd-process loop, keyed by id. */
+/** A phase inside the inner tdd-process loop, keyed by id. */
 const tddBodyById = (id: string): WorkflowPhase =>
   (iterativeTddPhase.body?.[2].body ?? []).find((p) => p.id === id)!;
 
-/** Create a session-scoped scratch dir for a session id and return its root. */
-function makeScratchRoot(sessionId: string): string {
-  const root = `/tmp/pio-execute-task/${sessionId}`;
-  fs.mkdirSync(root, { recursive: true });
-  return root;
-}
+/** The first phase of a refinement loop's body (the rich standard phase). */
+const refinementWorkPhase = (loopId: string): WorkflowPhase =>
+  (tddBodyById(loopId).body ?? [])[0];
 
 // ---------------------------------------------------------------------------
 // read-task — lean single-pass contract entry (no goal/plan, no loop fields)
@@ -100,26 +102,31 @@ describe("read-task", () => {
 });
 
 // ---------------------------------------------------------------------------
-// default-setup — session-scoped scratch dir + notes_path store variable
+// default-setup — declares the durable store arrays (no scratch dir, no notes)
 // ---------------------------------------------------------------------------
 
 describe("default-setup", () => {
-  it("is a code phase that creates the session-scoped scratch dir and sets notes_path", () => {
+  it("is a code phase", () => {
     expect(setupPhase.kind).toBe("code");
-    const state = makeState({ sessionId: "sess-123" });
-    runCode(setupPhase, state);
-    const notesPath = state.store?.get("notes_path") as string;
-    expect(typeof notesPath).toBe("string");
-    expect(notesPath).toBe("/tmp/pio-execute-task/sess-123/notes.md");
-    expect(fs.existsSync(path.dirname(notesPath))).toBe(true);
   });
 
-  it("derives the scratch dir from the session id", () => {
-    const state = makeState({ sessionId: "other-session" });
+  it("declares the durable arrays so store.get resolves to [] when unset", () => {
+    const state = makeState({ sessionId: "sess-123" });
     runCode(setupPhase, state);
-    expect(state.store?.get("notes_path")).toBe(
-      "/tmp/pio-execute-task/other-session/notes.md",
-    );
+    expect(state.store?.get("tasks")).toEqual([]);
+    expect(state.store?.get("task_names")).toEqual([]);
+    expect(state.store?.get("research_notes")).toEqual([]);
+  });
+
+  it("does not create a scratch dir or set a notes_path variable", () => {
+    // Unique session id so a leftover dir from a prior implementation run can't
+    // cause a false positive.
+    const sid = `no-scratch-${Date.now()}`;
+    const state = makeState({ sessionId: sid });
+    runCode(setupPhase, state);
+    expect(state.store?.get("notes_path")).toBeUndefined();
+    // No /tmp scratch dir is created — all state is store-backed.
+    expect(fsScratchExists(sid)).toBe(false);
   });
 
   it("has no agent-facing loop fields or write gates", () => {
@@ -134,8 +141,8 @@ describe("default-setup", () => {
 });
 
 // ---------------------------------------------------------------------------
-// research-context — do-while block: research + research-complete variable
-// phase that sets research_complete; repeats while not complete
+// research-context — do-while loop: research accumulates evidence into a
+// store variable; research-complete sets the completion boolean
 // ---------------------------------------------------------------------------
 
 describe("research-context", () => {
@@ -153,9 +160,7 @@ describe("research-context", () => {
     const cb = researchPhase.repeatWhile as (s: PioSessionState) => boolean;
     const withComplete = (val?: boolean) => {
       const state = makeState();
-      if (val !== undefined) {
-        state.store?.set("research_complete", "boolean", val);
-      }
+      if (val !== undefined) setBool(state, "research_complete", val);
       return state;
     };
     // unset (not declared yet) or false → repeat (research not complete)
@@ -167,9 +172,14 @@ describe("research-context", () => {
     expect(() => cb(makeState())).not.toThrow();
   });
 
-  it("body is a research phase followed by a research-complete variable-definition phase", () => {
+  it("body is a research variable phase followed by a research-complete variable phase", () => {
     expect(researchPhase.body?.[0].id).toBe("research");
-    expect(researchPhase.body?.[0].kind).toBeUndefined();
+    expect(researchPhase.body?.[0].kind).toBe("variable-definition");
+    expect(researchPhase.body?.[0].variables?.[0]).toMatchObject({
+      name: "research_notes",
+      type: "array",
+      kind: "llm",
+    });
     expect(researchPhase.body?.[1].id).toBe("research-complete");
     expect(researchPhase.body?.[1].kind).toBe("variable-definition");
     expect(researchPhase.body?.[1].variables?.[0]).toMatchObject({
@@ -179,22 +189,22 @@ describe("research-context", () => {
     });
   });
 
-  it("research phase demands evidence with a source and reference notes_path, with the source-research skill", () => {
-    const instr = researchPhase.body?.[0].instructions as string;
-    expect(instr).toContain(`\${notes_path}`);
-    expect(instr).toContain("evidence");
-    expect(instr).toContain("repo path");
-    expect(instr).toContain("web URL");
-    expect(instr).toContain("web_search");
-    expect(instr).toContain('displayMode: "inline"');
-    expect(researchPhase.body?.[0].skills?.recommended).toEqual([
-      { name: "source-research", condition: expect.any(String) },
-    ]);
+  it("research description demands evidence with a source accumulated into research_notes", () => {
+    const desc = researchPhase.body?.[0].variables?.[0].description as string;
+    expect(desc).toContain("research_notes");
+    expect(desc).toContain("evidence");
+    expect(desc).toContain("repo path");
+    expect(desc).toContain("web URL");
+    expect(desc).toContain("web_search");
+    expect(desc).toContain('displayMode: "inline"');
+    // No scratch notes file path is referenced anywhere.
+    expect(desc).not.toContain("notes.md");
+    expect(desc).not.toContain("/tmp/");
   });
 
   it("research-complete description directs setting true only when nothing is missing/unanswered", () => {
     const desc = researchPhase.body?.[1].variables?.[0].description as string;
-    expect(desc).toContain(`\${notes_path}`);
+    expect(desc).toContain("research_notes");
     expect(desc).toContain("true");
     expect(desc).toContain("nothing missing");
     expect(desc).toContain("web_search");
@@ -209,11 +219,11 @@ describe("research-context", () => {
 
 // ---------------------------------------------------------------------------
 // iterative-tdd (outer loop) — task-generation + inner tdd-process +
-// verify-acceptance-criteria; advances when tasks-complete/blocked marker
+// verify-acceptance-criteria + finalize-tasks; store-backed repeatWhile
 // ---------------------------------------------------------------------------
 
 describe("iterative-tdd (outer loop)", () => {
-  it("is a kind:loop do-while block with a high maxIterations cap and a total repeatWhile on the terminal markers", () => {
+  it("is a kind:loop do-while block with a high maxIterations cap and a total store-backed repeatWhile", () => {
     expect(iterativeTddPhase.id).toBe("iterative-tdd");
     expect(iterativeTddPhase.kind).toBe("loop");
     // Unbounded iterations aren't supported, so the outer loop uses a high
@@ -281,7 +291,7 @@ describe("iterative-tdd (outer loop)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// task-generation — do-while refinement loop over the task list
+// task-generation — do-while refinement loop over the task list (store-backed)
 // ---------------------------------------------------------------------------
 
 describe("task-generation", () => {
@@ -298,9 +308,7 @@ describe("task-generation", () => {
     const cb = phase?.repeatWhile as (s: PioSessionState) => boolean;
     const withRefined = (val?: boolean) => {
       const state = makeState();
-      if (val !== undefined) {
-        state.store?.set("task_list_refined", "boolean", val);
-      }
+      if (val !== undefined) setBool(state, "task_list_refined", val);
       return state;
     };
     // unset (not declared) or false → repeat (list not well-formed)
@@ -373,7 +381,6 @@ describe("select-task", () => {
   it("resumes an in-progress task (interrupted session) instead of selecting a new one", () => {
     const state = makeState();
     state.store?.set("task_names", "array", ["A", "B"]);
-    // Simulate a persisted array from a session interrupted mid-task-A
     state.store?.set("tasks", "array", [
       { name: "A", status: "in-progress" },
       { name: "B", status: "pending" },
@@ -393,7 +400,8 @@ describe("select-task", () => {
 });
 
 // ---------------------------------------------------------------------------
-// finalize-tasks — programmatic terminal-marker decision (code phase)
+// finalize-tasks — programmatic terminal decision from the store verdict
+// booleans (code phase)
 // ---------------------------------------------------------------------------
 
 describe("finalize-tasks", () => {
@@ -404,112 +412,118 @@ describe("finalize-tasks", () => {
     expect(phase?.kind).toBe("code");
   });
 
-  it("reconciles the current in-progress task to verified in the store array and clears the marker", () => {
-    const sid = `final-${Date.now()}-done`;
-    const root = makeScratchRoot(sid);
-    try {
-      const state = makeState({ sessionId: sid });
-      state.store?.set("tasks", "array", [
-        { name: "One", status: "in-progress" },
-      ]);
-      fs.writeFileSync(path.join(root, "verified.txt"), "", "utf-8");
-      runCode(phase!, state);
-      expect(state.store?.get("tasks")).toEqual([
-        { name: "One", status: "verified" },
-      ]);
-      expect(fs.existsSync(path.join(root, "verified.txt"))).toBe(false);
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
+  it("reconciles the current in-progress task to verified from task_verified and resets the verdicts", () => {
+    const state = makeState();
+    state.store?.set("tasks", "array", [
+      { name: "One", status: "in-progress" },
+    ]);
+    setBool(state, "task_verified", true);
+    runCode(phase!, state);
+    expect(state.store?.get("tasks")).toEqual([
+      { name: "One", status: "verified" },
+    ]);
+    // verdict booleans are reset for the next task
+    expect(state.store?.get("task_verified")).toBe(false);
+    expect(state.store?.get("task_blocked")).toBe(false);
   });
 
-  it("reconciles the current in-progress task to blocked in the store array and clears the marker", () => {
-    const sid = `final-${Date.now()}-blocked`;
-    const root = makeScratchRoot(sid);
-    try {
-      const state = makeState({ sessionId: sid });
-      state.store?.set("tasks", "array", [
-        { name: "One", status: "in-progress" },
-      ]);
-      fs.writeFileSync(path.join(root, "blocked.txt"), "", "utf-8");
-      runCode(phase!, state);
-      expect(state.store?.get("tasks")).toEqual([
-        { name: "One", status: "blocked" },
-      ]);
-      expect(fs.existsSync(path.join(root, "blocked.txt"))).toBe(false);
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
+  it("reconciles the current in-progress task to blocked from task_blocked", () => {
+    const state = makeState();
+    state.store?.set("tasks", "array", [
+      { name: "One", status: "in-progress" },
+    ]);
+    setBool(state, "task_blocked", true);
+    runCode(phase!, state);
+    expect(state.store?.get("tasks")).toEqual([
+      { name: "One", status: "blocked" },
+    ]);
   });
 
-  it("reconciles the current task but leaves pending work untouched, and clears the per-pass markers", () => {
-    const sid = `final-${Date.now()}-pending`;
-    const root = makeScratchRoot(sid);
-    try {
-      const state = makeState({ sessionId: sid });
-      state.store?.set("tasks", "array", [
-        { name: "One", status: "in-progress" },
-        { name: "Two", status: "pending" },
-      ]);
-      fs.writeFileSync(path.join(root, "verified.txt"), "", "utf-8");
-      runCode(phase!, state);
-      expect(state.store?.get("tasks")).toEqual([
-        { name: "One", status: "verified" },
-        { name: "Two", status: "pending" },
-      ]);
-      expect(fs.existsSync(path.join(root, "verified.txt"))).toBe(false);
-      expect(fs.existsSync(path.join(root, "blocked.txt"))).toBe(false);
-    } finally {
-      fs.rmSync(root, { recursive: true, force: true });
-    }
+  it("reconciles the current in-progress task to blocked from acceptance_blocked", () => {
+    const state = makeState();
+    state.store?.set("tasks", "array", [
+      { name: "One", status: "in-progress" },
+    ]);
+    setBool(state, "acceptance_blocked", true);
+    runCode(phase!, state);
+    expect(state.store?.get("tasks")).toEqual([
+      { name: "One", status: "blocked" },
+    ]);
+  });
+
+  it("blocks a non-verified task when acceptance_blocked is set but no in-progress task exists", () => {
+    const state = makeState();
+    state.store?.set("tasks", "array", [{ name: "One", status: "pending" }]);
+    setBool(state, "acceptance_blocked", true);
+    runCode(phase!, state);
+    expect(state.store?.get("tasks")).toEqual([
+      { name: "One", status: "blocked" },
+    ]);
+  });
+
+  it("leaves pending work untouched when the current task is verified, and resets verdicts", () => {
+    const state = makeState();
+    state.store?.set("tasks", "array", [
+      { name: "One", status: "in-progress" },
+      { name: "Two", status: "pending" },
+    ]);
+    setBool(state, "task_verified", true);
+    runCode(phase!, state);
+    expect(state.store?.get("tasks")).toEqual([
+      { name: "One", status: "verified" },
+      { name: "Two", status: "pending" },
+    ]);
+    expect(state.store?.get("task_verified")).toBe(false);
   });
 
   it("is total when there is no in-memory task array", () => {
-    const state = makeState({ sessionId: `nofile-${Date.now()}` });
+    const state = makeState();
     expect(() => runCode(phase!, state)).not.toThrow();
   });
 });
 
 // ---------------------------------------------------------------------------
-// tdd-process (inner loop) — the 5-phase TDD sequence; advances when the
-// current task's verification passes (verified/blocked marker)
+// tdd-process (inner loop) — 6-phase TDD body; repeats until the store
+// verdict (task_verified/task_blocked) is set
 // ---------------------------------------------------------------------------
 
 describe("tdd-process (inner loop)", () => {
   const inner = iterativeTddPhase.body?.[2];
 
-  it("is a kind:loop do-while block with min/max iterations and a total repeatWhile", () => {
+  it("is a kind:loop do-while block with min/max iterations and a total store-backed repeatWhile", () => {
     expect(inner?.id).toBe("tdd-process");
     expect(inner?.kind).toBe("loop");
     expect(inner?.minIterations).toBe(1);
     expect(inner?.maxIterations).toBe(6);
-    expect(inner?.body).toHaveLength(5);
+    expect(inner?.body).toHaveLength(6);
   });
 
-  it("advances when verified.txt or blocked.txt was written; repeats otherwise (total)", () => {
+  it("advances when task_verified or task_blocked is set; repeats otherwise (total, store-backed)", () => {
     const cb = inner?.repeatWhile as (s: PioSessionState) => boolean;
-    expect(
-      cb(makeState({ filesWritten: ["/tmp/pio-execute-task/s/verified.txt"] })),
-    ).toBe(false);
-    expect(
-      cb(makeState({ filesWritten: ["/tmp/pio-execute-task/s/blocked.txt"] })),
-    ).toBe(false);
-    // neither marker → repeat (task not yet verified)
-    expect(
-      cb(makeState({ filesWritten: ["/tmp/pio-execute-task/s/notes.md"] })),
-    ).toBe(true);
+    const withVerdict = (verified?: boolean, blocked?: boolean) => {
+      const state = makeState();
+      if (verified !== undefined) setBool(state, "task_verified", verified);
+      if (blocked !== undefined) setBool(state, "task_blocked", blocked);
+      return state;
+    };
+    // neither verdict → repeat (task not yet verified)
     expect(cb(makeState())).toBe(true);
-    // total — never throws on missing filesWritten
+    expect(cb(withVerdict(false, false))).toBe(true);
+    // verified or blocked → advance
+    expect(cb(withVerdict(true))).toBe(false);
+    expect(cb(withVerdict(undefined, true))).toBe(false);
+    // total — never throws on missing store
     expect(() => cb(makeState())).not.toThrow();
   });
 
-  it("body contains the 5 TDD phases in order", () => {
+  it("body contains the 6 TDD phases in order", () => {
     expect(inner?.body?.map((p) => p.id)).toEqual([
-      "write-tests",
-      "implement",
+      "write-tests-loop",
+      "implement-loop",
       "verify-green",
-      "refactor",
+      "refactor-loop",
       "verify-final",
+      "task-verdict",
     ]);
   });
 
@@ -521,63 +535,120 @@ describe("tdd-process (inner loop)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Conditional refinement loops on write-tests / implement / refactor;
+// Conditional refinement loops on write-tests / implement / refactor — each a
+// do-while block whose trailing variable phase sets a `*_changed` boolean;
 // verify-green stays lean
 // ---------------------------------------------------------------------------
 
 describe("TDD sub-phase refinement loops", () => {
-  it("write-tests replays while its change-marker was written; silent run advances (total)", () => {
-    const phase = tddBodyById("write-tests");
-    expect(phase.maxIterations).toBe(4);
-    expect(phase.loopWhile).toHaveLength(1);
-    const cb = phase.loopWhile?.[0].callback as (s: PioSessionState) => boolean;
-    expect(
-      cb(
-        makeState({
-          filesWritten: ["/tmp/pio-execute-task/s/write-tests-changed.txt"],
-        }),
-      ),
-    ).toBe(true);
+  it("write-tests-loop is a do-while block replaying while write_tests_changed is true", () => {
+    const loop = tddBodyById("write-tests-loop");
+    expect(loop.kind).toBe("loop");
+    expect(loop.maxIterations).toBe(4);
+    const cb = loop.repeatWhile as (s: PioSessionState) => boolean;
+    const withChanged = (val?: boolean) => {
+      const state = makeState();
+      if (val !== undefined) setBool(state, "write_tests_changed", val);
+      return state;
+    };
+    expect(cb(withChanged(true))).toBe(true);
+    expect(cb(withChanged(false))).toBe(false);
     expect(cb(makeState())).toBe(false);
     expect(() => cb(makeState())).not.toThrow();
-    expect((phase.loopMessage as string).length).toBeGreaterThan(0);
-    expect(phase.skills?.mandatory).toEqual(["tdd"]);
+    expect((loop.loopMessage as string).length).toBeGreaterThan(0);
+    // body: rich standard write-tests phase + a verdict variable phase
+    expect(loop.body?.map((p) => p.id)).toEqual([
+      "write-tests",
+      "write-tests-verdict",
+    ]);
+    expect(loop.body?.[1].kind).toBe("variable-definition");
+    expect(loop.body?.[1].variables?.[0]).toMatchObject({
+      name: "write_tests_changed",
+      type: "boolean",
+      kind: "llm",
+    });
+    // the rich standard phase keeps the tdd skill
+    expect(refinementWorkPhase("write-tests-loop").skills?.mandatory).toEqual([
+      "tdd",
+    ]);
   });
 
-  it("implement replays while its change-marker was written; silent run advances (total)", () => {
-    const phase = tddBodyById("implement");
-    expect(phase.maxIterations).toBe(4);
-    expect(phase.loopWhile).toHaveLength(1);
-    const cb = phase.loopWhile?.[0].callback as (s: PioSessionState) => boolean;
-    expect(
-      cb(
-        makeState({
-          filesWritten: ["/tmp/pio-execute-task/s/implement-changed.txt"],
-        }),
-      ),
-    ).toBe(true);
-    expect(cb(makeState())).toBe(false);
+  it("implement-loop is a do-while block replaying while implement_changed is true", () => {
+    const loop = tddBodyById("implement-loop");
+    expect(loop.kind).toBe("loop");
+    expect(loop.maxIterations).toBe(4);
+    const cb = loop.repeatWhile as (s: PioSessionState) => boolean;
+    const withChanged = (val?: boolean) => {
+      const state = makeState();
+      if (val !== undefined) setBool(state, "implement_changed", val);
+      return state;
+    };
+    expect(cb(withChanged(true))).toBe(true);
+    expect(cb(withChanged(false))).toBe(false);
     expect(() => cb(makeState())).not.toThrow();
-    expect((phase.loopMessage as string).length).toBeGreaterThan(0);
-    expect(phase.skills?.mandatory).toEqual(["tdd"]);
+    expect(loop.body?.map((p) => p.id)).toEqual([
+      "implement",
+      "implement-verdict",
+    ]);
+    expect(loop.body?.[1].kind).toBe("variable-definition");
+    expect(loop.body?.[1].variables?.[0]).toMatchObject({
+      name: "implement_changed",
+      type: "boolean",
+      kind: "llm",
+    });
+    expect(refinementWorkPhase("implement-loop").skills?.mandatory).toEqual([
+      "tdd",
+    ]);
   });
 
-  it("refactor replays while its change-marker was written; silent run advances (total)", () => {
-    const phase = tddBodyById("refactor");
-    expect(phase.maxIterations).toBe(4);
-    expect(phase.loopWhile).toHaveLength(1);
-    const cb = phase.loopWhile?.[0].callback as (s: PioSessionState) => boolean;
-    expect(
-      cb(
-        makeState({
-          filesWritten: ["/tmp/pio-execute-task/s/refactor-changed.txt"],
-        }),
-      ),
-    ).toBe(true);
-    expect(cb(makeState())).toBe(false);
+  it("refactor-loop is a do-while block replaying while refactor_changed is true", () => {
+    const loop = tddBodyById("refactor-loop");
+    expect(loop.kind).toBe("loop");
+    expect(loop.maxIterations).toBe(4);
+    const cb = loop.repeatWhile as (s: PioSessionState) => boolean;
+    const withChanged = (val?: boolean) => {
+      const state = makeState();
+      if (val !== undefined) setBool(state, "refactor_changed", val);
+      return state;
+    };
+    expect(cb(withChanged(true))).toBe(true);
+    expect(cb(withChanged(false))).toBe(false);
     expect(() => cb(makeState())).not.toThrow();
-    expect((phase.loopMessage as string).length).toBeGreaterThan(0);
-    expect(phase.skills?.mandatory).toEqual(["tdd"]);
+    expect(loop.body?.map((p) => p.id)).toEqual([
+      "refactor",
+      "refactor-verdict",
+    ]);
+    expect(loop.body?.[1].kind).toBe("variable-definition");
+    expect(loop.body?.[1].variables?.[0]).toMatchObject({
+      name: "refactor_changed",
+      type: "boolean",
+      kind: "llm",
+    });
+    expect(refinementWorkPhase("refactor-loop").skills?.mandatory).toEqual([
+      "tdd",
+    ]);
+  });
+
+  it("write-tests rich phase carries the tracer-bullet behavior-not-implementation guidance", () => {
+    const instr = refinementWorkPhase("write-tests-loop")
+      .instructions as string;
+    expect(instr).toContain("tracer bullet");
+    expect(instr).toContain("behavior");
+    expect(instr).toContain("implementation");
+    expect(instr).toContain("write_tests_changed");
+  });
+
+  it("implement rich phase carries the minimal GREEN guidance", () => {
+    const instr = refinementWorkPhase("implement-loop").instructions as string;
+    expect(instr).toContain("minimal");
+    expect(instr).toContain("implement_changed");
+  });
+
+  it("refactor rich phase carries the keep-tests-green + web_search guidance", () => {
+    const instr = refinementWorkPhase("refactor-loop").instructions as string;
+    expect(instr).toContain("web_search");
+    expect(instr).toContain("tests green");
+    expect(instr).toContain("refactor_changed");
   });
 
   it("verify-green is lean — no loop fields", () => {
@@ -591,41 +662,83 @@ describe("TDD sub-phase refinement loops", () => {
     expect(phase.skills?.mandatory).toEqual(["tdd"]);
   });
 
-  it("verify-final carries the verified.txt-on-success / blocked.txt-on-blocker rule and tdd skill", () => {
+  it("verify-final runs formal tests + programmatic checks without writing markers", () => {
     const phase = tddBodyById("verify-final");
+    expect(phase.kind).toBeUndefined();
     const instr = phase.instructions as string;
-    expect(instr).toContain("verified.txt");
-    expect(instr).toContain("blocked.txt");
-    expect(instr).toContain("Only when all");
-    expect(instr.toLowerCase()).toContain("never write");
+    expect(instr).toContain(`\`\${current_task}\``);
+    expect(instr).toContain("formal tests");
+    expect(instr).toContain("programmatic checks");
+    expect(instr).toContain("genuine blocker");
+    // No marker-file writing — the verdict is recorded as store variables.
+    expect(instr).not.toContain("verified.txt");
+    expect(instr).not.toContain("blocked.txt");
     expect(phase.skills?.mandatory).toEqual(["tdd"]);
+  });
+
+  it("task-verdict is a variable phase setting task_verified/task_blocked with the blocked discipline", () => {
+    const phase = tddBodyById("task-verdict");
+    expect(phase.kind).toBe("variable-definition");
+    const names = phase.variables?.map((v) => v.name);
+    expect(names).toEqual(["task_verified", "task_blocked"]);
+    expect(phase.variables?.[0]).toMatchObject({
+      name: "task_verified",
+      type: "boolean",
+      kind: "llm",
+    });
+    expect(phase.variables?.[1]).toMatchObject({
+      name: "task_blocked",
+      type: "boolean",
+      kind: "llm",
+    });
+    const desc = phase.variables?.[0].description as string;
+    expect(desc).toContain("only when ALL formal tests");
+    const blockedDesc = phase.variables?.[1].description as string;
+    expect(blockedDesc).toContain("genuine blocker");
+    expect(blockedDesc).toContain("NOT blockers");
   });
 });
 
 // ---------------------------------------------------------------------------
-// verify-acceptance-criteria — judgment-only; finalize-tasks writes markers
+// verify-acceptance-criteria — judgment; adds missing work to task_names and
+// records the acceptance-blocked verdict as a store boolean
 // ---------------------------------------------------------------------------
 
 describe("verify-acceptance-criteria", () => {
   const phase = iterativeTddPhase.body?.[3];
 
-  it("is a variable-definition judgment phase (sets task_names) before finalize-tasks", () => {
+  it("is a variable-definition judgment phase (task_names + acceptance_blocked) before finalize-tasks", () => {
     expect(phase?.id).toBe("verify-acceptance-criteria");
     expect(phase?.kind).toBe("variable-definition");
+    expect(phase?.variables?.map((v) => v.name)).toEqual([
+      "task_names",
+      "acceptance_blocked",
+    ]);
     expect(phase?.variables?.[0]).toMatchObject({
       name: "task_names",
       type: "array",
       kind: "llm",
     });
+    expect(phase?.variables?.[1]).toMatchObject({
+      name: "acceptance_blocked",
+      type: "boolean",
+      kind: "llm",
+    });
     expect(iterativeTddPhase.body?.[4].id).toBe("finalize-tasks");
   });
 
-  it("description carries judgment-only discipline and stuck-task blocker handling (no terminal-marker writing)", () => {
-    const desc = phase?.variables?.[0].description as string;
-    expect(desc).toContain("finalize-tasks");
-    expect(desc).toContain("do **not** write");
-    expect(desc).toContain("stuck");
-    expect(desc).toContain("max-iteration");
+  it("description carries judgment-only discipline and stuck-task blocker handling (no marker files)", () => {
+    const taskNamesDesc = phase?.variables?.[0].description as string;
+    expect(taskNamesDesc).toContain("finalize-tasks");
+    expect(taskNamesDesc).toContain("missing work");
+    const blockedDesc = phase?.variables?.[1].description as string;
+    expect(blockedDesc).toContain("stuck");
+    expect(blockedDesc).toContain("max-iteration");
+    expect(blockedDesc).toContain("genuine blocker");
+    expect(blockedDesc).toContain("task_names");
+    // no terminal-marker file writing
+    expect(taskNamesDesc).not.toContain("tasks-complete.txt");
+    expect(blockedDesc).not.toContain("blocked.txt");
   });
 });
 
@@ -686,44 +799,41 @@ describe("capture-commit-hash", () => {
   });
 
   it("sets the commit_hash store var from git rev-parse HEAD", () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pio-exec-hash-"));
+    const tempDir = fsMkdtempSync();
     try {
       runInGitRepo(tempDir);
-      const state = makeState({
-        projectRoot: tempDir,
-        sessionId: "s",
-      });
+      const state = makeState({ projectRoot: tempDir, sessionId: "s" });
       runCode(captureHashPhase, state);
       const hash = state.store?.get("commit_hash") as string;
       expect(typeof hash).toBe("string");
       expect(hash.length).toBeGreaterThan(0);
     } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      fsRmrf(tempDir);
     }
   });
 
   it("leaves commit_hash unset when git fails (graceful)", () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pio-exec-hash-"));
+    const tempDir = fsMkdtempSync();
     try {
       // Not a git repository → git rev-parse HEAD fails
       const state = makeState({ projectRoot: tempDir, sessionId: "s" });
       expect(() => runCode(captureHashPhase, state)).not.toThrow();
       expect(state.store?.get("commit_hash")).toBeUndefined();
     } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      fsRmrf(tempDir);
     }
   });
 });
 
 describe("push", () => {
   it("is a code phase that does not throw on a repo with no remote (graceful)", () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pio-exec-push-"));
+    const tempDir = fsMkdtempSync();
     try {
       runInGitRepo(tempDir);
       const state = makeState({ projectRoot: tempDir, sessionId: "s" });
       expect(() => runCode(pushPhase, state)).not.toThrow();
     } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      fsRmrf(tempDir);
     }
   });
 
@@ -731,21 +841,6 @@ describe("push", () => {
     expect(pushPhase.kind).toBe("code");
   });
 });
-
-/** Create a throwaway git repo with one commit in the given directory. */
-function runInGitRepo(dir: string): void {
-  const run = (cmd: string): void => {
-    const { execSync } =
-      require("node:child_process") as typeof import("node:child_process");
-    execSync(cmd, { cwd: dir, encoding: "utf-8", stdio: "pipe" });
-  };
-  fs.writeFileSync(path.join(dir, "file.txt"), "hello", "utf-8");
-  run("git init -q");
-  run("git config user.email test@example.com");
-  run("git config user.name Test");
-  run("git add -A");
-  run("git commit -q -m init");
-}
 
 // ---------------------------------------------------------------------------
 // Structure pins
@@ -781,12 +876,16 @@ describe("workflow structure", () => {
     const visit = (phases: WorkflowPhase[]): void => {
       for (const p of phases) {
         expect(p.allowProjectWrites).toBeUndefined();
-        // The only variable-definition phases are the task-list + research-complete phases.
         if (p.kind === "variable-definition") {
           expect([
+            "research",
             "research-complete",
             "generate-tasks",
             "tasks-refined",
+            "write-tests-verdict",
+            "implement-verdict",
+            "refactor-verdict",
+            "task-verdict",
             "verify-acceptance-criteria",
           ]).toContain(p.id);
         }
@@ -797,8 +896,6 @@ describe("workflow structure", () => {
   });
 
   it("references no old phase ids, signal-completion, or pio_mark_complete anywhere", () => {
-    // Built via concatenation so the literal strings don't appear in the file
-    // (the capability contract forbids them directory-wide).
     const SIGNAL = ["signal", "-completion"].join("");
     const MARK = ["pio_mark", "_complete"].join("");
     const OLD_IDS = new RegExp(
@@ -817,9 +914,78 @@ describe("workflow structure", () => {
           expect(p.instructions).not.toContain(MARK);
           expect(p.instructions).not.toContain(SIGNAL);
         }
+        if (p.variables) {
+          for (const v of p.variables) {
+            if (v.description) {
+              expect(v.description).not.toContain(MARK);
+              expect(v.description).not.toContain(SIGNAL);
+            }
+          }
+        }
+        if (p.body) visit(p.body);
+      }
+    };
+    visit(workflow);
+  });
+
+  it("eliminates all /tmp scratch files in favor of store variables", () => {
+    const visit = (phases: WorkflowPhase[]): void => {
+      for (const p of phases) {
+        if (p.instructions) {
+          expect(p.instructions).not.toContain("/tmp/");
+          expect(p.instructions).not.toContain(".txt");
+        }
+        if (p.loopMessage) expect(p.loopMessage).not.toContain("/tmp/");
+        if (p.variables) {
+          for (const v of p.variables) {
+            if (v.description) {
+              expect(v.description).not.toContain("/tmp/");
+              expect(v.description).not.toContain(".txt");
+            }
+          }
+        }
         if (p.body) visit(p.body);
       }
     };
     visit(workflow);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Small fs helpers (kept local to avoid importing node:fs at the top level
+// of the test body — the code phases no longer touch the filesystem).
+// ---------------------------------------------------------------------------
+
+function fsMkdtempSync(): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { mkdtempSync } = require("node:fs") as typeof import("node:fs");
+  return mkdtempSync(path.join(os.tmpdir(), "pio-exec-"));
+}
+
+function fsRmrf(dir: string): void {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { rmSync } = require("node:fs") as typeof import("node:fs");
+  rmSync(dir, { recursive: true, force: true });
+}
+
+function fsScratchExists(sessionId: string): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { existsSync } = require("node:fs") as typeof import("node:fs");
+  return existsSync(`/tmp/pio-execute-task/${sessionId}`);
+}
+
+/** Create a throwaway git repo with one commit in the given directory. */
+function runInGitRepo(dir: string): void {
+  const run = (cmd: string): void => {
+    const { execSync } =
+      require("node:child_process") as typeof import("node:child_process");
+    execSync(cmd, { cwd: dir, encoding: "utf-8", stdio: "pipe" });
+  };
+  const { writeFileSync } = require("node:fs") as typeof import("node:fs");
+  writeFileSync(path.join(dir, "file.txt"), "hello", "utf-8");
+  run("git init -q");
+  run("git config user.email test@example.com");
+  run("git config user.name Test");
+  run("git add -A");
+  run("git commit -q -m init");
+}

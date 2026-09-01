@@ -1,14 +1,9 @@
 import { execSync } from "node:child_process";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import type { PioSessionState } from "../../runtime/session-state";
 import type {
   CodeStepContext,
   WorkflowPhase,
 } from "../../runtime/workflow-types";
-
-/** Store variable carrying the absolute path of this session's research-notes scratch file. */
-const NOTES_VAR = "notes_path";
 
 /** Store variable carrying the commit hash captured after `commit` (unset when git fails). */
 const COMMIT_VAR = "commit_hash";
@@ -25,41 +20,38 @@ const TASK_NAMES_VAR = "task_names";
 /** Store variable set true once the task list is well-formed (order, feasibility). */
 const TASK_LIST_REFINED_VAR = "task_list_refined";
 
-/** Store variable set true by the research-complete phase once research is done. */
+/** Store variable carrying the accumulated research evidence (each item a finding + source). */
+const RESEARCH_NOTES_VAR = "research_notes";
+
+/** Store variable set true once research is complete. */
 const RESEARCH_COMPLETE_VAR = "research_complete";
 
-/** Session-scoped scratch directory (OS reclaims /tmp; no cleanup phase needed). */
-const SCRATCH_DIR = "/tmp/pio-execute-task";
+/** Inner-loop verdict booleans set by the task-verdict variable phase. */
+const TASK_VERIFIED_VAR = "task_verified";
+const TASK_BLOCKED_VAR = "task_blocked";
 
-/** Resolve the session-scoped scratch root. Total — never throws. */
-function scratchRootOf(state: PioSessionState): string {
-  return path.join(SCRATCH_DIR, state.sessionId ?? "unknown");
-}
+/** Store variable set true by verify-acceptance-criteria when a genuine blocker is found. */
+const ACCEPTANCE_BLOCKED_VAR = "acceptance_blocked";
+
+/** Per-phase refinement change booleans set by the trailing verdict phases. */
+const WRITE_TESTS_CHANGED_VAR = "write_tests_changed";
+const IMPLEMENT_CHANGED_VAR = "implement_changed";
+const REFACTOR_CHANGED_VAR = "refactor_changed";
 
 /** In-memory task array entry. */
 type TaskEntry = { name: string; status: string };
 
-/**
- * Total helper — true when the just-finished run wrote any of the given
- * marker filenames (suffix match). Never throws: a missing/undefined
- * filesWritten array fails safe to `false`.
- */
-function wroteMarker(state: PioSessionState, names: string[]): boolean {
-  return (
-    state.filesWritten?.some((f) => names.some((n) => f.endsWith(n))) ?? false
-  );
+/** Total helper — true when a store boolean variable is set to `true`. */
+function isSet(state: PioSessionState, name: string): boolean {
+  return state.store.get(name) === true;
 }
-
-/** True when the run wrote the terminal marker for the inner TDD loop. */
-const wroteVerifiedOrBlocked = (s: PioSessionState) =>
-  wroteMarker(s, ["verified.txt", "blocked.txt"]);
 
 /**
  * Total repeatWhile condition for the `iterative-tdd` loop. Reads the
- * persisted in-memory task array (the store survives session interruption,
- * unlike the lossy /tmp scratch dir): keep looping while pending/in-progress
- * work remains and no task is blocked; stop when every task is verified or any
- * task is blocked. Never throws (store reads are total).
+ * persisted in-memory task array (the store survives session interruption):
+ * keep looping while pending/in-progress work remains and no task is blocked;
+ * stop when every task is verified or any task is blocked. Never throws
+ * (store reads are total).
  */
 function iterativeTddShouldContinue(state: PioSessionState): boolean {
   const tasks = state.store.get(TASKS_VAR) as TaskEntry[];
@@ -68,10 +60,6 @@ function iterativeTddShouldContinue(state: PioSessionState): boolean {
   const allVerified = tasks.every((t) => t.status === "verified");
   return !(hasBlocked || allVerified);
 }
-
-/** True when the run appended to a per-phase refinement change-marker. */
-const wroteChangeMarker = (s: PioSessionState, suffix: string) =>
-  wroteMarker(s, [suffix]);
 
 const steps: WorkflowPhase[] = [
   // -------------------------------------------------------------------------
@@ -91,29 +79,29 @@ Skim \`.pio/PROJECT/OVERVIEW.md\` if available for background. This is a single-
   },
 
   // -------------------------------------------------------------------------
-  // Default Setup — create the session-scoped scratch dir and set the
-  // notes_path store variable (programmatic, no agent turn).
+  // Default Setup — programmatic (no agent turn). Declares the durable
+  // in-memory arrays so store.get(...) resolves to [] when unset rather than
+  // undefined. All durable state lives in the session variable store — there
+  // are no /tmp scratch files.
   // -------------------------------------------------------------------------
   {
     id: "default-setup",
-    title: "Set up the session scratch space",
+    title: "Set up the session variable store",
     kind: "code",
     run: (ctx: CodeStepContext) => {
-      const root = path.join(SCRATCH_DIR, ctx.state.sessionId ?? "unknown");
-      fs.mkdirSync(root, { recursive: true });
-      ctx.state.store.set(NOTES_VAR, "string", path.join(root, "notes.md"));
-      // Declare the durable in-memory task arrays so store.get(...) resolves
-      // to [] when unset (rather than undefined).
-      ctx.state.store.declare(TASKS_VAR, "array");
-      ctx.state.store.declare(TASK_NAMES_VAR, "array");
+      const store = ctx.state.store;
+      store.declare(TASKS_VAR, "array");
+      store.declare(TASK_NAMES_VAR, "array");
+      store.declare(RESEARCH_NOTES_VAR, "array");
     },
   },
 
   // -------------------------------------------------------------------------
-  // Research Context — a do-while block: a research phase + a research-complete
-  // variable-definition phase that sets `research_complete` true once nothing
-  // is missing, no questions remain unanswered, and no topics are left to
-  // investigate with web_search. The loop repeats while not complete.
+  // Research Context — a do-while block: a research variable phase that
+  // accumulates evidence into the `research_notes` array, then a
+  // research-complete variable phase that sets `research_complete` true once
+  // nothing is missing, no questions remain unanswered, and no topics are left
+  // to investigate with web_search. The loop repeats while not complete.
   // -------------------------------------------------------------------------
   {
     id: "research-context",
@@ -127,24 +115,23 @@ Skim \`.pio/PROJECT/OVERVIEW.md\` if available for background. This is a single-
       {
         id: "research",
         title: "Research the codebase, tests, and web",
-        instructions: `Conduct thorough research using your tools (\`read\`, \`bash\`, \`web_search\`), following the research process in the \`pio-planning\` skill. Read the files listed in the \`task\` input's "Files affected" section, trace imports and dependencies, understand the testing setup (how things are tested today, what tools are available), and look at similar code to follow existing patterns.
+        kind: "variable-definition",
+        variables: [
+          {
+            name: RESEARCH_NOTES_VAR,
+            type: "array",
+            kind: "llm",
+            description: `Conduct thorough research using your tools (\`read\`, \`bash\`, \`web_search\`), following the research process in the \`pio-planning\` skill. Read the files listed in the \`task\` input's "Files affected" section, trace imports and dependencies, understand the testing setup (how things are tested today, what tools are available), and look at similar code to follow existing patterns.
 
-**Record every finding as evidence to the scratch notes file at \`\${notes_path}\`** (under /tmp — writes there are not blocked). Append each finding with its evidence source:
+Accumulate every finding into the \`research_notes\` array (read the current value via \`getVar\`, then set the full accumulated array via \`setVar\`, or append via \`appendVar\`). Each finding records its evidence source:
 
 - **Evidence = repo path | web URL | recorded test output | explicit user statement.** A source is required — "just saying something" is not evidence.
 - Do **not** require a web link for codebase facts. Use \`web_search\` for assumptions genuinely unanswerable from code/tests, and cite the URL.
 - If a phase's acceptance criteria can't be made programmatic because you don't understand the test setup, go learn the test setup and record it as evidence.
 
-Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inline"\`, \`grill-me\` probing), recording the answer as evidence. **Dedupe** — do not re-add findings already present in \`\${notes_path}\`.`,
-        skills: {
-          recommended: [
-            {
-              name: "source-research",
-              condition:
-                "when researching existing solutions or external libraries",
-            },
-          ],
-        },
+Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inline"\`, \`grill-me\` probing), recording the answer as evidence. **Dedupe** — do not re-add findings already present in \`research_notes\`. Set \`research_notes\` to the full array of findings gathered so far.`,
+          },
+        ],
       },
       {
         id: "research-complete",
@@ -155,7 +142,7 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
             name: RESEARCH_COMPLETE_VAR,
             type: "boolean",
             kind: "llm",
-            description: `Revisit the findings recorded in \`\${notes_path}\` and the open questions. Set \`research_complete\` to \`true\` only when there is nothing missing, no unanswered questions, and no topics left to investigate with \`web_search\`. Otherwise set it to \`false\` so another research pass runs. Always set it explicitly.`,
+            description: `Revisit the findings recorded in \`research_notes\` (via \`getVar\`) and the open questions. Set \`research_complete\` to \`true\` only when there is nothing missing, no unanswered questions, and no topics left to investigate with \`web_search\`. Otherwise set it to \`false\` so another research pass runs. Always set it explicitly.`,
           },
         ],
       },
@@ -165,9 +152,9 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
   // -------------------------------------------------------------------------
   // Iterative TDD — OUTER do-while block. Repeats while tasks remain; the
   // container never gets an agent turn. Body: task-generation → inner
-  // tdd-process → verify-acceptance-criteria. Advances when the run wrote a
-  // terminal marker (tasks-complete.txt or blocked.txt), which only
-  // verify-acceptance-criteria writes.
+  // tdd-process → verify-acceptance-criteria → finalize-tasks. The repeat
+  // condition reads the persisted in-memory task array, which finalize-tasks
+  // updates from the store verdict booleans.
   // -------------------------------------------------------------------------
   {
     id: "iterative-tdd",
@@ -182,9 +169,10 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
     body: [
       // ---------------------------------------------------------------------
       // Task Generation — a do-while refinement loop over the task list. A
-      // generate-tasks phase sets the persisted task_names list; a tasks-refined
-      // variable phase reviews ordering/feasibility and sets task_list_refined
-      // true once the list is well-formed. The loop repeats while not refined.
+      // generate-tasks variable phase sets the persisted task_names list; a
+      // tasks-refined variable phase reviews ordering/feasibility and sets
+      // task_list_refined true once the list is well-formed. The loop repeats
+      // while not refined.
       // ---------------------------------------------------------------------
       {
         id: "task-generation",
@@ -280,9 +268,10 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
 
       // ---------------------------------------------------------------------
       // TDD Process — INNER do-while block: the red→green→refactor→final-
-      // verify sequence for the current task. The container never gets an
-      // agent turn. Advances when the run wrote verified.txt or blocked.txt
-      // (written by verify-final); a run writing neither replays.
+      // verify sequence for the current task, terminated by the task-verdict
+      // store booleans. The container never gets an agent turn. Advances when
+      // the task-verdict variable phase sets task_verified or task_blocked
+      // true; a pass leaving both false replays.
       // ---------------------------------------------------------------------
       {
         id: "tdd-process",
@@ -290,57 +279,92 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
         kind: "loop",
         minIterations: 1,
         maxIterations: 6,
-        repeatWhile: (state: PioSessionState) => !wroteVerifiedOrBlocked(state),
-        loopMessage: `The current task is not yet verified — keep iterating (fix failing tests, then run the final verification). Write \`verified.txt\` only when all tests + programmatic checks pass, or \`blocked.txt\` on a genuine blocker.`,
+        repeatWhile: (state: PioSessionState) =>
+          !(isSet(state, TASK_VERIFIED_VAR) || isSet(state, TASK_BLOCKED_VAR)),
+        loopMessage: `The current task is not yet verified — keep iterating (fix failing tests, then run the final verification). Record \`task_verified\` only when all tests + programmatic checks pass, or \`task_blocked\` on a genuine blocker.`,
         body: [
           // -----------------------------------------------------------------
-          // Write Tests — RED phase, conditional refinement loop.
+          // Write Tests — RED phase inside a do-while refinement loop. A
+          // write-tests-verdict variable phase sets write_tests_changed so the
+          // loop replays only when a pass actually changed tests.
           // -----------------------------------------------------------------
           {
-            id: "write-tests",
+            id: "write-tests-loop",
             title: "Write failing tests for the current task (RED)",
+            kind: "loop",
             maxIterations: 4,
-            loopWhile: [
+            repeatWhile: (state: PioSessionState) =>
+              isSet(state, WRITE_TESTS_CHANGED_VAR),
+            loopMessage: `Have another look — any test cases, edge cases, or acceptance criteria still missed for the current task? If you add or change any test, you will mark \`write_tests_changed\` true in the next phase; if you add nothing, mark it false and finish.`,
+            body: [
               {
-                type: "callback",
-                callback: (s: PioSessionState) =>
-                  wroteChangeMarker(s, "write-tests-changed.txt"),
-              },
-            ],
-            loopMessage: `Have another look — any test cases, edge cases, or acceptance criteria still missed for the current task? Add them (and note the change to \`\${write-tests-changed}\`), else make no changes and finish.`,
-            instructions: `For the current task, write failing tests that express its **behavior** — what the system does through its public interface, not how it's implemented — per the \`tdd\` skill's tracer-bullet → RED→GREEN methodology. Use the project's domain glossary so test names and interface vocabulary match the domain language.
+                id: "write-tests",
+                title: "Write failing tests for the current task",
+                instructions: `For the current task (\`\${current_task}\`), write failing tests that express its **behavior** — what the system does through its public interface, not how it's implemented — per the \`tdd\` skill's tracer-bullet → RED→GREEN methodology. Use the project's domain glossary so test names and interface vocabulary match the domain language.
 
 **Prefer tracer bullet tests:** start with the smallest test that confirms one real thing about the system end-to-end through a public API, then grow incrementally (one test → one implementation → repeat). A tracer bullet proves the path works before you add coverage.
 
 **Test behavior, not implementation.** A good test still passes after an internal refactor as long as behavior is unchanged. Avoid asserting string-literal content (descriptions, labels, error text), internal data-structure shapes, function signatures/parameter counts, or reading source files as raw strings. If renaming an internal function would break the test, it is testing implementation, not behavior. Before writing a test, ask: "if I changed the internals but the system still did the right thing, would this test still pass?" If not, test the outcome instead.
 
-**Whenever you add or change a test this pass, append a line to \`/tmp/pio-execute-task/<sessionId>/write-tests-changed.txt\`** (under /tmp — writes there are not blocked). When a pass adds no new tests, make **no write** — only note the change when you actually made one.
+Track whether you add or change any test this pass — you will set the \`write_tests_changed\` variable in the next phase accordingly.
 
 Treat an inner-loop replay as "tests likely already exist — proceed to fix the implementation/verification," not a re-write from scratch.`,
-            skills: { mandatory: ["tdd"] },
+                skills: { mandatory: ["tdd"] },
+              },
+              {
+                id: "write-tests-verdict",
+                title: "Record whether tests changed this pass",
+                kind: "variable-definition",
+                variables: [
+                  {
+                    name: WRITE_TESTS_CHANGED_VAR,
+                    type: "boolean",
+                    kind: "llm",
+                    description: `Did you add or modify any tests in the write-tests phase you just completed? Set \`write_tests_changed\` to \`true\` if you made a test change this pass (so the loop gives you another look for anything missed); set it to \`false\` if you made no test changes. Always set it explicitly.`,
+                  },
+                ],
+              },
+            ],
           },
 
           // -----------------------------------------------------------------
-          // Implement — GREEN phase, conditional refinement loop.
+          // Implement — GREEN phase inside a do-while refinement loop. An
+          // implement-verdict variable phase sets implement_changed so the
+          // loop replays only when a pass actually changed the implementation.
           // -----------------------------------------------------------------
           {
-            id: "implement",
+            id: "implement-loop",
             title: "Implement the current task (GREEN)",
+            kind: "loop",
             maxIterations: 4,
-            loopWhile: [
+            repeatWhile: (state: PioSessionState) =>
+              isSet(state, IMPLEMENT_CHANGED_VAR),
+            loopMessage: `Have another look — any missing branches, inputs, or edge cases in the implementation for the current task? If you change the implementation, you will mark \`implement_changed\` true in the next phase; if you change nothing, mark it false and finish.`,
+            body: [
               {
-                type: "callback",
-                callback: (s: PioSessionState) =>
-                  wroteChangeMarker(s, "implement-changed.txt"),
-              },
-            ],
-            loopMessage: `Have another look — any missing branches, inputs, or edge cases in the implementation for the current task? Cover them (and note the change to \`\${implement-changed}\`), else make no changes and finish.`,
-            instructions: `Write the minimal implementation to make the current task's tests pass (per the \`tdd\` skill's GREEN step). Keep it minimal — only enough code to pass the current tests; do not anticipate future tests.
+                id: "implement",
+                title: "Implement the current task",
+                instructions: `Write the minimal implementation to make the current task's (\`\${current_task}\`) tests pass (per the \`tdd\` skill's GREEN step). Keep it minimal — only enough code to pass the current tests; do not anticipate future tests.
 
-**Whenever you change the implementation this pass, append a line to \`/tmp/pio-execute-task/<sessionId>/implement-changed.txt\`** (under /tmp — writes there are not blocked). When a pass changes nothing, make **no write** — only note the change when you actually made one.
+Track whether you change the implementation this pass — you will set the \`implement_changed\` variable in the next phase accordingly.
 
 Treat an inner-loop replay as "tests already exist — proceed to fix the implementation," not a re-write from scratch.`,
-            skills: { mandatory: ["tdd"] },
+                skills: { mandatory: ["tdd"] },
+              },
+              {
+                id: "implement-verdict",
+                title: "Record whether the implementation changed this pass",
+                kind: "variable-definition",
+                variables: [
+                  {
+                    name: IMPLEMENT_CHANGED_VAR,
+                    type: "boolean",
+                    kind: "llm",
+                    description: `Did you change the implementation in the implement phase you just completed? Set \`implement_changed\` to \`true\` if you made a change this pass (so the loop gives you another look for anything missed); set it to \`false\` if you made no changes. Always set it explicitly.`,
+                  },
+                ],
+              },
+            ],
           },
 
           // -----------------------------------------------------------------
@@ -354,43 +378,87 @@ Treat an inner-loop replay as "tests already exist — proceed to fix the implem
           },
 
           // -----------------------------------------------------------------
-          // Refactor — conditional refinement loop, informed by web research.
+          // Refactor — do-while refinement loop informed by web research. A
+          // refactor-verdict variable phase sets refactor_changed so the loop
+          // replays only when a pass actually changed code.
           // -----------------------------------------------------------------
           {
-            id: "refactor",
+            id: "refactor-loop",
             title: "Refactor the implementation",
+            kind: "loop",
             maxIterations: 4,
-            loopWhile: [
+            repeatWhile: (state: PioSessionState) =>
+              isSet(state, REFACTOR_CHANGED_VAR),
+            loopMessage: `Have another look — any remaining duplication, naming, or structural cleanup worth doing for the current task? If you change the code, you will mark \`refactor_changed\` true in the next phase; if you change nothing, mark it false and finish.`,
+            body: [
               {
-                type: "callback",
-                callback: (s: PioSessionState) =>
-                  wroteChangeMarker(s, "refactor-changed.txt"),
-              },
-            ],
-            loopMessage: `Have another look — any remaining duplication, naming, or structural cleanup worth doing for the current task? Refine (and note the change to \`\${refactor-changed}\`), else make no changes and finish.`,
-            instructions: `Refactor for clarity, keeping the tests green. Use \`web_search\` (no workflow) to look up good refactoring practices / idiomatic patterns for the codebase's language and libraries before restructuring — cite what you find; do not refactor blind.
+                id: "refactor",
+                title: "Refactor the implementation",
+                instructions: `Refactor for clarity, keeping the tests green. Use \`web_search\` (no workflow) to look up good refactoring practices / idiomatic patterns for the codebase's language and libraries before restructuring — cite what you find; do not refactor blind.
 
-**Whenever you change the code in refactor this pass, append a line to \`/tmp/pio-execute-task/<sessionId>/refactor-changed.txt\`** (under /tmp — writes there are not blocked). When a pass changes nothing, make **no write** — only note the change when you actually made one.
+Track whether you change the code this pass — you will set the \`refactor_changed\` variable in the next phase accordingly.
 
 Never refactor while RED — get to GREEN first.`,
-            skills: { mandatory: ["tdd"] },
+                skills: { mandatory: ["tdd"] },
+              },
+              {
+                id: "refactor-verdict",
+                title: "Record whether the code changed in refactor this pass",
+                kind: "variable-definition",
+                variables: [
+                  {
+                    name: REFACTOR_CHANGED_VAR,
+                    type: "boolean",
+                    kind: "llm",
+                    description: `Did you change the code in the refactor phase you just completed? Set \`refactor_changed\` to \`true\` if you made a change this pass (so the loop gives you another look for anything missed); set it to \`false\` if you made no changes. Always set it explicitly.`,
+                  },
+                ],
+              },
+            ],
           },
 
           // -----------------------------------------------------------------
-          // Verify Final — the inner loop's terminal decision point.
+          // Verify Final — run formal tests + programmatic checks and form the
+          // verdict; the following task-verdict phase records it as store
+          // booleans.
           // -----------------------------------------------------------------
           {
             id: "verify-final",
             title: "Final verification for the current task",
             instructions: `Run the final verification for the current task (\`\${current_task}\`): formal tests + programmatic checks from the \`task\` input's acceptance criteria.
 
-**Only when all tests + programmatic checks pass, write \`verified.txt\` to the scratch dir (\`/tmp/pio-execute-task/<sessionId>/verified.txt\`)** (under /tmp — writes there are not blocked). The in-memory task status is reconciled by \`finalize-tasks\`.
+Determine which case holds:
+- **All tests + programmatic checks pass** — the task is verified.
+- **A check fails but is fixable** — the task is not yet verified; the next pass iterates (fix it in the next TDD pass).
+- **A genuine blocker** (external dependency unavailable, environmental constraint, ambiguous spec with no reasonable default) — the task is blocked.
 
-- If a check fails but is fixable, write **nothing** and continue iterating (fix it in the next TDD pass).
-- On a genuine blocker (external dependency unavailable, environmental constraint, ambiguous spec with no reasonable default), write \`blocked.txt\` to \`/tmp/pio-execute-task/<sessionId>/blocked.txt\`.
-
-**Never write \`verified.txt\` on failure** — the inner loop's advance depends on that file being absent on a failing run.`,
+The next phase (\`task-verdict\`) records your conclusion as store variables — be ready to report which case holds.`,
             skills: { mandatory: ["tdd"] },
+          },
+
+          // -----------------------------------------------------------------
+          // Task Verdict — records the inner loop's terminal decision as store
+          // booleans. Sets task_verified only when everything passes, or
+          // task_blocked only on a genuine blocker; both false replays.
+          // -----------------------------------------------------------------
+          {
+            id: "task-verdict",
+            title: "Record the verification verdict for the current task",
+            kind: "variable-definition",
+            variables: [
+              {
+                name: TASK_VERIFIED_VAR,
+                type: "boolean",
+                kind: "llm",
+                description: `Based on the final verification you just completed for the current task (\`\${current_task}\`), set \`task_verified\` to \`true\` **only when ALL formal tests and programmatic checks pass**. Never set it true on failure.`,
+              },
+              {
+                name: TASK_BLOCKED_VAR,
+                type: "boolean",
+                kind: "llm",
+                description: `Set \`task_blocked\` to \`true\` **only** when a genuine blocker is present (external dependency unavailable, environmental constraint, ambiguous spec with no reasonable default). Test failures, compile/type errors, and difficulty are NOT blockers — set it \`false\` and iterate again via TDD. Set exactly one of \`task_verified\`/\`task_blocked\` true when that verdict holds, or both \`false\` when a check failed but is fixable (so the inner loop iterates again). Always set both explicitly.`,
+              },
+            ],
           },
         ],
       },
@@ -398,9 +466,10 @@ Never refactor while RED — get to GREEN first.`,
       // ---------------------------------------------------------------------
       // Verify Acceptance Criteria — LLM judgment (variable-definition phase).
       // Cross-references the task's acceptance criteria against the
-      // implementation and re-sets the persisted `task_names` store list to
-      // include any missing work. Does NOT write the terminal markers — the
-      // `finalize-tasks` code phase decides those from the tasks array.
+      // implementation, re-sets the persisted `task_names` store list to
+      // include any missing work, and records whether a genuine blocker or an
+      // unresolvable stuck task exists (acceptance_blocked). The finalize-tasks
+      // code phase decides the terminal outcome from the store.
       // ---------------------------------------------------------------------
       {
         id: "verify-acceptance-criteria",
@@ -413,10 +482,13 @@ Never refactor while RED — get to GREEN first.`,
             kind: "llm",
             description: `Cross-reference the \`task\` input's acceptance criteria against your implementation: are all listed files created/modified/deleted as specified? do integration points (imports, exports, wiring) work correctly? are conventions followed (naming, patterns, styles matching existing code)? have you stayed within scope? Read the current \`task_names\` (via \`getVar\`/\`listVars\`), preserve existing names, and re-set \`task_names\` (via \`setVar\`) to include any missing work as new task names.
 
-You do **not** write the terminal markers — the \`finalize-tasks\` code phase decides those from the in-memory task array. Your job is only the judgment:
-
-- If acceptance is unmet, add the missing work as new task names to \`task_names\`.
-- If a genuine blocker is present, or a task did not succeed (remains unverified — e.g. it hit the inner TDD max-iteration cap), **assess first** per blocked discipline: if the stuck task is a quick-fixable bug, compile/type error, or plain difficulty, add it to \`task_names\` and iterate via TDD; only when it is genuinely unresolvable in this session, write \`blocked.txt\` to the scratch dir. Do not re-add a permanently-stuck task and spin the outer loop forever.`,
+You do **not** write any terminal marker — the \`finalize-tasks\` code phase decides the terminal outcome from the store. Your job is only the judgment of which work remains.`,
+          },
+          {
+            name: ACCEPTANCE_BLOCKED_VAR,
+            type: "boolean",
+            kind: "llm",
+            description: `Set \`acceptance_blocked\` to \`true\` only when a genuine blocker is present (external dependency unavailable, environmental constraint, ambiguous spec with no reasonable default) OR a task did not succeed (remains unverified — e.g. it hit the inner TDD max-iteration cap) and is genuinely unresolvable in this session. **Assess first** per blocked discipline: if the stuck task reflects a quick-fixable bug, compile/type error, or plain difficulty, add it to \`task_names\` and set \`acceptance_blocked\` to \`false\` so the outer loop iterates via TDD; only set it \`true\` when the work is genuinely unresolvable. Set it \`false\` when no blocker exists. Always set it explicitly.`,
           },
         ],
       },
@@ -424,12 +496,10 @@ You do **not** write the terminal markers — the \`finalize-tasks\` code phase 
       // ---------------------------------------------------------------------
       // Finalize Tasks — PROGRAMMATIC terminal decision over the in-memory
       // store array. Reconciles the current (in-progress) task's status from
-      // the per-pass marker files (verified.txt / blocked.txt written by
-      // verify-final), then writes the outer terminal marker: blocked.txt when
-      // any task is blocked, tasks-complete.txt when all tasks are verified, or
-      // nothing while pending work remains (clearing the per-pass markers so
-      // the next task starts clean). The outer loop's repeatWhile reads the
-      // terminal markers from disk (code-phase fs writes are not in filesWritten).
+      // the store verdict booleans (task_verified / task_blocked /
+      // acceptance_blocked), then resets the per-task verdict booleans so the
+      // next task starts clean. The outer loop's repeatWhile reads the
+      // persisted store array.
       // ---------------------------------------------------------------------
       {
         id: "finalize-tasks",
@@ -437,34 +507,44 @@ You do **not** write the terminal markers — the \`finalize-tasks\` code phase 
         kind: "code",
         run: (ctx: CodeStepContext) => {
           const state = ctx.state;
-          const root = scratchRootOf(state);
-          const verifiedPath = path.join(root, "verified.txt");
-          const blockedPath = path.join(root, "blocked.txt");
           const array = state.store.get(TASKS_VAR) as TaskEntry[];
           if (!array.length) return;
           try {
-            // Reconcile the current (in-progress) task's status from the
-            // transient per-pass markers written by verify-final.
+            const verified = isSet(state, TASK_VERIFIED_VAR);
+            const blocked = isSet(state, TASK_BLOCKED_VAR);
+            const acceptanceBlocked = isSet(state, ACCEPTANCE_BLOCKED_VAR);
             let changed = false;
             const next = array.map((t) => {
               if (t.status === "in-progress") {
-                if (fs.existsSync(blockedPath)) {
+                if (blocked || acceptanceBlocked) {
                   changed = true;
                   return { ...t, status: "blocked" };
                 }
-                if (fs.existsSync(verifiedPath)) {
+                if (verified) {
                   changed = true;
                   return { ...t, status: "verified" };
                 }
               }
               return t;
             });
+            // If acceptanceBlocked but no in-progress task was reconciled to
+            // blocked (e.g. the blocker arose outside the current task), ensure
+            // the outer loop terminates by blocking the first non-verified task.
+            if (
+              acceptanceBlocked &&
+              !next.some((t) => t.status === "blocked")
+            ) {
+              const idx = next.findIndex((t) => t.status !== "verified");
+              if (idx >= 0) {
+                next[idx] = { ...next[idx], status: "blocked" };
+                changed = true;
+              }
+            }
             if (changed) state.store.set(TASKS_VAR, "array", next);
-            // The outer loop's terminal decision reads the persisted store
-            // array, not marker files. Clear the transient per-pass markers so
-            // the next task starts clean.
-            fs.rmSync(verifiedPath, { force: true });
-            fs.rmSync(blockedPath, { force: true });
+            // Reset the per-task verdict booleans so the next task starts clean.
+            state.store.set(TASK_VERIFIED_VAR, "boolean", false);
+            state.store.set(TASK_BLOCKED_VAR, "boolean", false);
+            state.store.set(ACCEPTANCE_BLOCKED_VAR, "boolean", false);
           } catch {
             // total — never throw
           }

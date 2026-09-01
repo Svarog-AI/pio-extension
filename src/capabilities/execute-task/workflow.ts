@@ -30,10 +30,8 @@ const TASK_BLOCKED_VAR = "task_blocked";
 /** Store variable set true by verify-acceptance-criteria when a genuine blocker is found. */
 const ACCEPTANCE_BLOCKED_VAR = "acceptance_blocked";
 
-/** Per-phase refinement change booleans set by the trailing verdict phases. */
-const WRITE_TESTS_CHANGED_VAR = "write_tests_changed";
-const IMPLEMENT_CHANGED_VAR = "implement_changed";
-const REFACTOR_CHANGED_VAR = "refactor_changed";
+/** Store variable set by the verify-green phases once the current task's tests + checks pass. */
+const TESTS_PASS_VAR = "tests_pass";
 
 /** In-memory task array entry. */
 type TaskEntry = { name: string; status: string };
@@ -250,53 +248,38 @@ Resolve genuinely-unanswerable questions via \`ask_user\` (\`displayMode: "inlin
         loopMessage: `The current task is not yet verified — keep iterating (fix failing tests, then run the final verification). Record \`${TASK_VERIFIED_VAR}\` only when all tests + programmatic checks pass, or \`${TASK_BLOCKED_VAR}\` on a genuine blocker.`,
         body: [
           // -----------------------------------------------------------------
-          // Write Tests — RED phase inside a do-while refinement loop. A
-          // write-tests-verdict variable phase sets write_tests_changed so the
-          // loop replays only when a pass actually changed tests.
+          // Write Tests — RED phase, a single-phase exhaustion loop on
+          // filesWritten: as long as the run wrote a test file, give another
+          // look for anything missed; a silent run (no test-file write)
+          // advances. No verdict phase.
           // -----------------------------------------------------------------
           {
-            id: "write-tests-loop",
+            id: "write-tests",
             title: "Write failing tests for the current task (RED)",
-            kind: "loop",
             maxIterations: 4,
-            repeatWhile: (state: PioSessionState) =>
-              isSet(state, WRITE_TESTS_CHANGED_VAR),
-            loopMessage: `Have another look — any test cases, edge cases, or acceptance criteria still missed for the current task? If you add or change any test, you will mark \`${WRITE_TESTS_CHANGED_VAR}\` true in the next phase; if you add nothing, mark it false and finish.`,
-            body: [
+            loopWhile: [
               {
-                id: "write-tests",
-                title: "Write failing tests for the current task",
-                instructions: `For the current task (\`\${current_task}\`), write failing tests that express its **behavior** — what the system does through its public interface, not how it's implemented — per the \`tdd\` skill's tracer-bullet → RED→GREEN methodology. Use the project's domain glossary so test names and interface vocabulary match the domain language.
+                type: "callback",
+                callback: (state: PioSessionState) =>
+                  (state.filesWritten?.length ?? 0) > 0,
+              },
+            ],
+            loopMessage: `Have another look — any test cases, edge cases, or acceptance criteria still missed for the current task? If you edited a file this pass, the loop continues for another look; if you have nothing more to change, make no file changes and finish.`,
+            instructions: `For the current task (\`\${current_task}\`), write failing tests that express its **behavior** — what the system does through its public interface, not how it's implemented — per the \`tdd\` skill's tracer-bullet → RED→GREEN methodology. Use the project's domain glossary so test names and interface vocabulary match the domain language.
 
 **Prefer tracer bullet tests:** start with the smallest test that confirms one real thing about the system end-to-end through a public API, then grow incrementally (one test → one implementation → repeat). A tracer bullet proves the path works before you add coverage.
 
 **Test behavior, not implementation.** A good test still passes after an internal refactor as long as behavior is unchanged. Avoid asserting string-literal content (descriptions, labels, error text), internal data-structure shapes, function signatures/parameter counts, or reading source files as raw strings. If renaming an internal function would break the test, it is testing implementation, not behavior. Before writing a test, ask: "if I changed the internals but the system still did the right thing, would this test still pass?" If not, test the outcome instead.
 
-Track whether you add or change any test this pass — you will set the \`${WRITE_TESTS_CHANGED_VAR}\` variable in the next phase accordingly.
-
 Treat an inner-loop replay as "tests likely already exist — proceed to fix the implementation/verification," not a re-write from scratch.`,
-                skills: { mandatory: ["tdd"] },
-              },
-              {
-                id: "write-tests-verdict",
-                title: "Record whether tests changed this pass",
-                kind: "variable-definition",
-                variables: [
-                  {
-                    name: WRITE_TESTS_CHANGED_VAR,
-                    type: "boolean",
-                    kind: "llm",
-                    description: `Did you add or modify any tests in the write-tests phase you just completed? Set \`${WRITE_TESTS_CHANGED_VAR}\` to \`true\` if you made a test change this pass (so the loop gives you another look for anything missed); set it to \`false\` if you made no test changes. Always set it explicitly.`,
-                  },
-                ],
-              },
-            ],
+            skills: { mandatory: ["tdd"] },
           },
 
           // -----------------------------------------------------------------
-          // Implement — GREEN phase inside a do-while refinement loop. An
-          // implement-verdict variable phase sets implement_changed so the
-          // loop replays only when a pass actually changed the implementation.
+          // Implement — do-while block: implement until the tests pass. The
+          // body runs implement, then a verify-green variable phase that runs
+          // the suite and records whether it is green (tests_pass). The loop
+          // repeats while tests_pass is false.
           // -----------------------------------------------------------------
           {
             id: "implement-loop",
@@ -304,29 +287,27 @@ Treat an inner-loop replay as "tests likely already exist — proceed to fix the
             kind: "loop",
             maxIterations: 4,
             repeatWhile: (state: PioSessionState) =>
-              isSet(state, IMPLEMENT_CHANGED_VAR),
-            loopMessage: `Have another look — any missing branches, inputs, or edge cases in the implementation for the current task? If you change the implementation, you will mark \`${IMPLEMENT_CHANGED_VAR}\` true in the next phase; if you change nothing, mark it false and finish.`,
+              !isSet(state, TESTS_PASS_VAR),
+            loopMessage: `The current task's tests and checks are not green yet — keep implementing until they pass, then the verify-green phase records the result.`,
             body: [
               {
                 id: "implement",
                 title: "Implement the current task",
                 instructions: `Write the minimal implementation to make the current task's (\`\${current_task}\`) tests pass (per the \`tdd\` skill's GREEN step). Keep it minimal — only enough code to pass the current tests; do not anticipate future tests.
 
-Track whether you change the implementation this pass — you will set the \`${IMPLEMENT_CHANGED_VAR}\` variable in the next phase accordingly.
-
 Treat an inner-loop replay as "tests already exist — proceed to fix the implementation," not a re-write from scratch.`,
                 skills: { mandatory: ["tdd"] },
               },
               {
-                id: "implement-verdict",
-                title: "Record whether the implementation changed this pass",
+                id: "verify-green",
+                title: "Run the test suite and record whether it passes",
                 kind: "variable-definition",
                 variables: [
                   {
-                    name: IMPLEMENT_CHANGED_VAR,
+                    name: TESTS_PASS_VAR,
                     type: "boolean",
                     kind: "llm",
-                    description: `Did you change the implementation in the implement phase you just completed? Set \`${IMPLEMENT_CHANGED_VAR}\` to \`true\` if you made a change this pass (so the loop gives you another look for anything missed); set it to \`false\` if you made no changes. Always set it explicitly.`,
+                    description: `Run the test suite plus the project's conventional checks (e.g. \`npm run check\`, \`npm run lint\`), then set \`${TESTS_PASS_VAR}\` to \`true\` only when all of the current task's tests and checks pass; set it to \`false\` when any test or check fails. Always set it explicitly.`,
                   },
                 ],
               },
@@ -334,19 +315,11 @@ Treat an inner-loop replay as "tests already exist — proceed to fix the implem
           },
 
           // -----------------------------------------------------------------
-          // Verify Green — lean single run (failures are caught by verify-final).
-          // -----------------------------------------------------------------
-          {
-            id: "verify-green",
-            title: "Run the test suite (green check)",
-            instructions: `Run the test suite and confirm the current task's tests are green. This is a single lean run — failures are caught by the final verification.`,
-            skills: { mandatory: ["tdd"] },
-          },
-
-          // -----------------------------------------------------------------
-          // Refactor — do-while refinement loop informed by web research. A
-          // refactor-verdict variable phase sets refactor_changed so the loop
-          // replays only when a pass actually changed code.
+          // Refactor — do-while block informed by web research. The body runs
+          // refactor, then a refactor-verify-green variable phase that runs the
+          // suite and records whether it is still green (tests_pass). The loop
+          // repeats while tests_pass is false — refactor must not pass while
+          // the tests are failing.
           // -----------------------------------------------------------------
           {
             id: "refactor-loop",
@@ -354,29 +327,27 @@ Treat an inner-loop replay as "tests already exist — proceed to fix the implem
             kind: "loop",
             maxIterations: 4,
             repeatWhile: (state: PioSessionState) =>
-              isSet(state, REFACTOR_CHANGED_VAR),
-            loopMessage: `Have another look — any remaining duplication, naming, or structural cleanup worth doing for the current task? If you change the code, you will mark \`${REFACTOR_CHANGED_VAR}\` true in the next phase; if you change nothing, mark it false and finish.`,
+              !isSet(state, TESTS_PASS_VAR),
+            loopMessage: `The current task's tests and checks are not green — refactor only while keeping them green; if a refactor broke a test or check, fix it so they pass again, then the refactor-verify-green phase records the result.`,
             body: [
               {
                 id: "refactor",
                 title: "Refactor the implementation",
                 instructions: `Refactor for clarity, keeping the tests green. Use \`web_search\` (no workflow) to look up good refactoring practices / idiomatic patterns for the codebase's language and libraries before restructuring — cite what you find; do not refactor blind.
 
-Track whether you change the code this pass — you will set the \`${REFACTOR_CHANGED_VAR}\` variable in the next phase accordingly.
-
 Never refactor while RED — get to GREEN first.`,
                 skills: { mandatory: ["tdd"] },
               },
               {
-                id: "refactor-verdict",
-                title: "Record whether the code changed in refactor this pass",
+                id: "refactor-verify-green",
+                title: "Run the test suite and record whether it still passes",
                 kind: "variable-definition",
                 variables: [
                   {
-                    name: REFACTOR_CHANGED_VAR,
+                    name: TESTS_PASS_VAR,
                     type: "boolean",
                     kind: "llm",
-                    description: `Did you change the code in the refactor phase you just completed? Set \`${REFACTOR_CHANGED_VAR}\` to \`true\` if you made a change this pass (so the loop gives you another look for anything missed); set it to \`false\` if you made no changes. Always set it explicitly.`,
+                    description: `Run the test suite plus the project's conventional checks (e.g. \`npm run check\`, \`npm run lint\`), then set \`${TESTS_PASS_VAR}\` to \`true\` only when all of the current task's tests and checks still pass after the refactor; set it to \`false\` when any test or check fails. Always set it explicitly.`,
                   },
                 ],
               },

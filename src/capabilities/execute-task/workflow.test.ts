@@ -69,10 +69,6 @@ const writeSummaryPhase = workflow[8];
 const tddBodyById = (id: string): WorkflowPhase =>
   (iterativeTddPhase.body?.[2].body ?? []).find((p) => p.id === id)!;
 
-/** The first phase of a refinement loop's body (the rich standard phase). */
-const refinementWorkPhase = (loopId: string): WorkflowPhase =>
-  (tddBodyById(loopId).body ?? [])[0];
-
 // ---------------------------------------------------------------------------
 // read-task — lean single-pass contract entry (no goal/plan, no loop fields)
 // ---------------------------------------------------------------------------
@@ -482,7 +478,7 @@ describe("tdd-process (inner loop)", () => {
     expect(inner?.kind).toBe("loop");
     expect(inner?.minIterations).toBe(1);
     expect(inner?.maxIterations).toBe(6);
-    expect(inner?.body).toHaveLength(6);
+    expect(inner?.body).toHaveLength(5);
   });
 
   it("advances when task_verified or task_blocked is set; repeats otherwise (total, store-backed)", () => {
@@ -503,11 +499,10 @@ describe("tdd-process (inner loop)", () => {
     expect(() => cb(makeState())).not.toThrow();
   });
 
-  it("body contains the 6 TDD phases in order", () => {
+  it("body contains the 5 TDD phases in order", () => {
     expect(inner?.body?.map((p) => p.id)).toEqual([
-      "write-tests-loop",
+      "write-tests",
       "implement-loop",
-      "verify-green",
       "refactor-loop",
       "verify-final",
       "task-verdict",
@@ -522,131 +517,118 @@ describe("tdd-process (inner loop)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Conditional refinement loops on write-tests / implement / refactor — each a
-// do-while block whose trailing variable phase sets a `*_changed` boolean;
-// verify-green stays lean
+// TDD sub-phases — write-tests is a filesWritten exhaustion loop (loop while
+// anything was edited); implement and refactor are do-while loops gated on the
+// tests_pass verdict (loop while the tests aren't green)
 // ---------------------------------------------------------------------------
 
-describe("TDD sub-phase refinement loops", () => {
-  it("write-tests-loop is a do-while block replaying while write_tests_changed is true", () => {
-    const loop = tddBodyById("write-tests-loop");
-    expect(loop.kind).toBe("loop");
-    expect(loop.maxIterations).toBe(4);
-    const cb = loop.repeatWhile as (s: PioSessionState) => boolean;
-    const withChanged = (val?: boolean) => {
-      const state = makeState();
-      if (val !== undefined) setBool(state, "write_tests_changed", val);
-      return state;
-    };
-    expect(cb(withChanged(true))).toBe(true);
-    expect(cb(withChanged(false))).toBe(false);
+describe("TDD sub-phases", () => {
+  it("write-tests is a single-phase exhaustion loop replaying while any file was written", () => {
+    const phase = tddBodyById("write-tests");
+    expect(phase.kind).toBeUndefined();
+    expect(phase.maxIterations).toBe(4);
+    expect(phase.loopWhile).toHaveLength(1);
+    const cb = phase.loopWhile?.[0].callback as (s: PioSessionState) => boolean;
+    // any file written this run → replay (have another look)
+    expect(cb(makeState({ filesWritten: ["/src/foo.test.ts"] }))).toBe(true);
+    expect(cb(makeState({ filesWritten: ["/src/foo.spec.js"] }))).toBe(true);
+    expect(cb(makeState({ filesWritten: ["/src/foo.ts"] }))).toBe(true);
+    // no file written → advance
     expect(cb(makeState())).toBe(false);
+    // total — never throws on missing filesWritten
     expect(() => cb(makeState())).not.toThrow();
-    expect((loop.loopMessage as string).length).toBeGreaterThan(0);
-    // body: rich standard write-tests phase + a verdict variable phase
-    expect(loop.body?.map((p) => p.id)).toEqual([
-      "write-tests",
-      "write-tests-verdict",
-    ]);
-    expect(loop.body?.[1].kind).toBe("variable-definition");
-    expect(loop.body?.[1].variables?.[0]).toMatchObject({
-      name: "write_tests_changed",
-      type: "boolean",
-      kind: "llm",
-    });
-    // the rich standard phase keeps the tdd skill
-    expect(refinementWorkPhase("write-tests-loop").skills?.mandatory).toEqual([
-      "tdd",
-    ]);
+    expect((phase.loopMessage as string).length).toBeGreaterThan(0);
+    expect(phase.skills?.mandatory).toEqual(["tdd"]);
   });
 
-  it("implement-loop is a do-while block replaying while implement_changed is true", () => {
+  it("write-tests rich phase carries the tracer-bullet behavior-not-implementation guidance", () => {
+    const instr = tddBodyById("write-tests").instructions as string;
+    expect(instr).toContain("tracer bullet");
+    expect(instr).toContain("behavior");
+    expect(instr).toContain("implementation");
+  });
+
+  it("implement-loop is a do-while block replaying while tests_pass is false", () => {
     const loop = tddBodyById("implement-loop");
     expect(loop.kind).toBe("loop");
     expect(loop.maxIterations).toBe(4);
     const cb = loop.repeatWhile as (s: PioSessionState) => boolean;
-    const withChanged = (val?: boolean) => {
+    const withPass = (val?: boolean) => {
       const state = makeState();
-      if (val !== undefined) setBool(state, "implement_changed", val);
+      if (val !== undefined) setBool(state, "tests_pass", val);
       return state;
     };
-    expect(cb(withChanged(true))).toBe(true);
-    expect(cb(withChanged(false))).toBe(false);
+    // tests not green (false or unset) → repeat
+    expect(cb(withPass(false))).toBe(true);
+    expect(cb(makeState())).toBe(true);
+    // tests green → advance
+    expect(cb(withPass(true))).toBe(false);
+    // total — never throws on missing store
     expect(() => cb(makeState())).not.toThrow();
-    expect(loop.body?.map((p) => p.id)).toEqual([
-      "implement",
-      "implement-verdict",
-    ]);
+    // body: implement, verify-green (variable phase sets tests_pass)
+    expect(loop.body?.map((p) => p.id)).toEqual(["implement", "verify-green"]);
     expect(loop.body?.[1].kind).toBe("variable-definition");
     expect(loop.body?.[1].variables?.[0]).toMatchObject({
-      name: "implement_changed",
+      name: "tests_pass",
       type: "boolean",
       kind: "llm",
     });
-    expect(refinementWorkPhase("implement-loop").skills?.mandatory).toEqual([
-      "tdd",
-    ]);
+    expect(loop.body?.[0].skills?.mandatory).toEqual(["tdd"]);
   });
 
-  it("refactor-loop is a do-while block replaying while refactor_changed is true", () => {
+  it("implement rich phase carries the minimal GREEN guidance", () => {
+    const instr = tddBodyById("implement-loop").body?.[0]
+      .instructions as string;
+    expect(instr).toContain("minimal");
+  });
+
+  it("refactor-loop is a do-while block replaying while tests_pass is false", () => {
     const loop = tddBodyById("refactor-loop");
     expect(loop.kind).toBe("loop");
     expect(loop.maxIterations).toBe(4);
     const cb = loop.repeatWhile as (s: PioSessionState) => boolean;
-    const withChanged = (val?: boolean) => {
+    const withPass = (val?: boolean) => {
       const state = makeState();
-      if (val !== undefined) setBool(state, "refactor_changed", val);
+      if (val !== undefined) setBool(state, "tests_pass", val);
       return state;
     };
-    expect(cb(withChanged(true))).toBe(true);
-    expect(cb(withChanged(false))).toBe(false);
+    expect(cb(withPass(false))).toBe(true);
+    expect(cb(makeState())).toBe(true);
+    expect(cb(withPass(true))).toBe(false);
     expect(() => cb(makeState())).not.toThrow();
+    // body: refactor, refactor-verify-green (variable phase sets tests_pass)
     expect(loop.body?.map((p) => p.id)).toEqual([
       "refactor",
-      "refactor-verdict",
+      "refactor-verify-green",
     ]);
     expect(loop.body?.[1].kind).toBe("variable-definition");
     expect(loop.body?.[1].variables?.[0]).toMatchObject({
-      name: "refactor_changed",
+      name: "tests_pass",
       type: "boolean",
       kind: "llm",
     });
-    expect(refinementWorkPhase("refactor-loop").skills?.mandatory).toEqual([
-      "tdd",
-    ]);
-  });
-
-  it("write-tests rich phase carries the tracer-bullet behavior-not-implementation guidance", () => {
-    const instr = refinementWorkPhase("write-tests-loop")
-      .instructions as string;
-    expect(instr).toContain("tracer bullet");
-    expect(instr).toContain("behavior");
-    expect(instr).toContain("implementation");
-    expect(instr).toContain("write_tests_changed");
-  });
-
-  it("implement rich phase carries the minimal GREEN guidance", () => {
-    const instr = refinementWorkPhase("implement-loop").instructions as string;
-    expect(instr).toContain("minimal");
-    expect(instr).toContain("implement_changed");
+    expect(loop.body?.[0].skills?.mandatory).toEqual(["tdd"]);
   });
 
   it("refactor rich phase carries the keep-tests-green + web_search guidance", () => {
-    const instr = refinementWorkPhase("refactor-loop").instructions as string;
+    const instr = tddBodyById("refactor-loop").body?.[0].instructions as string;
     expect(instr).toContain("web_search");
     expect(instr).toContain("tests green");
-    expect(instr).toContain("refactor_changed");
   });
 
-  it("verify-green is lean — no loop fields", () => {
-    const phase = tddBodyById("verify-green");
-    expect(phase.maxIterations).toBeUndefined();
-    expect(phase.minIterations).toBeUndefined();
-    expect(phase.loopWhile).toBeUndefined();
-    expect(phase.terminateWhen).toBeUndefined();
-    expect(phase.write).toBeUndefined();
-    expect(phase.allowProjectWrites).toBeUndefined();
-    expect(phase.skills?.mandatory).toEqual(["tdd"]);
+  it("verify-green (inside implement-loop) is a variable phase setting tests_pass", () => {
+    const phase = tddBodyById("implement-loop").body?.[1];
+    expect(phase?.id).toBe("verify-green");
+    expect(phase?.kind).toBe("variable-definition");
+    expect(phase?.variables?.[0]).toMatchObject({
+      name: "tests_pass",
+      type: "boolean",
+      kind: "llm",
+    });
+    const desc = phase?.variables?.[0].description as string;
+    expect(desc).toContain("Run the test suite");
+    expect(desc).toContain("npm run check");
+    expect(desc).toContain("npm run lint");
   });
 
   it("verify-final runs formal tests + programmatic checks without writing markers", () => {
@@ -869,9 +851,8 @@ describe("workflow structure", () => {
             "research-complete",
             "generate-tasks",
             "tasks-refined",
-            "write-tests-verdict",
-            "implement-verdict",
-            "refactor-verdict",
+            "verify-green",
+            "refactor-verify-green",
             "task-verdict",
             "verify-acceptance-criteria",
           ]).toContain(p.id);

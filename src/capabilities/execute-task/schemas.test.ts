@@ -30,6 +30,48 @@ describe("EXECUTION_SUMMARY_SCHEMA", () => {
   it("rejects missing status field", () => {
     expect(Value.Check(EXECUTION_SUMMARY_SCHEMA, {})).toBe(false);
   });
+
+  it("accepts a commit hash alongside status", () => {
+    expect(
+      Value.Check(EXECUTION_SUMMARY_SCHEMA, {
+        status: "completed",
+        commit: "abc123def456",
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts status blocked with a commit hash", () => {
+    expect(
+      Value.Check(EXECUTION_SUMMARY_SCHEMA, {
+        status: "blocked",
+        commit: "abc123def456",
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts status without commit (commit is optional)", () => {
+    expect(Value.Check(EXECUTION_SUMMARY_SCHEMA, { status: "completed" })).toBe(
+      true,
+    );
+    expect(Value.Check(EXECUTION_SUMMARY_SCHEMA, { status: "blocked" })).toBe(
+      true,
+    );
+  });
+
+  it("rejects a non-string commit", () => {
+    expect(
+      Value.Check(EXECUTION_SUMMARY_SCHEMA, {
+        status: "completed",
+        commit: 12345,
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(EXECUTION_SUMMARY_SCHEMA, {
+        status: "completed",
+        commit: {},
+      }),
+    ).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -43,5 +85,11 @@ describe("ExecutionSummaryOutputs", () => {
 
     const blocked: ExecutionSummaryOutputs = { status: "blocked" };
     expect(blocked.status).toBe("blocked");
+
+    const withCommit: ExecutionSummaryOutputs = {
+      status: "completed",
+      commit: "abc123def456",
+    };
+    expect(withCommit.commit).toBe("abc123def456");
   });
 });

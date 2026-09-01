@@ -14,6 +14,7 @@ import { Type } from "typebox";
  */
 export const EXECUTION_SUMMARY_SCHEMA = Type.Object({
   status: Type.Union([Type.Literal("completed"), Type.Literal("blocked")]),
+  commit: Type.Optional(Type.String()),
 });
 
 /** Derived type from the schema — no manual interface definition. */

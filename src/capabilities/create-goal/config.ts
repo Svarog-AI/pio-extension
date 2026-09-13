@@ -14,7 +14,11 @@ import type { CapabilityContract } from "../../types";
 
 export const CONTRACT: CapabilityContract = {
   inputs: [],
-  outputs: [{ name: "goal", file: "GOAL.md" }],
+  outputs: [
+    { name: "goal", file: "GOAL.md" },
+    { name: "as-is-report", file: "AS-IS-REPORT.md" },
+    { name: "to-be-report", file: "TO-BE-REPORT.md" },
+  ],
 };
 
 // ---------------------------------------------------------------------------

@@ -6,8 +6,9 @@
 // - Strict flag surface: the only recognized top-level forms are `--help`,
 //   `help`, `--version`, and `run`. Every other dash token (anywhere) is an
 //   unknown option — there are no short forms and no stub flags.
-// - The SDK is reachable only through the fixed lazy BUILTINS registry below;
-//   nothing else in this file references any target module.
+// - The only resolvable target in this step is `probe`, handled as an explicit
+//   special case in `main`'s run branch — no abstraction around it (product
+//   decision 2026-09-15). The SDK is never imported anywhere else in this file.
 import { PIO_VERSION } from "./version.ts";
 
 /** Descriptors of a parsed argv (program name excluded). `error.message` is unprefixed. */
@@ -23,21 +24,6 @@ export interface CliIO {
   stdout(line: string): void;
   stderr(line: string): void;
 }
-
-/** Contract every builtin target module satisfies — binding forward contract for Step 3's probe.ts. */
-export interface BuiltinModule {
-  /** Runs the builtin. Resolves to the process exit code (0 = success, 1 = failure). */
-  run(): Promise<number>;
-}
-
-/** Fixed registry — the ONLY place a target module is referenced. No path interpolation.
- *  In Step 2 the probe target exists here while its module lands in Step 3. */
-export const BUILTINS: Readonly<Record<string, () => Promise<BuiltinModule>>> =
-  {
-    // transitional: ./probe.ts lands in Step 3; the literal specifier is deliberate (no-interpolation guard).
-    // @ts-expect-error TS2307 until ./probe.ts exists — remove this directive when Step 3 ships the module.
-    probe: () => import("./probe.ts"),
-  };
 
 const UNKNOWN_OPTION = (token: string): string =>
   `unknown option: ${token} (try: pio --help)`;
@@ -137,24 +123,24 @@ export async function main(
       out.stderr(`pio: ${parsed.message}`);
       return 1;
     case "run": {
-      const load = BUILTINS[parsed.capability];
-      if (load === undefined) {
-        out.stderr(
-          `pio: capability '${parsed.capability}' is not implemented yet`,
-        );
+      const name = parsed.capability;
+      if (name !== "probe") {
+        out.stderr(`pio: capability '${name}' is not implemented yet`);
         return 1;
       }
-      let builtin: BuiltinModule;
+      // probe is the only resolvable target — an explicit special case, deliberately without
+      // an abstraction around it. It must export run(): Promise<number> (the exit code).
+      let probe: { run(): Promise<number> };
       try {
-        builtin = await load();
+        // transitional: ./probe.ts lands in Step 3; the literal specifier is deliberate (no-interpolation guard).
+        // @ts-expect-error TS2307 until ./probe.ts exists — remove this directive when Step 3 ships the module.
+        probe = await import("./probe.ts");
       } catch (cause) {
         const detail = cause instanceof Error ? cause.message : String(cause);
-        out.stderr(
-          `pio: failed to load built-in '${parsed.capability}': ${detail}`,
-        );
+        out.stderr(`pio: failed to load built-in '${name}': ${detail}`);
         return 1;
       }
-      return await builtin.run();
+      return await probe.run();
     }
   }
 }

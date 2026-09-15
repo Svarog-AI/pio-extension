@@ -2,7 +2,7 @@
 // `main(argv, io)` with captured IO, plus mechanical SDK-isolation guards.
 import { readFileSync } from "node:fs";
 import type { CliIO } from "./cli.ts";
-import { BUILTINS, main, parse } from "./cli.ts";
+import { main, parse } from "./cli.ts";
 import { PIO_VERSION } from "./version.ts";
 
 const PROBE_DIAGNOSTIC =
@@ -256,10 +256,9 @@ describe("mechanical SDK-isolation guards", () => {
     expect([...new Set(specifiers)]).toEqual(["./probe.ts"]);
   });
 
-  it("registry shape: keys exactly ['probe'], each value a thunk function", () => {
-    expect(Object.keys(BUILTINS)).toEqual(["probe"]);
-    for (const value of Object.values(BUILTINS)) {
-      expect(typeof value).toBe("function");
-    }
-  });
+  // NOTE: the former third guard (registry shape: Object.keys(BUILTINS) === ["probe"])
+  // was retired together with the BUILTINS registry itself (user-directed simplification,
+  // 2026-09-15: probe is an explicit dispatch special case in main(), no abstraction around it).
+  // Guards (a) + (b) above still mechanically pin: zero SDK references, single literal
+  // dynamic-import specifier './probe.ts' (no interpolation by construction).
 });

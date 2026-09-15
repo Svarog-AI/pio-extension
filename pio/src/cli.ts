@@ -1,0 +1,160 @@
+// pio CLI core: strict argument parsing + capability dispatch.
+//
+// Design notes (Step 2 decisions):
+// - `parse` is pure and UI-neutral: it classifies argv into a descriptor and
+//   emits unprefixed error messages; `main` renders the `pio: ` prefix.
+// - Strict flag surface: the only recognized top-level forms are `--help`,
+//   `help`, `--version`, and `run`. Every other dash token (anywhere) is an
+//   unknown option — there are no short forms and no stub flags.
+// - The SDK is reachable only through the fixed lazy BUILTINS registry below;
+//   nothing else in this file references any target module.
+import { PIO_VERSION } from "./version.ts";
+
+/** Descriptors of a parsed argv (program name excluded). `error.message` is unprefixed. */
+export type ParsedCommand =
+  | { kind: "help" }
+  | { kind: "version" }
+  | { kind: "reserved" } // bare `pio` and bare `pio run`
+  | { kind: "run"; capability: string }
+  | { kind: "error"; message: string };
+
+/** Injectable IO sink. Writers receive a line WITHOUT trailing newline; `main` appends it. */
+export interface CliIO {
+  stdout(line: string): void;
+  stderr(line: string): void;
+}
+
+/** Contract every builtin target module satisfies — binding forward contract for Step 3's probe.ts. */
+export interface BuiltinModule {
+  /** Runs the builtin. Resolves to the process exit code (0 = success, 1 = failure). */
+  run(): Promise<number>;
+}
+
+/** Fixed registry — the ONLY place a target module is referenced. No path interpolation.
+ *  In Step 2 the probe target exists here while its module lands in Step 3. */
+export const BUILTINS: Readonly<Record<string, () => Promise<BuiltinModule>>> =
+  {
+    // transitional: ./probe.ts lands in Step 3; the literal specifier is deliberate (no-interpolation guard).
+    // @ts-expect-error TS2307 until ./probe.ts exists — remove this directive when Step 3 ships the module.
+    probe: () => import("./probe.ts"),
+  };
+
+const UNKNOWN_OPTION = (token: string): string =>
+  `unknown option: ${token} (try: pio --help)`;
+const UNKNOWN_COMMAND = (token: string): string =>
+  `unknown command: ${token} (try: pio --help)`;
+const UNEXPECTED_ARGUMENT = (token: string): string =>
+  `unexpected argument: ${token} (usage: pio run <capability>)`;
+const MISSING_CAPABILITY =
+  "expected capability name after 'run' (usage: pio run <capability>)";
+
+const HELP_LINES: readonly string[] = [
+  "pio — goal-driven project management CLI",
+  "",
+  "Usage:",
+  "  pio run <capability>",
+  "  pio --help",
+  "  pio --version",
+  "",
+  "Built-in capabilities:",
+  "  probe — built-in diagnostic: verifies session/TUI/transcript plumbing (currently the only resolvable target)",
+];
+
+function startsWithDash(token: string): boolean {
+  return token.startsWith("-");
+}
+
+/** Pure, synchronous argument parser. No IO, no imports at call time, no side effects. */
+export function parse(argv: readonly string[]): ParsedCommand {
+  const [first, second, ...rest] = argv;
+
+  if (first === undefined) {
+    return { kind: "reserved" };
+  }
+  // Terminal forms: everything after them is ignored by design.
+  if (first === "--help" || first === "help") {
+    return { kind: "help" };
+  }
+  if (first === "--version") {
+    return { kind: "version" };
+  }
+  if (first !== "run") {
+    return {
+      kind: "error",
+      message: startsWithDash(first)
+        ? UNKNOWN_OPTION(first)
+        : UNKNOWN_COMMAND(first),
+    };
+  }
+  // `run <capability>`: the second token decides.
+  if (second === undefined) {
+    return { kind: "reserved" };
+  }
+  if (second === "") {
+    return { kind: "error", message: MISSING_CAPABILITY };
+  }
+  if (startsWithDash(second)) {
+    return { kind: "error", message: UNKNOWN_OPTION(second) };
+  }
+  if (rest.length > 0) {
+    const extra = rest[0];
+    return {
+      kind: "error",
+      message: startsWithDash(extra)
+        ? UNKNOWN_OPTION(extra)
+        : UNEXPECTED_ARGUMENT(extra),
+    };
+  }
+  return { kind: "run", capability: second };
+}
+
+/** Entry point. `argv` = user args (process.argv.slice(2) in the real bin).
+ *  `io` defaults to process.stdout/process.stderr writers. Resolves to the process exit code;
+ *  the bin sinks it into process.exitCode. Never throws for handled failures. */
+export async function main(
+  argv: readonly string[],
+  io?: CliIO,
+): Promise<number> {
+  const out: CliIO = io ?? {
+    stdout: (line) => process.stdout.write(`${line}\n`),
+    stderr: (line) => process.stderr.write(`${line}\n`),
+  };
+
+  const parsed = parse(argv);
+  switch (parsed.kind) {
+    case "help":
+      for (const line of HELP_LINES) {
+        out.stdout(line);
+      }
+      return 0;
+    case "version":
+      out.stdout(PIO_VERSION);
+      return 0;
+    case "reserved":
+      out.stderr("pio: default workflow capability not available yet");
+      return 1;
+    case "error":
+      out.stderr(`pio: ${parsed.message}`);
+      return 1;
+    case "run": {
+      const load = BUILTINS[parsed.capability];
+      if (load === undefined) {
+        out.stderr(
+          `pio: capability '${parsed.capability}' is not implemented yet`,
+        );
+        return 1;
+      }
+      let builtin: BuiltinModule;
+      try {
+        builtin = await load();
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        out.stderr(
+          `pio: failed to load built-in '${parsed.capability}': ${detail}`,
+        );
+        return 1;
+      }
+      return await builtin.run();
+    }
+  }
+}

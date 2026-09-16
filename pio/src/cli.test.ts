@@ -242,6 +242,59 @@ describe("main (behavior matrix)", () => {
   });
 });
 
+describe("main (last-resort error boundary)", () => {
+  const SINK_FAULT = "sink fallen";
+
+  function faultyIo(faultOn: "stdout" | "stderr"): {
+    io: CliIO;
+    out: string[];
+    err: string[];
+  } {
+    const out: string[] = [];
+    const err: string[] = [];
+    return {
+      io: {
+        stdout: (line) => {
+          if (faultOn === "stdout") throw new Error(SINK_FAULT);
+          out.push(line);
+        },
+        stderr: (line) => {
+          if (faultOn === "stderr") throw new Error(SINK_FAULT);
+          err.push(line);
+        },
+      },
+      out,
+      err,
+    };
+  }
+
+  it("--help with a faulting stdout sink: resolves 1 (never rejects), exact unexpected-error line on the healthy stderr", async () => {
+    const { io, out, err } = faultyIo("stdout");
+    const code = await main(["--help"], io);
+    expect(code).toBe(1);
+    expect(out).toEqual([]);
+    expect(err).toEqual([`pio: unexpected error: ${SINK_FAULT}`]);
+  });
+
+  it("bogus command with a faulting stderr sink: resolves 1 (never rejects); doubly-failed sink degrades silently", async () => {
+    const { io, out, err } = faultyIo("stderr");
+    const code = await main(["bogus"], io);
+    expect(code).toBe(1);
+    expect(err).toEqual([]);
+    expect(out).toEqual([]);
+  });
+
+  it("bare invocation with a faulting stderr sink: resolves 1 (never rejects); doubly-failed sink degrades silently", async () => {
+    const { io, out, err } = faultyIo("stderr");
+    const code = await main([], io);
+    expect(code).toBe(1);
+    expect(err).toEqual([]);
+    expect(out).toEqual([]);
+  });
+
+  // transitional: superseded by Step 3 — add the directly-rejecting run() case here once ./probe.ts exists.
+});
+
 describe("mechanical SDK-isolation guards", () => {
   const src = readFileSync(new URL("./cli.ts", import.meta.url), "utf8");
 

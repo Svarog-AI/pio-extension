@@ -96,7 +96,8 @@ export function parse(argv: readonly string[]): ParsedCommand {
 
 /** Entry point. `argv` = user args (process.argv.slice(2) in the real bin).
  *  `io` defaults to process.stdout/process.stderr writers. Resolves to the process exit code;
- *  the bin sinks it into process.exitCode. Never throws for handled failures. */
+ *  the bin sinks it into process.exitCode. Never rejects — escaping failures degrade to
+ *  the `pio: unexpected error: <detail>` line on stderr + exit 1. */
 export async function main(
   argv: readonly string[],
   io?: CliIO,
@@ -106,41 +107,52 @@ export async function main(
     stderr: (line) => process.stderr.write(`${line}\n`),
   };
 
-  const parsed = parse(argv);
-  switch (parsed.kind) {
-    case "help":
-      for (const line of HELP_LINES) {
-        out.stdout(line);
-      }
-      return 0;
-    case "version":
-      out.stdout(PIO_VERSION);
-      return 0;
-    case "reserved":
-      out.stderr("pio: default workflow capability not available yet");
-      return 1;
-    case "error":
-      out.stderr(`pio: ${parsed.message}`);
-      return 1;
-    case "run": {
-      const name = parsed.capability;
-      if (name !== "probe") {
-        out.stderr(`pio: capability '${name}' is not implemented yet`);
+  try {
+    const parsed = parse(argv);
+    switch (parsed.kind) {
+      case "help":
+        for (const line of HELP_LINES) {
+          out.stdout(line);
+        }
+        return 0;
+      case "version":
+        out.stdout(PIO_VERSION);
+        return 0;
+      case "reserved":
+        out.stderr("pio: default workflow capability not available yet");
         return 1;
-      }
-      // probe is the only resolvable target — an explicit special case, deliberately without
-      // an abstraction around it. It must export run(): Promise<number> (the exit code).
-      let probe: { run(): Promise<number> };
-      try {
-        // transitional: ./probe.ts lands in Step 3; the literal specifier is deliberate (no-interpolation guard).
-        // @ts-expect-error TS2307 until ./probe.ts exists — remove this directive when Step 3 ships the module.
-        probe = await import("./probe.ts");
-      } catch (cause) {
-        const detail = cause instanceof Error ? cause.message : String(cause);
-        out.stderr(`pio: failed to load built-in '${name}': ${detail}`);
+      case "error":
+        out.stderr(`pio: ${parsed.message}`);
         return 1;
+      case "run": {
+        const name = parsed.capability;
+        if (name !== "probe") {
+          out.stderr(`pio: capability '${name}' is not implemented yet`);
+          return 1;
+        }
+        // probe is the only resolvable target — an explicit special case, deliberately without
+        // an abstraction around it. It must export run(): Promise<number> (the exit code).
+        let probe: { run(): Promise<number> };
+        try {
+          // transitional: ./probe.ts lands in Step 3; the literal specifier is deliberate (no-interpolation guard).
+          // @ts-expect-error TS2307 until ./probe.ts exists — remove this directive when Step 3 ships the module.
+          probe = await import("./probe.ts");
+        } catch (cause) {
+          const detail = cause instanceof Error ? cause.message : String(cause);
+          out.stderr(`pio: failed to load built-in '${name}': ${detail}`);
+          return 1;
+        }
+        return await probe.run();
       }
-      return await probe.run();
     }
+  } catch (cause) {
+    // Last-resort boundary: any escaping rejection degrades to one readable line + exit 1.
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    try {
+      out.stderr(`pio: unexpected error: ${detail}`);
+    } catch {
+      // Sink faulted twice — the handler itself must never throw either.
+    }
+    return 1;
   }
 }

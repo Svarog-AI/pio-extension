@@ -134,8 +134,6 @@ export async function main(
         // an abstraction around it. It must export run(): Promise<number> (the exit code).
         let probe: { run(): Promise<number> };
         try {
-          // transitional: ./probe.ts lands in Step 3; the literal specifier is deliberate (no-interpolation guard).
-          // @ts-expect-error TS2307 until ./probe.ts exists — remove this directive when Step 3 ships the module.
           probe = await import("./probe.ts");
         } catch (cause) {
           const detail = cause instanceof Error ? cause.message : String(cause);

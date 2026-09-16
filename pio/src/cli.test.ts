@@ -3,7 +3,13 @@
 import { readFileSync } from "node:fs";
 import type { CliIO } from "./cli.ts";
 import { main, parse } from "./cli.ts";
+import { run as probeRun } from "./probe.ts";
 import { PIO_VERSION } from "./version.ts";
+
+// Hermetic probe-dispatch seam (Step 3 / D4): an unmocked main(["run","probe"])
+// could drive REAL session construction/network in a unit suite, so the probe
+// module is factory-mocked regardless of worker stdio TTY-ness.
+vi.mock("./probe.ts", () => ({ run: vi.fn() }));
 
 const PROBE_DIAGNOSTIC =
   "probe — built-in diagnostic: verifies session/TUI/transcript plumbing";
@@ -230,15 +236,40 @@ describe("main (behavior matrix)", () => {
       "pio: expected capability name after 'run' (usage: pio run <capability>)",
     ]);
   });
+});
 
-  // transitional: superseded by Step 3
-  it("run probe: lazy load degrades readably while probe.ts is absent (transitional: superseded by Step 3)", async () => {
+describe("main (probe dispatch)", () => {
+  const probeRunMock = vi.mocked(probeRun);
+
+  beforeEach(() => {
+    probeRunMock.mockReset();
+  });
+
+  it("run probe: exit code 0 from probe.run propagates unchanged", async () => {
+    probeRunMock.mockResolvedValue(0);
+    const { io, out, err } = collectIo();
+    const code = await main(["run", "probe"], io);
+    expect(code).toBe(0);
+    expect(out).toEqual([]);
+    expect(err).toEqual([]);
+  });
+
+  it("run probe: exit code 1 from probe.run propagates unchanged", async () => {
+    probeRunMock.mockResolvedValue(1);
     const { io, out, err } = collectIo();
     const code = await main(["run", "probe"], io);
     expect(code).toBe(1);
     expect(out).toEqual([]);
-    expect(err.length).toBe(1);
-    expect(err[0]).toMatch(/^pio: failed to load built-in 'probe': /);
+    expect(err).toEqual([]);
+  });
+
+  it("directly-rejecting run(): last-resort boundary renders 'pio: unexpected error: kaboom', resolves 1", async () => {
+    probeRunMock.mockRejectedValue(new Error("kaboom"));
+    const { io, out, err } = collectIo();
+    const code = await main(["run", "probe"], io);
+    expect(code).toBe(1);
+    expect(out).toEqual([]);
+    expect(err).toEqual(["pio: unexpected error: kaboom"]);
   });
 });
 
@@ -291,8 +322,6 @@ describe("main (last-resort error boundary)", () => {
     expect(err).toEqual([]);
     expect(out).toEqual([]);
   });
-
-  // transitional: superseded by Step 3 — add the directly-rejecting run() case here once ./probe.ts exists.
 });
 
 describe("mechanical SDK-isolation guards", () => {

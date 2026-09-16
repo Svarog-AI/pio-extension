@@ -10,7 +10,8 @@ Model switching (`~/.pi/pio-config.yaml`) references LLM providers (e.g., Anthro
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `@earendil-works/pi-coding-agent` | ^0.74.0 (devDep) | Core framework: ExtensionAPI, `defineTool()`, session management, event system |
+| `@earendil-works/pi-coding-agent` | ^0.74.0 (devDep) | Core framework for the TUI-loaded extension: ExtensionAPI, `defineTool()`, session management, event system |
+| `@earendil-works/pi-coding-agent` | 0.85.1 (**exact-pinned**, dep of the standalone `pio/` package) | Owned runtime of the `pio` executable — the exact pin tracks upstream independently of the root devDependency and host pi (self-contained artifact policy; evidence in commit messages) |
 | `typebox` | ^1.1.24 (devDep) | JSON Schema type builders for tool parameter definitions |
 | `typescript` | ^5.8.0 (devDep) | Type checking via `npm run check` (`tsc --noEmit`) |
 | `vitest` | ^4.1.6 (devDep) | Test runner: unit tests with global `describe/it/expect` |
@@ -21,7 +22,9 @@ Model switching (`~/.pi/pio-config.yaml`) references LLM providers (e.g., Anthro
 | `@biomejs/biome` | ^2.5.1 (devDep) | Linter and formatter — recommended preset with test file overrides (config in `biome.json`) |
 | `lefthook` | ^2.1.9 (devDep) | Git hook manager — pre-commit Biome check on staged `.ts`/`.json` files (config in `lefthook.yml`) |
 
-All devDependencies run at development time or via pi's TypeScript runtime. The only production dependency is `js-yaml`.
+All devDependencies run at development time or via pi's TypeScript runtime. Production dependencies: `js-yaml` (root) and `@earendil-works/pi-coding-agent` 0.85.1 (`pio/`).
+
+**Dual pi copies are a structural property of this packaging:** the root devDependency (^0.74.0-line) serves the TUI-loaded extension from root `node_modules`; the exact-pinned 0.85.1 in `pio/node_modules` is the executable's owned runtime. In a live probe session the extension bound exclusively to the pinned copy — root `src/index.ts` imports the SDK type-only (erased at load), so the devDependency copy never entered the process (verified 2026-09-16). If mixed-copy behavior ever misbehaves, the documented escape hatch is the public `extensionsOverride` discovery-filtering seam.
 
 ## Internal Module Graph
 
@@ -62,6 +65,14 @@ Shared modules:
   state-machines/        — pio-workflow-machine.ts (goalDrivenDevelopment machine config, resolve functions using getCapState), utils.ts (setDiscoveredContracts/getCapState contract caching only)
   queues.ts              — enqueueTask, readPendingTask, writeLastTask
   model-config.ts        — resolveModelForCapability(), readTurnThreshold(), readPioWorkspaceDir(). Reads ~/.pi/pio-config.yaml
+
+pio/ package (standalone executable — separate project with its own node_modules, manifest, tsconfig, vitest config; purely additive, zero root files touched):
+  bin/pio                — thin ESM JS delegator (committed mode 100755): one dynamic import("../src/cli.ts") + process.exitCode sink; no re-exec/bootstrap layer (runtime floor Node >= 23.6 native type stripping)
+  src/cli.ts             — strict argument parser (pure) + main(argv, io?) dispatch; lazy literal import("./probe.ts") is the only SDK path; last-resort error boundary
+  src/probe.ts           — built-in diagnostic target (NOT a capability): TTY preflight, frozen PROBE_OPENING_TEXT constant, InteractiveMode host over inherited stdio, stop()/dispose() teardown; exports run(io?): Promise<number>
+  src/session.ts         — createProbeSession(cwd): the durable pi SDK session wiring (SessionManager -> stored factory -> services -> from-services -> runtime); one of two modules importing the pinned SDK
+  src/version.ts         — PIO_VERSION constant (single --version source)
+  Deps: @earendil-works/pi-coding-agent 0.85.1 (exact-pinned dependency, isolated pio/node_modules)
 ```
 
 **Removed modules:** `src/frontmatter-schemas.ts` (schemas now in capability-local `schemas.ts`), `src/prompts/` directory (prompts are component files inside capability packages), `src/guards/step-nudging.ts` (replaced by `runtime/loop-engine.ts`). `src/guards/session-guard.ts` moved to `runtime/session-guard.ts`. Pio-specific skills (`pio`, `pio-planning`, `pio-project-knowledge`, `pio-jira`, `grill-me`, `write-a-skill`) moved from `src/skills/` to `src/skills.old/` (out of auto-discovery). The `pio_mark_complete` tool (definition, `setupMarkComplete` registration, and step-position guard) was removed from `src/guards/mark-complete.ts` — the module now holds only the marker engine (`applyMarkers`, `cleanupMarkers`; name kept as a live import path); session exit runs engine-side via `runtime/exit-lifecycle.ts` invoked by the synthesized `__pio-exit` terminal code phase.

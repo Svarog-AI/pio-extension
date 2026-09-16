@@ -8,7 +8,8 @@ From `tsconfig.json`:
 - **Strict mode:** `true` — all strict TypeScript checks enabled
 - **No emit:** `noEmit: true` (type-checking only; pi runs TS directly)
 - **Force consistent casing in file names**
-- **ES module imports:** Use bare specifiers without `.ts` extensions. Resolve `__dirname` via `fileURLToPath(import.meta.url)`.
+- **ES module imports (root tree):** Use bare specifiers without `.ts` extensions. Resolve `__dirname` via `fileURLToPath(import.meta.url)`.
+- **pio/ package imports (deliberate exception):** All relative imports in `pio/` sources spell explicit `.ts` extensions (e.g., `import { PIO_VERSION } from "./version.ts"`) because `pio/` executes under Node's raw type stripping, which never rewrites import specifiers. Supported by `allowImportingTsExtensions: true` + `erasableSyntaxOnly: true` in `pio/tsconfig.json`. Never switch `pio/` to `.js` or extensionless specifiers (compiles but crashes at Node runtime), and never "normalize" either style to match the other — different loaders, different rules.
 
 From code patterns observed in source files:
 - **Imports:** Grouped by category (framework → internal modules → node builtins), with blank lines between groups
@@ -17,6 +18,8 @@ From code patterns observed in source files:
 - **File structure:** Sections separated by `// ---------------------------------------------------------------------------` comment dividers
 - **Line length:** No hard limit enforced, but long lines are typically wrapped at ~120 chars
 - **Module header comments:** Present tense — describe what the module is and does. No removal/migration narratives ("replaces X", "the former Y tool") or history in file headers
+- **Comments are lean and load-bearing only:** Brief statements of non-obvious intent or binding forward handoffs (e.g., mandatory `// transitional:` markers for a future step). No design narratives, decision history, or spec/review context embedded in code or test comments — that content belongs in the `.pio/` workspace docs (TASK.md / SUMMARY.md / REVIEW.md / DECISIONS.md). Ratified user best practice (goal `pio-r1-probe-sdk-session`, 2026-09-16)
+- **Zero-build strippability (`pio/` only):** Sources under `pio/` must stay type-stripping-clean (no enums, namespaces, or parameter properties) so they remain loadable by Node's native type stripping. Enforced mechanically by `erasableSyntaxOnly: true` at `check` time, not by convention
 
 No `.editorconfig`, `.prettierrc`, or ESLint configuration exists. Formatting conventions are established through code patterns rather than tooling.
 

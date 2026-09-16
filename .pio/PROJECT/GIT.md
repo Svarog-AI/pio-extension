@@ -21,6 +21,10 @@ Optional scope in parentheses, typically the affected module or feature area:
 - `feat(project-context): update prompt and skill references for 7-file structure`
 - `chore(pio): commit all .pio state`
 
+### Body length convention (ratified 2026-09-16):
+
+Commit messages are **single-line** — the conventional `type(scope): description` subject only, no multi-paragraph bodies. Acceptance evidence, rationale, seam re-verification records, and step details belong in goal workspace docs (`.pio/goals/<name>/S{NN}/SUMMARY.md`, `TEST.md`, `DECISIONS.md`), never in the commit body. Ratified as a user directive during the `pio-r1-probe-sdk-session` implementation and carried forward as best practice (S02/S03 DECISIONS.md conventions carry-over).
+
 ### Merge commits:
 
 Feature branches are merged via **merge pull requests** (not squash merges). Pattern: `Merge pull request #N from Svarog-AI/branch-name`. At least 6 merge PRs observed in recent history.

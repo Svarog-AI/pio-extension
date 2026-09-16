@@ -1,0 +1,23 @@
+{
+  "name": "pio",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "pio": "./bin/pio"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "biome check --error-on-warnings ."
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.85.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.1",
+    "@types/node": "^25.7.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.6"
+  }
+}

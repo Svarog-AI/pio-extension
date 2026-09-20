@@ -1,3 +1,5 @@
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
 import type { SandboxProfile, TargetCommand } from "./profile.ts";
 
 /** Spawn-time launch value (not the persisted artifact) — derived in memory
@@ -69,4 +71,68 @@ export function serializeProfile(profile: SandboxProfile): string {
     },
   };
   return `${JSON.stringify(canonical, null, 2)}\n`;
+}
+
+/** On-disk artifact name for the retained profile document — next to
+ * `serializeProfile`, whose output it stores. */
+export const PROFILE_FILE_NAME = "profile.json";
+
+/** Retains the profile document post-finish — consulting evidence (what
+ * mounts this engagement saw) and replayable seed (load → `buildArgv` →
+ * exec, the same deterministic path as the live launch). Overwrite-safe by
+ * construction: deterministic bytes for the same profile value. The sole
+ * file write of this module. */
+export async function writeProfileFile(
+  engagementDir: string,
+  profile: SandboxProfile,
+): Promise<void> {
+  await writeFile(
+    path.join(engagementDir, PROFILE_FILE_NAME),
+    serializeProfile(profile),
+    "utf8",
+  );
+}
+
+/** Launch-time transparency print: the rendered profile as reviewable lines
+ * — header + sections in serialized member order (baseFlags → mounts → env
+ * → chdir → target), every variable token JSON-quoted, empty collections
+ * inline `(none)`, target ALWAYS last. Reviewer-facing completeness proof;
+ * the structured profile stays the only consumable form. */
+export function formatProfileLines(profile: SandboxProfile): readonly string[] {
+  const lines: string[] = [];
+  lines.push("sandbox profile:");
+  if (profile.baseFlags.length === 0) {
+    lines.push("  baseFlags: (none)");
+  } else {
+    lines.push(
+      `  baseFlags: ${profile.baseFlags.map((flag) => JSON.stringify(flag)).join(" ")}`,
+    );
+  }
+  if (profile.mounts.length === 0) {
+    lines.push("  mounts: (none)");
+  } else {
+    lines.push("  mounts:");
+    for (const mount of profile.mounts) {
+      lines.push(`    [${mount.mode}] ${JSON.stringify(mount.sourcePath)}`);
+    }
+  }
+  if (profile.env.length === 0) {
+    lines.push("  env: (none)");
+  } else {
+    lines.push("  env:");
+    for (const assignment of profile.env) {
+      lines.push(
+        `    ${JSON.stringify(assignment.key)}=${JSON.stringify(assignment.value)}`,
+      );
+    }
+  }
+  lines.push(`  chdir: ${JSON.stringify(profile.chdir)}`);
+  lines.push(
+    `  target: ${JSON.stringify(profile.target.executable)}${
+      profile.target.args.length === 0
+        ? ""
+        : ` ${profile.target.args.map((arg) => JSON.stringify(arg)).join(" ")}`
+    }`,
+  );
+  return lines;
 }

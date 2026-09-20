@@ -1,8 +1,16 @@
+import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FsView } from "./fsview.ts";
 import type { SandboxProfile } from "./profile.ts";
-import { buildArgv, serializeProfile } from "./profile-serializer.ts";
+import {
+  buildArgv,
+  formatProfileLines,
+  PROFILE_FILE_NAME,
+  serializeProfile,
+  writeProfileFile,
+} from "./profile-serializer.ts";
 import { type RenderInput, renderProfile } from "./render.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -644,5 +652,209 @@ describe("S01 cross-step continuity row", () => {
       ],
       ["PI_SANDBOX", "1"],
     ]);
+  });
+});
+
+describe("PROFILE_FILE_NAME + writeProfileFile", () => {
+  it("constant pin: PROFILE_FILE_NAME === 'profile.json'", () => {
+    expect(PROFILE_FILE_NAME).toBe("profile.json");
+  });
+
+  it("byte-equal profile file: writes serializeProfile(anchor) verbatim into <engagementDir>/profile.json — one anchor const feeds both calls, file sits DIRECTLY in the engagement dir", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "pio-s03-profile-file-"));
+    await writeProfileFile(dir, anchor);
+    expect(await readdir(dir)).toEqual([PROFILE_FILE_NAME]);
+    const text = await readFile(path.join(dir, PROFILE_FILE_NAME), "utf8");
+    expect(text).toBe(serializeProfile(anchor));
+  });
+
+  it("no deletion API ships: module source carries zero removal identifiers (comments included) and no remove/delete-family export names", async () => {
+    const source = await readFile(
+      path.join(HERE, "profile-serializer.ts"),
+      "utf8",
+    );
+    for (const identifier of ["unlink", "rmdir", "rmSync", ".rm("]) {
+      expect(source.includes(identifier)).toBe(false);
+    }
+    const exportedNames: string[] = [];
+    for (const match of source.matchAll(
+      /^export\s+(?:async\s+)?(?:function|const|class|interface|type)\s+([A-Za-z_$][\w$]*)/gm,
+    )) {
+      exportedNames.push(match[1]);
+    }
+    expect(exportedNames.length).toBeGreaterThan(0);
+    for (const name of exportedNames) {
+      expect(name.toLowerCase()).not.toMatch(/remove|delete/);
+    }
+  });
+});
+
+describe("formatProfileLines", () => {
+  it("worked-anchor snapshot: the exact pinned line array (deep-equal data literal)", () => {
+    expect(formatProfileLines(anchor)).toEqual([
+      "sandbox profile:",
+      '  baseFlags: "--unshare-all" "--uid" "777" "--gid" "888" "--share-net" "--die-with-parent" "--dev" "/dev" "--proc" "/proc" "--tmpfs" "/tmp"',
+      "  mounts:",
+      '    [ro] "/etc/ssl"',
+      '    [rw] "/data/proj"',
+      "  env:",
+      '    "HOME"="/home/u"',
+      '    "PATH"="/rt/bin:/x"',
+      '    "PI_SANDBOX"="1"',
+      '  chdir: "/home/u/dev"',
+      '  target: "/abs/pkg/bin/pio" "session-run" "probe" "--sessions-root" "/st/projects/k/engagements/e1/.sessions"',
+    ]);
+  });
+
+  it("degenerate snapshot: empty sections render inline '(none)' — the exact pinned 6-line array", () => {
+    expect(
+      formatProfileLines({
+        baseFlags: [],
+        mounts: [],
+        env: [],
+        chdir: "/",
+        target: { executable: "x", args: [] },
+      }),
+    ).toEqual([
+      "sandbox profile:",
+      "  baseFlags: (none)",
+      "  mounts: (none)",
+      "  env: (none)",
+      '  chdir: "/"',
+      '  target: "x"',
+    ]);
+  });
+
+  it("header is exactly 'sandbox profile:' and the target line is ALWAYS the last element (across shapes)", () => {
+    const shapes: SandboxProfile[] = [
+      anchor,
+      {
+        baseFlags: [],
+        mounts: [],
+        env: [],
+        chdir: "/",
+        target: { executable: "x", args: [] },
+      },
+      {
+        baseFlags: ["--one", "--two"],
+        mounts: [{ sourcePath: "/only", mode: "rw" }],
+        env: [{ key: "K", value: "V" }],
+        chdir: "/w",
+        target: { executable: "/bin/t", args: ["a b", "--", "x"] },
+      },
+    ];
+    for (const profile of shapes) {
+      const lines = formatProfileLines(profile);
+      expect(lines[0]).toBe("sandbox profile:");
+      expect(lines.at(-1)?.startsWith("  target: ")).toBe(true);
+    }
+  });
+
+  it("mount sub-lines follow profile.mounts EMISSION order with markers taken straight from mounts[].mode (mode swap swaps markers, paths unchanged; reorder follows)", () => {
+    const shell: Omit<SandboxProfile, "mounts"> = {
+      baseFlags: [],
+      env: [],
+      chdir: "/",
+      target: { executable: "x", args: [] },
+    };
+    const a: SandboxProfile = {
+      ...shell,
+      mounts: [
+        { sourcePath: "/m1", mode: "rw" },
+        { sourcePath: "/m2", mode: "ro" },
+      ],
+    };
+    const modesSwapped: SandboxProfile = {
+      ...shell,
+      mounts: [
+        { sourcePath: "/m1", mode: "ro" },
+        { sourcePath: "/m2", mode: "rw" },
+      ],
+    };
+    const reordered: SandboxProfile = {
+      ...shell,
+      mounts: [a.mounts[1], a.mounts[0]],
+    };
+    expect(formatProfileLines(a)).toEqual([
+      "sandbox profile:",
+      "  baseFlags: (none)",
+      "  mounts:",
+      '    [rw] "/m1"',
+      '    [ro] "/m2"',
+      "  env: (none)",
+      '  chdir: "/"',
+      '  target: "x"',
+    ]);
+    // Mode swap: markers swap, paths UNCHANGED.
+    expect(formatProfileLines(modesSwapped)).toEqual([
+      "sandbox profile:",
+      "  baseFlags: (none)",
+      "  mounts:",
+      '    [ro] "/m1"',
+      '    [rw] "/m2"',
+      "  env: (none)",
+      '  chdir: "/"',
+      '  target: "x"',
+    ]);
+    // Reorder: sub-line order follows the stored mounts array.
+    expect(formatProfileLines(reordered)).toEqual([
+      "sandbox profile:",
+      "  baseFlags: (none)",
+      "  mounts:",
+      '    [ro] "/m2"',
+      '    [rw] "/m1"',
+      "  env: (none)",
+      '  chdir: "/"',
+      '  target: "x"',
+    ]);
+  });
+
+  it("env sub-lines keep STORED order (non-alphabetical keys unsorted)", () => {
+    const lines = formatProfileLines({
+      baseFlags: [],
+      mounts: [],
+      env: [
+        { key: "Z_LAST", value: "z" },
+        { key: "A_FIRST", value: "a" },
+        { key: "M_MID", value: "m m" },
+      ],
+      chdir: "/",
+      target: { executable: "x", args: [] },
+    });
+    expect(lines.slice(4, 7)).toEqual([
+      '    "Z_LAST"="z"',
+      '    "A_FIRST"="a"',
+      '    "M_MID"="m m"',
+    ]);
+  });
+
+  it("exotic-byte integrity: tab+newline mount path renders as ONE physical line with JSON escapes (line count unchanged); two calls deep-equal", () => {
+    const profile: SandboxProfile = {
+      baseFlags: [],
+      mounts: [{ sourcePath: `/mnt/a\tb\nc`, mode: "ro" }],
+      env: [],
+      chdir: "/",
+      target: { executable: "x", args: [] },
+    };
+    const lines = formatProfileLines(profile);
+    expect(lines).toEqual([
+      "sandbox profile:",
+      "  baseFlags: (none)",
+      "  mounts:",
+      '    [ro] "/mnt/a\\tb\\nc"',
+      "  env: (none)",
+      '  chdir: "/"',
+      '  target: "x"',
+    ]);
+    expect(formatProfileLines(profile)).toEqual(lines);
+  });
+
+  it("displayed = retained = executed: printed target line is LAST while the retained document's final field block is the SAME structured target value", () => {
+    const lines = formatProfileLines(anchor);
+    expect(lines.at(-1)?.startsWith("  target: ")).toBe(true);
+    const retained: SandboxProfile = globalThis.JSON.parse(
+      serializeProfile(anchor),
+    );
+    expect(retained.target).toEqual(anchor.target);
   });
 });

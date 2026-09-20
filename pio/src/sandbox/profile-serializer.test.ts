@@ -493,7 +493,7 @@ describe("serializeProfile", () => {
 
   it("round-trip pin: plain JSON.parse deep-equals the structured profile, and re-serialization is BYTE-STABLE", () => {
     const text = serializeProfile(anchor);
-    const parsed: SandboxProfile = globalThis.JSON.parse(text);
+    const parsed: SandboxProfile = JSON.parse(text);
     expect(parsed).toEqual(anchor);
     // Byte-stability across the round-trip relies on construction-order
     // discipline in the serializer, not on how `anchor` was built.
@@ -509,7 +509,7 @@ describe("serializeProfile", () => {
       target: { executable: "x", args: [] },
     };
     const text = serializeProfile(minimal);
-    const parsed: SandboxProfile = globalThis.JSON.parse(text);
+    const parsed: SandboxProfile = JSON.parse(text);
     expect(parsed).toEqual(minimal);
     expect(serializeProfile(parsed)).toBe(text);
     expect(JSON.parse(text).baseFlags).toEqual([]);
@@ -524,7 +524,7 @@ describe("serializeProfile", () => {
       target: { executable: "/bin/t", args: ["bs\\nl\ntail"] },
     };
     const text = serializeProfile(escaped);
-    const parsed: SandboxProfile = globalThis.JSON.parse(text);
+    const parsed: SandboxProfile = JSON.parse(text);
     expect(parsed).toEqual(escaped);
     expect(serializeProfile(parsed)).toBe(text);
   });
@@ -852,9 +852,7 @@ describe("formatProfileLines", () => {
   it("displayed = retained = executed: printed target line is LAST while the retained document's final field block is the SAME structured target value", () => {
     const lines = formatProfileLines(anchor);
     expect(lines.at(-1)?.startsWith("  target: ")).toBe(true);
-    const retained: SandboxProfile = globalThis.JSON.parse(
-      serializeProfile(anchor),
-    );
+    const retained: SandboxProfile = JSON.parse(serializeProfile(anchor));
     expect(retained.target).toEqual(anchor.target);
   });
 });

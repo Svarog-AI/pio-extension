@@ -61,6 +61,13 @@ describe("resolveStateRoot", () => {
   it("with an override set, the home argument is provably unused (garbage home + valid override → override wins)", () => {
     expect(resolveStateRoot({ PIO_STATE_DIR: "/opt/st" }, "")).toBe("/opt/st");
   });
+
+  it("passthrough, no normalization beyond trim: trailing slash preserved VERBATIM and relative overrides forwarded UNRESOLVED (no path.resolve/cwd coupling)", () => {
+    expect(resolveStateRoot({ PIO_STATE_DIR: "/st/" }, "/home/u")).toBe("/st/");
+    expect(resolveStateRoot({ PIO_STATE_DIR: "rel/state" }, "/home/u")).toBe(
+      "rel/state",
+    );
+  });
 });
 
 describe("slugify", () => {
@@ -78,6 +85,11 @@ describe("slugify", () => {
     expect(slugify("/a/b-c")).toBe("a-b-c");
     expect(slugify("/a-b/c")).toBe("a-b-c");
     expect(slugify("/a/b-c")).toBe(slugify("/a-b/c"));
+  });
+
+  it("boundaries: empty input maps to the empty string (total function — the empty-result guard lives in deriveProjectKey); dot segments survive VERBATIM (no dot-segment handling exists)", () => {
+    expect(slugify("")).toBe("");
+    expect(slugify("/a/./b")).toBe("a-.-b");
   });
 });
 
@@ -123,10 +135,32 @@ describe("mintEngagementId", () => {
     ).toBe("20260920T193232123Z-a1b2c3d4");
   });
 
+  it("single-digit milliseconds: fixed seams pin the deterministic 3-digit zero pad (never local time, never variable width)", () => {
+    expect(
+      mintEngagementId({
+        now: () => Date.UTC(2026, 8, 20, 19, 32, 32, 5),
+        entropy: () => "00112233",
+      }),
+    ).toBe("20260920T193232005Z-00112233");
+  });
+
   it("default seams: shape YYYYMMDDTHHMMSSsssZ-<8 lowercase hex> on repeated mints", () => {
     for (let i = 0; i < 5; i++) {
       expect(mintEngagementId()).toMatch(/^\d{8}T\d{6}\d{3}Z-[0-9a-f]{8}$/);
     }
+  });
+
+  it("partial seams: each independent ?? fallback leg — now-only keeps the injected head with a real 8-lowercase-hex tail; entropy-only keeps the real clock's compact UTC-ms head with the injected suffix", () => {
+    const nowOnly = mintEngagementId({
+      now: () => Date.UTC(2026, 8, 20, 19, 32, 32, 123),
+    });
+    expect(nowOnly.startsWith("20260920T193232123Z-")).toBe(true);
+    expect(nowOnly.slice(-8)).toMatch(/^[0-9a-f]{8}$/);
+    const entropyOnly = mintEngagementId({
+      entropy: () => "fedcba98",
+    });
+    expect(entropyOnly.endsWith("-fedcba98")).toBe(true);
+    expect(entropyOnly.slice(0, -9)).toMatch(/^\d{8}T\d{6}\d{3}Z$/);
   });
 
   it("sortability: same entropy, now +1 ms and +1 s → lexicographically increasing ids", () => {
@@ -214,6 +248,50 @@ describe("ensureEngagementLayout", () => {
     expect(
       await readFile(path.join(first.engagementDir, "profile.json"), "utf8"),
     ).toBe(sentinel);
+  });
+
+  it("sibling survival on re-ensure: two engagements under one fresh root — re-ensuring A leaves B's subtree intact with sentinel bytes UNCHANGED (the steady-state global-root shape)", async () => {
+    const ID_B = "20260920T193233000Z-00ff11ee";
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s03-siblings-"));
+    const inputA = {
+      stateRoot: root,
+      projectKey: FIXED_KEY,
+      engagementId: FIXED_ID,
+    };
+    const inputB = {
+      stateRoot: root,
+      projectKey: FIXED_KEY,
+      engagementId: ID_B,
+    };
+    const pathsA = await ensureEngagementLayout(inputA);
+    const pathsB = await ensureEngagementLayout(inputB);
+    const siblingBytes = "SIBLING-SENTINEL-v1\n";
+    const siblingFile = path.join(pathsB.engagementDir, "profile.json");
+    await writeFile(siblingFile, siblingBytes);
+    const reA = await ensureEngagementLayout(inputA);
+    expect(reA).toEqual(pathsA);
+    expect(await readFile(siblingFile, "utf8")).toBe(siblingBytes);
+    const tree = await walkTree(root);
+    expect(tree.dirs).toContain(
+      `projects/${FIXED_KEY}/engagements/${ID_B}/.sessions/top`,
+    );
+    const slot = path.join(root, "projects", FIXED_KEY);
+    const dirA = path.join(slot, "engagements", FIXED_ID);
+    const dirB = path.join(slot, "engagements", ID_B);
+    expect(pathsA).toEqual({
+      stateRoot: root,
+      projectSlot: slot,
+      engagementDir: dirA,
+      sessionsDir: path.join(dirA, ".sessions"),
+      topSessionDir: path.join(dirA, ".sessions", "top"),
+    });
+    expect(pathsB).toEqual({
+      stateRoot: root,
+      projectSlot: slot,
+      engagementDir: dirB,
+      sessionsDir: path.join(dirB, ".sessions"),
+      topSessionDir: path.join(dirB, ".sessions", "top"),
+    });
   });
 
   it("genuine fs failures propagate (no catch-and-swallow): a regular file blocking the tree rejects", async () => {

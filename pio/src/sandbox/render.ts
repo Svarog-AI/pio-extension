@@ -6,7 +6,7 @@ import type {
   EnvAssignment,
   MountEntry,
   MountSources,
-  RenderedProfile,
+  SandboxProfile,
   TargetCommand,
 } from "./profile.ts";
 import { conservativeDefaultSources, STANDARD_PATH_BASE } from "./profile.ts";
@@ -203,7 +203,7 @@ function buildTarget(input: RenderInput): TargetCommand {
 
 /** Pure renderer: equal inputs + equal FsView ⇒ deep-equal outputs.
  * Sections A→B→C→D; no merging — the profile IS the entire configuration. */
-export function renderProfile(input: RenderInput): RenderedProfile {
+export function renderProfile(input: RenderInput): SandboxProfile {
   const identity = input.identity ?? defaultIdentity();
   const runtimeDir = input.runtimeDir ?? defaultRuntimeDir();
   const mountSources =

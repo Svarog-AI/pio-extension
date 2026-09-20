@@ -11,7 +11,9 @@ export interface MountSources {
   readonly extraMounts: readonly ExtraMount[];
 }
 
-/** Shape of the sandbox config document (the user-side inventory schema). */
+/** Authored sandbox config document (the user-side inventory schema), pre-render.
+ * Different shape and stage than `SandboxProfile`: this is what a human or
+ * loader authors; the renderer turns it into one per-engagement recipe. */
 export interface SandboxConfig {
   readonly readOnly?: readonly string[];
   readonly readWrite?: readonly string[];
@@ -38,8 +40,11 @@ export interface TargetCommand {
   readonly args: readonly string[];
 }
 
-/** Structured render output consumed by downstream serialization. */
-export interface RenderedProfile {
+/** Fully-expanded, existence-checked, order-fixed namespace recipe produced by
+ * `renderProfile` from the authored config `SandboxConfig` + production defaults.
+ * The post-render stage of the same pipeline: consumed by downstream serialization,
+ * never authored directly. */
+export interface SandboxProfile {
   readonly baseFlags: readonly string[];
   readonly mounts: readonly MountEntry[];
   readonly env: readonly EnvAssignment[];

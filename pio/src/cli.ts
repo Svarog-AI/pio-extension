@@ -1,14 +1,20 @@
 // pio CLI core: strict argument parsing + capability dispatch.
 //
-// Design notes (Step 2 decisions):
+// Design notes:
 // - `parse` is pure and UI-neutral: it classifies argv into a descriptor and
 //   emits unprefixed error messages; `main` renders the `pio: ` prefix.
 // - Strict flag surface: the only recognized top-level forms are `--help`,
-//   `help`, `--version`, and `run`. Every other dash token (anywhere) is an
-//   unknown option — there are no short forms and no stub flags.
-// - The only resolvable target in this step is `probe`, handled as an explicit
-//   special case in `main`'s run branch — no abstraction around it (product
-//   decision 2026-09-15). The SDK is never imported anywhere else in this file.
+//   `help`, `--version`, `run`, and `session-run`. Every other dash token
+//   (anywhere) is an unknown option — there are no short forms and no stub
+//   flags. `session-run` is internal: the sandbox launcher invokes it with
+//   the exact four-token form, so its strict positional grammar accepts
+//   nothing else.
+// - Builtins load only through dynamic imports issued after a successful
+//   parse+dispatch, so the cheap forms (help, version, errors) never pay for
+//   evaluating a builtin graph — the run path's graph pulls in the SDK.
+//   The sole static import is the version constant.
+// - `probe` is the only resolvable target, handled as an explicit special
+//   case in `main`'s dispatch — no abstraction around it.
 import { PIO_VERSION } from "./version.ts";
 
 /** Descriptors of a parsed argv (program name excluded). `error.message` is unprefixed. */
@@ -17,6 +23,7 @@ export type ParsedCommand =
   | { kind: "version" }
   | { kind: "reserved" } // bare `pio` and bare `pio run`
   | { kind: "run"; capability: string }
+  | { kind: "session-run"; capability: string; sessionsRoot: string }
   | { kind: "error"; message: string };
 
 /** Injectable IO sink. Writers receive a line WITHOUT trailing newline; `main` appends it. */
@@ -34,11 +41,19 @@ const UNEXPECTED_ARGUMENT = (token: string): string =>
 const MISSING_CAPABILITY =
   "expected capability name after 'run' (usage: pio run <capability>)";
 
+const SESSION_RUN_USAGE = "pio session-run <capability> --sessions-root <dir>";
+const SESSION_RUN_MISSING_CAPABILITY = `expected capability name after 'session-run' (usage: ${SESSION_RUN_USAGE})`;
+const SESSION_RUN_FLAG_EXPECTED = `expected --sessions-root <dir> after 'session-run <capability>' (usage: ${SESSION_RUN_USAGE})`;
+const SESSION_RUN_VALUE_EXPECTED = `expected a value for --sessions-root (usage: ${SESSION_RUN_USAGE})`;
+const SESSION_RUN_UNEXPECTED_ARGUMENT = (token: string): string =>
+  `unexpected argument: ${token} (usage: ${SESSION_RUN_USAGE})`;
+
 const HELP_LINES: readonly string[] = [
   "pio — goal-driven project management CLI",
   "",
   "Usage:",
   "  pio run <capability>",
+  "  pio session-run <capability> --sessions-root <dir>   [internal: invoked by the sandbox launcher — not a host-facing command]",
   "  pio --help",
   "  pio --version",
   "",
@@ -63,6 +78,9 @@ export function parse(argv: readonly string[]): ParsedCommand {
   }
   if (first === "--version") {
     return { kind: "version" };
+  }
+  if (first === "session-run") {
+    return parseSessionRun(second, rest);
   }
   if (first !== "run") {
     return {
@@ -92,6 +110,52 @@ export function parse(argv: readonly string[]): ParsedCommand {
     };
   }
   return { kind: "run", capability: second };
+}
+
+/** Strict positional `session-run` grammar: a non-empty non-dash capability,
+ * then EXACTLY the `--sessions-root` flag, then a non-empty non-dash value.
+ * Syntactic ONLY — no existence, absoluteness, or shape checks on the value;
+ * the launcher emits absolute paths and consumers own validity. */
+function parseSessionRun(
+  capability: string | undefined,
+  rest: readonly string[],
+): ParsedCommand {
+  if (capability === undefined || capability === "") {
+    return { kind: "error", message: SESSION_RUN_MISSING_CAPABILITY };
+  }
+  if (startsWithDash(capability)) {
+    return { kind: "error", message: UNKNOWN_OPTION(capability) };
+  }
+  const [flag, value, ...surplus] = rest;
+  if (flag === undefined) {
+    return { kind: "error", message: SESSION_RUN_FLAG_EXPECTED };
+  }
+  if (flag !== "--sessions-root") {
+    return {
+      kind: "error",
+      message: startsWithDash(flag)
+        ? UNKNOWN_OPTION(flag)
+        : SESSION_RUN_UNEXPECTED_ARGUMENT(flag),
+    };
+  }
+  if (value === undefined || value === "") {
+    return { kind: "error", message: SESSION_RUN_VALUE_EXPECTED };
+  }
+  if (startsWithDash(value)) {
+    return { kind: "error", message: UNKNOWN_OPTION(value) };
+  }
+  // Surplus tokens: mirror the run-branch mapping — a duplicate
+  // `--sessions-root` lands here via the dash-surplus arm.
+  if (surplus.length > 0) {
+    const extra = surplus[0];
+    return {
+      kind: "error",
+      message: startsWithDash(extra)
+        ? UNKNOWN_OPTION(extra)
+        : SESSION_RUN_UNEXPECTED_ARGUMENT(extra),
+    };
+  }
+  return { kind: "session-run", capability, sessionsRoot: value };
 }
 
 /** Entry point. `argv` = user args (process.argv.slice(2) in the real bin).
@@ -127,20 +191,56 @@ export async function main(
       case "run": {
         const name = parsed.capability;
         if (name !== "probe") {
-          out.stderr(`pio: capability '${name}' is not implemented yet`);
+          // Single owner of the catalog line. A fault loading the module
+          // purely for the constant rides the last-resort boundary — this
+          // path is already degenerate; no dedicated line is owed.
+          const catalog = await import("./sandbox/run.ts");
+          out.stderr(catalog.CAPABILITY_NOT_IMPLEMENTED(name));
           return 1;
         }
-        // probe is the only resolvable target — an explicit special case, deliberately without
-        // an abstraction around it. It must export run(): Promise<number> (the exit code).
-        let probe: { run(): Promise<number> };
+        // `probe` enters through the run path (host-side launch). Dynamic
+        // import — see the header note on lazy loading. It must export
+        // runCapability(name, io?): Promise<number> (the exit code).
+        let runPath: {
+          runCapability(
+            capabilityName: string,
+            io?: { stderr(line: string): void },
+          ): Promise<number>;
+        };
         try {
-          probe = await import("./probe.ts");
+          runPath = await import("./sandbox/run.ts");
         } catch (cause) {
           const detail = cause instanceof Error ? cause.message : String(cause);
           out.stderr(`pio: failed to load built-in '${name}': ${detail}`);
           return 1;
         }
-        return await probe.run();
+        return await runPath.runCapability("probe", out);
+      }
+      case "session-run": {
+        const { capability, sessionsRoot } = parsed;
+        if (capability !== "probe") {
+          const catalog = await import("./sandbox/run.ts");
+          out.stderr(catalog.CAPABILITY_NOT_IMPLEMENTED(capability));
+          return 1;
+        }
+        // Direct builtin dispatch: the in-namespace process carries the
+        // sandbox marker in its environment, so routing through the run
+        // path would refuse on its anti-nesting gate instead of running the
+        // session. It must export run(io?, opts?): Promise<number>.
+        let probe: {
+          run(
+            io?: { stderr(line: string): void },
+            opts?: { readonly sessionsRoot?: string },
+          ): Promise<number>;
+        };
+        try {
+          probe = await import("./probe.ts");
+        } catch (cause) {
+          const detail = cause instanceof Error ? cause.message : String(cause);
+          out.stderr(`pio: failed to load built-in '${capability}': ${detail}`);
+          return 1;
+        }
+        return await probe.run(out, { sessionsRoot });
       }
     }
   } catch (cause) {

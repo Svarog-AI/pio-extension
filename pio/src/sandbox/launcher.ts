@@ -195,7 +195,10 @@ export function isNestedLaunch(
 }
 
 /** Structural child handle — node:child_process's ChildProcess satisfies
- * this shape; tests substitute deterministic mocks. */
+ * this shape, so production pays nothing; the seam lets the suite drive
+ * the REAL lifecycle deterministically (captured argv/options, kill
+ * receipt, one-line error settlement, listener deregistration) with zero
+ * real-bwrap execution — tests substitute deterministic mocks. */
 export interface LaunchChild {
   readonly pid?: number;
   on(
@@ -226,24 +229,27 @@ export function mapChildExit(
   return code === 0 ? 0 : code === 130 ? 130 : 1;
 }
 
-/** Spawn supervision: the terminal is handed over via fd inheritance
- * (`stdio: "inherit"`, inherited environment — no env option, since the
- * HOME/PATH/PI_SANDBOX assignments ride inside the argv tokens). Host
- * SIGTERM reaches the child through a listener registered ONLY inside the
- * spawn window and deregistered when the child settles, so OS-default
- * SIGTERM semantics hold outside a launch. SIGINT needs no host handler:
- * the in-session TUI runs the shared terminal in raw mode, so Ctrl-C
- * arrives at the child as bytes, not signals (two-Ctrl-C quit is native
- * there); the base flags' --die-with-parent backstops kill gaps. Never
- * rejects: settlement paths resolve the mapped code, and spawn faults
- * degrade to one readable line + 1. */
+/** Spawn supervision: hands the terminal over to the child and waits for
+ * its settle. Never rejects: settlement paths resolve the mapped code,
+ * and spawn faults degrade to one readable line + 1. */
 export async function superviseSpawn(
   cmd: BwrapCommand,
   spawn: SpawnFn,
   sink: { stderr(line: string): void },
 ): Promise<number> {
   try {
+    // Terminal handover: the SAME fds go to the child — fd inheritance IS
+    // the transport; the host supervises signals and exit code, never
+    // proxies I/O. Environment inherited (no env option): HOME/PATH/
+    // PI_SANDBOX ride inside the argv --setenv tokens.
     const child = spawn(cmd.argv[0], cmd.argv.slice(1), { stdio: "inherit" });
+    // Signal policy, whole, for this window: a host SIGTERM is forwarded
+    // to the child, then natural drain resolves the mapped code. SIGINT
+    // has NO handler on purpose — the in-session TUI runs the terminal in
+    // raw mode (ISIG off), so Ctrl-C reaches the child as bytes and the
+    // native double-Quit (turn-abort ×2 → 130) needs no host plumbing;
+    // --die-with-parent (in the base flags) backstops kills the forwarder
+    // cannot reach, and the listeners leave when the window closes.
     const forwardSigterm = (): void => {
       try {
         child.kill("SIGTERM");
@@ -253,6 +259,8 @@ export async function superviseSpawn(
     };
     process.on("SIGTERM", forwardSigterm);
     try {
+      // Wait-for-child adapter: idempotent first-settle-wins over the
+      // events, resolves the MAPPED code; finally drops the forwarder.
       return await new Promise<number>((resolve) => {
         let settled = false;
         const settle = (

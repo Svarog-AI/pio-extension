@@ -1,3 +1,4 @@
+import path from "node:path";
 import type {
   AgentSessionRuntime,
   CreateAgentSessionRuntimeFactory,
@@ -12,16 +13,22 @@ import {
 
 // Builds the probe's agent session runtime by mirroring pi's own CLI wiring
 // seam (measured mirror points in dist/main.js ~L575–L693 against the pinned
-// 0.85.1 dist): standard-location SessionManager -> stored runtime factory ->
-// createAgentSessionRuntime. Everything else stays on the disk-backed defaults
-// under the agent dir (auth, provider settings, resource discovery); no
-// overrides are passed anywhere in this file.
+// 0.85.1 dist): SessionManager -> stored runtime factory ->
+// createAgentSessionRuntime. With a sessions root, transcript persistence is
+// routed into the engagement's fixed-name `top` slot; without one, everything
+// stays on the disk-backed defaults under the agent dir (auth, provider
+// settings, resource discovery); no other overrides are passed anywhere in
+// this file.
 export async function createProbeSession(
   cwd: string,
+  sessionsRoot?: string,
 ): Promise<AgentSessionRuntime> {
-  // Single argument on purpose: omitting the sessions-dir argument keeps
+  // Conditional on purpose: with a sessions root the transcripts persist in
+  // the engagement's `top` slot; without it the single-argument call keeps
   // persistence at the standard location a host pi TUI can open afterwards.
-  const sessionManager = SessionManager.create(cwd);
+  const sessionManager = sessionsRoot
+    ? SessionManager.create(cwd, path.join(sessionsRoot, "top"))
+    : SessionManager.create(cwd);
 
   // Stored factory closure — the runtime stores it and reuses it for /new,
   // /resume, /fork, and import flows. Destructured names intentionally shadow

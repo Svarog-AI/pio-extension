@@ -26,11 +26,24 @@ export interface ProbeIO {
   stderr(line: string): void;
 }
 
+/** Optional entry options (additive — callers passing none behave exactly
+ * as before). */
+export interface ProbeRunOptions {
+  /** Engagement sessions root; threaded verbatim into session creation
+   * (slot naming belongs to the session layer, not here). */
+  readonly sessionsRoot?: string;
+}
+
 export const TTY_REFUSAL_LINE =
   "pio: 'probe' needs an interactive terminal (TTY); headless mode lands in R4";
 
-/** Builtin entry dispatched by cli.ts. Resolves THE process exit code (0 clean / 1 failure). Never rejects. */
-export async function run(io?: ProbeIO): Promise<number> {
+/** Builtin entry dispatched by cli.ts (optionally with entry options,
+ * e.g. a sessions root, threaded into session creation). Resolves THE
+ * process exit code (0 clean / 1 failure). Never rejects. */
+export async function run(
+  io?: ProbeIO,
+  opts?: ProbeRunOptions,
+): Promise<number> {
   const sink: ProbeIO = io ?? {
     stderr: (line) => process.stderr.write(`${line}\n`),
   };
@@ -44,8 +57,15 @@ export async function run(io?: ProbeIO): Promise<number> {
 
   let runtime: AgentSessionRuntime | null = null;
   let im: InteractiveMode | null = null;
+  // Threaded verbatim — slot naming belongs to the session layer. With no
+  // sessions root the call stays single-argument, indistinguishable from the
+  // default-location form.
+  const sessionsRoot = opts?.sessionsRoot;
   try {
-    runtime = await createProbeSession(process.cwd());
+    runtime =
+      sessionsRoot === undefined
+        ? await createProbeSession(process.cwd())
+        : await createProbeSession(process.cwd(), sessionsRoot);
     im = new InteractiveMode(runtime, { initialMessage: PROBE_OPENING_TEXT });
     await im.run();
   } catch (cause) {

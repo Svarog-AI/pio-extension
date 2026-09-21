@@ -26,7 +26,7 @@ export interface ProbeIO {
   stderr(line: string): void;
 }
 
-const TTY_REFUSAL_LINE =
+export const TTY_REFUSAL_LINE =
   "pio: 'probe' needs an interactive terminal (TTY); headless mode lands in R4";
 
 /** Builtin entry dispatched by cli.ts. Resolves THE process exit code (0 clean / 1 failure). Never rejects. */

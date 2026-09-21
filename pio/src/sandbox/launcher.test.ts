@@ -17,6 +17,7 @@ import {
   MIN_BWRAP_VERSION,
   mapChildExit,
   NESTING_REFUSAL_LINE,
+  oneLineDetail,
   superviseSpawn,
 } from "./launcher.ts";
 import type { BwrapCommand } from "./profile-serializer.ts";
@@ -491,5 +492,82 @@ describe("checkBwrap default wiring (tmpdir fixture scripts named bwrap — neve
       reason: "version-below-minimum",
       detail: "this is not a version",
     });
+  });
+});
+
+describe("detail-collapse and supervision edge rows", () => {
+  it("oneLineDetail collapses embedded newlines, tabs, and repeated whitespace to single spaces (trimmed); empty and whitespace-only inputs degrade to the (no message) placeholder", () => {
+    expect(oneLineDetail("a\nb   c\td")).toBe("a b c d");
+    expect(oneLineDetail("  padded  ")).toBe("padded");
+    expect(oneLineDetail("")).toBe("(no message)");
+    expect(oneLineDetail(" \n\t ")).toBe("(no message)");
+  });
+
+  it("a newline-laden RAW version detail still renders EXACTLY one physical refusal line carrying the collapsed detail (dirty-input extension of the one-line discipline)", () => {
+    const line = bwrapRefusalLine({
+      ok: false,
+      reason: "version-below-minimum",
+      detail: "bubblewrap\r\n0.9.0   (garbled\tprobe output)",
+    });
+    expect(line).toBe(
+      "pio: sandbox unavailable: bwrap bubblewrap 0.9.0 (garbled probe output) is below the required minimum 0.12.0 — upgrade bubblewrap (0.12.0 fixes unsafe symlink resolution; install non-setuid builds only)",
+    );
+    expect(line.includes("\n")).toBe(false);
+  });
+
+  it("a spurious error AFTER a settled exit adds nothing — first-settle-wins holds in BOTH directions, so the promise holds the mapped 0 and the sink carries zero lines", async () => {
+    const mock = makeChild();
+    const spawn: SpawnFn = () => {
+      queueMicrotask(() => mock.fireExit(0, null));
+      return mock.child;
+    };
+    const sink = makeSink();
+    const pending = superviseSpawn(CMD, spawn, sink);
+    await yieldToEvents();
+    mock.fireError(new Error("ECONNRESET: late noise"));
+    await expect(pending).resolves.toBe(0);
+    expect(sink.lines).toEqual([]);
+  });
+
+  it("forwarder liveness: a host SIGTERM whose child.kill THROWS is swallowed — the ensuing signal death still resolves the mapped 1 and the listener still deregisters to the pre-spawn baseline", async () => {
+    const before = process.listeners("SIGTERM");
+    const exitCbs: Array<(c: number | null, s: NodeJS.Signals | null) => void> =
+      [];
+    const child: LaunchChild = {
+      pid: 4242,
+      on: (event, cb) => {
+        if (event === "exit") {
+          exitCbs.push(
+            cb as (c: number | null, s: NodeJS.Signals | null) => void,
+          );
+        }
+      },
+      kill: () => {
+        throw new Error("EBADF: handle already closed");
+      },
+    };
+    const pending = superviseSpawn(CMD, () => child, makeSink());
+    await yieldToEvents();
+    const during = process.listeners("SIGTERM");
+    expect(during.length).toBe(before.length + 1);
+    (during[during.length - 1] as () => void)();
+    // The forwarder caught the kill fault — the window stays open until the
+    // real settlement arrives.
+    for (const cb of exitCbs) {
+      cb(null, "SIGTERM");
+    }
+    await expect(pending).resolves.toBe(1);
+    expect(process.listeners("SIGTERM")).toEqual(before);
+  });
+
+  it("a spawner that throws a NON-ERROR value degrades through String() coercion — one readable line + 1, never rejects", async () => {
+    const spawn: SpawnFn = () => {
+      throw "ENOSYS: cannot start child";
+    };
+    const sink = makeSink();
+    await expect(superviseSpawn(CMD, spawn, sink)).resolves.toBe(1);
+    expect(sink.lines).toEqual([
+      "pio: sandbox launch failed: ENOSYS: cannot start child",
+    ]);
   });
 });

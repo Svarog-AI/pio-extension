@@ -226,6 +226,9 @@ describe("nodeFsView.glob", () => {
     );
     expect(nodeFsView.glob(path.join(root, "plain", "name", "*"))).toEqual([]);
     expect(nodeFsView.glob("*[")).toEqual([]);
+    // The canonical malformed-bracket token — asserted alongside the
+    // generic garbage arm above.
+    expect(nodeFsView.glob("[unclosed")).toEqual([]);
     expect(nodeFsView.glob("")).toEqual([]);
     expect(nodeFsView.exists("/definitely/not/a/real/place")).toBe(false);
   });

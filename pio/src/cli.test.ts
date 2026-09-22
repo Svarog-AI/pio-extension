@@ -3,16 +3,14 @@
 import { readFileSync } from "node:fs";
 import type { CliIO } from "./cli.ts";
 import { main, parse } from "./cli.ts";
-import { run as probeRun } from "./probe.ts";
 import { runCapability } from "./sandbox/run.ts";
 import { PIO_VERSION } from "./version.ts";
 
-// Hermetic dispatch seams: an unmocked main() could drive REAL session
-// construction, bwrap launches, or network in a unit suite, so BOTH builtin
-// modules are factory-mocked regardless of worker stdio TTY-ness. The
+// Hermetic dispatch seam: an unmocked main() could drive REAL session
+// construction, bwrap launches, or network in a unit suite, so the builtin
+// module is factory-mocked regardless of worker stdio TTY-ness. The
 // not-implemented formatter replicates the shipped literal so the byte-pins
 // below stay meaningful.
-vi.mock("./probe.ts", () => ({ run: vi.fn() }));
 vi.mock("./sandbox/run.ts", () => ({
   runCapability: vi.fn(),
   CAPABILITY_NOT_IMPLEMENTED: (name: string) =>
@@ -139,104 +137,9 @@ describe("parse (descriptor-level grammar)", () => {
   });
 });
 
-describe("parse (session-run grammar)", () => {
-  const USAGE = "pio session-run <capability> --sessions-root <dir>";
-
-  it("the renderer-emitted quadruple (cross-step continuity) -> session-run descriptor", () => {
-    expect(
-      parse([
-        "session-run",
-        "probe",
-        "--sessions-root",
-        "/st/projects/k/engagements/e1/.sessions",
-      ]),
-    ).toEqual({
-      kind: "session-run",
-      capability: "probe",
-      sessionsRoot: "/st/projects/k/engagements/e1/.sessions",
-    });
-  });
-
-  it("relative value accepted verbatim (syntactic-only parser: consumers own validity)", () => {
-    expect(
-      parse(["session-run", "probe", "--sessions-root", "rel/path"]),
-    ).toEqual({
-      kind: "session-run",
-      capability: "probe",
-      sessionsRoot: "rel/path",
-    });
-  });
-
-  const errors: ReadonlyArray<[argv: readonly string[], message: string]> = [
-    [
-      ["session-run"],
-      `expected capability name after 'session-run' (usage: ${USAGE})`,
-    ],
-    [
-      ["session-run", ""],
-      `expected capability name after 'session-run' (usage: ${USAGE})`,
-    ],
-    [["session-run", "-h"], "unknown option: -h (try: pio --help)"],
-    [["session-run", "--huh"], "unknown option: --huh (try: pio --help)"],
-    [
-      ["session-run", "probe"],
-      `expected --sessions-root <dir> after 'session-run <capability>' (usage: ${USAGE})`,
-    ],
-    [
-      ["session-run", "probe", "--detach"],
-      "unknown option: --detach (try: pio --help)",
-    ],
-    [
-      ["session-run", "probe", "positional"],
-      `unexpected argument: positional (usage: ${USAGE})`,
-    ],
-    [
-      ["session-run", "probe", "--sessions-root"],
-      `expected a value for --sessions-root (usage: ${USAGE})`,
-    ],
-    [
-      ["session-run", "probe", "--sessions-root", ""],
-      `expected a value for --sessions-root (usage: ${USAGE})`,
-    ],
-    [
-      ["session-run", "probe", "--sessions-root", "-x"],
-      "unknown option: -x (try: pio --help)",
-    ],
-    [
-      ["session-run", "probe", "--sessions-root", "/x", "extra"],
-      `unexpected argument: extra (usage: ${USAGE})`,
-    ],
-    [
-      ["session-run", "probe", "--sessions-root", "/x", "--more"],
-      "unknown option: --more (try: pio --help)",
-    ],
-    [
-      [
-        "session-run",
-        "probe",
-        "--sessions-root",
-        "/x",
-        "--sessions-root",
-        "/y",
-      ],
-      "unknown option: --sessions-root (try: pio --help)",
-    ],
-    [
-      ["session-run", "--sessions-root", "/x", "probe"],
-      "unknown option: --sessions-root (try: pio --help)",
-    ],
-  ];
-  for (const [argv, message] of errors) {
-    it(`${JSON.stringify(argv)} -> exact error naming the offending token`, () => {
-      expect(parse(argv)).toEqual({ kind: "error", message });
-    });
-  }
-});
-
 describe("main (behavior matrix)", () => {
-  // Full pinned-array equality: every pre-existing line stays byte-identical
-  // AND the internal session-run line lands at its pinned position (right
-  // after the run usage line) — placement pinned, not merely presence.
+  // Full pinned-array equality: every line of the nine-line pinned form
+  // stays byte-identical — placement pinned, not merely presence.
   it("--help: exit 0, stdout deep-equals the full pinned line array, clean stderr", async () => {
     const { io, out, err } = collectIo();
     const code = await main(["--help"], io);
@@ -246,7 +149,6 @@ describe("main (behavior matrix)", () => {
       "",
       "Usage:",
       "  pio run <capability>",
-      "  pio session-run <capability> --sessions-root <dir>   [internal: invoked by the sandbox launcher — not a host-facing command]",
       "  pio --help",
       "  pio --version",
       "",
@@ -353,11 +255,9 @@ describe("main (behavior matrix)", () => {
 
 describe("main (run path dispatch)", () => {
   const runCapabilityMock = vi.mocked(runCapability);
-  const probeRunMock = vi.mocked(probeRun);
 
   beforeEach(() => {
     runCapabilityMock.mockReset();
-    probeRunMock.mockReset();
   });
 
   it("run probe: dispatched through the run path with ('probe', the injected sink routed as stderr); exit 0 propagates unchanged; the stderr routing is proven by a line written THROUGH that sink", async () => {
@@ -372,7 +272,6 @@ describe("main (run path dispatch)", () => {
     expect(runCapabilityMock).toHaveBeenCalledWith("probe", io);
     expect(err).toEqual(["threaded-line"]);
     expect(out).toEqual([]);
-    expect(probeRunMock).not.toHaveBeenCalled();
   });
 
   it("run probe: exit code 1 from the run path propagates unchanged", async () => {
@@ -391,66 +290,6 @@ describe("main (run path dispatch)", () => {
     expect(code).toBe(1);
     expect(out).toEqual([]);
     expect(err).toEqual(["pio: unexpected error: kaboom"]);
-  });
-
-  it("run <unknown> never reaches the probe builtin (cross-module isolation)", async () => {
-    const { io } = collectIo();
-    const code = await main(["run", "bogus"], io);
-    expect(code).toBe(1);
-    expect(probeRunMock).not.toHaveBeenCalled();
-  });
-});
-
-describe("main (session-run dispatch)", () => {
-  const probeRunMock = vi.mocked(probeRun);
-  const runCapabilityMock = vi.mocked(runCapability);
-
-  beforeEach(() => {
-    probeRunMock.mockReset();
-    runCapabilityMock.mockReset();
-  });
-
-  it("session-run probe --sessions-root X: builtin run receives a first arg whose stderr routes into the collected sink AND a second arg deep-equal to { sessionsRoot: X }; exit 0 propagates; the run path stays un-called", async () => {
-    probeRunMock.mockImplementation(async (sink) => {
-      sink?.stderr("threaded-line");
-      return 0;
-    });
-    const { io, out, err } = collectIo();
-    const code = await main(
-      ["session-run", "probe", "--sessions-root", "/x"],
-      io,
-    );
-    expect(code).toBe(0);
-    expect(probeRunMock).toHaveBeenCalledTimes(1);
-    const args = probeRunMock.mock.calls[0];
-    expect(args[0]).toBe(io);
-    expect(args[1]).toEqual({ sessionsRoot: "/x" });
-    expect(err).toEqual(["threaded-line"]);
-    expect(out).toEqual([]);
-    expect(runCapabilityMock).not.toHaveBeenCalled();
-  });
-
-  it("session-run probe --sessions-root X: exit code 1 propagates unchanged", async () => {
-    probeRunMock.mockResolvedValue(1);
-    const { io } = collectIo();
-    const code = await main(
-      ["session-run", "probe", "--sessions-root", "/x"],
-      io,
-    );
-    expect(code).toBe(1);
-    expect(probeRunMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("session-run <other> --sessions-root X: exit 1, byte-identical not-implemented line, ZERO builtin runs", async () => {
-    const { io, out, err } = collectIo();
-    const code = await main(
-      ["session-run", "bogus", "--sessions-root", "/x"],
-      io,
-    );
-    expect(code).toBe(1);
-    expect(out).toEqual([]);
-    expect(err).toEqual(["pio: capability 'bogus' is not implemented yet"]);
-    expect(probeRunMock).not.toHaveBeenCalled();
   });
 });
 
@@ -505,6 +344,38 @@ describe("main (last-resort error boundary)", () => {
   });
 });
 
+describe("session-run retirement (net-shrink)", () => {
+  const UNKNOWN_COMMAND_LINE = "unknown command: session-run (try: pio --help)";
+
+  // Every formerly-valid argv shape now classifies as the unknown-command
+  // error NAMING THE TOKEN (syntactic data in test rows only).
+  const parseRows: ReadonlyArray<readonly string[]> = [
+    ["session-run"],
+    ["session-run", "probe"],
+    ["session-run", "probe", "--sessions-root", "/x"],
+    ["session-run", "--sessions-root", "/x", "probe"],
+  ];
+  for (const argv of parseRows) {
+    it(`${JSON.stringify(argv)} -> unknown-command error naming the token`, () => {
+      expect(parse(argv)).toEqual({
+        kind: "error",
+        message: UNKNOWN_COMMAND_LINE,
+      });
+    });
+  }
+
+  it("main level: the canonical quadruple exits 1 with clean stdout and the exact prefixed unknown-command line on stderr", async () => {
+    const { io, out, err } = collectIo();
+    const code = await main(
+      ["session-run", "probe", "--sessions-root", "/x"],
+      io,
+    );
+    expect(code).toBe(1);
+    expect(out).toEqual([]);
+    expect(err).toEqual([`pio: ${UNKNOWN_COMMAND_LINE}`]);
+  });
+});
+
 describe("mechanical SDK-isolation guards", () => {
   const src = readFileSync(new URL("./cli.ts", import.meta.url), "utf8");
 
@@ -512,13 +383,20 @@ describe("mechanical SDK-isolation guards", () => {
     expect(src.includes("@earendil-works/pi-coding-agent")).toBe(false);
   });
 
-  it("the dynamic-import specifier set in cli.ts is exactly the two literal builtin thunks (no interpolation)", () => {
+  it("the dynamic-import specifier set in cli.ts is exactly the single literal builtin thunk (no interpolation)", () => {
     const specifiers = [
       ...src.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g),
     ].map((match) => match[1]);
-    expect([...new Set(specifiers)].sort()).toEqual(
-      ["./probe.ts", "./sandbox/run.ts"].sort(),
-    );
+    expect([...new Set(specifiers)]).toEqual(["./sandbox/run.ts"]);
+  });
+
+  it("the probe builtin is UNREACHABLE from cli.ts: zero occurrences of the quoted './probe.ts' specifier (no static or dynamic import can reach it)", () => {
+    expect(src.includes('"./probe.ts"')).toBe(false);
+    expect(src.includes("'./probe.ts'")).toBe(false);
+  });
+
+  it("HEADLINE NET-SHRINK PROOF: zero occurrences of the string 'session-run' in cli.ts source (pins the kind, the parse helper, the message consts, the help line, and the dispatch case simultaneously)", () => {
+    expect(src.includes("session-run")).toBe(false);
   });
 
   it("static imports in cli.ts are exactly the pio-local version constant (no SDK reach)", () => {
@@ -543,10 +421,11 @@ describe("mechanical SDK-isolation guards", () => {
     expect(count(runSrc)).toBe(1);
   });
 
-  // NOTE: the former third guard (registry shape: Object.keys(BUILTINS) ===
-  // ["probe"]) was retired together with the BUILTINS registry itself (probe
-  // is an explicit dispatch special case in main(), no abstraction around it).
-  // Guards above mechanically pin: zero SDK references, the literal
-  // builtin-thunk dynamic-import set, the version-only static import, and the
-  // single-owner catalog line.
+  // NOTE: the registry-shape guard was retired together with the BUILTINS
+  // registry itself (probe is an explicit dispatch special case in main(),
+  // no abstraction around it). Guards above mechanically pin: zero SDK
+  // references, the single builtin-thunk dynamic-import set, the version-only
+  // static import, the single-owner catalog line, the unreachable probe
+  // builtin (no quoted './probe.ts' specifier), and the zero-'session-run'
+  // net-shrink headline.
 });

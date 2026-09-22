@@ -248,11 +248,10 @@ describe("runSession (last-resort boundary)", () => {
     expect(err).toEqual(["pio-run-session: unexpected error: kaboom"]);
   });
 
-  it("doubly-faulting sink: resolves 1, silently (collected arrays stay empty)", async () => {
+  it("doubly-faulting sink: resolves 1, silently", async () => {
     const { run: runMock, isInteractiveTty: ttyMock } = await probeMocks();
     ttyMock.mockReturnValue(true);
     runMock.mockRejectedValue(new Error("kaboom"));
-    const err: string[] = [];
     const faulting: RunSessionIO = {
       stderr: () => {
         throw new Error("sink fallen");
@@ -260,7 +259,6 @@ describe("runSession (last-resort boundary)", () => {
     };
     const code = await runSession(["probe", "--sessions-root", "/x"], faulting);
     expect(code).toBe(1);
-    expect(err).toEqual([]);
   });
 });
 

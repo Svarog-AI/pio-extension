@@ -1,9 +1,11 @@
-// Shared error home for the capability authoring surface (ARCHITECTURE-SPEC §2,
-// D3). Zero-import module by design — stays outside the lazy-evaluation SDK
-// graph. Field shapes follow spec §4 sketches, adapted to erasableSyntaxOnly
-// (explicit readonly field assignments, no parameter properties).
+// Shared error home for the pio capability runtime.
+//
+// Zero-import module on purpose: the error home pulls in nothing — not even
+// node: built-ins or the SDK — so importing it has no side effects.
+// Constructors assign explicit readonly fields because erasableSyntaxOnly
+// forbids parameter properties.
 
-/** Exact five-member cause union pinned by D3 / spec §4. */
+/** Machine-readable classification of a capability failure. */
 export type CapabilityErrorCause =
   | "budget"
   | "kill"
@@ -12,14 +14,14 @@ export type CapabilityErrorCause =
   | "author-halt";
 
 /**
- * Cross-process error envelope (D3) — in v1 same-placement it surfaces as the
- * typed SessionStatus.errors entry carrying the cause. Direct throwing is a
- * later-step matter.
+ * Envelope for capability failures. Its plain-data fields (`cause`,
+ * `partial`) keep the error identifiable after serialization, where
+ * `instanceof` checks do not survive.
  */
 export class CapabilityError extends Error {
   /** Partial terminal-status snapshot attached at capture time (shallow pass-through; no cloning). */
   readonly partial?: Partial<SessionStatus>;
-  /** Refines built-in Error.cause (unknown) so the value stays JSON-safe across processes. */
+  /** Refines the built-in `Error.cause?: unknown` to a JSON-safe literal union. */
   readonly cause?: CapabilityErrorCause;
 
   constructor(
@@ -32,8 +34,9 @@ export class CapabilityError extends Error {
     super(message);
     this.name = "CapabilityError";
     if (options) {
-      // Assigned directly, never via super() options — the native Error.cause
-      // channel is unknown and would double-source the narrowed field.
+      // Assigned here rather than through super() options: the native
+      // Error.cause channel is typed unknown and would double-source the
+      // narrowed field declared above.
       this.partial = options.partial;
       this.cause = options.cause;
     }
@@ -41,17 +44,17 @@ export class CapabilityError extends Error {
 }
 
 /**
- * The only v1 throw site of a CapabilityError-derived type (D3): pre-spawn
- * input validation and author-called validateOutputs(). Collect-all semantics
- * live with the throwers; this class just carries the payload.
+ * Failure raised when a capability contract is violated (e.g. missing or
+ * invalid inputs/outputs). Collect-all semantics live with the validators;
+ * this class just carries every collected violation.
  */
 export class ContractViolationError extends CapabilityError {
   /** Every collected violation — the defining datum. */
   readonly violations: string[];
 
   constructor(violations: string[], message?: string) {
-    // Auto-cause "contract": self-describing instance so Step 7's JSON-safe
-    // capture reads cause from the field without per-class mapping.
+    // A contract violation is cause-"contract" by definition; stamping it
+    // unconditionally keeps instances self-describing for downstream reads.
     super(message ?? `Contract violation: ${violations.join("; ")}`, {
       cause: "contract",
     });
@@ -61,13 +64,11 @@ export class ContractViolationError extends CapabilityError {
 }
 
 /**
- * Thrown ONLY at execute_phase max breach (D3); author code catches it around
- * individual execute_phase calls. Deliberately NOT a CapabilityError (spec §4
- * shape): plain, no partial/cause/violations — its JSON-safe capture is
- * synthesized by Step 7 from instanceof + field reads.
+ * Failure raised when an iteration budget is exceeded. Deliberately a plain
+ * `Error` — no envelope fields — so caller code can catch it narrowly.
  */
 export class PhaseBudgetError extends Error {
-  /** Executed-run count at throw time (= max at the single throw site, Step 5). */
+  /** Iteration count reached when the budget was exceeded. */
   readonly iterations: number;
 
   constructor(iterations: number, message?: string) {
@@ -80,9 +81,8 @@ export class PhaseBudgetError extends Error {
 }
 
 /**
- * Terminal status record TYPE (D8): spec §4 Outcome shape minus struck fields,
- * renamed per owner ruling. Single source of truth for the status.json schema
- * from this commit onward — Step 7 serializes against it and never re-declares.
+ * Terminal status record for a capability run. Single source of truth for
+ * the serialized status schema; nullish members are omitted when absent.
  */
 export interface SessionStatus {
   ok: boolean;
@@ -91,21 +91,24 @@ export interface SessionStatus {
     version: string;
     source: "builtin" | "user" | "explicit";
   };
-  /** The value object call() returned; ALWAYS present ({} on failure). */
+  /** Value object the capability returned; always present (`{}` on failure). */
   outputs: Record<string, unknown>;
-  /** Absent when ok. */
+  /** Captured errors; absent when `ok`. */
   errors?: SessionStatusError[];
-  /** Path RELATIVE to the engagement dir (computed at emission, Step 7). */
+  /** Transcript path relative to the engagement dir. */
   transcriptRef?: string;
-  /** Total — same aggregation as the session counters (Steps 4/7). */
+  /** Total tokens consumed across the run. */
   tokens: number;
-  /** Wall-clock span run-start → emission. */
+  /** Wall-clock span from run start to emission. */
   durationMs: number;
 }
 
-/** JSON-safe typed capture — elements of SessionStatus.errors (D8). */
+/**
+ * Element of `SessionStatus.errors`: a captured error reduced to plain data
+ * so it survives cross-process serialization.
+ */
 export interface SessionStatusError {
-  /** Error identity (how Step 7/8 names the error kind). */
+  /** Identity of the captured error (its class name or equivalent). */
   type: string;
   cause?: CapabilityErrorCause;
   message?: string;

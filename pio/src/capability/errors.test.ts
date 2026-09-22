@@ -1,7 +1,7 @@
-// Class-shape descriptor-table suite for the shared capability error home
-// (Step 1). Hermetic: no filesystem, network, env assumptions, or SDK import —
-// the only import is ./errors.ts. Scope per the 2026-09-22 owner trim ruling:
-// plan-AC surface plus name rows only.
+// Class-shape suite for the shared capability error home.
+// Hermetic: no filesystem, no network, no environment assumptions — the only
+// import is ./errors.ts. Covers the inheritance chains, explicit-message
+// preservation, constructor payload round-trips, and class `name` values.
 import {
   CapabilityError,
   ContractViolationError,
@@ -71,7 +71,7 @@ describe("PhaseBudgetError", () => {
     expect(err).toBeInstanceOf(Error);
   });
 
-  it("is deliberately NOT a CapabilityError (pinned negative row)", () => {
+  it("is deliberately not a CapabilityError", () => {
     expect(new PhaseBudgetError(3)).not.toBeInstanceOf(CapabilityError);
   });
 

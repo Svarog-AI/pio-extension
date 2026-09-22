@@ -411,15 +411,15 @@ describe("checkContract", () => {
     ],
   ];
 
-  it.each(
-    rejects,
-  )("rejects %s with a problem naming the offending location", (_label, raw, needle) => {
-    const verdict = checkContract(unchecked(raw));
-    expect(verdict.ok).toBe(false);
-    if (!verdict.ok) {
-      expect(verdict.problems.some((p) => p.includes(needle))).toBe(true);
-    }
-  });
+  for (const [label, raw, needle] of rejects) {
+    it(`rejects ${label} with a problem naming the offending location`, () => {
+      const verdict = checkContract(unchecked(raw));
+      expect(verdict.ok).toBe(false);
+      if (!verdict.ok) {
+        expect(verdict.problems.some((p) => p.includes(needle))).toBe(true);
+      }
+    });
+  }
 
   it("rejects a non-object contract (null, string, array, function)", () => {
     const nonObjects: unknown[] = [null, "contract", [], () => 0];

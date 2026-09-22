@@ -19,7 +19,7 @@
     ]
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.1",
+    "@biomejs/biome": "2.5.13",
     "@earendil-works/pi-coding-agent": "^0.74.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.7.0",

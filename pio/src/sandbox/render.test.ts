@@ -95,10 +95,10 @@ const ANCHOR_EXISTING = [
   "/run/user/1000/gnupg",
   "/run/user/1000/bus",
   "/home/u/.local/bin",
-  "/home/u/.pi",
-  // C. pio-state pair (explicit inputs)
+  // C. pio-state trio (explicit inputs)
   "/home/u/.pio",
   "/home/u/.pio/projects/u-dev-myrepo",
+  "/home/u/.pio/.pi",
   // D. cwd LAST
   "/home/u/dev/myrepo",
 ];
@@ -148,9 +148,9 @@ describe("worked anchor (canonical production run)", () => {
         { sourcePath: "/run/user/1000/gnupg", mode: "ro" },
         { sourcePath: "/run/user/1000/bus", mode: "ro" },
         { sourcePath: "/home/u/.local/bin", mode: "ro" },
-        { sourcePath: "/home/u/.pi", mode: "ro" },
         { sourcePath: "/home/u/.pio", mode: "ro" },
         { sourcePath: "/home/u/.pio/projects/u-dev-myrepo", mode: "rw" },
+        { sourcePath: "/home/u/.pio/.pi", mode: "rw" },
         { sourcePath: "/home/u/dev/myrepo", mode: "rw" },
       ],
       env: [
@@ -161,6 +161,7 @@ describe("worked anchor (canonical production run)", () => {
             "/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
         },
         { key: "PI_SANDBOX", value: "1" },
+        { key: "PI_CODING_AGENT_DIR", value: "/home/u/.pio/.pi/agent" },
       ],
       chdir: "/home/u/dev/myrepo",
       target: {
@@ -255,7 +256,31 @@ describe("composition order", () => {
     expect(slotIdx).toBe(rootIdx + 1); // AFTER the ro root — overlay semantics
   });
 
-  it("pio-state-off fixture mode omits stateRoot/slot entirely (A+B+D only)", () => {
+  it("pio-state trio index chain over the anchor render: root-ro < slot-rw < .pi-rw, .pi immediately after the slot, cwd LAST still the final mount", () => {
+    const fake = anchorFake();
+    const profile = renderProfile(baseInput({ fsView: fake.view }));
+    const rootIdx = profile.mounts.findIndex(
+      (m) => m.sourcePath === "/home/u/.pio" && m.mode === "ro",
+    );
+    const slotIdx = profile.mounts.findIndex(
+      (m) =>
+        m.sourcePath === "/home/u/.pio/projects/u-dev-myrepo" &&
+        m.mode === "rw",
+    );
+    const piIdx = profile.mounts.findIndex(
+      (m) => m.sourcePath === "/home/u/.pio/.pi" && m.mode === "rw",
+    );
+    expect(rootIdx).toBeGreaterThanOrEqual(0);
+    expect(slotIdx).toBe(rootIdx + 1); // AFTER the ro root — overlay semantics
+    expect(piIdx).toBe(slotIdx + 1); // declared AFTER the slot, BEFORE cwd
+    // The final mount is still the cwd-last rw entry (ordering is security)
+    expect(profile.mounts.at(-1)).toEqual({
+      sourcePath: "/home/u/dev/myrepo",
+      mode: "rw",
+    });
+  });
+
+  it("pio-state-off fixture mode omits the state-trio entirely (A+B+D only; env quartet still emits)", () => {
     const fake = anchorFake();
     const profile = renderProfile(
       baseInput({ fsView: fake.view, includePioState: false }),
@@ -263,8 +288,15 @@ describe("composition order", () => {
     expect(
       profile.mounts.some((m) => m.sourcePath.startsWith("/home/u/.pio")),
     ).toBe(false);
-    // A(3) + B(20) + D(1) = 24
-    expect(profile.mounts).toHaveLength(24);
+    // A(3) + B(19) + D(1) = 23 (the seeded table lost one row)
+    expect(profile.mounts).toHaveLength(23);
+    // The env quartet is UNCONDITIONAL — section C gone, quartet intact
+    expect(profile.env.map((e) => e.key)).toEqual([
+      "HOME",
+      "PATH",
+      "PI_SANDBOX",
+      "PI_CODING_AGENT_DIR",
+    ]);
     expect(profile.mounts.at(-1)).toEqual({
       sourcePath: "/home/u/dev/myrepo",
       mode: "rw",
@@ -578,6 +610,7 @@ describe("glob handling (uniform pipeline)", () => {
 describe("fail-loud vs parity-skip matrix", () => {
   const C_ROOT = "/home/u/.pio";
   const C_SLOT = "/home/u/.pio/projects/u-dev-myrepo";
+  const C_PI = "/home/u/.pio/.pi";
 
   it("missing cwd is a TYPED REFUSAL (chdir cannot degrade silently)", () => {
     const fake = anchorFake(); // A/B/C exist; D does not
@@ -615,6 +648,19 @@ describe("fail-loud vs parity-skip matrix", () => {
       expect(e).toBeInstanceOf(SandboxRenderError);
       expect((e as SandboxRenderError).reason).toBe("normative-path-missing");
       expect((e as SandboxRenderError).message).toContain(C_SLOT);
+    }
+  });
+
+  it("missing .pi (root + slot present) is a TYPED REFUSAL naming the path (normative — NOT a silent skip)", () => {
+    const fake = anchorFake();
+    fake.existing.delete(C_PI);
+    try {
+      renderProfile(baseInput({ fsView: fake.view }));
+      throw new Error("expected SandboxRenderError");
+    } catch (e) {
+      expect(e).toBeInstanceOf(SandboxRenderError);
+      expect((e as SandboxRenderError).reason).toBe("normative-path-missing");
+      expect((e as SandboxRenderError).message).toContain(C_PI);
     }
   });
 
@@ -823,8 +869,8 @@ describe("no-merge (the profile IS the entire configuration)", () => {
   });
 });
 
-describe("env trio + chdir contract", () => {
-  it("emits EXACTLY three pairs in HOME→PATH→PI_SANDBOX order; chdir === cwd", () => {
+describe("env quartet + chdir contract", () => {
+  it("emits EXACTLY four pairs in HOME→PATH→PI_SANDBOX→PI_CODING_AGENT_DIR order; chdir === cwd", () => {
     const fake = makeFake({ existing: ["/home/u/dev/myrepo"] });
     const profile = renderProfile(
       baseInput({
@@ -834,15 +880,38 @@ describe("env trio + chdir contract", () => {
         runtimeDir: "/rt",
       }),
     );
-    expect(profile.env).toHaveLength(3);
+    expect(profile.env).toHaveLength(4);
     expect(profile.env.map((e) => e.key)).toEqual([
       "HOME",
       "PATH",
       "PI_SANDBOX",
+      "PI_CODING_AGENT_DIR",
     ]);
     expect(profile.env[0].value).toBe("/home/u");
     expect(profile.env[2]).toEqual({ key: "PI_SANDBOX", value: "1" });
+    expect(profile.env[3]).toEqual({
+      key: "PI_CODING_AGENT_DIR",
+      value: "/home/u/.pio/.pi/agent",
+    });
     expect(profile.chdir).toBe("/home/u/dev/myrepo");
+  });
+
+  it("PI_CODING_AGENT_DIR follows the state-root input (override-shaped root ⇒ the derived value follows)", () => {
+    const fake = makeFake({ existing: ["/home/u/dev/myrepo"] });
+    const profile = renderProfile(
+      baseInput({
+        fsView: fake.view,
+        stateRoot: "/custom/pio-state",
+        projectSlot: "/custom/pio-state/projects/k",
+        mountSources: sources([]),
+        includePioState: false,
+        runtimeDir: "/rt",
+      }),
+    );
+    expect(profile.env[3]).toEqual({
+      key: "PI_CODING_AGENT_DIR",
+      value: "/custom/pio-state/.pi/agent",
+    });
   });
 
   it("passes HOME through unmodified (byte-intact, even exotic values)", () => {
@@ -861,7 +930,7 @@ describe("env trio + chdir contract", () => {
 });
 
 describe("profile.ts — conservative default table", () => {
-  it("mirrors the inventory read side verbatim (20 readOnly rows, exact order)", () => {
+  it("mirrors the inventory read side verbatim (19 readOnly rows, exact order)", () => {
     const t = conservativeDefaultSources(1000);
     expect(t.readOnly).toEqual([
       "/usr",
@@ -883,7 +952,6 @@ describe("profile.ts — conservative default table", () => {
       "/run/user/1000/gnupg",
       "/run/user/1000/bus",
       "~/.local/bin",
-      "~/.pi", // strictest ro reading — not an inventory read-side row
     ]);
   });
 

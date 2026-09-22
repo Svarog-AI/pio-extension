@@ -132,10 +132,10 @@ const ANCHOR_EXISTING = [
   "/run/user/1000/gnupg",
   "/run/user/1000/bus",
   "/home/u/.local/bin",
-  "/home/u/.pi",
-  // C. pio-state pair
+  // C. pio-state trio
   "/home/u/.pio",
   "/home/u/.pio/projects/u-dev-myrepo",
+  "/home/u/.pio/.pi",
   // D. cwd LAST
   "/home/u/dev/myrepo",
 ];
@@ -615,14 +615,14 @@ describe("S01 cross-step continuity row", () => {
       "/home/u/.local/bin",
       "/home/u/.local/bin",
       "--ro-bind",
-      "/home/u/.pi",
-      "/home/u/.pi",
-      "--ro-bind",
       "/home/u/.pio",
       "/home/u/.pio",
       "--bind",
       "/home/u/.pio/projects/u-dev-myrepo",
       "/home/u/.pio/projects/u-dev-myrepo",
+      "--bind",
+      "/home/u/.pio/.pi",
+      "/home/u/.pio/.pi",
       "--bind",
       "/home/u/dev/myrepo",
       "/home/u/dev/myrepo",
@@ -637,6 +637,9 @@ describe("S01 cross-step continuity row", () => {
       "--setenv",
       "PI_SANDBOX",
       "1",
+      "--setenv",
+      "PI_CODING_AGENT_DIR",
+      "/home/u/.pio/.pi/agent",
       "--",
       PKG_BIN,
       "probe",
@@ -650,6 +653,7 @@ describe("S01 cross-step continuity row", () => {
         "/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
       ],
       ["PI_SANDBOX", "1"],
+      ["PI_CODING_AGENT_DIR", "/home/u/.pio/.pi/agent"],
     ]);
   });
 });

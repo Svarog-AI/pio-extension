@@ -117,3 +117,17 @@ export async function ensureEngagementLayout(
     topSessionDir,
   };
 }
+
+/** First-use creation of the vehicle's own pi tree with ONE recursive mkdir
+ * (mkdir -p semantics): the state root itself is created on first use.
+ * Existing trees resolve cleanly — pre-existing content survives
+ * byte-identical, and only the directory is created (nothing else is ever
+ * written underneath it). Genuine filesystem failures propagate. Resolves
+ * THE .pi path computed exactly as `path.join(stateRoot, ".pi")` — the same
+ * expression the renderer derives for its mount candidate, so the two
+ * derivations cannot drift. */
+export async function ensurePiTree(stateRoot: string): Promise<string> {
+  const piTree = path.join(stateRoot, ".pi");
+  await mkdir(piTree, { recursive: true });
+  return piTree;
+}

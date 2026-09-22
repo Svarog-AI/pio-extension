@@ -89,10 +89,8 @@ export function conservativeDefaultSources(uid: number): MountSources {
       // inventory readOnly[17] — uid computed from the argument, not hardcoded
       `/run/user/${uid}/bus`,
       "~/.local/bin", // inventory readOnly[18]
-      // not part of the inventory read side: ~/.pi fully ro (strictest reading)
-      "~/.pi",
     ],
-    readWrite: [], // deliberate: no personal rw writers seeded (no named consumer)
+    readWrite: [], // deliberate: no personal rw writers seeded — the named-consumer writable surface composes normatively in the renderer's pio-state section, not as seeded material
     extraMounts: [],
   };
 }

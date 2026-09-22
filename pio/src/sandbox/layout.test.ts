@@ -1,10 +1,11 @@
-import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { FsView } from "./fsview.ts";
 import {
   deriveProjectKey,
   ensureEngagementLayout,
+  ensurePiTree,
   LayoutError,
   mintEngagementId,
   resolveStateRoot,
@@ -349,6 +350,9 @@ describe("ensureEngagementLayout", () => {
       projectKey: FIXED_KEY,
       engagementId: FIXED_ID,
     });
+    // Derived from the ensure itself — the renderer's .pi candidate and the
+    // created tree cannot drift (two derivations, one expression).
+    const piTree = await ensurePiTree(paths.stateRoot);
     const existing = new Set([
       "/etc/ssl",
       "/etc/resolv.conf",
@@ -356,6 +360,7 @@ describe("ensureEngagementLayout", () => {
       "/home/u/dev/myrepo",
       paths.stateRoot,
       paths.projectSlot,
+      piTree,
     ]);
     const view: FsView = {
       exists: (p) => existing.has(p),
@@ -376,5 +381,101 @@ describe("ensureEngagementLayout", () => {
     });
     const flagIndex = rendered.target.args.indexOf("--sessions-root");
     expect(rendered.target.args[flagIndex + 1]).toBe(paths.sessionsDir);
+    // The ensured .pi member composes into the render at its declared slot.
+    expect(rendered.mounts).toContainEqual({ sourcePath: piTree, mode: "rw" });
+  });
+});
+
+describe("ensurePiTree", () => {
+  it("first use: absent before ⇒ resolves; <root>/.pi exists AND IS EMPTY (empty-dir-only proof folded in)", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s06-pi-first-"));
+    expect(await readdir(root)).toEqual([]); // .pi absent before
+    const resolved = await ensurePiTree(root);
+    expect(resolved).toBe(path.join(root, ".pi"));
+    expect(await readdir(path.join(root, ".pi"))).toEqual([]);
+    const tree = await walkTree(root);
+    expect(tree.files).toEqual([]); // nothing else was ever written
+    expect([...tree.dirs].sort()).toEqual([".pi"]);
+  });
+
+  it("idempotency: a second call against the existing tree is a clean no-op (still exactly the empty .pi)", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s06-pi-idem-"));
+    const first = await ensurePiTree(root);
+    const second = await ensurePiTree(root);
+    expect(second).toBe(first);
+    const tree = await walkTree(root);
+    expect(tree.dirs).toEqual([".pi"]);
+    expect(tree.files).toEqual([]);
+  });
+
+  it("never clobbers: pre-seeded sentinel bytes under .pi survive byte-identically (steady-state content survives re-ensure)", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s06-pi-keep-"));
+    const sentinelPath = path.join(root, ".pi", "agent", "models.json");
+    const sentinel = "OPERATOR-CUSTOMIZATION-BYTES\n";
+    await mkdir(path.dirname(sentinelPath), { recursive: true });
+    await writeFile(sentinelPath, sentinel);
+    await ensurePiTree(root);
+    expect(await readFile(sentinelPath, "utf8")).toBe(sentinel);
+  });
+
+  it("state-root co-creation: a NONEXISTENT state root under a fresh parent yields BOTH the root and .pi", async () => {
+    const parent = await mkdtemp(path.join(os.tmpdir(), "pio-s06-pi-co-"));
+    const root = path.join(parent, "absent-root");
+    const resolved = await ensurePiTree(root);
+    expect(resolved).toBe(path.join(root, ".pi"));
+    const tree = await walkTree(parent);
+    expect([...tree.dirs].sort()).toEqual(["absent-root", "absent-root/.pi"]);
+    expect(tree.files).toEqual([]);
+  });
+
+  it("return echo + drift proof: the value deep-equals the hand-built path.join AND feeds the renderer candidate verbatim (a renderProfile over ONLY pio-state members composes the trio)", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s06-pi-drift-"));
+    const slot = path.join(root, "projects", FIXED_KEY);
+    const resolved = await ensurePiTree(root);
+    expect(resolved).toEqual(path.join(root, ".pi"));
+    const existing = new Set([
+      "/etc/ssl",
+      "/etc/resolv.conf",
+      "/usr/local",
+      "/home/u/dev/myrepo",
+      root,
+      slot,
+      resolved,
+    ]);
+    const view: FsView = {
+      exists: (p) => existing.has(p),
+      glob: () => [],
+    };
+    const rendered = renderProfile({
+      cwd: "/home/u/dev/myrepo",
+      home: "/home/u",
+      projectKey: FIXED_KEY,
+      engagementDir: path.join(slot, "engagements", FIXED_ID),
+      stateRoot: root,
+      projectSlot: slot,
+      capabilityName: "probe",
+      fsView: view,
+      identity: { uid: 1000, gid: 1000 },
+      runtimeDir: "/usr/local",
+      mountSources: { readOnly: [], readWrite: [], extraMounts: [] },
+    });
+    // A(3) + the pio-state trio + cwd LAST — the created tree's .pi member
+    // lands EXACTLY where the renderer derives its candidate (if the two
+    // derivations drifted, the exists-check above would refuse).
+    expect(rendered.mounts).toEqual([
+      { sourcePath: "/etc/ssl", mode: "ro" },
+      { sourcePath: "/etc/resolv.conf", mode: "ro" },
+      { sourcePath: "/usr/local", mode: "ro" },
+      { sourcePath: root, mode: "ro" },
+      { sourcePath: slot, mode: "rw" },
+      { sourcePath: resolved, mode: "rw" },
+      { sourcePath: "/home/u/dev/myrepo", mode: "rw" },
+    ]);
+  });
+
+  it("genuine fs failures propagate (no catch-and-swallow): a regular file blocking the .pi path rejects", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s06-pi-fail-"));
+    await writeFile(path.join(root, ".pi"), "a file, not a dir");
+    await expect(ensurePiTree(root)).rejects.toThrow();
   });
 });

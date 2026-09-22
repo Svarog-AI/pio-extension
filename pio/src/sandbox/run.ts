@@ -16,6 +16,7 @@ import {
 import {
   deriveProjectKey,
   ensureEngagementLayout,
+  ensurePiTree,
   LayoutError,
   mintEngagementId,
   resolveStateRoot,
@@ -124,6 +125,10 @@ export async function runCapability(
       projectKey,
       engagementId,
     });
+    // First-use pi tree under the state root (the renderer binds it rw and
+    // refuses loudly if it were missing — the return value is pinned by the
+    // suite; production reaches the path through the renderer's derivation).
+    await ensurePiTree(paths.stateRoot);
     const profile = renderProfile({
       cwd,
       home,

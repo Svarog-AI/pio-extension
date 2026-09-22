@@ -45,7 +45,8 @@ export interface RenderInput {
   envBasePath?: string[];
   /** Default: conservativeDefaultSources(identity.uid). */
   mountSources?: MountSources;
-  /** Default: true. Binds the pio-state pair — state root ro, then own slot rw (section C). */
+  /** Default: true. Binds the pio-state trio — state root ro, own slot rw,
+   * then the isolated pi config dir rw (section C). */
   includePioState?: boolean;
 }
 
@@ -165,12 +166,16 @@ function buildBaseFlags(identity: RenderIdentity): string[] {
   ];
 }
 
-/** EXACTLY three pairs, HOME → PATH → PI_SANDBOX. No `--clearenv`: host env
- * passes through structurally (the serializer emits these tokens). */
+/** EXACTLY four pairs, HOME → PATH → PI_SANDBOX → PI_CODING_AGENT_DIR.
+ * No `--clearenv`: host env passes through structurally (the serializer
+ * emits these tokens). The agent-dir value follows the state-root input
+ * verbatim (not tilde-expanded) and is UNCONDITIONAL — it names where the
+ * vehicle's own pi instance lives, flag or no flag. */
 function buildEnv(
   home: string,
   runtimeDir: string,
   basePath: readonly string[],
+  stateRoot: string,
 ): EnvAssignment[] {
   const elements: string[] = [];
   for (const element of basePath) {
@@ -186,6 +191,7 @@ function buildEnv(
     { key: "HOME", value: home },
     { key: "PATH", value: value },
     { key: "PI_SANDBOX", value: "1" },
+    { key: "PI_CODING_AGENT_DIR", value: path.join(stateRoot, ".pi", "agent") },
   ];
 }
 
@@ -244,8 +250,10 @@ export function renderProfile(input: RenderInput): SandboxProfile {
       context: "seeded extraMounts entry",
     });
   }
-  // C. pio-state pair (iff includePioState — bypassed entirely when false);
-  //    missing roots fail loud (a quiet security-model change otherwise)
+  // C. pio-state trio (iff includePioState — bypassed entirely when false);
+  //    missing roots fail loud (a quiet security-model change otherwise).
+  //    The .pi member is the sole writable addition over the ro root — the
+  //    vehicle's own pi instance lives there.
   if (includePioState) {
     candidates.push(
       {
@@ -258,6 +266,12 @@ export function renderProfile(input: RenderInput): SandboxProfile {
         path: input.projectSlot,
         mode: "rw",
         context: "pio-state overlay: own project slot rw",
+        missingReason: "normative-path-missing",
+      },
+      {
+        path: path.join(input.stateRoot, ".pi"),
+        mode: "rw",
+        context: "pio-state overlay: isolated pi config dir rw",
         missingReason: "normative-path-missing",
       },
     );
@@ -273,7 +287,12 @@ export function renderProfile(input: RenderInput): SandboxProfile {
   return {
     baseFlags: buildBaseFlags(identity),
     mounts: composeCandidates(candidates, home, fsView),
-    env: buildEnv(home, runtimeDir, input.envBasePath ?? STANDARD_PATH_BASE),
+    env: buildEnv(
+      home,
+      runtimeDir,
+      input.envBasePath ?? STANDARD_PATH_BASE,
+      input.stateRoot,
+    ),
     chdir: input.cwd,
     target: buildTarget(input),
   };

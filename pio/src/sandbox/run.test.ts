@@ -349,7 +349,7 @@ describe("typed fault rows (catch boundaries)", () => {
 
 describe("full assembly (happy path — displayed = retained = executed)", () => {
   it("one profile value drives the retained file, the transparency print, AND the spawn vector: captured argv deep-equals the fresh pipeline output", async () => {
-    const world = await makeWorld({ homeEntries: [".pi", "git"] });
+    const world = await makeWorld({ homeEntries: ["git"] });
     const code = await runCapability("probe", world.io, world.seams);
     expect(code).toBe(0);
 
@@ -408,11 +408,47 @@ describe("full assembly (happy path — displayed = retained = executed)", () =>
     expect(flagIndex).toBeGreaterThan(-1);
     expect(spawnEntry.args[flagIndex + 1]).toBe(world.sessionsDir);
 
-    // Ensured tree walked = EXACTLY the pinned 7-dir set (six under the
-    // state root + the root itself) and the SINGLE artifact file.
+    // The new composition rides the SAME pipeline: env quartet (UNCONDITIONAL
+    // fourth pair following the state-root input) with the derived agent-dir
+    // value, the .pi rw mount member, and the matching --bind triplet in the
+    // captured spawn args.
+    const cmdMirror = buildArgv(mirror);
+    expect(cmdMirror.envSet.map(([key]) => key)).toEqual([
+      "HOME",
+      "PATH",
+      "PI_SANDBOX",
+      "PI_CODING_AGENT_DIR",
+    ]);
+    expect(cmdMirror.envSet).toContainEqual([
+      "PI_CODING_AGENT_DIR",
+      path.join(world.stateRoot, ".pi", "agent"),
+    ]);
+    const piMountPath = path.join(world.stateRoot, ".pi");
+    expect(mirror.mounts).toContainEqual({
+      sourcePath: piMountPath,
+      mode: "rw",
+    });
+    const piBindIdx = spawnEntry.args.indexOf(piMountPath);
+    expect(piBindIdx).toBeGreaterThan(-1);
+    expect(spawnEntry.args.slice(piBindIdx - 1, piBindIdx + 2)).toEqual([
+      "--bind",
+      piMountPath,
+      piMountPath,
+    ]);
+    // The transparency print carries BOTH new lines (JSON-quoted, spot-
+    // asserted against the derived expressions; full sequence already equals
+    // formatProfileLines(mirror) above).
+    expect(printed).toContain(
+      `    "PI_CODING_AGENT_DIR"="${path.join(world.stateRoot, ".pi", "agent")}"`,
+    );
+    expect(printed).toContain(`    [rw] "${piMountPath}"`);
+
+    // Ensured tree walked = EXACTLY the pinned 7-dir set (the isolated pi
+    // tree sibling + the six engagement dirs) and the SINGLE artifact file.
     const tree = await walkTree(world.stateRoot);
     expect([...tree.dirs].sort()).toEqual(
       [
+        ".pi",
         "projects",
         `projects/${world.key}`,
         `projects/${world.key}/engagements`,
@@ -445,6 +481,7 @@ describe("full assembly (happy path — displayed = retained = executed)", () =>
     expect(tree.dirs).toContain(
       `projects/${world.key}/engagements/${world.id}/.sessions/top`,
     );
+    expect(tree.dirs).toContain(".pi");
     expect(await readdir(world.home)).toEqual([]);
   });
 });

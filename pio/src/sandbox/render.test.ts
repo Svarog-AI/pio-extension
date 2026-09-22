@@ -10,7 +10,7 @@ import {
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = path.resolve(HERE, "..", "..");
-const PKG_BIN = path.join(PKG_ROOT, "bin", "pio");
+const PKG_BIN = path.join(PKG_ROOT, "bin", "pio-run-session");
 
 /** In-memory FsView with call capture. */
 function makeFake(
@@ -166,7 +166,6 @@ describe("worked anchor (canonical production run)", () => {
       target: {
         executable: PKG_BIN,
         args: [
-          "session-run",
           "probe",
           "--sessions-root",
           "/home/u/.pio/projects/u-dev-myrepo/engagements/e1/.sessions",
@@ -923,7 +922,6 @@ describe("target command shape", () => {
     expect(profile.target.executable).toBe("/x/y");
     // args grammar unaffected by the executable swap
     expect(profile.target.args).toEqual([
-      "session-run",
       "probe",
       "--sessions-root",
       "/home/u/.pio/projects/u-dev-myrepo/engagements/e1/.sessions",
@@ -941,7 +939,6 @@ describe("target command shape", () => {
       }),
     );
     expect(profile.target.args).toEqual([
-      "session-run",
       "alpha",
       "--sessions-root",
       "/r/.pio/projects/k2/engagements/z9/.sessions",

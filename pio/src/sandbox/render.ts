@@ -31,7 +31,7 @@ export interface RenderInput {
   stateRoot: string;
   /** Own project slot (`<stateRoot>/projects/<key>`) — rw overlay AFTER the ro root. */
   projectSlot: string;
-  /** Target of the internal `session-run` verb. */
+  /** Passed as the first target arg to the top-session entry. */
   capabilityName: string;
   /** Injected existence/glob seam (hermeticity). */
   fsView: FsView;
@@ -39,7 +39,7 @@ export interface RenderInput {
   identity?: RenderIdentity;
   /** Default: dirname(dirname(process.execPath)) — own-runtime grounding. */
   runtimeDir?: string;
-  /** Default: `<pkgRoot>/bin/pio`, resolved once via import.meta.url. */
+  /** Default: `<pkgRoot>/bin/pio-run-session`, resolved once via import.meta.url. */
   targetExecutable?: string;
   /** Default: STANDARD_PATH_BASE (the standard six). */
   envBasePath?: string[];
@@ -143,7 +143,7 @@ function defaultRuntimeDir(): string {
 function defaultTargetExecutable(): string {
   const sandboxDir = path.dirname(fileURLToPath(import.meta.url));
   const pkgRoot = path.dirname(path.dirname(sandboxDir));
-  return path.join(pkgRoot, "bin", "pio");
+  return path.join(pkgRoot, "bin", "pio-run-session");
 }
 
 function buildBaseFlags(identity: RenderIdentity): string[] {
@@ -193,7 +193,6 @@ function buildTarget(input: RenderInput): TargetCommand {
   return {
     executable: input.targetExecutable ?? defaultTargetExecutable(),
     args: [
-      "session-run",
       input.capabilityName,
       "--sessions-root",
       path.join(input.engagementDir, ".sessions"),

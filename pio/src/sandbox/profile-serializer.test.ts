@@ -15,7 +15,7 @@ import { type RenderInput, renderProfile } from "./render.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = path.resolve(HERE, "..", "..");
-const PKG_BIN = path.join(PKG_ROOT, "bin", "pio");
+const PKG_BIN = path.join(PKG_ROOT, "bin", "pio-run-session");
 
 /** Worked anchor row: hand-crafted profile, not a renderProfile output. */
 const anchor: SandboxProfile = {
@@ -639,7 +639,6 @@ describe("S01 cross-step continuity row", () => {
       "1",
       "--",
       PKG_BIN,
-      "session-run",
       "probe",
       "--sessions-root",
       "/home/u/.pio/projects/u-dev-myrepo/engagements/e1/.sessions",

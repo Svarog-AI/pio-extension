@@ -3,13 +3,19 @@
 import { readFileSync } from "node:fs";
 import type { CliIO } from "./cli.ts";
 import { main, parse } from "./cli.ts";
-import { run as probeRun } from "./probe.ts";
+import { runCapability } from "./sandbox/run.ts";
 import { PIO_VERSION } from "./version.ts";
 
-// Hermetic probe-dispatch seam (Step 3 / D4): an unmocked main(["run","probe"])
-// could drive REAL session construction/network in a unit suite, so the probe
-// module is factory-mocked regardless of worker stdio TTY-ness.
-vi.mock("./probe.ts", () => ({ run: vi.fn() }));
+// Hermetic dispatch seam: an unmocked main() could drive REAL session
+// construction, bwrap launches, or network in a unit suite, so the builtin
+// module is factory-mocked regardless of worker stdio TTY-ness. The
+// not-implemented formatter replicates the shipped literal so the byte-pins
+// below stay meaningful.
+vi.mock("./sandbox/run.ts", () => ({
+  runCapability: vi.fn(),
+  CAPABILITY_NOT_IMPLEMENTED: (name: string) =>
+    `pio: capability '${name}' is not implemented yet`,
+}));
 
 const PROBE_DIAGNOSTIC =
   "probe — built-in diagnostic: verifies session/TUI/transcript plumbing";
@@ -132,14 +138,23 @@ describe("parse (descriptor-level grammar)", () => {
 });
 
 describe("main (behavior matrix)", () => {
-  it("--help: exit 0, usage form + exact probe diagnostic line on stdout, clean stderr", async () => {
+  // Full pinned-array equality: every line of the nine-line pinned form
+  // stays byte-identical — placement pinned, not merely presence.
+  it("--help: exit 0, stdout deep-equals the full pinned line array, clean stderr", async () => {
     const { io, out, err } = collectIo();
     const code = await main(["--help"], io);
     expect(code).toBe(0);
-    const joined = out.join("\n");
-    expect(joined).toContain("pio run <capability>");
-    expect(joined).toContain(PROBE_DIAGNOSTIC);
-    expect(joined).toMatch(/only resolvable target/i);
+    expect(out).toEqual([
+      "pio — goal-driven project management CLI",
+      "",
+      "Usage:",
+      "  pio run <capability>",
+      "  pio --help",
+      "  pio --version",
+      "",
+      "Built-in capabilities:",
+      "  probe — built-in diagnostic: verifies session/TUI/transcript plumbing (currently the only resolvable target)",
+    ]);
     expect(err).toEqual([]);
   });
 
@@ -238,24 +253,29 @@ describe("main (behavior matrix)", () => {
   });
 });
 
-describe("main (probe dispatch)", () => {
-  const probeRunMock = vi.mocked(probeRun);
+describe("main (run path dispatch)", () => {
+  const runCapabilityMock = vi.mocked(runCapability);
 
   beforeEach(() => {
-    probeRunMock.mockReset();
+    runCapabilityMock.mockReset();
   });
 
-  it("run probe: exit code 0 from probe.run propagates unchanged", async () => {
-    probeRunMock.mockResolvedValue(0);
+  it("run probe: dispatched through the run path with ('probe', the injected sink routed as stderr); exit 0 propagates unchanged; the stderr routing is proven by a line written THROUGH that sink", async () => {
+    runCapabilityMock.mockImplementation(async (_name, sink) => {
+      sink?.stderr("threaded-line");
+      return 0;
+    });
     const { io, out, err } = collectIo();
     const code = await main(["run", "probe"], io);
     expect(code).toBe(0);
+    expect(runCapabilityMock).toHaveBeenCalledTimes(1);
+    expect(runCapabilityMock).toHaveBeenCalledWith("probe", io);
+    expect(err).toEqual(["threaded-line"]);
     expect(out).toEqual([]);
-    expect(err).toEqual([]);
   });
 
-  it("run probe: exit code 1 from probe.run propagates unchanged", async () => {
-    probeRunMock.mockResolvedValue(1);
+  it("run probe: exit code 1 from the run path propagates unchanged", async () => {
+    runCapabilityMock.mockResolvedValue(1);
     const { io, out, err } = collectIo();
     const code = await main(["run", "probe"], io);
     expect(code).toBe(1);
@@ -263,8 +283,8 @@ describe("main (probe dispatch)", () => {
     expect(err).toEqual([]);
   });
 
-  it("directly-rejecting run(): last-resort boundary renders 'pio: unexpected error: kaboom', resolves 1", async () => {
-    probeRunMock.mockRejectedValue(new Error("kaboom"));
+  it("directly-rejecting runCapability: last-resort boundary renders 'pio: unexpected error: kaboom', resolves 1", async () => {
+    runCapabilityMock.mockRejectedValue(new Error("kaboom"));
     const { io, out, err } = collectIo();
     const code = await main(["run", "probe"], io);
     expect(code).toBe(1);
@@ -324,6 +344,38 @@ describe("main (last-resort error boundary)", () => {
   });
 });
 
+describe("session-run retirement (net-shrink)", () => {
+  const UNKNOWN_COMMAND_LINE = "unknown command: session-run (try: pio --help)";
+
+  // Every formerly-valid argv shape now classifies as the unknown-command
+  // error NAMING THE TOKEN (syntactic data in test rows only).
+  const parseRows: ReadonlyArray<readonly string[]> = [
+    ["session-run"],
+    ["session-run", "probe"],
+    ["session-run", "probe", "--sessions-root", "/x"],
+    ["session-run", "--sessions-root", "/x", "probe"],
+  ];
+  for (const argv of parseRows) {
+    it(`${JSON.stringify(argv)} -> unknown-command error naming the token`, () => {
+      expect(parse(argv)).toEqual({
+        kind: "error",
+        message: UNKNOWN_COMMAND_LINE,
+      });
+    });
+  }
+
+  it("main level: the canonical quadruple exits 1 with clean stdout and the exact prefixed unknown-command line on stderr", async () => {
+    const { io, out, err } = collectIo();
+    const code = await main(
+      ["session-run", "probe", "--sessions-root", "/x"],
+      io,
+    );
+    expect(code).toBe(1);
+    expect(out).toEqual([]);
+    expect(err).toEqual([`pio: ${UNKNOWN_COMMAND_LINE}`]);
+  });
+});
+
 describe("mechanical SDK-isolation guards", () => {
   const src = readFileSync(new URL("./cli.ts", import.meta.url), "utf8");
 
@@ -331,16 +383,49 @@ describe("mechanical SDK-isolation guards", () => {
     expect(src.includes("@earendil-works/pi-coding-agent")).toBe(false);
   });
 
-  it("the only dynamic-import specifier in cli.ts is the literal './probe.ts'", () => {
+  it("the dynamic-import specifier set in cli.ts is exactly the single literal builtin thunk (no interpolation)", () => {
     const specifiers = [
       ...src.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g),
     ].map((match) => match[1]);
-    expect([...new Set(specifiers)]).toEqual(["./probe.ts"]);
+    expect([...new Set(specifiers)]).toEqual(["./sandbox/run.ts"]);
   });
 
-  // NOTE: the former third guard (registry shape: Object.keys(BUILTINS) === ["probe"])
-  // was retired together with the BUILTINS registry itself (user-directed simplification,
-  // 2026-09-15: probe is an explicit dispatch special case in main(), no abstraction around it).
-  // Guards (a) + (b) above still mechanically pin: zero SDK references, single literal
-  // dynamic-import specifier './probe.ts' (no interpolation by construction).
+  it("the probe builtin is UNREACHABLE from cli.ts: zero occurrences of the quoted './probe.ts' specifier (no static or dynamic import can reach it)", () => {
+    expect(src.includes('"./probe.ts"')).toBe(false);
+    expect(src.includes("'./probe.ts'")).toBe(false);
+  });
+
+  it("HEADLINE NET-SHRINK PROOF: zero occurrences of the string 'session-run' in cli.ts source (pins the kind, the parse helper, the message consts, the help line, and the dispatch case simultaneously)", () => {
+    expect(src.includes("session-run")).toBe(false);
+  });
+
+  it("static imports in cli.ts are exactly the pio-local version constant (no SDK reach)", () => {
+    const specifiers = [
+      ...src.matchAll(
+        /^\s*import\s+(?:type\s+)?[^\n;]*?from\s+["']([^"']+)["']/gm,
+      ),
+    ].map((match) => match[1]);
+    // Multi-line static imports would slip past this single-clause pattern;
+    // guard (a) above catches an SDK-typed one regardless.
+    expect(specifiers).toEqual(["./version.ts"]);
+  });
+
+  it("the not-implemented catalog line has a single owner (run.ts): zero copies in cli.ts, one in run.ts", () => {
+    const runSrc = readFileSync(
+      new URL("./sandbox/run.ts", import.meta.url),
+      "utf8",
+    );
+    const count = (text: string): number =>
+      text.split("is not implemented yet").length - 1;
+    expect(count(src)).toBe(0);
+    expect(count(runSrc)).toBe(1);
+  });
+
+  // NOTE: the registry-shape guard was retired together with the BUILTINS
+  // registry itself (probe is an explicit dispatch special case in main(),
+  // no abstraction around it). Guards above mechanically pin: zero SDK
+  // references, the single builtin-thunk dynamic-import set, the version-only
+  // static import, the single-owner catalog line, the unreachable probe
+  // builtin (no quoted './probe.ts' specifier), and the zero-'session-run'
+  // net-shrink headline.
 });

@@ -97,3 +97,45 @@ describe("run (failure rendering)", () => {
     expect(err).toEqual(["pio: probe failed: boom"]);
   });
 });
+
+describe("run (sessionsRoot threading into session creation)", () => {
+  const origStdin = Object.getOwnPropertyDescriptor(process, "stdin");
+  const origStdout = Object.getOwnPropertyDescriptor(process, "stdout");
+
+  beforeEach(() => {
+    Object.defineProperty(process, "stdin", {
+      value: { isTTY: true },
+      configurable: true,
+    });
+    Object.defineProperty(process, "stdout", {
+      value: { isTTY: true },
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    if (origStdin) Object.defineProperty(process, "stdin", origStdin);
+    if (origStdout) Object.defineProperty(process, "stdout", origStdout);
+  });
+
+  it("opts.sessionsRoot given: createProbeSession called with (process.cwd(), sessionsRoot); failure line unchanged", async () => {
+    probeSpy.mockRejectedValue(new Error("boom"));
+    const { io, err } = collectorIo();
+    const code = await run(io, { sessionsRoot: "/x" });
+    expect(code).toBe(1);
+    expect(err).toEqual(["pio: probe failed: boom"]);
+    expect(probeSpy).toHaveBeenCalledTimes(1);
+    expect(probeSpy).toHaveBeenCalledWith(process.cwd(), "/x");
+  });
+
+  it("no opts: createProbeSession called SINGLE-ARG with (process.cwd()); failure line unchanged", async () => {
+    probeSpy.mockRejectedValue(new Error("boom"));
+    const { io, err } = collectorIo();
+    const code = await run(io);
+    expect(code).toBe(1);
+    expect(err).toEqual(["pio: probe failed: boom"]);
+    expect(probeSpy).toHaveBeenCalledTimes(1);
+    // Length-sensitive: an explicit undefined second arg fails this row.
+    expect(probeSpy).toHaveBeenCalledWith(process.cwd());
+  });
+});

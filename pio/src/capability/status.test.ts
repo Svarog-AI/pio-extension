@@ -548,11 +548,6 @@ function pendable(): {
   };
 }
 
-/** Pump the real event loop past any in-flight immediate-capture chain
- * (no-settle prelude + one fs write); margins are generous vs tmpdir latency. */
-const pump = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
 describe("single-write guard (racing-consumer rows)", () => {
   it("completion first: signal no-ops, bytes stable, third emit delegates to the cached winner", async () => {
     const h = mkHarness({ tokens: () => 5 });
@@ -624,7 +619,11 @@ describe("single-write guard (racing-consumer rows)", () => {
       hold.resolve();
       await first;
       await second;
-      await pump(15);
+      // Kill owns the claim: emit() delegates to its promise, which resolves
+      // only AFTER the write + exit sink ran — a deterministic barrier.
+      const winner = await h.emitter.emit({ ok: true, outputs: {} });
+      expect(winner.status.ok).toBe(false);
+      expect(winner.exitCode).toBe(1);
       expect(h.exitCalls).toEqual([1]);
       expect(JSON.parse(h.readRaw()).errors).toStrictEqual([
         { type: "SIGTERM", cause: "kill" },
@@ -640,8 +639,11 @@ describe("single-write guard (racing-consumer rows)", () => {
       h.emitter.armKillCapture();
       h.emitter.armKillCapture();
       expect(h.signals.count()).toBe(1);
-      await h.signals.fire();
-      await pump(15);
+      const firing = h.signals.fire();
+      const winner = await h.emitter.emit({ ok: true, outputs: {} });
+      expect(winner.status.ok).toBe(false);
+      expect(winner.exitCode).toBe(1);
+      await firing;
       expect(h.signals.invocations).toEqual(["h0"]);
       expect(h.exitCalls).toEqual([1]);
     } finally {

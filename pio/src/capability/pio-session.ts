@@ -82,7 +82,6 @@ interface UsageTotals {
 // consuming take cursor, and the assistant usage accumulator.
 class SessionObserver {
   #toolUses: Record<string, number> = {};
-  #filesWritten = 0;
   #askUserCalls = 0;
   #pendingPaths: Map<string, string> = new Map();
   #masterList: string[] = [];
@@ -149,7 +148,9 @@ class SessionObserver {
   snapshot(): SessionCounters {
     const totals = this.#usageTotals;
     return {
-      filesWritten: this.#filesWritten,
+      // Derived from the master list: the invariant "count equals
+      // committed paths" holds by construction.
+      filesWritten: this.#masterList.length,
       askUserCalls: this.#askUserCalls,
       toolUses: { ...this.#toolUses },
       tokens:
@@ -165,12 +166,15 @@ class SessionObserver {
   }
 
   #resolveEnd(toolCallId: string, isError: boolean): void {
+    // Commit first, drop after: a fault between the two leaves the entry
+    // replayable (a later end commits it exactly once) rather than lost,
+    // and no duplicate commit is possible because a dropped id finds no
+    // entry on any later end.
     const path = this.#pendingPaths.get(toolCallId);
-    this.#pendingPaths.delete(toolCallId);
     if (!isError && path !== undefined) {
       this.#masterList.push(path);
-      this.#filesWritten += 1;
     }
+    this.#pendingPaths.delete(toolCallId);
   }
 }
 

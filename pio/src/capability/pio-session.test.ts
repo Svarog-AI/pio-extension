@@ -7,9 +7,17 @@
 // fake runtime, so subscription counts and per-instance isolation are
 // directly observable. Synthetic events flow through the single documented
 // cast seam asEvent — the sole `as` in this file.
+//
+// Phase-running rows drive the runs themselves through the fake session
+// handle's prompt mock: each queued implementation emits synthetic events
+// through the captured listener and then resolves, where one resolution
+// stands for one fully-settled logical run. The agentEnd fixture mirrors
+// the installed dist payload shape ({ type, messages, willRetry }).
 import path from "node:path";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import { PioSession } from "./pio-session.ts";
+import { PhaseBudgetError } from "./errors.ts";
+import type { IterationCtx, PhaseResult } from "./pio-session.ts";
+import { PioSession, renderPhaseMarker } from "./pio-session.ts";
 
 // Single documented cast seam for synthetic event payloads.
 const asEvent = (v: unknown): AgentSessionEvent => v as AgentSessionEvent;
@@ -21,6 +29,8 @@ type Listener = (event: AgentSessionEvent) => void;
 
 interface FakeSession {
   subscribe: ReturnType<typeof vi.fn>;
+  /** One invocation stands for one fully-settled logical run. */
+  prompt: ReturnType<typeof vi.fn>;
   sessionId: string;
   dispose: ReturnType<typeof vi.fn>;
 }
@@ -56,8 +66,10 @@ const harness = vi.hoisted(() => {
       captured.push(listener);
       return () => {};
     });
+    const prompt = vi.fn(async () => undefined);
     const session: FakeSession = {
       subscribe,
+      prompt,
       sessionId,
       dispose: vi.fn(),
     };
@@ -152,8 +164,23 @@ function agentStart() {
   return { type: "agent_start" };
 }
 
-function agentEnd() {
-  return { type: "agent_end", messages: [], willRetry: false };
+/** Mirrors the installed dist payload: per-attempt messages plus retry flag. */
+function agentEnd(messages: unknown[] = [], willRetry: boolean = false) {
+  return { type: "agent_end", messages, willRetry };
+}
+
+/** One quiet settled run: a run start plus one empty agent_end payload. */
+function quietRun(): object[] {
+  return [agentStart(), agentEnd([], false)];
+}
+
+/** Queue one synthetic settlement per pass over the captured listener. */
+function scriptRuns(round: Round, ...passes: object[][]) {
+  for (const pass of passes) {
+    round.session.prompt.mockImplementationOnce(async () => {
+      emit(round, ...pass);
+    });
+  }
 }
 
 function turnEnd(message: object) {
@@ -201,13 +228,13 @@ describe("PioSession — construction & scoping", () => {
     expect(round.session.subscribe).toHaveBeenCalledTimes(1);
 
     instance.counters();
-    instance.takeFilesWrittenDelta();
+    instance.getFilesWrittenDelta();
     const store = instance.vars;
     store.set("a", 1);
     store.get("a");
     store.list();
     instance.counters();
-    instance.takeFilesWrittenDelta();
+    instance.getFilesWrittenDelta();
 
     expect(round.session.subscribe).toHaveBeenCalledTimes(1);
   });
@@ -239,7 +266,7 @@ describe("PioSession — construction & scoping", () => {
       toolUses: {},
       tokens: 0,
     });
-    expect(b.takeFilesWrittenDelta()).toEqual([]);
+    expect(b.getFilesWrittenDelta()).toEqual([]);
   });
 
   it("id mirrors the settled session handle id", async () => {
@@ -282,7 +309,7 @@ describe("PioSession — zero state", () => {
     expect(snapshot.askUserCalls).toBe(0);
     expect(snapshot.toolUses).toEqual({});
     expect(snapshot.tokens).toBe(0);
-    expect(instance.takeFilesWrittenDelta()).toEqual([]);
+    expect(instance.getFilesWrittenDelta()).toEqual([]);
   });
 });
 
@@ -343,7 +370,7 @@ describe("PioSession — filesWritten counter", () => {
       end("e1", "edit", true),
     );
     expect(instance.counters().filesWritten).toBe(1);
-    expect(instance.takeFilesWrittenDelta()).toEqual(["/out/a.md"]);
+    expect(instance.getFilesWrittenDelta()).toEqual(["/out/a.md"]);
   });
 
   it("non-file tools never contribute regardless of success", async () => {
@@ -358,7 +385,7 @@ describe("PioSession — filesWritten counter", () => {
       end("g1", "grep", false),
     );
     expect(instance.counters().filesWritten).toBe(0);
-    expect(instance.takeFilesWrittenDelta()).toEqual([]);
+    expect(instance.getFilesWrittenDelta()).toEqual([]);
     expect(instance.counters().toolUses).toEqual({
       read: 1,
       bash: 1,
@@ -373,7 +400,7 @@ describe("PioSession — filesWritten counter", () => {
       start("p1", "write", { path: "/correlated/deep.md" }),
       end("p1", "write", false),
     );
-    const delta = instance.takeFilesWrittenDelta();
+    const delta = instance.getFilesWrittenDelta();
     expect(delta).toHaveLength(1);
     // Byte-for-byte the start's args.path — the only source of the value.
     expect(delta[0]).toBe("/correlated/deep.md");
@@ -391,7 +418,7 @@ describe("PioSession — filesWritten counter", () => {
       const { instance, round } = await host();
       emit(round, start("d1", "write", row.args), end("d1", "write", false));
       expect(instance.counters().filesWritten).toBe(0);
-      expect(instance.takeFilesWrittenDelta()).toEqual([]);
+      expect(instance.getFilesWrittenDelta()).toEqual([]);
       // The start itself is still observed...
       expect(instance.counters().toolUses).toEqual({ write: 1 });
     });
@@ -407,25 +434,25 @@ describe("PioSession — filesWritten counter", () => {
       end("a1", "edit", false),
     );
     expect(instance.counters().filesWritten).toBe(1);
-    expect(instance.takeFilesWrittenDelta()).toEqual(["/pa.md"]);
+    expect(instance.getFilesWrittenDelta()).toEqual(["/pa.md"]);
   });
 
   it("a stale write start is drained at agent_start and never leaks into a later run", async () => {
     const { instance, round } = await host();
     emit(round, start("s1", "write", { path: "/stale.md" }));
-    expect(instance.takeFilesWrittenDelta()).toEqual([]);
+    expect(instance.getFilesWrittenDelta()).toEqual([]);
     emit(round, agentStart());
-    expect(instance.takeFilesWrittenDelta()).toEqual([]);
+    expect(instance.getFilesWrittenDelta()).toEqual([]);
     emit(
       round,
       start("s2", "write", { path: "/fresh.md" }),
       end("s2", "write", false),
     );
-    expect(instance.takeFilesWrittenDelta()).toEqual(["/fresh.md"]);
+    expect(instance.getFilesWrittenDelta()).toEqual(["/fresh.md"]);
     expect(instance.counters().filesWritten).toBe(1);
   });
 
-  it("per-run deltas reset between runs while the cumulative count stays stable", async () => {
+  it("explicit resets separate per-run windows while the cumulative count grows", async () => {
     const { instance, round } = await host();
     emit(
       round,
@@ -436,11 +463,19 @@ describe("PioSession — filesWritten counter", () => {
       end("r1b", "edit", false),
       agentEnd(),
     );
-    expect(instance.takeFilesWrittenDelta()).toEqual([
+    // Repeated reads within the window are content-stable.
+    expect(instance.getFilesWrittenDelta()).toEqual([
+      "/run1/a.md",
+      "/run1/b.md",
+    ]);
+    expect(instance.getFilesWrittenDelta()).toEqual([
       "/run1/a.md",
       "/run1/b.md",
     ]);
     expect(instance.counters().filesWritten).toBe(2);
+
+    // The explicit reset closes the first run's window.
+    instance.resetFilesWrittenDelta();
 
     emit(
       round,
@@ -449,10 +484,8 @@ describe("PioSession — filesWritten counter", () => {
       end("r2a", "write", false),
       agentEnd(),
     );
-    expect(instance.takeFilesWrittenDelta()).toEqual(["/run2/c.md"]);
-    expect(instance.counters().filesWritten).toBe(3);
-
-    expect(instance.takeFilesWrittenDelta()).toEqual([]);
+    expect(instance.getFilesWrittenDelta()).toEqual(["/run2/c.md"]);
+    expect(instance.getFilesWrittenDelta()).toEqual(["/run2/c.md"]);
     expect(instance.counters().filesWritten).toBe(3);
   });
 });
@@ -567,5 +600,512 @@ describe("PioSession — vars store", () => {
     expect(b.vars.get("shared")).toBeUndefined();
     expect(b.vars.list()).toEqual([]);
     expect(a.vars.get("shared")).toBe("mine");
+  });
+});
+
+describe("PioSession — phase markers", () => {
+  it("renders the exact marker bytes with no trailing newline", () => {
+    // Codepoints: U+2014 U+2014 SPACE label SPACE U+2014 U+2014.
+    const rendered = renderPhaseMarker("write-goal");
+    expect(rendered).toBe("\u2014\u2014 write-goal \u2014\u2014");
+    expect(rendered.charCodeAt(0)).toBe(0x2014);
+    expect(rendered.charCodeAt(1)).toBe(0x2014);
+    expect(rendered.charCodeAt(2)).toBe(0x20);
+    expect(rendered.charAt(13)).toBe(" ");
+    expect(rendered.length).toBe(16);
+    expect(rendered.endsWith("\n")).toBe(false);
+  });
+
+  it("stamps the marker as the leading line ahead of the instructions", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    await instance.execute_phase("build", { instructions: "Write the thing" });
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      "\u2014\u2014 build \u2014\u2014\nWrite the thing",
+    );
+  });
+
+  it("sends the bare marker line when instructions are absent", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    await instance.execute_phase("solo");
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      "\u2014\u2014 solo \u2014\u2014",
+    );
+  });
+
+  it("re-stamps the byte-identical marker line at every iteration", async () => {
+    const { instance, round } = await host();
+    const sent: string[] = [];
+    round.session.prompt.mockImplementationOnce(async (text: string) => {
+      sent.push(text);
+      emit(round, ...quietRun());
+    });
+    round.session.prompt.mockImplementationOnce(async (text: string) => {
+      sent.push(text);
+      emit(round, ...quietRun());
+    });
+    let calls = 0;
+    await instance.execute_phase("again", {
+      loop: async () => {
+        calls += 1;
+        return calls === 2 ? "stop" : undefined;
+      },
+    });
+    expect(sent).toHaveLength(2);
+    expect(sent[0]).toBe("\u2014\u2014 again \u2014\u2014");
+    expect(sent[1]).toBe(sent[0]);
+  });
+});
+
+describe("PioSession — execute_phase budgets", () => {
+  it("runs exactly once by default and resolves done", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    const result = await instance.execute_phase("default-phase");
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(1);
+  });
+
+  it("floor forces further runs past an early stop", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun(), quietRun(), quietRun());
+    let hookCalls = 0;
+    const result = await instance.execute_phase("floored", {
+      min: 3,
+      loop: async () => {
+        hookCalls += 1;
+        return "stop";
+      },
+    });
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(3);
+    expect(round.session.prompt).toHaveBeenCalledTimes(3);
+    expect(hookCalls).toBe(3);
+  });
+
+  it("rejects with PhaseBudgetError at the ceiling when continuation is demanded", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun(), quietRun());
+    let hookCalls = 0;
+    try {
+      await instance.execute_phase("ceiling", {
+        max: 2,
+        loop: async () => {
+          hookCalls += 1;
+        },
+      });
+      throw new Error("expected a rejection");
+    } catch (err) {
+      expect(err).toBeInstanceOf(PhaseBudgetError);
+      expect(err).toBeInstanceOf(Error);
+      if (err instanceof PhaseBudgetError) {
+        expect(err.iterations).toBe(2);
+        expect(err.name).toBe("PhaseBudgetError");
+        expect(err.message).toBe(
+          "Iteration budget exceeded after 2 iterations",
+        );
+      } else {
+        throw err;
+      }
+    }
+    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+    expect(hookCalls).toBe(2);
+  });
+
+  it("settles cleanly before the ceiling", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    const result = await instance.execute_phase("early", {
+      max: 5,
+      loop: async () => "stop",
+    });
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(1);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts the settling run between floor and ceiling", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun(), quietRun());
+    let calls = 0;
+    const result = await instance.execute_phase("between", {
+      min: 1,
+      max: 4,
+      loop: async () => {
+        calls += 1;
+        return calls === 1 ? undefined : "stop";
+      },
+    });
+    expect(result.iterations).toBe(2);
+    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails loudly at the ceiling when the floor exceeds it", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    try {
+      await instance.execute_phase("contradiction", { min: 2, max: 1 });
+      throw new Error("expected a rejection");
+    } catch (err) {
+      if (err instanceof PhaseBudgetError) {
+        expect(err.iterations).toBe(1);
+      } else {
+        throw err;
+      }
+    }
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates a rejecting hook unwrapped", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    const sentinel = new Error("hook-failed");
+    await expect(
+      instance.execute_phase("bad-hook", {
+        loop: async () => {
+          throw sentinel;
+        },
+      }),
+    ).rejects.toBe(sentinel);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates a rejecting prompt unwrapped", async () => {
+    const { instance, round } = await host();
+    const sentinel = new Error("prompt-failed");
+    round.session.prompt.mockImplementationOnce(async () => {
+      emit(round, ...quietRun());
+      throw sentinel;
+    });
+    await expect(instance.execute_phase("bad-prompt")).rejects.toBe(sentinel);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("PioSession — hook context", () => {
+  it("interleaves hook calls strictly between prompt resolutions with parity", async () => {
+    const { instance, round } = await host();
+    const log: string[] = [];
+    let pass = 0;
+    round.session.prompt.mockImplementationOnce(async () => {
+      pass += 1;
+      emit(round, ...quietRun());
+      log.push(`p${pass}`);
+    });
+    round.session.prompt.mockImplementationOnce(async () => {
+      pass += 1;
+      emit(round, ...quietRun());
+      log.push(`p${pass}`);
+    });
+    let hookCall = 0;
+    await instance.execute_phase("interleave", {
+      loop: async () => {
+        hookCall += 1;
+        log.push(`h${hookCall}`);
+        return hookCall === 2 ? "stop" : undefined;
+      },
+    });
+    expect(log).toEqual(["p1", "h1", "p2", "h2"]);
+    expect(round.session.prompt).toHaveBeenCalledTimes(hookCall);
+  });
+
+  it("shows cumulative counters beside the per-run window take", async () => {
+    const { instance, round } = await host();
+    // Hand-computed usage sums: run 1 Σ10 (4+3+2+1), run 2 Σ7 (3+2+1+1).
+    scriptRuns(
+      round,
+      [
+        agentStart(),
+        start("r1a", "write", { path: "/r1/a.md" }),
+        end("r1a", "write", false),
+        start("r1b", "edit", { path: "/r1/b.md" }),
+        end("r1b", "edit", false),
+        messageEnd(assistantMessage(usage(4, 3, 2, 1))),
+        agentEnd([], false),
+      ],
+      [
+        agentStart(),
+        start("r2a", "write", { path: "/r2/c.md" }),
+        end("r2a", "write", false),
+        messageEnd(assistantMessage(usage(3, 2, 1, 1))),
+        agentEnd([], false),
+      ],
+    );
+    const seen: Array<{
+      countersFilesWritten: number;
+      filesWritten: string[];
+      tokens: number;
+    }> = [];
+    let n = 0;
+    await instance.execute_phase("divergence", {
+      loop: async (ctx) => {
+        n += 1;
+        seen.push({
+          countersFilesWritten: ctx.counters.filesWritten,
+          filesWritten: [...ctx.filesWritten],
+          tokens: ctx.counters.tokens,
+        });
+        return n === 2 ? "stop" : undefined;
+      },
+    });
+    expect(seen).toEqual([
+      {
+        countersFilesWritten: 2,
+        filesWritten: ["/r1/a.md", "/r1/b.md"],
+        tokens: 10,
+      },
+      {
+        countersFilesWritten: 3,
+        filesWritten: ["/r2/c.md"],
+        tokens: 17,
+      },
+    ]);
+  });
+
+  it("hands the hook the variable store by reference identity", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun(), quietRun());
+    let n = 0;
+    await instance.execute_phase("vars-id", {
+      loop: async (ctx) => {
+        n += 1;
+        expect(ctx.vars).toBe(instance.vars);
+        return n === 2 ? "stop" : undefined;
+      },
+    });
+    expect(n).toBe(2);
+  });
+
+  it("materializes a fresh counter snapshot per invocation with exactly the three keys", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun(), quietRun());
+    const contexts: IterationCtx[] = [];
+    let n = 0;
+    await instance.execute_phase("ctx-shape", {
+      loop: async (ctx) => {
+        n += 1;
+        contexts.push(ctx);
+        return n === 2 ? "stop" : undefined;
+      },
+    });
+    expect(contexts[0].counters).not.toBe(contexts[1].counters);
+    expect(Object.keys(contexts[0]).sort()).toEqual([
+      "counters",
+      "filesWritten",
+      "vars",
+    ]);
+    expect(Object.keys(contexts[1]).sort()).toEqual([
+      "counters",
+      "filesWritten",
+      "vars",
+    ]);
+  });
+});
+
+describe("PioSession — run messages", () => {
+  it("concatenates settled-end payloads across runs in event order", async () => {
+    const { instance, round } = await host();
+    const m1 = { id: "m1" };
+    const m2 = { id: "m2" };
+    const m3 = { id: "m3" };
+    scriptRuns(
+      round,
+      [agentStart(), agentEnd([m1, m2], false)],
+      [agentStart(), agentEnd([m3], false)],
+    );
+    let n = 0;
+    const result = await instance.execute_phase("concat", {
+      loop: async () => {
+        n += 1;
+        return n === 2 ? "stop" : undefined;
+      },
+    });
+    expect(result.messages).toEqual([m1, m2, m3]);
+    expect(result.iterations).toBe(2);
+  });
+
+  it("counts one retry-bearing span as a single run with both payloads", async () => {
+    const { instance, round } = await host();
+    round.session.prompt.mockImplementationOnce(async () => {
+      emit(round, agentStart());
+      emit(round, agentEnd(["a"], true));
+      emit(round, agentEnd(["b"], false));
+    });
+    const result = await instance.execute_phase("retry-span");
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(result.iterations).toBe(1);
+    expect(result.messages).toEqual(["a", "b"]);
+  });
+
+  it("yields an empty message list for an empty run", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    const result = await instance.execute_phase("empty-run");
+    expect(result.messages).toEqual([]);
+  });
+});
+
+describe("PioSession — read/reset contract", () => {
+  it("keeps the window content-stable across repeated reads within a pass", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, [
+      agentStart(),
+      start("w1", "write", { path: "/r1/a.md" }),
+      end("w1", "write", false),
+      start("w2", "edit", { path: "/r1/b.md" }),
+      end("w2", "edit", false),
+      agentEnd([], false),
+    ]);
+    const reads: string[][] = [];
+    await instance.execute_phase("stable-window", {
+      loop: async (ctx) => {
+        reads.push([...ctx.filesWritten]);
+        reads.push([...instance.getFilesWrittenDelta()]);
+        reads.push([...instance.getFilesWrittenDelta()]);
+        return "stop";
+      },
+    });
+    expect(reads).toEqual([
+      ["/r1/a.md", "/r1/b.md"],
+      ["/r1/a.md", "/r1/b.md"],
+      ["/r1/a.md", "/r1/b.md"],
+    ]);
+  });
+
+  it("advances the baseline on reset while the cumulative count survives", async () => {
+    const { instance, round } = await host();
+    emit(
+      round,
+      agentStart(),
+      start("w1", "write", { path: "/r1/a.md" }),
+      end("w1", "write", false),
+      start("w2", "edit", { path: "/r1/b.md" }),
+      end("w2", "edit", false),
+      agentEnd([], false),
+    );
+    expect(instance.getFilesWrittenDelta()).toEqual(["/r1/a.md", "/r1/b.md"]);
+    expect(instance.counters().filesWritten).toBe(2);
+    instance.resetFilesWrittenDelta();
+    expect(instance.getFilesWrittenDelta()).toEqual([]);
+    expect(instance.counters().filesWritten).toBe(2);
+  });
+
+  it("accumulates payloads across passes and closes the window at closeout", async () => {
+    const { instance, round } = await host();
+    const m1 = { id: "m1" };
+    const m2 = { id: "m2" };
+    const m3 = { id: "m3" };
+    scriptRuns(
+      round,
+      [agentStart(), agentEnd([m1], false)],
+      [agentStart(), agentEnd([m2], false)],
+      [agentStart(), agentEnd([m3], false)],
+    );
+    const observed: unknown[][] = [];
+    const result = await instance.execute_phase("accumulate", {
+      loop: async () => {
+        const firstRead = instance.getRunMessages();
+        const secondRead = instance.getRunMessages();
+        expect(firstRead).toEqual(secondRead);
+        observed.push([...firstRead]);
+        return observed.length === 3 ? "stop" : undefined;
+      },
+    });
+    expect(observed).toEqual([[m1], [m1, m2], [m1, m2, m3]]);
+    expect(result.messages).toEqual([m1, m2, m3]);
+    expect(instance.getRunMessages()).toEqual([]);
+  });
+});
+
+describe("PioSession — failure-exit isolation", () => {
+  it("closes the message window at a budget breach so the next phase starts clean", async () => {
+    const { instance, round } = await host();
+    round.session.prompt.mockImplementationOnce(async () => {
+      emit(round, agentStart(), agentEnd(["a1", "a2"], false));
+    });
+    await expect(
+      instance.execute_phase("dead", {
+        max: 1,
+        loop: async () => undefined,
+      }),
+    ).rejects.toThrow(PhaseBudgetError);
+
+    round.session.prompt.mockImplementationOnce(async () => {
+      emit(round, agentStart(), agentEnd(["b1"], false));
+    });
+    const second = await instance.execute_phase("next");
+    expect(second.messages).toEqual(["b1"]);
+  });
+
+  it("closes the delta window at a rejected prompt so the next phase sees an empty window", async () => {
+    const { instance, round } = await host();
+    const sentinel = new Error("phase-a-died");
+    round.session.prompt.mockImplementationOnce(async () => {
+      emit(
+        round,
+        agentStart(),
+        start("d1", "write", { path: "/dead/a.md" }),
+        end("d1", "write", false),
+      );
+      throw sentinel;
+    });
+    await expect(instance.execute_phase("dead-write")).rejects.toBe(sentinel);
+
+    round.session.prompt.mockImplementationOnce(async () => {
+      emit(round, ...quietRun());
+    });
+    let first: IterationCtx | undefined;
+    await instance.execute_phase("after", {
+      loop: async (ctx) => {
+        first = ctx;
+        return "stop";
+      },
+    });
+    expect(first?.filesWritten).toEqual([]);
+    expect(first?.counters.filesWritten).toBe(1);
+  });
+});
+
+describe("PioSession — phase result shape", () => {
+  it("returns exactly the six settled keys with the final snapshot values", async () => {
+    const { instance, round } = await host();
+    // Hand-computed: usage Σ10 (1+2+3+4), one committed write.
+    scriptRuns(round, [
+      agentStart(),
+      start("s1", "write", { path: "/s/x.md" }),
+      end("s1", "write", false),
+      messageEnd(assistantMessage(usage(1, 2, 3, 4))),
+      agentEnd([], false),
+    ]);
+    const result: PhaseResult = await instance.execute_phase("structure", {
+      loop: async () => "stop",
+    });
+    expect(Object.keys(result).sort()).toEqual([
+      "counters",
+      "done",
+      "iterations",
+      "messages",
+      "tokens",
+      "varsDelta",
+    ]);
+    expect(result.done).toBe(true);
+    expect(result.varsDelta).toEqual({});
+    expect(result.tokens).toBe(result.counters.tokens);
+    expect(result.counters).toEqual({
+      filesWritten: 1,
+      askUserCalls: 0,
+      toolUses: { write: 1 },
+      tokens: 10,
+    });
+    expect(result.counters).toEqual(instance.counters());
+  });
+
+  it("exposes no output-validation surface yet", async () => {
+    const { instance } = await host();
+    expect("validateOutputs" in instance).toBe(false);
   });
 });

@@ -651,7 +651,7 @@ describe("PioSession — phase markers", () => {
     await instance.execute_phase("again", {
       shouldStopLoop: async () => {
         calls += 1;
-        return calls === 2 ? "stop" : undefined;
+        return calls === 2;
       },
     });
     expect(sent).toHaveLength(2);
@@ -678,7 +678,7 @@ describe("PioSession — execute_phase budgets", () => {
       min: 3,
       shouldStopLoop: async () => {
         hookCalls += 1;
-        return "stop";
+        return true;
       },
     });
     expect(result.done).toBe(true);
@@ -696,6 +696,7 @@ describe("PioSession — execute_phase budgets", () => {
         max: 2,
         shouldStopLoop: async () => {
           hookCalls += 1;
+          return false;
         },
       });
       throw new Error("expected a rejection");
@@ -721,7 +722,7 @@ describe("PioSession — execute_phase budgets", () => {
     scriptRuns(round, quietRun());
     const result = await instance.execute_phase("early", {
       max: 5,
-      shouldStopLoop: async () => "stop",
+      shouldStopLoop: async () => true,
     });
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
@@ -737,7 +738,7 @@ describe("PioSession — execute_phase budgets", () => {
       max: 4,
       shouldStopLoop: async () => {
         calls += 1;
-        return calls === 1 ? undefined : "stop";
+        return calls > 1;
       },
     });
     expect(result.iterations).toBe(2);
@@ -806,7 +807,7 @@ describe("PioSession — hook context", () => {
       shouldStopLoop: async () => {
         hookCall += 1;
         log.push(`h${hookCall}`);
-        return hookCall === 2 ? "stop" : undefined;
+        return hookCall === 2;
       },
     });
     expect(log).toEqual(["p1", "h1", "p2", "h2"]);
@@ -849,7 +850,7 @@ describe("PioSession — hook context", () => {
           filesWritten: [...ctx.filesWritten],
           tokens: ctx.counters.tokens,
         });
-        return n === 2 ? "stop" : undefined;
+        return n === 2;
       },
     });
     expect(seen).toEqual([
@@ -874,7 +875,7 @@ describe("PioSession — hook context", () => {
       shouldStopLoop: async (ctx) => {
         n += 1;
         expect(ctx.vars).toBe(instance.vars);
-        return n === 2 ? "stop" : undefined;
+        return n === 2;
       },
     });
     expect(n).toBe(2);
@@ -889,7 +890,7 @@ describe("PioSession — hook context", () => {
       shouldStopLoop: async (ctx) => {
         n += 1;
         contexts.push(ctx);
-        return n === 2 ? "stop" : undefined;
+        return n === 2;
       },
     });
     expect(contexts[0].counters).not.toBe(contexts[1].counters);
@@ -921,7 +922,7 @@ describe("PioSession — run messages", () => {
     const result = await instance.execute_phase("concat", {
       shouldStopLoop: async () => {
         n += 1;
-        return n === 2 ? "stop" : undefined;
+        return n === 2;
       },
     });
     expect(result.messages).toEqual([m1, m2, m3]);
@@ -966,7 +967,7 @@ describe("PioSession — read/reset contract", () => {
         reads.push([...ctx.filesWritten]);
         reads.push([...instance.getFilesWrittenDelta()]);
         reads.push([...instance.getFilesWrittenDelta()]);
-        return "stop";
+        return true;
       },
     });
     expect(reads).toEqual([
@@ -1012,7 +1013,7 @@ describe("PioSession — read/reset contract", () => {
         const secondRead = instance.getRunMessages();
         expect(firstRead).toEqual(secondRead);
         observed.push([...firstRead]);
-        return observed.length === 3 ? "stop" : undefined;
+        return observed.length === 3;
       },
     });
     expect(observed).toEqual([[m1], [m1, m2], [m1, m2, m3]]);
@@ -1030,7 +1031,7 @@ describe("PioSession — failure-exit isolation", () => {
     await expect(
       instance.execute_phase("dead", {
         max: 1,
-        shouldStopLoop: async () => undefined,
+        shouldStopLoop: async () => false,
       }),
     ).rejects.toThrow(PhaseBudgetError);
 
@@ -1062,7 +1063,7 @@ describe("PioSession — failure-exit isolation", () => {
     await instance.execute_phase("after", {
       shouldStopLoop: async (ctx) => {
         first = ctx;
-        return "stop";
+        return true;
       },
     });
     expect(first?.filesWritten).toEqual([]);
@@ -1082,7 +1083,7 @@ describe("PioSession — phase result shape", () => {
       agentEnd([], false),
     ]);
     const result: PhaseResult = await instance.execute_phase("structure", {
-      shouldStopLoop: async () => "stop",
+      shouldStopLoop: async () => true,
     });
     expect(Object.keys(result).sort()).toEqual([
       "counters",

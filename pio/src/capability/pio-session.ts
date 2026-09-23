@@ -53,9 +53,8 @@ export interface PhaseOptions {
   readonly min?: number;
   /** Ceiling: demanding continuation past it rejects the phase. */
   readonly max?: number;
-  /** Runs after every settled run; a void return demands continuation. */
-  // biome-ignore lint/suspicious/noConfusingVoidType: void in the verdict union is the continuation signal itself — swapping undefined would change the shipped hook contract
-  readonly shouldStopLoop?: (ctx: IterationCtx) => Promise<void | "stop">;
+  /** Runs after every settled run; `true` ends the phase, `false` demands another run. */
+  readonly shouldStopLoop?: (ctx: IterationCtx) => Promise<boolean>;
 }
 
 /** Decision window handed to the between-runs hook. */
@@ -357,7 +356,7 @@ export class PioSession {
             filesWritten,
             vars: this.vars,
           });
-          proceed = proceed || verdict !== "stop";
+          proceed = proceed || !verdict;
         }
         if (!proceed) break;
         if (iterations >= max) {

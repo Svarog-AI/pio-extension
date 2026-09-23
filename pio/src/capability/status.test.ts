@@ -50,6 +50,38 @@ function steppingClock(initial = 1_700_000_000_000): {
   };
 }
 
+// Array-backed signal target mimicking EventEmitter prepend semantics:
+// registration prepends (unshift); fire iterates a COPY in stored order,
+// awaiting handlers — last-prepended-runs-first, exactly like dispatch.
+function makeFakeSignals(): {
+  target: {
+    prependListener(signal: "SIGTERM", handler: () => void): void;
+  };
+  fire(): Promise<void>;
+  count(): number;
+  invocations: string[];
+} {
+  const handlers: Array<{ label: string; handler: () => void }> = [];
+  const invocations: string[] = [];
+  let seq = 0;
+  return {
+    target: {
+      prependListener(_signal: "SIGTERM", handler: () => void): void {
+        handlers.unshift({ label: `h${seq}`, handler });
+        seq += 1;
+      },
+    },
+    async fire(): Promise<void> {
+      for (const entry of handlers.slice()) {
+        invocations.push(entry.label);
+        await entry.handler();
+      }
+    },
+    count: (): number => handlers.length,
+    invocations,
+  };
+}
+
 interface HarnessOpts {
   now?: () => number;
   tokens?: () => number;
@@ -100,38 +132,6 @@ function mkHarness(opts: HarnessOpts = {}): {
     signals,
     readRaw: (): string =>
       readFileSync(join(sessionsRoot, "top", "status.json"), "utf8"),
-  };
-}
-
-// Array-backed signal target mimicking EventEmitter prepend semantics:
-// registration prepends (unshift); fire iterates a COPY in stored order,
-// awaiting handlers — last-prepended-runs-first, exactly like dispatch.
-function makeFakeSignals(): {
-  target: {
-    prependListener(signal: "SIGTERM", handler: () => void): void;
-  };
-  fire(): Promise<void>;
-  count(): number;
-  invocations: string[];
-} {
-  const handlers: Array<{ label: string; handler: () => void }> = [];
-  const invocations: string[] = [];
-  let seq = 0;
-  return {
-    target: {
-      prependListener(_signal: "SIGTERM", handler: () => void): void {
-        handlers.unshift({ label: `h${seq}`, handler });
-        seq += 1;
-      },
-    },
-    async fire(): Promise<void> {
-      for (const entry of handlers.slice()) {
-        invocations.push(entry.label);
-        await entry.handler();
-      }
-    },
-    count: (): number => handlers.length,
-    invocations,
   };
 }
 

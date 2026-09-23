@@ -649,7 +649,7 @@ describe("PioSession — phase markers", () => {
     });
     let calls = 0;
     await instance.execute_phase("again", {
-      loop: async () => {
+      shouldStopLoop: async () => {
         calls += 1;
         return calls === 2 ? "stop" : undefined;
       },
@@ -676,7 +676,7 @@ describe("PioSession — execute_phase budgets", () => {
     let hookCalls = 0;
     const result = await instance.execute_phase("floored", {
       min: 3,
-      loop: async () => {
+      shouldStopLoop: async () => {
         hookCalls += 1;
         return "stop";
       },
@@ -694,7 +694,7 @@ describe("PioSession — execute_phase budgets", () => {
     try {
       await instance.execute_phase("ceiling", {
         max: 2,
-        loop: async () => {
+        shouldStopLoop: async () => {
           hookCalls += 1;
         },
       });
@@ -721,7 +721,7 @@ describe("PioSession — execute_phase budgets", () => {
     scriptRuns(round, quietRun());
     const result = await instance.execute_phase("early", {
       max: 5,
-      loop: async () => "stop",
+      shouldStopLoop: async () => "stop",
     });
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
@@ -735,7 +735,7 @@ describe("PioSession — execute_phase budgets", () => {
     const result = await instance.execute_phase("between", {
       min: 1,
       max: 4,
-      loop: async () => {
+      shouldStopLoop: async () => {
         calls += 1;
         return calls === 1 ? undefined : "stop";
       },
@@ -766,7 +766,7 @@ describe("PioSession — execute_phase budgets", () => {
     const sentinel = new Error("hook-failed");
     await expect(
       instance.execute_phase("bad-hook", {
-        loop: async () => {
+        shouldStopLoop: async () => {
           throw sentinel;
         },
       }),
@@ -803,7 +803,7 @@ describe("PioSession — hook context", () => {
     });
     let hookCall = 0;
     await instance.execute_phase("interleave", {
-      loop: async () => {
+      shouldStopLoop: async () => {
         hookCall += 1;
         log.push(`h${hookCall}`);
         return hookCall === 2 ? "stop" : undefined;
@@ -842,7 +842,7 @@ describe("PioSession — hook context", () => {
     }> = [];
     let n = 0;
     await instance.execute_phase("divergence", {
-      loop: async (ctx) => {
+      shouldStopLoop: async (ctx) => {
         n += 1;
         seen.push({
           countersFilesWritten: ctx.counters.filesWritten,
@@ -871,7 +871,7 @@ describe("PioSession — hook context", () => {
     scriptRuns(round, quietRun(), quietRun());
     let n = 0;
     await instance.execute_phase("vars-id", {
-      loop: async (ctx) => {
+      shouldStopLoop: async (ctx) => {
         n += 1;
         expect(ctx.vars).toBe(instance.vars);
         return n === 2 ? "stop" : undefined;
@@ -886,7 +886,7 @@ describe("PioSession — hook context", () => {
     const contexts: IterationCtx[] = [];
     let n = 0;
     await instance.execute_phase("ctx-shape", {
-      loop: async (ctx) => {
+      shouldStopLoop: async (ctx) => {
         n += 1;
         contexts.push(ctx);
         return n === 2 ? "stop" : undefined;
@@ -919,7 +919,7 @@ describe("PioSession — run messages", () => {
     );
     let n = 0;
     const result = await instance.execute_phase("concat", {
-      loop: async () => {
+      shouldStopLoop: async () => {
         n += 1;
         return n === 2 ? "stop" : undefined;
       },
@@ -962,7 +962,7 @@ describe("PioSession — read/reset contract", () => {
     ]);
     const reads: string[][] = [];
     await instance.execute_phase("stable-window", {
-      loop: async (ctx) => {
+      shouldStopLoop: async (ctx) => {
         reads.push([...ctx.filesWritten]);
         reads.push([...instance.getFilesWrittenDelta()]);
         reads.push([...instance.getFilesWrittenDelta()]);
@@ -1007,7 +1007,7 @@ describe("PioSession — read/reset contract", () => {
     );
     const observed: unknown[][] = [];
     const result = await instance.execute_phase("accumulate", {
-      loop: async () => {
+      shouldStopLoop: async () => {
         const firstRead = instance.getRunMessages();
         const secondRead = instance.getRunMessages();
         expect(firstRead).toEqual(secondRead);
@@ -1030,7 +1030,7 @@ describe("PioSession — failure-exit isolation", () => {
     await expect(
       instance.execute_phase("dead", {
         max: 1,
-        loop: async () => undefined,
+        shouldStopLoop: async () => undefined,
       }),
     ).rejects.toThrow(PhaseBudgetError);
 
@@ -1060,7 +1060,7 @@ describe("PioSession — failure-exit isolation", () => {
     });
     let first: IterationCtx | undefined;
     await instance.execute_phase("after", {
-      loop: async (ctx) => {
+      shouldStopLoop: async (ctx) => {
         first = ctx;
         return "stop";
       },
@@ -1082,7 +1082,7 @@ describe("PioSession — phase result shape", () => {
       agentEnd([], false),
     ]);
     const result: PhaseResult = await instance.execute_phase("structure", {
-      loop: async () => "stop",
+      shouldStopLoop: async () => "stop",
     });
     expect(Object.keys(result).sort()).toEqual([
       "counters",

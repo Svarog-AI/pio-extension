@@ -80,7 +80,7 @@ interface UsageTotals {
 // toolCallId-correlated pending-path map (interrupted starts are drained at
 // each run start), the monotonic committed-path master list with its
 // consuming take cursor, and the assistant usage accumulator.
-class RunObserver {
+class SessionObserver {
   #toolUses: Record<string, number> = {};
   #filesWritten = 0;
   #askUserCalls = 0;
@@ -187,9 +187,9 @@ export class PioSession {
   /** Fresh per-instance variable store (hooks consume it by reference). */
   readonly vars: SessionVariableStore;
 
-  #observer: RunObserver;
+  #observer: SessionObserver;
 
-  private constructor(runtime: AgentSessionRuntime, observer: RunObserver) {
+  private constructor(runtime: AgentSessionRuntime, observer: SessionObserver) {
     this.id = runtime.session.sessionId;
     this.runtime = runtime;
     this.vars = new SessionVariableStore();
@@ -203,7 +203,7 @@ export class PioSession {
    * lifetime), and returns the ready instance.
    */
   static async create(cwd: string, sessionsRoot?: string): Promise<PioSession> {
-    const observer = new RunObserver();
+    const observer = new SessionObserver();
     const listener: AgentSessionEventListener = (event) => {
       observer.handle(event);
     };

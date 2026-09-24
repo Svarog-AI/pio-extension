@@ -60,11 +60,6 @@ export interface RunSeams {
   readonly entropy?: () => string;
 }
 
-/** The v1 capability-gate refusal — byte-identical to the CLI's emitted
- * form; single owner here until the CLI dedupes against it. */
-export const CAPABILITY_NOT_IMPLEMENTED = (name: string): string =>
-  `pio: capability '${name}' is not implemented yet`;
-
 const defaultSpawn: SpawnFn = (file, args, opts) => nodeSpawn(file, args, opts);
 
 /** The run path: one straight-line host-side launch of a capability inside
@@ -89,11 +84,20 @@ export async function runCapability(
     const check = seams?.check ?? checkBwrap;
     const spawn = seams?.spawn ?? defaultSpawn;
 
-    // Gate 1 — capability catalog. Fires BEFORE the TTY check, so a piped
-    // `pio run bogus` gets the catalog line, not the terminal line.
+    // Gate 1 — capability admission. Defers to the loader through a dynamic
+    // thunk fired ONLY past the probe fast-path (the probe path's evaluation
+    // surface stays identical). A miss resolves as the LOADER-OWNED refusal
+    // line, printed verbatim BEFORE the TTY check (so a piped `pio run
+    // bogus` gets the miss line, not the terminal line) and before ANY side
+    // effect. A hit is admission ONLY — the child re-resolves in-namespace
+    // and its resolution is authoritative.
     if (capabilityName !== "probe") {
-      sink.stderr(CAPABILITY_NOT_IMPLEMENTED(capabilityName));
-      return 1;
+      const { resolveCapability } = await import("../capability/loader.ts");
+      const resolution = await resolveCapability(capabilityName);
+      if (!resolution.ok) {
+        sink.stderr(resolution.refusal);
+        return 1;
+      }
     }
     // Gate 2 — TTY fast-fail. Nothing is constructed past this line when
     // the terminal is missing: no dirs, no artifact, no print, no spawn.

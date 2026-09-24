@@ -1,6 +1,10 @@
+import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+// Type-only edge to the loader module — erased under erasable syntax, zero
+// runtime evaluation; names the descriptor type for the fixture casts.
+import type { CapabilityResolution } from "../capability/loader.ts";
 import type { TtyStream } from "../probe.ts";
 import { TTY_REFUSAL_LINE } from "../probe.ts";
 import { nodeFsView } from "./fsview.ts";
@@ -16,6 +20,59 @@ import {
 import { renderProfile } from "./render.ts";
 import type { RunIO, RunSeams } from "./run.ts";
 import { runCapability } from "./run.ts";
+
+// Loader seam: factory-mocked consumer module with a hoisted eval flag
+// (registration ≠ evaluation — the flag flips at the module's FIRST import).
+// Row order is load-bearing: the probe-purity row leads so it observes a
+// genuinely unevaluated loader.
+const { evalFlags } = vi.hoisted(() => ({
+  evalFlags: { loaderEvaluated: false },
+}));
+
+// Replicated miss-line literal — the SOLE OWNER is capabilityRefusalLine in
+// ../capability/loader.ts; the copy follows its owner so the byte-pins stay
+// meaningful after the ownership move.
+const missLine = (name: string): string =>
+  `pio: capability '${name}' is not implemented yet`;
+
+/** Sentinel refusals for the NON-MISS families: distinctive passthrough
+ * strings proving the gate prints whatever the loader decided UNMODIFIED,
+ * pre-side-effect. Byte-ownership of the real family templates lives in the
+ * loader's own suite. */
+const SENTINEL_REJECTIONS: ReadonlyArray<{
+  readonly family: string;
+  readonly refusal: string;
+}> = [
+  {
+    family: "identity",
+    refusal: "SENTINEL identity refusal (bytes owned by the loader suite)",
+  },
+  {
+    family: "contract",
+    refusal: "SENTINEL contract refusal (bytes owned by the loader suite)",
+  },
+  {
+    family: "load-fault",
+    refusal: "SENTINEL load-fault refusal (bytes owned by the loader suite)",
+  },
+];
+
+vi.mock("../capability/loader.ts", () => {
+  evalFlags.loaderEvaluated = true;
+  return { resolveCapability: vi.fn() };
+});
+
+/** Memoized accessor for the mocked loader module. Deliberately LAZY: the
+ * first fetch runs the loader factory (process-first import), so it must
+ * happen only in rows that tolerate/assert loader evaluation. Nothing at
+ * file scope imports the loader, so the leading probe-purity row observes a
+ * genuinely unevaluated module. */
+type LoaderModule = typeof import("../capability/loader.ts");
+let loaderModulePromise: Promise<LoaderModule> | undefined;
+async function loaderModule(): Promise<LoaderModule> {
+  loaderModulePromise ??= import("../capability/loader.ts");
+  return loaderModulePromise;
+}
 
 /** Fixed engagement-id seams — exact id pinning without real clock/entropy. */
 const FIXED_NOW = Date.UTC(2026, 8, 20, 19, 32, 32, 123);
@@ -213,6 +270,14 @@ function spawned(world: World): boolean {
 }
 
 describe("fast-fail gates (pre-construction refusals)", () => {
+  it("probe purity: the probe path never fires the loader thunk (the eval flag stays FALSE after a probe launch)", async () => {
+    const world = await makeWorld({ ttyInput: {}, ttyOutput: {} });
+    const code = await runCapability("probe", world.io, world.seams);
+    expect(code).toBe(1);
+    expect(world.lines).toEqual([TTY_REFUSAL_LINE]);
+    expect(evalFlags.loaderEvaluated).toBe(false);
+  });
+
   it("stream-descriptor table: EVERY non-TTY combination emits R1's exact TTY line byte-verbatim, resolves 1, and constructs nothing (check un-called, spawn un-called, fake state root walked EMPTY)", async () => {
     const rows: [TtyStream, TtyStream][] = [
       [{ isTTY: false }, { isTTY: false }],
@@ -235,25 +300,118 @@ describe("fast-fail gates (pre-construction refusals)", () => {
     }
   });
 
-  it("the catalog line is byte-identical to the CLI's emitted form (hand-built literal, not the module constant)", async () => {
+  it("the miss line (loader-owned, delivered through the seam) is byte-identical to the loader's template — same bytes as pre-migration; ZERO side effects", async () => {
     const world = await makeWorld();
+    const loaderMod = await loaderModule();
+    const resolveMock = vi.mocked(loaderMod.resolveCapability);
+    resolveMock.mockReset();
+    resolveMock.mockResolvedValue({ ok: false, refusal: missLine("bogus") });
     const code = await runCapability("bogus", world.io, world.seams);
     expect(code).toBe(1);
-    expect(world.lines).toEqual([
-      "pio: capability 'bogus' is not implemented yet",
-    ]);
+    expect(resolveMock).toHaveBeenCalledWith("bogus");
+    expect(world.lines).toEqual([missLine("bogus")]);
     expect(world.checks).toHaveLength(0);
     expect(spawned(world)).toBe(false);
     expect(await readdir(world.stateRoot)).toEqual([]);
   });
 
-  it("the capability gate fires BEFORE the TTY check: piped streams + unknown name yield the catalog line, not the terminal line", async () => {
+  it("the capability gate fires BEFORE the TTY check: piped streams + an unresolvable name yield the miss line, not the terminal line", async () => {
     const world = await makeWorld({ ttyInput: {}, ttyOutput: {} });
+    const loaderMod = await loaderModule();
+    const resolveMock = vi.mocked(loaderMod.resolveCapability);
+    resolveMock.mockReset();
+    resolveMock.mockResolvedValue({ ok: false, refusal: missLine("bogus") });
     const code = await runCapability("bogus", world.io, world.seams);
     expect(code).toBe(1);
-    expect(world.lines).toEqual([
-      "pio: capability 'bogus' is not implemented yet",
-    ]);
+    expect(world.lines).toEqual([missLine("bogus")]);
+  });
+
+  it("sentinel refusal battery: the gate prints WHATEVER THE LOADER DECIDED verbatim (identity/contract/load-fault passthrough), piped streams, PRE-side-effects (checks 0, no spawn, root walked EMPTY)", async () => {
+    for (const { family, refusal } of SENTINEL_REJECTIONS) {
+      const world = await makeWorld({ ttyInput: {}, ttyOutput: {} });
+      const loaderMod = await loaderModule();
+      const resolveMock = vi.mocked(loaderMod.resolveCapability);
+      resolveMock.mockReset();
+      resolveMock.mockResolvedValue({ ok: false, refusal });
+      const code = await runCapability(`${family}-cap`, world.io, world.seams);
+      expect(code).toBe(1);
+      expect(resolveMock).toHaveBeenCalledWith(`${family}-cap`);
+      expect(world.lines).toEqual([refusal]);
+      expect(world.checks).toHaveLength(0);
+      expect(spawned(world)).toBe(false);
+      expect(await readdir(world.stateRoot)).toEqual([]);
+    }
+  });
+});
+
+describe("loader hit (admission only — downstream assembly shape unchanged)", () => {
+  it("a loader-resolvable custom name proceeds UNCHANGED in shape: mirror-render equality with the custom name, spawn argv carries it at the capability position right after '--', --sessions-root = layout handle, child exit propagates", async () => {
+    const world = await makeWorld({
+      homeEntries: ["git"],
+      childExit: [130, null],
+    });
+    const loaderMod = await loaderModule();
+    const resolveMock = vi.mocked(loaderMod.resolveCapability);
+    resolveMock.mockReset();
+    // Inline fixture ctor — discarded downstream; identity/integrity of the
+    // REAL descriptor pipeline is proven in the loader's own suite.
+    class HitFixture {}
+    resolveMock.mockResolvedValue(
+      // Cast seam: the fixture descriptor is structural (the real identity/
+      // integrity checks never run against mocked loaders).
+      {
+        ok: true,
+        capability: {
+          contract: {
+            name: "alpha",
+            version: "1.0.0",
+            inputs: {},
+            outputs: {},
+            writes: [],
+          },
+          ctor: HitFixture,
+        },
+      } as unknown as CapabilityResolution,
+    );
+    const code = await runCapability("alpha", world.io, world.seams);
+    expect(code).toBe(130);
+
+    // Mirror expectation: renderProfile called with the IDENTICAL production
+    // inputs except the capability slot — the custom name rides every
+    // downstream artifact exactly where 'probe' used to.
+    const mirror = renderProfile({
+      cwd: world.cwd,
+      home: world.home,
+      projectKey: world.key,
+      stateRoot: world.stateRoot,
+      projectSlot: world.projectSlot,
+      engagementDir: world.engagementDir,
+      capabilityName: "alpha",
+      fsView: nodeFsView,
+    });
+
+    // Retained bytes === the canonical encoding of the SAME custom-named value.
+    expect(
+      await readFile(path.join(world.engagementDir, PROFILE_FILE_NAME), "utf8"),
+    ).toBe(serializeProfile(mirror));
+
+    // Spawn vector equals the fresh pipeline output AND carries the custom
+    // name at the capability position (immediately after the '--' separator)
+    // with the layout handle as the --sessions-root value.
+    const spawnIndex = world.log.findIndex((entry) => entry.kind === "spawn");
+    expect(spawnIndex).toBeGreaterThan(-1);
+    const spawnEntry = world.log[spawnIndex];
+    if (spawnEntry.kind !== "spawn") throw new Error("spawn entry expected");
+    expect(spawnEntry.file).toBe("bwrap");
+    expect(spawnEntry.args).toEqual(buildArgv(mirror).argv.slice(1));
+    const separatorIndex = spawnEntry.args.indexOf("--");
+    expect(separatorIndex).toBeGreaterThan(-1);
+    // Target grammar: [executable, capabilityName, --sessions-root, <dir>] —
+    // the custom name sits at the capability position after the head.
+    expect(spawnEntry.args[separatorIndex + 2]).toBe("alpha");
+    const flagIndex = spawnEntry.args.indexOf("--sessions-root");
+    expect(flagIndex).toBeGreaterThan(-1);
+    expect(spawnEntry.args[flagIndex + 1]).toBe(world.sessionsDir);
   });
 });
 
@@ -529,5 +687,39 @@ describe("last-resort boundary (never rejects)", () => {
     expect(world.lines).toEqual([
       "pio: unexpected sandbox error: seam crashed",
     ]);
+  });
+});
+
+describe("source guards (mechanical discipline over run.ts)", () => {
+  const src = readFileSync(new URL("./run.ts", import.meta.url), "utf8");
+
+  it("dynamic specifier set is EXACTLY ['../capability/loader.ts'] — the single literal loader thunk, ALL literal, no interpolation", () => {
+    const literal = [...src.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)].map(
+      (match) => match[1],
+    );
+    const total = src.match(/import\(/g)?.length ?? 0;
+    expect(literal).toEqual(["../capability/loader.ts"]);
+    expect(total).toBe(literal.length); // no template-literal (interpolated) imports
+  });
+
+  it('ZERO static import of the loader (`from "../capability/loader.ts"` absent — the edge is dynamic only, keeping the probe path\'s evaluation surface identical)', () => {
+    expect(src.includes('from "../capability/loader.ts"')).toBe(false);
+    expect(src.includes("from '../capability/loader.ts'")).toBe(false);
+  });
+
+  it('ZERO occurrences of "is not implemented yet" in run.ts (single ownership now lives in ../capability/loader.ts)', () => {
+    expect(src.split("is not implemented yet").length - 1).toBe(0);
+  });
+
+  it("zero occurrences of the retired CAPABILITY_NOT_IMPLEMENTED identifier (the loader's capabilityRefusalLine owns the miss line now)", () => {
+    expect(src.includes("CAPABILITY_NOT_IMPLEMENTED")).toBe(false);
+  });
+
+  it("runtime export surface is EXACTLY ['runCapability'] (the IO/seams interfaces erase under erasable syntax)", async () => {
+    expect(Object.keys(await import("./run.ts"))).toEqual(["runCapability"]);
+  });
+
+  it("zero occurrences of the SDK specifier in run.ts source", () => {
+    expect(src.includes("@earendil-works/pi-coding-agent")).toBe(false);
   });
 });

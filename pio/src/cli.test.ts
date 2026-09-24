@@ -8,17 +8,23 @@ import { PIO_VERSION } from "./version.ts";
 
 // Hermetic dispatch seam: an unmocked main() could drive REAL session
 // construction, bwrap launches, or network in a unit suite, so the builtin
-// module is factory-mocked regardless of worker stdio TTY-ness. The
-// not-implemented formatter replicates the shipped literal so the byte-pins
-// below stay meaningful.
+// module is factory-mocked regardless of worker stdio TTY-ness. The miss
+// line arrives THROUGH the mocked run path (delegation proof); its bytes are
+// replicated from the loader owner below so the pins stay meaningful.
 vi.mock("./sandbox/run.ts", () => ({
   runCapability: vi.fn(),
-  CAPABILITY_NOT_IMPLEMENTED: (name: string) =>
-    `pio: capability '${name}' is not implemented yet`,
 }));
 
 const PROBE_DIAGNOSTIC =
   "probe — built-in diagnostic: verifies session/TUI/transcript plumbing";
+const ADVISORY_LINE =
+  "No capabilities are resolvable yet — the built-in capability table ships empty.";
+
+// Replicated miss-line literal — the SOLE OWNER is capabilityRefusalLine in
+// capability/loader.ts; the copy follows its owner into the entry suites so
+// the delegation byte-pins stay meaningful.
+const missLine = (name: string): string =>
+  `pio: capability '${name}' is not implemented yet`;
 
 function collectIo(): { io: CliIO; out: string[]; err: string[] } {
   const out: string[] = [];
@@ -138,8 +144,9 @@ describe("parse (descriptor-level grammar)", () => {
 });
 
 describe("main (behavior matrix)", () => {
-  // Full pinned-array equality: every line of the nine-line pinned form
-  // stays byte-identical — placement pinned, not merely presence.
+  // Full pinned-array equality: every line of the eleven-line pinned form
+  // stays byte-identical — placement pinned, not merely presence (the probe
+  // line byte-stable, exactly one advisory line appended).
   it("--help: exit 0, stdout deep-equals the full pinned line array, clean stderr", async () => {
     const { io, out, err } = collectIo();
     const code = await main(["--help"], io);
@@ -154,17 +161,20 @@ describe("main (behavior matrix)", () => {
       "",
       "Built-in capabilities:",
       "  probe — built-in diagnostic: verifies session/TUI/transcript plumbing (currently the only resolvable target)",
+      "",
+      ADVISORY_LINE,
     ]);
     expect(err).toEqual([]);
   });
 
-  it("help: same contract as --help", async () => {
+  it("help: same contract as --help (containment over the probe line AND the advisory line)", async () => {
     const { io, out, err } = collectIo();
     const code = await main(["help"], io);
     expect(code).toBe(0);
     const joined = out.join("\n");
     expect(joined).toContain("pio run <capability>");
     expect(joined).toContain(PROBE_DIAGNOSTIC);
+    expect(joined).toContain(ADVISORY_LINE);
     expect(err).toEqual([]);
   });
 
@@ -190,22 +200,6 @@ describe("main (behavior matrix)", () => {
     expect(code).toBe(1);
     expect(out).toEqual([]);
     expect(err).toEqual(["pio: default workflow capability not available yet"]);
-  });
-
-  it("run <unknown>: exit 1, not-implemented line naming the capability", async () => {
-    const { io, out, err } = collectIo();
-    const code = await main(["run", "whatever"], io);
-    expect(code).toBe(1);
-    expect(out).toEqual([]);
-    expect(err).toEqual(["pio: capability 'whatever' is not implemented yet"]);
-  });
-
-  it("run PROBE: exit 1, not-implemented line naming PROBE (case-sensitive miss)", async () => {
-    const { io, out, err } = collectIo();
-    const code = await main(["run", "PROBE"], io);
-    expect(code).toBe(1);
-    expect(out).toEqual([]);
-    expect(err).toEqual(["pio: capability 'PROBE' is not implemented yet"]);
   });
 
   it("run probe --detach: exit 1, unknown-option line naming --detach", async () => {
@@ -258,6 +252,37 @@ describe("main (run path dispatch)", () => {
 
   beforeEach(() => {
     runCapabilityMock.mockReset();
+  });
+
+  // Miss rows: the CLI no longer owns any refusal bytes — it DELEGATES the
+  // name onward, and the miss line (loader-owned bytes, replicated above)
+  // arrives THROUGH the very sink the run path receives.
+  it("run <unknown>: exit 1, delegated onward — called with ('whatever', the injected io); the miss line arrives THROUGH that sink; clean stdout", async () => {
+    runCapabilityMock.mockImplementation(async (_name, sink) => {
+      sink?.stderr(missLine("whatever"));
+      return 1;
+    });
+    const { io, out, err } = collectIo();
+    const code = await main(["run", "whatever"], io);
+    expect(code).toBe(1);
+    expect(runCapabilityMock).toHaveBeenCalledTimes(1);
+    expect(runCapabilityMock).toHaveBeenCalledWith("whatever", io);
+    expect(out).toEqual([]);
+    expect(err).toEqual([missLine("whatever")]);
+  });
+
+  it("run PROBE: exit 1, same delegation with a case-sensitive miss naming PROBE (the loader decides, the CLI renders nothing of its own)", async () => {
+    runCapabilityMock.mockImplementation(async (_name, sink) => {
+      sink?.stderr(missLine("PROBE"));
+      return 1;
+    });
+    const { io, out, err } = collectIo();
+    const code = await main(["run", "PROBE"], io);
+    expect(code).toBe(1);
+    expect(runCapabilityMock).toHaveBeenCalledTimes(1);
+    expect(runCapabilityMock).toHaveBeenCalledWith("PROBE", io);
+    expect(out).toEqual([]);
+    expect(err).toEqual([missLine("PROBE")]);
   });
 
   it("run probe: dispatched through the run path with ('probe', the injected sink routed as stderr); exit 0 propagates unchanged; the stderr routing is proven by a line written THROUGH that sink", async () => {
@@ -410,22 +435,32 @@ describe("mechanical SDK-isolation guards", () => {
     expect(specifiers).toEqual(["./version.ts"]);
   });
 
-  it("the not-implemented catalog line has a single owner (run.ts): zero copies in cli.ts, one in run.ts", () => {
+  it("the miss refusal line has a single owner (capability/loader.ts): zero copies in cli.ts, zero in sandbox/run.ts, exactly one in capability/loader.ts", () => {
     const runSrc = readFileSync(
       new URL("./sandbox/run.ts", import.meta.url),
+      "utf8",
+    );
+    const loaderSrc = readFileSync(
+      new URL("./capability/loader.ts", import.meta.url),
       "utf8",
     );
     const count = (text: string): number =>
       text.split("is not implemented yet").length - 1;
     expect(count(src)).toBe(0);
-    expect(count(runSrc)).toBe(1);
+    expect(count(runSrc)).toBe(0);
+    expect(count(loaderSrc)).toBe(1);
+  });
+
+  it("zero occurrences of the retired CAPABILITY_NOT_IMPLEMENTED identifier (ownership of the line moved to the loader's capabilityRefusalLine)", () => {
+    expect(src.includes("CAPABILITY_NOT_IMPLEMENTED")).toBe(false);
   });
 
   // NOTE: the registry-shape guard was retired together with the BUILTINS
-  // registry itself (probe is an explicit dispatch special case in main(),
+  // registry itself (probe is a literal fast-path special case in main(),
   // no abstraction around it). Guards above mechanically pin: zero SDK
   // references, the single builtin-thunk dynamic-import set, the version-only
-  // static import, the single-owner catalog line, the unreachable probe
-  // builtin (no quoted './probe.ts' specifier), and the zero-'session-run'
-  // net-shrink headline.
+  // static import, the single-owner miss line (repointed to
+  // capability/loader.ts), the zero-retired-identifier invariant, the
+  // unreachable probe builtin (no quoted './probe.ts' specifier), and the
+  // zero-'session-run' net-shrink headline.
 });

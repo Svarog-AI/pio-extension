@@ -19,7 +19,6 @@
 import type { Contract } from "./contract.ts";
 import { validateInputs } from "./contract.ts";
 import type { PhaseOptions, PhaseResult, PioSession } from "./pio-session.ts";
-import { renderPhaseMarker } from "./pio-session.ts";
 import type { CapabilityResult } from "./status.ts";
 import { captureError } from "./status.ts";
 
@@ -48,8 +47,6 @@ export abstract class PioCapability {
   readonly tty: boolean | undefined;
   /** Reserved for the cross-process path; retained unenforced here. */
   readonly timeoutMs: number | undefined;
-  /** Flips before the first delegated phase; the kickoff stamp fires once per instance lifetime. */
-  #kickedOff = false;
 
   constructor(params: CapabilityParams) {
     this.s = params.session;
@@ -82,8 +79,8 @@ export abstract class PioCapability {
 
   /**
    * In-process phase execution over the session's budgeted engine.
-   * Throws a plain Error while no session is present; the first-ever
-   * delegation carries the capability kickoff line below the phase marker.
+   * Throws a plain Error while no session is present; delegates the option
+   * bag verbatim to the session's own composition.
    */
   async execute_phase(id: string, opts?: PhaseOptions): Promise<PhaseResult> {
     if (this.s === undefined) {
@@ -91,19 +88,6 @@ export abstract class PioCapability {
         "no session available: execute_phase requires in-process placement",
       );
     }
-    let delegated = opts;
-    if (!this.#kickedOff) {
-      this.#kickedOff = true;
-      // Fresh options object for the injection: the caller's bag is never
-      // mutated, and the spread preserves the closed option-bag shape.
-      const rest = opts?.instructions ?? "";
-      delegated = {
-        ...opts,
-        instructions:
-          renderPhaseMarker(this.contract.name) +
-          (rest !== "" ? `\n${rest}` : ""),
-      };
-    }
-    return this.s.execute_phase(id, delegated);
+    return this.s.execute_phase(id, opts);
   }
 }

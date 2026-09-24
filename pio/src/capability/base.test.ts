@@ -386,12 +386,12 @@ describe("PioCapability — structural pins", () => {
   });
 });
 
-describe("PioCapability — kickoff stamp over live phases", () => {
+describe("PioCapability — prompt framing passes through untouched", () => {
   // Codepoints in the goldens below: U+2014 (em dash) twice flanking each
   // label with single spaces, U+000A (line feed) between lines.
   const PHASE_A_MARKER = "\u2014\u2014 phase-a \u2014\u2014";
   const PHASE_B_MARKER = "\u2014\u2014 phase-b \u2014\u2014";
-  const KICKOFF_LINE = "\u2014\u2014 fixture-cap \u2014\u2014";
+  const CAP_MARKER = "\u2014\u2014 fixture-cap \u2014\u2014";
 
   class TwoPhaseCap extends PioCapability {
     readonly contract: Contract = FIXTURE_CONTRACT;
@@ -405,16 +405,18 @@ describe("PioCapability — kickoff stamp over live phases", () => {
     }
   }
 
-  it("stamps the kickoff line under the first phase marker and nowhere else", async () => {
+  it("leaves the composed phase prompts free of any capability marker line", async () => {
     const { instance, round } = await host();
     const cap = new TwoPhaseCap({ session: instance });
     scriptRuns(round, quietRun(), quietRun());
     const result = await cap.run();
     expect(result.ok).toBe(true);
     expect(round.session.prompt).toHaveBeenCalledTimes(2);
+    // The wrapper forwards the option bag verbatim: only the engine-composed
+    // phase marker plus the authored instructions reach the prompt channel.
     expect(round.session.prompt).toHaveBeenNthCalledWith(
       1,
-      `${PHASE_A_MARKER}\n${KICKOFF_LINE}\ndo A`,
+      `${PHASE_A_MARKER}\ndo A`,
     );
     expect(round.session.prompt).toHaveBeenNthCalledWith(
       2,
@@ -436,14 +438,14 @@ describe("PioCapability — kickoff stamp over live phases", () => {
     }
   }
 
-  it("re-stamps the byte-identical kickoff framing on every floor-driven iteration", async () => {
+  it("re-sends the byte-identical phase framing on every floor-driven iteration without added lines", async () => {
     const { instance, round } = await host();
     const cap = new MinTwoCap({ session: instance });
     scriptRuns(round, quietRun(), quietRun());
     const result = await cap.run();
     expect(result.ok).toBe(true);
     expect(round.session.prompt).toHaveBeenCalledTimes(2);
-    const framed = `${PHASE_A_MARKER}\n${KICKOFF_LINE}\ndo A`;
+    const framed = `${PHASE_A_MARKER}\ndo A`;
     expect(round.session.prompt).toHaveBeenNthCalledWith(1, framed);
     expect(round.session.prompt).toHaveBeenNthCalledWith(2, framed);
   });
@@ -459,19 +461,17 @@ describe("PioCapability — kickoff stamp over live phases", () => {
     }
   }
 
-  it("ends the bare first-phase prompt at the kickoff line with no trailing newline", async () => {
+  it("ends the bare first-phase prompt at its marker line with no trailing newline and no capability line", async () => {
     const { instance, round } = await host();
     const cap = new BarePhaseCap({ session: instance });
     scriptRuns(round, quietRun());
     const result = await cap.run();
     expect(result.ok).toBe(true);
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
-    expect(round.session.prompt).toHaveBeenNthCalledWith(
-      1,
-      `${PHASE_A_MARKER}\n${KICKOFF_LINE}`,
-    );
+    expect(round.session.prompt).toHaveBeenCalledWith(PHASE_A_MARKER);
     const sent = round.session.prompt.mock.calls[0][0];
     expect(sent.endsWith("\n")).toBe(false);
+    expect(sent.includes(CAP_MARKER)).toBe(false);
   });
 });
 
@@ -558,9 +558,9 @@ describe("PioCapability — engine integration through the base", () => {
     scriptRuns(round, quietRun());
     const result = await cap.run();
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
-    // The first phase still carries its kickoff framing through the wrapper.
+    // The wrapper forwards options verbatim: the bare marker line stands alone.
     expect(round.session.prompt).toHaveBeenCalledWith(
-      `\u2014\u2014 hooked \u2014\u2014\n\u2014\u2014 fixture-cap \u2014\u2014`,
+      "\u2014\u2014 hooked \u2014\u2014",
     );
     expect(result.ok).toBe(true);
     expect(result.outputs).toEqual({

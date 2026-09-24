@@ -6,12 +6,16 @@
 // - Strict flag surface: the only recognized top-level forms are `--help`,
 //   `help`, `--version`, and `run`. Every other dash token (anywhere) is an
 //   unknown option — there are no short forms and no stub flags.
-// - Builtins load only through the dynamic import issued after a successful
-//   parse+dispatch, so the cheap forms (help, version, errors) never pay for
-//   evaluating a builtin graph — the run path's graph pulls in the SDK.
-//   The sole static import is the version constant.
-// - `probe` is the only resolvable target, handled as an explicit special
-//   case in `main`'s dispatch — no abstraction around it.
+// - Builtins load only through the single dynamic import issued after a
+//   successful parse+dispatch, so the cheap forms (help, version, errors)
+//   never pay for evaluating a builtin graph — the run path's graph pulls in
+//   the SDK. The sole static import is the version constant and the sole
+//   dynamic literal is `./sandbox/run.ts`.
+// - `probe` is the literal fast-path special case in `main`'s dispatch — no
+//   abstraction around it (retained doctrine). Every other name delegates
+//   onward: the run path's loader-based gate owns admission, and its refusal
+//   line reaches the user through the same IO sink this module threads; this
+//   file carries no refusal bytes of its own.
 import { PIO_VERSION } from "./version.ts";
 
 /** Descriptors of a parsed argv (program name excluded). `error.message` is unprefixed. */
@@ -47,6 +51,8 @@ const HELP_LINES: readonly string[] = [
   "",
   "Built-in capabilities:",
   "  probe — built-in diagnostic: verifies session/TUI/transcript plumbing (currently the only resolvable target)",
+  "",
+  "No capabilities are resolvable yet — the built-in capability table ships empty.",
 ];
 
 function startsWithDash(token: string): boolean {
@@ -129,16 +135,8 @@ export async function main(
         return 1;
       case "run": {
         const name = parsed.capability;
-        if (name !== "probe") {
-          // Single owner of the catalog line. A fault loading the module
-          // purely for the constant rides the last-resort boundary — this
-          // path is already degenerate; no dedicated line is owed.
-          const catalog = await import("./sandbox/run.ts");
-          out.stderr(catalog.CAPABILITY_NOT_IMPLEMENTED(name));
-          return 1;
-        }
-        // `probe` enters through the run path (host-side launch). Dynamic
-        // import — see the header note on lazy loading. It must export
+        // Both arms share ONE lazy import over the run path — see the header
+        // note on lazy loading. It must export
         // runCapability(name, io?): Promise<number> (the exit code).
         let runPath: {
           runCapability(
@@ -153,6 +151,14 @@ export async function main(
           out.stderr(`pio: failed to load built-in '${name}': ${detail}`);
           return 1;
         }
+        // Every non-probe name delegates onward: the run path's loader-based
+        // gate decides (miss ⇒ its refusal line through this very sink).
+        if (name !== "probe") {
+          return await runPath.runCapability(name, out);
+        }
+        // `probe` enters through the run path (host-side launch) as the
+        // explicit literal fast-case — a dispatch special case, no
+        // abstraction around it.
         return await runPath.runCapability("probe", out);
       }
     }

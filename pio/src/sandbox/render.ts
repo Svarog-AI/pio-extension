@@ -1,5 +1,5 @@
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { PIO_PACKAGE_ROOT } from "../constants.ts";
 import type { FsView } from "./fsview.ts";
 import { hasWildcard } from "./fsview.ts";
 import type {
@@ -39,7 +39,7 @@ export interface RenderInput {
   identity?: RenderIdentity;
   /** Default: dirname(dirname(process.execPath)) — own-runtime grounding. */
   runtimeDir?: string;
-  /** Default: `<pkgRoot>/bin/pio-run-session`, resolved once via import.meta.url. */
+  /** Default: `<PIO_PACKAGE_ROOT>/bin/pio-run-session` (src/constants.ts). */
   targetExecutable?: string;
   /** Default: STANDARD_PATH_BASE (the standard six). */
   envBasePath?: string[];
@@ -141,10 +141,10 @@ function defaultRuntimeDir(): string {
   return path.dirname(path.dirname(process.execPath));
 }
 
+/** Package-relative target executable, resolved against the single-source
+ * pio package root (src/constants.ts). */
 function defaultTargetExecutable(): string {
-  const sandboxDir = path.dirname(fileURLToPath(import.meta.url));
-  const pkgRoot = path.dirname(path.dirname(sandboxDir));
-  return path.join(pkgRoot, "bin", "pio-run-session");
+  return path.join(PIO_PACKAGE_ROOT, "bin", "pio-run-session");
 }
 
 function buildBaseFlags(identity: RenderIdentity): string[] {

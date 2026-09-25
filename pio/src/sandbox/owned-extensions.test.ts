@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import {
   lstat,
   mkdir,
@@ -11,11 +10,10 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { PIO_PACKAGE_ROOT } from "../constants.ts";
 import { createProbeSession } from "../session.ts";
 import { LayoutError } from "./layout.ts";
 import {
-  DEFAULT_PIO_ROOT,
   ensureOwnedExtensions,
   nodeOwnedExtensionFs,
   OWNED_EXTENSION_PACKAGES,
@@ -637,17 +635,7 @@ describe("default-guard derivations (mechanical anti-coupling)", () => {
     expect([...OWNED_EXTENSION_PACKAGES]).toEqual(["pi-native-search"]);
   });
 
-  it("the default pioRoot === the hand-computed fileURLToPath(new URL('../..', <module URL>)) (pins the URL arithmetic incl. the level count — the module sits two levels down at src/sandbox/)", () => {
-    const moduleUrl = new URL("./owned-extensions.ts", import.meta.url);
-    expect(DEFAULT_PIO_ROOT).toBe(fileURLToPath(new URL("../..", moduleUrl)));
-    // Sanity: the resolved root really carries the pio manifest.
-    const manifest = JSON.parse(
-      readFileSync(path.join(DEFAULT_PIO_ROOT, "package.json"), "utf8"),
-    ) as { name: string };
-    expect(manifest.name).toBe("pio");
-  });
-
-  it("production defaults (real roster, real pioRoot, real owned pin): a STALE-seeded temp piTree self-heals to the ACTUAL pio/package.json dependencies entry read fresh in the test — expectedVersion derivation pinned behaviorally (N=1 validation of the generic core)", async () => {
+  it("production defaults (real roster, real pioRoot via src/constants.ts, real owned pin): a STALE-seeded temp piTree self-heals to the ACTUAL pio/package.json dependencies entry read fresh in the test — expectedVersion derivation pinned behaviorally (N=1 validation of the generic core; the root-arithmetic pin lives in constants.test.ts)", async () => {
     const { piTree } = await makeStateRoot();
     const installed = targetDirOf(piTree, "pi-native-search");
     await mkdir(installed, { recursive: true });
@@ -660,7 +648,7 @@ describe("default-guard derivations (mechanical anti-coupling)", () => {
     await ensureOwnedExtensions(piTree); // NO seams — the production defaults
 
     const manifest = JSON.parse(
-      await readFile(path.join(DEFAULT_PIO_ROOT, "package.json"), "utf8"),
+      await readFile(path.join(PIO_PACKAGE_ROOT, "package.json"), "utf8"),
     ) as { dependencies: Record<string, string> };
     const declared = manifest.dependencies["pi-native-search"];
     expect(typeof declared).toBe("string");
@@ -677,7 +665,6 @@ describe("default-guard derivations (mechanical anti-coupling)", () => {
 
   it("the module's value export surface is EXACTLY the pinned set (interfaces erase under erasable syntax; no helper leaks)", async () => {
     expect(Object.keys(await import("./owned-extensions.ts")).sort()).toEqual([
-      "DEFAULT_PIO_ROOT",
       "OWNED_EXTENSION_PACKAGES",
       "ensureOwnedExtensions",
       "nodeOwnedExtensionFs",

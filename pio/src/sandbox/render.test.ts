@@ -1,5 +1,5 @@
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { PIO_PACKAGE_ROOT } from "../constants.ts";
 import type { FsView } from "./fsview.ts";
 import { conservativeDefaultSources, STANDARD_PATH_BASE } from "./profile.ts";
 import {
@@ -8,9 +8,7 @@ import {
   SandboxRenderError,
 } from "./render.ts";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PKG_ROOT = path.resolve(HERE, "..", "..");
-const PKG_BIN = path.join(PKG_ROOT, "bin", "pio-run-session");
+const PKG_BIN = path.join(PIO_PACKAGE_ROOT, "bin", "pio-run-session");
 
 /** In-memory FsView with call capture. */
 function makeFake(

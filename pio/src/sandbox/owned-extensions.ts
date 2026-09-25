@@ -11,7 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { PIO_PACKAGE_ROOT } from "../constants.ts";
 import { LayoutError } from "./layout.ts";
 
 /**
@@ -47,15 +47,6 @@ import { LayoutError } from "./layout.ts";
  * a package later = exact-pinned owned dep line + roster entry + suite rows
  * (each carrying its own constraint-5 approval). */
 export const OWNED_EXTENSION_PACKAGES: readonly string[] = ["pi-native-search"];
-
-/** Default pio root: resolved ONCE at module scope — the module sits two
- * levels down at src/sandbox/, so "../.." lands on the pio package root.
- * Owns BOTH the manifest (expected versions) and the source trees
- * (<pioRoot>/node_modules/<name>) — the launch-surface exception made
- * concrete: no registry, no install, no network. */
-export const DEFAULT_PIO_ROOT = fileURLToPath(
-  new URL("../..", import.meta.url),
-);
 
 /** Link-kind classification shared by lstatKind/listEntries: symlinks
  * report "symlink" (never resolved), absence reports "absent". */
@@ -142,8 +133,9 @@ export const nodeOwnedExtensionFs: OwnedExtensionFs = {
 export interface OwnedExtensionSeams {
   /** Default: OWNED_EXTENSION_PACKAGES (the explicit roster above). */
   readonly packages?: readonly string[];
-  /** Default: DEFAULT_PIO_ROOT. Owns the manifest read (expected versions)
-   * AND the source trees — no registry, no install, no network. */
+  /** Default: PIO_PACKAGE_ROOT (single source of truth, src/constants.ts).
+   * Owns the manifest read (expected versions) AND the source trees — no
+   * registry, no install, no network. */
   readonly pioRoot?: string;
   /** Default: the node-backed op surface above. */
   readonly fs?: OwnedExtensionFs;
@@ -366,7 +358,7 @@ export async function ensureOwnedExtensions(
   seams?: OwnedExtensionSeams,
 ): Promise<void> {
   const packages = seams?.packages ?? OWNED_EXTENSION_PACKAGES;
-  const pioRoot = seams?.pioRoot ?? DEFAULT_PIO_ROOT;
+  const pioRoot = seams?.pioRoot ?? PIO_PACKAGE_ROOT;
   const fs = seams?.fs ?? nodeOwnedExtensionFs;
 
   // Manifest read ONCE PER CALL, shared across the roster — never a

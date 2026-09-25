@@ -21,6 +21,7 @@ import {
   mintEngagementId,
   resolveStateRoot,
 } from "./layout.ts";
+import { ensureOwnedExtensions } from "./owned-extensions.ts";
 import {
   buildArgv,
   formatProfileLines,
@@ -58,6 +59,10 @@ export interface RunSeams {
   readonly now?: () => number;
   /** Engagement-id entropy (default: 8 lowercase hex chars). */
   readonly entropy?: () => string;
+  /** Default: ensureOwnedExtensions over the production roster — materializes
+   * the owned extension packages into the isolated agent dir PAST all gates,
+   * BEFORE rendering (the sanctioned launch-surface exception). */
+  readonly provisionExtensions?: (piTree: string) => Promise<void>;
 }
 
 const defaultSpawn: SpawnFn = (file, args, opts) => nodeSpawn(file, args, opts);
@@ -83,6 +88,9 @@ export async function runCapability(
     const fsView = seams?.fsView ?? nodeFsView;
     const check = seams?.check ?? checkBwrap;
     const spawn = seams?.spawn ?? defaultSpawn;
+    const provisionExtensions =
+      seams?.provisionExtensions ??
+      ((piTree: string) => ensureOwnedExtensions(piTree));
 
     // Gate 1 — capability admission. Defers to the loader through a dynamic
     // thunk fired ONLY past the probe fast-path (the probe path's evaluation
@@ -132,7 +140,13 @@ export async function runCapability(
     // First-use pi tree under the state root (the renderer binds it rw and
     // refuses loudly if it were missing — the return value is pinned by the
     // suite; production reaches the path through the renderer's derivation).
-    await ensurePiTree(paths.stateRoot);
+    // Owned-extension provisioning then materializes the roster packages as
+    // REAL FILES underneath THIS handle (the sanctioned launch-surface
+    // exception) — idempotent, PAST all four gates, BEFORE anything renders:
+    // a provisioning fault lands in the layout-refusal handler with no
+    // profile, no print, no spawn.
+    const piTree = await ensurePiTree(paths.stateRoot);
+    await provisionExtensions(piTree);
     const profile = renderProfile({
       cwd,
       home,

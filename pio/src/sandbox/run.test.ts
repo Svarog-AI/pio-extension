@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -10,7 +10,7 @@ import { TTY_REFUSAL_LINE } from "../probe.ts";
 import { nodeFsView } from "./fsview.ts";
 import type { BwrapCheck, SpawnFn } from "./launcher.ts";
 import { bwrapRefusalLine, NESTING_REFUSAL_LINE } from "./launcher.ts";
-import { deriveProjectKey, mintEngagementId } from "./layout.ts";
+import { deriveProjectKey, LayoutError, mintEngagementId } from "./layout.ts";
 import {
   buildArgv,
   formatProfileLines,
@@ -127,6 +127,8 @@ interface WorldOpts {
   readonly checkThrows?: Error | string;
   /** Child exit the fake spawner settles with. */
   readonly childExit?: readonly [number | null, NodeJS.Signals | null];
+  /** Replace the provisioning seam (default: the recording no-op stub). */
+  readonly provisionExtensions?: (piTree: string) => Promise<void>;
 }
 
 interface World {
@@ -146,6 +148,9 @@ interface World {
   /** One entry per pre-flight invocation through the seam (live array —
    * a primitive counter captured by value at return would freeze at 0). */
   readonly checks: unknown[];
+  /** piTree handles the provisioning seam received (recording no-op stub
+   * DEFAULT — writes nothing, so every pre-existing row stays byte-green). */
+  readonly provisionCalls: string[];
   readonly seams: RunSeams;
   readonly io: RunIO;
 }
@@ -186,6 +191,7 @@ async function makeWorld(opts: WorldOpts = {}): Promise<World> {
   const lines: string[] = [];
   const log: Entry[] = [];
   const checks: unknown[] = [];
+  const provisionCalls: string[] = [];
   const [exitCode, exitSignal] = opts.childExit ?? [0, null];
   const spawn: SpawnFn = (file, args, optsSpawn) => {
     log.push({
@@ -218,6 +224,12 @@ async function makeWorld(opts: WorldOpts = {}): Promise<World> {
     spawn,
     now: () => FIXED_NOW,
     entropy: () => FIXED_ENTROPY,
+    provisionExtensions:
+      opts.provisionExtensions ??
+      ((piTree) => {
+        provisionCalls.push(piTree);
+        return Promise.resolve();
+      }),
   };
   const io: RunIO = {
     stderr: (line: string) => {
@@ -238,6 +250,7 @@ async function makeWorld(opts: WorldOpts = {}): Promise<World> {
     lines,
     log,
     checks,
+    provisionCalls,
     seams,
     io,
   };
@@ -687,6 +700,69 @@ describe("last-resort boundary (never rejects)", () => {
     expect(world.lines).toEqual([
       "pio: unexpected sandbox error: seam crashed",
     ]);
+  });
+});
+
+describe("owned-extension provisioning seam (PAST all gates, PRE-render)", () => {
+  it("the proceeding path invokes the provisioning seam EXACTLY ONCE with THE ensurePiTree handle (recorded-arg identity: <stateRoot>/.pi)", async () => {
+    const world = await makeWorld();
+    await runCapability("probe", world.io, world.seams);
+    expect(world.provisionCalls).toEqual([path.join(world.stateRoot, ".pi")]);
+  });
+
+  it("seam invocation sits AFTER the ensured tree and BEFORE any profile print: markers interleave provision < print (.pi exists AT the call moment; print < spawn is pinned by the happy-path row)", async () => {
+    const markers: string[] = [];
+    const world = await makeWorld({
+      provisionExtensions: (piTree) => {
+        markers.push(`provision:.pi-exists=${existsSync(piTree)}`);
+        return Promise.resolve();
+      },
+    });
+    const io: RunIO = {
+      stderr: () => {
+        markers.push("print");
+      },
+    };
+    const code = await runCapability("probe", io, world.seams);
+    expect(code).toBe(0);
+    expect(markers[0]).toBe("provision:.pi-exists=true");
+    // Every subsequent marker is a profile print — nothing prints before the
+    // seam ran, and nothing non-print follows.
+    expect(markers.slice(1).length).toBeGreaterThan(0);
+    expect(markers.slice(1).every((marker) => marker === "print")).toBe(true);
+  });
+
+  it("representative refusals NEVER reach the seam: piped-TTY miss AND loader-miss ⇒ ZERO invocations (piped misses stay cheap)", async () => {
+    const ttyWorld = await makeWorld({ ttyInput: {}, ttyOutput: {} });
+    expect(await runCapability("probe", ttyWorld.io, ttyWorld.seams)).toBe(1);
+    expect(ttyWorld.provisionCalls).toHaveLength(0);
+
+    const missWorld = await makeWorld();
+    const loaderMod = await loaderModule();
+    const resolveMock = vi.mocked(loaderMod.resolveCapability);
+    resolveMock.mockReset();
+    resolveMock.mockResolvedValue({ ok: false, refusal: missLine("bogus") });
+    expect(await runCapability("bogus", missWorld.io, missWorld.seams)).toBe(1);
+    expect(missWorld.provisionCalls).toHaveLength(0);
+  });
+
+  it("a seam LayoutError-family fault ⇒ the EXISTING layout-refusal line + 1, PRE-side-effects past the ensured tree: the residual engagement dir holds ONLY the .sessions handle (no profile.json, no print, no spawn)", async () => {
+    const world = await makeWorld({
+      provisionExtensions: async (): Promise<void> => {
+        throw new LayoutError(
+          "owned-extension provisioning exploded (test fault)",
+        );
+      },
+    });
+    const code = await runCapability("probe", world.io, world.seams);
+    expect(code).toBe(1);
+    expect(world.lines).toEqual([
+      "pio: engagement layout failed: owned-extension provisioning exploded (test fault)",
+    ]);
+    expect(spawned(world)).toBe(false);
+    expect(await readdir(world.engagementDir)).toEqual([".sessions"]);
+    const tree = await walkTree(world.stateRoot);
+    expect(tree.files).toEqual([]);
   });
 });
 

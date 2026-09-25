@@ -12,7 +12,8 @@
     "lint": "biome check --error-on-warnings ."
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.85.1"
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "pi-native-search": "0.1.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.13",

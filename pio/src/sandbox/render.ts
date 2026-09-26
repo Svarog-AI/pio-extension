@@ -55,6 +55,11 @@ export interface RenderInput {
    * presence in the production flow — a hit means pathological drift).
    * Injected paths REPLACE the default wholesale. */
   readonly vendoredExtensions?: readonly string[];
+  /** Named input pairs threaded VERBATIM into the target argv after the
+   * sessions-root pair — declaration (insertion) order preserved; absent ⇒
+   * the classic three-token triple. Zero validation here: strictness lives
+   * in the parsers and the host gates (pure pass-through). */
+  readonly inputs?: Record<string, string>;
   /** Default: true. Binds the pio-state trio — state root ro, own slot rw,
    * then the isolated pi config dir rw (section C). */
   includePioState?: boolean;
@@ -215,14 +220,27 @@ function buildEnv(
   ];
 }
 
+/** Target command: the classic three-token triple `[capabilityName,
+ * "--sessions-root", <engagementDir>/.sessions]` PLUS, WHEN `inputs` is
+ * provided, the named pairs appended VERBATIM as two-token `--input k=v`
+ * groups in `Object.entries` order — host form == child wire form (zero
+ * transform): the pair token is the original wire token reconstructed
+ * losslessly (key + `=` + whole remainder), so a value containing `=`
+ * round-trips byte-exact. No validation of any kind in the renderer. */
 function buildTarget(input: RenderInput): TargetCommand {
+  const args: string[] = [
+    input.capabilityName,
+    "--sessions-root",
+    path.join(input.engagementDir, ".sessions"),
+  ];
+  if (input.inputs !== undefined) {
+    for (const [key, value] of Object.entries(input.inputs)) {
+      args.push("--input", `${key}=${value}`);
+    }
+  }
   return {
     executable: input.targetExecutable ?? defaultTargetExecutable(),
-    args: [
-      input.capabilityName,
-      "--sessions-root",
-      path.join(input.engagementDir, ".sessions"),
-    ],
+    args,
   };
 }
 

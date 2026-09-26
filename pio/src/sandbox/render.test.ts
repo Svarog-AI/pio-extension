@@ -1152,6 +1152,102 @@ describe("profile.ts — conservative default table", () => {
   });
 });
 
+describe("inputs pass-through (the ONE grammar's producer side)", () => {
+  const SESSIONS_DIR =
+    "/home/u/.pio/projects/u-dev-myrepo/engagements/e1/.sessions";
+
+  it("WITH pairs: target args deep-equal the VERBATIM two-token append in declaration order (first-position stable — args[0..2] identical with or without pairs)", () => {
+    const profile = renderProfile(
+      baseInput({
+        fsView: makeFake({ existing: ["/home/u/dev/myrepo"] }).view,
+        mountSources: sources([]),
+        includePioState: false,
+        inputs: { a: "1", b: "2" },
+      }),
+    );
+    expect(profile.target.args).toEqual([
+      "cap",
+      "--sessions-root",
+      SESSIONS_DIR,
+      "--input",
+      "a=1",
+      "--input",
+      "b=2",
+    ]);
+    // First position stays STABLE over the classic triple.
+    expect(profile.target.args.slice(0, 3)).toEqual([
+      "cap",
+      "--sessions-root",
+      SESSIONS_DIR,
+    ]);
+  });
+
+  it("declaration (insertion) order preserved even when keys are given in reverse alphabetical order", () => {
+    const profile = renderProfile(
+      baseInput({
+        fsView: makeFake({ existing: ["/home/u/dev/myrepo"] }).view,
+        mountSources: sources([]),
+        includePioState: false,
+        inputs: { zeta: "z", alpha: "a" },
+      }),
+    );
+    expect(profile.target.args.slice(3)).toEqual([
+      "--input",
+      "zeta=z",
+      "--input",
+      "alpha=a",
+    ]);
+  });
+
+  it("exotic values round-trip BYTE-EXACT into the pair tokens (spaces kept verbatim, embedded '=' survives the first-'=' split, leading dash legal, unicode intact, empty value renders 'k=')", () => {
+    const profile = renderProfile(
+      baseInput({
+        fsView: makeFake({ existing: ["/home/u/dev/myrepo"] }).view,
+        mountSources: sources([]),
+        includePioState: false,
+        inputs: {
+          spaced: " lead trail ",
+          eq: "x=y=z",
+          dash: "-lead",
+          uni: "uni-é-😀",
+          empty: "",
+        },
+      }),
+    );
+    expect(profile.target.args).toEqual([
+      "cap",
+      "--sessions-root",
+      SESSIONS_DIR,
+      "--input",
+      "spaced= lead trail ",
+      "--input",
+      "eq=x=y=z",
+      "--input",
+      "dash=-lead",
+      "--input",
+      "uni=uni-é-😀",
+      "--input",
+      "empty=",
+    ]);
+  });
+
+  it("an EMPTY provided record renders the classic three-token triple (no pairs ⇒ nothing appended)", () => {
+    const profile = renderProfile(
+      baseInput({
+        fsView: makeFake({ existing: ["/home/u/dev/myrepo"] }).view,
+        mountSources: sources([]),
+        includePioState: false,
+        inputs: {},
+      }),
+    );
+    expect(profile.target.args).toEqual([
+      "cap",
+      "--sessions-root",
+      SESSIONS_DIR,
+    ]);
+  });
+});
+
 describe("target command shape", () => {
   it("honors a custom targetExecutable", () => {
     const profile = renderProfile(

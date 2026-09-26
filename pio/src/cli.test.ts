@@ -1,4 +1,4 @@
-// Behavior-matrix TDD suite for the pio CLI (Step 2). Drives `parse` and
+// Behavior-matrix TDD suite for the pio CLI (Steps 2–3). Drives `parse` and
 // `main(argv, io)` with captured IO, plus mechanical SDK-isolation guards.
 import { readFileSync } from "node:fs";
 import type { CliIO } from "./cli.ts";
@@ -23,6 +23,13 @@ const ADVISORY_LINE =
 // the delegation byte-pins stay meaningful.
 const missLine = (name: string): string =>
   `pio: capability '${name}' is not implemented yet`;
+
+// Replicated host usage string — the SOLE OWNER is the RUN_USAGE constant in
+// ./cli.ts (help usage line + both error-template tails); the copy keeps the
+// byte-pins below meaningful (the U-alias idiom from run-session.test.ts).
+// NOTE the trailing ellipsis is the U+2026 HORIZONTAL ELLIPSIS character —
+// pinned codepoint, not three dots.
+const USAGE = "pio run <capability> [--input k=v …]";
 
 function collectIo(): { io: CliIO; out: string[]; err: string[] } {
   const out: string[] = [];
@@ -55,21 +62,27 @@ describe("parse (descriptor-level grammar)", () => {
     expect(parse(["run"])).toEqual({ kind: "reserved" });
   });
 
-  it("run cap -> run(cap)", () => {
+  it("run cap -> run(cap) with the EMPTY inputs record (always present on run descriptors)", () => {
     expect(parse(["run", "cap"])).toEqual({
       kind: "run",
       capability: "cap",
+      inputs: {},
     });
   });
 
-  it("run <unknown> -> run(<unknown>): dispatch decides, not the parser", () => {
-    expect(parse(["run", "nope"])).toEqual({ kind: "run", capability: "nope" });
+  it("run <unknown> -> run(<unknown>) with the empty inputs record: dispatch decides, not the parser", () => {
+    expect(parse(["run", "nope"])).toEqual({
+      kind: "run",
+      capability: "nope",
+      inputs: {},
+    });
   });
 
   it("capability matching is exact and case-sensitive (no normalization)", () => {
     expect(parse(["run", "CAP"])).toEqual({
       kind: "run",
       capability: "CAP",
+      inputs: {},
     });
   });
 
@@ -112,18 +125,17 @@ describe("parse (descriptor-level grammar)", () => {
     });
   });
 
-  it("non-dash token after run <cap> -> unexpected-argument error", () => {
+  it("non-dash token after run <cap> -> unexpected-argument error (canonical usage tail)", () => {
     expect(parse(["run", "cap", "extra"])).toEqual({
       kind: "error",
-      message: "unexpected argument: extra (usage: pio run <capability>)",
+      message: `unexpected argument: extra (usage: ${USAGE})`,
     });
   });
 
-  it("run with empty capability -> missing-capability error", () => {
+  it("run with empty capability -> missing-capability error (canonical usage tail)", () => {
     expect(parse(["run", ""])).toEqual({
       kind: "error",
-      message:
-        "expected capability name after 'run' (usage: pio run <capability>)",
+      message: `expected capability name after 'run' (usage: ${USAGE})`,
     });
   });
 
@@ -141,6 +153,132 @@ describe("parse (descriptor-level grammar)", () => {
   });
 });
 
+describe("parse (--input pair grammar — accepted forms)", () => {
+  it("single pair -> run descriptor carrying the inputs record", () => {
+    expect(parse(["run", "cap", "--input", "a=1"])).toEqual({
+      kind: "run",
+      capability: "cap",
+      inputs: { a: "1" },
+    });
+  });
+
+  it("multiple pairs -> DESCRIPTOR PAYLOAD PINNED WITH INSERTION ORDER (Object.keys snapshot)", () => {
+    const parsed = parse(["run", "cap", "--input", "b=2", "--input", "a=1"]);
+    expect(parsed).toEqual({
+      kind: "run",
+      capability: "cap",
+      inputs: { b: "2", a: "1" },
+    });
+    if (parsed.kind !== "run") throw new Error("run descriptor expected");
+    expect(Object.keys(parsed.inputs)).toEqual(["b", "a"]);
+  });
+
+  it("a multi-word topic arriving shell-quoted as ONE value keeps its spaces byte-exact", () => {
+    expect(
+      parse(["run", "research", "--input", "topic=How do LLMs learn?"]),
+    ).toEqual({
+      kind: "run",
+      capability: "research",
+      inputs: { topic: "How do LLMs learn?" },
+    });
+  });
+
+  it("a value CONTAINING further '=' characters round-trips (split on the FIRST '=' only)", () => {
+    expect(parse(["run", "cap", "--input", "topic=a=b"])).toEqual({
+      kind: "run",
+      capability: "cap",
+      inputs: { topic: "a=b" },
+    });
+  });
+
+  it("an empty value ('k=') IS syntactically legal (value = the EMPTY string)", () => {
+    expect(parse(["run", "cap", "--input", "k="])).toEqual({
+      kind: "run",
+      capability: "cap",
+      inputs: { k: "" },
+    });
+  });
+
+  it("a pair candidate that itself starts with a dash is consumed AS-IS (pair candidates get no dash classification — legal at parse level)", () => {
+    expect(parse(["run", "cap", "--input", "-x=y"])).toEqual({
+      kind: "run",
+      capability: "cap",
+      inputs: { "-x": "y" },
+    });
+  });
+});
+
+describe("parse (--input pair grammar — strictness edges, first violation wins)", () => {
+  const malformedPairCases: ReadonlyArray<
+    readonly [argv: readonly string[], token: string]
+  > = [
+    // Dangling flag: NO pair candidate follows.
+    [["run", "cap", "--input"], "--input"],
+    // Pair candidate with NO '=' at all.
+    [["run", "cap", "--input", "abc"], "abc"],
+    // Pair candidate whose key (text before the FIRST '=') is EMPTY.
+    [["run", "cap", "--input", "=v"], "=v"],
+    [["run", "cap", "--input", "="], "="],
+  ];
+  for (const [argv, token] of malformedPairCases) {
+    it(`${JSON.stringify(argv)} -> malformed input pair naming ${JSON.stringify(token)}`, () => {
+      expect(parse(argv)).toEqual({
+        kind: "error",
+        message: `malformed input pair: '${token}' (--input expects k=v; usage: ${USAGE})`,
+      });
+    });
+  }
+
+  it("duplicated key -> duplicate-input-key error naming the KEY (the later pair is rejected)", () => {
+    expect(parse(["run", "cap", "--input", "a=1", "--input", "a=2"])).toEqual({
+      kind: "error",
+      message: `duplicate input key: 'a' (each key may appear once; usage: ${USAGE})`,
+    });
+  });
+
+  it("a duplicated EMPTY-valued key is still a duplicate (key presence, not value, drives it)", () => {
+    expect(parse(["run", "cap", "--input", "k=", "--input", "k=v"])).toEqual({
+      kind: "error",
+      message: `duplicate input key: 'k' (each key may appear once; usage: ${USAGE})`,
+    });
+  });
+
+  it("the glued form '--input=a=b' is a dash token ≠ the flag token -> unknown-option naming the WHOLE token", () => {
+    expect(parse(["run", "cap", "--input=a=b"])).toEqual({
+      kind: "error",
+      message: "unknown option: --input=a=b (try: pio --help)",
+    });
+  });
+
+  it("a pair NOT preceded by its flag is a POSITIONAL surplus -> unexpected-argument naming the token", () => {
+    expect(parse(["run", "cap", "a=b"])).toEqual({
+      kind: "error",
+      message: `unexpected argument: a=b (usage: ${USAGE})`,
+    });
+  });
+
+  it("positional surplus AFTER a valid pair -> unexpected-argument naming the surplus token", () => {
+    expect(parse(["run", "cap", "--input", "a=1", "extra"])).toEqual({
+      kind: "error",
+      message: `unexpected argument: extra (usage: ${USAGE})`,
+    });
+  });
+
+  it("an unknown dash AMONG pairs -> unknown-option naming the token", () => {
+    expect(parse(["run", "cap", "--input", "a=1", "--detach"])).toEqual({
+      kind: "error",
+      message: "unknown option: --detach (try: pio --help)",
+    });
+  });
+
+  it("'--input' in the CAPABILITY slot stays a strict unknown-option (the flag is recognized ONLY after a capability name was consumed)", () => {
+    expect(parse(["run", "--input", "x"])).toEqual({
+      kind: "error",
+      message: "unknown option: --input (try: pio --help)",
+    });
+  });
+});
+
 describe("main (behavior matrix)", () => {
   // Full pinned-array equality: every line of the ten-line pinned form stays
   // byte-identical — placement pinned, not merely presence (the section
@@ -154,7 +292,7 @@ describe("main (behavior matrix)", () => {
       "pio — goal-driven project management CLI",
       "",
       "Usage:",
-      "  pio run <capability>",
+      "  pio run <capability> [--input k=v …]",
       "  pio --help",
       "  pio --version",
       "",
@@ -224,23 +362,21 @@ describe("main (behavior matrix)", () => {
     expect(err).toEqual(["pio: unknown command: bogus (try: pio --help)"]);
   });
 
-  it("run cap extra: exit 1, unexpected-argument line", async () => {
+  it("run cap extra: exit 1, unexpected-argument line (canonical usage tail)", async () => {
     const { io, out, err } = collectIo();
     const code = await main(["run", "cap", "extra"], io);
     expect(code).toBe(1);
     expect(out).toEqual([]);
-    expect(err).toEqual([
-      "pio: unexpected argument: extra (usage: pio run <capability>)",
-    ]);
+    expect(err).toEqual([`pio: unexpected argument: extra (usage: ${USAGE})`]);
   });
 
-  it('run "": exit 1, missing-capability line', async () => {
+  it('run "": exit 1, missing-capability line (canonical usage tail)', async () => {
     const { io, out, err } = collectIo();
     const code = await main(["run", ""], io);
     expect(code).toBe(1);
     expect(out).toEqual([]);
     expect(err).toEqual([
-      "pio: expected capability name after 'run' (usage: pio run <capability>)",
+      `pio: expected capability name after 'run' (usage: ${USAGE})`,
     ]);
   });
 });
@@ -264,7 +400,12 @@ describe("main (run path dispatch)", () => {
     const code = await main(["run", "whatever"], io);
     expect(code).toBe(1);
     expect(runCapabilityMock).toHaveBeenCalledTimes(1);
-    expect(runCapabilityMock).toHaveBeenCalledWith("whatever", io);
+    expect(runCapabilityMock).toHaveBeenCalledWith(
+      "whatever",
+      io,
+      undefined,
+      {},
+    );
     expect(out).toEqual([]);
     expect(err).toEqual([missLine("whatever")]);
   });
@@ -278,12 +419,12 @@ describe("main (run path dispatch)", () => {
     const code = await main(["run", "CAP"], io);
     expect(code).toBe(1);
     expect(runCapabilityMock).toHaveBeenCalledTimes(1);
-    expect(runCapabilityMock).toHaveBeenCalledWith("CAP", io);
+    expect(runCapabilityMock).toHaveBeenCalledWith("CAP", io, undefined, {});
     expect(out).toEqual([]);
     expect(err).toEqual([missLine("CAP")]);
   });
 
-  it("run cap: dispatched through the run path with ('cap', the injected sink routed as stderr); exit 0 propagates unchanged; the stderr routing is proven by a line written THROUGH that sink", async () => {
+  it("run cap: dispatched through the run path with ('cap', the injected sink routed as stderr, explicit undefined seams, the empty inputs record); exit 0 propagates unchanged; the stderr routing is proven by a line written THROUGH that sink", async () => {
     runCapabilityMock.mockImplementation(async (_name, sink) => {
       sink?.stderr("threaded-line");
       return 0;
@@ -292,9 +433,26 @@ describe("main (run path dispatch)", () => {
     const code = await main(["run", "cap"], io);
     expect(code).toBe(0);
     expect(runCapabilityMock).toHaveBeenCalledTimes(1);
-    expect(runCapabilityMock).toHaveBeenCalledWith("cap", io);
+    expect(runCapabilityMock).toHaveBeenCalledWith("cap", io, undefined, {});
     expect(err).toEqual(["threaded-line"]);
     expect(out).toEqual([]);
+  });
+
+  it("run research --input topic=a b --input depth=2: FOUR-ARG delegation with the parsed payload INTACT (four args ALWAYS — the empty-map uniformity pins on both sides of this row)", async () => {
+    runCapabilityMock.mockResolvedValue(0);
+    const { io, out, err } = collectIo();
+    const code = await main(
+      ["run", "research", "--input", "topic=a b", "--input", "depth=2"],
+      io,
+    );
+    expect(code).toBe(0);
+    expect(runCapabilityMock).toHaveBeenCalledTimes(1);
+    expect(runCapabilityMock).toHaveBeenCalledWith("research", io, undefined, {
+      topic: "a b",
+      depth: "2",
+    });
+    expect(out).toEqual([]);
+    expect(err).toEqual([]);
   });
 
   it("run cap: exit code 1 from the run path propagates unchanged", async () => {
@@ -314,6 +472,58 @@ describe("main (run path dispatch)", () => {
     expect(out).toEqual([]);
     expect(err).toEqual(["pio: unexpected error: kaboom"]);
   });
+});
+
+describe("main (--input strictness edges — prefixed bytes + exit 1)", () => {
+  // The host parser rejects EVERY malformed shape BEFORE any dispatch — these
+  // rows pin the rendered `pio: `-prefixed bytes end-to-end through main.
+  const edgeRows: ReadonlyArray<
+    readonly [argv: readonly string[], line: string]
+  > = [
+    [
+      ["run", "cap", "--input", "a=1", "--input", "a=2"],
+      `pio: duplicate input key: 'a' (each key may appear once; usage: ${USAGE})`,
+    ],
+    [
+      ["run", "cap", "--input"],
+      `pio: malformed input pair: '--input' (--input expects k=v; usage: ${USAGE})`,
+    ],
+    [
+      ["run", "cap", "--input", "abc"],
+      `pio: malformed input pair: 'abc' (--input expects k=v; usage: ${USAGE})`,
+    ],
+    [
+      ["run", "cap", "--input", "=v"],
+      `pio: malformed input pair: '=v' (--input expects k=v; usage: ${USAGE})`,
+    ],
+    [
+      ["run", "cap", "--input", "="],
+      `pio: malformed input pair: '=' (--input expects k=v; usage: ${USAGE})`,
+    ],
+    [
+      ["run", "cap", "--input=a=b"],
+      "pio: unknown option: --input=a=b (try: pio --help)",
+    ],
+    [["run", "cap", "a=b"], `pio: unexpected argument: a=b (usage: ${USAGE})`],
+    [
+      ["run", "cap", "--input", "a=1", "extra"],
+      `pio: unexpected argument: extra (usage: ${USAGE})`,
+    ],
+    [
+      ["run", "cap", "--input", "a=1", "--detach"],
+      "pio: unknown option: --detach (try: pio --help)",
+    ],
+    [["run", "--input", "x"], "pio: unknown option: --input (try: pio --help)"],
+  ];
+  for (const [argv, line] of edgeRows) {
+    it(`${JSON.stringify(argv)} -> exit 1, clean stdout, the exact prefixed line on stderr`, async () => {
+      const { io, out, err } = collectIo();
+      const code = await main(argv, io);
+      expect(code).toBe(1);
+      expect(out).toEqual([]);
+      expect(err).toEqual([line]);
+    });
+  }
 });
 
 describe("main (last-resort error boundary)", () => {

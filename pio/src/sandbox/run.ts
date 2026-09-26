@@ -1,5 +1,6 @@
 import { spawn as nodeSpawn } from "node:child_process";
 import os from "node:os";
+import { classifySpec } from "../capability/contract.ts";
 import type { FsView } from "./fsview.ts";
 import { nodeFsView } from "./fsview.ts";
 import type { SpawnFn, TtyStream } from "./launcher.ts";
@@ -68,15 +69,26 @@ export interface RunSeams {
 
 const defaultSpawn: SpawnFn = (file, args, opts) => nodeSpawn(file, args, opts);
 
+/** Host input-gate refusal lines — the SOLE OWNER of these bytes is THIS
+ * module (private by design: the runtime export surface is pinned to
+ * `['runCapability']`, so exporting helpers would break that guard). Each
+ * line CARRIES ITS OWN `pio: ` prefix (à la TTY_REFUSAL_LINE) and stays
+ * SINGLE-LINE — a host refusal is one physical line + exit 1. */
+const UNDECLARED_INPUT_LINE = (name: string, key: string): string =>
+  `pio: capability '${name}' does not declare input '${key}'`;
+const MISSING_INPUT_LINE = (name: string, key: string): string =>
+  `pio: capability '${name}' is missing required input '${key}'`;
+
 /** The run path: one straight-line host-side launch of a capability inside
- * the bubble. Strict gate order — capability → TTY → nesting → bwrap
- * pre-flight — and side effects (engagement tree, profile.json, the mount
- * list print, the spawn) are reached ONLY on the proceeding path. Resolves
- * THE mapped exit code; never rejects. */
+ * the bubble. Strict gate order — capability → inputs → TTY → nesting →
+ * bwrap pre-flight — and side effects (engagement tree, profile.json, the
+ * mount list print, the spawn) are reached ONLY on the proceeding path.
+ * Resolves THE mapped exit code; never rejects. */
 export async function runCapability(
   capabilityName: string,
   io?: RunIO,
   seams?: RunSeams,
+  inputs?: Record<string, string>,
 ): Promise<number> {
   const sink: RunIO = io ?? {
     stderr: (line) => process.stderr.write(`${line}\n`),
@@ -104,6 +116,47 @@ export async function runCapability(
     if (!resolution.ok) {
       sink.stderr(resolution.refusal);
       return 1;
+    }
+    // Input gates — post-loader-admission, pre-TTY/pre-bwrap (D3): piped
+    // misses stay cheap and print BEFORE any side effect; the resolved
+    // contract is in hand at this gate. Activation: `inputs === undefined`
+    // skips BOTH checks ENTIRELY (legacy caller shape — the whole pre-step
+    // behavior survives byte-for-byte); ANY provided record — including the
+    // EMPTY one — activates both, so a declared-but-unsupplied input still
+    // reports its miss. Undeclared-key check FIRST (the user-typed
+    // malformation outranks omission), then the missing-required check via
+    // the shared classifySpec seam (value slots trip on missing-value,
+    // paramKey-driven file slots on unresolvable; static-file specs never
+    // do). First-offender reporting: ONE physical line + exit 1.
+    if (inputs !== undefined) {
+      const specs = resolution.capability.contract.inputs;
+      const declared = new Set<string>();
+      for (const spec of specs) {
+        // The union of EVERY entry's name PLUS its paramKey (when present)
+        // — the exact keys the wire VALUES can legitimately feed (value
+        // slots look up `name`; file-mode slots look up `paramKey`).
+        declared.add(spec.name);
+        const paramKey = "paramKey" in spec ? spec.paramKey : undefined;
+        if (paramKey !== undefined) declared.add(paramKey);
+      }
+      for (const key of Object.keys(inputs)) {
+        if (!declared.has(key)) {
+          sink.stderr(UNDECLARED_INPUT_LINE(capabilityName, key));
+          return 1;
+        }
+      }
+      for (const spec of specs) {
+        const resolved = classifySpec(spec, inputs);
+        if (
+          resolved.mode === "missing-value" ||
+          resolved.mode === "unresolvable"
+        ) {
+          const wireKey =
+            "paramKey" in spec ? (spec.paramKey ?? spec.name) : spec.name;
+          sink.stderr(MISSING_INPUT_LINE(capabilityName, wireKey));
+          return 1;
+        }
+      }
     }
     // Gate 2 — TTY fast-fail. Nothing is constructed past this line when
     // the terminal is missing: no dirs, no artifact, no print, no spawn.
@@ -155,6 +208,7 @@ export async function runCapability(
       engagementDir: paths.engagementDir,
       capabilityName,
       fsView,
+      inputs,
     });
     const cmd = buildArgv(profile);
     // Retention point: the SAME in-memory profile value feeds the retained

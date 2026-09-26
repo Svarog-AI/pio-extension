@@ -88,7 +88,7 @@ vi.mock("./capability/status.ts", async (importOriginal) => {
   };
 });
 
-const U = "pio-run-session <capability> --sessions-root <dir>";
+const U = "pio-run-session <capability> --sessions-root <dir> [--input k=v …]";
 
 /** Memoized accessor for the mocked loader module. Deliberately LAZY: the
  * first fetch runs the loader factory (process-first import) and flips its
@@ -132,7 +132,7 @@ afterEach(() => {
   }
 });
 
-describe("runSession (strict two-value parse — cheap paths, ZERO module evaluation)", () => {
+describe("runSession (strict positional parse — cheap paths, ZERO module evaluation)", () => {
   beforeEach(() => {
     resetHoistedState();
   });
@@ -171,6 +171,43 @@ describe("runSession (strict two-value parse — cheap paths, ZERO module evalua
     [
       ["--sessions-root", "/x", "cap"],
       `unknown option: --sessions-root (usage: ${U})`,
+    ],
+    // Trailing `--input k=v` tail edges (first violation wins — the SAME
+    // strict grammar as the host CLI's run position): dangling flag / no '='
+    // / empty key => malformed naming the token; duplicated key => duplicate
+    // naming the key; the glued form and unknown dashes stay UNKNOWN_OPTION;
+    // an unflagged pair stays a POSITIONAL surplus.
+    [
+      ["cap", "--sessions-root", "/x", "--input"],
+      `malformed input pair: '--input' (--input expects k=v; usage: ${U})`,
+    ],
+    [
+      ["cap", "--sessions-root", "/x", "--input", "abc"],
+      `malformed input pair: 'abc' (--input expects k=v; usage: ${U})`,
+    ],
+    [
+      ["cap", "--sessions-root", "/x", "--input", "=v"],
+      `malformed input pair: '=v' (--input expects k=v; usage: ${U})`,
+    ],
+    [
+      ["cap", "--sessions-root", "/x", "--input", "="],
+      `malformed input pair: '=' (--input expects k=v; usage: ${U})`,
+    ],
+    [
+      ["cap", "--sessions-root", "/x", "--input", "a=1", "--input", "a=2"],
+      `duplicate input key: 'a' (each key may appear once; usage: ${U})`,
+    ],
+    [
+      ["cap", "--sessions-root", "/x", "--input=a=b"],
+      `unknown option: --input=a=b (usage: ${U})`,
+    ],
+    [
+      ["cap", "--sessions-root", "/x", "a=b"],
+      `unexpected argument: a=b (usage: ${U})`,
+    ],
+    [
+      ["cap", "--sessions-root", "/x", "--input", "a=1", "--detach"],
+      `unknown option: --detach (usage: ${U})`,
     ],
   ];
   for (const [argv, message] of errors) {
@@ -398,7 +435,7 @@ describe("runSession (pipeline order and status emission)", () => {
     resetHoistedState();
   });
 
-  it("success pipeline: gate → session (EXACT (cwd, sessionsRoot)) → instantiate ({ session } identity) → arm (ONCE, indexed between construction and run) → run() (NO arguments) → emit (payload deep-equal) → mapped exit 0; the terminal record is canonical (key order, nullish dropped, source builtin, token scalar, transcriptRef relative to the engagement dir)", async () => {
+  it("success pipeline: gate → session (EXACT (cwd, sessionsRoot)) → instantiate ({ session } identity) → arm (ONCE, indexed between construction and run) → run(THE single parsed record — zero-pair argv hands the EMPTY object) → emit (payload deep-equal) → mapped exit 0; the terminal record is canonical (key order, nullish dropped, source builtin, token scalar, transcriptRef relative to the engagement dir)", async () => {
     const world = makePipelineWorld({
       runBehavior: async () => ({ ok: true, outputs: { answer: 42 } }),
     });
@@ -425,7 +462,7 @@ describe("runSession (pipeline order and status emission)", () => {
     expect(inst.paramsBag).toEqual({ session: world.fake });
     expect(inst.paramsBag.session).toBe(world.fake); // the CREATED instance, by reference
     expect(hoisted.invocations).toEqual(["constructed", "armed", "run-called"]);
-    expect(inst.runArgs).toStrictEqual([]); // run() invoked with NO arguments
+    expect(inst.runArgs).toStrictEqual([{}]); // THE parsed record — zero pairs ⇒ the EMPTY object (the old zero-arg contract is superseded)
     expect(world.handlers).toHaveLength(1); // armKillCapture installed exactly once
 
     // Emitter options (captured through the pass-through seam): identity
@@ -514,6 +551,44 @@ describe("runSession (pipeline order and status emission)", () => {
     expect(record.outputs).toEqual({});
     expect(record.tokens).toBe(42);
     expect(world.exitCalls).toEqual([]);
+  });
+  it("paired invocation: THE single parsed record is handed to run(values) BY REFERENCE — exactly ONE argument deep-equal to the parsed pairs WITH declaration key order (no spread/copy at the handoff point)", async () => {
+    const world = makePipelineWorld({
+      runBehavior: async () => ({ ok: true, outputs: {} }),
+    });
+    await scriptHitPipeline(world);
+
+    const { io, err } = collectErr();
+    const code = await runSession(
+      [
+        "alpha",
+        "--sessions-root",
+        world.sessionsRoot,
+        "--input",
+        "topic=hello world",
+        "--input",
+        "depth=2",
+      ],
+      io,
+      { signals: world.signalsTarget, exit: world.exitSink },
+    );
+
+    expect(code).toBe(0);
+    expect(err).toEqual([]);
+    expect(world.instances).toHaveLength(1);
+    const inst = world.instances[0];
+    // Exactly ONE argument: the one record parseEntry built, passed by
+    // reference (identity verified structurally — external tests cannot name
+    // the internal object, so arity + deep equality + key order ARE the pins).
+    expect(inst.runArgs).toHaveLength(1);
+    // Cast seam: the parsed record bytes are read through Record<string,
+    // unknown> (documented suite convention — zero casts live in SOURCE).
+    const handed = inst.runArgs[0] as Record<string, unknown>;
+    expect(handed).toStrictEqual({
+      topic: "hello world",
+      depth: "2",
+    });
+    expect(Object.keys(handed)).toEqual(["topic", "depth"]);
   });
 });
 

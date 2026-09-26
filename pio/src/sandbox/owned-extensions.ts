@@ -133,13 +133,15 @@ export const nodeOwnedExtensionFs: OwnedExtensionFs = {
   rename: (fromPath, toPath) => rename(fromPath, toPath),
 };
 
-/** Vendored tree location = pio's OWN installed copy (the artifact ships
- * it; the module reads NOTHING inside it at launch). */
+/** Guard target AND user-scope LOCAL SOURCE settings entry (ONE helper for
+ * BOTH roles — identical today; if the settings ENTRY FORM ever diverges
+ * from the on-disk location, that decision lands as ONE body change to
+ * this helper, never in the phase logic): the vendored tree = pio's OWN
+ * installed copy (the artifact ships it; the module reads NOTHING inside it
+ * at launch), registered as its ABSOLUTE PATH verbatim — no `npm:` prefix,
+ * no normalization (the measured local-source form). */
 const sourceDirOf = (pioRoot: string, name: string): string =>
   path.join(pioRoot, "node_modules", name);
-/** User-scope LOCAL SOURCE entry = the VENDORED ABSOLUTE PATH, verbatim —
- * no `npm:` prefix, no normalization (the measured local-source form). */
-const settingsEntryOf = sourceDirOf;
 const settingsPathOf = (piTree: string): string =>
   path.join(piTree, "agent", "settings.json");
 
@@ -303,6 +305,6 @@ export async function ensureOwnedExtensions(
   await registerAll(
     fs,
     piTree,
-    packages.map((name) => settingsEntryOf(pioRoot, name)),
+    packages.map((name) => sourceDirOf(pioRoot, name)),
   );
 }

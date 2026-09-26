@@ -162,6 +162,10 @@ function s01AnchorInput(): RenderInput {
     fsView: view,
     identity: { uid: 1000, gid: 1000 },
     runtimeDir: "/usr/local",
+    // Row focus is the buildArgv token-vector mapping — the
+    // vehicle-provisioning vendored members are out of scope here (the
+    // hermetic fake view does not wire the default real paths).
+    vendoredExtensions: [],
   };
 }
 

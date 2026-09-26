@@ -2,6 +2,7 @@ import path from "node:path";
 import { PIO_PACKAGE_ROOT } from "../constants.ts";
 import type { FsView } from "./fsview.ts";
 import { hasWildcard } from "./fsview.ts";
+import { OWNED_EXTENSION_PACKAGES } from "./owned-extensions.ts";
 import type {
   EnvAssignment,
   MountEntry,
@@ -45,6 +46,15 @@ export interface RenderInput {
   envBasePath?: string[];
   /** Default: conservativeDefaultSources(identity.uid). */
   mountSources?: MountSources;
+  /** The vendored extension trees bound ro into the bubble (section C,
+   * after the pio-state trio) — pi's loader resolves the registered
+   * local-source settings entries against these identity paths in place.
+   * Only when `includePioState !== false` (bypassing the pio-state section
+   * bypasses vehicle provisioning too); a missing path is a NORMATIVE
+   * refusal (the existence guard right before render already guarantees
+   * presence in the production flow — a hit means pathological drift).
+   * Injected paths REPLACE the default wholesale. */
+  readonly vendoredExtensions?: readonly string[];
   /** Default: true. Binds the pio-state trio — state root ro, own slot rw,
    * then the isolated pi config dir rw (section C). */
   includePioState?: boolean;
@@ -145,6 +155,16 @@ function defaultRuntimeDir(): string {
  * pio package root (src/constants.ts). */
 function defaultTargetExecutable(): string {
   return path.join(PIO_PACKAGE_ROOT, "bin", "pio-run-session");
+}
+
+/** The vendored extension trees — OWNED_EXTENSION_PACKAGES mapped to
+ * `<PIO_PACKAGE_ROOT>/node_modules/<n>` in roster order (lazy helper, à la
+ * defaultTargetExecutable). The SAME roster constant drives both the
+ * settings entries (owned-extensions.ts) and these mount members. */
+function defaultVendoredExtensions(): readonly string[] {
+  return [...OWNED_EXTENSION_PACKAGES].map((name) =>
+    path.join(PIO_PACKAGE_ROOT, "node_modules", name),
+  );
 }
 
 function buildBaseFlags(identity: RenderIdentity): string[] {
@@ -253,7 +273,11 @@ export function renderProfile(input: RenderInput): SandboxProfile {
   // C. pio-state trio (iff includePioState — bypassed entirely when false);
   //    missing roots fail loud (a quiet security-model change otherwise).
   //    The .pi member is the sole writable addition over the ro root — the
-  //    vehicle's own pi instance lives there.
+  //    vehicle's own pi instance lives there — followed by the vendored
+  //    extension trees as read-only identity binds (nothing in-bubble ever
+  //    writes them: loaders READ, locals are excluded from update
+  //    reconciliation, and a bubble must not mutate its own launch-surface
+  //    tooling). Declaration order = roster order (byte-stable).
   if (includePioState) {
     candidates.push(
       {
@@ -275,6 +299,14 @@ export function renderProfile(input: RenderInput): SandboxProfile {
         missingReason: "normative-path-missing",
       },
     );
+    for (const p of input.vendoredExtensions ?? defaultVendoredExtensions()) {
+      candidates.push({
+        path: p,
+        mode: "ro",
+        context: "vendored extension entry",
+        missingReason: "normative-path-missing",
+      });
+    }
   }
   // D. cwd rw — LAST (later bind overlays earlier — ordering is security)
   candidates.push({

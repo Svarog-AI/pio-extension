@@ -425,6 +425,86 @@ describe("multi-package rows (ordering + failure isolation)", () => {
   });
 });
 
+describe("settings write/rename-fault surface (Phase U op faults → the layout family; temp cleaned)", () => {
+  // Fault-injection seams WRAP the real node ops: every NON-injected op
+  // stays REAL over the real fs. Deliberate — best-effort temp cleanup uses
+  // node's unlink DIRECTLY (outside the five-op seam, see the module note),
+  // so only a real filesystem can observe the deletion happening. If a
+  // fault behavior proves WRONG (raw node escape, uncleaned temp, lost
+  // original message), that is a CRITICAL escalation reported with measured
+  // evidence — never a production workaround (fail-meaning doctrine).
+
+  it("a WRITE FAULT at the settings temp write (the injected writeFile throws 'simulated ENOSPC'; every other seam op is the REAL node op over the real fs) ⇒ rejection ROUTES TO THE LAYOUT-ERROR FAMILY (never a raw node error, never the last-resort unexpected-error branch) carrying the CONTEXTUALIZED PREFIX + the ORIGINAL message text; the pre-seeded settings file stays BYTE-IDENTICAL and NO *.tmp sibling remains beside it — cleanup OBSERVED on the real fs via the settings parent dir's ENTRY SET (readdir, not globbing)", async () => {
+    const pioRoot = await fabricatePioRoot([A]);
+    const { piTree } = await makeStateRoot();
+    const settingsParent = path.dirname(settingsPathOf(piTree));
+    await mkdir(settingsParent, { recursive: true });
+    const preseeded = { theme: "dark", packages: [] };
+    const rawPreseed = `${JSON.stringify(preseeded, null, 2)}\n`;
+    await writeFile(settingsPathOf(piTree), rawPreseed);
+
+    const message = await expectRefusal(
+      () =>
+        ensureOwnedExtensions(piTree, {
+          pioRoot,
+          packages: [A],
+          fs: {
+            ...nodeOwnedExtensionFs,
+            writeFile: async (): Promise<void> => {
+              throw new Error("simulated ENOSPC");
+            },
+          },
+        }),
+      [settingsPathOf(piTree), "simulated ENOSPC"],
+    );
+    // The contextualized prefix NAMES the failing phase (writing, not
+    // guarding/corrupting) around the settings artifact.
+    expect(message).toContain("writing the settings file");
+    // The fault lands BEFORE any rename can replace the pre-seeded file.
+    expect(await readFile(settingsPathOf(piTree), "utf8")).toBe(rawPreseed);
+    // Cleanup OBSERVED on the real fs: the parent dir's entry set holds ONLY
+    // the pre-seeded settings file — no *.tmp sibling residue.
+    expect((await readdir(settingsParent)).sort()).toEqual(["settings.json"]);
+  });
+
+  it("a RENAME FAULT after the REAL temp write has LANDED (the injected rename RECORDS the temp path it was asked to move, then throws 'simulated EXDEV'; writeFile is the REAL node op) ⇒ the SAME THREE PINs hold: LayoutError-family routing with the contextualized prefix + ORIGINAL message preserved, settings BYTES untouched, and the RECORDED temp sibling is GONE afterwards (cleanup exercised on the POST-WRITE branch of the catch-all — the residue the write-fault row cannot see)", async () => {
+    const pioRoot = await fabricatePioRoot([A]);
+    const { piTree } = await makeStateRoot();
+    const settingsParent = path.dirname(settingsPathOf(piTree));
+    await mkdir(settingsParent, { recursive: true });
+    const preseeded = { theme: "dark", packages: [] };
+    const rawPreseed = `${JSON.stringify(preseeded, null, 2)}\n`;
+    await writeFile(settingsPathOf(piTree), rawPreseed);
+
+    let renamedFrom: string | undefined;
+    const message = await expectRefusal(
+      () =>
+        ensureOwnedExtensions(piTree, {
+          pioRoot,
+          packages: [A],
+          fs: {
+            ...nodeOwnedExtensionFs,
+            rename: async (fromPath: string): Promise<void> => {
+              renamedFrom = fromPath;
+              throw new Error("simulated EXDEV");
+            },
+          },
+        }),
+      [settingsPathOf(piTree), "simulated EXDEV"],
+    );
+    expect(message).toContain("writing the settings file");
+    // The REAL write landed on the unique same-directory temp sibling BEFORE
+    // the fault (single-pass atomic write contract, visible mid-flight).
+    expect(renamedFrom?.startsWith(`${settingsPathOf(piTree)}.`)).toBe(true);
+    expect(renamedFrom?.endsWith(".tmp")).toBe(true);
+    // The rename never completed: the pre-seeded bytes survive.
+    expect(await readFile(settingsPathOf(piTree), "utf8")).toBe(rawPreseed);
+    // The RECORDED temp sibling is GONE — cleanup deleted exactly the landed
+    // residue (entry set back to the pre-seeded settings file alone).
+    expect((await readdir(settingsParent)).sort()).toEqual(["settings.json"]);
+  });
+});
+
 describe("default-guard derivations (mechanical anti-coupling)", () => {
   it("the default roster deep-equals ['pi-native-search']", () => {
     expect([...OWNED_EXTENSION_PACKAGES]).toEqual(["pi-native-search"]);

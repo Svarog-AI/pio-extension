@@ -1,12 +1,9 @@
 import { randomBytes } from "node:crypto";
 import {
-  cp,
   lstat,
   mkdir,
-  readdir,
   readFile,
   rename,
-  rm,
   unlink,
   writeFile,
 } from "node:fs/promises";
@@ -15,106 +12,110 @@ import { PIO_PACKAGE_ROOT } from "../constants.ts";
 import { LayoutError } from "./layout.ts";
 
 /**
- * Owned-extension provisioning (D1/SR3) — idempotent materialization of the
- * OWED pi-extension packages into the isolated agent dir, so EVERY sandboxed
- * session gains their tools through pi's ordinary disk-backed extension
- * loading. Parameterized over the package name — every mechanic derives from
- * the name + these pinned-dist rules (measured against the exact-pinned
- * @earendil-works/pi-coding-agent 0.85.1 dist under pio/node_modules/…,
- * 2026-09-25 — measurement over citation):
- * - getManagedNpmInstallPath: a user-scope `npm:` source resolves to EXACTLY
- *   join(agentDir, "npm", "node_modules", source.name) ⇒ targetDirOf.
- * - resolvePackageSources / installedNpmMatchesConfiguredVersion: an UNPINNED
- *   `"npm:<name>"` entry matches whenever the installed package.json carries
- *   ANY version (no registry metadata while the path exists; a missing
- *   source is skipped SILENTLY offline) ⇒ provisioning owns existence AND
- *   version match.
+ * Owned-extension provisioning (D1/SR3) — verify the owned roster's sources
+ * EXIST and register EVERY roster package into the isolated agent dir's
+ * GLOBAL settings as a user-scope LOCAL SOURCE (the vendored tree's
+ * ABSOLUTE PATH, verbatim). Pi's loader then loads each vendored tree IN
+ * PLACE through its ordinary disk-backed extension loading — no copy, no
+ * symlink, no registry, no network at launch (measured against the
+ * exact-pinned @earendil-works/pi-coding-agent 0.85.1 dist under
+ * pio/node_modules/…, 2026-09-26 — measurement over citation):
+ * - parseSource: any string that is neither `npm:` nor a git URL falls
+ *   through to `{ type: "local", path: source }` — RAW ABSOLUTE paths are
+ *   admitted verbatim (a direct settings write bypasses any interactive
+ *   normalization pi applies to its own persistence).
+ * - install() local branch: the ENTIRE behavior is an existence check —
+ *   NO copy/symlink/materialization; this upsert is the minimal embodiment
+ *   of the one settings recording that installAndPersist adds on top.
+ * - resolveLocalExtensionSource: resolved path ABSENT ⇒ SILENT SKIP
+ *   (offline-safe by construction; Step 4's loud preflight is the gap
+ *   detector); a DIRECTORY runs collectPackageResources against its
+ *   `pi.*` manifest — resource-collection semantics identical to any
+ *   managed layout.
+ * - update reconciliation short-circuits `type === "local" || pinned` —
+ *   NO drift attempts ever against our entries (the exact pin rides the
+ *   artifact lockfile — pin-policy consistent).
+ * - the extension LOADER carries the `@mariozechner/*` → renamed-host
+ *   import alias bridge uniformly for ALL source kinds (the headless proof
+ *   observes it end-to-end).
  * - getSettingsPath() = join(getAgentDir(), "settings.json"); getAgentDir()
- *   honors $PI_CODING_AGENT_DIR read at CALL time — the renderer sets it
- *   UNCONDITIONALLY to <stateRoot>/.pi/agent ⇒ the settings upserted here is
- *   the bubble sessions' GLOBAL settings.
+ *   honors $PI_CODING_AGENT_DIR read at CALL time — the renderer sets that
+ *   var UNCONDITIONALLY to <stateRoot>/.pi/agent ⇒ the settings file
+ *   upserted here IS the bubble sessions' global settings.
  *
- * Steady state is a TOTAL NO-OP (probes only, ZERO writes). All failures
- * throw the layout-error family (run.ts's existing handler). Corrupted
- * INSTALLED trees self-heal (wipe + re-copy — pure pio materialization);
- * a corrupted SETTINGS file refuses loud and untouched (it is an
+ * Steady state is a TOTAL NO-OP (per-package stat + ONE settings read;
+ * ZERO writes). Existence-only guard (USER RULING 2026-09-26): the module
+ * never reads ANY manifest — version/pin fidelity is owned by the artifact
+ * layer (exact dependency + committed lockfile + CI gates on clean
+ * installs), deliberately NOT re-mechanized per launch. All faults throw
+ * the layout-error family (run.ts's existing handler). A corrupted
+ * SETTINGS file refuses loud and BYTE-UNTOUCHED (it is a read-modify-write
  * accumulator, not a pure function of pio's inputs).
  */
 
-/** Explicit owned-extension roster — the ONLY packages ever materialized
- * into bubbles. Deliberately NOT derived from pio's manifest (the pi SDK
- * itself is a dependency and must never be copied into the bubble). Adding
- * a package later = exact-pinned owned dep line + roster entry + suite rows
- * (each carrying its own constraint-5 approval). */
+/** Explicit owned-extension roster — the ONLY packages ever registered into
+ * bubbles. Deliberately NOT derived from pio's manifest (the pi SDK itself
+ * is a dependency and must never be registered). The SAME constant drives
+ * the renderer's vendored-extension bind members (render.ts default).
+ * Adding a package later = exact-pinned owned dep line + roster entry +
+ * suite rows (each carries its own constraint-5 approval). */
 export const OWNED_EXTENSION_PACKAGES: readonly string[] = ["pi-native-search"];
 
-/** Link-kind classification shared by lstatKind/listEntries: symlinks
- * report "symlink" (never resolved), absence reports "absent". */
+/** Kind of an fs entry observed by the guard (the symlink distinction is
+ * load-bearing: pnpm-style symlinked node_modules would dangle inside the
+ * bubble under identity binds). */
 export type FsEntryKind = "absent" | "directory" | "symlink" | "file" | "other";
 
-/** Minimal op surface the materialization drives over (injectable, à la
- * fsView): existence / listing-with-types / read / write / mkdir / copy /
- * remove / link-kind detection. Production default: the node-backed
- * implementation below; unit rows drive it over fabricated temp roots. */
+/** Shrunken injectable fs surface — FIVE ops (was nine in the blocked
+ * design): existence classification + the settings read-modify-write. The
+ * ONLY file this module ever reads is the settings file itself. */
 export interface OwnedExtensionFs {
-  /** Read a file as UTF-8 text (rejects on absence/fault). */
-  readonly readFile: (file: string) => Promise<string>;
+  /** Link-kind inspection of ONE path (existence included — symlinks
+   * reported AS links, never resolved). */
+  stat(path: string): Promise<FsEntryKind>;
+  /** Settings-file content (read-modify-write); no manifest reads anywhere. */
+  readFile(path: string): Promise<string>;
+  /** Recursive, idempotent — parents of the settings temp write. */
+  mkdir(dirPath: string): Promise<void>;
   /** Write text to a file (parent must already exist). */
-  readonly writeFile: (file: string, data: string) => Promise<void>;
-  /** Recursive mkdir (mkdir -p semantics). */
-  readonly mkdir: (dir: string) => Promise<void>;
-  /** Recursively remove a tree (tolerates absence). */
-  readonly rmTree: (dir: string) => Promise<void>;
-  /** Remove a single file (caller tolerates absence). */
-  readonly unlink: (file: string) => Promise<void>;
-  /** Recursively copy a tree: regular files byte-exact; symlinks recreated
-   * AS links, never dereferenced (escaping content stays behind). */
-  readonly copyTree: (source: string, target: string) => Promise<void>;
+  writeFile(path: string, data: string): Promise<void>;
   /** Same-directory rename (the atomic settings-write guarantee). */
-  readonly rename: (from: string, to: string) => Promise<void>;
-  /** Link-kind inspection of ONE path (existence included). */
-  readonly lstatKind: (target: string) => Promise<FsEntryKind>;
-  /** Directory listing WITH entry kinds (symlinks reported, not followed). */
-  readonly listEntries: (
-    dir: string,
-  ) => Promise<
-    ReadonlyArray<{ readonly name: string; readonly kind: FsEntryKind }>
-  >;
+  rename(fromPath: string, toPath: string): Promise<void>;
 }
 
-/** Structural view over the node stat-like reporters (Stats AND Dirent
- * expose the same three predicates) — symlinks are checked FIRST so a link
- * is never misclassified as the kind it points at. */
-interface KindReporter {
+/** Injectable seams — each default applies lazily (à la fsView). */
+export interface OwnedExtensionSeams {
+  /** Default: OWNED_EXTENSION_PACKAGES. */
+  readonly packages?: readonly string[];
+  /** Default: PIO_PACKAGE_ROOT (the shared constants leaf — never
+   * re-derived). */
+  readonly pioRoot?: string;
+  /** Default: node-backed implementation (nodeOwnedExtensionFs). */
+  readonly fs?: OwnedExtensionFs;
+}
+
+/** Structural view over the node stat-like reporter (Stats exposes the
+ * three predicates) — symlinks checked FIRST so a link is never
+ * misclassified as the kind it points at. */
+function statsKind(stats: {
   readonly isSymbolicLink: () => boolean;
   readonly isDirectory: () => boolean;
   readonly isFile: () => boolean;
-}
-
-function statsKind(stats: KindReporter): FsEntryKind {
+}): FsEntryKind {
   if (stats.isSymbolicLink()) return "symlink";
   if (stats.isDirectory()) return "directory";
   if (stats.isFile()) return "file";
   return "other";
 }
 
-/** Node-backed implementation over the required fs surface (production
- * default — every row-testable without mocks over temp paths). */
+/** Node-backed op surface (production default — every row-testable without
+ * mocks over temp paths). ENOENT reports "absent"; a genuine fault
+ * propagates. Deletion stays OUTSIDE the seam: the five ops above are the
+ * whole steady-state surface; best-effort temp cleanup below uses node
+ * directly (a crash-window residue is harmless — unique names, the loader
+ * ignores strays). */
 export const nodeOwnedExtensionFs: OwnedExtensionFs = {
-  readFile: (file) => readFile(file, "utf8"),
-  writeFile: (file, data) => writeFile(file, data),
-  // The recursive overload resolves THE first-created dir — dropped here:
-  // the seam contract is a plain mkdir -p (no consumer needs the result).
-  mkdir: async (dir) => {
-    await mkdir(dir, { recursive: true });
-  },
-  rmTree: (dir) => rm(dir, { recursive: true, force: true }),
-  unlink: (file) => unlink(file),
-  // cp defaults: dereference=false ⇒ symlinks are recreated as links (the
-  // post-copy sweep then rejects any that escaped into the tree).
-  copyTree: (source, target) => cp(source, target, { recursive: true }),
-  rename: (from, to) => rename(from, to),
-  lstatKind: async (target) => {
+  async stat(target) {
     try {
       return statsKind(await lstat(target));
     } catch (cause) {
@@ -122,40 +123,23 @@ export const nodeOwnedExtensionFs: OwnedExtensionFs = {
       throw cause;
     }
   },
-  listEntries: async (dir) =>
-    (await readdir(dir, { withFileTypes: true })).map((entry) => ({
-      name: entry.name,
-      kind: statsKind(entry),
-    })),
+  readFile: (file) => readFile(file, "utf8"),
+  async mkdir(dirPath) {
+    // The recursive overload resolves THE first-created dir — dropped here:
+    // the seam contract is a plain mkdir -p (no consumer needs the result).
+    await mkdir(dirPath, { recursive: true });
+  },
+  writeFile: (file, data) => writeFile(file, data),
+  rename: (fromPath, toPath) => rename(fromPath, toPath),
 };
 
-/** Injectable seams — each default applies lazily (à la fsView/checkBwrap). */
-export interface OwnedExtensionSeams {
-  /** Default: OWNED_EXTENSION_PACKAGES (the explicit roster above). */
-  readonly packages?: readonly string[];
-  /** Default: PIO_PACKAGE_ROOT (single source of truth, src/constants.ts).
-   * Owns the manifest read (expected versions) AND the source trees — no
-   * registry, no install, no network. */
-  readonly pioRoot?: string;
-  /** Default: the node-backed op surface above. */
-  readonly fs?: OwnedExtensionFs;
-}
-
-/** Exactness predicate: an owned pin is EXACT when it is a BARE version
- * (digits.dots with optional -/+ suffixes) — no ^/~/>/</= operators, no
- * dist-tags, no wildcards or OR-clauses. You cannot provision a package pio
- * has not owned EXACTLY. */
-const EXACT_PIN_PATTERN = /^\d+(\.\d+)*(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
-
-interface PinnedPackage {
-  readonly name: string;
-  readonly expectedVersion: string;
-  readonly sourceDir: string;
-  readonly targetDir: string;
-}
-
-const targetDirOf = (piTree: string, name: string): string =>
-  path.join(piTree, "agent", "npm", "node_modules", name);
+/** Vendored tree location = pio's OWN installed copy (the artifact ships
+ * it; the module reads NOTHING inside it at launch). */
+const sourceDirOf = (pioRoot: string, name: string): string =>
+  path.join(pioRoot, "node_modules", name);
+/** User-scope LOCAL SOURCE entry = the VENDORED ABSOLUTE PATH, verbatim —
+ * no `npm:` prefix, no normalization (the measured local-source form). */
+const settingsEntryOf = sourceDirOf;
 const settingsPathOf = (piTree: string): string =>
   path.join(piTree, "agent", "settings.json");
 
@@ -171,107 +155,60 @@ function toLayoutError(context: string, cause: unknown): LayoutError {
   );
 }
 
-async function probeInstalledVersion(
+/** Phase G — guard ALL roster sources (roster order, fail-fast): ONE stat
+ * per package, ALL guards precede ANY registration. Absent ⇒ reinstall
+ * remedy; SYMLINK ⇒ a DISTINCT actionable refusal (an identity bind of a
+ * link dangles in-bubble where the link target is unmounted — pnpm-style
+ * layouts unsupported); anything else is refused too. A trip writes NOTHING
+ * (retryable next launch — idempotent self-heal). */
+async function guardSources(
   fs: OwnedExtensionFs,
-  targetDir: string,
-): Promise<string | null> {
-  const manifestPath = path.join(targetDir, "package.json");
-  let raw: string;
-  try {
-    raw = await fs.readFile(manifestPath);
-  } catch {
-    // Absent / unreadable ⇒ treated as STALE (self-healing re-copy below).
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(raw) as { version?: unknown };
-    return typeof parsed.version === "string" ? parsed.version : null;
-  } catch {
-    return null; // malformed ⇒ stale
-  }
-}
-
-/** Verify pio's OWN copy BEFORE trusting it (recopy path ONLY — the skip
- * path reads the source NOTHING; documented blind spot: a physically
- * drifted source with a matching installed version serves as-is until the
- * next re-copy trigger). */
-async function verifySource(
-  fs: OwnedExtensionFs,
-  sourceDir: string,
-  expectedVersion: string,
-): Promise<void> {
-  const kind = await fs.lstatKind(sourceDir);
-  if (kind !== "directory") {
-    throw new LayoutError(
-      `owned extension source is missing: ${sourceDir} — reinstall pio's ` +
-        "dependencies (run npm install in the pio package root)",
-    );
-  }
-  const manifestPath = path.join(sourceDir, "package.json");
-  let raw: string;
-  try {
-    raw = await fs.readFile(manifestPath);
-  } catch {
-    throw new LayoutError(
-      `owned extension source manifest is unreadable: ${manifestPath} — ` +
-        "reinstall pio's dependencies",
-    );
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new LayoutError(
-      `owned extension source manifest is malformed JSON: ${manifestPath} — ` +
-        "reinstall pio's dependencies",
-    );
-  }
-  const version = (parsed as { version?: unknown }).version;
-  if (typeof version !== "string" || version !== expectedVersion) {
-    throw new LayoutError(
-      `owned extension source drifted from the pio manifest: ${manifestPath} ` +
-        `carries version ${JSON.stringify(version ?? null)} but ` +
-        `pio/package.json declares ${JSON.stringify(expectedVersion)} — ` +
-        "reinstall pio's dependencies to resynchronize the owned copy",
-    );
-  }
-}
-
-/** Post-copy DEFENSIVE invariant: any symlink in the materialized tree is
- * refused naming the offending link — targets outside the bubble namespace
- * cannot follow it. The measured 0.1.0 tarball ships none; the sweep trips
- * nowhere in practice. */
-async function assertNoSymlinks(
-  fs: OwnedExtensionFs,
-  targetDir: string,
-): Promise<void> {
-  const entries = await fs.listEntries(targetDir);
-  for (const entry of entries) {
-    const full = path.join(targetDir, entry.name);
-    if (entry.kind === "symlink") {
-      throw new LayoutError(
-        `materialized tree contains a symlink (refused — targets outside ` +
-          `the bubble namespace cannot follow it): ${full}`,
-      );
-    }
-    if (entry.kind === "directory") await assertNoSymlinks(fs, full);
-  }
-}
-
-/** Phase 2 — register the WHOLE roster in ONE read-modify-write on the
- * bubble sessions' global settings file. Missing file ⇒ minimal shape;
- * everything else (keys, entry order, foreign values) preserved verbatim;
- * nothing missing ⇒ NO write at all (steady-state zero-write pin).
- * Written atomically: unique temp sibling IN THE SAME DIRECTORY, then
- * rename over the final name. A killed launch may leave the stray sibling
- * behind — harmless (unique names; the loader ignores strays). */
-async function registerSettings(
-  fs: OwnedExtensionFs,
-  piTree: string,
+  pioRoot: string,
   packages: readonly string[],
 ): Promise<void> {
+  for (const name of packages) {
+    const sourceDir = sourceDirOf(pioRoot, name);
+    const kind = await fs.stat(sourceDir);
+    if (kind === "absent") {
+      throw new LayoutError(
+        `owned extension source is missing: ${sourceDir} — reinstall ` +
+          "pio's dependencies (run npm install in the pio package root)",
+      );
+    }
+    if (kind === "symlink") {
+      throw new LayoutError(
+        `owned extension source is a symlink: ${sourceDir} — symlinked ` +
+          "node_modules layouts (pnpm et al.) are unsupported for vendored " +
+          "trees (an identity bind of the link would dangle in the bubble); " +
+          "install with npm using the committed lockfile",
+      );
+    }
+    if (kind !== "directory") {
+      throw new LayoutError(
+        `owned extension source is not a directory: ${sourceDir} — ` +
+          "reinstall pio's dependencies (run npm install in the pio package root)",
+      );
+    }
+  }
+}
+
+/** Phase U — register the WHOLE roster in ONE read-modify-write on the
+ * bubble sessions' GLOBAL settings file (measured getSettingsPath() over
+ * $PI_CODING_AGENT_DIR). Missing file ⇒ minimal shape; everything else
+ * (keys, entry order, foreign values) preserved verbatim; nothing missing
+ * ⇒ NO write at all (steady-state zero-write pin). Written atomically:
+ * unique temp sibling IN THE SAME DIRECTORY (parent mkdir -p first —
+ * ensurePiTree creates only <piTree>), then rename over the final name.
+ * On write/rename fault: best-effort temp cleanup, ORIGINAL error
+ * propagated wrapped. A killed launch may leave the stray sibling behind —
+ * harmless (unique names; the loader ignores strays). */
+async function registerAll(
+  fs: OwnedExtensionFs,
+  piTree: string,
+  entries: readonly string[],
+): Promise<void> {
   const settingsPath = settingsPathOf(piTree);
-  const kind = await fs.lstatKind(settingsPath);
+  const kind = await fs.stat(settingsPath);
   let doc: Record<string, unknown>;
   if (kind === "absent") {
     doc = {};
@@ -309,7 +246,7 @@ async function registerSettings(
     );
   }
 
-  let entries: unknown[];
+  let existing: unknown[];
   if ("packages" in doc) {
     if (!Array.isArray(doc.packages)) {
       throw new LayoutError(
@@ -317,23 +254,21 @@ async function registerSettings(
           `${settingsPath} (repair the file by hand)`,
       );
     }
-    entries = doc.packages as unknown[];
+    existing = doc.packages as unknown[];
   } else {
-    entries = [];
+    existing = [];
   }
 
   // Append EXACTLY the missing roster entries, in roster order, deduplicated
-  // (a pre-existing entry is never doubled; non-string foreign entries pass
-  // through verbatim — strict-equality membership only).
-  const missing = packages
-    .map((name) => `npm:${name}`)
-    .filter((entry) => !entries.some((existing) => existing === entry));
+  // by strict string identity (a pre-existing identical entry is never
+  // doubled; object-form entries never match a string entry and pass
+  // through verbatim).
+  const missing = entries.filter((entry) => !existing.some((e) => e === entry));
   if (missing.length === 0) return; // NOTHING missing ⇒ NO write at all
+  doc.packages = [...existing, ...missing];
 
-  doc.packages = [...entries, ...missing];
-  // ensurePiTree creates only <piTree> — make the parent ourselves first.
-  await fs.mkdir(path.dirname(settingsPath));
   const serialized = `${JSON.stringify(doc, null, 2)}\n`;
+  await fs.mkdir(path.dirname(settingsPath));
   // Atomic write: unique temp sibling, then rename (same-directory rename
   // is the atomic guarantee).
   const tempPath = `${settingsPath}.${randomBytes(4).toString("hex")}.tmp`;
@@ -341,18 +276,20 @@ async function registerSettings(
     await fs.writeFile(tempPath, serialized);
     await fs.rename(tempPath, settingsPath);
   } catch (cause) {
-    await fs.unlink(tempPath).catch(() => undefined); // best-effort cleanup
+    // Best-effort cleanup OUTSIDE the five-op seam (see module note); a
+    // cleanup fault NEVER masks the original error.
+    await unlink(tempPath).catch(() => undefined);
     throw toLayoutError(`writing the settings file (${settingsPath})`, cause);
   }
 }
 
-/** Idempotent materialization of EVERY roster package into the isolated
- * agent dir rooted at `piTree` (THE handle returned by ensurePiTree) +
- * their enabling settings entries. TWO PHASES: materialize-all (per-package
- * skip/recopy, roster order), then register-all (ONE settings write). A
- * Phase-1 failure registers NOTHING and leaves sibling packages untouched
- * (retryable next launch — idempotent self-heal); a Phase-2 failure leaves
- * all copies intact. Resolves void; rejects with LayoutError. */
+/** Verify the owned roster's sources exist and register EVERY roster
+ * package into the isolated agent dir's global settings as a user-scope
+ * LOCAL SOURCE entry — pi's loader then loads each vendored tree IN PLACE
+ * (no copy, no symlink, no network). TWO PHASES: guard-all (one stat per
+ * package, fail-fast), then register-all (ONE settings write, or a
+ * zero-write no-op). Resolves void; rejects with LayoutError (the existing
+ * family). */
 export async function ensureOwnedExtensions(
   piTree: string,
   seams?: OwnedExtensionSeams,
@@ -361,90 +298,11 @@ export async function ensureOwnedExtensions(
   const pioRoot = seams?.pioRoot ?? PIO_PACKAGE_ROOT;
   const fs = seams?.fs ?? nodeOwnedExtensionFs;
 
-  // Manifest read ONCE PER CALL, shared across the roster — never a
-  // hardcoded literal: the pin rides the artifact manifest/lockfile.
-  const pioManifestPath = path.join(pioRoot, "package.json");
-  let manifestRaw: string;
-  try {
-    manifestRaw = await fs.readFile(pioManifestPath);
-  } catch (cause) {
-    throw toLayoutError(`reading the pio manifest (${pioManifestPath})`, cause);
-  }
-  let manifest: unknown;
-  try {
-    manifest = JSON.parse(manifestRaw);
-  } catch {
-    throw new LayoutError(
-      `pio manifest is malformed JSON: ${pioManifestPath} — reinstall pio`,
-    );
-  }
-  const dependencies: Record<string, unknown> = (() => {
-    if (
-      typeof manifest !== "object" ||
-      manifest === null ||
-      Array.isArray(manifest)
-    ) {
-      return {};
-    }
-    const deps = (manifest as { dependencies?: unknown }).dependencies;
-    return typeof deps === "object" && deps !== null && !Array.isArray(deps)
-      ? (deps as Record<string, unknown>)
-      : {};
-  })();
-
-  // Exact-owned-dep guard (fail-fast, PRE-materialization): any roster name
-  // whose dependencies[name] is ABSENT or not an EXACT bare version (range/
-  // dist-tag/non-string) is refused naming the package + remedy — nothing
-  // is touched before this gate passes.
-  const pinned: PinnedPackage[] = [];
-  for (const name of packages) {
-    const declared = dependencies[name];
-    if (typeof declared !== "string" || !EXACT_PIN_PATTERN.test(declared)) {
-      throw new LayoutError(
-        `roster package "${name}" is not an EXACT owned dependency of pio ` +
-          `(dependencies.${name} is ${JSON.stringify(declared)}) — pin it ` +
-          "EXACTLY in pio/package.json first",
-      );
-    }
-    pinned.push({
-      name,
-      expectedVersion: declared,
-      sourceDir: path.join(pioRoot, "node_modules", name),
-      targetDir: targetDirOf(piTree, name),
-    });
-  }
-
-  // Phase 1 — materialize (per name, roster order): the installed version
-  // EQUALS the owned pin ⇒ FRESH: no copy, no byte touched (even externally
-  // mutated content survives — trust-installed; the skip path touches the
-  // source NOTHING). Absent / stale / unprobeable ⇒ wipe + fresh re-copy of
-  // the WHOLE package dir (lossless — the installed tree is a pure pio
-  // materialization) + the post-copy symlink sweep.
-  for (const pkg of pinned) {
-    const installed = await probeInstalledVersion(fs, pkg.targetDir);
-    if (installed === pkg.expectedVersion) continue;
-    try {
-      await verifySource(fs, pkg.sourceDir, pkg.expectedVersion);
-      await fs.rmTree(pkg.targetDir); // ENOENT tolerated by the op contract
-      await fs.copyTree(pkg.sourceDir, pkg.targetDir);
-      await assertNoSymlinks(fs, pkg.targetDir);
-    } catch (cause) {
-      if (cause instanceof LayoutError) throw cause; // typed refusals keep their lines
-      throw toLayoutError(
-        `materializing "${pkg.name}" from ${pkg.sourceDir} into ${pkg.targetDir}`,
-        cause,
-      );
-    }
-  }
-
-  // Phase 2 — register (ONLY after every Phase-1 materialization succeeded).
-  try {
-    await registerSettings(fs, piTree, packages);
-  } catch (cause) {
-    if (cause instanceof LayoutError) throw cause;
-    throw toLayoutError(
-      `registering the roster in ${settingsPathOf(piTree)}`,
-      cause,
-    );
-  }
+  await guardSources(fs, pioRoot, packages);
+  // Registration entries: the VENDORED ABSOLUTE PATHS in roster order.
+  await registerAll(
+    fs,
+    piTree,
+    packages.map((name) => settingsEntryOf(pioRoot, name)),
+  );
 }

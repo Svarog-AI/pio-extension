@@ -59,9 +59,10 @@ export interface RunSeams {
   readonly now?: () => number;
   /** Engagement-id entropy (default: 8 lowercase hex chars). */
   readonly entropy?: () => string;
-  /** Default: ensureOwnedExtensions over the production roster — materializes
-   * the owned extension packages into the isolated agent dir PAST all gates,
-   * BEFORE rendering (the sanctioned launch-surface exception). */
+  /** Default: ensureOwnedExtensions over the production roster — verifies
+   * the vendored trees exist and registers their user-scope local-source
+   * settings entries into the isolated agent dir PAST all gates, BEFORE
+   * rendering (the sanctioned launch-surface exception). */
   readonly provisionExtensions?: (piTree: string) => Promise<void>;
 }
 
@@ -140,10 +141,11 @@ export async function runCapability(
     // First-use pi tree under the state root (the renderer binds it rw and
     // refuses loudly if it were missing — the return value is pinned by the
     // suite; production reaches the path through the renderer's derivation).
-    // Owned-extension provisioning then materializes the roster packages as
-    // REAL FILES underneath THIS handle (the sanctioned launch-surface
-    // exception) — idempotent, PAST all four gates, BEFORE anything renders:
-    // a provisioning fault lands in the layout-refusal handler with no
+    // Owned-extension provisioning then verifies the roster sources exist
+    // and registers their enabling settings entries into the isolated agent
+    // dir beneath THIS handle (the sanctioned launch-surface exception)
+    // — idempotent, PAST all four gates, BEFORE anything renders: a
+    // provisioning fault lands in the layout-refusal handler with no
     // profile, no print, no spawn.
     const piTree = await ensurePiTree(paths.stateRoot);
     await provisionExtensions(piTree);

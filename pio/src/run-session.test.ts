@@ -12,10 +12,12 @@
 // Factory-evaluation flags: Vitest runs a mock factory at the mocked
 // module's FIRST import (registration ≠ evaluation). Row order is therefore
 // load-bearing — the cheap-parse block leads (all flags genuinely
-// unevaluated), the miss block is the loader's first importer, and the
-// pipeline block is the session's first importer. Flag reads inside a row
-// must PRECEDE any post-hoc module fetch by the same row (the fetch flips
-// its own flag).
+// unevaluated), and the miss block is the FIRST importer of BOTH consumer
+// modules: the loader via each row's direct `loaderModule()` thunk, the
+// session via the post-hoc `sessionModule()` fetch its create-uncalled proof
+// performs (that fetch runs the session factory BEFORE the pipeline block
+// executes). Flag reads inside a row must PRECEDE any post-hoc module fetch
+// by the same row (the fetch flips its own flag).
 //
 // Documented cast seams: the fake session is structurally complete for the
 // entry's reach path (counters + runtime.session.sessionFile) and is cast to
@@ -244,8 +246,10 @@ describe("runSession (loader gate fires before ANY session construction)", () =>
 // ---- Single-path pipeline wiring against factory-mocked loader/session
 // seams and the REAL leaf-pure status module. Every real-emitter row injects
 // a fake signals target + exit spy (hygiene: the suite never arms the real
-// process). Row order is load-bearing — this block is the session module's
-// first importer.
+// process). By the time this block runs, the miss block above has already
+// imported BOTH consumer modules (loader via its direct thunk; session via
+// its post-hoc `sessionModule()` fetch), so neither factory re-runs for any
+// row here.
 
 /** Structural view of the captured emitter options (assertion surface). */
 interface CapturedEmitterOptions {
@@ -471,7 +475,7 @@ describe("runSession (pipeline order and status emission)", () => {
     expect(world.exitCalls).toEqual([]); // completion path never force-exits
   });
 
-  it("typed-failure pipeline: run() resolves an ok:false payload → mapped exit 1 and the terminal record carries the PAYLOAD'S errors verbatim (outputs default to {}, no ad-hort enrichment)", async () => {
+  it("typed-failure pipeline: run() resolves an ok:false payload → mapped exit 1 and the terminal record carries the PAYLOAD'S errors verbatim (outputs default to {}, no ad-hoc enrichment)", async () => {
     const payloadErrors = [
       {
         type: "PhaseBudgetError",
@@ -673,7 +677,7 @@ describe("delegator mechanics (bin/pio-run-session)", () => {
     expect(delegator.split("\n")[0]).toBe("#!/usr/bin/env node");
   });
 
-  it("statement-for-statement mirror of bin/pio: exactly ONE dynamic import of ../src/run-session.ts + the process.exitCode sink (the two-arg call stays valid — the seam parameter is optional)", () => {
+  it("statement-for-statement mirror of bin/pio: exactly ONE dynamic import of ../src/run-session.ts + the process.exitCode sink (the single-arg call stays valid — io and seams are optional parameters)", () => {
     expect(delegator).toContain('await import("../src/run-session.ts")');
     expect(delegator.match(/import\(/g)?.length).toBe(1);
     expect(delegator).toContain(

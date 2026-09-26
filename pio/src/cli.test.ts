@@ -424,7 +424,8 @@ describe("mechanical SDK-isolation guards", () => {
       ),
     ].map((match) => match[1]);
     // Multi-line static imports would slip past this single-clause pattern;
-    // guard (a) above catches an SDK-typed one regardless.
+    // the zero-SDK-specifier guard above catches an SDK-typed multi-line
+    // clause regardless.
     expect(specifiers).toEqual(["./version.ts"]);
   });
 

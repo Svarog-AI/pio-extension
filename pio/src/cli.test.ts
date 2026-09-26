@@ -15,8 +15,6 @@ vi.mock("./sandbox/run.ts", () => ({
   runCapability: vi.fn(),
 }));
 
-const PROBE_DIAGNOSTIC =
-  "probe — built-in diagnostic: verifies session/TUI/transcript plumbing";
 const ADVISORY_LINE =
   "No capabilities are resolvable yet — the built-in capability table ships empty.";
 
@@ -57,10 +55,10 @@ describe("parse (descriptor-level grammar)", () => {
     expect(parse(["run"])).toEqual({ kind: "reserved" });
   });
 
-  it("run probe -> run(probe)", () => {
-    expect(parse(["run", "probe"])).toEqual({
+  it("run cap -> run(cap)", () => {
+    expect(parse(["run", "cap"])).toEqual({
       kind: "run",
-      capability: "probe",
+      capability: "cap",
     });
   });
 
@@ -69,9 +67,9 @@ describe("parse (descriptor-level grammar)", () => {
   });
 
   it("capability matching is exact and case-sensitive (no normalization)", () => {
-    expect(parse(["run", "PROBE"])).toEqual({
+    expect(parse(["run", "CAP"])).toEqual({
       kind: "run",
-      capability: "PROBE",
+      capability: "CAP",
     });
   });
 
@@ -108,14 +106,14 @@ describe("parse (descriptor-level grammar)", () => {
   });
 
   it("dash token after run <cap> -> unknown-option error", () => {
-    expect(parse(["run", "probe", "--detach"])).toEqual({
+    expect(parse(["run", "cap", "--detach"])).toEqual({
       kind: "error",
       message: "unknown option: --detach (try: pio --help)",
     });
   });
 
   it("non-dash token after run <cap> -> unexpected-argument error", () => {
-    expect(parse(["run", "probe", "extra"])).toEqual({
+    expect(parse(["run", "cap", "extra"])).toEqual({
       kind: "error",
       message: "unexpected argument: extra (usage: pio run <capability>)",
     });
@@ -144,9 +142,10 @@ describe("parse (descriptor-level grammar)", () => {
 });
 
 describe("main (behavior matrix)", () => {
-  // Full pinned-array equality: every line of the eleven-line pinned form
-  // stays byte-identical — placement pinned, not merely presence (the probe
-  // line byte-stable, exactly one advisory line appended).
+  // Full pinned-array equality: every line of the ten-line pinned form stays
+  // byte-identical — placement pinned, not merely presence (the section
+  // header and the advisory footer survived the built-in ENTRY deletion
+  // BYTE-IDENTICAL).
   it("--help: exit 0, stdout deep-equals the full pinned line array, clean stderr", async () => {
     const { io, out, err } = collectIo();
     const code = await main(["--help"], io);
@@ -160,20 +159,19 @@ describe("main (behavior matrix)", () => {
       "  pio --version",
       "",
       "Built-in capabilities:",
-      "  probe — built-in diagnostic: verifies session/TUI/transcript plumbing (currently the only resolvable target)",
       "",
       ADVISORY_LINE,
     ]);
     expect(err).toEqual([]);
   });
 
-  it("help: same contract as --help (containment over the probe line AND the advisory line)", async () => {
+  it("help: same contract as --help (containment over the built-ins header AND the advisory footer)", async () => {
     const { io, out, err } = collectIo();
     const code = await main(["help"], io);
     expect(code).toBe(0);
     const joined = out.join("\n");
     expect(joined).toContain("pio run <capability>");
-    expect(joined).toContain(PROBE_DIAGNOSTIC);
+    expect(joined).toContain("Built-in capabilities:");
     expect(joined).toContain(ADVISORY_LINE);
     expect(err).toEqual([]);
   });
@@ -202,9 +200,9 @@ describe("main (behavior matrix)", () => {
     expect(err).toEqual(["pio: default workflow capability not available yet"]);
   });
 
-  it("run probe --detach: exit 1, unknown-option line naming --detach", async () => {
+  it("run cap --detach: exit 1, unknown-option line naming --detach", async () => {
     const { io, out, err } = collectIo();
-    const code = await main(["run", "probe", "--detach"], io);
+    const code = await main(["run", "cap", "--detach"], io);
     expect(code).toBe(1);
     expect(out).toEqual([]);
     expect(err).toEqual(["pio: unknown option: --detach (try: pio --help)"]);
@@ -226,9 +224,9 @@ describe("main (behavior matrix)", () => {
     expect(err).toEqual(["pio: unknown command: bogus (try: pio --help)"]);
   });
 
-  it("run probe extra: exit 1, unexpected-argument line", async () => {
+  it("run cap extra: exit 1, unexpected-argument line", async () => {
     const { io, out, err } = collectIo();
-    const code = await main(["run", "probe", "extra"], io);
+    const code = await main(["run", "cap", "extra"], io);
     expect(code).toBe(1);
     expect(out).toEqual([]);
     expect(err).toEqual([
@@ -271,38 +269,38 @@ describe("main (run path dispatch)", () => {
     expect(err).toEqual([missLine("whatever")]);
   });
 
-  it("run PROBE: exit 1, same delegation with a case-sensitive miss naming PROBE (the loader decides, the CLI renders nothing of its own)", async () => {
+  it("run CAP: exit 1, same delegation with a case-sensitive miss naming CAP (the loader decides, the CLI renders nothing of its own)", async () => {
     runCapabilityMock.mockImplementation(async (_name, sink) => {
-      sink?.stderr(missLine("PROBE"));
+      sink?.stderr(missLine("CAP"));
       return 1;
     });
     const { io, out, err } = collectIo();
-    const code = await main(["run", "PROBE"], io);
+    const code = await main(["run", "CAP"], io);
     expect(code).toBe(1);
     expect(runCapabilityMock).toHaveBeenCalledTimes(1);
-    expect(runCapabilityMock).toHaveBeenCalledWith("PROBE", io);
+    expect(runCapabilityMock).toHaveBeenCalledWith("CAP", io);
     expect(out).toEqual([]);
-    expect(err).toEqual([missLine("PROBE")]);
+    expect(err).toEqual([missLine("CAP")]);
   });
 
-  it("run probe: dispatched through the run path with ('probe', the injected sink routed as stderr); exit 0 propagates unchanged; the stderr routing is proven by a line written THROUGH that sink", async () => {
+  it("run cap: dispatched through the run path with ('cap', the injected sink routed as stderr); exit 0 propagates unchanged; the stderr routing is proven by a line written THROUGH that sink", async () => {
     runCapabilityMock.mockImplementation(async (_name, sink) => {
       sink?.stderr("threaded-line");
       return 0;
     });
     const { io, out, err } = collectIo();
-    const code = await main(["run", "probe"], io);
+    const code = await main(["run", "cap"], io);
     expect(code).toBe(0);
     expect(runCapabilityMock).toHaveBeenCalledTimes(1);
-    expect(runCapabilityMock).toHaveBeenCalledWith("probe", io);
+    expect(runCapabilityMock).toHaveBeenCalledWith("cap", io);
     expect(err).toEqual(["threaded-line"]);
     expect(out).toEqual([]);
   });
 
-  it("run probe: exit code 1 from the run path propagates unchanged", async () => {
+  it("run cap: exit code 1 from the run path propagates unchanged", async () => {
     runCapabilityMock.mockResolvedValue(1);
     const { io, out, err } = collectIo();
-    const code = await main(["run", "probe"], io);
+    const code = await main(["run", "cap"], io);
     expect(code).toBe(1);
     expect(out).toEqual([]);
     expect(err).toEqual([]);
@@ -311,7 +309,7 @@ describe("main (run path dispatch)", () => {
   it("directly-rejecting runCapability: last-resort boundary renders 'pio: unexpected error: kaboom', resolves 1", async () => {
     runCapabilityMock.mockRejectedValue(new Error("kaboom"));
     const { io, out, err } = collectIo();
-    const code = await main(["run", "probe"], io);
+    const code = await main(["run", "cap"], io);
     expect(code).toBe(1);
     expect(out).toEqual([]);
     expect(err).toEqual(["pio: unexpected error: kaboom"]);
@@ -376,9 +374,9 @@ describe("session-run retirement (net-shrink)", () => {
   // error NAMING THE TOKEN (syntactic data in test rows only).
   const parseRows: ReadonlyArray<readonly string[]> = [
     ["session-run"],
-    ["session-run", "probe"],
-    ["session-run", "probe", "--sessions-root", "/x"],
-    ["session-run", "--sessions-root", "/x", "probe"],
+    ["session-run", "cap"],
+    ["session-run", "cap", "--sessions-root", "/x"],
+    ["session-run", "--sessions-root", "/x", "cap"],
   ];
   for (const argv of parseRows) {
     it(`${JSON.stringify(argv)} -> unknown-command error naming the token`, () => {
@@ -392,7 +390,7 @@ describe("session-run retirement (net-shrink)", () => {
   it("main level: the canonical quadruple exits 1 with clean stdout and the exact prefixed unknown-command line on stderr", async () => {
     const { io, out, err } = collectIo();
     const code = await main(
-      ["session-run", "probe", "--sessions-root", "/x"],
+      ["session-run", "cap", "--sessions-root", "/x"],
       io,
     );
     expect(code).toBe(1);
@@ -413,11 +411,6 @@ describe("mechanical SDK-isolation guards", () => {
       ...src.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g),
     ].map((match) => match[1]);
     expect([...new Set(specifiers)]).toEqual(["./sandbox/run.ts"]);
-  });
-
-  it("the probe builtin is UNREACHABLE from cli.ts: zero occurrences of the quoted './probe.ts' specifier (no static or dynamic import can reach it)", () => {
-    expect(src.includes('"./probe.ts"')).toBe(false);
-    expect(src.includes("'./probe.ts'")).toBe(false);
   });
 
   it("HEADLINE NET-SHRINK PROOF: zero occurrences of the string 'session-run' in cli.ts source (pins the kind, the parse helper, the message consts, the help line, and the dispatch case simultaneously)", () => {
@@ -456,11 +449,9 @@ describe("mechanical SDK-isolation guards", () => {
   });
 
   // NOTE: the registry-shape guard was retired together with the BUILTINS
-  // registry itself (probe is a literal fast-path special case in main(),
-  // no abstraction around it). Guards above mechanically pin: zero SDK
-  // references, the single builtin-thunk dynamic-import set, the version-only
-  // static import, the single-owner miss line (repointed to
-  // capability/loader.ts), the zero-retired-identifier invariant, the
-  // unreachable probe builtin (no quoted './probe.ts' specifier), and the
-  // zero-'session-run' net-shrink headline.
+  // registry itself. Guards above mechanically pin: zero SDK references, the
+  // single builtin-thunk dynamic-import set, the version-only static import,
+  // the single-owner miss line (repointed to capability/loader.ts), the
+  // zero-retired-identifier invariant, and the zero-'session-run'
+  // net-shrink headline.
 });

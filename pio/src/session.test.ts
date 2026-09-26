@@ -1,5 +1,5 @@
 // Hermetic unit suite for the generalized session-construction seam
-// (pio/src/session.ts). Every SDK symbol behind createProbeSession is a pure
+// (pio/src/session.ts). Every SDK symbol behind createPioSession is a pure
 // fake: the vi.mock factory references ONLY hoisted bindings and never pulls
 // in the original module, so the real @earendil-works/pi-coding-agent graph
 // is never evaluated. No filesystem, network, env, or process-stream
@@ -13,8 +13,8 @@ import type {
   AgentSessionEventListener,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { CreateProbeSessionOptions } from "./session.ts";
-import { createProbeSession } from "./session.ts";
+import type { CreatePioSessionOptions } from "./session.ts";
+import { createPioSession } from "./session.ts";
 
 // Single documented cast seam for synthetic event payloads.
 const asEvent = (v: unknown): AgentSessionEvent => v as AgentSessionEvent;
@@ -162,13 +162,13 @@ function lastRuntimeArgs() {
   return o;
 }
 
-describe("createProbeSession — listener attach-once", () => {
+describe("createPioSession — listener attach-once", () => {
   it("passes a listener: exactly one subscribe on the returned session, exact identity, listener observes emitted events", async () => {
     const received: AgentSessionEvent[] = [];
     const listener: AgentSessionEventListener = (e) => {
       received.push(e);
     };
-    const runtime = await createProbeSession(CWD, undefined, {
+    const runtime = await createPioSession(CWD, undefined, {
       sessionListener: listener,
     });
     const round = lastRound();
@@ -191,12 +191,12 @@ describe("createProbeSession — listener attach-once", () => {
     const l1: AgentSessionEventListener = () => {};
     const l2: AgentSessionEventListener = () => {};
 
-    await createProbeSession(CWD, undefined, { sessionListener: l1 });
+    await createPioSession(CWD, undefined, { sessionListener: l1 });
     const r1 = lastRound();
     expect(r1.session.subscribe).toHaveBeenCalledTimes(1);
     expect(r1.session.subscribe).toHaveBeenCalledWith(l1);
 
-    await createProbeSession(CWD, undefined, { sessionListener: l2 });
+    await createPioSession(CWD, undefined, { sessionListener: l2 });
     const r2 = lastRound();
     expect(r2.session.subscribe).toHaveBeenCalledTimes(1);
     expect(r2.session.subscribe).toHaveBeenCalledWith(l2);
@@ -207,45 +207,45 @@ describe("createProbeSession — listener attach-once", () => {
   });
 });
 
-describe("createProbeSession — no-attach default", () => {
+describe("createPioSession — no-attach default", () => {
   it("no options at all: subscribe is never called", async () => {
-    await createProbeSession(CWD);
+    await createPioSession(CWD);
     const round = lastRound();
     expect(round.session.subscribe).not.toHaveBeenCalled();
   });
 
   it("options carrying only customTools: subscribe is never called", async () => {
     const tools: ToolDefinition[] = [];
-    await createProbeSession(CWD, undefined, { customTools: tools });
+    await createPioSession(CWD, undefined, { customTools: tools });
     const round = lastRound();
     expect(round.session.subscribe).not.toHaveBeenCalled();
   });
 });
 
-describe("createProbeSession — customTools threading", () => {
+describe("createPioSession — customTools threading", () => {
   it("provided customTools arrives at from-services options by reference identity", async () => {
     const tools: ToolDefinition[] = [];
-    await createProbeSession(CWD, undefined, { customTools: tools });
+    await createPioSession(CWD, undefined, { customTools: tools });
     // Reference identity (toBe): a copy/clone of the array would fail this.
     expect(lastFromServices().customTools).toBe(tools);
   });
 
   it("absent options: recorded from-services options carry NO customTools key", async () => {
-    await createProbeSession(CWD);
+    await createPioSession(CWD);
     expect(Object.keys(lastFromServices())).not.toContain("customTools");
   });
 
   it("customTools-less options (listener only): recorded options carry NO customTools key", async () => {
     const listener: AgentSessionEventListener = () => {};
-    const opts: CreateProbeSessionOptions = { sessionListener: listener };
-    await createProbeSession(CWD, undefined, opts);
+    const opts: CreatePioSessionOptions = { sessionListener: listener };
+    await createPioSession(CWD, undefined, opts);
     expect(Object.keys(lastFromServices())).not.toContain("customTools");
   });
 });
 
-describe("createProbeSession — mirrored-block forwarding intact", () => {
+describe("createPioSession — mirrored-block forwarding intact", () => {
   it("forwards services, sessionManager, and sessionStartEvent verbatim to from-services", async () => {
-    await createProbeSession(CWD, undefined);
+    await createPioSession(CWD, undefined);
     const o = lastFromServices();
     expect(o.services).toBe(harness.fakeServices);
     expect(o.sessionManager).toBe(harness.fakeManager);
@@ -253,9 +253,9 @@ describe("createProbeSession — mirrored-block forwarding intact", () => {
   });
 });
 
-describe("createProbeSession — unchanged-path stability", () => {
+describe("createPioSession — unchanged-path stability", () => {
   it("no sessions root: single-arg SessionManager.create and exact 3-field runtime options", async () => {
-    await createProbeSession(CWD);
+    await createPioSession(CWD);
     expect(harness.SessionManager.create).toHaveBeenCalledTimes(1);
     expect(harness.SessionManager.create).toHaveBeenLastCalledWith(CWD);
     expect(harness.SessionManager.create.mock.calls[0]).toHaveLength(1);
@@ -272,7 +272,7 @@ describe("createProbeSession — unchanged-path stability", () => {
   });
 
   it("with a sessions root: SessionManager.create called with (cwd, join(root, 'top'))", async () => {
-    await createProbeSession(CWD, SESSIONS_ROOT);
+    await createPioSession(CWD, SESSIONS_ROOT);
     expect(harness.SessionManager.create).toHaveBeenLastCalledWith(
       CWD,
       path.join(SESSIONS_ROOT, "top"),
@@ -280,7 +280,7 @@ describe("createProbeSession — unchanged-path stability", () => {
   });
 
   it("resolved return value IS the constructed runtime by reference identity", async () => {
-    const rt = await createProbeSession(CWD, SESSIONS_ROOT);
+    const rt = await createPioSession(CWD, SESSIONS_ROOT);
     expect(rt).toBe(lastRound().runtime);
   });
 });

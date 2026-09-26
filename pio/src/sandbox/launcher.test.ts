@@ -8,17 +8,24 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { BwrapCheck, LaunchChild, SpawnFn } from "./launcher.ts";
+import type {
+  BwrapCheck,
+  LaunchChild,
+  SpawnFn,
+  TtyStream,
+} from "./launcher.ts";
 import {
   bwrapRefusalLine,
   checkBwrap,
   classifyBwrap,
+  isInteractiveTty,
   isNestedLaunch,
   MIN_BWRAP_VERSION,
   mapChildExit,
   NESTING_REFUSAL_LINE,
   oneLineDetail,
   superviseSpawn,
+  TTY_REFUSAL_LINE,
 } from "./launcher.ts";
 import type { BwrapCommand } from "./profile-serializer.ts";
 
@@ -247,6 +254,7 @@ describe("refusal lines (byte-pinned product strings)", () => {
         detail: "could not verify the setuid bit",
       }),
       NESTING_REFUSAL_LINE,
+      TTY_REFUSAL_LINE,
     ];
     for (const line of refusals) {
       expect(line.includes("\n")).toBe(false);
@@ -258,6 +266,28 @@ describe("refusal lines (byte-pinned product strings)", () => {
       "pio: nested sandbox refused: PI_SANDBOX=1 is set — wrapped launches are host-side only; compose plain children inside the namespace instead",
     );
   });
+
+  it("the interactive-terminal refusal deep-equals its pinned literal (capability-neutral wording; single owner: the launch-discipline region)", () => {
+    expect(TTY_REFUSAL_LINE).toBe(
+      "pio: running a capability needs an interactive terminal (TTY); piped invocations are refused",
+    );
+  });
+});
+
+describe("isInteractiveTty (predicate truth table)", () => {
+  const cases: ReadonlyArray<readonly [string, TtyStream, TtyStream, boolean]> =
+    [
+      ["both streams TTY", { isTTY: true }, { isTTY: true }, true],
+      ["stdin TTY / stdout not", { isTTY: true }, { isTTY: false }, false],
+      ["stdin not / stdout TTY", { isTTY: false }, { isTTY: true }, false],
+      ["neither stream TTY", { isTTY: false }, { isTTY: false }, false],
+      ["isTTY absent on both", {}, {}, false],
+    ];
+  for (const [name, input, output, expected] of cases) {
+    it(`${name} -> ${expected}`, () => {
+      expect(isInteractiveTty(input, output)).toBe(expected);
+    });
+  }
 });
 
 describe("isNestedLaunch (exact-value predicate)", () => {

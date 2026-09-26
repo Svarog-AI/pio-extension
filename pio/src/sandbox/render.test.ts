@@ -40,7 +40,7 @@ function baseInput(overrides: Partial<RenderInput> = {}): RenderInput {
     engagementDir: "/home/u/.pio/projects/u-dev-myrepo/engagements/e1",
     stateRoot: "/home/u/.pio",
     projectSlot: "/home/u/.pio/projects/u-dev-myrepo",
-    capabilityName: "probe",
+    capabilityName: "cap",
     fsView: makeFake().view,
     identity: { uid: 1000, gid: 1000 },
     runtimeDir: "/usr/local",
@@ -183,7 +183,7 @@ describe("worked anchor (canonical production run)", () => {
       target: {
         executable: PKG_BIN,
         args: [
-          "probe",
+          "cap",
           "--sessions-root",
           "/home/u/.pio/projects/u-dev-myrepo/engagements/e1/.sessions",
         ],
@@ -1165,7 +1165,7 @@ describe("target command shape", () => {
     expect(profile.target.executable).toBe("/x/y");
     // args grammar unaffected by the executable swap
     expect(profile.target.args).toEqual([
-      "probe",
+      "cap",
       "--sessions-root",
       "/home/u/.pio/projects/u-dev-myrepo/engagements/e1/.sessions",
     ]);

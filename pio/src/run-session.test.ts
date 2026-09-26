@@ -1,6 +1,6 @@
 // Behavior-matrix TDD suite for the dedicated top-session entry. Drives
 // `runSession(argv, io, seams?)` with captured sinks over factory-mocked
-// consumer seams (probe / loader / session) and the REAL leaf-pure status
+// consumer seams (loader / session) and the REAL leaf-pure status
 // module — observed through a pass-through factory that forwards every
 // export verbatim to importOriginal and only records construction args and
 // the arm-call position (captureError and every emitter method stay the
@@ -12,10 +12,10 @@
 // Factory-evaluation flags: Vitest runs a mock factory at the mocked
 // module's FIRST import (registration ≠ evaluation). Row order is therefore
 // load-bearing — the cheap-parse block leads (all flags genuinely
-// unevaluated), the miss block is the loader's first importer, the pipeline
-// block is the session's first importer, and the probe blocks lead the probe
-// factory. Flag reads inside a row must PRECEDE any post-hoc module fetch by
-// the same row (the fetch flips its own flag).
+// unevaluated), the miss block is the loader's first importer, and the
+// pipeline block is the session's first importer. Flag reads inside a row
+// must PRECEDE any post-hoc module fetch by the same row (the fetch flips
+// its own flag).
 //
 // Documented cast seams: the fake session is structurally complete for the
 // entry's reach path (counters + runtime.session.sessionFile) and is cast to
@@ -34,7 +34,6 @@ import { type RunSessionIO, runSession } from "./run-session.ts";
 
 const hoisted = vi.hoisted(() => ({
   evalFlags: {
-    probeEvaluated: false,
     loaderEvaluated: false,
     sessionEvaluated: false,
   },
@@ -54,15 +53,6 @@ const hoisted = vi.hoisted(() => ({
 // construction, bwrap launches, or network in a unit suite, so the SDK-
 // reaching consumer modules are factory-mocked. The replicated single-owner
 // literal keeps the byte-pins below meaningful (same idiom as cli.test.ts).
-vi.mock("./probe.ts", () => {
-  hoisted.evalFlags.probeEvaluated = true;
-  return {
-    run: vi.fn(),
-    TTY_REFUSAL_LINE:
-      "pio: 'probe' needs an interactive terminal (TTY); headless mode lands in R4",
-    isInteractiveTty: vi.fn(),
-  };
-});
 vi.mock("./capability/loader.ts", () => {
   hoisted.evalFlags.loaderEvaluated = true;
   return { resolveCapability: vi.fn() };
@@ -98,14 +88,6 @@ vi.mock("./capability/status.ts", async (importOriginal) => {
 
 const U = "pio-run-session <capability> --sessions-root <dir>";
 
-/** Per-row mocked references into the probe seam (types from the real module). */
-type ProbeModule = typeof import("./probe.ts");
-let probeModulePromise: Promise<ProbeModule> | undefined;
-async function probeModule(): Promise<ProbeModule> {
-  probeModulePromise ??= import("./probe.ts");
-  return probeModulePromise;
-}
-
 /** Memoized accessor for the mocked loader module. Deliberately LAZY: the
  * first fetch runs the loader factory (process-first import) and flips its
  * eval flag, so it must happen only in rows that tolerate/assert loader
@@ -126,15 +108,6 @@ async function sessionModule(): Promise<SessionModule> {
   return sessionModulePromise;
 }
 
-/** Per-row mocked references into the probe seam. */
-async function probeMocks() {
-  const probe = await probeModule();
-  return {
-    run: vi.mocked(probe.run),
-    isInteractiveTty: vi.mocked(probe.isInteractiveTty),
-  };
-}
-
 function collectErr(): { io: RunSessionIO; err: string[] } {
   const err: string[] = [];
   return {
@@ -144,7 +117,6 @@ function collectErr(): { io: RunSessionIO; err: string[] } {
 }
 
 function resetHoistedState(): void {
-  hoisted.evalFlags.probeEvaluated = false;
   hoisted.evalFlags.loaderEvaluated = false;
   hoisted.evalFlags.sessionEvaluated = false;
   hoisted.invocations.length = 0;
@@ -168,56 +140,55 @@ describe("runSession (strict two-value parse — cheap paths, ZERO module evalua
     [[""], `expected capability name (usage: ${U})`],
     [["-h"], `unknown option: -h (usage: ${U})`],
     [["--huh"], `unknown option: --huh (usage: ${U})`],
-    [["probe"], `expected --sessions-root <dir> after 'probe' (usage: ${U})`],
-    [["probe", "--detach"], `unknown option: --detach (usage: ${U})`],
-    [["probe", "positional"], `unexpected argument: positional (usage: ${U})`],
+    [["cap"], `expected --sessions-root <dir> after 'cap' (usage: ${U})`],
+    [["cap", "--detach"], `unknown option: --detach (usage: ${U})`],
+    [["cap", "positional"], `unexpected argument: positional (usage: ${U})`],
     [
-      ["probe", "--sessions-root"],
+      ["cap", "--sessions-root"],
       `expected a value for --sessions-root (usage: ${U})`,
     ],
     [
-      ["probe", "--sessions-root", ""],
+      ["cap", "--sessions-root", ""],
       `expected a value for --sessions-root (usage: ${U})`,
     ],
-    [["probe", "--sessions-root", "-x"], `unknown option: -x (usage: ${U})`],
+    [["cap", "--sessions-root", "-x"], `unknown option: -x (usage: ${U})`],
     [
-      ["probe", "--sessions-root", "/x", "extra"],
+      ["cap", "--sessions-root", "/x", "extra"],
       `unexpected argument: extra (usage: ${U})`,
     ],
     [
-      ["probe", "--sessions-root", "/x", "--more"],
+      ["cap", "--sessions-root", "/x", "--more"],
       `unknown option: --more (usage: ${U})`,
     ],
     [
-      ["probe", "--sessions-root", "/x", "--sessions-root", "/y"],
+      ["cap", "--sessions-root", "/x", "--sessions-root", "/y"],
       `unknown option: --sessions-root (usage: ${U})`,
     ],
     // Reordered flag rejected: no flag-position flexibility — the dash in the
     // capability slot is an unknown option.
     [
-      ["--sessions-root", "/x", "probe"],
+      ["--sessions-root", "/x", "cap"],
       `unknown option: --sessions-root (usage: ${U})`,
     ],
   ];
   for (const [argv, message] of errors) {
-    it(`${JSON.stringify(argv)} -> exact prefixed error naming the offending token; ALL THREE consumer modules remain unevaluated`, async () => {
+    it(`${JSON.stringify(argv)} -> exact prefixed error naming the offending token; BOTH consumer modules remain unevaluated`, async () => {
       const { io, err } = collectErr();
       const code = await runSession(argv, io);
       expect(code).toBe(1);
       expect(err).toEqual([`pio-run-session: ${message}`]);
-      expect(hoisted.evalFlags.probeEvaluated).toBe(false);
       expect(hoisted.evalFlags.loaderEvaluated).toBe(false);
       expect(hoisted.evalFlags.sessionEvaluated).toBe(false);
     });
   }
 });
 
-describe("runSession (non-probe arm — loader gate fires before ANY session construction)", () => {
+describe("runSession (loader gate fires before ANY session construction)", () => {
   beforeEach(() => {
     resetHoistedState();
   });
 
-  it("unresolvable name: the LOADER'S miss line arrives verbatim on stderr + 1; the session/status thunks never fire, PioSession.create uncalled, probe untouched", async () => {
+  it("unresolvable name: the LOADER'S miss line arrives verbatim on stderr + 1; the session/status thunks never fire, PioSession.create uncalled", async () => {
     const loaderMod = await loaderModule();
     const resolveMock = vi.mocked(loaderMod.resolveCapability);
     resolveMock.mockReset();
@@ -233,7 +204,6 @@ describe("runSession (non-probe arm — loader gate fires before ANY session con
     // would flip its own eval flag — row-order doctrine).
     expect(hoisted.evalFlags.loaderEvaluated).toBe(true);
     expect(hoisted.evalFlags.sessionEvaluated).toBe(false);
-    expect(hoisted.evalFlags.probeEvaluated).toBe(false);
     expect(resolveMock).toHaveBeenCalledWith("alpha");
     // Post-hoc fetch (module identity stable): proves create was NEVER called.
     const { PioSession } = await sessionModule();
@@ -265,97 +235,13 @@ describe("runSession (non-probe arm — loader gate fires before ANY session con
       expect(err).toEqual([refusal]);
       // Flag reads precede the post-hoc session-module fetch below.
       expect(hoisted.evalFlags.sessionEvaluated).toBe(false);
-      expect(hoisted.evalFlags.probeEvaluated).toBe(false);
       const { PioSession } = await sessionModule();
       expect(vi.mocked(PioSession.create)).not.toHaveBeenCalled();
     });
   }
 });
 
-describe("runSession (TTY preflight — refusal before any construction)", () => {
-  // Flag zeroing BEFORE the lazy fetch: the fetch may run the probe factory
-  // (process-first import); the preflight row below reads that first-run
-  // signal, so it must survive the hook.
-  beforeEach(async () => {
-    resetHoistedState();
-    const { run: runMock, isInteractiveTty: ttyMock } = await probeMocks();
-    runMock.mockReset();
-    ttyMock.mockReset();
-  });
-
-  it("non-TTY stdin/stdout: byte-identical TTY refusal line, exit 1, ZERO construction past the refusal (the session thunk never fires for a probe refusal)", async () => {
-    const { run: runMock, isInteractiveTty: ttyMock } = await probeMocks();
-    ttyMock.mockReturnValue(false);
-    const { io, err } = collectErr();
-    const code = await runSession(["probe", "--sessions-root", "/x"], io);
-    expect(code).toBe(1);
-    expect(err).toEqual([
-      "pio: 'probe' needs an interactive terminal (TTY); headless mode lands in R4",
-    ]);
-    expect(runMock).not.toHaveBeenCalled(); // zero construction past the refusal
-    expect(hoisted.evalFlags.probeEvaluated).toBe(true);
-    expect(hoisted.evalFlags.sessionEvaluated).toBe(false);
-  });
-});
-
-describe("runSession (valid forms + builtin dispatch)", () => {
-  // Flag zeroing BEFORE the lazy fetch: the fetch may run the probe factory
-  // (process-first import); the dispatch rows read that first-run signal, so
-  // it must survive the hook.
-  beforeEach(async () => {
-    resetHoistedState();
-    const { run: runMock, isInteractiveTty: ttyMock } = await probeMocks();
-    runMock.mockReset();
-    ttyMock.mockReset();
-  });
-
-  it("accepts the renderer-emitted triple VERBATIM (cross-step continuity — data literal of the post-repoint buildTarget grammar [capability, --sessions-root, <engagementDir>/.sessions]; the producer pin lives in render.test.ts, the composer pin in TEST.md) and dispatches to the probe builtin with (the injected sink, { sessionsRoot }); exit 0 propagates; the session thunk never fires for probe", async () => {
-    const { run: runMock, isInteractiveTty: ttyMock } = await probeMocks();
-    ttyMock.mockReturnValue(true);
-    runMock.mockImplementation(async (sink) => {
-      sink?.stderr("threaded-line");
-      return 0;
-    });
-    const { io, err } = collectErr();
-    const code = await runSession(
-      ["probe", "--sessions-root", "/st/projects/k/engagements/e1/.sessions"],
-      io,
-    );
-    expect(code).toBe(0);
-    expect(runMock).toHaveBeenCalledTimes(1);
-    const args = runMock.mock.calls[0];
-    expect(args[0]).toBe(io); // first arg IS the injected sink — stderr routing proven by the line below
-    expect(args[1]).toEqual({
-      sessionsRoot: "/st/projects/k/engagements/e1/.sessions",
-    });
-    expect(err).toEqual(["threaded-line"]);
-    expect(hoisted.evalFlags.sessionEvaluated).toBe(false); // probe name never fires the session thunk
-  });
-
-  it("relative value accepted verbatim (syntactic-only parser: consumers own validity)", async () => {
-    const { run: runMock, isInteractiveTty: ttyMock } = await probeMocks();
-    ttyMock.mockReturnValue(true);
-    runMock.mockResolvedValue(0);
-    const { io, err } = collectErr();
-    const code = await runSession(["probe", "--sessions-root", "rel/path"], io);
-    expect(code).toBe(0);
-    expect(runMock).toHaveBeenCalledWith(io, { sessionsRoot: "rel/path" });
-    expect(err).toEqual([]);
-  });
-
-  it("exit code 1 from the builtin propagates unchanged", async () => {
-    const { run: runMock, isInteractiveTty: ttyMock } = await probeMocks();
-    ttyMock.mockReturnValue(true);
-    runMock.mockResolvedValue(1);
-    const { io, err } = collectErr();
-    const code = await runSession(["probe", "--sessions-root", "/x"], io);
-    expect(code).toBe(1);
-    expect(runMock).toHaveBeenCalledTimes(1);
-    expect(err).toEqual([]);
-  });
-});
-
-// ---- Non-probe arm: pipeline wiring against factory-mocked loader/session
+// ---- Single-path pipeline wiring against factory-mocked loader/session
 // seams and the REAL leaf-pure status module. Every real-emitter row injects
 // a fake signals target + exit spy (hygiene: the suite never arms the real
 // process). Row order is load-bearing — this block is the session module's
@@ -503,7 +389,7 @@ async function scriptHitPipeline(world: PipelineWorld): Promise<void> {
   createMock.mockResolvedValue(world.fake as unknown as PioSession);
 }
 
-describe("runSession (non-probe arm — pipeline order and status emission)", () => {
+describe("runSession (pipeline order and status emission)", () => {
   beforeEach(() => {
     resetHoistedState();
   });
@@ -627,7 +513,7 @@ describe("runSession (non-probe arm — pipeline order and status emission)", ()
   });
 });
 
-describe("runSession (non-probe arm — SIGTERM partial capture through the entry)", () => {
+describe("runSession (SIGTERM partial capture through the entry)", () => {
   beforeEach(() => {
     resetHoistedState();
   });
@@ -676,7 +562,7 @@ describe("runSession (non-probe arm — SIGTERM partial capture through the entr
   });
 });
 
-describe("runSession (last-resort boundary — non-probe arm)", () => {
+describe("runSession (last-resort boundary)", () => {
   beforeEach(() => {
     resetHoistedState();
   });
@@ -821,7 +707,7 @@ describe("source guards (lazy-SDK discipline over run-session.ts)", () => {
     expect(staticClauses).toEqual(["./capability/status.ts"]);
   });
 
-  it("dynamic specifier set is EXACTLY {'./capability/loader.ts', './capability/pio-session.ts', './capability/status.ts', './probe.ts'} — ALL literal, no interpolation (the ./sandbox/run.ts thunk is GONE; status appears twice: pipeline + boundary)", () => {
+  it("dynamic specifier set is EXACTLY {'./capability/loader.ts', './capability/pio-session.ts', './capability/status.ts'} — ALL literal, no interpolation (status appears twice: pipeline + boundary)", () => {
     const literal = [...src.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)].map(
       (match) => match[1],
     );
@@ -831,7 +717,6 @@ describe("source guards (lazy-SDK discipline over run-session.ts)", () => {
         "./capability/loader.ts",
         "./capability/pio-session.ts",
         "./capability/status.ts",
-        "./probe.ts",
       ].sort(),
     );
     expect(total).toBe(literal.length); // no template-literal (interpolated) imports

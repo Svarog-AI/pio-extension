@@ -11,7 +11,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { PIO_PACKAGE_ROOT } from "../constants.ts";
-import { createProbeSession } from "../session.ts";
+import { createPioSession } from "../session.ts";
 import { LayoutError } from "./layout.ts";
 import {
   ensureOwnedExtensions,
@@ -559,7 +559,7 @@ describe("headless provisioning proof (open assumptions 1–2 — the REAL SDK g
     // dist config.js) — set BEFORE construction.
     process.env.PI_CODING_AGENT_DIR = agentDir;
     const cwd = await tmpdir("pio-headless-cwd-");
-    const runtime = await createProbeSession(cwd);
+    const runtime = await createPioSession(cwd);
 
     expect(runtime.session.getToolDefinition("web_search")).toBeDefined();
     expect(runtime.session.getToolDefinition("web_fetch")).toBeDefined();
@@ -583,7 +583,7 @@ describe("headless provisioning proof (open assumptions 1–2 — the REAL SDK g
 
     process.env.PI_CODING_AGENT_DIR = agentDir;
     const cwd = await tmpdir("pio-headless-skip-cwd-");
-    const runtime = await createProbeSession(cwd);
+    const runtime = await createPioSession(cwd);
 
     expect(runtime.session.getToolDefinition("web_search")).toBeUndefined();
     expect(runtime.session.getToolDefinition("web_fetch")).toBeUndefined();

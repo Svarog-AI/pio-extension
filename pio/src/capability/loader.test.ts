@@ -84,7 +84,7 @@ describe("miss path (shipped empty table)", () => {
     expect(Object.keys(CAPABILITY_TABLE)).toEqual([]);
   });
 
-  for (const name of ["whatever", "probe", "PROBE", ""]) {
+  for (const name of ["whatever", "delta", "DELTA", ""]) {
     it(`resolving ${JSON.stringify(name)} resolves the miss refusal equal to BOTH the owner line AND the carried catalog bytes`, async () => {
       const result = await resolveCapability(name);
       expect(result.ok).toBe(false);
@@ -589,14 +589,6 @@ describe("lazy discipline and structural guards", () => {
 
   it("zero occurrences of the SDK specifier in loader.ts source", () => {
     expect(src.includes("@earendil-works/pi-coding-agent")).toBe(false);
-  });
-
-  it("the probe builtin is UNREACHABLE from loader.ts: zero quoted './probe.ts' / '../probe.ts' specifiers (a table entry could never fire it)", () => {
-    for (const quote of ['"', "'"]) {
-      for (const specifier of ["./probe.ts", "../probe.ts"]) {
-        expect(src.includes(`${quote}${specifier}${quote}`)).toBe(false);
-      }
-    }
   });
 
   it("dynamic-import literal specifier set is EXACTLY empty while the table ships AND total import( count equals the literal-set length (no interpolation)", () => {

@@ -5,11 +5,13 @@ import path from "node:path";
 // Type-only edge to the loader module — erased under erasable syntax, zero
 // runtime evaluation; names the descriptor type for the fixture casts.
 import type { CapabilityResolution } from "../capability/loader.ts";
-import type { TtyStream } from "../probe.ts";
-import { TTY_REFUSAL_LINE } from "../probe.ts";
 import { nodeFsView } from "./fsview.ts";
-import type { BwrapCheck, SpawnFn } from "./launcher.ts";
-import { bwrapRefusalLine, NESTING_REFUSAL_LINE } from "./launcher.ts";
+import type { BwrapCheck, SpawnFn, TtyStream } from "./launcher.ts";
+import {
+  bwrapRefusalLine,
+  NESTING_REFUSAL_LINE,
+  TTY_REFUSAL_LINE,
+} from "./launcher.ts";
 import { deriveProjectKey, LayoutError, mintEngagementId } from "./layout.ts";
 import {
   buildArgv,
@@ -20,14 +22,6 @@ import {
 import { renderProfile } from "./render.ts";
 import type { RunIO, RunSeams } from "./run.ts";
 import { runCapability } from "./run.ts";
-
-// Loader seam: factory-mocked consumer module with a hoisted eval flag
-// (registration ≠ evaluation — the flag flips at the module's FIRST import).
-// Row order is load-bearing: the probe-purity row leads so it observes a
-// genuinely unevaluated loader.
-const { evalFlags } = vi.hoisted(() => ({
-  evalFlags: { loaderEvaluated: false },
-}));
 
 // Replicated miss-line literal — the SOLE OWNER is capabilityRefusalLine in
 // ../capability/loader.ts; the copy follows its owner so the byte-pins stay
@@ -57,16 +51,44 @@ const SENTINEL_REJECTIONS: ReadonlyArray<{
   },
 ];
 
+// Loader seam: factory-mocked consumer module. Post-surgery EVERY name
+// reaches the mocked loader, so the factory carries a DEFAULT well-formed
+// HIT descriptor (Decision D-D): the host path discards the descriptor
+// after the .ok check (admission only — the child re-resolves in-namespace),
+// so per-row scripting through the existing mockReset() +
+// mockResolvedValue(...) idiom remains the ONLY way rows assert named
+// resolutions. Overrides win by construction: every scripted block resets
+// AFTER world creation. The default is NEVER scripted into makeWorld — that
+// would evaluate the loader factory at world-creation time and disturb the
+// cheap-path doctrine.
 vi.mock("../capability/loader.ts", () => {
-  evalFlags.loaderEvaluated = true;
-  return { resolveCapability: vi.fn() };
+  // Inline fixture ctor — discarded downstream (admission only).
+  class DefaultHitFixture {}
+  return {
+    resolveCapability: vi.fn(async () => {
+      // Cast seam: the fixture descriptor is structural (the real identity/
+      // integrity checks never run against mocked loaders) — mirrors the
+      // "loader hit" row's pin below.
+      return {
+        ok: true,
+        capability: {
+          contract: {
+            name: "cap",
+            version: "0.0.0",
+            inputs: {},
+            outputs: {},
+            writes: [],
+          },
+          ctor: DefaultHitFixture,
+        },
+      } as unknown as CapabilityResolution;
+    }),
+  };
 });
 
 /** Memoized accessor for the mocked loader module. Deliberately LAZY: the
  * first fetch runs the loader factory (process-first import), so it must
- * happen only in rows that tolerate/assert loader evaluation. Nothing at
- * file scope imports the loader, so the leading probe-purity row observes a
- * genuinely unevaluated module. */
+ * happen only in rows that tolerate/assert loader evaluation. */
 type LoaderModule = typeof import("../capability/loader.ts");
 let loaderModulePromise: Promise<LoaderModule> | undefined;
 async function loaderModule(): Promise<LoaderModule> {
@@ -283,14 +305,6 @@ function spawned(world: World): boolean {
 }
 
 describe("fast-fail gates (pre-construction refusals)", () => {
-  it("probe purity: the probe path never fires the loader thunk (the eval flag stays FALSE after a probe launch)", async () => {
-    const world = await makeWorld({ ttyInput: {}, ttyOutput: {} });
-    const code = await runCapability("probe", world.io, world.seams);
-    expect(code).toBe(1);
-    expect(world.lines).toEqual([TTY_REFUSAL_LINE]);
-    expect(evalFlags.loaderEvaluated).toBe(false);
-  });
-
   it("stream-descriptor table: EVERY non-TTY combination emits R1's exact TTY line byte-verbatim, resolves 1, and constructs nothing (check un-called, spawn un-called, fake state root walked EMPTY)", async () => {
     const rows: [TtyStream, TtyStream][] = [
       [{ isTTY: false }, { isTTY: false }],
@@ -304,7 +318,7 @@ describe("fast-fail gates (pre-construction refusals)", () => {
     ];
     for (const [input, output] of rows) {
       const world = await makeWorld({ ttyInput: input, ttyOutput: output });
-      const code = await runCapability("probe", world.io, world.seams);
+      const code = await runCapability("cap", world.io, world.seams);
       expect(code).toBe(1);
       expect(world.lines).toEqual([TTY_REFUSAL_LINE]);
       expect(world.checks).toHaveLength(0);
@@ -391,7 +405,7 @@ describe("loader hit (admission only — downstream assembly shape unchanged)", 
 
     // Mirror expectation: renderProfile called with the IDENTICAL production
     // inputs except the capability slot — the custom name rides every
-    // downstream artifact exactly where 'probe' used to.
+    // downstream artifact at the capability position.
     const mirror = renderProfile({
       cwd: world.cwd,
       home: world.home,
@@ -431,7 +445,7 @@ describe("loader hit (admission only — downstream assembly shape unchanged)", 
 describe("anti-nesting guard (exact-value predicate)", () => {
   it('PI_SANDBOX="1" + TTY ⇒ the nested-refusal line + 1, and the injected pre-flight is NOT invoked (the guard precedes it)', async () => {
     const world = await makeWorld({ piSandbox: "1" });
-    const code = await runCapability("probe", world.io, world.seams);
+    const code = await runCapability("cap", world.io, world.seams);
     expect(code).toBe(1);
     expect(world.lines).toEqual([NESTING_REFUSAL_LINE]);
     expect(world.checks).toHaveLength(0);
@@ -446,7 +460,7 @@ describe("anti-nesting guard (exact-value predicate)", () => {
         piSandbox: value,
         checkResult: { ok: false, reason: "absent" },
       });
-      const code = await runCapability("probe", world.io, world.seams);
+      const code = await runCapability("cap", world.io, world.seams);
       expect(code).toBe(1);
       expect(world.checks).toHaveLength(1);
       expect(world.lines).toEqual([
@@ -471,7 +485,7 @@ describe("bwrap pre-flight refusals (PRE-side-effects: no dirs, no artifact, no 
   it("battery: each failing verdict ⇒ the EXACT refusal line + 1, and the fake root stays EMPTY with zero captured side effects", async () => {
     for (const verdict of battery) {
       const world = await makeWorld({ checkResult: verdict });
-      const code = await runCapability("probe", world.io, world.seams);
+      const code = await runCapability("cap", world.io, world.seams);
       expect(code).toBe(1);
       expect(world.lines).toEqual([bwrapRefusalLine(verdict)]);
       expect(await readdir(world.stateRoot)).toEqual([]);
@@ -483,7 +497,7 @@ describe("bwrap pre-flight refusals (PRE-side-effects: no dirs, no artifact, no 
     const world = await makeWorld({
       checkResult: { ok: false, reason: "absent" },
     });
-    await runCapability("probe", world.io, world.seams);
+    await runCapability("cap", world.io, world.seams);
     expect(world.lines).toEqual([
       "pio: sandbox unavailable: bwrap binary not found in PATH — install bubblewrap (>= 0.12.0, non-setuid build)",
     ]);
@@ -493,7 +507,7 @@ describe("bwrap pre-flight refusals (PRE-side-effects: no dirs, no artifact, no 
 describe("typed fault rows (catch boundaries)", () => {
   it("a missing launch cwd surfaces the renderer's typed SandboxRenderError as the render-fault line + 1 — the ensured tree MAY remain (accepted residual) but carries NO profile.json, no print, no spawn", async () => {
     const world = await makeWorld({ cwdMissing: true });
-    const code = await runCapability("probe", world.io, world.seams);
+    const code = await runCapability("cap", world.io, world.seams);
     expect(code).toBe(1);
     expect(world.lines).toEqual([
       `pio: sandbox profile could not be rendered: required path is missing: "${world.cwd}" (cwd)`,
@@ -508,7 +522,7 @@ describe("typed fault rows (catch boundaries)", () => {
 
   it("an all-slash cwd surfaces the layout's typed LayoutError as the layout-fault line + 1, PRE-side-effects (root untouched)", async () => {
     const world = await makeWorld({ cwdOverride: "//" });
-    const code = await runCapability("probe", world.io, world.seams);
+    const code = await runCapability("cap", world.io, world.seams);
     expect(code).toBe(1);
     expect(world.lines).toEqual([
       'pio: engagement layout failed: empty project key: cwd "//" yields no slug segments (all-slash cwd would collapse the projects/<key> nesting)',
@@ -521,7 +535,7 @@ describe("typed fault rows (catch boundaries)", () => {
 describe("full assembly (happy path — displayed = retained = executed)", () => {
   it("one profile value drives the retained file, the transparency print, AND the spawn vector: captured argv deep-equals the fresh pipeline output", async () => {
     const world = await makeWorld({ homeEntries: ["git"] });
-    const code = await runCapability("probe", world.io, world.seams);
+    const code = await runCapability("cap", world.io, world.seams);
     expect(code).toBe(0);
 
     // Mirror expectation: renderProfile called with the IDENTICAL production
@@ -535,7 +549,7 @@ describe("full assembly (happy path — displayed = retained = executed)", () =>
       stateRoot: world.stateRoot,
       projectSlot: world.projectSlot,
       engagementDir: world.engagementDir,
-      capabilityName: "probe",
+      capabilityName: "cap",
       fsView: nodeFsView,
     });
 
@@ -638,7 +652,7 @@ describe("full assembly (happy path — displayed = retained = executed)", () =>
 
   it("resolved stateRoot/key/id flow per the Step 3 functions: PIO_STATE_DIR override wins for the root, the key slugs the launch cwd, the id pins from the injected seams", async () => {
     const world = await makeWorld();
-    await runCapability("probe", world.io, world.seams);
+    await runCapability("cap", world.io, world.seams);
     expect(world.seams.env?.PIO_STATE_DIR).toBe(world.stateRoot);
     expect(world.key).toBe(deriveProjectKey(world.cwd));
     expect(world.id).toBe(
@@ -660,7 +674,7 @@ describe("full assembly (happy path — displayed = retained = executed)", () =>
 describe("exit-code propagation through the run path", () => {
   it("mock child 130 (Ctrl-C quit) resolves 130; the retained artifact still exists (proceeding path taken)", async () => {
     const world = await makeWorld({ childExit: [130, null] });
-    const code = await runCapability("probe", world.io, world.seams);
+    const code = await runCapability("cap", world.io, world.seams);
     expect(code).toBe(130);
     const artifact = path.join(world.engagementDir, PROFILE_FILE_NAME);
     expect(await readFile(artifact, "utf8").then((t) => t.length > 0)).toBe(
@@ -670,7 +684,7 @@ describe("exit-code propagation through the run path", () => {
 
   it("mock child 1 resolves 1; same proceeding-path proof", async () => {
     const world = await makeWorld({ childExit: [1, null] });
-    const code = await runCapability("probe", world.io, world.seams);
+    const code = await runCapability("cap", world.io, world.seams);
     expect(code).toBe(1);
     const artifact = path.join(world.engagementDir, PROFILE_FILE_NAME);
     expect(await readFile(artifact, "utf8").then((t) => t.length > 0)).toBe(
@@ -682,9 +696,7 @@ describe("exit-code propagation through the run path", () => {
 describe("last-resort boundary (never rejects)", () => {
   it("a seam throwing an UNEXPECTED non-typed Error resolves 1 with the `pio: unexpected sandbox error: …` line and NO side effects", async () => {
     const world = await makeWorld({ checkThrows: new Error("seam exploded") });
-    await expect(runCapability("probe", world.io, world.seams)).resolves.toBe(
-      1,
-    );
+    await expect(runCapability("cap", world.io, world.seams)).resolves.toBe(1);
     expect(world.lines).toEqual([
       "pio: unexpected sandbox error: seam exploded",
     ]);
@@ -694,9 +706,7 @@ describe("last-resort boundary (never rejects)", () => {
 
   it("a seam throwing a NON-ERROR value degrades identically (String() coercion, still one readable line)", async () => {
     const world = await makeWorld({ checkThrows: "seam crashed" });
-    await expect(runCapability("probe", world.io, world.seams)).resolves.toBe(
-      1,
-    );
+    await expect(runCapability("cap", world.io, world.seams)).resolves.toBe(1);
     expect(world.lines).toEqual([
       "pio: unexpected sandbox error: seam crashed",
     ]);
@@ -706,7 +716,7 @@ describe("last-resort boundary (never rejects)", () => {
 describe("owned-extension provisioning seam (PAST all gates, PRE-render)", () => {
   it("the proceeding path invokes the provisioning seam EXACTLY ONCE with THE ensurePiTree handle (recorded-arg identity: <stateRoot>/.pi)", async () => {
     const world = await makeWorld();
-    await runCapability("probe", world.io, world.seams);
+    await runCapability("cap", world.io, world.seams);
     expect(world.provisionCalls).toEqual([path.join(world.stateRoot, ".pi")]);
   });
 
@@ -723,7 +733,7 @@ describe("owned-extension provisioning seam (PAST all gates, PRE-render)", () =>
         markers.push("print");
       },
     };
-    const code = await runCapability("probe", io, world.seams);
+    const code = await runCapability("cap", io, world.seams);
     expect(code).toBe(0);
     expect(markers[0]).toBe("provision:.pi-exists=true");
     // Every subsequent marker is a profile print — nothing prints before the
@@ -734,7 +744,7 @@ describe("owned-extension provisioning seam (PAST all gates, PRE-render)", () =>
 
   it("representative refusals NEVER reach the seam: piped-TTY miss AND loader-miss ⇒ ZERO invocations (piped misses stay cheap)", async () => {
     const ttyWorld = await makeWorld({ ttyInput: {}, ttyOutput: {} });
-    expect(await runCapability("probe", ttyWorld.io, ttyWorld.seams)).toBe(1);
+    expect(await runCapability("cap", ttyWorld.io, ttyWorld.seams)).toBe(1);
     expect(ttyWorld.provisionCalls).toHaveLength(0);
 
     const missWorld = await makeWorld();
@@ -754,7 +764,33 @@ describe("owned-extension provisioning seam (PAST all gates, PRE-render)", () =>
         );
       },
     });
-    const code = await runCapability("probe", world.io, world.seams);
+    // Every name now reaches the loader gate, and the representative-refusals
+    // row above leaves the mock in a MISS state: restore ADMISSION for this
+    // proceeding-path row with the standard scripted-hit idiom (the host
+    // reads only the .ok flag; the child re-resolves in-namespace).
+    const loaderMod = await loaderModule();
+    const resolveMock = vi.mocked(loaderMod.resolveCapability);
+    resolveMock.mockReset();
+    class FaultRowHitFixture {}
+    resolveMock.mockResolvedValue(
+      // Cast seam: the fixture descriptor is structural (see file header
+      // doctrine — the real identity/integrity checks never run against
+      // mocked loaders).
+      {
+        ok: true,
+        capability: {
+          contract: {
+            name: "cap",
+            version: "0.0.0",
+            inputs: {},
+            outputs: {},
+            writes: [],
+          },
+          ctor: FaultRowHitFixture,
+        },
+      } as unknown as CapabilityResolution,
+    );
+    const code = await runCapability("cap", world.io, world.seams);
     expect(code).toBe(1);
     expect(world.lines).toEqual([
       "pio: engagement layout failed: owned-extension provisioning exploded (test fault)",
@@ -778,7 +814,7 @@ describe("source guards (mechanical discipline over run.ts)", () => {
     expect(total).toBe(literal.length); // no template-literal (interpolated) imports
   });
 
-  it('ZERO static import of the loader (`from "../capability/loader.ts"` absent — the edge is dynamic only, keeping the probe path\'s evaluation surface identical)', () => {
+  it('ZERO static import of the loader (`from "../capability/loader.ts"` absent — the edge is dynamic only, so the run path\'s consumer graph loads only once a run starts)', () => {
     expect(src.includes('from "../capability/loader.ts"')).toBe(false);
     expect(src.includes("from '../capability/loader.ts'")).toBe(false);
   });

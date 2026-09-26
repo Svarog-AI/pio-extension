@@ -378,7 +378,7 @@ export function createStatusEmitter(
    * for the partial record), then runs the kill emission. Only the claimant
    * force-exits (mapped code 1); repeat deliveries after the first claim are
    * no-ops, and a completion-owned claim defers entirely. The body never
-   * throws — secondary faults are silent, mirroring the probe catch style. */
+   * throws — secondary faults are silent. */
   function handleSigterm(): void {
     try {
       if (claim.result !== null) {

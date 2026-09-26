@@ -1,17 +1,17 @@
 import { spawn as nodeSpawn } from "node:child_process";
 import os from "node:os";
-import type { TtyStream } from "../probe.ts";
-import { isInteractiveTty, TTY_REFUSAL_LINE } from "../probe.ts";
 import type { FsView } from "./fsview.ts";
 import { nodeFsView } from "./fsview.ts";
-import type { SpawnFn } from "./launcher.ts";
+import type { SpawnFn, TtyStream } from "./launcher.ts";
 import {
   bwrapRefusalLine,
   checkBwrap,
+  isInteractiveTty,
   isNestedLaunch,
   NESTING_REFUSAL_LINE,
   oneLineDetail,
   superviseSpawn,
+  TTY_REFUSAL_LINE,
 } from "./launcher.ts";
 import {
   deriveProjectKey,
@@ -94,19 +94,16 @@ export async function runCapability(
       ((piTree: string) => ensureOwnedExtensions(piTree));
 
     // Gate 1 — capability admission. Defers to the loader through a dynamic
-    // thunk fired ONLY past the probe fast-path (the probe path's evaluation
-    // surface stays identical). A miss resolves as the LOADER-OWNED refusal
+    // thunk fired for EVERY name. A miss resolves as the LOADER-OWNED refusal
     // line, printed verbatim BEFORE the TTY check (so a piped `pio run
     // bogus` gets the miss line, not the terminal line) and before ANY side
     // effect. A hit is admission ONLY — the child re-resolves in-namespace
     // and its resolution is authoritative.
-    if (capabilityName !== "probe") {
-      const { resolveCapability } = await import("../capability/loader.ts");
-      const resolution = await resolveCapability(capabilityName);
-      if (!resolution.ok) {
-        sink.stderr(resolution.refusal);
-        return 1;
-      }
+    const { resolveCapability } = await import("../capability/loader.ts");
+    const resolution = await resolveCapability(capabilityName);
+    if (!resolution.ok) {
+      sink.stderr(resolution.refusal);
+      return 1;
     }
     // Gate 2 — TTY fast-fail. Nothing is constructed past this line when
     // the terminal is missing: no dirs, no artifact, no print, no spawn.

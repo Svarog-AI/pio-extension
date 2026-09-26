@@ -1,13 +1,12 @@
-// Dedicated top-session entry: strict two-value parse + lazy dispatch. The
-// probe arm keeps its direct builtin dispatch byte-stable; the non-probe
-// arm runs the v1 pipeline — loader gate → fresh session → instantiation →
-// base run() → terminal status emission → mapped exit code. Consumer
-// modules load ONLY through dynamic literal thunks issued after a
-// successful parse (and past the loader gate), so cheap paths — parse
-// errors, the miss refusal — never pay for evaluating a consumer graph,
-// whose reach includes the SDK. The single static clause is a pure
-// `import type` — erased under erasable syntax: zero runtime module
-// evaluation.
+// Dedicated top-session entry: strict two-value parse + a SINGLE-PATH lazy
+// pipeline — loader gate → fresh session → instantiation → base run() →
+// terminal status emission → mapped exit code. Consumer modules load ONLY
+// through dynamic literal thunks issued after a successful parse (and past
+// the loader gate), so cheap paths — parse errors, the miss refusal — never
+// pay for evaluating a consumer graph, whose reach includes the SDK. No TTY
+// gate exists here: v1 runs are headless-by-design programmatic phase
+// execution. The single static clause is a pure `import type` — erased under
+// erasable syntax: zero runtime module evaluation.
 
 import type { KillCaptureTarget, StatusEmitter } from "./capability/status.ts";
 
@@ -110,66 +109,50 @@ export async function runSession(
       return 1;
     }
     const { capability, sessionsRoot } = parsed;
-    // v1 non-probe pipeline. The loader thunk fires ONLY on this arm (a
-    // probe name never loads it); a miss prints the LOADER-OWNED refusal
-    // line verbatim + 1 BEFORE the session/status thunks fire — cheap,
-    // pre-launch, zero construction. No TTY gate here: v1 runs are
-    // headless-by-design programmatic phase execution.
-    if (capability !== "probe") {
-      const loader = await import("./capability/loader.ts");
-      const resolution = await loader.resolveCapability(capability);
-      if (!resolution.ok) {
-        sink.stderr(resolution.refusal);
-        return 1;
-      }
-      const { PioSession } = await import("./capability/pio-session.ts");
-      const session = await PioSession.create(process.cwd(), sessionsRoot);
-      const instance = new resolution.capability.ctor({ session });
-      const { createStatusEmitter } = await import("./capability/status.ts");
-      // Identity stamped from the RESOLVED contract (mandatory fields —
-      // guaranteed well-formed by the loader); accessors stay LIVE (the
-      // emitter snapshots at emit/signal time). Module defaults own
-      // now/graceMs/settleLiveRun — no stop channel exists to feed a
-      // settlement.
-      emitter = createStatusEmitter({
-        sessionsRoot,
-        capability: {
-          name: resolution.capability.contract.name,
-          version: resolution.capability.contract.version,
-        },
-        tokens: () => session.counters().tokens,
-        sessionFile: () => session.runtime.session.sessionFile,
-        signals: seams?.signals,
-        exit: seams?.exit,
-      });
-      // Arm BEFORE the run begins: v1 runs carry no InteractiveMode, so
-      // this prepend precedes every SIGTERM handler in the process.
-      emitter.armKillCapture();
-      const result = await instance.run();
-      const { exitCode } = await emitter.emit(result);
-      return exitCode;
-    }
-    // Preflight BEFORE any construction: a headless invocation must fail
-    // fast with exactly one line and exit 1 — no session, no TUI.
-    // Direct builtin dispatch: the in-namespace process carries the sandbox
-    // marker in its environment, so routing through the run path would
-    // refuse on its anti-nesting gate instead of running the session.
-    // Dynamic import — see the header note on lazy loading. It must export
-    // run(io?, opts?): Promise<number>.
-    const probe = await import("./probe.ts");
-    if (!probe.isInteractiveTty(process.stdin, process.stdout)) {
-      sink.stderr(probe.TTY_REFUSAL_LINE);
+    // Single-path pipeline. The loader thunk fires UNCONDITIONALLY on every
+    // name: a miss prints the LOADER-OWNED refusal line verbatim + 1 BEFORE
+    // the session/status thunks fire — cheap, pre-launch, zero construction.
+    // No TTY gate here: v1 runs are headless-by-design programmatic phase
+    // execution.
+    const loader = await import("./capability/loader.ts");
+    const resolution = await loader.resolveCapability(capability);
+    if (!resolution.ok) {
+      sink.stderr(resolution.refusal);
       return 1;
     }
-    return await probe.run(sink, { sessionsRoot });
+    const { PioSession } = await import("./capability/pio-session.ts");
+    const session = await PioSession.create(process.cwd(), sessionsRoot);
+    const instance = new resolution.capability.ctor({ session });
+    const { createStatusEmitter } = await import("./capability/status.ts");
+    // Identity stamped from the RESOLVED contract (mandatory fields —
+    // guaranteed well-formed by the loader); accessors stay LIVE (the
+    // emitter snapshots at emit/signal time). Module defaults own
+    // now/graceMs/settleLiveRun — no stop channel exists to feed a
+    // settlement.
+    emitter = createStatusEmitter({
+      sessionsRoot,
+      capability: {
+        name: resolution.capability.contract.name,
+        version: resolution.capability.contract.version,
+      },
+      tokens: () => session.counters().tokens,
+      sessionFile: () => session.runtime.session.sessionFile,
+      signals: seams?.signals,
+      exit: seams?.exit,
+    });
+    // Arm BEFORE the run begins: v1 runs carry no InteractiveMode, so
+    // this prepend precedes every SIGTERM handler in the process.
+    emitter.armKillCapture();
+    const result = await instance.run();
+    const { exitCode } = await emitter.emit(result);
+    return exitCode;
   } catch (cause) {
     // Last-resort boundary: any escaping rejection degrades to one readable
     // line + exit 1; a doubly-faulting sink degrades silently. Once the
     // emitter exists (post-emitter faults only), the captured record
     // settles FIRST through it — best-effort: the emit never rejects and
     // the swallow keeps the degrade plain. Pre-emitter faults skip the
-    // settle step (no instance) and degrade plainly; the probe arm keeps
-    // today's shape (its emitter stays undefined).
+    // settle step (no instance) and degrade plainly.
     if (emitter !== undefined) {
       const { captureError } = await import("./capability/status.ts");
       await emitter

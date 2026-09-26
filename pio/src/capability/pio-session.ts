@@ -30,7 +30,7 @@ import type {
   AgentSessionEventListener,
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
-import { createProbeSession } from "../session.ts";
+import { createPioSession } from "../session.ts";
 import { PhaseBudgetError } from "./errors.ts";
 
 /** Tool names whose successful executions commit a file path. */
@@ -292,7 +292,7 @@ export class PioSession {
     const listener: AgentSessionEventListener = (event) => {
       observer.handle(event);
     };
-    const runtime = await createProbeSession(cwd, sessionsRoot, {
+    const runtime = await createPioSession(cwd, sessionsRoot, {
       sessionListener: listener,
     });
     return new PioSession(runtime, observer);

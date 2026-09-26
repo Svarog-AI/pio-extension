@@ -11,11 +11,9 @@
 //   never pay for evaluating a builtin graph — the run path's graph pulls in
 //   the SDK. The sole static import is the version constant and the sole
 //   dynamic literal is `./sandbox/run.ts`.
-// - `probe` is the literal fast-path special case in `main`'s dispatch — no
-//   abstraction around it (retained doctrine). Every other name delegates
-//   onward: the run path's loader-based gate owns admission, and its refusal
-//   line reaches the user through the same IO sink this module threads; this
-//   file carries no refusal bytes of its own.
+// - EVERY name delegates onward to the run path: its loader-based gate owns
+//   admission, and its refusal line reaches the user through the same IO
+//   sink this module threads — this file carries no refusal bytes of its own.
 import { PIO_VERSION } from "./version.ts";
 
 /** Descriptors of a parsed argv (program name excluded). `error.message` is unprefixed. */
@@ -50,7 +48,6 @@ const HELP_LINES: readonly string[] = [
   "  pio --version",
   "",
   "Built-in capabilities:",
-  "  probe — built-in diagnostic: verifies session/TUI/transcript plumbing (currently the only resolvable target)",
   "",
   "No capabilities are resolvable yet — the built-in capability table ships empty.",
 ];
@@ -135,8 +132,8 @@ export async function main(
         return 1;
       case "run": {
         const name = parsed.capability;
-        // Both arms share ONE lazy import over the run path — see the header
-        // note on lazy loading. It must export
+        // EVERY name delegates onward through ONE lazy import over the run
+        // path — see the header note on lazy loading. It must export
         // runCapability(name, io?): Promise<number> (the exit code).
         let runPath: {
           runCapability(
@@ -151,15 +148,10 @@ export async function main(
           out.stderr(`pio: failed to load built-in '${name}': ${detail}`);
           return 1;
         }
-        // Every non-probe name delegates onward: the run path's loader-based
-        // gate decides (miss ⇒ its refusal line through this very sink).
-        if (name !== "probe") {
-          return await runPath.runCapability(name, out);
-        }
-        // `probe` enters through the run path (host-side launch) as the
-        // explicit literal fast-case — a dispatch special case, no
-        // abstraction around it.
-        return await runPath.runCapability("probe", out);
+        // Every name delegates onward: the run path's loader-based gate
+        // owns admission, and its refusal line reaches the user through
+        // the same IO sink.
+        return await runPath.runCapability(name, out);
       }
     }
   } catch (cause) {

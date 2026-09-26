@@ -15,8 +15,12 @@ vi.mock("./sandbox/run.ts", () => ({
   runCapability: vi.fn(),
 }));
 
-const ADVISORY_LINE =
-  "No capabilities are resolvable yet — the built-in capability table ships empty.";
+// S04 help-tail lines — the SOLE OWNERS are HELP_LINES indices 8–9 in
+// ./cli.ts; the copies keep the byte-pins meaningful. NOTE the em dash is
+// the U+2014 EM DASH character — pinned codepoint, never normalized.
+const RESEARCH_ENTRY_LINE =
+  "  research — bounded web-research loop producing a markdown file report";
+const CANONICAL_INVOCATION_LINE = '  pio run research --input topic="<topic>"';
 
 // Replicated miss-line literal — the SOLE OWNER is capabilityRefusalLine in
 // capability/loader.ts; the copy follows its owner into the entry suites so
@@ -281,9 +285,9 @@ describe("parse (--input pair grammar — strictness edges, first violation wins
 
 describe("main (behavior matrix)", () => {
   // Full pinned-array equality: every line of the ten-line pinned form stays
-  // byte-identical — placement pinned, not merely presence (the section
-  // header and the advisory footer survived the built-in ENTRY deletion
-  // BYTE-IDENTICAL).
+  // byte-identical — placement pinned, not merely presence (the S04 flip
+  // moved EXACTLY indices 8–9 onto the surviving header; every other line is
+  // untouched).
   it("--help: exit 0, stdout deep-equals the full pinned line array, clean stderr", async () => {
     const { io, out, err } = collectIo();
     const code = await main(["--help"], io);
@@ -297,20 +301,20 @@ describe("main (behavior matrix)", () => {
       "  pio --version",
       "",
       "Built-in capabilities:",
-      "",
-      ADVISORY_LINE,
+      RESEARCH_ENTRY_LINE,
+      CANONICAL_INVOCATION_LINE,
     ]);
     expect(err).toEqual([]);
   });
 
-  it("help: same contract as --help (containment over the built-ins header AND the advisory footer)", async () => {
+  it("help: same contract as --help (containment over the built-ins header AND the canonical-invocation line)", async () => {
     const { io, out, err } = collectIo();
     const code = await main(["help"], io);
     expect(code).toBe(0);
     const joined = out.join("\n");
     expect(joined).toContain("pio run <capability>");
     expect(joined).toContain("Built-in capabilities:");
-    expect(joined).toContain(ADVISORY_LINE);
+    expect(joined).toContain(CANONICAL_INVOCATION_LINE);
     expect(err).toEqual([]);
   });
 

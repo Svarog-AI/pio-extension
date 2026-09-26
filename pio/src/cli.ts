@@ -63,8 +63,11 @@ const HELP_LINES: readonly string[] = [
   "  pio --version",
   "",
   "Built-in capabilities:",
-  "",
-  "No capabilities are resolvable yet — the built-in capability table ships empty.",
+  // NOTE the em dash is the U+2014 EM DASH character — pinned codepoint,
+  // matching line-0 house style; the quoted <topic> documents the
+  // shell-quoted multi-word-as-ONE-value grammar.
+  "  research — bounded web-research loop producing a markdown file report",
+  '  pio run research --input topic="<topic>"',
 ];
 
 function startsWithDash(token: string): boolean {

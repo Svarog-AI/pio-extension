@@ -15,7 +15,17 @@
 // against. The reserved wall-clock fields bind on that path and stay
 // unenforced in this module, mirroring the contract's declared-without-
 // enforcement write-scope slots.
+//
+// State-root channel (in-bubble): the bubble env quartet gives exactly one
+// state-root channel — PI_CODING_AGENT_DIR, assigned UNCONDITIONALLY by the
+// renderer to `<root>/.pi/agent` (PIO_STATE_DIR does NOT propagate in). The
+// inversion below recovers `<root>` from it; loud typed failure, NO silent
+// fallback, ever. Every capability addressing the durable project slot
+// needs this channel, which is why it rides with the authoring base (the
+// Step-6 owner placement ruling — a capability-layer concern, not a sandbox
+// leaf).
 
+import { isAbsolute, resolve } from "node:path";
 import type { Contract } from "./contract.ts";
 import { validateInputs } from "./contract.ts";
 import type { PhaseOptions, PhaseResult, PioSession } from "./pio-session.ts";
@@ -90,4 +100,35 @@ export abstract class PioCapability {
     }
     return this.s.execute_phase(id, opts);
   }
+}
+
+/** Typed refusal for an absent or malformed PI_CODING_AGENT_DIR channel. */
+export class ResearchEnvError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ResearchEnvError";
+  }
+}
+
+/**
+ * Invert the renderer's unconditional `PI_CODING_AGENT_DIR=<root>/.pi/agent`
+ * assignment to recover the state root. Pure; loud typed failure — NO silent
+ * fallback, ever.
+ */
+export function deriveStateRootFromAgentDir(
+  agentDir: string | undefined,
+): string {
+  const trimmed = agentDir?.trim();
+  if (trimmed === undefined || trimmed.length === 0) {
+    throw new ResearchEnvError(
+      // Escaped so the U+2014 bytes survive editor and toolkit glyph mangling.
+      "research: PI_CODING_AGENT_DIR is unset \u2014 cannot derive the state root",
+    );
+  }
+  if (!isAbsolute(trimmed)) {
+    throw new ResearchEnvError(
+      `research: PI_CODING_AGENT_DIR is malformed ('${trimmed}') \u2014 cannot derive the state root`,
+    );
+  }
+  return resolve(trimmed, "..", "..");
 }

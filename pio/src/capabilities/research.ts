@@ -3,15 +3,24 @@
 // slot, driven by the write-delta stopping rule over a single marker-stamped
 // execute_phase.
 //
+// Outcome model (Step-6 settlement): the capability states its deliverable
+// through the SESSION STREAM — what the live terminal presents — and the
+// machine ledger (the terminal record's `outputs`) carries the frozen
+// project-slot-relative token. Capability code performs NO raw terminal
+// writes: preflight/env REFUSAL stderr lines remain capability-owned and
+// byte-stable (their bytes, check order, and typed captures are untouched).
+//
 // State-root derivation (measured necessity): the bubble env quartet is
 // exactly HOME / PATH / PI_SANDBOX / PI_CODING_AGENT_DIR — PIO_STATE_DIR is
 // NOT propagated into the bubble, so resolveStateRoot MUST NOT be called
 // in-bubble for this purpose (its PIO_STATE_DIR/HOME fallback is a
 // host-side expression that would silently target the host's ~/.pio).
 // PI_CODING_AGENT_DIR is the ONLY state-root channel into the bubble; the
-// renderer assigns it UNCONDITIONALLY to `<root>/.pi/agent`, so this module
-// inverts that expression (exactly the two levels the renderer appends:
-// .pi + agent) to recover `<root>`. The project key derives from
+// renderer assigns it UNCONDITIONALLY to `<root>/.pi/agent`, so the CAPABILITY
+// BASE inverts that expression (moved there by the Step-6 owner placement
+// ruling — the in-bubble state-root channel is a capability-layer concern;
+// exactly the two levels the renderer appends: .pi + agent) to recover
+// `<root>`. The project key derives from
 // process.cwd() because the in-bubble cwd IS the host launch cwd (chdir),
 // matching the host-side derivation. No silent fallback, ever.
 //
@@ -35,8 +44,13 @@
 
 import { createHash } from "node:crypto";
 import { appendFile, stat } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
-import { type CapabilityParams, PioCapability } from "../capability/base.ts";
+import { join } from "node:path";
+import {
+  type CapabilityParams,
+  deriveStateRootFromAgentDir,
+  PioCapability,
+  ResearchEnvError,
+} from "../capability/base.ts";
 import type { Contract } from "../capability/contract.ts";
 import { classifySpec } from "../capability/contract.ts";
 import {
@@ -44,6 +58,12 @@ import {
   PhaseBudgetError,
 } from "../capability/errors.ts";
 import { deriveProjectKey } from "../sandbox/layout.ts";
+
+// Re-exported for consumer stability — the body CO-HABITS the capability base
+// per the Step-6 owner placement ruling (moved there byte-verbatim WITH its
+// pinned messages; this module imports and re-exports rather than
+// duplicating).
+export { ResearchEnvError };
 
 /** Run ceiling — the backstop bounding rambling-without-writing loops. */
 export const RESEARCH_MAX_RUNS = 10;
@@ -107,43 +127,12 @@ function sanityViolationLine(target: string): string {
   return `output 'report' is missing or empty at ${target} \u2014 the research phase ended without producing the report`;
 }
 
-/** Typed refusal for an absent or malformed PI_CODING_AGENT_DIR channel. */
-export class ResearchEnvError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ResearchEnvError";
-  }
-}
-
 /** Typed refusal for the loud web-tools preflight miss. */
 export class WebToolsMissingError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "WebToolsMissingError";
   }
-}
-
-/**
- * Invert the renderer's unconditional `PI_CODING_AGENT_DIR=<root>/.pi/agent`
- * assignment to recover the state root. Pure; loud typed failure — NO silent
- * fallback, ever.
- */
-export function deriveStateRootFromAgentDir(
-  agentDir: string | undefined,
-): string {
-  const trimmed = agentDir?.trim();
-  if (trimmed === undefined || trimmed.length === 0) {
-    throw new ResearchEnvError(
-      // Escaped so the U+2014 bytes survive editor and toolkit glyph mangling.
-      "research: PI_CODING_AGENT_DIR is unset \u2014 cannot derive the state root",
-    );
-  }
-  if (!isAbsolute(trimmed)) {
-    throw new ResearchEnvError(
-      `research: PI_CODING_AGENT_DIR is malformed ('${trimmed}') \u2014 cannot derive the state root`,
-    );
-  }
-  return resolve(trimmed, "..", "..");
 }
 
 /**
@@ -259,12 +248,13 @@ export default class ResearchCapability extends PioCapability {
       throw new ContractViolationError([sanityViolationLine(target)]);
     }
 
-    // Exit naming (D8 serialization settlement): the terminal record
-    // publishes `outputs` unchanged (project-slot-relative token) while this
-    // single capability-owned stdout line carries the ABSOLUTE path —
-    // together unambiguous because the launch mount list surfaces the
-    // project-slot base.
-    process.stdout.write(`pio research: report written to ${absolutePath}\n`);
+    // Outcome-model settlement (Step 6): the capability states its
+    // deliverable through the SESSION STREAM (what the live terminal
+    // presents) — no raw terminal writes from capability code; the machine
+    // ledger publishes `outputs` unchanged (frozen project-slot-relative
+    // token). Deterministic delivery receipts beyond the in-stream statement
+    // are the FUTURE DEFAULT-CAPABILITY's territory (recorded downstream; not
+    // built here).
     return values;
   }
 }

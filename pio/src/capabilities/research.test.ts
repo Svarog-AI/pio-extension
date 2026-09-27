@@ -5,8 +5,11 @@
 // the S01-shipped total-absence signature), mkdtemp tmpdirs per row with
 // PI_CODING_AGENT_DIR pointed at <tmp>/.pi/agent (saved/restored in
 // afterEach), process.chdir into <tmp>/work for the project-key derivation
-// (restored in afterEach), and spies over the process streams for the pinned
-// capability-owned lines.
+// (restored in afterEach), and a stderr spy for the pinned capability-owned
+// REFUSAL line (the Step-6 outcome-model settlement removed the raw stdout
+// writer — the report pointer now travels through the session stream plus
+// the status.json ledger token; there are no product-content stdout pins
+// left here).
 //
 // Doctrine (load-bearing): scripted prompt resolutions emit SYNTHETIC EVENTS
 // ONLY — they observe; they write NOTHING to disk. Rows whose assertions
@@ -26,11 +29,13 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import { PioCapability } from "../capability/base.ts";
+import {
+  deriveStateRootFromAgentDir,
+  PioCapability,
+} from "../capability/base.ts";
 import { PioSession } from "../capability/pio-session.ts";
 import { deriveProjectKey } from "../sandbox/layout.ts";
 import ResearchCapability, {
-  deriveStateRootFromAgentDir,
   REPORT_FINGERPRINT_LENGTH,
   RESEARCH_MAX_RUNS,
   ResearchEnvError,
@@ -133,8 +138,10 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 }));
 
 /** Pinned product-line replicas — the SOLE OWNER of every byte below is
- * capabilities/research.ts; the copies keep the byte-pins meaningful. Em
- * dashes are U+2014 (escaped). */
+ * capabilities/research.ts EXCEPT the env-defect pair, whose sole owner is
+ * capability/base.ts after the Step-6 placement ruling (the class + both
+ * messages moved there byte-verbatim); the copies keep the byte-pins
+ * meaningful. Em dashes are U+2014 (escaped). */
 const ENV_UNSET_MESSAGE =
   "research: PI_CODING_AGENT_DIR is unset \u2014 cannot derive the state root";
 const envMalformedMessage = (value: string): string =>
@@ -169,14 +176,12 @@ describe("research capability", () => {
   let tmp: string;
   let originalEnv: string | undefined;
   let originalCwd: string;
-  let stdoutSpy: ReturnType<typeof vi.spyOn>;
   let stderrSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     harness.reset();
     originalEnv = process.env.PI_CODING_AGENT_DIR;
     originalCwd = process.cwd();
-    stdoutSpy = vi.spyOn(process.stdout, "write");
     stderrSpy = vi.spyOn(process.stderr, "write");
     tmp = await mkdtemp(join(tmpdir(), "pio-research-"));
     // The state-root channel into the bubble: the renderer's unconditional
@@ -193,7 +198,6 @@ describe("research capability", () => {
     } else {
       process.env.PI_CODING_AGENT_DIR = originalEnv;
     }
-    stdoutSpy.mockRestore();
     stderrSpy.mockRestore();
     await rm(tmp, { recursive: true, force: true });
   });
@@ -276,12 +280,6 @@ describe("research capability", () => {
     };
   }
 
-  function stdoutText(): string {
-    return stdoutSpy.mock.calls
-      .map((call: readonly unknown[]) => String(call[0]))
-      .join("");
-  }
-
   function stderrText(): string {
     return stderrSpy.mock.calls
       .map((call: readonly unknown[]) => String(call[0]))
@@ -327,53 +325,11 @@ describe("research capability", () => {
   });
 
   // ---------------------------------------------------------------------
-  // Pure helpers: state-root inversion
-  // ---------------------------------------------------------------------
-
-  describe("deriveStateRootFromAgentDir (pure)", () => {
-    const T = "/home/user/pio-state";
-
-    it("inverts the renderer expression <T>/.pi/agent to <T>", () => {
-      expect(deriveStateRootFromAgentDir(`${T}/.pi/agent`)).toBe(T);
-    });
-
-    it("throws the pinned UNSET message for absent/empty/whitespace-only input", () => {
-      for (const variant of [undefined, "", "   "] as const) {
-        expect(() => deriveStateRootFromAgentDir(variant)).toThrow(
-          ENV_UNSET_MESSAGE,
-        );
-      }
-      try {
-        deriveStateRootFromAgentDir(undefined);
-        expect.unreachable();
-      } catch (error) {
-        expect(error).toBeInstanceOf(ResearchEnvError);
-        expect((error as ResearchEnvError).name).toBe("ResearchEnvError");
-      }
-    });
-
-    it("throws the pinned MALFORMED message naming the trimmed value for a relative input", () => {
-      for (const variant of ["rel/.pi/agent", "  rel/.pi/agent  "] as const) {
-        expect(() => deriveStateRootFromAgentDir(variant)).toThrow(
-          envMalformedMessage("rel/.pi/agent"),
-        );
-      }
-      try {
-        deriveStateRootFromAgentDir("  rel/.pi/agent  ");
-        expect.unreachable();
-      } catch (error) {
-        expect(error).toBeInstanceOf(ResearchEnvError);
-        expect((error as ResearchEnvError).name).toBe("ResearchEnvError");
-      }
-    });
-  });
-
-  // ---------------------------------------------------------------------
   // Loop shape over scripted settles (write-delta stopping rule)
   // ---------------------------------------------------------------------
 
   describe("loop shape", () => {
-    it("continues on a report-write settle and stops on the next quiet settle: EXACTLY two prompts, ok:true payload + exit line, undamaged report", async () => {
+    it("continues on a report-write settle and stops on the next quiet settle: EXACTLY two prompts, ok:true payload with the frozen relative-form outputs, undamaged report (the deliverable statement itself travels through the SESSION STREAM — outcome-model settlement, no raw terminal write)", async () => {
       const seed =
         "# Research: quantum computing basics\n\n## First question\nanswered\n";
       const placement = reportPlacement(TOPIC);
@@ -389,10 +345,6 @@ describe("research capability", () => {
       expect(round.session.prompt).toHaveBeenCalledTimes(2);
       expect(result.ok).toBe(true);
       expect(result.outputs).toEqual({ report: placement.relativeForm });
-      expect(stdoutSpy).toHaveBeenCalledTimes(1);
-      expect(stdoutText()).toBe(
-        `pio research: report written to ${placement.absolutePath}\n`,
-      );
       expect(stderrText()).toBe("");
       const { readFile } = await import("node:fs/promises");
       expect(await readFile(placement.absolutePath, "utf8")).toBe(seed);
@@ -414,11 +366,10 @@ describe("research capability", () => {
         )}`,
         violations: [sanityViolationLine(placement.absolutePath)],
       });
-      expect(stdoutText()).toBe("");
       expect(stderrText()).toBe("");
     });
 
-    it("a forced long loop hits the cap: TEN write-settles, typed PhaseBudgetError capture, the pinned truncation note appended, partial report INTACT, NO stdout line", async () => {
+    it("a forced long loop hits the cap: TEN write-settles, typed PhaseBudgetError capture, the pinned truncation note appended, partial report INTACT", async () => {
       const seed = "seeded sections\n";
       const placement = reportPlacement(TOPIC);
       await seedReport(placement.absolutePath, seed);
@@ -441,7 +392,6 @@ describe("research capability", () => {
       expect(await readFile(placement.absolutePath, "utf8")).toBe(
         seed + truncationNote(RESEARCH_MAX_RUNS),
       );
-      expect(stdoutText()).toBe("");
       expect(stderrText()).toBe("");
     });
   });
@@ -472,7 +422,6 @@ describe("research capability", () => {
         )}`,
         violations: [sanityViolationLine(placement.absolutePath)],
       });
-      expect(stdoutText()).toBe("");
       expect(stderrText()).toBe("");
     });
   });
@@ -555,7 +504,6 @@ describe("research capability", () => {
         message: ENV_UNSET_MESSAGE,
       });
       expect(round.session.prompt).toHaveBeenCalledTimes(0);
-      expect(stdoutText()).toBe("");
       expect(stderrText()).toBe("");
     });
 
@@ -570,7 +518,6 @@ describe("research capability", () => {
         message: envMalformedMessage("rel/.pi/agent"),
       });
       expect(round.session.prompt).toHaveBeenCalledTimes(0);
-      expect(stdoutText()).toBe("");
       expect(stderrText()).toBe("");
     });
   });
@@ -594,7 +541,6 @@ describe("research capability", () => {
         violations: ["input 'topic' expects a non-empty string value"],
       });
       expect(round.session.prompt).toHaveBeenCalledTimes(0);
-      expect(stdoutText()).toBe("");
       expect(stderrText()).toBe("");
     });
   });
@@ -620,7 +566,6 @@ describe("research capability", () => {
       expect(stderrText()).toBe(
         `${preflightStderrLine("web_search, web_fetch")}\n`,
       );
-      expect(stdoutText()).toBe("");
       // No report touched on disk (nothing seeded, nothing written).
       const { stat: statCheck } = await import("node:fs/promises");
       await expect(statCheck(placement.absolutePath)).rejects.toMatchObject({
@@ -642,7 +587,6 @@ describe("research capability", () => {
       });
       expect(round.session.prompt).toHaveBeenCalledTimes(0);
       expect(stderrText()).toBe(`${preflightStderrLine("web_search")}\n`);
-      expect(stdoutText()).toBe("");
     });
   });
 
@@ -661,7 +605,7 @@ describe("research capability", () => {
       expect(new ResearchEnvError("x").name).toBe("ResearchEnvError");
     });
 
-    it("exposes EXACTLY the six named exports beside the default export", async () => {
+    it("exposes EXACTLY the five named exports beside the default export (the Step-6 placement ruling moved deriveStateRootFromAgentDir + its pinned pair's body to capability/base.ts; ResearchEnvError stays importable here via the consolidation re-export)", async () => {
       const mod = await import("./research.ts");
       expect(Object.keys(mod).sort()).toEqual([
         "REPORT_FINGERPRINT_LENGTH",
@@ -669,7 +613,6 @@ describe("research capability", () => {
         "ResearchEnvError",
         "WebToolsMissingError",
         "default",
-        "deriveStateRootFromAgentDir",
         "reportFingerprint",
       ]);
       expect(mod.default).toBe(ResearchCapability);

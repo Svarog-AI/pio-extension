@@ -102,11 +102,13 @@ export abstract class PioCapability {
   }
 }
 
-/** Typed refusal for an absent or malformed PI_CODING_AGENT_DIR channel. */
-export class ResearchEnvError extends Error {
+/** Typed refusal for an absent or malformed PI_CODING_AGENT_DIR channel
+ * (capability-generic — every capability addressing the durable project slot
+ * throws this; named for its layer, not any single capability). */
+export class CapabilityEnvError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "ResearchEnvError";
+    this.name = "CapabilityEnvError";
   }
 }
 
@@ -120,14 +122,14 @@ export function deriveStateRootFromAgentDir(
 ): string {
   const trimmed = agentDir?.trim();
   if (trimmed === undefined || trimmed.length === 0) {
-    throw new ResearchEnvError(
+    throw new CapabilityEnvError(
       // Escaped so the U+2014 bytes survive editor and toolkit glyph mangling.
-      "research: PI_CODING_AGENT_DIR is unset \u2014 cannot derive the state root",
+      "capability: PI_CODING_AGENT_DIR is unset \u2014 cannot derive the state root",
     );
   }
   if (!isAbsolute(trimmed)) {
-    throw new ResearchEnvError(
-      `research: PI_CODING_AGENT_DIR is malformed ('${trimmed}') \u2014 cannot derive the state root`,
+    throw new CapabilityEnvError(
+      `capability: PI_CODING_AGENT_DIR is malformed ('${trimmed}') \u2014 cannot derive the state root`,
     );
   }
   return resolve(trimmed, "..", "..");

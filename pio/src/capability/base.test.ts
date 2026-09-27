@@ -17,9 +17,9 @@
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { CapabilityParams } from "./base.ts";
 import {
+  CapabilityEnvError,
   deriveStateRootFromAgentDir,
   PioCapability,
-  ResearchEnvError,
 } from "./base.ts";
 import type { Contract } from "./contract.ts";
 import { ContractViolationError, PhaseBudgetError } from "./errors.ts";
@@ -481,15 +481,17 @@ describe("PioCapability — prompt framing passes through untouched", () => {
 
 // ---------------------------------------------------------------------
 // State-root inversion (pure; owner: capability/base.ts — the pair moved
-// there byte-verbatim from capabilities/research.ts in Step 6 per the owner
-// placement ruling; rows migrated verbatim from research.test.ts, import
-// adjusted). The message replicas below name that owner. Em dashes are
+// there from capabilities/research.ts in Step 6 per the owner placement
+// ruling; rows migrated verbatim from research.test.ts, import adjusted;
+// at close-out the owner directed full de-researching — class renamed to
+// CapabilityEnvError and the message prefix generalized to "capability:").
+// The message replicas below name that owner. Em dashes are
 // U+2014 (escaped).
 // ---------------------------------------------------------------------
 const ENV_UNSET_MESSAGE =
-  "research: PI_CODING_AGENT_DIR is unset \u2014 cannot derive the state root";
+  "capability: PI_CODING_AGENT_DIR is unset \u2014 cannot derive the state root";
 const envMalformedMessage = (value: string): string =>
-  `research: PI_CODING_AGENT_DIR is malformed ('${value}') \u2014 cannot derive the state root`;
+  `capability: PI_CODING_AGENT_DIR is malformed ('${value}') \u2014 cannot derive the state root`;
 
 describe("deriveStateRootFromAgentDir (pure)", () => {
   const T = "/home/user/pio-state";
@@ -508,8 +510,8 @@ describe("deriveStateRootFromAgentDir (pure)", () => {
       deriveStateRootFromAgentDir(undefined);
       expect.unreachable();
     } catch (error) {
-      expect(error).toBeInstanceOf(ResearchEnvError);
-      expect((error as ResearchEnvError).name).toBe("ResearchEnvError");
+      expect(error).toBeInstanceOf(CapabilityEnvError);
+      expect((error as CapabilityEnvError).name).toBe("CapabilityEnvError");
     }
   });
 
@@ -523,8 +525,8 @@ describe("deriveStateRootFromAgentDir (pure)", () => {
       deriveStateRootFromAgentDir("  rel/.pi/agent  ");
       expect.unreachable();
     } catch (error) {
-      expect(error).toBeInstanceOf(ResearchEnvError);
-      expect((error as ResearchEnvError).name).toBe("ResearchEnvError");
+      expect(error).toBeInstanceOf(CapabilityEnvError);
+      expect((error as CapabilityEnvError).name).toBe("CapabilityEnvError");
     }
   });
 });

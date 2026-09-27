@@ -46,10 +46,10 @@ import { createHash } from "node:crypto";
 import { appendFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  CapabilityEnvError,
   type CapabilityParams,
   deriveStateRootFromAgentDir,
   PioCapability,
-  ResearchEnvError,
 } from "../capability/base.ts";
 import type { Contract } from "../capability/contract.ts";
 import { classifySpec } from "../capability/contract.ts";
@@ -60,10 +60,9 @@ import {
 import { deriveProjectKey } from "../sandbox/layout.ts";
 
 // Re-exported for consumer stability — the body CO-HABITS the capability base
-// per the Step-6 owner placement ruling (moved there byte-verbatim WITH its
-// pinned messages; this module imports and re-exports rather than
-// duplicating).
-export { ResearchEnvError };
+// per the Step-6 owner placement ruling (moved there WITH its pinned messages;
+// this module imports and re-exports rather than duplicating).
+export { CapabilityEnvError };
 
 /** Run ceiling — the backstop bounding rambling-without-writing loops. */
 export const RESEARCH_MAX_RUNS = 10;

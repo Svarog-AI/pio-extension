@@ -36,9 +36,9 @@ import {
 import { PioSession } from "../capability/pio-session.ts";
 import { deriveProjectKey } from "../sandbox/layout.ts";
 import ResearchCapability, {
+  CapabilityEnvError,
   REPORT_FINGERPRINT_LENGTH,
   RESEARCH_MAX_RUNS,
-  ResearchEnvError,
   reportFingerprint,
   WebToolsMissingError,
 } from "./research.ts";
@@ -140,12 +140,13 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 /** Pinned product-line replicas — the SOLE OWNER of every byte below is
  * capabilities/research.ts EXCEPT the env-defect pair, whose sole owner is
  * capability/base.ts after the Step-6 placement ruling (the class + both
- * messages moved there byte-verbatim); the copies keep the byte-pins
- * meaningful. Em dashes are U+2014 (escaped). */
+ * messages moved there; at close-out the owner directed full de-researching:
+ * class → CapabilityEnvError, message prefix → "capability:"); the copies
+ * keep the byte-pins meaningful. Em dashes are U+2014 (escaped). */
 const ENV_UNSET_MESSAGE =
-  "research: PI_CODING_AGENT_DIR is unset \u2014 cannot derive the state root";
+  "capability: PI_CODING_AGENT_DIR is unset \u2014 cannot derive the state root";
 const envMalformedMessage = (value: string): string =>
-  `research: PI_CODING_AGENT_DIR is malformed ('${value}') \u2014 cannot derive the state root`;
+  `capability: PI_CODING_AGENT_DIR is malformed ('${value}') \u2014 cannot derive the state root`;
 const preflightStderrLine = (names: string): string =>
   `pio research: web tools unavailable (missing: ${names}) \u2014 expected from the isolated agent dir's pi-native-search provisioning`;
 const preflightThrownMessage = (names: string): string =>
@@ -500,7 +501,7 @@ describe("research capability", () => {
       const result = await cap.run({ topic: TOPIC });
       expect(result.ok).toBe(false);
       expect(result.errors?.[0]).toStrictEqual({
-        type: "ResearchEnvError",
+        type: "CapabilityEnvError",
         message: ENV_UNSET_MESSAGE,
       });
       expect(round.session.prompt).toHaveBeenCalledTimes(0);
@@ -514,7 +515,7 @@ describe("research capability", () => {
       const result = await cap.run({ topic: TOPIC });
       expect(result.ok).toBe(false);
       expect(result.errors?.[0]).toStrictEqual({
-        type: "ResearchEnvError",
+        type: "CapabilityEnvError",
         message: envMalformedMessage("rel/.pi/agent"),
       });
       expect(round.session.prompt).toHaveBeenCalledTimes(0);
@@ -602,15 +603,15 @@ describe("research capability", () => {
       expect(RESEARCH_MAX_RUNS).toBe(10);
       expect(REPORT_FINGERPRINT_LENGTH).toBe(12);
       expect(new WebToolsMissingError("x").name).toBe("WebToolsMissingError");
-      expect(new ResearchEnvError("x").name).toBe("ResearchEnvError");
+      expect(new CapabilityEnvError("x").name).toBe("CapabilityEnvError");
     });
 
-    it("exposes EXACTLY the five named exports beside the default export (the Step-6 placement ruling moved deriveStateRootFromAgentDir + its pinned pair's body to capability/base.ts; ResearchEnvError stays importable here via the consolidation re-export)", async () => {
+    it("exposes EXACTLY the five named exports beside the default export (the Step-6 placement ruling moved deriveStateRootFromAgentDir + its pinned pair's body to capability/base.ts; CapabilityEnvError stays importable here via the consolidation re-export)", async () => {
       const mod = await import("./research.ts");
       expect(Object.keys(mod).sort()).toEqual([
+        "CapabilityEnvError",
         "REPORT_FINGERPRINT_LENGTH",
         "RESEARCH_MAX_RUNS",
-        "ResearchEnvError",
         "WebToolsMissingError",
         "default",
         "reportFingerprint",

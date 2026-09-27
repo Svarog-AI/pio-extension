@@ -59,7 +59,10 @@ import { LayoutError } from "./layout.ts";
  * the renderer's vendored-extension bind members (render.ts default).
  * Adding a package later = exact-pinned owned dep line + roster entry +
  * suite rows (each carries its own constraint-5 approval). */
-export const OWNED_EXTENSION_PACKAGES: readonly string[] = ["pi-native-search"];
+export const OWNED_EXTENSION_PACKAGES: readonly string[] = [
+  "pi-native-search",
+  "pi-ask-user",
+];
 
 /** Kind of an fs entry observed by the guard (the symlink distinction is
  * load-bearing: pnpm-style symlinked node_modules would dangle inside the

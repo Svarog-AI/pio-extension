@@ -671,6 +671,46 @@ plural `capabilities/` = implementations, and the registry thunks uniformly as
 probe precedent (a root-level module directly under `src/`) is NOT the pattern
 to copy — it is gone for a reason.
 
+### 5.7 Writing to the process streams while the live terminal actively renders
+
+Garbles frames — nondeterministic and un-pin-able. Exemplar: the
+`pio/src/run-session.ts` header doctrine (the live terminal is the SOLE writer
+to the process streams while actively rendering, §7.1) and the entry's
+zero-stdout-on-every-row surface (suite-spied). Contrast the sanctioned
+exception — pre-run REFUSAL stderr lines fire on the terminal's static initial
+frame BEFORE any prompt (§4.7; timing and nuance per §7.1) — never a license
+to print during a run.
+
+### 5.8 Making termination depend on operator action
+
+Completion must hold with NO human present. Exemplar: the write-delta stopping
+rule + the `max` budget backstop — `shouldStopLoop` decides off the
+`IterationCtx` observable alone and the cap rejects regardless; neither
+consults the operator (§1.3/§2.1; the hard guardrail per §7.2).
+
+### 5.9 Constructing a second terminal or a competing process-stream writer
+
+One engagement / one process / one terminal. Exemplar: the entry's SINGLE
+mount of `InteractiveMode` over the engagement's `session.runtime` BY
+REFERENCE at one explicit pipeline step — idempotence by construction (one
+linear flow, one process, one mount; `pio/src/run-session.ts`).
+
+### 5.10 Capturing a session object in presentation/entry code
+
+Violates the end-state binding discipline: the presentation follows the
+RUNTIME, never a session — a captured session pins the end-state and closes
+the door the later composition goal walks through (§7.1). Exemplar: the
+`pio/src/run-session.ts` mount and teardown regions reference the runtime
+only — `new InteractiveMode(session.runtime)` at the mount, the runtime's
+`dispose()` at teardown.
+
+### 5.11 Reading process-stream state to infer session progress
+
+Disk truth + delivered observables ONLY, restated against the new surface:
+the live terminal DISPLAYS the session stream — it is not a data channel.
+Read the `IterationCtx` observables and the committed-write record; never
+parse rendered frames to drive loop decisions (§1.4/§3.1 standing doctrine).
+
 ## 6. Registering a new built-in (checklist)
 
 Every element below is shipped machinery, anchored to the `research` landing:
@@ -719,3 +759,329 @@ Every element below is shipped machinery, anchored to the `research` landing:
    themselves); stream spies pin the capability-owned lines; expectations
    derive fingerprints/keys through the imported public helpers instead of
    hardcoding digests.
+
+## 7. Execution presence and the runtime contract
+
+Material: `pio/src/run-session.ts` (module header + mount/teardown regions) ·
+`pio/src/sandbox/launcher.ts` + `pio/src/sandbox/run.ts` ·
+`pio/src/capability/base.ts` · `pio/src/capability/pio-session.ts` ·
+`pio/src/capability/status.ts` · `pio/src/sandbox/owned-extensions.ts` ·
+`pio/package.json` · the vendored `pio/node_modules/pi-ask-user/` tree.
+
+Every admitted capability run executes with its live terminal UP — the SDK's
+`InteractiveMode` class (re-exported from the pinned package root;
+`pio/node_modules/@earendil-works/pi-coding-agent/dist/index.d.ts` exports it
+from `"./modes/index.ts"`) bound to the engagement's session RUNTIME by
+reference. This section covers the runtime contract that entails — the
+terminal-ownership rules (§7.1), operator interjection semantics (§7.2), the
+provisioned structured-feedback tool (`ask_user`, §7.3) — and binds ALL future
+built-ins: they inherit the contract WITHOUT further plumbing and respect what
+this section teaches.
+
+### 7.1 Execution presence and terminal ownership
+
+Material: `pio/src/run-session.ts` (module header doctrine + mount/teardown
+regions) · `pio/src/sandbox/launcher.ts` + `pio/src/sandbox/run.ts` (gate order
++ host refusal literal) · `pio/src/capabilities/research.ts` (header
+outcome-model block) · `pio/src/capability/base.ts`.
+
+**Presence.** Every admitted capability run executes with its live terminal
+UP — the SDK's `InteractiveMode` bound to the engagement's session RUNTIME by
+reference, mounted as the process-lifetime terminal at one explicit pipeline
+step. The entry's module header states the full presence contract verbatim
+(`pio/src/run-session.ts`):
+
+```
+// pio/src/run-session.ts (module header)
+Every admitted run executes with its live terminal up: ONE terminal per
+engagement, constructed exactly once at the explicit mount step (after
+kill-capture arming, before the run) over the engagement's RUNTIME —
+never a session object — and torn down (best-effort stop, then runtime
+dispose; every secondary fault swallowed) on EVERY exit path, natural
+completion AND escaping rejection, BEFORE any terminal-record emission or
+degrade-line write.
+```
+
+Lineage (of record): this is the same construction the retired probe
+diagnostic target proved end-to-end inside a sandbox earlier in this goal's
+life — the probe was excised once real capabilities landed and no probe
+symbol survives in the citation universe; the terminal is now the
+presentation layer for EVERY capability run, not a diagnostic vehicle.
+
+Shipped mechanics, each anchored to the entry:
+
+- **Constructed EXACTLY ONCE at the explicit mount step** — after
+  kill-capture arming, before the run, over the engagement's runtime BY
+  REFERENCE (idempotence by construction — "one linear flow, one process,
+  one mount"):
+
+  ```ts
+  // pio/src/run-session.ts (mount step)
+  const { InteractiveMode } = await import("@earendil-works/pi-coding-agent");
+  terminal = new InteractiveMode(session.runtime);
+  void terminal.run().catch(() => {
+    // Secondary fault — swallowed (never log — terminal ownership).
+  });
+  ```
+
+  One engagement / one process / one runtime / one terminal. That dynamic
+  import is the entry's ONE SDK specifier occurrence (source-guard pinned in
+  the suite); the cheap paths — parse errors, the loader miss, the TTY
+  refusal — never evaluate the SDK graph, which evaluates exactly once on the
+  proceeding path.
+- **Render loop started un-awaited**, with a swallowing rejection handler —
+  secondary-fault discipline: a terminal-loop fault must never mask the
+  PRIMARY capability fault and is never logged (terminal ownership).
+- **Arm-before-mount ordering** — `emitter.armKillCapture()` precedes the
+  mount ("Arm BEFORE the mount: kill-capture precedes the terminal's own
+  signal"); the prepend-ordering interplay with the terminal's handlers is a
+  quality-gate measurement point, not a redesign.
+- **Teardown** — the probe-native best-effort `[stop → runtime.dispose]`
+  pair on EVERY exit path (natural completion AND escaping rejection),
+  completing BEFORE any out-of-window write ("Guaranteed on every exit path
+  and completing BEFORE any out-of-window write") — cooked mode restored
+  before the terminal record or the degrade line touches the process streams;
+  every secondary fault is swallowed so the primary always survives. The
+  SIGTERM kill path releases via OS death rather than this pair — the
+  kill-capture handler settles the record and force-exits
+  (`handleSigterm`, `pio/src/capability/status.ts`); cooked-mode recovery
+  there is a quality-gate measurement point, not asserted here.
+
+**End-state binding — effect only.** Mount and teardown reference the
+RUNTIME, never a session object — so the presentation follows whatever
+session the runtime currently holds natively, and surfacing other sessions
+rides the runtime's own session machinery with zero presentation changes.
+That territory belongs to the later composition goal — named ONCE, NO
+promises (no public rebind API exists on the pinned dist; cross-capability
+invocation stays a frozen ticket non-goal).
+
+**TTY-required execution surface.** User-run top-level capability invocations
+REQUIRE an attached TTY. Two enforced sites, both pre-construction fast-fails
+— refusal = one physical line + exit 1 + ZERO construction (no session, no
+emitter, no terminal; the SDK graph unevaluated on those paths):
+
+(a) The host pipeline's strict-gate-order gate. `runCapability`
+(`pio/src/sandbox/run.ts`) runs capability admission → input gates → TTY →
+nesting → bwrap pre-flight and consumes the host-neutral literal at the TTY
+position — AFTER loader admission, BEFORE nesting/bwrap/side effects:
+
+```ts
+// pio/src/sandbox/launcher.ts
+export const TTY_REFUSAL_LINE =
+  "pio: running a capability needs an interactive terminal (TTY); piped invocations are refused";
+```
+
+where `isInteractiveTty(input, output)` (`pio/src/sandbox/launcher.ts`) is
+true iff BOTH streams are TTYs.
+
+(b) The standalone entry's IN-NAMESPACE fast-fail. The standalone
+`pio-run-session` entry bypasses the host gates entirely, so the analogous
+depth lives there: a module-private counterpart line with its own product
+prefix, consumed behind a leaf-pure (SDK-free) launcher thunk — piped
+invocations refuse pre-construction: no session, no emitter, no terminal, the
+SDK graph unevaluated. Two owners, two byte forms — the house
+replicated-literal doctrine, documented in the `run-session.ts` comment
+("the host gate's neutral launcher literal (two owners, two byte forms)"):
+
+```ts
+// pio/src/run-session.ts
+const TTY_REFUSAL_LINE =
+  "pio-run-session: running a capability needs an interactive terminal (TTY); piped invocations are refused";
+```
+
+**Terminal-ownership contract.** The heart of the section — the shipped
+doctrine, key sentences verbatim from the `run-session.ts` header:
+
+```
+// pio/src/run-session.ts (module header)
+Terminal-ownership doctrine: while the terminal is actively rendering it
+is the SOLE writer to the process streams. Human-facing entry lines land
+OUTSIDE its active window — pre-run refusals print on the terminal's
+STATIC initial frame (default rendering is event-dirty with no idle
+repaint timer, so the frame stays static until stop) or before the
+terminal exists at all (the loader miss prints pre-launch), and post-run
+lines (the degrade line) print only after teardown restored cooked mode.
+```
+
+Author's formulation of the contract: capability CODE performs NO raw
+process-stream writes while the live terminal renders. The SHIPPED NARROW
+EXCEPTION is named precisely: pre-run REFUSAL stderr lines remain
+capability-owned — the web-tools preflight line of §4.7 is today's sole
+survivor — firing on the terminal's STATIC initial frame BEFORE any prompt,
+with their bytes, check order, and typed captures untouched. The
+static-idle-frame safety is MEASURED (event-dirty default rendering, no idle
+repaint timer); whether a refusal renders cleanly on that frame is live-
+confirmed by the quality gate's presence legs — stated, not asserted. Teach
+the exception WITH the nuance: settled doctrine for pre-run refusals, never a
+general license to print during a run.
+
+Success naming under the outcome model (cross-ref the corrected §5.4): the
+capability states its deliverable in the SESSION STREAM — the agent's own
+words, exactly what the live terminal presents — and the machine ledger
+carries the frozen project-slot-relative token (`serializeStatus` publishes
+`outputs` byte-unmodified, `pio/src/capability/status.ts`). Shipped header
+block, verbatim (`pio/src/capabilities/research.ts`):
+
+```
+// pio/src/capabilities/research.ts (module header)
+Outcome model (Step-6 settlement): the capability states its deliverable
+through the SESSION STREAM — what the live terminal presents — and the
+machine ledger (the terminal record's `outputs`) carries the frozen
+project-slot-relative token. Capability code performs NO raw terminal
+writes: preflight/env REFUSAL stderr lines remain capability-owned and
+byte-stable (their bytes, check order, and typed captures are untouched).
+```
+
+and the entry side, also verbatim (`pio/src/run-session.ts` module header):
+
+```
+// pio/src/run-session.ts (module header)
+The entry composes NO product-outcome bytes on ANY path — zero stdout
+writes on every row (suite-spied); the capability states its deliverable
+in the session stream (which is what the terminal presents) and the
+machine ledger carries the frozen project-slot-relative token.
+```
+
+Failure surfacing is mechanically unchanged: the actionable text rides the
+TYPED ERROR'S MESSAGE into the terminal record (`captureError` typing,
+`pio/src/capability/status.ts`) + the post-teardown degrade line — the
+pairing rule per §5.2 stands.
+
+**Anti-assert list (quality-gate boundary).** DO NOT assert any of the
+following — all four are measurement points landing in the next quality
+gate, not claims of this document: the idle-frame visual confirmation; TUI
+startup side effects (changelog/version checks, telemetry attempts over the
+shared net); SIGTERM-handler interplay and cooked-mode recovery on the kill
+path; native-quit status-record consequences.
+
+### 7.2 Operator interjection semantics
+
+Material: `pio/src/capability/pio-session.ts` (module-header settlement
+sentence + the `execute_phase` prompt site) · `pio/src/run-session.ts` · the
+shipped research template tail (`pio/src/capabilities/research.ts`).
+
+**Mechanics.** Messages the operator types while a phase run is active queue
+in the session (pi's native pending-input machinery) and settle through the
+session's turns. Because one awaited prompt settles a whole logical run —
+the settlement sentence §1.1 teaches from the `pio-session.ts` module header:
+queued messages resolve INSIDE the settling run — operator input lands either
+inside the settling run or, between runs, as plain in-session turns BETWEEN
+the phase loop's own iterations — OUTSIDE `execute_phase` bookkeeping (the
+marker/instructions wrap only the capability's own runs), bounded by the
+phase `max` backstop REGARDLESS (§2.1). The actor driving phase turns stays
+the prompt call at the `execute_phase` loop site — "execute_phase's prompts
+are the turn actors":
+
+```ts
+// pio/src/capability/pio-session.ts (execute_phase loop site)
+await this.runtime.session.prompt(text);
+```
+
+Operator messages enter the SAME prompt channel — they do not become steering
+inputs; the delivered steering channels remain the three `IterationCtx`
+observables (§1.6).
+
+**HARD GUARDRAIL.** A capability's completion MUST hold with NO human
+present — the write-delta stop and budget backstops never depend on an
+operator response (§1.3/§2.1/§3.5). A run with an operator watching and a
+solo run reach identical completion determinations.
+
+**Boundary status (R-V4).** Mid-run prompting is NOT formally adjudicated for
+this artifact — the goal does not deliver the final product (owner ruling
+2026-09-26, R-V4). Typing while a run is active is mechanically tolerated
+(native input queueing); this document names the boundary without supporting
+or promising it. Cross-ref the corrected §3.6.
+
+**Anti-assert.** DO NOT assert worst-case interleaving or attribution
+specifics (for example, how operator turns interact with the per-run
+`filesWritten` delta windows) — that is a quality-gate measurement point;
+the ONLY sanctioned claim is the `max` bound.
+
+### 7.3 Structured feedback: the provisioned `ask_user` tool
+
+Material: `pio/src/sandbox/owned-extensions.ts` (roster) · `pio/package.json`
+· the vendored `pio/node_modules/pi-ask-user/` package (`package.json`,
+`README.md`, `index.ts`) · `pio/src/capabilities/research.ts`
+(instructions).
+
+**Availability mechanics.** The tool reaches every sandboxed session through
+the EXISTING owned-extension roster mechanism — the roster quoted in §4.1 now
+carries the second entry (`pi-ask-user` appends after `pi-native-search`); the
+SAME constant still drives both the settings registration and the renderer's
+ro identity-bind members, and the steady-state total-no-op semantics extend
+to the second entry automatically. The manifest registers the extension
+entrypoint (`pio/node_modules/pi-ask-user/package.json`):
+
+```json
+// pio/node_modules/pi-ask-user/package.json
+"pi": {
+  "extensions": [
+    "./index.ts"
+  ],
+  "skills": [
+    "./skills"
+  ]
+}
+```
+
+The registered tool name is `ask_user` (Tool-name section,
+`pio/node_modules/pi-ask-user/README.md`):
+
+```text
+// pio/node_modules/pi-ask-user/README.md
+The registered tool name is:
+
+- `ask_user`
+```
+
+**Rendering.** Package-DECLARED behavior, attributed to the vendored package
+— NOT observed live behavior; the first live exercise of the overlay
+in-bubble is a quality-gate leg. Under the live TUI the package declares a
+rich interactive UI — searchable option selection, multi-select, freeform
+responses, configurable display modes `overlay` (modal, default) vs `inline`
+(Features list, `pio/node_modules/pi-ask-user/README.md`):
+
+```text
+// pio/node_modules/pi-ask-user/README.md
+- Searchable single-select option lists with wrapped titles and descriptions
+- Responsive split-pane details preview on wide terminals, with a persistent single-column preference
+- Multi-select option lists
+- Optional freeform responses
+```
+
+```text
+// pio/node_modules/pi-ask-user/README.md
+- Configurable display mode: `overlay` (modal, default) or `inline` (rendered directly in the flow)
+```
+
+plus custom TUI rendering of tool calls and results (same README):
+
+```text
+// pio/node_modules/pi-ask-user/README.md
+- Custom TUI rendering for tool calls and results
+```
+
+**Headless/RPC fallback.** ONE line, cited — the package degrades gracefully
+when interactive UI is unavailable: in RPC/headless mode it falls back to
+dialog methods (select/input) instead of the rich overlay
+(`pio/node_modules/pi-ask-user/index.ts`):
+
+```ts
+// pio/node_modules/pi-ask-user/index.ts
+RPC/headless fallback: use dialog methods (select/input) instead of the rich TUI overlay.
+ctx.ui.custom() returns undefined in RPC mode, so we degrade gracefully.
+```
+
+**Availability ≠ instruction.** Provisioning makes the tool AVAILABLE; a
+capability OPTS INTO asking via its authored instructions — nothing is
+solicited by default. No capability consumes it today: `research` ships the
+autonomous tail (§3.6) and its instructions changed NOTHING — availability
+delivered without usage, so the ticket's frozen non-goals stay intact apart
+from R-V4's record.
+
+**Bundled-skill fact (boundary — named, not taught).** The manifest resource
+collection also ships a bundled skill directory (`pi.skills: ["./skills"]` —
+`pio/node_modules/pi-ask-user/skills/ask-user/SKILL.md` in the vendored tree);
+whether it surfaces as a discoverable skill in bubble sessions is a benign
+availability side-channel the quality gate observes live — this document does
+not teach it.

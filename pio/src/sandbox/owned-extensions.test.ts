@@ -331,6 +331,26 @@ describe("existence guard (fail-fast PRE-registration)", () => {
     expect(await readdir(piTree)).toEqual([]);
   });
 
+  it("a MISSING second-roster package (fabricated root HAS pi-native-search but NOT pi-ask-user; the REAL two-entry roster driven through the packages seam) ⇒ the actionable refusal NAMING the absent pi-ask-user source path + the remediation hint; PRE-registration: the settings file is ABSENT and not even the agent dir is mkdir'd (nothing written anywhere)", async () => {
+    const pioRoot = await fabricatePioRoot(["pi-native-search"]);
+    const { stateRoot, piTree } = await makeStateRoot();
+
+    await expectRefusal(
+      () =>
+        ensureOwnedExtensions(piTree, {
+          pioRoot,
+          packages: ["pi-native-search", "pi-ask-user"],
+        }),
+      [path.join(pioRoot, "node_modules", "pi-ask-user"), "reinstall"],
+    );
+
+    expect(
+      (await lstat(settingsPathOf(piTree)).catch(() => "absent")) as string,
+    ).toBe("absent");
+    expect(await readdir(stateRoot)).toEqual([".pi"]);
+    expect(await readdir(piTree)).toEqual([]);
+  });
+
   it("a SYMLINKED fixture source (pnpm-style layout) ⇒ a DISTINCT actionable refusal (identity binds of links dangle in-bubble where the link target is unmounted); the pre-seeded settings file stays BYTE-IDENTICAL (all guards precede any registration)", async () => {
     const pioRoot = await fabricatePioRoot([A]);
     // Re-point the fixture dir: real directory elsewhere, LINK in place.
@@ -506,22 +526,86 @@ describe("settings write/rename-fault surface (Phase U op faults → the layout 
 });
 
 describe("default-guard derivations (mechanical anti-coupling)", () => {
-  it("the default roster deep-equals ['pi-native-search']", () => {
-    expect([...OWNED_EXTENSION_PACKAGES]).toEqual(["pi-native-search"]);
+  it("the default roster deep-equals ['pi-native-search', 'pi-ask-user'] IN ROSTER ORDER (the TWO-ENTRY form: the search pair stays FIRST — appending keeps every pre-existing settings byte, ro-bind member, and pin stable)", () => {
+    expect([...OWNED_EXTENSION_PACKAGES]).toEqual([
+      "pi-native-search",
+      "pi-ask-user",
+    ]);
   });
 
-  it("production defaults (NO seams — real roster, real pioRoot via src/constants.ts, real fs): the registered entry EQUALS the constant-derived vendored path by identity (===) — the wiring pin (the URL-arithmetic pin belongs to constants.test.ts alone)", async () => {
+  it("production defaults (NO seams — real TWO-ENTRY roster, real pioRoot via src/constants.ts, real fs): settings carries BOTH absolute vendored paths IN ROSTER ORDER, each EQUALS its constant-derived vendored path by identity (===) — the wiring pin exercised over the REAL installed trees (guards + upsert end-to-end; the URL-arithmetic pin belongs to constants.test.ts alone)", async () => {
     const { piTree } = await makeStateRoot();
     await ensureOwnedExtensions(piTree); // NO seams
 
-    const expected = path.join(
+    const expectedSearch = path.join(
       PIO_PACKAGE_ROOT,
       "node_modules",
       "pi-native-search",
     );
+    const expectedAskUser = path.join(
+      PIO_PACKAGE_ROOT,
+      "node_modules",
+      "pi-ask-user",
+    );
     const parsed = (await readSettings(piTree)) as { packages: unknown[] };
-    expect(parsed.packages[0]).toBe(expected);
-    expect(parsed.packages[0] === expected).toBe(true);
+    expect(parsed.packages).toHaveLength(2);
+    expect(parsed.packages[0]).toBe(expectedSearch);
+    expect(parsed.packages[0] === expectedSearch).toBe(true);
+    expect(parsed.packages[1]).toBe(expectedAskUser);
+    expect(parsed.packages[1] === expectedAskUser).toBe(true);
+  });
+
+  it("steady state over the REAL two-entry default (NO seams — real roster, real pioRoot, real fs): a second run leaves the settings file's BYTES AND mtime untouched and the state-root walk reveals NO NEW files (total no-op EXTENDS to the second entry — witness-checks that BOTH real sources pass the production guard)", async () => {
+    const { stateRoot, piTree } = await makeStateRoot();
+    await ensureOwnedExtensions(piTree); // NO seams
+
+    const beforeBytes = await readFile(settingsPathOf(piTree), "utf8");
+    const beforeMtime = (await lstat(settingsPathOf(piTree))).mtimeMs;
+    const beforeWalk = await walkTree(stateRoot);
+
+    await ensureOwnedExtensions(piTree); // NO seams
+
+    expect(await readFile(settingsPathOf(piTree), "utf8")).toBe(beforeBytes);
+    expect((await lstat(settingsPathOf(piTree))).mtimeMs).toBe(beforeMtime);
+    expect(await walkTree(stateRoot)).toEqual(beforeWalk);
+  });
+
+  it("settings upsert preservation with BOTH real entries (NO seams — real roster): a pre-seeded accumulated doc (unrelated top-level keys around the array, a FOREIGN entry, and the ALREADY-PRESENT pi-native-search vendored-path entry) ⇒ deep-equal modulo EXACTLY one addition (pi-ask-user's absolute vendored path, appended AFTER the foreign/pre-existing entries), top-level key ORDER preserved, native-search entry NEVER doubled (an established agent dir gains the second entry on the next launch — idempotent, dedupe-safe)", async () => {
+    const { piTree } = await makeStateRoot();
+    const searchEntry = path.join(
+      PIO_PACKAGE_ROOT,
+      "node_modules",
+      "pi-native-search",
+    );
+    const preseeded = {
+      theme: "dark",
+      packages: [searchEntry, "/some/foreign/path"],
+      editor: { tabSize: 2 },
+    };
+    await mkdir(path.dirname(settingsPathOf(piTree)), { recursive: true });
+    await writeFile(
+      settingsPathOf(piTree),
+      `${JSON.stringify(preseeded, null, 2)}\n`,
+    );
+
+    await ensureOwnedExtensions(piTree); // NO seams
+
+    const askUserEntry = path.join(
+      PIO_PACKAGE_ROOT,
+      "node_modules",
+      "pi-ask-user",
+    );
+    expect(await readSettings(piTree)).toEqual({
+      theme: "dark",
+      packages: [searchEntry, "/some/foreign/path", askUserEntry],
+      editor: { tabSize: 2 },
+    });
+    // Top-level key ORDER preserved (insertion order survived the round-trip).
+    const updated = (await readSettings(piTree)) as Record<string, unknown>;
+    expect(Object.keys(updated)).toEqual(["theme", "packages", "editor"]);
+    // The pre-existing native-search entry is never doubled.
+    const packages = (updated as { packages: unknown[] }).packages;
+    expect(packages.filter((entry) => entry === searchEntry)).toHaveLength(1);
   });
 
   it("the module's value export surface is EXACTLY the pinned set (interfaces erase under erasable syntax; no helper leaks)", async () => {
@@ -545,13 +629,14 @@ describe("headless provisioning proof (open assumptions 1–2 — the REAL SDK g
     delete process.env.PI_CODING_AGENT_DIR;
   });
 
-  it("web_search AND web_fetch are DEFINED over a session constructed (through the delivered session.ts seam) from the temp agent dir registered by the REAL production path — provisioning verified end-to-end (loader mechanics + in-place resolution sufficiency)", async () => {
+  it("web_search AND web_fetch AND ask_user are ALL THREE DEFINED over a session constructed (through the delivered session.ts seam) from the temp agent dir registered by the REAL production path (default roster ⇒ BOTH local sources registered) — provisioning verified end-to-end for the FULL two-package roster (loader mechanics + in-place resolution sufficiency; the structured operator-feedback tool's overlay rendering under the live TUI is the QG live-leg question — referenced, not executed here)", async () => {
     const base = await tmpdir("pio-headless-");
     const piTree = path.join(base, ".pi");
     await mkdir(piTree, { recursive: true });
     // Provision through the REAL production path: default roster, real
-    // pioRoot, the real installed pio/node_modules/pi-native-search —
-    // guards + upsert exercised end-to-end over the real artifact.
+    // pioRoot, the real installed pio/node_modules/pi-native-search AND
+    // pio/node_modules/pi-ask-user — guards + upsert exercised end-to-end
+    // over BOTH real artifacts.
     await ensureOwnedExtensions(piTree);
 
     const agentDir = path.join(piTree, "agent");
@@ -563,6 +648,10 @@ describe("headless provisioning proof (open assumptions 1–2 — the REAL SDK g
 
     expect(runtime.session.getToolDefinition("web_search")).toBeDefined();
     expect(runtime.session.getToolDefinition("web_fetch")).toBeDefined();
+    // R-V3 availability: the vendored structured-feedback tool is defined
+    // over the SAME session (availability ≠ usage — no capability consumes
+    // it this step).
+    expect(runtime.session.getToolDefinition("ask_user")).toBeDefined();
   }, 120_000);
 
   it("SILENT-SKIP POSTURE (load-time rule pinned behaviorally): a settings packages entry pointing at an ABSENT path ⇒ session construction SUCCEEDS without error, BOTH getToolDefinitions UNDEFINED, no crash, no stall — offline-safe by construction; provisioning gaps surface through Step 4's loud preflight, never through construction (and nothing reaches for a registry)", async () => {

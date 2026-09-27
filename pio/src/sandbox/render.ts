@@ -1,7 +1,8 @@
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { PIO_PACKAGE_ROOT } from "../constants.ts";
 import type { FsView } from "./fsview.ts";
 import { hasWildcard } from "./fsview.ts";
+import { OWNED_EXTENSION_PACKAGES } from "./owned-extensions.ts";
 import type {
   EnvAssignment,
   MountEntry,
@@ -39,12 +40,26 @@ export interface RenderInput {
   identity?: RenderIdentity;
   /** Default: dirname(dirname(process.execPath)) — own-runtime grounding. */
   runtimeDir?: string;
-  /** Default: `<pkgRoot>/bin/pio-run-session`, resolved once via import.meta.url. */
+  /** Default: `<PIO_PACKAGE_ROOT>/bin/pio-run-session` (src/constants.ts). */
   targetExecutable?: string;
   /** Default: STANDARD_PATH_BASE (the standard six). */
   envBasePath?: string[];
   /** Default: conservativeDefaultSources(identity.uid). */
   mountSources?: MountSources;
+  /** The vendored extension trees bound ro into the bubble (section C,
+   * after the pio-state trio) — pi's loader resolves the registered
+   * local-source settings entries against these identity paths in place.
+   * Only when `includePioState !== false` (bypassing the pio-state section
+   * bypasses vehicle provisioning too); a missing path is a NORMATIVE
+   * refusal (the existence guard right before render already guarantees
+   * presence in the production flow — a hit means pathological drift).
+   * Injected paths REPLACE the default wholesale. */
+  readonly vendoredExtensions?: readonly string[];
+  /** Named input pairs threaded VERBATIM into the target argv after the
+   * sessions-root pair — declaration (insertion) order preserved; absent ⇒
+   * the classic three-token triple. Zero validation here: strictness lives
+   * in the parsers and the host gates (pure pass-through). */
+  readonly inputs?: Record<string, string>;
   /** Default: true. Binds the pio-state trio — state root ro, own slot rw,
    * then the isolated pi config dir rw (section C). */
   includePioState?: boolean;
@@ -141,10 +156,20 @@ function defaultRuntimeDir(): string {
   return path.dirname(path.dirname(process.execPath));
 }
 
+/** Package-relative target executable, resolved against the single-source
+ * pio package root (src/constants.ts). */
 function defaultTargetExecutable(): string {
-  const sandboxDir = path.dirname(fileURLToPath(import.meta.url));
-  const pkgRoot = path.dirname(path.dirname(sandboxDir));
-  return path.join(pkgRoot, "bin", "pio-run-session");
+  return path.join(PIO_PACKAGE_ROOT, "bin", "pio-run-session");
+}
+
+/** The vendored extension trees — OWNED_EXTENSION_PACKAGES mapped to
+ * `<PIO_PACKAGE_ROOT>/node_modules/<n>` in roster order (lazy helper, à la
+ * defaultTargetExecutable). The SAME roster constant drives both the
+ * settings entries (owned-extensions.ts) and these mount members. */
+function defaultVendoredExtensions(): readonly string[] {
+  return [...OWNED_EXTENSION_PACKAGES].map((name) =>
+    path.join(PIO_PACKAGE_ROOT, "node_modules", name),
+  );
 }
 
 function buildBaseFlags(identity: RenderIdentity): string[] {
@@ -195,14 +220,27 @@ function buildEnv(
   ];
 }
 
+/** Target command: the classic three-token triple `[capabilityName,
+ * "--sessions-root", <engagementDir>/.sessions]` PLUS, WHEN `inputs` is
+ * provided, the named pairs appended VERBATIM as two-token `--input k=v`
+ * groups in `Object.entries` order — host form == child wire form (zero
+ * transform): the pair token is the original wire token reconstructed
+ * losslessly (key + `=` + whole remainder), so a value containing `=`
+ * round-trips byte-exact. No validation of any kind in the renderer. */
 function buildTarget(input: RenderInput): TargetCommand {
+  const args: string[] = [
+    input.capabilityName,
+    "--sessions-root",
+    path.join(input.engagementDir, ".sessions"),
+  ];
+  if (input.inputs !== undefined) {
+    for (const [key, value] of Object.entries(input.inputs)) {
+      args.push("--input", `${key}=${value}`);
+    }
+  }
   return {
     executable: input.targetExecutable ?? defaultTargetExecutable(),
-    args: [
-      input.capabilityName,
-      "--sessions-root",
-      path.join(input.engagementDir, ".sessions"),
-    ],
+    args,
   };
 }
 
@@ -253,7 +291,11 @@ export function renderProfile(input: RenderInput): SandboxProfile {
   // C. pio-state trio (iff includePioState — bypassed entirely when false);
   //    missing roots fail loud (a quiet security-model change otherwise).
   //    The .pi member is the sole writable addition over the ro root — the
-  //    vehicle's own pi instance lives there.
+  //    vehicle's own pi instance lives there — followed by the vendored
+  //    extension trees as read-only identity binds (nothing in-bubble ever
+  //    writes them: loaders READ, locals are excluded from update
+  //    reconciliation, and a bubble must not mutate its own launch-surface
+  //    tooling). Declaration order = roster order (byte-stable).
   if (includePioState) {
     candidates.push(
       {
@@ -275,6 +317,14 @@ export function renderProfile(input: RenderInput): SandboxProfile {
         missingReason: "normative-path-missing",
       },
     );
+    for (const p of input.vendoredExtensions ?? defaultVendoredExtensions()) {
+      candidates.push({
+        path: p,
+        mode: "ro",
+        context: "vendored extension entry",
+        missingReason: "normative-path-missing",
+      });
+    }
   }
   // D. cwd rw — LAST (later bind overlays earlier — ordering is security)
   candidates.push({

@@ -17,25 +17,25 @@ import {
 // (measured mirror points in dist/main.js ~L575–L693 against the pinned
 // 0.85.1 dist): SessionManager -> stored runtime factory ->
 // createAgentSessionRuntime. Shared session-construction seam for the
-// built-in probe target and capability authoring hosts. With a sessions
-// root, transcript persistence is routed into the engagement's fixed-name
-// `top` slot; without one, everything stays on the disk-backed defaults
-// under the agent dir (auth, provider settings, resource discovery); no
-// other overrides are passed anywhere in this file.
+// capability authoring hosts. With a sessions root, transcript persistence
+// is routed into the engagement's fixed-name `top` slot; without one,
+// everything stays on the disk-backed defaults under the agent dir (auth,
+// provider settings, resource discovery); no other overrides are passed
+// anywhere in this file.
 
 /** Optional session-construction extras (additive — callers passing none
  * behave exactly as before). */
-export interface CreateProbeSessionOptions {
+export interface CreatePioSessionOptions {
   /** Session event listener attached exactly once to the constructed session. Absent → no subscription. */
   readonly sessionListener?: AgentSessionEventListener;
   /** Custom tools registered into the constructed session; threaded through to the session only when provided. */
   readonly customTools?: ToolDefinition[];
 }
 
-export async function createProbeSession(
+export async function createPioSession(
   cwd: string,
   sessionsRoot?: string,
-  opts?: CreateProbeSessionOptions,
+  opts?: CreatePioSessionOptions,
 ): Promise<AgentSessionRuntime> {
   // Conditional on purpose: with a sessions root the transcripts persist in
   // the engagement's `top` slot; without it the single-argument call keeps

@@ -48,7 +48,7 @@ const anchor: SandboxProfile = {
     executable: "/abs/pkg/bin/pio",
     args: [
       "session-run",
-      "probe",
+      "cap",
       "--sessions-root",
       "/st/projects/k/engagements/e1/.sessions",
     ],
@@ -93,7 +93,7 @@ describe("buildArgv", () => {
       "--",
       "/abs/pkg/bin/pio",
       "session-run",
-      "probe",
+      "cap",
       "--sessions-root",
       "/st/projects/k/engagements/e1/.sessions",
     ]);
@@ -158,10 +158,14 @@ function s01AnchorInput(): RenderInput {
     engagementDir: "/home/u/.pio/projects/u-dev-myrepo/engagements/e1",
     stateRoot: "/home/u/.pio",
     projectSlot: "/home/u/.pio/projects/u-dev-myrepo",
-    capabilityName: "probe",
+    capabilityName: "cap",
     fsView: view,
     identity: { uid: 1000, gid: 1000 },
     runtimeDir: "/usr/local",
+    // Row focus is the buildArgv token-vector mapping — the
+    // vehicle-provisioning vendored members are out of scope here (the
+    // hermetic fake view does not wire the default real paths).
+    vendoredExtensions: [],
   };
 }
 
@@ -642,7 +646,7 @@ describe("S01 cross-step continuity row", () => {
       "/home/u/.pio/.pi/agent",
       "--",
       PKG_BIN,
-      "probe",
+      "cap",
       "--sessions-root",
       "/home/u/.pio/projects/u-dev-myrepo/engagements/e1/.sessions",
     ]);
@@ -705,7 +709,7 @@ describe("formatProfileLines", () => {
       '    "PATH"="/rt/bin:/x"',
       '    "PI_SANDBOX"="1"',
       '  chdir: "/home/u/dev"',
-      '  target: "/abs/pkg/bin/pio" "session-run" "probe" "--sessions-root" "/st/projects/k/engagements/e1/.sessions"',
+      '  target: "/abs/pkg/bin/pio" "session-run" "cap" "--sessions-root" "/st/projects/k/engagements/e1/.sessions"',
     ]);
   });
 

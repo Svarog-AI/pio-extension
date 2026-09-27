@@ -4,18 +4,18 @@
 // - `parse` is pure and UI-neutral: it classifies argv into a descriptor and
 //   emits unprefixed error messages; `main` renders the `pio: ` prefix.
 // - Strict flag surface: the only recognized top-level forms are `--help`,
-//   `help`, `--version`, and `run`. Every other dash token (anywhere) is an
-//   unknown option — there are no short forms and no stub flags.
+//   `help`, `--version`, and `run`; `--input k=v` is recognized in run
+//   position ONLY (after a capability name was consumed). Every other dash
+//   token (anywhere) is an unknown option — there are no short forms and no
+//   stub flags.
 // - Builtins load only through the single dynamic import issued after a
 //   successful parse+dispatch, so the cheap forms (help, version, errors)
 //   never pay for evaluating a builtin graph — the run path's graph pulls in
 //   the SDK. The sole static import is the version constant and the sole
 //   dynamic literal is `./sandbox/run.ts`.
-// - `probe` is the literal fast-path special case in `main`'s dispatch — no
-//   abstraction around it (retained doctrine). Every other name delegates
-//   onward: the run path's loader-based gate owns admission, and its refusal
-//   line reaches the user through the same IO sink this module threads; this
-//   file carries no refusal bytes of its own.
+// - EVERY name delegates onward to the run path: its loader-based gate owns
+//   admission, and its refusal line reaches the user through the same IO
+//   sink this module threads — this file carries no refusal bytes of its own.
 import { PIO_VERSION } from "./version.ts";
 
 /** Descriptors of a parsed argv (program name excluded). `error.message` is unprefixed. */
@@ -23,7 +23,10 @@ export type ParsedCommand =
   | { kind: "help" }
   | { kind: "version" }
   | { kind: "reserved" } // bare `pio` and bare `pio run`
-  | { kind: "run"; capability: string }
+  // `inputs`: insertion-ordered key→value map — ALWAYS present on run
+  // descriptors (EMPTY `{}` by default); a plain object, so JS string-key
+  // insertion order IS the declared order.
+  | { kind: "run"; capability: string; inputs: Record<string, string> }
   | { kind: "error"; message: string };
 
 /** Injectable IO sink. Writers receive a line WITHOUT trailing newline; `main` appends it. */
@@ -32,27 +35,39 @@ export interface CliIO {
   stderr(line: string): void;
 }
 
+/** Canonical run-grammar usage string — ONE constant feeds ALL THREE host
+ * occurrences: the help usage line and both error-template tails (S03 lifts
+ * the S02 usage-byte freeze PRECISELY for these strings because the grammar
+ * grew). NOTE the trailing ellipsis is the U+2026 HORIZONTAL ELLIPSIS
+ * character — pinned codepoint, never normalized to three dots. */
+const RUN_USAGE = "pio run <capability> [--input k=v …]";
+
 const UNKNOWN_OPTION = (token: string): string =>
   `unknown option: ${token} (try: pio --help)`;
 const UNKNOWN_COMMAND = (token: string): string =>
   `unknown command: ${token} (try: pio --help)`;
 const UNEXPECTED_ARGUMENT = (token: string): string =>
-  `unexpected argument: ${token} (usage: pio run <capability>)`;
-const MISSING_CAPABILITY =
-  "expected capability name after 'run' (usage: pio run <capability>)";
+  `unexpected argument: ${token} (usage: ${RUN_USAGE})`;
+const MISSING_CAPABILITY = `expected capability name after 'run' (usage: ${RUN_USAGE})`;
+const MALFORMED_INPUT_PAIR = (token: string): string =>
+  `malformed input pair: '${token}' (--input expects k=v; usage: ${RUN_USAGE})`;
+const DUPLICATE_INPUT_KEY = (key: string): string =>
+  `duplicate input key: '${key}' (each key may appear once; usage: ${RUN_USAGE})`;
 
 const HELP_LINES: readonly string[] = [
   "pio — goal-driven project management CLI",
   "",
   "Usage:",
-  "  pio run <capability>",
+  `  ${RUN_USAGE}`,
   "  pio --help",
   "  pio --version",
   "",
   "Built-in capabilities:",
-  "  probe — built-in diagnostic: verifies session/TUI/transcript plumbing (currently the only resolvable target)",
-  "",
-  "No capabilities are resolvable yet — the built-in capability table ships empty.",
+  // NOTE the em dash is the U+2014 EM DASH character — pinned codepoint,
+  // matching line-0 house style; the quoted <topic> documents the
+  // shell-quoted multi-word-as-ONE-value grammar.
+  "  research — bounded web-research loop producing a markdown file report",
+  '  pio run research --input topic="<topic>"',
 ];
 
 function startsWithDash(token: string): boolean {
@@ -91,16 +106,40 @@ export function parse(argv: readonly string[]): ParsedCommand {
   if (startsWithDash(second)) {
     return { kind: "error", message: UNKNOWN_OPTION(second) };
   }
-  if (rest.length > 0) {
-    const extra = rest[0];
-    return {
-      kind: "error",
-      message: startsWithDash(extra)
-        ? UNKNOWN_OPTION(extra)
-        : UNEXPECTED_ARGUMENT(extra),
-    };
+  // Post-capability tail: the `--input k=v` pair scan — the ONE grammar three
+  // consumers share (host parse here, renderer emission, in-namespace entry
+  // parse). ZERO transform: split on the FIRST `=`, no trimming anywhere, the
+  // value is the ENTIRE remainder (may be EMPTY, may hold further `=`). The
+  // flag token consumes the NEXT token AS-IS as the pair candidate BEFORE any
+  // dash classification — so a glued `--input=k=v` never matches the flag
+  // token and degrades to the unknown-option arm below, deterministically in
+  // every consumer. First violation wins (fail-fast).
+  const inputs: Record<string, string> = {};
+  for (let i = 0; i < rest.length; i++) {
+    const token = rest[i];
+    if (token === "--input") {
+      const pair = rest[i + 1];
+      if (pair === undefined) {
+        return { kind: "error", message: MALFORMED_INPUT_PAIR("--input") };
+      }
+      i++; // consume the pair candidate (it gets NO dash classification)
+      const eq = pair.indexOf("=");
+      const key = eq <= 0 ? "" : pair.slice(0, eq);
+      if (eq < 0 || key.length === 0) {
+        return { kind: "error", message: MALFORMED_INPUT_PAIR(pair) };
+      }
+      if (Object.hasOwn(inputs, key)) {
+        return { kind: "error", message: DUPLICATE_INPUT_KEY(key) };
+      }
+      inputs[key] = pair.slice(eq + 1); // whole remainder (EMPTY allowed)
+      continue;
+    }
+    if (startsWithDash(token)) {
+      return { kind: "error", message: UNKNOWN_OPTION(token) };
+    }
+    return { kind: "error", message: UNEXPECTED_ARGUMENT(token) };
   }
-  return { kind: "run", capability: second };
+  return { kind: "run", capability: second, inputs };
 }
 
 /** Entry point. `argv` = user args (process.argv.slice(2) in the real bin).
@@ -135,13 +174,16 @@ export async function main(
         return 1;
       case "run": {
         const name = parsed.capability;
-        // Both arms share ONE lazy import over the run path — see the header
-        // note on lazy loading. It must export
-        // runCapability(name, io?): Promise<number> (the exit code).
+        // EVERY name delegates onward through ONE lazy import over the run
+        // path — see the header note on lazy loading. It must export
+        // runCapability(name, io?, seams?, inputs?): Promise<number> (the
+        // exit code).
         let runPath: {
           runCapability(
             capabilityName: string,
             io?: { stderr(line: string): void },
+            seams?: unknown,
+            inputs?: Record<string, string>,
           ): Promise<number>;
         };
         try {
@@ -151,15 +193,12 @@ export async function main(
           out.stderr(`pio: failed to load built-in '${name}': ${detail}`);
           return 1;
         }
-        // Every non-probe name delegates onward: the run path's loader-based
-        // gate decides (miss ⇒ its refusal line through this very sink).
-        if (name !== "probe") {
-          return await runPath.runCapability(name, out);
-        }
-        // `probe` enters through the run path (host-side launch) as the
-        // explicit literal fast-case — a dispatch special case, no
-        // abstraction around it.
-        return await runPath.runCapability("probe", out);
+        // Every name delegates onward: the run path's loader-based gate
+        // owns admission, and its refusal line reaches the user through
+        // the same IO sink. The parsed inputs record rides the additive
+        // fourth slot ALWAYS (four-arg uniformity — an empty map when no
+        // pairs were given; explicit `undefined` in the seams slot).
+        return await runPath.runCapability(name, out, undefined, parsed.inputs);
       }
     }
   } catch (cause) {

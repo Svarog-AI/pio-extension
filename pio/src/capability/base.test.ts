@@ -16,7 +16,11 @@
 
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { CapabilityParams } from "./base.ts";
-import { PioCapability } from "./base.ts";
+import {
+  CapabilityEnvError,
+  deriveStateRootFromAgentDir,
+  PioCapability,
+} from "./base.ts";
 import type { Contract } from "./contract.ts";
 import { ContractViolationError, PhaseBudgetError } from "./errors.ts";
 import { PioSession } from "./pio-session.ts";
@@ -472,6 +476,58 @@ describe("PioCapability — prompt framing passes through untouched", () => {
     const sent = round.session.prompt.mock.calls[0][0];
     expect(sent.endsWith("\n")).toBe(false);
     expect(sent.includes(CAP_MARKER)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------
+// State-root inversion (pure; owner: capability/base.ts — the pair moved
+// there from capabilities/research.ts in Step 6 per the owner placement
+// ruling; rows migrated verbatim from research.test.ts, import adjusted;
+// at close-out the owner directed full de-researching — class renamed to
+// CapabilityEnvError and the message prefix generalized to "capability:").
+// The message replicas below name that owner. Em dashes are
+// U+2014 (escaped).
+// ---------------------------------------------------------------------
+const ENV_UNSET_MESSAGE =
+  "capability: PI_CODING_AGENT_DIR is unset \u2014 cannot derive the state root";
+const envMalformedMessage = (value: string): string =>
+  `capability: PI_CODING_AGENT_DIR is malformed ('${value}') \u2014 cannot derive the state root`;
+
+describe("deriveStateRootFromAgentDir (pure)", () => {
+  const T = "/home/user/pio-state";
+
+  it("inverts the renderer expression <T>/.pi/agent to <T>", () => {
+    expect(deriveStateRootFromAgentDir(`${T}/.pi/agent`)).toBe(T);
+  });
+
+  it("throws the pinned UNSET message for absent/empty/whitespace-only input", () => {
+    for (const variant of [undefined, "", "   "] as const) {
+      expect(() => deriveStateRootFromAgentDir(variant)).toThrow(
+        ENV_UNSET_MESSAGE,
+      );
+    }
+    try {
+      deriveStateRootFromAgentDir(undefined);
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(CapabilityEnvError);
+      expect((error as CapabilityEnvError).name).toBe("CapabilityEnvError");
+    }
+  });
+
+  it("throws the pinned MALFORMED message naming the trimmed value for a relative input", () => {
+    for (const variant of ["rel/.pi/agent", "  rel/.pi/agent  "] as const) {
+      expect(() => deriveStateRootFromAgentDir(variant)).toThrow(
+        envMalformedMessage("rel/.pi/agent"),
+      );
+    }
+    try {
+      deriveStateRootFromAgentDir("  rel/.pi/agent  ");
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(CapabilityEnvError);
+      expect((error as CapabilityEnvError).name).toBe("CapabilityEnvError");
+    }
   });
 });
 

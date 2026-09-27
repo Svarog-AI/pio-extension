@@ -1,27 +1,55 @@
 // Behavior-matrix TDD suite for the dedicated top-session entry. Drives
 // `runSession(argv, io, seams?)` with captured sinks over factory-mocked
-// consumer seams (probe / loader / session) and the REAL leaf-pure status
+// consumer seams (loader / session) and the REAL leaf-pure status
 // module — observed through a pass-through factory that forwards every
-// export verbatim to importOriginal and only records construction args and
-// the arm-call position (captureError and every emitter method stay the
-// real implementations). Hygiene rule: every real-emitter row injects a fake
-// signals target + exit sink through the seam — the suite never arms REAL
-// process signal handlers. Real-FS rows land in fresh tmpdirs with forced
-// teardown. Plus mechanical lazy-SDK source guards over the entry source.
+// export verbatim to importOriginal and only records construction args plus
+// the arm/emit call positions (captureError and every emitter method stay
+// the real implementations). The launcher is likewise pass-through-mocked
+// ONLY to flip its thunk's eval flag (leaf-pure and SDK-free — the REAL
+// isInteractiveTty predicate runs against the row's injected descriptors).
+// The SDK package ROOT is mocked with a recorder fake over the
+// interactive-terminal class (per-instance ctor args + run/stop call
+// observables, per-row scripted behaviors, fail-loud). Hygiene rule: every
+// real-emitter row injects a fake signals target + exit sink through the
+// seam — the suite never arms REAL process signal handlers — and every
+// pipeline-bound row injects TTY-TRUE terminal descriptors through the seam
+// (the real process streams are piped under the runner — without injection
+// the in-namespace fast-fail would refuse everything). Real-FS rows land in
+// fresh tmpdirs with forced teardown. Plus mechanical lazy-SDK source
+// guards over the entry source.
 //
 // Factory-evaluation flags: Vitest runs a mock factory at the mocked
 // module's FIRST import (registration ≠ evaluation). Row order is therefore
-// load-bearing — the cheap-parse block leads (all flags genuinely
-// unevaluated), the miss block is the loader's first importer, the pipeline
-// block is the session's first importer, and the probe blocks lead the probe
-// factory. Flag reads inside a row must PRECEDE any post-hoc module fetch by
-// the same row (the fetch flips its own flag).
+// load-bearing — the cheap-parse block leads (ALL FOUR flags genuinely
+// unevaluated), the miss block is the FIRST importer of the loader (via each
+// row's direct `loaderModule()` thunk) and of the session (via the post-hoc
+// `sessionModule()` fetch its create-uncalled proof performs — that fetch
+// runs the session factory BEFORE the pipeline block executes), the TTY
+// refusal block is the FIRST importer of the launcher (the entry thunk), and
+// the FIRST PIPELINE row is the first importer of the SDK root (the mount
+// thunk) — every cheap/refusal/construction-fault row above it pins
+// sdkEvaluated === false. Because a factory runs exactly ONCE per file, a
+// flag-read of `true` is load-bearing only in the row that triggers the
+// first-ever evaluation; later rows (post reset) legitimately read `false`
+// for an already-evaluated module and pin the behavioral consequences
+// instead. Flag reads inside a row must PRECEDE any post-hoc module fetch
+// by the same row (the fetch flips its own flag).
+//
+// Lifecycle observables ride a SEPARATE hoisted channel (armed / mounted /
+// run-called / stopped / disposed / emitted) fed by the pass-through emit
+// wrapper, the SDK recorder (constructor = mounted, stop = stopped), the
+// world's runtime-dispose wrapper (disposed), and the fixture's run()
+// (run-called) — the legacy `invocations` exact-match pins (constructed /
+// armed / run-called) stay byte-stable beside it. A process.stdout spy
+// asserts the entry performs ZERO stdout writes on EVERY row (outcome-model
+// pin — the presence-only terminal never composes product content).
 //
 // Documented cast seams: the fake session is structurally complete for the
-// entry's reach path (counters + runtime.session.sessionFile) and is cast to
-// the real static ONCE per scripted site; the captured emitter options are
-// read through a structural view; parsed record bytes are read through
-// Record<string, unknown>. Zero casts live in the SOURCE files.
+// entry's reach path (counters + runtime.session.sessionFile + runtime
+// dispose) and is cast to the real static ONCE per scripted site; the
+// captured emitter options are read through a structural view; parsed
+// record bytes are read through Record<string, unknown>. Zero casts live in
+// the SOURCE files.
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
@@ -30,39 +58,94 @@ import { join } from "node:path";
 // modules' runtime graphs.
 import type { CapabilityResolution } from "./capability/loader.ts";
 import type { PioSession } from "./capability/pio-session.ts";
+import type {
+  CapabilityResult,
+  StatusEmissionResult,
+} from "./capability/status.ts";
 import { type RunSessionIO, runSession } from "./run-session.ts";
 
-const hoisted = vi.hoisted(() => ({
-  evalFlags: {
-    probeEvaluated: false,
+const hoisted = vi.hoisted(() => {
+  const evalFlags = {
     loaderEvaluated: false,
     sessionEvaluated: false,
-  },
-  // Replicated single-owner miss literal (owner: capabilityRefusalLine in
-  // ./capability/loader.ts) — kept meaningful for the byte-pins below.
-  missLine: (name: string): string =>
-    `pio: capability '${name}' is not implemented yet`,
+    launcherEvaluated: false,
+    sdkEvaluated: false,
+  };
   /** Emitter-options captures through the pass-through status factory. */
-  emitterOptionsLog: [] as unknown[],
-  /** Pipeline event log: constructed / armed / run-called (row order). */
-  invocations: [] as string[],
+  const emitterOptionsLog: unknown[] = [];
+  /** Legacy pipeline event log: constructed / armed / run-called (row
+   * order) — the byte-stable exact-match pins. */
+  const invocations: string[] = [];
+  /** Separate lifecycle channel: armed / mounted / run-called / stopped /
+   * disposed / emitted — the cross-cutting order inventory. */
+  const lifecycle: string[] = [];
+  /** Recorder instances behind the SDK-root fake terminal class. */
+  const tuiInstances: Array<{
+    ctorArgs: unknown[];
+    runCalls: number;
+    stopCalls: number;
+  }> = [];
+  /** Per-row scripted behaviors for the terminal (fail-loud: unscripted
+   * calls throw — every proceeding row scripts its own world). */
+  const tuiScripts: {
+    construct?: (...args: unknown[]) => void;
+    run?: () => Promise<unknown>;
+    stop?: () => void;
+  } = {};
   /** Fresh tmpdir bases pending forced teardown. */
-  tmpBases: [] as string[],
-}));
+  const tmpBases: string[] = [];
+
+  class FakeInteractiveMode {
+    readonly ctorArgs: unknown[];
+    runCalls = 0;
+    stopCalls = 0;
+    constructor(...args: unknown[]) {
+      tuiScripts.construct?.(...args);
+      this.ctorArgs = args;
+      tuiInstances.push(this);
+      lifecycle.push("mounted");
+    }
+    run(): Promise<unknown> {
+      this.runCalls += 1;
+      if (tuiScripts.run === undefined) {
+        throw new Error(
+          "unscripted terminal run() — every proceeding row scripts its own world",
+        );
+      }
+      return tuiScripts.run();
+    }
+    stop(): void {
+      this.stopCalls += 1;
+      lifecycle.push("stopped");
+      if (tuiScripts.stop === undefined) {
+        throw new Error(
+          "unscripted terminal stop() — every proceeding row scripts its own world",
+        );
+      }
+      tuiScripts.stop();
+    }
+  }
+
+  return {
+    evalFlags,
+    // Replicated single-owner miss literal (owner: capabilityRefusalLine in
+    // ./capability/loader.ts) — kept meaningful for the byte-pins below.
+    missLine: (name: string): string =>
+      `pio: capability '${name}' is not implemented yet`,
+    emitterOptionsLog,
+    invocations,
+    lifecycle,
+    tuiInstances,
+    tuiScripts,
+    tmpBases,
+    FakeInteractiveMode,
+  };
+});
 
 // Hermetic dispatch seams: an unmocked dispatch could drive REAL session
 // construction, bwrap launches, or network in a unit suite, so the SDK-
 // reaching consumer modules are factory-mocked. The replicated single-owner
 // literal keeps the byte-pins below meaningful (same idiom as cli.test.ts).
-vi.mock("./probe.ts", () => {
-  hoisted.evalFlags.probeEvaluated = true;
-  return {
-    run: vi.fn(),
-    TTY_REFUSAL_LINE:
-      "pio: 'probe' needs an interactive terminal (TTY); headless mode lands in R4",
-    isInteractiveTty: vi.fn(),
-  };
-});
 vi.mock("./capability/loader.ts", () => {
   hoisted.evalFlags.loaderEvaluated = true;
   return { resolveCapability: vi.fn() };
@@ -71,11 +154,20 @@ vi.mock("./capability/pio-session.ts", () => {
   hoisted.evalFlags.sessionEvaluated = true;
   return { PioSession: { create: vi.fn() } };
 });
+// Pass-through over the leaf-pure launcher (SDK-free): the REAL
+// isInteractiveTty predicate runs against the row's injected descriptors;
+// the mock exists ONLY to flip the thunk's eval flag (registration ≠
+// evaluation doctrine extends to the cheap-path sharpness pins).
+vi.mock("./sandbox/launcher.ts", async (importOriginal) => {
+  hoisted.evalFlags.launcherEvaluated = true;
+  return importOriginal<typeof import("./sandbox/launcher.ts")>();
+});
 // NOT mocked away: the status module is leaf-pure and stays REAL here. This
 // pass-through factory forwards EVERY export verbatim via importOriginal —
-// it only observes createStatusEmitter construction args and the
-// armKillCapture call position (required by the pipeline-order inventory).
-// No behavior is scripted at the leaf.
+// it only observes createStatusEmitter construction args and the arm/emit
+// call positions (required by the pipeline-order inventory), forwarding
+// both through the separate lifecycle channel. No behavior is scripted at
+// the leaf.
 vi.mock("./capability/status.ts", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("./capability/status.ts")>();
@@ -86,25 +178,36 @@ vi.mock("./capability/status.ts", async (importOriginal) => {
     ) => {
       hoisted.emitterOptionsLog.push(args[0]);
       const real = actual.createStatusEmitter(...args);
-      const originalArm = real.armKillCapture;
+      const originalArm = real.armKillCapture.bind(real);
+      const originalEmit = real.emit.bind(real);
       real.armKillCapture = (): void => {
         hoisted.invocations.push("armed");
-        originalArm.call(real);
+        hoisted.lifecycle.push("armed");
+        originalArm();
+      };
+      real.emit = (result: CapabilityResult): Promise<StatusEmissionResult> => {
+        hoisted.lifecycle.push("emitted");
+        return originalEmit(result);
       };
       return real;
     },
   };
 });
+// SDK package ROOT: the entry's ONE and ONLY SDK touchpoint is the mount
+// thunk, and the sole value it consumes is the interactive-terminal class.
+// Recorder fake: per-instance ctor args + run/stop counters, per-row
+// scripted behaviors (fail-loud), eval flag flipped by factory evaluation.
+vi.mock("@earendil-works/pi-coding-agent", () => {
+  hoisted.evalFlags.sdkEvaluated = true;
+  return { InteractiveMode: hoisted.FakeInteractiveMode };
+});
 
-const U = "pio-run-session <capability> --sessions-root <dir>";
+const U = "pio-run-session <capability> --sessions-root <dir> [--input k=v …]";
 
-/** Per-row mocked references into the probe seam (types from the real module). */
-type ProbeModule = typeof import("./probe.ts");
-let probeModulePromise: Promise<ProbeModule> | undefined;
-async function probeModule(): Promise<ProbeModule> {
-  probeModulePromise ??= import("./probe.ts");
-  return probeModulePromise;
-}
+/** TTY-TRUE injected descriptors (production process streams are piped
+ * under the runner — every pipeline-bound row hands these in so the
+ * in-namespace fast-fail admits the run). */
+const TTY_TRUE = { input: { isTTY: true }, output: { isTTY: true } };
 
 /** Memoized accessor for the mocked loader module. Deliberately LAZY: the
  * first fetch runs the loader factory (process-first import) and flips its
@@ -126,13 +229,18 @@ async function sessionModule(): Promise<SessionModule> {
   return sessionModulePromise;
 }
 
-/** Per-row mocked references into the probe seam. */
-async function probeMocks() {
-  const probe = await probeModule();
+/** Structural hit descriptor for a fixture ctor (cast seam: the real
+ * identity/integrity checks never run against mocked loaders). */
+function hitResolution(
+  ctor: new (params: { session: unknown }) => unknown,
+): CapabilityResolution {
   return {
-    run: vi.mocked(probe.run),
-    isInteractiveTty: vi.mocked(probe.isInteractiveTty),
-  };
+    ok: true,
+    capability: {
+      contract: { name: "alpha", version: "9.9.9-sentinel" },
+      ctor,
+    },
+  } as unknown as CapabilityResolution;
 }
 
 function collectErr(): { io: RunSessionIO; err: string[] } {
@@ -144,21 +252,40 @@ function collectErr(): { io: RunSessionIO; err: string[] } {
 }
 
 function resetHoistedState(): void {
-  hoisted.evalFlags.probeEvaluated = false;
   hoisted.evalFlags.loaderEvaluated = false;
   hoisted.evalFlags.sessionEvaluated = false;
+  hoisted.evalFlags.launcherEvaluated = false;
+  hoisted.evalFlags.sdkEvaluated = false;
   hoisted.invocations.length = 0;
+  hoisted.lifecycle.length = 0;
   hoisted.emitterOptionsLog.length = 0;
+  hoisted.tuiInstances.length = 0;
+  hoisted.tuiScripts.construct = undefined;
+  hoisted.tuiScripts.run = undefined;
+  hoisted.tuiScripts.stop = undefined;
 }
 
+// Outcome-model pin, applied UNIFORMLY: the entry performs ZERO stdout
+// writes on every row (the presence-only terminal never composes product
+// content; restore runs BEFORE the assert so a failing row cannot leak the
+// spy forward).
+let stdoutSpy: ReturnType<typeof vi.spyOn>;
+
+beforeEach(() => {
+  stdoutSpy = vi.spyOn(process.stdout, "write");
+});
+
 afterEach(() => {
+  const captured = stdoutSpy.mock.calls;
+  stdoutSpy.mockRestore();
+  expect(captured).toHaveLength(0);
   // Forced teardown: no base survives a failed row.
   for (const base of hoisted.tmpBases.splice(0)) {
     rmSync(base, { recursive: true, force: true });
   }
 });
 
-describe("runSession (strict two-value parse — cheap paths, ZERO module evaluation)", () => {
+describe("runSession (strict positional parse — cheap paths, ZERO module evaluation)", () => {
   beforeEach(() => {
     resetHoistedState();
   });
@@ -168,56 +295,95 @@ describe("runSession (strict two-value parse — cheap paths, ZERO module evalua
     [[""], `expected capability name (usage: ${U})`],
     [["-h"], `unknown option: -h (usage: ${U})`],
     [["--huh"], `unknown option: --huh (usage: ${U})`],
-    [["probe"], `expected --sessions-root <dir> after 'probe' (usage: ${U})`],
-    [["probe", "--detach"], `unknown option: --detach (usage: ${U})`],
-    [["probe", "positional"], `unexpected argument: positional (usage: ${U})`],
+    [["cap"], `expected --sessions-root <dir> after 'cap' (usage: ${U})`],
+    [["cap", "--detach"], `unknown option: --detach (usage: ${U})`],
+    [["cap", "positional"], `unexpected argument: positional (usage: ${U})`],
     [
-      ["probe", "--sessions-root"],
+      ["cap", "--sessions-root"],
       `expected a value for --sessions-root (usage: ${U})`,
     ],
     [
-      ["probe", "--sessions-root", ""],
+      ["cap", "--sessions-root", ""],
       `expected a value for --sessions-root (usage: ${U})`,
     ],
-    [["probe", "--sessions-root", "-x"], `unknown option: -x (usage: ${U})`],
+    [["cap", "--sessions-root", "-x"], `unknown option: -x (usage: ${U})`],
     [
-      ["probe", "--sessions-root", "/x", "extra"],
+      ["cap", "--sessions-root", "/x", "extra"],
       `unexpected argument: extra (usage: ${U})`,
     ],
     [
-      ["probe", "--sessions-root", "/x", "--more"],
+      ["cap", "--sessions-root", "/x", "--more"],
       `unknown option: --more (usage: ${U})`,
     ],
     [
-      ["probe", "--sessions-root", "/x", "--sessions-root", "/y"],
+      ["cap", "--sessions-root", "/x", "--sessions-root", "/y"],
       `unknown option: --sessions-root (usage: ${U})`,
     ],
     // Reordered flag rejected: no flag-position flexibility — the dash in the
     // capability slot is an unknown option.
     [
-      ["--sessions-root", "/x", "probe"],
+      ["--sessions-root", "/x", "cap"],
       `unknown option: --sessions-root (usage: ${U})`,
+    ],
+    // Trailing `--input k=v` tail edges (first violation wins — the SAME
+    // strict grammar as the host CLI's run position): dangling flag / no '='
+    // / empty key => malformed naming the token; duplicated key => duplicate
+    // naming the key; the glued form and unknown dashes stay UNKNOWN_OPTION;
+    // an unflagged pair stays a POSITIONAL surplus.
+    [
+      ["cap", "--sessions-root", "/x", "--input"],
+      `malformed input pair: '--input' (--input expects k=v; usage: ${U})`,
+    ],
+    [
+      ["cap", "--sessions-root", "/x", "--input", "abc"],
+      `malformed input pair: 'abc' (--input expects k=v; usage: ${U})`,
+    ],
+    [
+      ["cap", "--sessions-root", "/x", "--input", "=v"],
+      `malformed input pair: '=v' (--input expects k=v; usage: ${U})`,
+    ],
+    [
+      ["cap", "--sessions-root", "/x", "--input", "="],
+      `malformed input pair: '=' (--input expects k=v; usage: ${U})`,
+    ],
+    [
+      ["cap", "--sessions-root", "/x", "--input", "a=1", "--input", "a=2"],
+      `duplicate input key: 'a' (each key may appear once; usage: ${U})`,
+    ],
+    [
+      ["cap", "--sessions-root", "/x", "--input=a=b"],
+      `unknown option: --input=a=b (usage: ${U})`,
+    ],
+    [
+      ["cap", "--sessions-root", "/x", "a=b"],
+      `unexpected argument: a=b (usage: ${U})`,
+    ],
+    [
+      ["cap", "--sessions-root", "/x", "--input", "a=1", "--detach"],
+      `unknown option: --detach (usage: ${U})`,
     ],
   ];
   for (const [argv, message] of errors) {
-    it(`${JSON.stringify(argv)} -> exact prefixed error naming the offending token; ALL THREE consumer modules remain unevaluated`, async () => {
+    it(`${JSON.stringify(argv)} -> exact prefixed error naming the offending token; ALL CONSUMER MODULES remain unevaluated (loader / session / launcher / SDK)`, async () => {
       const { io, err } = collectErr();
       const code = await runSession(argv, io);
       expect(code).toBe(1);
       expect(err).toEqual([`pio-run-session: ${message}`]);
-      expect(hoisted.evalFlags.probeEvaluated).toBe(false);
       expect(hoisted.evalFlags.loaderEvaluated).toBe(false);
       expect(hoisted.evalFlags.sessionEvaluated).toBe(false);
+      expect(hoisted.evalFlags.launcherEvaluated).toBe(false);
+      expect(hoisted.evalFlags.sdkEvaluated).toBe(false);
+      expect(hoisted.tuiInstances).toHaveLength(0);
     });
   }
 });
 
-describe("runSession (non-probe arm — loader gate fires before ANY session construction)", () => {
+describe("runSession (loader gate fires before ANY session construction)", () => {
   beforeEach(() => {
     resetHoistedState();
   });
 
-  it("unresolvable name: the LOADER'S miss line arrives verbatim on stderr + 1; the session/status thunks never fire, PioSession.create uncalled, probe untouched", async () => {
+  it("unresolvable name: the LOADER'S miss line arrives verbatim on stderr + 1; the session/status thunks never fire, PioSession.create uncalled, launcher/SDK thunks never fire (the miss line lands BEFORE any TTY consideration)", async () => {
     const loaderMod = await loaderModule();
     const resolveMock = vi.mocked(loaderMod.resolveCapability);
     resolveMock.mockReset();
@@ -233,7 +399,9 @@ describe("runSession (non-probe arm — loader gate fires before ANY session con
     // would flip its own eval flag — row-order doctrine).
     expect(hoisted.evalFlags.loaderEvaluated).toBe(true);
     expect(hoisted.evalFlags.sessionEvaluated).toBe(false);
-    expect(hoisted.evalFlags.probeEvaluated).toBe(false);
+    expect(hoisted.evalFlags.launcherEvaluated).toBe(false);
+    expect(hoisted.evalFlags.sdkEvaluated).toBe(false);
+    expect(hoisted.tuiInstances).toHaveLength(0);
     expect(resolveMock).toHaveBeenCalledWith("alpha");
     // Post-hoc fetch (module identity stable): proves create was NEVER called.
     const { PioSession } = await sessionModule();
@@ -254,7 +422,7 @@ describe("runSession (non-probe arm — loader gate fires before ANY session con
     ],
   ];
   for (const [family, refusal] of sentinelFamilies) {
-    it(`${family}-refusal sentinel: printed VERBATIM + 1, pre-session (create uncalled, zero construction)`, async () => {
+    it(`${family}-refusal sentinel: printed VERBATIM + 1, pre-session (create uncalled, zero construction, launcher/SDK thunks unfired)`, async () => {
       const loaderMod = await loaderModule();
       const resolveMock = vi.mocked(loaderMod.resolveCapability);
       resolveMock.mockReset();
@@ -265,101 +433,144 @@ describe("runSession (non-probe arm — loader gate fires before ANY session con
       expect(err).toEqual([refusal]);
       // Flag reads precede the post-hoc session-module fetch below.
       expect(hoisted.evalFlags.sessionEvaluated).toBe(false);
-      expect(hoisted.evalFlags.probeEvaluated).toBe(false);
+      expect(hoisted.evalFlags.launcherEvaluated).toBe(false);
+      expect(hoisted.evalFlags.sdkEvaluated).toBe(false);
+      expect(hoisted.tuiInstances).toHaveLength(0);
       const { PioSession } = await sessionModule();
       expect(vi.mocked(PioSession.create)).not.toHaveBeenCalled();
     });
   }
 });
 
-describe("runSession (TTY preflight — refusal before any construction)", () => {
-  // Flag zeroing BEFORE the lazy fetch: the fetch may run the probe factory
-  // (process-first import); the preflight row below reads that first-run
-  // signal, so it must survive the hook.
-  beforeEach(async () => {
+// ---- In-namespace TTY fast-fail: the standalone entry bypasses host gates
+// entirely, so the analogous depth is restored HERE — after parse + loader
+// admission, BEFORE any construction (mirrors host discipline: the miss
+// line still reaches piped unknown-name invocations first). Descriptors are
+// injected through the seam (hermetic truth table); the launcher thunk is
+// leaf-pure (SDK-free), so the SDK graph stays unevaluated on every row in
+// this block. TTY-TRUE admission is witnessed by the FIRST PIPELINE row
+// below (it is the file's first proceeding row — placing it here would flip
+// the SDK eval flag that the cheap-path rows above pin false).
+
+describe("runSession (in-namespace TTY fast-fail — truth table over injected descriptors)", () => {
+  beforeEach(() => {
     resetHoistedState();
-    const { run: runMock, isInteractiveTty: ttyMock } = await probeMocks();
-    runMock.mockReset();
-    ttyMock.mockReset();
   });
 
-  it("non-TTY stdin/stdout: byte-identical TTY refusal line, exit 1, ZERO construction past the refusal (the session thunk never fires for a probe refusal)", async () => {
-    const { run: runMock, isInteractiveTty: ttyMock } = await probeMocks();
-    ttyMock.mockReturnValue(false);
-    const { io, err } = collectErr();
-    const code = await runSession(["probe", "--sessions-root", "/x"], io);
-    expect(code).toBe(1);
-    expect(err).toEqual([
-      "pio: 'probe' needs an interactive terminal (TTY); headless mode lands in R4",
-    ]);
-    expect(runMock).not.toHaveBeenCalled(); // zero construction past the refusal
-    expect(hoisted.evalFlags.probeEvaluated).toBe(true);
-    expect(hoisted.evalFlags.sessionEvaluated).toBe(false);
+  // Replicated single-owner refusal literal (owner: the module-private
+  // TTY_REFUSAL_LINE in ./run-session.ts — deliberately DISTINCT from the
+  // host gate's neutral launcher literal; two owners, two byte forms).
+  const TTY_REFUSAL_LINE =
+    "pio-run-session: running a capability needs an interactive terminal (TTY); piped invocations are refused";
+
+  // Hygiene net: a refusal row must never mint the emitter — the target
+  // stays inert even in the pre-gate red state; the pins prove non-use.
+  const nullSignals: SignalsTarget = { prependListener: () => {} };
+
+  const refusalMatrix: ReadonlyArray<{
+    label: string;
+    input: { readonly isTTY?: boolean };
+    output: { readonly isTTY?: boolean };
+  }> = [
+    {
+      label: "falsy stdin (undefined) + TTY-true stdout",
+      input: {},
+      output: { isTTY: true },
+    },
+    {
+      label: "TTY-true stdin + falsy stdout (undefined)",
+      input: { isTTY: true },
+      output: {},
+    },
+    { label: "both descriptors falsy (undefined)", input: {}, output: {} },
+    {
+      label: "explicit isTTY:false on both descriptors",
+      input: { isTTY: false },
+      output: { isTTY: false },
+    },
+  ];
+  refusalMatrix.forEach((row, index) => {
+    it(`${row.label}: REFUSED pre-construction — the EXACT single in-namespace line on stderr + 1; create uncalled, no emitter, zero terminal interaction, SDK graph UNEVALUATED`, async () => {
+      class StubCtor {}
+      const loaderMod = await loaderModule();
+      const resolveMock = vi.mocked(loaderMod.resolveCapability);
+      resolveMock.mockReset();
+      resolveMock.mockResolvedValue(hitResolution(StubCtor));
+      const { io, err } = collectErr();
+      const code = await runSession(["alpha", "--sessions-root", "/x"], io, {
+        signals: nullSignals,
+        exit: () => {},
+        tty: { input: row.input, output: row.output },
+      });
+      expect(code).toBe(1);
+      expect(err).toEqual([TTY_REFUSAL_LINE]);
+      // The launcher thunk fires ONLY in the row that triggers the
+      // first-ever evaluation (file-order doctrine); later rows resolve it
+      // from the module cache and pin the behavioral consequences instead.
+      expect(hoisted.evalFlags.launcherEvaluated).toBe(index === 0);
+      // Flag reads precede the post-hoc session-module fetch below.
+      expect(hoisted.evalFlags.sessionEvaluated).toBe(false);
+      expect(hoisted.evalFlags.sdkEvaluated).toBe(false);
+      expect(hoisted.tuiInstances).toHaveLength(0);
+      expect(hoisted.emitterOptionsLog).toHaveLength(0);
+      const { PioSession } = await sessionModule();
+      expect(vi.mocked(PioSession.create)).not.toHaveBeenCalled();
+    });
   });
 });
 
-describe("runSession (valid forms + builtin dispatch)", () => {
-  // Flag zeroing BEFORE the lazy fetch: the fetch may run the probe factory
-  // (process-first import); the dispatch rows read that first-run signal, so
-  // it must survive the hook.
-  beforeEach(async () => {
+// ---- Pre-emitter faults: plain degrade, zero terminal trace. Positioned
+// BEFORE the first proceeding row so the SDK-eval pin stays load-bearing
+// (the mount step is never reached, so the SDK graph is genuinely
+// unevaluated in this row's window).
+
+describe("runSession (pre-emitter faults — plain degrade, zero terminal trace)", () => {
+  beforeEach(() => {
     resetHoistedState();
-    const { run: runMock, isInteractiveTty: ttyMock } = await probeMocks();
-    runMock.mockReset();
-    ttyMock.mockReset();
   });
 
-  it("accepts the renderer-emitted triple VERBATIM (cross-step continuity — data literal of the post-repoint buildTarget grammar [capability, --sessions-root, <engagementDir>/.sessions]; the producer pin lives in render.test.ts, the composer pin in TEST.md) and dispatches to the probe builtin with (the injected sink, { sessionsRoot }); exit 0 propagates; the session thunk never fires for probe", async () => {
-    const { run: runMock, isInteractiveTty: ttyMock } = await probeMocks();
-    ttyMock.mockReturnValue(true);
-    runMock.mockImplementation(async (sink) => {
-      sink?.stderr("threaded-line");
-      return 0;
-    });
+  it("pre-emitter fault (PioSession.create rejecting): PLAIN degrade — the exact unexpected-error line + 1, and NO status.json anywhere under the sessions root (no ad-hoc emitter mint; the terminal was NEVER constructed — teardown is a silent no-op, SDK graph unevaluated)", async () => {
+    const base = mkdtempSync(join(os.tmpdir(), "pio-runsess-"));
+    hoisted.tmpBases.push(base);
+    const sessionsRoot = join(base, "sessions");
+    const loaderMod = await loaderModule();
+    const resolveMock = vi.mocked(loaderMod.resolveCapability);
+    resolveMock.mockReset();
+    class StubCtor {}
+    resolveMock.mockResolvedValue(hitResolution(StubCtor));
+    const { PioSession } = await sessionModule();
+    const createMock = vi.mocked(PioSession.create);
+    createMock.mockReset();
+    createMock.mockRejectedValue(new Error("session construction fault"));
     const { io, err } = collectErr();
     const code = await runSession(
-      ["probe", "--sessions-root", "/st/projects/k/engagements/e1/.sessions"],
+      ["alpha", "--sessions-root", sessionsRoot],
       io,
+      { tty: TTY_TRUE },
     );
-    expect(code).toBe(0);
-    expect(runMock).toHaveBeenCalledTimes(1);
-    const args = runMock.mock.calls[0];
-    expect(args[0]).toBe(io); // first arg IS the injected sink — stderr routing proven by the line below
-    expect(args[1]).toEqual({
-      sessionsRoot: "/st/projects/k/engagements/e1/.sessions",
-    });
-    expect(err).toEqual(["threaded-line"]);
-    expect(hoisted.evalFlags.sessionEvaluated).toBe(false); // probe name never fires the session thunk
-  });
-
-  it("relative value accepted verbatim (syntactic-only parser: consumers own validity)", async () => {
-    const { run: runMock, isInteractiveTty: ttyMock } = await probeMocks();
-    ttyMock.mockReturnValue(true);
-    runMock.mockResolvedValue(0);
-    const { io, err } = collectErr();
-    const code = await runSession(["probe", "--sessions-root", "rel/path"], io);
-    expect(code).toBe(0);
-    expect(runMock).toHaveBeenCalledWith(io, { sessionsRoot: "rel/path" });
-    expect(err).toEqual([]);
-  });
-
-  it("exit code 1 from the builtin propagates unchanged", async () => {
-    const { run: runMock, isInteractiveTty: ttyMock } = await probeMocks();
-    ttyMock.mockReturnValue(true);
-    runMock.mockResolvedValue(1);
-    const { io, err } = collectErr();
-    const code = await runSession(["probe", "--sessions-root", "/x"], io);
     expect(code).toBe(1);
-    expect(runMock).toHaveBeenCalledTimes(1);
-    expect(err).toEqual([]);
+    expect(err).toEqual([
+      "pio-run-session: unexpected error: session construction fault",
+    ]);
+    expect(hoisted.emitterOptionsLog).toHaveLength(0); // emitter never constructed
+    expect(hoisted.evalFlags.sdkEvaluated).toBe(false); // mount never reached
+    expect(hoisted.tuiInstances).toHaveLength(0);
+    expect(hoisted.lifecycle).toEqual([]); // no armed/mounted/stopped/disposed
+    expect(readdirSync(base)).toEqual([]); // nothing materialized under the root
   });
 });
 
-// ---- Non-probe arm: pipeline wiring against factory-mocked loader/session
+// ---- Single-path pipeline wiring against factory-mocked loader/session
 // seams and the REAL leaf-pure status module. Every real-emitter row injects
 // a fake signals target + exit spy (hygiene: the suite never arms the real
-// process). Row order is load-bearing — this block is the session module's
-// first importer.
+// process) AND TTY-TRUE terminal descriptors (the in-namespace fast-fail
+// admits the run). By the time this block runs, the blocks above have
+// already imported BOTH the loader and the session consumer modules (loader
+// via its direct thunk; session via its post-hoc `sessionModule()` fetch),
+// so neither factory re-runs for any row here; the FIRST row of this block
+// is also the file's first importer of the SDK root (the mount thunk) and of
+// the launcher via the entry — the cheap-path flags were pinned false
+// upstream, and this row pins the SDK eval flip load-bearing.
 
 /** Structural view of the captured emitter options (assertion surface). */
 interface CapturedEmitterOptions {
@@ -394,6 +605,9 @@ interface PipelineWorld {
   readonly sessionsRoot: string;
   readonly transcriptPath: string;
   readonly fake: Record<string, unknown>;
+  /** The fake runtime's dispose mock (additive — the teardown's dispose
+   * leg delegates to it; the wrapper around it records the marker). */
+  readonly dispose: ReturnType<typeof vi.fn>;
   readonly signalsTarget: SignalsTarget;
   readonly handlers: Array<() => void>;
   readonly exitCalls: number[];
@@ -422,11 +636,16 @@ function makePipelineWorld(options: {
     "top",
     "20260101T000000Z_deadbeefcafe.jsonl",
   );
+  const dispose = vi.fn(async (): Promise<void> => {});
   const fake: Record<string, unknown> = {
     id: "sess-fake",
     counters: (): { tokens: number } => ({ tokens: 42 }),
     runtime: {
       session: { sessionId: "sess-fake", sessionFile: transcriptPath },
+      dispose: async (): Promise<void> => {
+        hoisted.lifecycle.push("disposed");
+        await dispose();
+      },
     },
   };
   const handlers: Array<() => void> = [];
@@ -460,6 +679,7 @@ function makePipelineWorld(options: {
     run(...args: unknown[]): Promise<unknown> {
       this.runArgs = args;
       hoisted.invocations.push("run-called");
+      hoisted.lifecycle.push("run-called");
       runStartResolve?.();
       return options.runBehavior();
     }
@@ -469,6 +689,7 @@ function makePipelineWorld(options: {
     sessionsRoot,
     transcriptPath,
     fake,
+    dispose,
     signalsTarget,
     handlers,
     exitCalls,
@@ -484,31 +705,28 @@ async function scriptHitPipeline(world: PipelineWorld): Promise<void> {
   const loaderMod = await loaderModule();
   const resolveMock = vi.mocked(loaderMod.resolveCapability);
   resolveMock.mockReset();
-  resolveMock.mockResolvedValue(
-    // Cast seam: the fixture descriptor is structural (the real identity/
-    // integrity checks never run against mocked loaders).
-    {
-      ok: true,
-      capability: {
-        contract: { name: "alpha", version: "9.9.9-sentinel" },
-        ctor: world.ctor,
-      },
-    } as unknown as CapabilityResolution,
-  );
+  resolveMock.mockResolvedValue(hitResolution(world.ctor));
   const { PioSession } = await sessionModule();
   const createMock = vi.mocked(PioSession.create);
   createMock.mockReset();
   // Cast seam: the fake session is structurally complete for the entry's
   // reach path (see file header).
   createMock.mockResolvedValue(world.fake as unknown as PioSession);
+  // Terminal world defaults (per-row script): the render loop starts an
+  // INDEPENDENT never-settling promise (the pipeline resolves while the TUI
+  // loop stays open — nothing blocks) and the teardown stop leg is a
+  // scripted no-op. Variant rows override these slots (stop throwing, run
+  // rejecting, constructor throwing).
+  hoisted.tuiScripts.run = (): Promise<unknown> => new Promise(() => {});
+  hoisted.tuiScripts.stop = (): void => {};
 }
 
-describe("runSession (non-probe arm — pipeline order and status emission)", () => {
+describe("runSession (pipeline order and status emission)", () => {
   beforeEach(() => {
     resetHoistedState();
   });
 
-  it("success pipeline: gate → session (EXACT (cwd, sessionsRoot)) → instantiate ({ session } identity) → arm (ONCE, indexed between construction and run) → run() (NO arguments) → emit (payload deep-equal) → mapped exit 0; the terminal record is canonical (key order, nullish dropped, source builtin, token scalar, transcriptRef relative to the engagement dir)", async () => {
+  it("success pipeline: gate → session (EXACT (cwd, sessionsRoot)) → instantiate ({ session } identity) → arm (ONCE, indexed between construction and run) → MOUNT (one terminal over THE runtime BY REFERENCE, started without awaiting) → run(THE single parsed record — zero-pair argv hands the EMPTY object) → teardown (stop → dispose, BEFORE the record) → emit (payload deep-equal) → mapped exit 0; the terminal record is canonical (key order, nullish dropped, source builtin, token scalar, transcriptRef relative to the engagement dir)", async () => {
     const world = makePipelineWorld({
       runBehavior: async () => ({ ok: true, outputs: { answer: 42 } }),
     });
@@ -518,7 +736,7 @@ describe("runSession (non-probe arm — pipeline order and status emission)", ()
     const code = await runSession(
       ["alpha", "--sessions-root", world.sessionsRoot],
       io,
-      { signals: world.signalsTarget, exit: world.exitSink },
+      { signals: world.signalsTarget, exit: world.exitSink, tty: TTY_TRUE },
     );
 
     expect(code).toBe(0);
@@ -535,8 +753,30 @@ describe("runSession (non-probe arm — pipeline order and status emission)", ()
     expect(inst.paramsBag).toEqual({ session: world.fake });
     expect(inst.paramsBag.session).toBe(world.fake); // the CREATED instance, by reference
     expect(hoisted.invocations).toEqual(["constructed", "armed", "run-called"]);
-    expect(inst.runArgs).toStrictEqual([]); // run() invoked with NO arguments
+    expect(inst.runArgs).toStrictEqual([{}]); // THE parsed record — zero pairs ⇒ the EMPTY object (the old zero-arg contract is superseded)
     expect(world.handlers).toHaveLength(1); // armKillCapture installed exactly once
+
+    // Terminal mount (imperative, process-scoped): EXACTLY ONE construction
+    // over THE engagement's runtime BY REFERENCE (single-runtime identity —
+    // one engagement, one runtime, one terminal), started without awaiting
+    // (the never-settling loop promise never blocked the pipeline), torn
+    // down probe-native (stop → dispose) BEFORE the record emission — the
+    // FULL interleaving pinned in the one lifecycle channel.
+    expect(hoisted.evalFlags.sdkEvaluated).toBe(true); // first importer of the SDK root
+    expect(hoisted.tuiInstances).toHaveLength(1);
+    const tuiMount = hoisted.tuiInstances[0];
+    expect(tuiMount.ctorArgs).toHaveLength(1);
+    expect(tuiMount.ctorArgs[0]).toBe(world.fake.runtime); // THE runtime, by reference
+    expect(tuiMount.runCalls).toBe(1);
+    expect(world.dispose).toHaveBeenCalledTimes(1);
+    expect(hoisted.lifecycle).toEqual([
+      "armed",
+      "mounted",
+      "run-called",
+      "stopped",
+      "disposed",
+      "emitted",
+    ]);
 
     // Emitter options (captured through the pass-through seam): identity
     // stamped from the RESOLVED contract, LIVE accessors wired through the
@@ -585,7 +825,7 @@ describe("runSession (non-probe arm — pipeline order and status emission)", ()
     expect(world.exitCalls).toEqual([]); // completion path never force-exits
   });
 
-  it("typed-failure pipeline: run() resolves an ok:false payload → mapped exit 1 and the terminal record carries the PAYLOAD'S errors verbatim (outputs default to {}, no ad-hort enrichment)", async () => {
+  it("typed-failure pipeline: run() resolves an ok:false payload → mapped exit 1 and the terminal record carries the PAYLOAD'S errors verbatim (outputs default to {}, no ad-hoc enrichment); the terminal is torn down probe-native before the failing record", async () => {
     const payloadErrors = [
       {
         type: "PhaseBudgetError",
@@ -602,11 +842,21 @@ describe("runSession (non-probe arm — pipeline order and status emission)", ()
     const code = await runSession(
       ["alpha", "--sessions-root", world.sessionsRoot],
       io,
-      { signals: world.signalsTarget, exit: world.exitSink },
+      { signals: world.signalsTarget, exit: world.exitSink, tty: TTY_TRUE },
     );
 
     expect(code).toBe(1);
     expect(err).toEqual([]);
+    expect(hoisted.tuiInstances).toHaveLength(1);
+    expect(world.dispose).toHaveBeenCalledTimes(1);
+    expect(hoisted.lifecycle).toEqual([
+      "armed",
+      "mounted",
+      "run-called",
+      "stopped",
+      "disposed",
+      "emitted",
+    ]);
     const record = JSON.parse(
       readFileSync(join(world.sessionsRoot, "top", "status.json"), "utf8"),
     ) as Record<string, unknown>;
@@ -625,14 +875,53 @@ describe("runSession (non-probe arm — pipeline order and status emission)", ()
     expect(record.tokens).toBe(42);
     expect(world.exitCalls).toEqual([]);
   });
+  it("paired invocation: THE single parsed record is handed to run(values) BY REFERENCE — exactly ONE argument deep-equal to the parsed pairs WITH declaration key order (no spread/copy at the handoff point)", async () => {
+    const world = makePipelineWorld({
+      runBehavior: async () => ({ ok: true, outputs: {} }),
+    });
+    await scriptHitPipeline(world);
+
+    const { io, err } = collectErr();
+    const code = await runSession(
+      [
+        "alpha",
+        "--sessions-root",
+        world.sessionsRoot,
+        "--input",
+        "topic=hello world",
+        "--input",
+        "depth=2",
+      ],
+      io,
+      { signals: world.signalsTarget, exit: world.exitSink, tty: TTY_TRUE },
+    );
+
+    expect(code).toBe(0);
+    expect(err).toEqual([]);
+    expect(world.instances).toHaveLength(1);
+    expect(hoisted.tuiInstances).toHaveLength(1);
+    const inst = world.instances[0];
+    // Exactly ONE argument: the one record parseEntry built, passed by
+    // reference (identity verified structurally — external tests cannot name
+    // the internal object, so arity + deep equality + key order ARE the pins).
+    expect(inst.runArgs).toHaveLength(1);
+    // Cast seam: the parsed record bytes are read through Record<string,
+    // unknown> (documented suite convention — zero casts live in SOURCE).
+    const handed = inst.runArgs[0] as Record<string, unknown>;
+    expect(handed).toStrictEqual({
+      topic: "hello world",
+      depth: "2",
+    });
+    expect(Object.keys(handed)).toEqual(["topic", "depth"]);
+  });
 });
 
-describe("runSession (non-probe arm — SIGTERM partial capture through the entry)", () => {
+describe("runSession (SIGTERM partial capture through the entry)", () => {
   beforeEach(() => {
     resetHoistedState();
   });
 
-  it("the kill handler armed BEFORE run() (via the forwarded signals target) writes the PARTIAL record and terminates through the forwarded exit sink (1) — the suite touches no real process handlers", async () => {
+  it("the kill handler armed BEFORE run() (via the forwarded signals target) writes the PARTIAL record and terminates through the forwarded exit sink (1) — the suite touches no real process handlers; the mounted terminal is NOT stopped by the kill path (OS-death release)", async () => {
     let exitResolve: ((code: number) => void) | undefined;
     const exited = new Promise<number>((resolve) => {
       exitResolve = resolve;
@@ -650,16 +939,21 @@ describe("runSession (non-probe arm — SIGTERM partial capture through the entr
     const sessionPromise = runSession(
       ["alpha", "--sessions-root", world.sessionsRoot],
       io,
-      { signals: world.signalsTarget, exit: world.exitSink },
+      { signals: world.signalsTarget, exit: world.exitSink, tty: TTY_TRUE },
     );
-    // The entry reached instance.run() — arming strictly preceded it.
+    // The entry reached instance.run() — arming strictly preceded it, and
+    // the terminal was mounted BETWEEN arming and the run (source order:
+    // arm → mount → run): it is UP for the entire pending run.
     await world.runStarted;
     expect(hoisted.invocations).toEqual(["constructed", "armed", "run-called"]);
+    expect(hoisted.tuiInstances).toHaveLength(1);
+    expect(hoisted.lifecycle).toEqual(["armed", "mounted", "run-called"]);
     expect(world.handlers).toHaveLength(1);
     // Manual dispatch of the CAPTURED listener — hermetic: no real signal.
     world.handlers[0]();
     const exitCode = await exited;
     expect(exitCode).toBe(1);
+    expect(world.exitCalls).toEqual([1]);
     const record = JSON.parse(
       readFileSync(join(world.sessionsRoot, "top", "status.json"), "utf8"),
     ) as Record<string, unknown>;
@@ -671,52 +965,148 @@ describe("runSession (non-probe arm — SIGTERM partial capture through the entr
       ".sessions/top/20260101T000000Z_deadbeefcafe.jsonl",
     );
     expect(err).toEqual([]);
+    // The kill path performs NO entry-side teardown: the record settles
+    // exactly once and process death releases the terminal (live
+    // cooked-mode recovery is a QG measurement point, not a redesign).
+    expect(hoisted.lifecycle).toEqual(["armed", "mounted", "run-called"]);
     // The pending run never settles — silence the dangling promise.
     void sessionPromise.catch(() => {});
   });
 });
 
-describe("runSession (last-resort boundary — non-probe arm)", () => {
+// ---- Terminal lifecycle: imperative mount at the explicit pipeline step,
+// probe-native teardown on every exit path, secondary-fault survival, and
+// the accepted consequence of the imperative model (pre-phase refusals land
+// while the terminal is up).
+
+describe("runSession (terminal lifecycle — imperative mount, probe-native teardown)", () => {
   beforeEach(() => {
     resetHoistedState();
   });
 
-  it("pre-emitter fault (PioSession.create rejecting): PLAIN degrade — the exact unexpected-error line + 1, and NO status.json anywhere under the sessions root (no ad-hoc emitter mint)", async () => {
-    const base = mkdtempSync(join(os.tmpdir(), "pio-runsess-"));
-    hoisted.tmpBases.push(base);
-    const sessionsRoot = join(base, "sessions");
-    const loaderMod = await loaderModule();
-    const resolveMock = vi.mocked(loaderMod.resolveCapability);
-    resolveMock.mockReset();
-    class StubCtor {}
-    resolveMock.mockResolvedValue(
-      // Cast seam: structural fixture descriptor (see file header).
-      {
-        ok: true,
-        capability: {
-          contract: { name: "alpha", version: "1.0.0" },
-          ctor: StubCtor,
-        },
-      } as unknown as CapabilityResolution,
-    );
-    const { PioSession } = await sessionModule();
-    const createMock = vi.mocked(PioSession.create);
-    createMock.mockReset();
-    createMock.mockRejectedValue(new Error("session construction fault"));
+  it("constructor THROWS: stop SKIPPED, dispose STILL ATTEMPTED, the PRIMARY fault survives to the degrade line + 1 (the record settles exactly once through the emitter)", async () => {
+    const world = makePipelineWorld({
+      runBehavior: async () => ({ ok: true, outputs: {} }),
+    });
+    await scriptHitPipeline(world);
+    hoisted.tuiScripts.construct = (): void => {
+      throw new Error("terminal construction fault");
+    };
     const { io, err } = collectErr();
     const code = await runSession(
-      ["alpha", "--sessions-root", sessionsRoot],
+      ["alpha", "--sessions-root", world.sessionsRoot],
       io,
+      { signals: world.signalsTarget, exit: world.exitSink, tty: TTY_TRUE },
     );
     expect(code).toBe(1);
     expect(err).toEqual([
-      "pio-run-session: unexpected error: session construction fault",
+      "pio-run-session: unexpected error: terminal construction fault",
     ]);
-    expect(hoisted.emitterOptionsLog).toHaveLength(0); // emitter never constructed
-    expect(readdirSync(base)).toEqual([]); // nothing materialized under the root
+    expect(hoisted.tuiInstances).toHaveLength(0); // ctor never succeeded
+    expect(world.dispose).toHaveBeenCalledTimes(1); // dispose STILL attempted
+    expect(hoisted.lifecycle).toEqual(["armed", "disposed", "emitted"]); // no mounted / no stopped / no run-called
+    const record = JSON.parse(
+      readFileSync(join(world.sessionsRoot, "top", "status.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(record.ok).toBe(false);
+    expect(record.errors).toEqual([
+      { type: "Error", message: "terminal construction fault" },
+    ]);
+    expect(world.exitCalls).toEqual([]); // boundary capture, not the kill path
   });
 
-  it("post-emitter fault (fixture run() REJECTING): the captured record IS written — the REAL captureError ladder (identity fallback: type = error.name + message) — AND the degraded line + 1 still land", async () => {
+  it("SECONDARY FAULTS: stop THROWING and dispose REJECTING both lose to the PRIMARY fault (the degrade names the primary; the typed capture lands in the record; exit 1)", async () => {
+    const world = makePipelineWorld({
+      runBehavior: async (): Promise<Record<string, unknown>> => {
+        throw new Error("pipeline exploded");
+      },
+    });
+    await scriptHitPipeline(world);
+    hoisted.tuiScripts.stop = (): void => {
+      throw new Error("stop fault (secondary)");
+    };
+    world.dispose.mockRejectedValueOnce(new Error("dispose fault (secondary)"));
+    const { io, err } = collectErr();
+    const code = await runSession(
+      ["alpha", "--sessions-root", world.sessionsRoot],
+      io,
+      { signals: world.signalsTarget, exit: world.exitSink, tty: TTY_TRUE },
+    );
+    expect(code).toBe(1);
+    expect(err).toEqual([
+      "pio-run-session: unexpected error: pipeline exploded",
+    ]);
+    expect(hoisted.tuiInstances[0].stopCalls).toBe(1);
+    expect(world.dispose).toHaveBeenCalledTimes(1);
+    expect(hoisted.lifecycle).toEqual([
+      "armed",
+      "mounted",
+      "run-called",
+      "stopped",
+      "disposed",
+      "emitted",
+    ]);
+    const record = JSON.parse(
+      readFileSync(join(world.sessionsRoot, "top", "status.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(record.ok).toBe(false);
+    expect(record.errors).toEqual([
+      { type: "Error", message: "pipeline exploded" },
+    ]);
+    expect(world.exitCalls).toEqual([]);
+  });
+
+  it("PRE-PHASE REFUSAL VARIANT (imperative model): the run REJECTS with a pre-phase-style typed error — the terminal WAS constructed (accepted consequence), its typed capture lands in the record, and teardown + record-exactly-once + exit 1 hold", async () => {
+    const refusalMessage =
+      "web tools unavailable: missing tool definitions for web_search, web_fetch (provisioning: isolated agent dir 'pi-native-search' local-source registration)";
+    const world = makePipelineWorld({
+      runBehavior: async (): Promise<Record<string, unknown>> => {
+        // Replicated typed signature (owner: preflightThrownMessage in
+        // capabilities/research.ts — the shipped total-absence refusal).
+        const refusal = new Error(refusalMessage);
+        refusal.name = "WebToolsMissingError";
+        throw refusal;
+      },
+    });
+    await scriptHitPipeline(world);
+    const { io, err } = collectErr();
+    const code = await runSession(
+      ["alpha", "--sessions-root", world.sessionsRoot],
+      io,
+      { signals: world.signalsTarget, exit: world.exitSink, tty: TTY_TRUE },
+    );
+    expect(code).toBe(1);
+    expect(err).toEqual([
+      `pio-run-session: unexpected error: ${refusalMessage}`,
+    ]);
+    expect(hoisted.tuiInstances).toHaveLength(1); // WAS constructed (the mount precedes the run)
+    expect(hoisted.tuiInstances[0].stopCalls).toBe(1);
+    expect(world.dispose).toHaveBeenCalledTimes(1);
+    expect(hoisted.lifecycle).toEqual([
+      "armed",
+      "mounted",
+      "run-called",
+      "stopped",
+      "disposed",
+      "emitted",
+    ]);
+    const record = JSON.parse(
+      readFileSync(join(world.sessionsRoot, "top", "status.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(record.ok).toBe(false);
+    expect(record.errors).toEqual([
+      { type: "WebToolsMissingError", message: refusalMessage },
+    ]);
+    expect(world.exitCalls).toEqual([]);
+  });
+});
+
+describe("runSession (last-resort boundary)", () => {
+  beforeEach(() => {
+    resetHoistedState();
+  });
+
+  it("post-emitter fault (fixture run() REJECTING): the captured record IS written — the REAL captureError ladder (identity fallback: type = error.name + message) — AND the degraded line + 1 still land, with the terminal torn down BEFORE the settle", async () => {
     const world = makePipelineWorld({
       runBehavior: async (): Promise<Record<string, unknown>> => {
         const boom = new Error("pipeline exploded");
@@ -730,11 +1120,22 @@ describe("runSession (last-resort boundary — non-probe arm)", () => {
     const code = await runSession(
       ["alpha", "--sessions-root", world.sessionsRoot],
       io,
-      { signals: world.signalsTarget, exit: world.exitSink },
+      { signals: world.signalsTarget, exit: world.exitSink, tty: TTY_TRUE },
     );
     expect(code).toBe(1);
     expect(err).toEqual([
       "pio-run-session: unexpected error: pipeline exploded",
+    ]);
+    expect(hoisted.tuiInstances).toHaveLength(1);
+    expect(hoisted.tuiInstances[0].stopCalls).toBe(1);
+    expect(world.dispose).toHaveBeenCalledTimes(1);
+    expect(hoisted.lifecycle).toEqual([
+      "armed",
+      "mounted",
+      "run-called",
+      "stopped",
+      "disposed",
+      "emitted",
     ]);
     const record = JSON.parse(
       readFileSync(join(world.sessionsRoot, "top", "status.json"), "utf8"),
@@ -763,9 +1164,11 @@ describe("runSession (last-resort boundary — non-probe arm)", () => {
     const code = await runSession(
       ["alpha", "--sessions-root", world.sessionsRoot],
       faulting,
-      { signals: world.signalsTarget, exit: world.exitSink },
+      { signals: world.signalsTarget, exit: world.exitSink, tty: TTY_TRUE },
     );
     expect(code).toBe(1);
+    expect(hoisted.tuiInstances[0].stopCalls).toBe(1);
+    expect(world.dispose).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -787,7 +1190,7 @@ describe("delegator mechanics (bin/pio-run-session)", () => {
     expect(delegator.split("\n")[0]).toBe("#!/usr/bin/env node");
   });
 
-  it("statement-for-statement mirror of bin/pio: exactly ONE dynamic import of ../src/run-session.ts + the process.exitCode sink (the two-arg call stays valid — the seam parameter is optional)", () => {
+  it("statement-for-statement mirror of bin/pio: exactly ONE dynamic import of ../src/run-session.ts + the process.exitCode sink (the single-arg call stays valid — io and seams are optional parameters)", () => {
     expect(delegator).toContain('await import("../src/run-session.ts")');
     expect(delegator.match(/import\(/g)?.length).toBe(1);
     expect(delegator).toContain(
@@ -806,7 +1209,7 @@ describe("source guards (lazy-SDK discipline over run-session.ts)", () => {
     "utf8",
   );
 
-  it("ZERO static VALUE import statements (pure `import type` clauses admitted: erased under erasable syntax — zero runtime module evaluation; the permitted clause is exactly the status type pair, and SDK reach stays separately pinned)", () => {
+  it("ZERO static VALUE import statements (pure `import type` clauses admitted: erased under erasable syntax — zero runtime module evaluation; the permitted clause set is EXACTLY the status type pair + the launcher TtyStream view, and SDK reach stays separately pinned)", () => {
     const valueSpecifiers = [
       ...src.matchAll(
         /^\s*import\s+(?!type\b)[^\n;]*?from\s+["']([^"']+)["']/gm,
@@ -818,10 +1221,13 @@ describe("source guards (lazy-SDK discipline over run-session.ts)", () => {
         /^\s*import\s+(?:type\s+)?[^\n;]*?from\s+["']([^"']+)["']/gm,
       ),
     ].map((match) => match[1]);
-    expect(staticClauses).toEqual(["./capability/status.ts"]);
+    expect(staticClauses).toEqual([
+      "./capability/status.ts",
+      "./sandbox/launcher.ts",
+    ]);
   });
 
-  it("dynamic specifier set is EXACTLY {'./capability/loader.ts', './capability/pio-session.ts', './capability/status.ts', './probe.ts'} — ALL literal, no interpolation (the ./sandbox/run.ts thunk is GONE; status appears twice: pipeline + boundary)", () => {
+  it("dynamic specifier set is EXACTLY {'./capability/loader.ts', './capability/pio-session.ts', './capability/status.ts', './sandbox/launcher.ts', '@earendil-works/pi-coding-agent'} — ALL literal, no interpolation (status appears twice: pipeline + boundary)", () => {
     const literal = [...src.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)].map(
       (match) => match[1],
     );
@@ -831,7 +1237,8 @@ describe("source guards (lazy-SDK discipline over run-session.ts)", () => {
         "./capability/loader.ts",
         "./capability/pio-session.ts",
         "./capability/status.ts",
-        "./probe.ts",
+        "./sandbox/launcher.ts",
+        "@earendil-works/pi-coding-agent",
       ].sort(),
     );
     expect(total).toBe(literal.length); // no template-literal (interpolated) imports
@@ -841,8 +1248,8 @@ describe("source guards (lazy-SDK discipline over run-session.ts)", () => {
     expect(src.includes("CAPABILITY_NOT_IMPLEMENTED")).toBe(false);
   });
 
-  it("zero occurrences of the SDK specifier in run-session.ts source", () => {
-    expect(src.includes("@earendil-works/pi-coding-agent")).toBe(false);
+  it("EXACTLY ONE occurrence of the SDK specifier in run-session.ts source (the dynamic mount thunk — the terminal class arrives through it and NOWHERE else)", () => {
+    expect(src.match(/@earendil-works\/pi-coding-agent/g)?.length).toBe(1);
   });
 
   it("zero standalone 'pty' words (house style, standing convention)", () => {

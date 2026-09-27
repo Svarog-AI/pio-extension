@@ -5,7 +5,8 @@
 // issuing a literal dynamic import of the capability module — so nothing
 // registered evaluates until its exact name resolves. Registration is a
 // static edit of the literal below; there is no mutation API. The table
-// ships empty.
+// ships ONE entry — `research`, the first registered built-in, resolving
+// through the dedicated capabilities/ subpackage.
 //
 // Resolution is UI-neutral and never rejects: every outcome, including
 // every fault class, RESOLVES as a discriminated result — a success
@@ -38,9 +39,11 @@ export interface CapabilityModule {
 /** Lazy factory: resolves one registered capability module (literal dynamic import). */
 export type CapabilityFactory = () => Promise<CapabilityModule>;
 
-/** name → factory. Hardcoded, static, in-artifact. SHIPS EMPTY. */
+/** name → factory. Hardcoded, static, in-artifact. Ships the single `research` entry. */
 export type CapabilityTable = Readonly<Record<string, CapabilityFactory>>;
-export const CAPABILITY_TABLE: CapabilityTable = {};
+export const CAPABILITY_TABLE: CapabilityTable = {
+  research: () => import("../capabilities/research.ts"),
+};
 
 export interface ResolvedCapability {
   /** The loaded class's OWN declared contract (introspected off a throwaway instance). */

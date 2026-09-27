@@ -1,6 +1,7 @@
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { PIO_PACKAGE_ROOT } from "../constants.ts";
 import type { FsView } from "./fsview.ts";
+import { OWNED_EXTENSION_PACKAGES } from "./owned-extensions.ts";
 import { conservativeDefaultSources, STANDARD_PATH_BASE } from "./profile.ts";
 import {
   type RenderInput,
@@ -8,9 +9,7 @@ import {
   SandboxRenderError,
 } from "./render.ts";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PKG_ROOT = path.resolve(HERE, "..", "..");
-const PKG_BIN = path.join(PKG_ROOT, "bin", "pio-run-session");
+const PKG_BIN = path.join(PIO_PACKAGE_ROOT, "bin", "pio-run-session");
 
 /** In-memory FsView with call capture. */
 function makeFake(
@@ -41,7 +40,7 @@ function baseInput(overrides: Partial<RenderInput> = {}): RenderInput {
     engagementDir: "/home/u/.pio/projects/u-dev-myrepo/engagements/e1",
     stateRoot: "/home/u/.pio",
     projectSlot: "/home/u/.pio/projects/u-dev-myrepo",
-    capabilityName: "probe",
+    capabilityName: "cap",
     fsView: makeFake().view,
     identity: { uid: 1000, gid: 1000 },
     runtimeDir: "/usr/local",
@@ -70,6 +69,12 @@ function anchorFake() {
   });
 }
 
+/** Fabricated vendored-extension paths wired into the anchor rows (hermetic
+ * separation from the real artifact — the default-derivation pin lives in
+ * its own row). */
+const VENDORED_A = "/home/u/vend/ext-a";
+const VENDORED_B = "/home/u/vend/ext-b";
+
 /** Every literal candidate that must EXIST for the worked anchor to compose. */
 const ANCHOR_EXISTING = [
   // A. always-ro system set
@@ -95,10 +100,12 @@ const ANCHOR_EXISTING = [
   "/run/user/1000/gnupg",
   "/run/user/1000/bus",
   "/home/u/.local/bin",
-  // C. pio-state trio (explicit inputs)
+  // C. pio-state trio + vendored extension entries (explicit inputs)
   "/home/u/.pio",
   "/home/u/.pio/projects/u-dev-myrepo",
   "/home/u/.pio/.pi",
+  VENDORED_A,
+  VENDORED_B,
   // D. cwd LAST
   "/home/u/dev/myrepo",
 ];
@@ -106,7 +113,14 @@ const ANCHOR_EXISTING = [
 describe("worked anchor (canonical production run)", () => {
   it("renders the pinned deep-equal profile (mounts, baseFlags, env, chdir, target)", () => {
     const fake = anchorFake();
-    expect(renderProfile(baseInput({ fsView: fake.view }))).toEqual({
+    expect(
+      renderProfile(
+        baseInput({
+          fsView: fake.view,
+          vendoredExtensions: [VENDORED_A, VENDORED_B],
+        }),
+      ),
+    ).toEqual({
       baseFlags: [
         "--unshare-all",
         "--uid",
@@ -151,6 +165,8 @@ describe("worked anchor (canonical production run)", () => {
         { sourcePath: "/home/u/.pio", mode: "ro" },
         { sourcePath: "/home/u/.pio/projects/u-dev-myrepo", mode: "rw" },
         { sourcePath: "/home/u/.pio/.pi", mode: "rw" },
+        { sourcePath: VENDORED_A, mode: "ro" },
+        { sourcePath: VENDORED_B, mode: "ro" },
         { sourcePath: "/home/u/dev/myrepo", mode: "rw" },
       ],
       env: [
@@ -167,7 +183,7 @@ describe("worked anchor (canonical production run)", () => {
       target: {
         executable: PKG_BIN,
         args: [
-          "probe",
+          "cap",
           "--sessions-root",
           "/home/u/.pio/projects/u-dev-myrepo/engagements/e1/.sessions",
         ],
@@ -176,13 +192,28 @@ describe("worked anchor (canonical production run)", () => {
   });
 
   it("is deterministic: equal inputs + equal FsView ⇒ deep-equal outputs", () => {
-    const a = renderProfile(baseInput({ fsView: anchorFake().view }));
-    const b = renderProfile(baseInput({ fsView: anchorFake().view }));
+    const a = renderProfile(
+      baseInput({
+        fsView: anchorFake().view,
+        vendoredExtensions: [VENDORED_A, VENDORED_B],
+      }),
+    );
+    const b = renderProfile(
+      baseInput({
+        fsView: anchorFake().view,
+        vendoredExtensions: [VENDORED_A, VENDORED_B],
+      }),
+    );
     expect(a).toEqual(b);
   });
 
   it("default PATH carries <runtimeDir>/bin TWICE (no dedup anywhere — parity)", () => {
-    const profile = renderProfile(baseInput({ fsView: anchorFake().view }));
+    const profile = renderProfile(
+      baseInput({
+        fsView: anchorFake().view,
+        vendoredExtensions: [VENDORED_A, VENDORED_B],
+      }),
+    );
     const segments = profile.env[1].value.split(":");
     expect(segments.filter((s) => s === "/usr/local/bin")).toHaveLength(2);
   });
@@ -243,7 +274,12 @@ describe("composition order", () => {
 
   it("slot-rw sits immediately after stateRoot-ro (explicit inputs, overlay order)", () => {
     const fake = anchorFake();
-    const profile = renderProfile(baseInput({ fsView: fake.view }));
+    const profile = renderProfile(
+      baseInput({
+        fsView: fake.view,
+        vendoredExtensions: [VENDORED_A, VENDORED_B],
+      }),
+    );
     const rootIdx = profile.mounts.findIndex(
       (m) => m.sourcePath === "/home/u/.pio" && m.mode === "ro",
     );
@@ -258,7 +294,12 @@ describe("composition order", () => {
 
   it("pio-state trio index chain over the anchor render: root-ro < slot-rw < .pi-rw, .pi immediately after the slot, cwd LAST still the final mount", () => {
     const fake = anchorFake();
-    const profile = renderProfile(baseInput({ fsView: fake.view }));
+    const profile = renderProfile(
+      baseInput({
+        fsView: fake.view,
+        vendoredExtensions: [VENDORED_A, VENDORED_B],
+      }),
+    );
     const rootIdx = profile.mounts.findIndex(
       (m) => m.sourcePath === "/home/u/.pio" && m.mode === "ro",
     );
@@ -615,7 +656,13 @@ describe("fail-loud vs parity-skip matrix", () => {
   it("missing cwd is a TYPED REFUSAL (chdir cannot degrade silently)", () => {
     const fake = anchorFake(); // A/B/C exist; D does not
     try {
-      renderProfile(baseInput({ fsView: fake.view, cwd: "/absent/cwd" }));
+      renderProfile(
+        baseInput({
+          fsView: fake.view,
+          cwd: "/absent/cwd",
+          vendoredExtensions: [VENDORED_A, VENDORED_B],
+        }),
+      );
       throw new Error("expected SandboxRenderError");
     } catch (e) {
       expect(e).toBeInstanceOf(SandboxRenderError);
@@ -629,7 +676,12 @@ describe("fail-loud vs parity-skip matrix", () => {
     fake.existing.delete(C_ROOT);
     fake.existing.delete(C_SLOT);
     try {
-      renderProfile(baseInput({ fsView: fake.view }));
+      renderProfile(
+        baseInput({
+          fsView: fake.view,
+          vendoredExtensions: [VENDORED_A, VENDORED_B],
+        }),
+      );
       throw new Error("expected SandboxRenderError");
     } catch (e) {
       expect(e).toBeInstanceOf(SandboxRenderError);
@@ -642,7 +694,12 @@ describe("fail-loud vs parity-skip matrix", () => {
     const fake = anchorFake();
     fake.existing.delete(C_SLOT);
     try {
-      renderProfile(baseInput({ fsView: fake.view }));
+      renderProfile(
+        baseInput({
+          fsView: fake.view,
+          vendoredExtensions: [VENDORED_A, VENDORED_B],
+        }),
+      );
       throw new Error("expected SandboxRenderError");
     } catch (e) {
       expect(e).toBeInstanceOf(SandboxRenderError);
@@ -655,7 +712,12 @@ describe("fail-loud vs parity-skip matrix", () => {
     const fake = anchorFake();
     fake.existing.delete(C_PI);
     try {
-      renderProfile(baseInput({ fsView: fake.view }));
+      renderProfile(
+        baseInput({
+          fsView: fake.view,
+          vendoredExtensions: [VENDORED_A, VENDORED_B],
+        }),
+      );
       throw new Error("expected SandboxRenderError");
     } catch (e) {
       expect(e).toBeInstanceOf(SandboxRenderError);
@@ -678,6 +740,119 @@ describe("fail-loud vs parity-skip matrix", () => {
       sourcePath: "/home/u/dev/myrepo",
       mode: "rw",
     });
+  });
+});
+
+describe("vendored extensions (ro identity binds, roster-driven)", () => {
+  it("DEFAULT-DERIVATION: input OMISSIONS vendoredExtensions ⇒ candidates equal the roster-constant-derived REAL paths (mechanical pin mirroring the defaultTargetExecutable guard style — lazy default from OWNED_EXTENSION_PACKAGES + PIO_PACKAGE_ROOT)", () => {
+    const derived = [...OWNED_EXTENSION_PACKAGES].map((name) =>
+      path.join(PIO_PACKAGE_ROOT, "node_modules", name),
+    );
+    const fake = makeFake({
+      existing: [
+        "/etc/ssl",
+        "/etc/resolv.conf",
+        "/usr/local",
+        "/home/u/.pio",
+        "/home/u/.pio/projects/u-dev-myrepo",
+        "/home/u/.pio/.pi",
+        ...derived,
+        "/home/u/dev/myrepo",
+      ],
+    });
+    const profile = renderProfile(baseInput({ fsView: fake.view }));
+    for (const p of derived) {
+      expect(profile.mounts).toContainEqual({ sourcePath: p, mode: "ro" });
+    }
+    // Members sit AFTER the pio-state trio and BEFORE the cwd member.
+    const piIdx = profile.mounts.findIndex(
+      (m) => m.sourcePath === "/home/u/.pio/.pi" && m.mode === "rw",
+    );
+    const firstVendoredIdx = profile.mounts.findIndex((m) =>
+      derived.includes(m.sourcePath),
+    );
+    const cwdIdx = profile.mounts.length - 1;
+    expect(firstVendoredIdx).toBe(piIdx + 1);
+    expect(cwdIdx).toBeGreaterThan(firstVendoredIdx);
+  });
+
+  it('NORMATIVE-MISS REFUSAL: an explicit single vendored path absent from the view + includePioState default ⇒ SandboxRenderError with reason "normative-path-missing" and a message NAMING the path', () => {
+    const fake = makeFake({
+      existing: [
+        "/etc/ssl",
+        "/etc/resolv.conf",
+        "/usr/local",
+        "/home/u/.pio",
+        "/home/u/.pio/projects/u-dev-myrepo",
+        "/home/u/.pio/.pi",
+        "/home/u/dev/myrepo",
+      ],
+    });
+    try {
+      renderProfile(
+        baseInput({
+          fsView: fake.view,
+          vendoredExtensions: ["/absent/vend-x"],
+        }),
+      );
+      throw new Error("expected SandboxRenderError");
+    } catch (e) {
+      expect(e).toBeInstanceOf(SandboxRenderError);
+      expect((e as SandboxRenderError).reason).toBe("normative-path-missing");
+      expect((e as SandboxRenderError).message).toContain("/absent/vend-x");
+    }
+  });
+
+  it("ORDERING/MODE: explicit members sit AFTER the pio-state trio and BEFORE the cwd member, mode ro, declaration order preserved (spot-pinned as a tail expression, house style)", () => {
+    const fake = makeFake({
+      existing: [
+        "/etc/ssl",
+        "/etc/resolv.conf",
+        "/usr/local",
+        "/home/u/.pio",
+        "/home/u/.pio/projects/u-dev-myrepo",
+        "/home/u/.pio/.pi",
+        "/home/u/vend/x",
+        "/home/u/vend/y",
+        "/home/u/dev/myrepo",
+      ],
+    });
+    const profile = renderProfile(
+      baseInput({
+        fsView: fake.view,
+        mountSources: sources([]),
+        vendoredExtensions: ["/home/u/vend/x", "/home/u/vend/y"],
+      }),
+    );
+    const tail = profile.mounts
+      .slice(-5)
+      .map((m) => `${m.sourcePath}:${m.mode}`);
+    expect(tail).toEqual([
+      "/home/u/.pio/projects/u-dev-myrepo:rw",
+      "/home/u/.pio/.pi:rw",
+      "/home/u/vend/x:ro",
+      "/home/u/vend/y:ro",
+      "/home/u/dev/myrepo:rw",
+    ]);
+  });
+
+  it("BYPASS: explicit vendoredExtensions + includePioState: false ⇒ ZERO vendored members (the flag dominates the input — bypassing the pio-state section bypasses vehicle provisioning too)", () => {
+    const fake = makeFake({
+      existing: ["/home/u/dev/myrepo", "/home/u/vend/x", "/home/u/vend/y"],
+    });
+    const profile = renderProfile(
+      baseInput({
+        fsView: fake.view,
+        mountSources: sources([]),
+        includePioState: false,
+        vendoredExtensions: ["/home/u/vend/x", "/home/u/vend/y"],
+      }),
+    );
+    expect(
+      profile.mounts.some((m) =>
+        ["/home/u/vend/x", "/home/u/vend/y"].includes(m.sourcePath),
+      ),
+    ).toBe(false);
   });
 });
 
@@ -977,6 +1152,102 @@ describe("profile.ts — conservative default table", () => {
   });
 });
 
+describe("inputs pass-through (the ONE grammar's producer side)", () => {
+  const SESSIONS_DIR =
+    "/home/u/.pio/projects/u-dev-myrepo/engagements/e1/.sessions";
+
+  it("WITH pairs: target args deep-equal the VERBATIM two-token append in declaration order (first-position stable — args[0..2] identical with or without pairs)", () => {
+    const profile = renderProfile(
+      baseInput({
+        fsView: makeFake({ existing: ["/home/u/dev/myrepo"] }).view,
+        mountSources: sources([]),
+        includePioState: false,
+        inputs: { a: "1", b: "2" },
+      }),
+    );
+    expect(profile.target.args).toEqual([
+      "cap",
+      "--sessions-root",
+      SESSIONS_DIR,
+      "--input",
+      "a=1",
+      "--input",
+      "b=2",
+    ]);
+    // First position stays STABLE over the classic triple.
+    expect(profile.target.args.slice(0, 3)).toEqual([
+      "cap",
+      "--sessions-root",
+      SESSIONS_DIR,
+    ]);
+  });
+
+  it("declaration (insertion) order preserved even when keys are given in reverse alphabetical order", () => {
+    const profile = renderProfile(
+      baseInput({
+        fsView: makeFake({ existing: ["/home/u/dev/myrepo"] }).view,
+        mountSources: sources([]),
+        includePioState: false,
+        inputs: { zeta: "z", alpha: "a" },
+      }),
+    );
+    expect(profile.target.args.slice(3)).toEqual([
+      "--input",
+      "zeta=z",
+      "--input",
+      "alpha=a",
+    ]);
+  });
+
+  it("exotic values round-trip BYTE-EXACT into the pair tokens (spaces kept verbatim, embedded '=' survives the first-'=' split, leading dash legal, unicode intact, empty value renders 'k=')", () => {
+    const profile = renderProfile(
+      baseInput({
+        fsView: makeFake({ existing: ["/home/u/dev/myrepo"] }).view,
+        mountSources: sources([]),
+        includePioState: false,
+        inputs: {
+          spaced: " lead trail ",
+          eq: "x=y=z",
+          dash: "-lead",
+          uni: "uni-é-😀",
+          empty: "",
+        },
+      }),
+    );
+    expect(profile.target.args).toEqual([
+      "cap",
+      "--sessions-root",
+      SESSIONS_DIR,
+      "--input",
+      "spaced= lead trail ",
+      "--input",
+      "eq=x=y=z",
+      "--input",
+      "dash=-lead",
+      "--input",
+      "uni=uni-é-😀",
+      "--input",
+      "empty=",
+    ]);
+  });
+
+  it("an EMPTY provided record renders the classic three-token triple (no pairs ⇒ nothing appended)", () => {
+    const profile = renderProfile(
+      baseInput({
+        fsView: makeFake({ existing: ["/home/u/dev/myrepo"] }).view,
+        mountSources: sources([]),
+        includePioState: false,
+        inputs: {},
+      }),
+    );
+    expect(profile.target.args).toEqual([
+      "cap",
+      "--sessions-root",
+      SESSIONS_DIR,
+    ]);
+  });
+});
+
 describe("target command shape", () => {
   it("honors a custom targetExecutable", () => {
     const profile = renderProfile(
@@ -990,7 +1261,7 @@ describe("target command shape", () => {
     expect(profile.target.executable).toBe("/x/y");
     // args grammar unaffected by the executable swap
     expect(profile.target.args).toEqual([
-      "probe",
+      "cap",
       "--sessions-root",
       "/home/u/.pio/projects/u-dev-myrepo/engagements/e1/.sessions",
     ]);

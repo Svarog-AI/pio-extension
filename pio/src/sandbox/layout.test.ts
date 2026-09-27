@@ -373,11 +373,15 @@ describe("ensureEngagementLayout", () => {
       engagementDir: paths.engagementDir,
       stateRoot: paths.stateRoot,
       projectSlot: paths.projectSlot,
-      capabilityName: "probe",
+      capabilityName: "cap",
       fsView: view,
       identity: { uid: 1000, gid: 1000 },
       runtimeDir: "/usr/local",
       mountSources: { readOnly: [], readWrite: [], extraMounts: [] },
+      // Row focus is the .sessions derivation — the vehicle-provisioning
+      // vendored members are out of scope here (the hermetic fake view does
+      // not wire the default real paths).
+      vendoredExtensions: [],
     });
     const flagIndex = rendered.target.args.indexOf("--sessions-root");
     expect(rendered.target.args[flagIndex + 1]).toBe(paths.sessionsDir);
@@ -453,11 +457,15 @@ describe("ensurePiTree", () => {
       engagementDir: path.join(slot, "engagements", FIXED_ID),
       stateRoot: root,
       projectSlot: slot,
-      capabilityName: "probe",
+      capabilityName: "cap",
       fsView: view,
       identity: { uid: 1000, gid: 1000 },
       runtimeDir: "/usr/local",
       mountSources: { readOnly: [], readWrite: [], extraMounts: [] },
+      // Row focus is the .pi drift proof ("ONLY pio-state members") — the
+      // vehicle-provisioning vendored members are out of scope here (the
+      // hermetic fake view does not wire the default real paths).
+      vendoredExtensions: [],
     });
     // A(3) + the pio-state trio + cwd LAST — the created tree's .pi member
     // lands EXACTLY where the renderer derives its candidate (if the two

@@ -8,9 +8,10 @@
 // runtime values cross a parse boundary or an assign-widening instead of an
 // annotation (the checkers assert shapes at runtime; the annotation
 // documents shape, not protection). Mechanical source guards pin the import
-// surface and the shipped-empty table literal.
+// surface and the single-entry table literal.
 
 import { readFileSync } from "node:fs";
+import ResearchCapability from "../capabilities/research.ts";
 import type { CapabilityParams } from "./base.ts";
 import { PioCapability } from "./base.ts";
 import type { Contract } from "./contract.ts";
@@ -79,12 +80,12 @@ const FIXTURE_GAMMA = class extends PioCapability {
   }
 };
 
-describe("miss path (shipped empty table)", () => {
-  it("the registration table ships empty (zero entries)", () => {
-    expect(Object.keys(CAPABILITY_TABLE)).toEqual([]);
+describe("miss path (default table)", () => {
+  it("the registration table ships EXACTLY the single 'research' entry", () => {
+    expect(Object.keys(CAPABILITY_TABLE)).toEqual(["research"]);
   });
 
-  for (const name of ["whatever", "probe", "PROBE", ""]) {
+  for (const name of ["whatever", "delta", "DELTA", ""]) {
     it(`resolving ${JSON.stringify(name)} resolves the miss refusal equal to BOTH the owner line AND the carried catalog bytes`, async () => {
       const result = await resolveCapability(name);
       expect(result.ok).toBe(false);
@@ -139,6 +140,26 @@ describe("miss path (shipped empty table)", () => {
     expect(asRefusal(result)).toBe(
       `pio: capability '__proto__' is not implemented yet`,
     );
+  });
+});
+
+describe("default-table hit (first registration)", () => {
+  it("resolving 'research' against the REAL table loads the bundled capability: ctor by REFERENCE identity, contract by strict deep equality", async () => {
+    const result = await resolveCapability("research");
+    expect(result.ok).toBe(true);
+    const cap = asOk(result);
+    expect(cap.ctor).toBe(ResearchCapability);
+    // Pinned contract literal — the SOLE OWNER is the contract field on
+    // ResearchCapability in capabilities/research.ts; the copy keeps the pin
+    // meaningful.
+    expect(cap.contract).toStrictEqual({
+      name: "research",
+      version: "0.1.0",
+      inputs: [{ name: "topic" }],
+      outputs: [{ name: "report", paramKey: "report" }],
+      writes: ["research/*.md"],
+      allowProjectWrites: true,
+    });
   });
 });
 
@@ -591,20 +612,12 @@ describe("lazy discipline and structural guards", () => {
     expect(src.includes("@earendil-works/pi-coding-agent")).toBe(false);
   });
 
-  it("the probe builtin is UNREACHABLE from loader.ts: zero quoted './probe.ts' / '../probe.ts' specifiers (a table entry could never fire it)", () => {
-    for (const quote of ['"', "'"]) {
-      for (const specifier of ["./probe.ts", "../probe.ts"]) {
-        expect(src.includes(`${quote}${specifier}${quote}`)).toBe(false);
-      }
-    }
-  });
-
-  it("dynamic-import literal specifier set is EXACTLY empty while the table ships AND total import( count equals the literal-set length (no interpolation)", () => {
+  it("dynamic-import literal specifier set is EXACTLY the single shipped entry while one entry ships AND total import( count equals the literal-set length (no interpolation)", () => {
     const literalSet = [
       ...src.matchAll(/import\(\s*["']([^"']*)["']\s*\)/g),
     ].map((match) => match[1]);
     const totalImportCalls = (src.match(/import\(/g) ?? []).length;
-    expect(literalSet).toEqual([]);
+    expect(literalSet).toEqual(["../capabilities/research.ts"]);
     expect(totalImportCalls).toBe(literalSet.length);
   });
 

@@ -1,16 +1,18 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 // Type-only edge to the loader module — erased under erasable syntax, zero
 // runtime evaluation; names the descriptor type for the fixture casts.
 import type { CapabilityResolution } from "../capability/loader.ts";
-import type { TtyStream } from "../probe.ts";
-import { TTY_REFUSAL_LINE } from "../probe.ts";
 import { nodeFsView } from "./fsview.ts";
-import type { BwrapCheck, SpawnFn } from "./launcher.ts";
-import { bwrapRefusalLine, NESTING_REFUSAL_LINE } from "./launcher.ts";
-import { deriveProjectKey, mintEngagementId } from "./layout.ts";
+import type { BwrapCheck, SpawnFn, TtyStream } from "./launcher.ts";
+import {
+  bwrapRefusalLine,
+  NESTING_REFUSAL_LINE,
+  TTY_REFUSAL_LINE,
+} from "./launcher.ts";
+import { deriveProjectKey, LayoutError, mintEngagementId } from "./layout.ts";
 import {
   buildArgv,
   formatProfileLines,
@@ -20,14 +22,6 @@ import {
 import { renderProfile } from "./render.ts";
 import type { RunIO, RunSeams } from "./run.ts";
 import { runCapability } from "./run.ts";
-
-// Loader seam: factory-mocked consumer module with a hoisted eval flag
-// (registration ≠ evaluation — the flag flips at the module's FIRST import).
-// Row order is load-bearing: the probe-purity row leads so it observes a
-// genuinely unevaluated loader.
-const { evalFlags } = vi.hoisted(() => ({
-  evalFlags: { loaderEvaluated: false },
-}));
 
 // Replicated miss-line literal — the SOLE OWNER is capabilityRefusalLine in
 // ../capability/loader.ts; the copy follows its owner so the byte-pins stay
@@ -57,21 +51,94 @@ const SENTINEL_REJECTIONS: ReadonlyArray<{
   },
 ];
 
-vi.mock("../capability/loader.ts", () => {
-  evalFlags.loaderEvaluated = true;
-  return { resolveCapability: vi.fn() };
-});
+// Replicated host input-gate line templates — the SOLE OWNERS are the
+// module-private templates in ./run.ts (the pinned ['runCapability']
+// runtime-export-surface guard forbids exporting them); the copy follows the
+// standing replicated-literal idiom (à la missLine above).
+const undeclaredInputLine = (name: string, key: string): string =>
+  `pio: capability '${name}' does not declare input '${key}'`;
+const missingInputLine = (name: string, key: string): string =>
+  `pio: capability '${name}' is missing required input '${key}'`;
+
+// Loader seam: factory-mocked consumer module. Post-surgery EVERY name
+// reaches the mocked loader, and the factory is FAIL-LOUD: `resolveCapability`
+// ships as a BARE vi.fn() with NO default implementation, so any row that
+// reaches Gate 1 without scripting its own admission gets `undefined` back
+// and fails loudly and locally (TypeError on `.ok` → the last-resort degrade
+// line) instead of silently inheriting an ambient hit from a preceding row
+// (owner ruling, S02 re-execution — admission must be explicit per row, not
+// ambient). Every proceeding-path row calls admitPastGate1() AFTER world
+// creation (reset + default-shape HIT); miss/sentinel rows script their own
+// refusals; named-resolution rows keep their bespoke hit fixtures (the
+// "loader hit" row is the standing idiom). Admissions are NEVER scripted
+// into makeWorld — that would evaluate the loader factory at world-creation
+// time and disturb the cheap-path doctrine.
+vi.mock("../capability/loader.ts", () => ({ resolveCapability: vi.fn() }));
 
 /** Memoized accessor for the mocked loader module. Deliberately LAZY: the
  * first fetch runs the loader factory (process-first import), so it must
- * happen only in rows that tolerate/assert loader evaluation. Nothing at
- * file scope imports the loader, so the leading probe-purity row observes a
- * genuinely unevaluated module. */
+ * happen only in rows that tolerate/assert loader evaluation. */
 type LoaderModule = typeof import("../capability/loader.ts");
 let loaderModulePromise: Promise<LoaderModule> | undefined;
 async function loaderModule(): Promise<LoaderModule> {
   loaderModulePromise ??= import("../capability/loader.ts");
   return loaderModulePromise;
+}
+
+/** Default-shape HIT descriptor scripted by admitPastGate1 — the host
+ * discards it after the .ok check (admission only — the child re-resolves
+ * in-namespace). Cast seam: the fixture descriptor is structural (the real
+ * identity/integrity checks never run against mocked loaders). */
+class AdmissionHitFixture {}
+const ADMISSION_HIT = {
+  ok: true,
+  capability: {
+    contract: {
+      name: "cap",
+      version: "0.0.0",
+      inputs: {},
+      outputs: {},
+      writes: [],
+    },
+    ctor: AdmissionHitFixture,
+  },
+} as unknown as CapabilityResolution;
+
+/** Bespoke well-formed HIT descriptor factory for ACTIVE-GATE rows — the
+ * shared ADMISSION_HIT carries a structurally MALFORMED contract (`inputs`
+ * as objects) that stays inert ONLY under the skip semantics; an active-gate
+ * row must never back off it (iterating a non-array would throw into the
+ * last-resort boundary). These fixtures carry REAL inputs arrays. Scripted
+ * per row AFTER world creation — NEVER into makeWorld (fail-loud doctrine). */
+class InputsGateFixture {}
+function inputsHit(
+  name: string,
+  inputSpecs: ReadonlyArray<Record<string, unknown>>,
+): CapabilityResolution {
+  return {
+    ok: true,
+    capability: {
+      contract: {
+        name,
+        version: "0.1.0",
+        inputs: inputSpecs,
+        outputs: [],
+        writes: [],
+      },
+      ctor: InputsGateFixture,
+    },
+  } as unknown as CapabilityResolution;
+}
+
+/** Explicit per-row admission past Gate 1: reset the mocked loader and
+ * script the default-shape HIT descriptor. Called AFTER world creation in
+ * every proceeding-path row — no row inherits admission from a preceding
+ * row's state (the fail-loud factory provides no backstop; a preceding row's
+ * scripted miss must not bleed forward). */
+async function admitPastGate1(): Promise<void> {
+  const resolveMock = vi.mocked((await loaderModule()).resolveCapability);
+  resolveMock.mockReset();
+  resolveMock.mockResolvedValue(ADMISSION_HIT);
 }
 
 /** Fixed engagement-id seams — exact id pinning without real clock/entropy. */
@@ -127,6 +194,8 @@ interface WorldOpts {
   readonly checkThrows?: Error | string;
   /** Child exit the fake spawner settles with. */
   readonly childExit?: readonly [number | null, NodeJS.Signals | null];
+  /** Replace the provisioning seam (default: the recording no-op stub). */
+  readonly provisionExtensions?: (piTree: string) => Promise<void>;
 }
 
 interface World {
@@ -146,6 +215,9 @@ interface World {
   /** One entry per pre-flight invocation through the seam (live array —
    * a primitive counter captured by value at return would freeze at 0). */
   readonly checks: unknown[];
+  /** piTree handles the provisioning seam received (recording no-op stub
+   * DEFAULT — writes nothing, so every pre-existing row stays byte-green). */
+  readonly provisionCalls: string[];
   readonly seams: RunSeams;
   readonly io: RunIO;
 }
@@ -186,6 +258,7 @@ async function makeWorld(opts: WorldOpts = {}): Promise<World> {
   const lines: string[] = [];
   const log: Entry[] = [];
   const checks: unknown[] = [];
+  const provisionCalls: string[] = [];
   const [exitCode, exitSignal] = opts.childExit ?? [0, null];
   const spawn: SpawnFn = (file, args, optsSpawn) => {
     log.push({
@@ -218,6 +291,12 @@ async function makeWorld(opts: WorldOpts = {}): Promise<World> {
     spawn,
     now: () => FIXED_NOW,
     entropy: () => FIXED_ENTROPY,
+    provisionExtensions:
+      opts.provisionExtensions ??
+      ((piTree) => {
+        provisionCalls.push(piTree);
+        return Promise.resolve();
+      }),
   };
   const io: RunIO = {
     stderr: (line: string) => {
@@ -238,6 +317,7 @@ async function makeWorld(opts: WorldOpts = {}): Promise<World> {
     lines,
     log,
     checks,
+    provisionCalls,
     seams,
     io,
   };
@@ -270,15 +350,7 @@ function spawned(world: World): boolean {
 }
 
 describe("fast-fail gates (pre-construction refusals)", () => {
-  it("probe purity: the probe path never fires the loader thunk (the eval flag stays FALSE after a probe launch)", async () => {
-    const world = await makeWorld({ ttyInput: {}, ttyOutput: {} });
-    const code = await runCapability("probe", world.io, world.seams);
-    expect(code).toBe(1);
-    expect(world.lines).toEqual([TTY_REFUSAL_LINE]);
-    expect(evalFlags.loaderEvaluated).toBe(false);
-  });
-
-  it("stream-descriptor table: EVERY non-TTY combination emits R1's exact TTY line byte-verbatim, resolves 1, and constructs nothing (check un-called, spawn un-called, fake state root walked EMPTY)", async () => {
+  it("stream-descriptor table: EVERY non-TTY combination emits the imported TTY_REFUSAL_LINE (single owner: sandbox/launcher.ts) byte-verbatim, resolves 1, and constructs nothing (check un-called, spawn un-called, fake state root walked EMPTY)", async () => {
     const rows: [TtyStream, TtyStream][] = [
       [{ isTTY: false }, { isTTY: false }],
       [{ isTTY: false }, { isTTY: true }],
@@ -291,7 +363,8 @@ describe("fast-fail gates (pre-construction refusals)", () => {
     ];
     for (const [input, output] of rows) {
       const world = await makeWorld({ ttyInput: input, ttyOutput: output });
-      const code = await runCapability("probe", world.io, world.seams);
+      await admitPastGate1();
+      const code = await runCapability("cap", world.io, world.seams);
       expect(code).toBe(1);
       expect(world.lines).toEqual([TTY_REFUSAL_LINE]);
       expect(world.checks).toHaveLength(0);
@@ -344,6 +417,184 @@ describe("fast-fail gates (pre-construction refusals)", () => {
   });
 });
 
+describe("host input gates (post-loader-admission, pre-TTY/pre-bwrap)", () => {
+  // Both miss lines fire on PIPED worlds with scripted admission past Gate 1:
+  // exact single line + exit 1, checks 0, provisionCalls 0, no spawn, fake
+  // state root walked EMPTY, lines length exactly 1. Bespoke well-formed HIT
+  // fixtures ONLY (never ADMISSION_HIT — its malformed contract is inert
+  // under skip semantics only), scripted per row AFTER world creation.
+
+  it("an UNDECLARED key ⇒ the exact single undeclared line naming capability + key + exit 1, PRE-side-effects (piped world: checks 0, provisionCalls 0, no spawn, state root walked EMPTY)", async () => {
+    const world = await makeWorld({ ttyInput: {}, ttyOutput: {} });
+    const resolveMock = vi.mocked((await loaderModule()).resolveCapability);
+    resolveMock.mockReset();
+    resolveMock.mockResolvedValue(inputsHit("alpha", [{ name: "topic" }]));
+    const code = await runCapability("alpha", world.io, world.seams, {
+      bogus: "x",
+    });
+    expect(code).toBe(1);
+    expect(world.lines).toEqual([undeclaredInputLine("alpha", "bogus")]);
+    expect(world.checks).toHaveLength(0);
+    expect(world.provisionCalls).toHaveLength(0);
+    expect(spawned(world)).toBe(false);
+    expect(await readdir(world.stateRoot)).toEqual([]);
+  });
+
+  it("a declared value slot with an EMPTY provided map ⇒ the exact missing line naming capability + WIRE key (the 'missing topic' host-miss shape — ANY provided record, including {}, activates both checks)", async () => {
+    const world = await makeWorld({ ttyInput: {}, ttyOutput: {} });
+    const resolveMock = vi.mocked((await loaderModule()).resolveCapability);
+    resolveMock.mockReset();
+    resolveMock.mockResolvedValue(inputsHit("alpha", [{ name: "topic" }]));
+    const code = await runCapability("alpha", world.io, world.seams, {});
+    expect(code).toBe(1);
+    expect(world.lines).toEqual([missingInputLine("alpha", "topic")]);
+    expect(world.checks).toHaveLength(0);
+    expect(world.provisionCalls).toHaveLength(0);
+    expect(spawned(world)).toBe(false);
+    expect(await readdir(world.stateRoot)).toEqual([]);
+  });
+
+  it("multiple missing value slots ⇒ the FIRST in CONTRACT DECLARATION order wins (single line — first-offender reporting, deliberately NOT collect-all)", async () => {
+    const world = await makeWorld({ ttyInput: {}, ttyOutput: {} });
+    const resolveMock = vi.mocked((await loaderModule()).resolveCapability);
+    resolveMock.mockReset();
+    resolveMock.mockResolvedValue(
+      inputsHit("alpha", [{ name: "topic" }, { name: "depth" }]),
+    );
+    const code = await runCapability("alpha", world.io, world.seams, {
+      depth: "2",
+    });
+    expect(code).toBe(1);
+    expect(world.lines).toEqual([missingInputLine("alpha", "topic")]);
+    expect(spawned(world)).toBe(false);
+    expect(await readdir(world.stateRoot)).toEqual([]);
+  });
+
+  it("a paramKey-driven FILE slot with no usable wire value ⇒ the missing line names the WIRE key (`paramKey ?? name` — here distinct from the slot name)", async () => {
+    const world = await makeWorld({ ttyInput: {}, ttyOutput: {} });
+    const resolveMock = vi.mocked((await loaderModule()).resolveCapability);
+    resolveMock.mockReset();
+    resolveMock.mockResolvedValue(
+      inputsHit("alpha", [{ name: "slot", paramKey: "wireKey" }]),
+    );
+    const code = await runCapability("alpha", world.io, world.seams, {});
+    expect(code).toBe(1);
+    expect(world.lines).toEqual([missingInputLine("alpha", "wireKey")]);
+    expect(spawned(world)).toBe(false);
+    expect(await readdir(world.stateRoot)).toEqual([]);
+  });
+
+  it("undeclared AND missing simultaneously ⇒ the UNDECLARED line fires FIRST (user-typed malformation outranks omission; exactly one physical line)", async () => {
+    const world = await makeWorld({ ttyInput: {}, ttyOutput: {} });
+    const resolveMock = vi.mocked((await loaderModule()).resolveCapability);
+    resolveMock.mockReset();
+    resolveMock.mockResolvedValue(inputsHit("alpha", [{ name: "topic" }]));
+    const code = await runCapability("alpha", world.io, world.seams, {
+      bogus: "x",
+    });
+    expect(code).toBe(1);
+    // BOTH conditions hold (bogus undeclared, topic absent) — undeclared wins.
+    expect(world.lines).toEqual([undeclaredInputLine("alpha", "bogus")]);
+    expect(spawned(world)).toBe(false);
+    expect(await readdir(world.stateRoot)).toEqual([]);
+  });
+
+  it("multiple undeclared keys ⇒ the FIRST in INSERTION order is named (plain-record iteration order for realistic keys)", async () => {
+    const world = await makeWorld({ ttyInput: {}, ttyOutput: {} });
+    const resolveMock = vi.mocked((await loaderModule()).resolveCapability);
+    resolveMock.mockReset();
+    resolveMock.mockResolvedValue(inputsHit("alpha", [{ name: "topic" }]));
+    const code = await runCapability("alpha", world.io, world.seams, {
+      zeta: "z",
+      alpha: "a",
+    });
+    expect(code).toBe(1);
+    expect(world.lines).toEqual([undeclaredInputLine("alpha", "zeta")]);
+    expect(spawned(world)).toBe(false);
+    expect(await readdir(world.stateRoot)).toEqual([]);
+  });
+
+  it("PIPED ordering proof: the input gates BEAT the TTY gate — a piped world yields the INPUT line, NOT the terminal refusal line (misses print BEFORE any side effect)", async () => {
+    const world = await makeWorld({ ttyInput: {}, ttyOutput: {} });
+    const resolveMock = vi.mocked((await loaderModule()).resolveCapability);
+    resolveMock.mockReset();
+    resolveMock.mockResolvedValue(inputsHit("alpha", [{ name: "topic" }]));
+    const code = await runCapability("alpha", world.io, world.seams, {});
+    expect(code).toBe(1);
+    expect(world.lines).toEqual([missingInputLine("alpha", "topic")]);
+    expect(world.lines[0]).not.toBe(TTY_REFUSAL_LINE);
+    expect(world.checks).toHaveLength(0);
+    expect(spawned(world)).toBe(false);
+  });
+
+  it("activation pin: `inputs === undefined` SKIPS both checks ENTIRELY — the legacy three-arg call over the shared (malformed-contract) ADMISSION_HIT proceeds to the TTY gate untouched (the pre-step battery's byte-green standing proof)", async () => {
+    const world = await makeWorld({ ttyInput: {}, ttyOutput: {} });
+    await admitPastGate1();
+    const code = await runCapability("cap", world.io, world.seams);
+    expect(code).toBe(1);
+    // The gate did NOT run (no throw into the last-resort boundary either):
+    // the very next gate — TTY — produced its own line.
+    expect(world.lines).toEqual([TTY_REFUSAL_LINE]);
+    expect(spawned(world)).toBe(false);
+    expect(await readdir(world.stateRoot)).toEqual([]);
+  });
+
+  it("a STATIC file spec never trips the missing check (nothing to supply on the wire) — the run proceeds PAST the input gates to the TTY gate on a piped world", async () => {
+    const world = await makeWorld({ ttyInput: {}, ttyOutput: {} });
+    const resolveMock = vi.mocked((await loaderModule()).resolveCapability);
+    resolveMock.mockReset();
+    resolveMock.mockResolvedValue(
+      inputsHit("alpha", [{ name: "report", file: "report.md" }]),
+    );
+    const code = await runCapability("alpha", world.io, world.seams, {});
+    expect(code).toBe(1);
+    expect(world.lines).toEqual([TTY_REFUSAL_LINE]);
+    expect(spawned(world)).toBe(false);
+    expect(await readdir(world.stateRoot)).toEqual([]);
+  });
+
+  it("proceeding WITH a satisfying values object: reaches the provisioning seam (gate-pass proof) and the captured spawn vector equals buildArgv(renderProfile(…with inputs…)) — end-to-end VERBATIM pass-through into the child argv tail", async () => {
+    const world = await makeWorld({ homeEntries: ["git"] });
+    const resolveMock = vi.mocked((await loaderModule()).resolveCapability);
+    resolveMock.mockReset();
+    resolveMock.mockResolvedValue(inputsHit("alpha", [{ name: "topic" }]));
+    const code = await runCapability("alpha", world.io, world.seams, {
+      topic: "hello world",
+    });
+    expect(code).toBe(0);
+    expect(world.provisionCalls).toEqual([path.join(world.stateRoot, ".pi")]);
+
+    // Mirror expectation: renderProfile called with the IDENTICAL production
+    // inputs plus the values object — the pairs ride every downstream artifact.
+    const mirror = renderProfile({
+      cwd: world.cwd,
+      home: world.home,
+      projectKey: world.key,
+      stateRoot: world.stateRoot,
+      projectSlot: world.projectSlot,
+      engagementDir: world.engagementDir,
+      capabilityName: "alpha",
+      fsView: nodeFsView,
+      inputs: { topic: "hello world" },
+    });
+
+    // Retained bytes === the canonical encoding of the SAME value.
+    expect(
+      await readFile(path.join(world.engagementDir, PROFILE_FILE_NAME), "utf8"),
+    ).toBe(serializeProfile(mirror));
+
+    // Captured spawn vector byte-equal to the fresh pipeline output…
+    const spawnIndex = world.log.findIndex((entry) => entry.kind === "spawn");
+    expect(spawnIndex).toBeGreaterThan(-1);
+    const spawnEntry = world.log[spawnIndex];
+    if (spawnEntry.kind !== "spawn") throw new Error("spawn entry expected");
+    expect(spawnEntry.args).toEqual(buildArgv(mirror).argv.slice(1));
+    // …and the target tail carries the pair VERBATIM (host form == child
+    // wire form — zero transform end-to-end).
+    expect(spawnEntry.args.slice(-2)).toEqual(["--input", "topic=hello world"]);
+  });
+});
+
 describe("loader hit (admission only — downstream assembly shape unchanged)", () => {
   it("a loader-resolvable custom name proceeds UNCHANGED in shape: mirror-render equality with the custom name, spawn argv carries it at the capability position right after '--', --sessions-root = layout handle, child exit propagates", async () => {
     const world = await makeWorld({
@@ -378,7 +629,7 @@ describe("loader hit (admission only — downstream assembly shape unchanged)", 
 
     // Mirror expectation: renderProfile called with the IDENTICAL production
     // inputs except the capability slot — the custom name rides every
-    // downstream artifact exactly where 'probe' used to.
+    // downstream artifact at the capability position.
     const mirror = renderProfile({
       cwd: world.cwd,
       home: world.home,
@@ -418,7 +669,8 @@ describe("loader hit (admission only — downstream assembly shape unchanged)", 
 describe("anti-nesting guard (exact-value predicate)", () => {
   it('PI_SANDBOX="1" + TTY ⇒ the nested-refusal line + 1, and the injected pre-flight is NOT invoked (the guard precedes it)', async () => {
     const world = await makeWorld({ piSandbox: "1" });
-    const code = await runCapability("probe", world.io, world.seams);
+    await admitPastGate1();
+    const code = await runCapability("cap", world.io, world.seams);
     expect(code).toBe(1);
     expect(world.lines).toEqual([NESTING_REFUSAL_LINE]);
     expect(world.checks).toHaveLength(0);
@@ -433,7 +685,8 @@ describe("anti-nesting guard (exact-value predicate)", () => {
         piSandbox: value,
         checkResult: { ok: false, reason: "absent" },
       });
-      const code = await runCapability("probe", world.io, world.seams);
+      await admitPastGate1();
+      const code = await runCapability("cap", world.io, world.seams);
       expect(code).toBe(1);
       expect(world.checks).toHaveLength(1);
       expect(world.lines).toEqual([
@@ -458,7 +711,8 @@ describe("bwrap pre-flight refusals (PRE-side-effects: no dirs, no artifact, no 
   it("battery: each failing verdict ⇒ the EXACT refusal line + 1, and the fake root stays EMPTY with zero captured side effects", async () => {
     for (const verdict of battery) {
       const world = await makeWorld({ checkResult: verdict });
-      const code = await runCapability("probe", world.io, world.seams);
+      await admitPastGate1();
+      const code = await runCapability("cap", world.io, world.seams);
       expect(code).toBe(1);
       expect(world.lines).toEqual([bwrapRefusalLine(verdict)]);
       expect(await readdir(world.stateRoot)).toEqual([]);
@@ -470,7 +724,8 @@ describe("bwrap pre-flight refusals (PRE-side-effects: no dirs, no artifact, no 
     const world = await makeWorld({
       checkResult: { ok: false, reason: "absent" },
     });
-    await runCapability("probe", world.io, world.seams);
+    await admitPastGate1();
+    await runCapability("cap", world.io, world.seams);
     expect(world.lines).toEqual([
       "pio: sandbox unavailable: bwrap binary not found in PATH — install bubblewrap (>= 0.12.0, non-setuid build)",
     ]);
@@ -480,7 +735,8 @@ describe("bwrap pre-flight refusals (PRE-side-effects: no dirs, no artifact, no 
 describe("typed fault rows (catch boundaries)", () => {
   it("a missing launch cwd surfaces the renderer's typed SandboxRenderError as the render-fault line + 1 — the ensured tree MAY remain (accepted residual) but carries NO profile.json, no print, no spawn", async () => {
     const world = await makeWorld({ cwdMissing: true });
-    const code = await runCapability("probe", world.io, world.seams);
+    await admitPastGate1();
+    const code = await runCapability("cap", world.io, world.seams);
     expect(code).toBe(1);
     expect(world.lines).toEqual([
       `pio: sandbox profile could not be rendered: required path is missing: "${world.cwd}" (cwd)`,
@@ -495,7 +751,8 @@ describe("typed fault rows (catch boundaries)", () => {
 
   it("an all-slash cwd surfaces the layout's typed LayoutError as the layout-fault line + 1, PRE-side-effects (root untouched)", async () => {
     const world = await makeWorld({ cwdOverride: "//" });
-    const code = await runCapability("probe", world.io, world.seams);
+    await admitPastGate1();
+    const code = await runCapability("cap", world.io, world.seams);
     expect(code).toBe(1);
     expect(world.lines).toEqual([
       'pio: engagement layout failed: empty project key: cwd "//" yields no slug segments (all-slash cwd would collapse the projects/<key> nesting)',
@@ -508,7 +765,8 @@ describe("typed fault rows (catch boundaries)", () => {
 describe("full assembly (happy path — displayed = retained = executed)", () => {
   it("one profile value drives the retained file, the transparency print, AND the spawn vector: captured argv deep-equals the fresh pipeline output", async () => {
     const world = await makeWorld({ homeEntries: ["git"] });
-    const code = await runCapability("probe", world.io, world.seams);
+    await admitPastGate1();
+    const code = await runCapability("cap", world.io, world.seams);
     expect(code).toBe(0);
 
     // Mirror expectation: renderProfile called with the IDENTICAL production
@@ -522,7 +780,7 @@ describe("full assembly (happy path — displayed = retained = executed)", () =>
       stateRoot: world.stateRoot,
       projectSlot: world.projectSlot,
       engagementDir: world.engagementDir,
-      capabilityName: "probe",
+      capabilityName: "cap",
       fsView: nodeFsView,
     });
 
@@ -625,7 +883,8 @@ describe("full assembly (happy path — displayed = retained = executed)", () =>
 
   it("resolved stateRoot/key/id flow per the Step 3 functions: PIO_STATE_DIR override wins for the root, the key slugs the launch cwd, the id pins from the injected seams", async () => {
     const world = await makeWorld();
-    await runCapability("probe", world.io, world.seams);
+    await admitPastGate1();
+    await runCapability("cap", world.io, world.seams);
     expect(world.seams.env?.PIO_STATE_DIR).toBe(world.stateRoot);
     expect(world.key).toBe(deriveProjectKey(world.cwd));
     expect(world.id).toBe(
@@ -647,7 +906,8 @@ describe("full assembly (happy path — displayed = retained = executed)", () =>
 describe("exit-code propagation through the run path", () => {
   it("mock child 130 (Ctrl-C quit) resolves 130; the retained artifact still exists (proceeding path taken)", async () => {
     const world = await makeWorld({ childExit: [130, null] });
-    const code = await runCapability("probe", world.io, world.seams);
+    await admitPastGate1();
+    const code = await runCapability("cap", world.io, world.seams);
     expect(code).toBe(130);
     const artifact = path.join(world.engagementDir, PROFILE_FILE_NAME);
     expect(await readFile(artifact, "utf8").then((t) => t.length > 0)).toBe(
@@ -657,7 +917,8 @@ describe("exit-code propagation through the run path", () => {
 
   it("mock child 1 resolves 1; same proceeding-path proof", async () => {
     const world = await makeWorld({ childExit: [1, null] });
-    const code = await runCapability("probe", world.io, world.seams);
+    await admitPastGate1();
+    const code = await runCapability("cap", world.io, world.seams);
     expect(code).toBe(1);
     const artifact = path.join(world.engagementDir, PROFILE_FILE_NAME);
     expect(await readFile(artifact, "utf8").then((t) => t.length > 0)).toBe(
@@ -669,9 +930,8 @@ describe("exit-code propagation through the run path", () => {
 describe("last-resort boundary (never rejects)", () => {
   it("a seam throwing an UNEXPECTED non-typed Error resolves 1 with the `pio: unexpected sandbox error: …` line and NO side effects", async () => {
     const world = await makeWorld({ checkThrows: new Error("seam exploded") });
-    await expect(runCapability("probe", world.io, world.seams)).resolves.toBe(
-      1,
-    );
+    await admitPastGate1();
+    await expect(runCapability("cap", world.io, world.seams)).resolves.toBe(1);
     expect(world.lines).toEqual([
       "pio: unexpected sandbox error: seam exploded",
     ]);
@@ -681,12 +941,83 @@ describe("last-resort boundary (never rejects)", () => {
 
   it("a seam throwing a NON-ERROR value degrades identically (String() coercion, still one readable line)", async () => {
     const world = await makeWorld({ checkThrows: "seam crashed" });
-    await expect(runCapability("probe", world.io, world.seams)).resolves.toBe(
-      1,
-    );
+    await admitPastGate1();
+    await expect(runCapability("cap", world.io, world.seams)).resolves.toBe(1);
     expect(world.lines).toEqual([
       "pio: unexpected sandbox error: seam crashed",
     ]);
+  });
+});
+
+describe("owned-extension provisioning seam (PAST all gates, PRE-render)", () => {
+  it("the proceeding path invokes the provisioning seam EXACTLY ONCE with THE ensurePiTree handle (recorded-arg identity: <stateRoot>/.pi)", async () => {
+    const world = await makeWorld();
+    await admitPastGate1();
+    await runCapability("cap", world.io, world.seams);
+    expect(world.provisionCalls).toEqual([path.join(world.stateRoot, ".pi")]);
+  });
+
+  it("seam invocation sits AFTER the ensured tree and BEFORE any profile print: markers interleave provision < print (.pi exists AT the call moment; print < spawn is pinned by the happy-path row)", async () => {
+    const markers: string[] = [];
+    const world = await makeWorld({
+      provisionExtensions: (piTree) => {
+        markers.push(`provision:.pi-exists=${existsSync(piTree)}`);
+        return Promise.resolve();
+      },
+    });
+    await admitPastGate1();
+    const io: RunIO = {
+      stderr: () => {
+        markers.push("print");
+      },
+    };
+    const code = await runCapability("cap", io, world.seams);
+    expect(code).toBe(0);
+    expect(markers[0]).toBe("provision:.pi-exists=true");
+    // Every subsequent marker is a profile print — nothing prints before the
+    // seam ran, and nothing non-print follows.
+    expect(markers.slice(1).length).toBeGreaterThan(0);
+    expect(markers.slice(1).every((marker) => marker === "print")).toBe(true);
+  });
+
+  it("representative refusals NEVER reach the seam: piped-TTY miss AND loader-miss ⇒ ZERO invocations (piped misses stay cheap)", async () => {
+    const ttyWorld = await makeWorld({ ttyInput: {}, ttyOutput: {} });
+    await admitPastGate1();
+    expect(await runCapability("cap", ttyWorld.io, ttyWorld.seams)).toBe(1);
+    expect(ttyWorld.lines).toEqual([TTY_REFUSAL_LINE]);
+    expect(ttyWorld.provisionCalls).toHaveLength(0);
+
+    const missWorld = await makeWorld();
+    const loaderMod = await loaderModule();
+    const resolveMock = vi.mocked(loaderMod.resolveCapability);
+    resolveMock.mockReset();
+    resolveMock.mockResolvedValue({ ok: false, refusal: missLine("bogus") });
+    expect(await runCapability("bogus", missWorld.io, missWorld.seams)).toBe(1);
+    expect(missWorld.provisionCalls).toHaveLength(0);
+  });
+
+  it("a seam LayoutError-family fault ⇒ the EXISTING layout-refusal line + 1, PRE-side-effects past the ensured tree: the residual engagement dir holds ONLY the .sessions handle (no profile.json, no print, no spawn)", async () => {
+    const world = await makeWorld({
+      provisionExtensions: async (): Promise<void> => {
+        throw new LayoutError(
+          "owned-extension provisioning exploded (test fault)",
+        );
+      },
+    });
+    // Explicit per-row admission: the representative-refusals row above left
+    // the mock in a MISS state and the fail-loud factory provides no backstop
+    // — restore ADMISSION through the standing idiom (the host reads only the
+    // .ok flag; the child re-resolves in-namespace).
+    await admitPastGate1();
+    const code = await runCapability("cap", world.io, world.seams);
+    expect(code).toBe(1);
+    expect(world.lines).toEqual([
+      "pio: engagement layout failed: owned-extension provisioning exploded (test fault)",
+    ]);
+    expect(spawned(world)).toBe(false);
+    expect(await readdir(world.engagementDir)).toEqual([".sessions"]);
+    const tree = await walkTree(world.stateRoot);
+    expect(tree.files).toEqual([]);
   });
 });
 
@@ -702,7 +1033,7 @@ describe("source guards (mechanical discipline over run.ts)", () => {
     expect(total).toBe(literal.length); // no template-literal (interpolated) imports
   });
 
-  it('ZERO static import of the loader (`from "../capability/loader.ts"` absent — the edge is dynamic only, keeping the probe path\'s evaluation surface identical)', () => {
+  it('ZERO static import of the loader (`from "../capability/loader.ts"` absent — the edge is dynamic only, so the run path\'s consumer graph loads only once a run starts)', () => {
     expect(src.includes('from "../capability/loader.ts"')).toBe(false);
     expect(src.includes("from '../capability/loader.ts'")).toBe(false);
   });

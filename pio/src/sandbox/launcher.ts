@@ -194,6 +194,25 @@ export function isNestedLaunch(
   return env.PI_SANDBOX === "1";
 }
 
+/** Structural TTY stream view — injectable, process streams satisfy it. */
+export interface TtyStream {
+  readonly isTTY?: boolean;
+}
+
+/** True iff BOTH streams are TTYs (interactive-capable). Pure,
+ * synchronous; the host fast-fail gate consumes this before ANY side effect.
+ */
+export function isInteractiveTty(input: TtyStream, output: TtyStream): boolean {
+  return input.isTTY === true && output.isTTY === true;
+}
+
+/** Interactive-terminal refusal — one physical line, exit 1, pre-construction
+ * fast-fail at the SAME gate order position (after loader admission, before
+ * nesting/bwrap/side effects); capability-neutral wording stating requirement
+ * and consequence. */
+export const TTY_REFUSAL_LINE =
+  "pio: running a capability needs an interactive terminal (TTY); piped invocations are refused";
+
 /** Structural child handle — node:child_process's ChildProcess satisfies
  * this shape, so production pays nothing; the seam lets the suite drive
  * the REAL lifecycle deterministically (captured argv/options, kill

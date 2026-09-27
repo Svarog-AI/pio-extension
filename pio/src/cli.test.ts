@@ -1,4 +1,4 @@
-// Behavior-matrix TDD suite for the pio CLI (Step 2). Drives `parse` and
+// Behavior-matrix TDD suite for the pio CLI (Steps 2–3). Drives `parse` and
 // `main(argv, io)` with captured IO, plus mechanical SDK-isolation guards.
 import { readFileSync } from "node:fs";
 import type { CliIO } from "./cli.ts";
@@ -15,16 +15,25 @@ vi.mock("./sandbox/run.ts", () => ({
   runCapability: vi.fn(),
 }));
 
-const PROBE_DIAGNOSTIC =
-  "probe — built-in diagnostic: verifies session/TUI/transcript plumbing";
-const ADVISORY_LINE =
-  "No capabilities are resolvable yet — the built-in capability table ships empty.";
+// S04 help-tail lines — the SOLE OWNERS are HELP_LINES indices 8–9 in
+// ./cli.ts; the copies keep the byte-pins meaningful. NOTE the em dash is
+// the U+2014 EM DASH character — pinned codepoint, never normalized.
+const RESEARCH_ENTRY_LINE =
+  "  research — bounded web-research loop producing a markdown file report";
+const CANONICAL_INVOCATION_LINE = '  pio run research --input topic="<topic>"';
 
 // Replicated miss-line literal — the SOLE OWNER is capabilityRefusalLine in
 // capability/loader.ts; the copy follows its owner into the entry suites so
 // the delegation byte-pins stay meaningful.
 const missLine = (name: string): string =>
   `pio: capability '${name}' is not implemented yet`;
+
+// Replicated host usage string — the SOLE OWNER is the RUN_USAGE constant in
+// ./cli.ts (help usage line + both error-template tails); the copy keeps the
+// byte-pins below meaningful (the U-alias idiom from run-session.test.ts).
+// NOTE the trailing ellipsis is the U+2026 HORIZONTAL ELLIPSIS character —
+// pinned codepoint, not three dots.
+const USAGE = "pio run <capability> [--input k=v …]";
 
 function collectIo(): { io: CliIO; out: string[]; err: string[] } {
   const out: string[] = [];
@@ -57,21 +66,27 @@ describe("parse (descriptor-level grammar)", () => {
     expect(parse(["run"])).toEqual({ kind: "reserved" });
   });
 
-  it("run probe -> run(probe)", () => {
-    expect(parse(["run", "probe"])).toEqual({
+  it("run cap -> run(cap) with the EMPTY inputs record (always present on run descriptors)", () => {
+    expect(parse(["run", "cap"])).toEqual({
       kind: "run",
-      capability: "probe",
+      capability: "cap",
+      inputs: {},
     });
   });
 
-  it("run <unknown> -> run(<unknown>): dispatch decides, not the parser", () => {
-    expect(parse(["run", "nope"])).toEqual({ kind: "run", capability: "nope" });
+  it("run <unknown> -> run(<unknown>) with the empty inputs record: dispatch decides, not the parser", () => {
+    expect(parse(["run", "nope"])).toEqual({
+      kind: "run",
+      capability: "nope",
+      inputs: {},
+    });
   });
 
   it("capability matching is exact and case-sensitive (no normalization)", () => {
-    expect(parse(["run", "PROBE"])).toEqual({
+    expect(parse(["run", "CAP"])).toEqual({
       kind: "run",
-      capability: "PROBE",
+      capability: "CAP",
+      inputs: {},
     });
   });
 
@@ -108,24 +123,23 @@ describe("parse (descriptor-level grammar)", () => {
   });
 
   it("dash token after run <cap> -> unknown-option error", () => {
-    expect(parse(["run", "probe", "--detach"])).toEqual({
+    expect(parse(["run", "cap", "--detach"])).toEqual({
       kind: "error",
       message: "unknown option: --detach (try: pio --help)",
     });
   });
 
-  it("non-dash token after run <cap> -> unexpected-argument error", () => {
-    expect(parse(["run", "probe", "extra"])).toEqual({
+  it("non-dash token after run <cap> -> unexpected-argument error (canonical usage tail)", () => {
+    expect(parse(["run", "cap", "extra"])).toEqual({
       kind: "error",
-      message: "unexpected argument: extra (usage: pio run <capability>)",
+      message: `unexpected argument: extra (usage: ${USAGE})`,
     });
   });
 
-  it("run with empty capability -> missing-capability error", () => {
+  it("run with empty capability -> missing-capability error (canonical usage tail)", () => {
     expect(parse(["run", ""])).toEqual({
       kind: "error",
-      message:
-        "expected capability name after 'run' (usage: pio run <capability>)",
+      message: `expected capability name after 'run' (usage: ${USAGE})`,
     });
   });
 
@@ -143,10 +157,137 @@ describe("parse (descriptor-level grammar)", () => {
   });
 });
 
+describe("parse (--input pair grammar — accepted forms)", () => {
+  it("single pair -> run descriptor carrying the inputs record", () => {
+    expect(parse(["run", "cap", "--input", "a=1"])).toEqual({
+      kind: "run",
+      capability: "cap",
+      inputs: { a: "1" },
+    });
+  });
+
+  it("multiple pairs -> DESCRIPTOR PAYLOAD PINNED WITH INSERTION ORDER (Object.keys snapshot)", () => {
+    const parsed = parse(["run", "cap", "--input", "b=2", "--input", "a=1"]);
+    expect(parsed).toEqual({
+      kind: "run",
+      capability: "cap",
+      inputs: { b: "2", a: "1" },
+    });
+    if (parsed.kind !== "run") throw new Error("run descriptor expected");
+    expect(Object.keys(parsed.inputs)).toEqual(["b", "a"]);
+  });
+
+  it("a multi-word topic arriving shell-quoted as ONE value keeps its spaces byte-exact", () => {
+    expect(
+      parse(["run", "research", "--input", "topic=How do LLMs learn?"]),
+    ).toEqual({
+      kind: "run",
+      capability: "research",
+      inputs: { topic: "How do LLMs learn?" },
+    });
+  });
+
+  it("a value CONTAINING further '=' characters round-trips (split on the FIRST '=' only)", () => {
+    expect(parse(["run", "cap", "--input", "topic=a=b"])).toEqual({
+      kind: "run",
+      capability: "cap",
+      inputs: { topic: "a=b" },
+    });
+  });
+
+  it("an empty value ('k=') IS syntactically legal (value = the EMPTY string)", () => {
+    expect(parse(["run", "cap", "--input", "k="])).toEqual({
+      kind: "run",
+      capability: "cap",
+      inputs: { k: "" },
+    });
+  });
+
+  it("a pair candidate that itself starts with a dash is consumed AS-IS (pair candidates get no dash classification — legal at parse level)", () => {
+    expect(parse(["run", "cap", "--input", "-x=y"])).toEqual({
+      kind: "run",
+      capability: "cap",
+      inputs: { "-x": "y" },
+    });
+  });
+});
+
+describe("parse (--input pair grammar — strictness edges, first violation wins)", () => {
+  const malformedPairCases: ReadonlyArray<
+    readonly [argv: readonly string[], token: string]
+  > = [
+    // Dangling flag: NO pair candidate follows.
+    [["run", "cap", "--input"], "--input"],
+    // Pair candidate with NO '=' at all.
+    [["run", "cap", "--input", "abc"], "abc"],
+    // Pair candidate whose key (text before the FIRST '=') is EMPTY.
+    [["run", "cap", "--input", "=v"], "=v"],
+    [["run", "cap", "--input", "="], "="],
+  ];
+  for (const [argv, token] of malformedPairCases) {
+    it(`${JSON.stringify(argv)} -> malformed input pair naming ${JSON.stringify(token)}`, () => {
+      expect(parse(argv)).toEqual({
+        kind: "error",
+        message: `malformed input pair: '${token}' (--input expects k=v; usage: ${USAGE})`,
+      });
+    });
+  }
+
+  it("duplicated key -> duplicate-input-key error naming the KEY (the later pair is rejected)", () => {
+    expect(parse(["run", "cap", "--input", "a=1", "--input", "a=2"])).toEqual({
+      kind: "error",
+      message: `duplicate input key: 'a' (each key may appear once; usage: ${USAGE})`,
+    });
+  });
+
+  it("a duplicated EMPTY-valued key is still a duplicate (key presence, not value, drives it)", () => {
+    expect(parse(["run", "cap", "--input", "k=", "--input", "k=v"])).toEqual({
+      kind: "error",
+      message: `duplicate input key: 'k' (each key may appear once; usage: ${USAGE})`,
+    });
+  });
+
+  it("the glued form '--input=a=b' is a dash token ≠ the flag token -> unknown-option naming the WHOLE token", () => {
+    expect(parse(["run", "cap", "--input=a=b"])).toEqual({
+      kind: "error",
+      message: "unknown option: --input=a=b (try: pio --help)",
+    });
+  });
+
+  it("a pair NOT preceded by its flag is a POSITIONAL surplus -> unexpected-argument naming the token", () => {
+    expect(parse(["run", "cap", "a=b"])).toEqual({
+      kind: "error",
+      message: `unexpected argument: a=b (usage: ${USAGE})`,
+    });
+  });
+
+  it("positional surplus AFTER a valid pair -> unexpected-argument naming the surplus token", () => {
+    expect(parse(["run", "cap", "--input", "a=1", "extra"])).toEqual({
+      kind: "error",
+      message: `unexpected argument: extra (usage: ${USAGE})`,
+    });
+  });
+
+  it("an unknown dash AMONG pairs -> unknown-option naming the token", () => {
+    expect(parse(["run", "cap", "--input", "a=1", "--detach"])).toEqual({
+      kind: "error",
+      message: "unknown option: --detach (try: pio --help)",
+    });
+  });
+
+  it("'--input' in the CAPABILITY slot stays a strict unknown-option (the flag is recognized ONLY after a capability name was consumed)", () => {
+    expect(parse(["run", "--input", "x"])).toEqual({
+      kind: "error",
+      message: "unknown option: --input (try: pio --help)",
+    });
+  });
+});
+
 describe("main (behavior matrix)", () => {
-  // Full pinned-array equality: every line of the eleven-line pinned form
-  // stays byte-identical — placement pinned, not merely presence (the probe
-  // line byte-stable, exactly one advisory line appended).
+  // Full pinned-array equality: every line of the ten-line pinned form stays
+  // byte-identical — placement pinned, not merely presence (the S04 flip
+  // moved EXACTLY indices 8–9 onto the surviving header; every other line is
+  // untouched).
   it("--help: exit 0, stdout deep-equals the full pinned line array, clean stderr", async () => {
     const { io, out, err } = collectIo();
     const code = await main(["--help"], io);
@@ -155,26 +296,25 @@ describe("main (behavior matrix)", () => {
       "pio — goal-driven project management CLI",
       "",
       "Usage:",
-      "  pio run <capability>",
+      "  pio run <capability> [--input k=v …]",
       "  pio --help",
       "  pio --version",
       "",
       "Built-in capabilities:",
-      "  probe — built-in diagnostic: verifies session/TUI/transcript plumbing (currently the only resolvable target)",
-      "",
-      ADVISORY_LINE,
+      RESEARCH_ENTRY_LINE,
+      CANONICAL_INVOCATION_LINE,
     ]);
     expect(err).toEqual([]);
   });
 
-  it("help: same contract as --help (containment over the probe line AND the advisory line)", async () => {
+  it("help: same contract as --help (containment over the built-ins header AND the canonical-invocation line)", async () => {
     const { io, out, err } = collectIo();
     const code = await main(["help"], io);
     expect(code).toBe(0);
     const joined = out.join("\n");
     expect(joined).toContain("pio run <capability>");
-    expect(joined).toContain(PROBE_DIAGNOSTIC);
-    expect(joined).toContain(ADVISORY_LINE);
+    expect(joined).toContain("Built-in capabilities:");
+    expect(joined).toContain(CANONICAL_INVOCATION_LINE);
     expect(err).toEqual([]);
   });
 
@@ -202,9 +342,9 @@ describe("main (behavior matrix)", () => {
     expect(err).toEqual(["pio: default workflow capability not available yet"]);
   });
 
-  it("run probe --detach: exit 1, unknown-option line naming --detach", async () => {
+  it("run cap --detach: exit 1, unknown-option line naming --detach", async () => {
     const { io, out, err } = collectIo();
-    const code = await main(["run", "probe", "--detach"], io);
+    const code = await main(["run", "cap", "--detach"], io);
     expect(code).toBe(1);
     expect(out).toEqual([]);
     expect(err).toEqual(["pio: unknown option: --detach (try: pio --help)"]);
@@ -226,23 +366,21 @@ describe("main (behavior matrix)", () => {
     expect(err).toEqual(["pio: unknown command: bogus (try: pio --help)"]);
   });
 
-  it("run probe extra: exit 1, unexpected-argument line", async () => {
+  it("run cap extra: exit 1, unexpected-argument line (canonical usage tail)", async () => {
     const { io, out, err } = collectIo();
-    const code = await main(["run", "probe", "extra"], io);
+    const code = await main(["run", "cap", "extra"], io);
     expect(code).toBe(1);
     expect(out).toEqual([]);
-    expect(err).toEqual([
-      "pio: unexpected argument: extra (usage: pio run <capability>)",
-    ]);
+    expect(err).toEqual([`pio: unexpected argument: extra (usage: ${USAGE})`]);
   });
 
-  it('run "": exit 1, missing-capability line', async () => {
+  it('run "": exit 1, missing-capability line (canonical usage tail)', async () => {
     const { io, out, err } = collectIo();
     const code = await main(["run", ""], io);
     expect(code).toBe(1);
     expect(out).toEqual([]);
     expect(err).toEqual([
-      "pio: expected capability name after 'run' (usage: pio run <capability>)",
+      `pio: expected capability name after 'run' (usage: ${USAGE})`,
     ]);
   });
 });
@@ -266,43 +404,65 @@ describe("main (run path dispatch)", () => {
     const code = await main(["run", "whatever"], io);
     expect(code).toBe(1);
     expect(runCapabilityMock).toHaveBeenCalledTimes(1);
-    expect(runCapabilityMock).toHaveBeenCalledWith("whatever", io);
+    expect(runCapabilityMock).toHaveBeenCalledWith(
+      "whatever",
+      io,
+      undefined,
+      {},
+    );
     expect(out).toEqual([]);
     expect(err).toEqual([missLine("whatever")]);
   });
 
-  it("run PROBE: exit 1, same delegation with a case-sensitive miss naming PROBE (the loader decides, the CLI renders nothing of its own)", async () => {
+  it("run CAP: exit 1, same delegation with a case-sensitive miss naming CAP (the loader decides, the CLI renders nothing of its own)", async () => {
     runCapabilityMock.mockImplementation(async (_name, sink) => {
-      sink?.stderr(missLine("PROBE"));
+      sink?.stderr(missLine("CAP"));
       return 1;
     });
     const { io, out, err } = collectIo();
-    const code = await main(["run", "PROBE"], io);
+    const code = await main(["run", "CAP"], io);
     expect(code).toBe(1);
     expect(runCapabilityMock).toHaveBeenCalledTimes(1);
-    expect(runCapabilityMock).toHaveBeenCalledWith("PROBE", io);
+    expect(runCapabilityMock).toHaveBeenCalledWith("CAP", io, undefined, {});
     expect(out).toEqual([]);
-    expect(err).toEqual([missLine("PROBE")]);
+    expect(err).toEqual([missLine("CAP")]);
   });
 
-  it("run probe: dispatched through the run path with ('probe', the injected sink routed as stderr); exit 0 propagates unchanged; the stderr routing is proven by a line written THROUGH that sink", async () => {
+  it("run cap: dispatched through the run path with ('cap', the injected sink routed as stderr, explicit undefined seams, the empty inputs record); exit 0 propagates unchanged; the stderr routing is proven by a line written THROUGH that sink", async () => {
     runCapabilityMock.mockImplementation(async (_name, sink) => {
       sink?.stderr("threaded-line");
       return 0;
     });
     const { io, out, err } = collectIo();
-    const code = await main(["run", "probe"], io);
+    const code = await main(["run", "cap"], io);
     expect(code).toBe(0);
     expect(runCapabilityMock).toHaveBeenCalledTimes(1);
-    expect(runCapabilityMock).toHaveBeenCalledWith("probe", io);
+    expect(runCapabilityMock).toHaveBeenCalledWith("cap", io, undefined, {});
     expect(err).toEqual(["threaded-line"]);
     expect(out).toEqual([]);
   });
 
-  it("run probe: exit code 1 from the run path propagates unchanged", async () => {
+  it("run research --input topic=a b --input depth=2: FOUR-ARG delegation with the parsed payload INTACT (four args ALWAYS — the empty-map uniformity pins on both sides of this row)", async () => {
+    runCapabilityMock.mockResolvedValue(0);
+    const { io, out, err } = collectIo();
+    const code = await main(
+      ["run", "research", "--input", "topic=a b", "--input", "depth=2"],
+      io,
+    );
+    expect(code).toBe(0);
+    expect(runCapabilityMock).toHaveBeenCalledTimes(1);
+    expect(runCapabilityMock).toHaveBeenCalledWith("research", io, undefined, {
+      topic: "a b",
+      depth: "2",
+    });
+    expect(out).toEqual([]);
+    expect(err).toEqual([]);
+  });
+
+  it("run cap: exit code 1 from the run path propagates unchanged", async () => {
     runCapabilityMock.mockResolvedValue(1);
     const { io, out, err } = collectIo();
-    const code = await main(["run", "probe"], io);
+    const code = await main(["run", "cap"], io);
     expect(code).toBe(1);
     expect(out).toEqual([]);
     expect(err).toEqual([]);
@@ -311,11 +471,63 @@ describe("main (run path dispatch)", () => {
   it("directly-rejecting runCapability: last-resort boundary renders 'pio: unexpected error: kaboom', resolves 1", async () => {
     runCapabilityMock.mockRejectedValue(new Error("kaboom"));
     const { io, out, err } = collectIo();
-    const code = await main(["run", "probe"], io);
+    const code = await main(["run", "cap"], io);
     expect(code).toBe(1);
     expect(out).toEqual([]);
     expect(err).toEqual(["pio: unexpected error: kaboom"]);
   });
+});
+
+describe("main (--input strictness edges — prefixed bytes + exit 1)", () => {
+  // The host parser rejects EVERY malformed shape BEFORE any dispatch — these
+  // rows pin the rendered `pio: `-prefixed bytes end-to-end through main.
+  const edgeRows: ReadonlyArray<
+    readonly [argv: readonly string[], line: string]
+  > = [
+    [
+      ["run", "cap", "--input", "a=1", "--input", "a=2"],
+      `pio: duplicate input key: 'a' (each key may appear once; usage: ${USAGE})`,
+    ],
+    [
+      ["run", "cap", "--input"],
+      `pio: malformed input pair: '--input' (--input expects k=v; usage: ${USAGE})`,
+    ],
+    [
+      ["run", "cap", "--input", "abc"],
+      `pio: malformed input pair: 'abc' (--input expects k=v; usage: ${USAGE})`,
+    ],
+    [
+      ["run", "cap", "--input", "=v"],
+      `pio: malformed input pair: '=v' (--input expects k=v; usage: ${USAGE})`,
+    ],
+    [
+      ["run", "cap", "--input", "="],
+      `pio: malformed input pair: '=' (--input expects k=v; usage: ${USAGE})`,
+    ],
+    [
+      ["run", "cap", "--input=a=b"],
+      "pio: unknown option: --input=a=b (try: pio --help)",
+    ],
+    [["run", "cap", "a=b"], `pio: unexpected argument: a=b (usage: ${USAGE})`],
+    [
+      ["run", "cap", "--input", "a=1", "extra"],
+      `pio: unexpected argument: extra (usage: ${USAGE})`,
+    ],
+    [
+      ["run", "cap", "--input", "a=1", "--detach"],
+      "pio: unknown option: --detach (try: pio --help)",
+    ],
+    [["run", "--input", "x"], "pio: unknown option: --input (try: pio --help)"],
+  ];
+  for (const [argv, line] of edgeRows) {
+    it(`${JSON.stringify(argv)} -> exit 1, clean stdout, the exact prefixed line on stderr`, async () => {
+      const { io, out, err } = collectIo();
+      const code = await main(argv, io);
+      expect(code).toBe(1);
+      expect(out).toEqual([]);
+      expect(err).toEqual([line]);
+    });
+  }
 });
 
 describe("main (last-resort error boundary)", () => {
@@ -376,9 +588,9 @@ describe("session-run retirement (net-shrink)", () => {
   // error NAMING THE TOKEN (syntactic data in test rows only).
   const parseRows: ReadonlyArray<readonly string[]> = [
     ["session-run"],
-    ["session-run", "probe"],
-    ["session-run", "probe", "--sessions-root", "/x"],
-    ["session-run", "--sessions-root", "/x", "probe"],
+    ["session-run", "cap"],
+    ["session-run", "cap", "--sessions-root", "/x"],
+    ["session-run", "--sessions-root", "/x", "cap"],
   ];
   for (const argv of parseRows) {
     it(`${JSON.stringify(argv)} -> unknown-command error naming the token`, () => {
@@ -392,7 +604,7 @@ describe("session-run retirement (net-shrink)", () => {
   it("main level: the canonical quadruple exits 1 with clean stdout and the exact prefixed unknown-command line on stderr", async () => {
     const { io, out, err } = collectIo();
     const code = await main(
-      ["session-run", "probe", "--sessions-root", "/x"],
+      ["session-run", "cap", "--sessions-root", "/x"],
       io,
     );
     expect(code).toBe(1);
@@ -415,11 +627,6 @@ describe("mechanical SDK-isolation guards", () => {
     expect([...new Set(specifiers)]).toEqual(["./sandbox/run.ts"]);
   });
 
-  it("the probe builtin is UNREACHABLE from cli.ts: zero occurrences of the quoted './probe.ts' specifier (no static or dynamic import can reach it)", () => {
-    expect(src.includes('"./probe.ts"')).toBe(false);
-    expect(src.includes("'./probe.ts'")).toBe(false);
-  });
-
   it("HEADLINE NET-SHRINK PROOF: zero occurrences of the string 'session-run' in cli.ts source (pins the kind, the parse helper, the message consts, the help line, and the dispatch case simultaneously)", () => {
     expect(src.includes("session-run")).toBe(false);
   });
@@ -431,7 +638,8 @@ describe("mechanical SDK-isolation guards", () => {
       ),
     ].map((match) => match[1]);
     // Multi-line static imports would slip past this single-clause pattern;
-    // guard (a) above catches an SDK-typed one regardless.
+    // the zero-SDK-specifier guard above catches an SDK-typed multi-line
+    // clause regardless.
     expect(specifiers).toEqual(["./version.ts"]);
   });
 
@@ -456,11 +664,9 @@ describe("mechanical SDK-isolation guards", () => {
   });
 
   // NOTE: the registry-shape guard was retired together with the BUILTINS
-  // registry itself (probe is a literal fast-path special case in main(),
-  // no abstraction around it). Guards above mechanically pin: zero SDK
-  // references, the single builtin-thunk dynamic-import set, the version-only
-  // static import, the single-owner miss line (repointed to
-  // capability/loader.ts), the zero-retired-identifier invariant, the
-  // unreachable probe builtin (no quoted './probe.ts' specifier), and the
-  // zero-'session-run' net-shrink headline.
+  // registry itself. Guards above mechanically pin: zero SDK references, the
+  // single builtin-thunk dynamic-import set, the version-only static import,
+  // the single-owner miss line (repointed to capability/loader.ts), the
+  // zero-retired-identifier invariant, and the zero-'session-run'
+  // net-shrink headline.
 });

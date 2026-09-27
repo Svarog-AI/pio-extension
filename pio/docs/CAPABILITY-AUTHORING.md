@@ -1,8 +1,10 @@
 # Capability Authoring Guide
 
 Audience: authors of **built-in pio capabilities** — modules loaded through the
-registry and run headless inside the sandbox by
-`pio run <name> --input k=v`.
+registry and run inside the sandbox by `pio run <name> --input k=v`, under a
+TTY-required execution surface: user-run top-level invocations require an
+attached interactive terminal, and every admitted run executes under its live
+terminal presenting the session stream (§7.1).
 
 This guide distills the patterns of the first shipped built-in — `research`,
 `pio/src/capabilities/research.ts` — into reusable authoring knowledge. Every
@@ -354,9 +356,14 @@ precedes item 5 (ending without a write signals completion).
 
 ### 3.6 Work autonomously during the run
 
-No mid-run user prompting — it is a frozen ticket non-goal (there is no
-question relay). The shipped tail: `Work autonomously; do not ask the user
-anything during the run.`
+The shipped tail: `Work autonomously; do not ask the user anything during the
+run.` Capability instructions must not solicit the operator mid-run. Mid-run
+prompting is NOT formally adjudicated for this artifact — the goal does not
+deliver the final product (owner ruling 2026-09-26, R-V4); operator-typed
+input while a run is active is mechanically tolerated through pi's native
+pending-input queueing (mechanics in §7.2) — named as a boundary without
+support or promise. The question relay remains a frozen boundary (there is
+no question relay).
 
 ### 3.7 Naming durable artifacts across re-runs (fingerprint idiom)
 
@@ -402,6 +409,7 @@ The web tools ship as an OWNED EXACT dependency beside the exact-pinned SDK:
 // pio/package.json
 "dependencies": {
   "@earendil-works/pi-coding-agent": "0.85.1",
+  "pi-ask-user": "0.15.0",
   "pi-native-search": "0.1.0"
 }
 ```
@@ -411,7 +419,10 @@ roster constant drives BOTH provisioning consumers:
 
 ```ts
 // pio/src/sandbox/owned-extensions.ts
-export const OWNED_EXTENSION_PACKAGES: readonly string[] = ["pi-native-search"];
+export const OWNED_EXTENSION_PACKAGES: readonly string[] = [
+  "pi-native-search",
+  "pi-ask-user",
+];
 ```
 
 `ensureOwnedExtensions` (same file) reads it for settings registration, and the
@@ -420,6 +431,8 @@ renderer's vendored-bind members default from it
 deliberately NOT derived from the manifest — the pi SDK itself is a dependency
 and must never be registered. Adding a package later = exact-pinned owned dep
 line + roster entry + suite rows, each carrying its own constraint-5 approval.
+The roster today carries a second, non-web-tools package (`pi-ask-user`) alongside
+`pi-native-search`; its availability mechanics §7.3 teaches.
 
 ### 4.2 LOCAL-SOURCE registration (not copy, not materialize)
 
@@ -558,14 +571,19 @@ Consequences for in-bubble derivation (`research.ts`):
   state root with the shipped pure helper:
 
   ```ts
-  // pio/src/capabilities/research.ts
-  export function deriveStateRootFromAgentDir(agentDir: string | undefined): string
+  // pio/src/capability/base.ts
+  export function deriveStateRootFromAgentDir(
+    agentDir: string | undefined,
+  ): string
   ```
 
   It inverts the renderer's UNCONDITIONAL `PI_CODING_AGENT_DIR =
   <stateRoot>/.pi/agent` assignment (exactly the two levels the renderer
   appends) and fails LOUD and typed on an unset/malformed value —
-  `ResearchEnvError`, NO silent fallback, ever.
+  `CapabilityEnvError` (messages prefixed `capability:`), NO silent fallback,
+  ever. The pair rides with the authoring base rather than a sandbox leaf —
+  a capability-layer concern per the placement ruling documented in the
+  `base.ts` header — and `research.ts` imports and re-exports it from there.
 - NEVER derive via `resolveStateRoot` (`pio/src/sandbox/layout.ts`) in-bubble:
   its `PIO_STATE_DIR`/HOME fallback is a HOST-SIDE expression that would
   silently target the host's `~/.pio`.
@@ -596,7 +614,7 @@ preflight line of §4.7: a human operator is expected to fix provisioning, so
 the line NAMES what is missing and where it comes from. Pairing rule: env
 defects may surface via the TYPED CAPTURE ALONE (no redundant line) when the
 typed capture IS the surfacing channel — `research` throws
-`ResearchEnvError` before anything else and the captured record carries the
+`CapabilityEnvError` before anything else and the captured record carries the
 message — but tool absence OWES a line because the remedy is a provisioning
 fix, not a re-read of the record.
 
@@ -611,24 +629,32 @@ capability, zero surfaces.
 
 Where a capability MAY own lines versus where the entry/emitter owns them:
 
-- CAPABILITY-owned: process-stream stdout/stderr lines written directly (the
-  constructor bag is FROZEN by the `CapabilityConstructor` type —
-  `pio/src/capability/loader.ts` — so no io seam can be added; suites spy the
-  streams) + the RETURNED VALUES OBJECT'S serialization form. `research`: the
-  PROJECT-SLOT-RELATIVE token in `outputs`
-  (`{ report: "research/<fingerprint>.md" }`) versus the ABSOLUTE path on the
-  single capability-owned stdout line
-  (`pio research: report written to <absolute path>`). The `StatusEmitter`
-  publishes `outputs` byte-unmodified — expect NO `pio/src/capability/status.ts`
-  edits for naming.
+- CAPABILITY-owned: pre-run REFUSAL stderr lines fired before any prompt (the
+  narrow surviving exception to the sole-writer rule — the web-tools preflight
+  line of §4.7 is today's sole survivor; static-idle-frame timing per §7.1) +
+  the RETURNED VALUES OBJECT'S serialization form. Under the
+  terminal-ownership doctrine (§7.1) capability CODE performs NO raw
+  process-stream writes while the live terminal renders (the constructor bag
+  is FROZEN by the `CapabilityConstructor` type — `pio/src/capability/loader.ts`
+  — so no io seam can be added; suites spy the streams). `research` exemplifies
+  the outcome model: the PROJECT-SLOT-RELATIVE token in `outputs`
+  (`{ report: "research/<fingerprint>.md" }`) alongside the in-stream statement
+  the live terminal presents — naming rides the agent's own words plus the
+  frozen ledger token. Deterministic delivery receipts beyond the in-stream
+  statement are the future default capability's territory — named once as a
+  boundary; nothing built, wired, or promised. The `StatusEmitter` publishes
+  `outputs` byte-unmodified — expect NO `pio/src/capability/status.ts` edits
+  for naming.
 - ENTRY/EMITTER-owned: dispatch + refusal lines (host gates in
   `pio/src/sandbox/run.ts`, loader refusals in `pio/src/capability/loader.ts`),
   the terminal record EXACTLY ONCE (placement/serialization/kill-capture in
   `pio/src/capability/status.ts`: `createStatusEmitter` / `serializeStatus` /
   `captureError` / `exitCodeFor`), and the exit-code map (success 0, failure 1).
 
-Never route capability lines through the session or the transcript — that
-couples the capability to `status.ts` internals it does not own.
+Never route CODE-emitted lines through the session or the transcript — that
+couples the capability to `status.ts` internals it does not own. The in-stream
+statement is different: it is the model's own narration presented by the live
+terminal, not a capability-code channel into session or status internals.
 
 ### 5.5 Per-destination slug functions
 

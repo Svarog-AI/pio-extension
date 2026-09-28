@@ -35,7 +35,11 @@
 // leaf-pure launcher thunk (SDK-free) fires immediately after loader
 // admission for the TTY fast-fail; the session, emitter, and terminal-class
 // thunks fire only past the gates; the frame-environment thunk fires
-// post-mount/pre-run (a process-scoped, single-shot holder install).
+// post-mount/pre-run (a process-scoped, single-shot holder install — GROWN
+// to also attach the outermost record's emitter to the ledger cell and arm
+// the process-exit guard over the injected seams, so the last-resort
+// boundary can divert an escaping rejection into the ordered shutdown pass
+// once the holder is armed).
 // Cheap paths — parse errors, the miss refusal, the TTY refusal — never pay
 // for evaluating those consumer graphs, whose reach includes the SDK
 // (evaluated EXACTLY ONCE, at the mount step). The static clauses are
@@ -84,6 +88,14 @@ export interface RunSessionSeams {
 interface LiveTerminal {
   run(): Promise<void>;
   stop(): void;
+}
+
+/** Structural view over the exit guard's FATAL channel — the ONLY surface
+ * the entry boundary drives (user-abort rides the wrapped sink; sigterm
+ * rides the armed handler). The method-shape keeps the entry free of any
+ * static value reach into the takeover module. */
+interface ShutdownGuardView {
+  trigger(cause: "fatal"): Promise<void>;
 }
 
 type ParsedEntry =
@@ -197,9 +209,10 @@ function parseEntry(argv: readonly string[]): ParsedEntry {
  * runtime (mounted after arming; probe-native teardown before the record).
  * Escaping failures degrade to
  * `pio-run-session: unexpected error: <detail>` on the sink + exit 1 —
- * AFTER the teardown, and once a status emitter exists the boundary first
- * settles the terminal record through it (best-effort, never masking the
- * degrade). */
+ * AFTER the death leg (the ordered shutdown pass when the frame holder is
+ * armed, else the legacy probe-native teardown), and once a status emitter
+ * exists the boundary first settles the terminal record through it
+ * (best-effort, never masking the degrade). */
 export async function runSession(
   argv: readonly string[] = process.argv.slice(2),
   io?: RunSessionIO,
@@ -216,6 +229,17 @@ export async function runSession(
   /** The runtime-bound terminal; set only once its constructor succeeded —
    * the tracked mounted state (the stop leg skips when it is undefined). */
   let terminal: LiveTerminal | undefined;
+  /** Exit-guard handle (structural FATAL view); bound once the grown
+   * post-mount thunk arms it — undefined before (every pre-thunk fault).
+   * The wrapper itself is not referenced by the entry: user-abort rides
+   * the wrapped sink the module installed over this seam's exit field. */
+  let guard: ShutdownGuardView | undefined;
+  /** THE takeover module namespace, bound by the SAME single thunk the try
+   * evaluates post-mount (undefined on every pre-thunk fault): the catch
+   * boundary reads its installed-predicate through this binding — no
+   * second evaluation, no static reach, no identifier escaping the try.
+   * The typeof-import type query erases under erasable syntax. */
+  let takeover: typeof import("./capability/terminal-takeover.ts") | undefined;
 
   /** Probe-native teardown pair: best-effort stop (throw swallowed; skipped
    * when the constructor never succeeded) BEFORE runtime dispose (rejection
@@ -308,20 +332,27 @@ export async function runSession(
       // Secondary fault — swallowed (never log — terminal ownership).
     });
     // Frame-environment install (post-mount / pre-run — the entry's SIXTH
-    // dynamic thunk): installs the process-scoped single-shot holder. NO
-    // local fault handling: an install fault ESCAPES into the boundary
-    // below (teardown runs first — free; the record settles through the
-    // already-constructed emitter, best-effort).
-    const { installFrameEnvironment } = await import(
-      "./capability/terminal-takeover.ts"
-    );
-    installFrameEnvironment({
+    // dynamic thunk, GROWN to three members): installs the process-scoped
+    // single-shot holder, attaches the outermost record's emitter to the
+    // ledger cell (one authoritative writer per scope), and arms the
+    // process-exit guard over the injected seams — absent fields ride the
+    // module defaults (the real process exit / signal target). NO local
+    // fault handling: an install or arm fault ESCAPES into the boundary
+    // below (the legacy teardown runs first — free; the record settles
+    // through the already-constructed emitter, best-effort).
+    takeover = await import("./capability/terminal-takeover.ts");
+    takeover.installFrameEnvironment({
       sessionsRoot,
       topFrame: session,
       terminalStop: (): void => {
         terminal?.stop();
       },
       stderr: (line: string): void => sink.stderr(line),
+    });
+    takeover.attachTopEmitter(emitter);
+    guard = takeover.installExitGuard({
+      ...(seams?.exit === undefined ? {} : { exit: seams.exit }),
+      ...(seams?.signals === undefined ? {} : { signals: seams.signals }),
     });
     // THE single parsed record, passed BY REFERENCE (no spread/copy at the
     // handoff point): zero-pair invocations hand the EMPTY object — the old
@@ -334,14 +365,30 @@ export async function runSession(
     return exitCode;
   } catch (cause) {
     // Last-resort boundary: any escaping rejection degrades to one readable
-    // line + exit 1; a doubly-faulting sink degrades silently. Teardown
-    // runs FIRST (best-effort — cooked-mode recovery precedes the
-    // out-of-window writes below). Once the emitter exists (post-emitter
-    // faults only), the captured record settles NEXT through it —
-    // best-effort: the emit never rejects and the swallow keeps the degrade
-    // plain. Pre-emitter faults skip the settle step (no instance) and
-    // degrade plainly.
-    await teardown();
+    // line + exit 1; a doubly-faulting sink degrades silently. THE MERGED
+    // DEATH LEG: once the holder is armed AND its guard handle is bound,
+    // the ORDERED SHUTDOWN PASS takes the legs (stop + dispose through the
+    // holder context, composed partials innermost-first, the ledger
+    // snapshot, the typed line) with the top record EXCLUDED — the settle
+    // step below owns it; every secondary fault inside the trigger is
+    // swallowed so the primary cause owns the degrade. Pre-holder faults
+    // take the legacy probe-native teardown VERBATIM — byte-identical
+    // behavior (both legs are no-ops there). Once the emitter exists
+    // (post-emitter faults only), the captured record settles NEXT through
+    // it — best-effort: the emit never rejects and the swallow keeps the
+    // degrade plain. Pre-emitter faults skip the settle step (no instance)
+    // and degrade plainly.
+    if (
+      takeover !== undefined &&
+      guard !== undefined &&
+      takeover.isFrameEnvironmentInstalled()
+    ) {
+      await guard.trigger("fatal").catch(() => {
+        // Secondary fault — the primary cause owns the degrade below.
+      });
+    } else {
+      await teardown();
+    }
     if (emitter !== undefined) {
       const { captureError } = await import("./capability/status.ts");
       await emitter

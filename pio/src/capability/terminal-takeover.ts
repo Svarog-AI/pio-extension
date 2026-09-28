@@ -1,44 +1,52 @@
-// Terminal-takeover composition — process-scoped frame environment + the
-// hop primitive. A FRAME is one composed capability execution held on the
-// shared runtime under the entry's live terminal; the ledger tracks every
-// depth (index 0 = outermost).
+// Terminal-takeover composition — process-scoped frame environment, the hop
+// primitive, and the ordered shutdown pass. A FRAME is one composed
+// capability execution held on the shared runtime under the entry's live
+// terminal; the ledger tracks every depth (index 0 = outermost).
 //
-// Single holder per process: double-install throws loudly without mutating;
-// an uninstalled read throws the pinned error; teardown is the idempotent
-// inverse. Each ledger entry carries a PendingLatch over a native promise:
-// normal settlement resolves it exclusively; the reject channel belongs to
-// the ordered shutdown pass; the outermost latch is minted and parked
-// (process death reclaims it).
+// Single holder per process: double-install throws loudly; an uninstalled
+// read throws the pinned error; teardown is the idempotent inverse (also
+// resets the top-emitter cell). Each entry carries a PendingLatch (normal
+// settlement resolves it exclusively; the reject channel belongs to the
+// shutdown pass; the outermost latch is minted and parked) and a LIVE
+// emitter accessor (top: the attach cell; composed: the build-stage cell)
+// that the pass walks for per-frame partial records.
+//
+// THE ordered shutdown pass (per trigger): rejects pending composed latches
+// innermost-first (parked top skipped); for non-user-abort causes stops the
+// mounted terminal and disposes the shared runtime (best-effort, stop-
+// once); writes the per-frame PARTIALS innermost-first over the trigger-
+// time snapshot (fatal excludes the top — its caller owns that record);
+// drops ONE best-effort frames.json at the sessions root; lands the typed
+// line on the entry's stderr sink.
+//
+// THE process-exit guard wraps the termination sink (rows seam it; without
+// a seam it wraps IN PLACE and uninstall restores the original): fired ⇒
+// every wrapper call normalizes the code regardless of the argument; not
+// fired + holder installed + top unclaimed ⇒ the user-abort trigger (sync
+// pass, then the mapped code); otherwise clean passthrough. One prepended
+// sigterm handler fires the async pass and self-exits. No other signal
+// registration; the only host reach is the exit-sink wrap plus a bare
+// registration-value default.
 //
 // Hop mechanics (materializeFrame): synchronous dispatcher — the holder
 // guard throws synchronously when uninstalled, the latch is minted first,
 // and a detached continuation owns mint → switch-out → push → body →
-// record → switch-back → re-arm → pop-with-resolve. It captures the parent
-// transcript pre-hop, mints the child scope dir one segment under the
-// current frame's scope dir (no lineage options ever — who-called-whom
-// edges live only in the ledger), and switches back onto the captured file
-// with no yield before the re-arm. The caller's await mirrors the emitted
-// record by reference.
+// record → switch-back → re-arm → pop-with-resolve. The child scope dir
+// mints one segment under the current frame's (no lineage options — who-
+// called-whom edges live only in the ledger); the switch back lands on the
+// captured parent file with no yield before the re-arm. The caller's await
+// mirrors the emitted record by reference.
 //
-// Winds-unwound: release always runs after the staged span (pop-if-pushed +
-// latch resolve, once per hop), so the await RESOLVES with a shipped result
-// shape on every reachable fault path — it never hangs and never rejects in
-// this pass (reject stays reserved for shutdown). Pre-push faults leave the
-// ledger untouched; a post-attach/pre-record fault leaves the minted scope
-// dir behind as accepted residue (never rmdir a scope the platform may have
-// touched). Linear, non-concurrent, single-process.
+// Winds-unwound: release always runs after the staged span, so the await
+// RESOLVES with a shipped result shape on every reachable fault path — it
+// never hangs and never rejects in this pass (reject stays reserved for
+// shutdown). Pre-push faults leave the ledger untouched; a post-attach /
+// pre-record fault leaves the minted scope dir behind as accepted residue.
+// Linear, non-concurrent, single-process.
 //
-// Stance: this module never constructs or drives the terminal and attaches
-// no signal handlers — those belong to the outermost entry alone. A
-// responsive abort mid-hop settles through the body-fault path; a true
-// wedge freezes the chain (accepted per owner-hang semantics; recovery is
-// the death pass's).
-//
-// Accepted edge: the top entry's rebind closure performs a soft optional
-// call through TopFrameRebindView (required counters() defeats weak-type
-// TS2559; optional rebind? keeps the assignment legal while PioSession does
-// not declare the method). A missing rebind would skip the re-arm silently —
-// cannot occur in the shipped sequence; downstream suites carry tripwires.
+// Stance: the module never constructs or drives the terminal. A responsive
+// abort mid-hop settles through the body-fault path; a true wedge freezes
+// the chain (accepted per owner-hang semantics; recovery is the pass's).
 
 import { join } from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
@@ -46,8 +54,13 @@ import type { IdSeams } from "../sandbox/layout.ts";
 import { mintEngagementId } from "../sandbox/layout.ts";
 import type { SessionCounters } from "./pio-session.ts";
 import { PioSession } from "./pio-session.ts";
-import type { CapabilityResult, StatusEmitter } from "./status.ts";
-import { captureError, createStatusEmitter } from "./status.ts";
+import type {
+  CapabilityResult,
+  KillCaptureTarget,
+  SessionStatusError,
+  StatusEmitter,
+} from "./status.ts";
+import { captureError, createStatusEmitter, writeUtf8Sync } from "./status.ts";
 
 /** Outermost-entry stamp: audit-identity placeholder keeping the ledger
  * shape uniform across depths (the durable top record identity is owned by
@@ -75,6 +88,11 @@ const CANCELLED_SWITCH_MESSAGE =
 const SWITCH_BACK_FAILED_MESSAGE =
   "terminal-takeover: hop aborted \u2014 the switch back failed; the child record is durable";
 
+// THE one fixed interruption message (owner: the FrameKillError constructor
+// below); \u2014 escaped so the bytes survive toolkit glyph mangling.
+const FRAME_KILL_MESSAGE =
+  "terminal-takeover: frame interrupted \u2014 the ordered shutdown pass terminated the process";
+
 /** Module-local (module-owned, not the errors.ts home). Sets NO cause —
  * bare-identity capture reduces an instance to `{ type, message }`. */
 export class FrameEnvironmentError extends Error {
@@ -91,6 +109,19 @@ export class HopFaultError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "HopFaultError";
+  }
+}
+
+/** Module-local; exported for cross-module byte reference. Refines
+ * Error.cause with the CLOSED-VOCABULARY literal (the ContractViolationError
+ * refinement pattern — adopted by captureError, unlike the bare-identity hop
+ * forms). ONE fixed form, no interpolation. */
+export class FrameKillError extends Error {
+  readonly cause: "kill";
+  constructor() {
+    super(FRAME_KILL_MESSAGE);
+    this.name = "FrameKillError";
+    this.cause = "kill";
   }
 }
 
@@ -153,6 +184,10 @@ export interface ActiveFrame {
   readonly rebind: (session: AgentSession) => void;
   /** The RESERVED latch channel. */
   readonly latch: PendingLatch<CapabilityResult>;
+  /** LIVE accessor: the frame's record emitter (top: the attach cell;
+   * composed: the build-stage cell — undefined only in the realistic-
+   * impossible pre-build window; the pass skips that partial silently). */
+  readonly emitter: () => StatusEmitter | undefined;
 }
 
 /** Private structural view over the captured top-frame ref — typing
@@ -175,6 +210,10 @@ interface FrameHolder {
 }
 
 let holder: FrameHolder | undefined;
+
+/** Module cell: the top frame's record emitter (filled first-wins by
+ * attachTopEmitter; torn down with the holder). */
+let topEmitterCell: StatusEmitter | undefined;
 
 /** THE installed holder (loud fail when absent) — the module-private read
  * site for installed-state consumers. */
@@ -216,15 +255,19 @@ export function installFrameEnvironment(
         },
         // Minted at install, PARKED.
         latch: createPendingLatch<CapabilityResult>(),
+        // THE top-emitter cell (attachTopEmitter fills it first-wins;
+        // teardown resets it with the holder).
+        emitter: (): StatusEmitter | undefined => topEmitterCell,
       },
     ],
   };
 }
 
-/** The idempotent inverse: nulls the holder (a second call is a silent
- * no-op; no production caller exists). */
+/** The idempotent inverse: nulls the holder + the top-emitter cell (a
+ * second call is a silent no-op; no production caller exists). */
 export function teardownFrameEnvironment(): void {
   holder = undefined;
+  topEmitterCell = undefined;
 }
 
 /** Index 0 = outermost, last = innermost. Returns the LIVE internal array
@@ -235,6 +278,22 @@ export function activeFrames(): readonly ActiveFrame[] {
     throw new FrameEnvironmentError(NOT_INSTALLED_MESSAGE);
   }
   return holder.frames;
+}
+
+/** Bind the entry's emitter to the OUTERMOST ledger entry's LIVE accessor
+ * cell. FIRST-WINS: a second attach is a silent no-op (the entry attaches
+ * exactly once per process). Uninstalled ⇒ the pinned not-installed error
+ * (requireInstalled doctrine — reuse, don't invent bytes). */
+export function attachTopEmitter(emitter: StatusEmitter): void {
+  requireInstalled();
+  if (topEmitterCell === undefined) {
+    topEmitterCell = emitter;
+  }
+}
+
+/** Non-throwing holder predicate (the entry boundary branches on it). */
+export function isFrameEnvironmentInstalled(): boolean {
+  return holder !== undefined;
 }
 
 /** Input bag for ONE hop: the callee's capability stamp plus the body
@@ -284,6 +343,9 @@ class HopOrchestrator {
   /** Set at the build stage; the ledger accessors close over it and are
    * first invoked strictly after the build. */
   #childHost: PioSession | undefined;
+  /** Set at the build stage (the ledger entry's emitter accessor closes
+   * over it — mirrors the #childHost precedent). */
+  #childEmitter: StatusEmitter | undefined;
   /** Set at the ledger push; cleared at the release. */
   #pushed: ActiveFrame | undefined;
 
@@ -388,6 +450,9 @@ class HopOrchestrator {
       rebind: (session: AgentSession): void =>
         (this.#childHost as PioSession).rebind(session),
       latch: this.#latch,
+      // THE build-stage cell — undefined only in the realistic-impossible
+      // push-before-build window (the pass skips that partial silently).
+      emitter: (): StatusEmitter | undefined => this.#childEmitter,
     };
     frames.push(entry);
     this.#pushed = entry;
@@ -413,6 +478,7 @@ class HopOrchestrator {
       // Captured constant (see the ledger entry wiring above).
       sessionFile: (): string | undefined => attached.childFile,
     });
+    this.#childEmitter = childEmitter;
     return { childHost, childEmitter };
   }
 
@@ -492,4 +558,342 @@ export function materializeFrame(
     latch.resolve({ ok: false, errors: [captureError(error)] });
   });
   return latch.value;
+}
+
+// ── THE ordered shutdown pass + process-exit guard ───────────────────────
+
+/** Closed trigger vocabulary (erased type alias). */
+export type ShutdownCause = "user-abort" | "sigterm" | "fatal";
+
+/** THE per-cause record literals (the sigterm form is the BYTES-STABLE
+ * shipped pin; the others are the pass's own closed forms). */
+const CAUSE_LITERALS: Record<ShutdownCause, SessionStatusError> = {
+  "user-abort": { type: "user-abort", cause: "kill" },
+  sigterm: { type: "SIGTERM", cause: "kill" },
+  fatal: { type: "fatal", cause: "kill" },
+};
+
+/** THE normalized exit-code map (idempotent under the wrapper — applied
+ * regardless of the incoming argument once fired). 130 matches the host-
+ * side child-exit passthrough. */
+const EXIT_CODES: Record<ShutdownCause, number> = {
+  "user-abort": 130,
+  sigterm: 1,
+  fatal: 1,
+};
+
+export interface ShutdownGuardSeams {
+  /** Underlying termination sink. Default: the native exit. */
+  readonly exit?: (code: number) => void;
+  /** Signal-registration target. Default: the bare process value (structural
+   * conformance — no member access beyond the exit seam itself). */
+  readonly signals?: KillCaptureTarget;
+}
+
+export interface ShutdownGuard {
+  /** THE wrapped termination sink (rows invoke it to simulate an in-
+   * terminal exit). */
+  readonly exit: (code?: number) => void;
+  /** Run the pass NOW (first trigger wins; later calls no-op). Resolves when
+   * the pass completes (through the typed line). The sigterm variant
+   * self-exits through the wrapped sink at that point; the fatal variant
+   * does NOT — its caller continues and rides the resolution channel. */
+  trigger(cause: ShutdownCause): Promise<void>;
+  /** Idempotent disable: the wrapper degrades to raw passthrough, the
+   * handler no-ops, and the native sink is restored when it was wrapped.
+   * No listener removal required — a stale handler on a dead target is
+   * inert. */
+  uninstall(): void;
+}
+
+/** Pass state lives on the GUARD (not the holder) so the uninstalled window
+ * can still normalize: silent death = cause recorded + code normalized, NO
+ * legs run (there is nothing to describe). */
+interface GuardState {
+  cause: ShutdownCause | undefined;
+  fired: boolean;
+  /** Stop-once flag over the terminal-stop leg. */
+  stoppedOnce: boolean;
+  disabled: boolean;
+}
+
+/** Leg (a): reject the pending COMPOSED latches INNERMOST-FIRST with the
+ * pinned FrameKillError. The PARKED top latch is skipped (no consumer —
+ * rejecting it would raise an unhandled-rejection hazard; process death
+ * reclaims it). */
+function rejectComposedLatches(frames: readonly ActiveFrame[]): void {
+  for (let i = frames.length - 1; i >= 1; i -= 1) {
+    frames[i].latch.reject(new FrameKillError());
+  }
+}
+
+/** Legs (b)+(c) — NON-user-abort triggers only (the in-terminal path owns
+ * both on the user-abort leg): stop the mounted terminal (stop-once), then
+ * dispose the shared runtime. Every secondary fault swallowed — a dying
+ * process yields to the primary death, and racing duplicates arrive
+ * tolerated. */
+async function stopAndDispose(
+  context: FrameEnvironmentContext,
+  state: GuardState,
+): Promise<void> {
+  if (!state.stoppedOnce) {
+    state.stoppedOnce = true;
+    try {
+      context.terminalStop();
+    } catch {
+      // Secondary fault — swallowed.
+    }
+  }
+  try {
+    await context.topFrame.runtime.dispose();
+  } catch {
+    // Secondary fault — swallowed.
+  }
+}
+
+/** Leg (d) SYNC walk: the per-frame PARTIALS innermost-first over the
+ * trigger-time snapshot; the fatal walk EXCLUDES the top (its caller owns
+ * the captured-error record there); a missing frame emitter skips silently
+ * (realistic-impossible pre-build window). Claim-respecting throughout — a
+ * completed frame's terminal record is NEVER overwritten. */
+function emitPartialsSync(
+  frames: readonly ActiveFrame[],
+  cause: ShutdownCause,
+): void {
+  const literal = CAUSE_LITERALS[cause];
+  for (let i = frames.length - 1; i >= 0; i -= 1) {
+    const frame = frames[i];
+    if (cause === "fatal" && frame.depth === 0) {
+      continue;
+    }
+    const emitter = frame.emitter();
+    if (emitter !== undefined) {
+      emitter.emitPartialSync(literal);
+    }
+  }
+}
+
+/** Leg (d) ASYNC walk: the same shape AWAITED sequentially — each honors
+ * its emitter's grace window (resolves immediately in practice: no live-run
+ * settle hook exists past the entry). */
+async function emitPartialsAsync(
+  frames: readonly ActiveFrame[],
+  cause: ShutdownCause,
+): Promise<void> {
+  const literal = CAUSE_LITERALS[cause];
+  for (let i = frames.length - 1; i >= 0; i -= 1) {
+    const frame = frames[i];
+    if (cause === "fatal" && frame.depth === 0) {
+      continue;
+    }
+    const emitter = frame.emitter();
+    if (emitter !== undefined) {
+      await emitter.emitPartial(literal);
+    }
+  }
+}
+
+/** Leg (e): ONE best-effort SYNCHRONOUS ledger snapshot at
+ * `<sessionsRoot>/frames.json` — the frame tree (who-called-whom nesting
+ * edges durable on abnormal exit ONLY), the INNERMOST active scope, and the
+ * cause token. Canonical key order (cause → activeScope → frames; per node
+ * depth → capability → scopeDir → sessionFile → children; sessionFile
+ * ABSENT when the live accessor is unnamed — never null); 2-space indent +
+ * trailing newline (same discipline as serializeStatus). Written ONLY on
+ * pass triggers; every fault swallowed (the writer swallows). */
+function writeLedgerSnapshot(
+  sessionsRoot: string,
+  frames: readonly ActiveFrame[],
+  cause: ShutdownCause,
+): void {
+  let subtree: unknown[] = [];
+  for (let i = frames.length - 1; i >= 0; i -= 1) {
+    const frame = frames[i];
+    const node: Record<string, unknown> = {
+      depth: frame.depth,
+      capability: {
+        name: frame.capability.name,
+        version: frame.capability.version,
+      },
+      scopeDir: frame.scopeDir,
+    };
+    const file = frame.sessionFile();
+    if (file !== undefined) {
+      node.sessionFile = file;
+    }
+    node["children"] = subtree;
+    subtree = [node];
+  }
+  const innermost = frames[frames.length - 1];
+  writeUtf8Sync(
+    join(sessionsRoot, "frames.json"),
+    `${JSON.stringify(
+      { cause, activeScope: innermost.scopeDir, frames: subtree },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+/** Leg (f): THE typed exit line — AFTER cooked-mode restore, through the
+ * holder's stderr sink (lines arrive WITHOUT trailing newline; the sink
+ * appends). Best-effort: a faulting sink loses to the primary death. */
+function emitTypedLine(
+  stderr: (line: string) => void,
+  frame: ActiveFrame,
+  cause: ShutdownCause,
+): void {
+  try {
+    stderr(
+      `terminal-takeover: shutdown \u2014 frame '${frame.capability.name}@${frame.capability.version}' (depth ${frame.depth}) ended by ${cause}`,
+    );
+  } catch {
+    // Best-effort — a faulting sink must never mask the primary death.
+  }
+}
+
+/** THE synchronous pass (user-abort — everything completes before the
+ * wrapper delegates to the original sink): legs (a), (d-sync), (e), (f).
+ * Legs (b)/(c) are IM-owned on this path; NO awaits anywhere (structurally
+ * enforced: the sync writers return void). Holder data is read at execution
+ * time; an uninstalled holder runs NO legs (nothing to describe). */
+function runPassSync(cause: ShutdownCause, state: GuardState): void {
+  state.cause = cause;
+  state.fired = true;
+  const installed = holder;
+  if (installed === undefined) {
+    return; // silent death: cause + code normalized, no legs
+  }
+  const frames = installed.frames.slice(); // trigger-time snapshot
+  rejectComposedLatches(frames);
+  emitPartialsSync(frames, cause);
+  writeLedgerSnapshot(installed.context.sessionsRoot, frames, cause);
+  emitTypedLine(installed.context.stderr, frames[frames.length - 1], cause);
+}
+
+/** THE asynchronous pass (sigterm / fatal): leg (a) sync, legs (b)/(c)
+ * awaited best-effort, leg (d) AWAITED innermost-first, legs (e)/(f) sync.
+ * Same silent-death behavior for the uninstalled window. */
+async function runPassAsync(
+  cause: ShutdownCause,
+  state: GuardState,
+): Promise<void> {
+  state.cause = cause;
+  state.fired = true;
+  const installed = holder;
+  if (installed === undefined) {
+    return;
+  }
+  const frames = installed.frames.slice();
+  rejectComposedLatches(frames);
+  if (cause !== "user-abort") {
+    await stopAndDispose(installed.context, state);
+  }
+  await emitPartialsAsync(frames, cause);
+  writeLedgerSnapshot(installed.context.sessionsRoot, frames, cause);
+  emitTypedLine(installed.context.stderr, frames[frames.length - 1], cause);
+}
+
+/** Structural view over the native termination sink (the in-place wrap
+ * needs a cast: the host type admits wider codes than the house signature).
+ */
+interface ExitSinkView {
+  exit: (code?: number) => void;
+}
+
+/** Install the process-exit guard and return its handle. Does THREE things:
+ * wraps the underlying sink (rows supply a seam — the suite never wraps the
+ * real process sink; with NO seam the wrap lands IN PLACE over the native
+ * one and uninstall restores it), prepends ONE sigterm handler (last
+ * prepended ⇒ first to run — ahead of the entry's own kill capture), and
+ * exposes the handle. */
+export function installExitGuard(seams?: ShutdownGuardSeams): ShutdownGuard {
+  const nativeView = process as ExitSinkView;
+  // The seam signature takes a REQUIRED code; the house signature widens
+  // it optional (0 when absent) — adapt without inventing new bytes.
+  const seamExit = seams?.exit;
+  const original: (code?: number) => void =
+    seamExit === undefined
+      ? nativeView.exit
+      : (code?: number): void => {
+          seamExit(code ?? 0);
+        };
+  const signals: KillCaptureTarget = seams?.signals ?? process;
+  const state: GuardState = {
+    cause: undefined,
+    fired: false,
+    stoppedOnce: false,
+    disabled: false,
+  };
+
+  /** THE wrapper (the discrimination crux): FIRED ⇒ the code is NORMALIZED
+   * by the recorded cause — idempotent regardless of the incoming argument
+   * (repeated wrapper calls re-normalize). NOT fired + holder INSTALLED +
+   * the top record UNCLAIMED (an absent attach cell counts as unclaimed —
+   * defensive) ⇒ THE USER-ABORT TRIGGER: sync pass, then the mapped code.
+   * Otherwise CLEAN PASSTHROUGH — success OR degraded failure, both of
+   * which settled the top claim before exiting: no writes, no typed line,
+   * no state mutation (structurally unreachable pass). */
+  const wrapper: (code?: number) => void = (code = 0): void => {
+    if (state.disabled) {
+      original(code);
+      return;
+    }
+    if (state.cause !== undefined) {
+      original(EXIT_CODES[state.cause]);
+      return;
+    }
+    const installed = holder;
+    if (installed !== undefined) {
+      const top = installed.frames[0];
+      const topEmitter = top === undefined ? undefined : top.emitter();
+      if (topEmitter === undefined || !topEmitter.hasClaimed()) {
+        runPassSync("user-abort", state);
+        original(EXIT_CODES["user-abort"]);
+        return;
+      }
+    }
+    original(code);
+  };
+
+  const wrappedNative = seamExit === undefined;
+  if (wrappedNative) {
+    nativeView.exit = wrapper;
+  }
+
+  async function triggerInternal(cause: ShutdownCause): Promise<void> {
+    if (state.disabled || state.fired) {
+      return; // first trigger wins; later calls no-op
+    }
+    await runPassAsync(cause, state);
+    if (cause === "sigterm") {
+      // Signal listeners defer default termination — without an explicit
+      // exit the process hangs: self-exit through the guard's OWN wrapped
+      // sink (wrapper ⇒ original, normalized).
+      wrapper();
+    }
+  }
+
+  /** THE sigterm handler: fire the async pass (self-exit variant), swallow
+   * EVERY fault (a signal handler must never throw into runtime dispatch).
+   */
+  const handler = (): void => {
+    try {
+      void triggerInternal("sigterm");
+    } catch {
+      // Silent — the trigger path is async; nothing escapes here.
+    }
+  };
+  signals.prependListener("SIGTERM", handler);
+
+  return {
+    exit: wrapper,
+    trigger: (cause: ShutdownCause): Promise<void> => triggerInternal(cause),
+    uninstall: (): void => {
+      state.disabled = true;
+      if (wrappedNative) {
+        nativeView.exit = original; // restore the saved native sink
+      }
+    },
+  };
 }

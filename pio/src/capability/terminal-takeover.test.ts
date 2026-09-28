@@ -43,13 +43,20 @@ import type { IdSeams } from "../sandbox/layout.ts";
 import { ContractViolationError, PhaseBudgetError } from "./errors.ts";
 import type { SessionVariableStore } from "./pio-session.ts";
 import { PioSession } from "./pio-session.ts";
-import type { CapabilityResult, KillCaptureTarget } from "./status.ts";
+import type {
+  CapabilityResult,
+  KillCaptureTarget,
+  StatusEmitter,
+} from "./status.ts";
 import { captureError, createStatusEmitter } from "./status.ts";
-import type { ActiveFrame } from "./terminal-takeover.ts";
+import type { ActiveFrame, ShutdownGuard } from "./terminal-takeover.ts";
 import {
   activeFrames,
+  attachTopEmitter,
   FrameEnvironmentError,
+  FrameKillError,
   HopFaultError,
+  installExitGuard,
   installFrameEnvironment,
   materializeFrame,
   teardownFrameEnvironment,
@@ -459,6 +466,10 @@ beforeEach(() => {
   sdkHarness.reset();
 });
 
+// THE installed guard of the current row (module-scoped state — the guard
+// registry is per-file; afterEach uninstalls so no row leaks the wrapper).
+let currentGuard: ShutdownGuard | undefined;
+
 const tempRoots: string[] = [];
 let tempCursor = 0;
 
@@ -473,6 +484,8 @@ function newTempRoot(): string {
 }
 
 afterEach(() => {
+  currentGuard?.uninstall();
+  currentGuard = undefined;
   for (const root of tempRoots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
@@ -529,6 +542,67 @@ const NOT_INSTALLED_REPLICA =
   "terminal-takeover: frame environment not installed \u2014 a session-absent capability can only run under the engaged entry";
 const DOUBLE_INSTALL_REPLICA =
   "terminal-takeover: frame environment already installed \u2014 single-holder doctrine; teardown before reinstalling";
+
+// THE replicated pinned interruption message (owner: the FRAME_KILL_MESSAGE
+// constant + FrameKillError constructor in ./terminal-takeover.ts).
+const FRAME_KILL_REPLICA =
+  "terminal-takeover: frame interrupted \u2014 the ordered shutdown pass terminated the process";
+
+// THE typed exit line replica (owner: the leg-(f) template in
+// ./terminal-takeover.ts). Lines arrive WITHOUT trailing newline.
+const typedLineReplica = (
+  name: string,
+  version: string,
+  depth: number,
+  cause: "user-abort" | "sigterm" | "fatal",
+): string =>
+  `terminal-takeover: shutdown \u2014 frame '${name}@${version}' (depth ${depth}) ended by ${cause}`;
+
+/** THE harness top-emitter stamp (stamped onto the attached harness
+ * emitter; distinct from the ledger's placeholder top stamp). */
+const TOP_STAMP = { name: "engaged-cap", version: "9.9.9" } as const;
+
+/** Attach a REAL harness status emitter (rooted at the sessions root) to
+ * the outermost ledger entry: live token scalar + live current-handle
+ * transcript, injected exit recorder (hygiene: the suite never lets the
+ * real sink reach the host), optional signal target for arming. Returns
+ * the emitter + its recorded termination requests. */
+function attachHarnessTopEmitter(
+  world: PhysicsWorld,
+  top: PioSession,
+  root: string,
+  signals?: KillCaptureTarget,
+): { readonly emitter: StatusEmitter; readonly exitCalls: number[] } {
+  const exitCalls: number[] = [];
+  const emitter = createStatusEmitter({
+    sessionsRoot: root,
+    capability: TOP_STAMP,
+    tokens: (): number => top.counters().tokens,
+    sessionFile: (): string | undefined => world.runtime.session.sessionFile,
+    exit: (code: number): void => {
+      exitCalls.push(code);
+    },
+    signals,
+  });
+  attachTopEmitter(emitter);
+  return { emitter, exitCalls };
+}
+
+/** Guard-seam builder: exit spy + signal fake (reused when provided) + the
+ * REAL installExitGuard (rows ALWAYS supply the exit seam — no row wraps
+ * the real process sink). Registered for the afterEach uninstall hygiene
+ * (module-scoped state). */
+function buildGuardSeams(existingSignals?: ReturnType<typeof makeSignalFake>): {
+  readonly exitSpy: ReturnType<typeof vi.fn>;
+  readonly signals: ReturnType<typeof makeSignalFake>;
+  readonly guard: ShutdownGuard;
+} {
+  const exitSpy = vi.fn((): void => {});
+  const signals = existingSignals ?? makeSignalFake();
+  const guard = installExitGuard({ exit: exitSpy, signals: signals.target });
+  currentGuard = guard;
+  return { exitSpy, signals, guard };
+}
 
 describe("installFrameEnvironment (single-holder doctrine)", () => {
   it("second install WITHOUT teardown throws LOUDLY — module-local FrameEnvironmentError, suite-pinned bytes, bare identity (no cause) — and the ORIGINAL holder survives intact", () => {
@@ -1775,6 +1849,1268 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
   });
 });
 
+describe("shutdown pass matrix (K rows — trigger × depth over the physics world)", () => {
+  it("K1 user-abort × top-only: the wrapper discriminator fires the SYNC pass (holder installed + top UNCLAIMED) — the top PARTIAL lands ({user-abort, kill} shape stamped from the attached harness emitter, canonical bytes, live transcript at trigger time), the ONE-node frames.json snapshot pins cause token + activeScope echo + empty children in canonical order, the typed line names top@0.0.0 (depth 0), the exit sink receives EXACTLY [130], PASS-ORIGINATED stop/dispose stay ZERO (leg skip — totals remain the row's simulated 1/1), stderr carries exactly the one typed line, stdout stays zero", async () => {
+    const { root, world, top } = buildAlphaWorld("/work/k1");
+    const { emitter: topEmitter } = attachHarnessTopEmitter(world, top, root);
+    const { exitSpy, guard } = buildGuardSeams();
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((): boolean => true);
+    try {
+      // THE row plays the IM internals of the in-terminal shutdown.
+      world.terminal.stop();
+      await world.runtime.dispose();
+      // Trigger through the wrapped sink (the in-terminal exit attempt).
+      guard.exit(0);
+      expect(exitSpy).toHaveBeenCalledTimes(1);
+      expect(exitSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual([
+        130,
+      ]);
+      // Pass-originated stop/dispose = 0 (leg skip): totals remain the
+      // row's simulated 1/1.
+      expect(world.terminal.stop).toHaveBeenCalledTimes(1);
+      expect(world.runtime.dispose).toHaveBeenCalledTimes(1);
+      // THE top partial record (first-ever top record on this path).
+      expect(topEmitter.hasClaimed()).toBe(true);
+      const raw = readFileSync(join(root, "top", "status.json"), "utf8");
+      const parsed = expectCanonicalRecord(raw, [
+        "ok",
+        "capability",
+        "outputs",
+        "errors",
+        "transcriptRef",
+        "tokens",
+        "durationMs",
+      ]);
+      expect(parsed.ok).toBe(false);
+      expect(parsed.capability).toEqual({
+        name: TOP_STAMP.name,
+        version: TOP_STAMP.version,
+        source: "builtin",
+      });
+      expect(parsed.outputs).toStrictEqual({});
+      expect(parsed.errors).toStrictEqual([
+        { type: "user-abort", cause: "kill" },
+      ]);
+      expect(parsed.transcriptRef).toBe(
+        `${basename(root)}/top/parent-transcript.jsonl`,
+      );
+      expect(parsed.tokens).toBe(0);
+      // THE ledger snapshot (one-node tree, canonical key order).
+      const snapRaw = readFileSync(join(root, "frames.json"), "utf8");
+      expect(snapRaw.endsWith("\n")).toBe(true);
+      expect(snapRaw.startsWith('{\n  "cause"')).toBe(true);
+      const snapKeys = [...snapRaw.matchAll(/^ {2}"([A-Za-z]+)":/gm)].map(
+        (match) => match[1],
+      );
+      expect(snapKeys).toEqual(["cause", "activeScope", "frames"]);
+      const snap = JSON.parse(snapRaw) as Record<string, unknown>;
+      expect(snap.cause).toBe("user-abort");
+      expect(snap.activeScope).toBe(root);
+      const node = (snap.frames as unknown[])[0] as Record<string, unknown>;
+      expect(Object.keys(node)).toEqual([
+        "depth",
+        "capability",
+        "scopeDir",
+        "sessionFile",
+        "children",
+      ]);
+      expect(node.depth).toBe(0);
+      expect(node.capability).toEqual({ name: "top", version: "0.0.0" });
+      expect(node.scopeDir).toBe(root);
+      expect(node.sessionFile).toBe(
+        join(root, "top", "parent-transcript.jsonl"),
+      );
+      expect(node.children).toStrictEqual([]);
+      // THE typed line — byte-exact, on the holder stderr sink, nothing else.
+      expect(world.stderr).toHaveBeenCalledTimes(1);
+      expect(world.stderr.mock.calls[0]?.[0]).toBe(
+        typedLineReplica("top", "0.0.0", 0, "user-abort"),
+      );
+      expect(recursiveListing(root)).toEqual([
+        "frames.json",
+        "top/parent-transcript.jsonl",
+        "top/status.json",
+      ]);
+      expect(stdoutSpy).not.toHaveBeenCalled();
+    } finally {
+      stdoutSpy.mockRestore();
+    }
+  });
+
+  it("K2 user-abort × mid-child: BOTH records land ALL in the partial shape (sync writes beat every cascade fs op) — the child stamped from its own capability over its scope dir AND the top from the attached harness emitter (live current-handle transcript at trigger = the child file); the child's PENDING latch REJECTS and reduces (REAL captureError) to EXACTLY {type:'FrameKillError', cause:'kill', message:<pinned>}; the TWO-NODE snapshot nests the who-called-whom edge with activeScope = the child's scope dir; the typed line names the CHILD frame (depth 1); exit [130]; CASCADE DRIVEN HOME: post-drain re-reads BYTE-IDENTICAL (claim-respect under a racing cascade); the PARKED top latch stays UNSETTLED; pass-originated stop/dispose zero", async () => {
+    const { root, world, top } = buildAlphaWorld("/work/k2");
+    const { emitter: topEmitter } = attachHarnessTopEmitter(world, top, root);
+    const { exitSpy, guard } = buildGuardSeams();
+    const gate = rowGate();
+    const childFile = join(root, CHILD_ID_A, "top", MINTED_FILE(1));
+    scriptSwitches(world, {
+      kind: "swap",
+      sessionId: "sess-child-a",
+      persist: (path: string): void => {
+        seedTranscript(path, "<seed>\n");
+      },
+    });
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((): boolean => true);
+    try {
+      const promise = materializeFrame({
+        capability: CONTRACT_ALPHA,
+        idSeams: SEAMS_A,
+        body: async (): Promise<Record<string, unknown>> => {
+          gate.enter();
+          await gate.opened;
+          return {};
+        },
+      });
+      // Body reached = switch-out + push landed (ledger [top, child]).
+      await gate.entered;
+      // THE parked-latch tracker attaches BEFORE the trigger.
+      const parkedSettled = { value: false };
+      activeFrames()[0].latch.value.then(
+        (): void => {
+          parkedSettled.value = true;
+        },
+        (): void => {
+          parkedSettled.value = true;
+        },
+      );
+      // Usage lands on the CURRENT handle — the child's (hand-computed Σ33).
+      emitLive(world.runtime.session, assistantMessageEnd(17, 9, 5, 2));
+      // THE row plays the IM internals, then triggers the wrapper.
+      world.terminal.stop();
+      await world.runtime.dispose();
+      guard.exit(0);
+      // Pre-drain reads (the sync-mode determinism guarantee).
+      const rawChildBefore = readFileSync(
+        join(root, CHILD_ID_A, "top", "status.json"),
+        "utf8",
+      );
+      const rawTopBefore = readFileSync(
+        join(root, "top", "status.json"),
+        "utf8",
+      );
+      // Latch rejection consumed by expectation (no unhandled-rejection
+      // noise) — REAL captureError reduction.
+      const rejected = await promise.catch((error: unknown): unknown => error);
+      expect(rejected).toBeInstanceOf(FrameKillError);
+      expect(captureError(rejected)).toStrictEqual({
+        type: "FrameKillError",
+        cause: "kill",
+        message: FRAME_KILL_REPLICA,
+      });
+      // Cascade drain + macrotask flush, then the RE-READS: byte-identical
+      // (the cascade's delegated emissions performed no second write).
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(
+        readFileSync(join(root, CHILD_ID_A, "top", "status.json"), "utf8"),
+      ).toBe(rawChildBefore);
+      expect(readFileSync(join(root, "top", "status.json"), "utf8")).toBe(
+        rawTopBefore,
+      );
+      // THE child partial (its own capability stamp + scope-dir placement).
+      const childParsed = expectCanonicalRecord(rawChildBefore, [
+        "ok",
+        "capability",
+        "outputs",
+        "errors",
+        "transcriptRef",
+        "tokens",
+        "durationMs",
+      ]);
+      expect(childParsed.ok).toBe(false);
+      expect(childParsed.capability).toEqual({
+        name: "cap-alpha",
+        version: "1.0.0",
+        source: "builtin",
+      });
+      expect(childParsed.errors).toStrictEqual([
+        { type: "user-abort", cause: "kill" },
+      ]);
+      expect(childParsed.transcriptRef).toBe(
+        `${CHILD_ID_A}/top/${MINTED_FILE(1)}`,
+      );
+      expect(childParsed.tokens).toBe(33);
+      // THE top partial — the LIVE current-handle transcript AT TRIGGER is
+      // the child file (each frame's record honesty rule).
+      const topParsed = expectCanonicalRecord(rawTopBefore, [
+        "ok",
+        "capability",
+        "outputs",
+        "errors",
+        "transcriptRef",
+        "tokens",
+        "durationMs",
+      ]);
+      expect(topParsed.capability).toEqual({
+        name: TOP_STAMP.name,
+        version: TOP_STAMP.version,
+        source: "builtin",
+      });
+      expect(topParsed.errors).toStrictEqual([
+        { type: "user-abort", cause: "kill" },
+      ]);
+      expect(topParsed.transcriptRef).toBe(
+        `${basename(root)}/${CHILD_ID_A}/top/${MINTED_FILE(1)}`,
+      );
+      expect(topParsed.tokens).toBe(0);
+      expect(topEmitter.hasClaimed()).toBe(true);
+      // THE two-node snapshot (nested edge top→child, innermost scope).
+      const snap = JSON.parse(
+        readFileSync(join(root, "frames.json"), "utf8"),
+      ) as Record<string, unknown>;
+      expect(snap.cause).toBe("user-abort");
+      expect(snap.activeScope).toBe(join(root, CHILD_ID_A));
+      const nodes = snap.frames as unknown[];
+      expect(nodes).toHaveLength(1);
+      const outerNode = nodes[0] as Record<string, unknown>;
+      const innerNodes = outerNode.children as unknown[];
+      expect(innerNodes).toHaveLength(1);
+      const innerNode = innerNodes[0] as Record<string, unknown>;
+      expect(outerNode.depth).toBe(0);
+      expect(outerNode.scopeDir).toBe(root);
+      // Live accessor at trigger time = the child file for BOTH nodes.
+      expect(outerNode.sessionFile).toBe(childFile);
+      expect(innerNode.depth).toBe(1);
+      expect(innerNode.scopeDir).toBe(join(root, CHILD_ID_A));
+      expect(innerNode.sessionFile).toBe(childFile); // captured constant
+      expect(innerNode.children).toStrictEqual([]);
+      // Typed line names the CHILD frame.
+      expect(world.stderr).toHaveBeenCalledTimes(1);
+      expect(world.stderr.mock.calls[0]?.[0]).toBe(
+        typedLineReplica("cap-alpha", "1.0.0", 1, "user-abort"),
+      );
+      expect(exitSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual([
+        130,
+      ]);
+      // Pass-originated zeros (totals remain the row's simulated 1/1).
+      expect(world.terminal.stop).toHaveBeenCalledTimes(1);
+      expect(world.runtime.dispose).toHaveBeenCalledTimes(1);
+      // THE parked top latch STILL UNSETTLED (never settled — process death
+      // reclaims it; the unhandled-rejection hazard is avoided by skipping).
+      expect(parkedSettled.value).toBe(false);
+      expect(recursiveListing(root)).toEqual([
+        `${CHILD_ID_A}/top/${MINTED_FILE(1)}`,
+        `${CHILD_ID_A}/top/status.json`,
+        "frames.json",
+        "top/parent-transcript.jsonl",
+        "top/status.json",
+      ]);
+      expect(stdoutSpy).not.toHaveBeenCalled();
+    } finally {
+      stdoutSpy.mockRestore();
+    }
+  });
+
+  it("K3 user-abort × mid-grandchild: THREE records (grandchild + B + top) ALL in the partial shape with the innermost-first structure mirrored in the THREE-NODE nested snapshot (activeScope = the grandchild's scope dir, sole-child edges node i → node i+1); BOTH held composed latches (outer + inner) reject with the pinned FrameKillError; the typed line names the GRANDCHILD (depth 2); exit [130]; full cascade-driven-home byte-stability across ALL three files; pass-originated stop/dispose zero", async () => {
+    const { root, world, top } = buildAlphaWorld("/work/k3");
+    const { emitter: topEmitter } = attachHarnessTopEmitter(world, top, root);
+    const { exitSpy, guard } = buildGuardSeams();
+    const gate = rowGate();
+    const bFile = join(root, CHILD_ID_B, "top", MINTED_FILE(1));
+    const cFile = join(root, CHILD_ID_B, CHILD_ID_C, "top", MINTED_FILE(2));
+    scriptSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-child-b",
+        persist: (path: string): void => {
+          seedTranscript(path, "<b>\n");
+        },
+      },
+      {
+        kind: "swap",
+        sessionId: "sess-child-c",
+        persist: (path: string): void => {
+          seedTranscript(path, "<c>\n");
+        },
+      },
+    );
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((): boolean => true);
+    try {
+      let innerPromiseRef: Promise<CapabilityResult> | undefined;
+      const outerPromise = materializeFrame({
+        capability: CONTRACT_BETA,
+        idSeams: SEAMS_B,
+        body: async (): Promise<Record<string, unknown>> => {
+          innerPromiseRef = materializeFrame({
+            capability: CONTRACT_GAMMA,
+            idSeams: SEAMS_C,
+            body: async (): Promise<Record<string, unknown>> => {
+              gate.enter();
+              await gate.opened;
+              return {};
+            },
+          });
+          await innerPromiseRef;
+          return {};
+        },
+      });
+      // Inner body reached = ledger [top, B, C].
+      await gate.entered;
+      const parkedSettled = { value: false };
+      activeFrames()[0].latch.value.then(
+        (): void => {
+          parkedSettled.value = true;
+        },
+        (): void => {
+          parkedSettled.value = true;
+        },
+      );
+      // Usage lands on the CURRENT handle — the grandchild's (Σ11).
+      emitLive(world.runtime.session, assistantMessageEnd(2, 3, 5, 1));
+      world.terminal.stop();
+      await world.runtime.dispose();
+      guard.exit(0);
+      // Pre-drain reads.
+      const rawC = readFileSync(
+        join(root, CHILD_ID_B, CHILD_ID_C, "top", "status.json"),
+        "utf8",
+      );
+      const rawB = readFileSync(
+        join(root, CHILD_ID_B, "top", "status.json"),
+        "utf8",
+      );
+      const rawTop = readFileSync(join(root, "top", "status.json"), "utf8");
+      // BOTH held latches rejected with the pinned caused capture.
+      const innerRejected = await innerPromiseRef!.catch(
+        (error: unknown): unknown => error,
+      );
+      expect(innerRejected).toBeInstanceOf(FrameKillError);
+      expect(captureError(innerRejected)).toStrictEqual({
+        type: "FrameKillError",
+        cause: "kill",
+        message: FRAME_KILL_REPLICA,
+      });
+      const outerRejected = await outerPromise.catch(
+        (error: unknown): unknown => error,
+      );
+      expect(outerRejected).toBeInstanceOf(FrameKillError);
+      expect(captureError(outerRejected)).toStrictEqual({
+        type: "FrameKillError",
+        cause: "kill",
+        message: FRAME_KILL_REPLICA,
+      });
+      // Full cascade drain + flush: ALL three files byte-stable.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(
+        readFileSync(
+          join(root, CHILD_ID_B, CHILD_ID_C, "top", "status.json"),
+          "utf8",
+        ),
+      ).toBe(rawC);
+      expect(
+        readFileSync(join(root, CHILD_ID_B, "top", "status.json"), "utf8"),
+      ).toBe(rawB);
+      expect(readFileSync(join(root, "top", "status.json"), "utf8")).toBe(
+        rawTop,
+      );
+      // The GRANDCHILD partial (partial shape exact).
+      const cParsed = expectCanonicalRecord(rawC, [
+        "ok",
+        "capability",
+        "outputs",
+        "errors",
+        "transcriptRef",
+        "tokens",
+        "durationMs",
+      ]);
+      expect(cParsed.capability).toEqual({
+        name: "cap-gamma",
+        version: "3.0.0",
+        source: "builtin",
+      });
+      expect(cParsed.errors).toStrictEqual([
+        { type: "user-abort", cause: "kill" },
+      ]);
+      expect(cParsed.transcriptRef).toBe(`${CHILD_ID_C}/top/${MINTED_FILE(2)}`);
+      expect(cParsed.tokens).toBe(11);
+      // The B partial.
+      const bParsed = expectCanonicalRecord(rawB, [
+        "ok",
+        "capability",
+        "outputs",
+        "errors",
+        "transcriptRef",
+        "tokens",
+        "durationMs",
+      ]);
+      expect(bParsed.capability).toEqual({
+        name: "cap-beta",
+        version: "2.0.0",
+        source: "builtin",
+      });
+      expect(bParsed.errors).toStrictEqual([
+        { type: "user-abort", cause: "kill" },
+      ]);
+      expect(bParsed.transcriptRef).toBe(`${CHILD_ID_B}/top/${MINTED_FILE(1)}`);
+      expect(bParsed.tokens).toBe(0);
+      // The top partial (live current handle at trigger = the C file).
+      const topParsed = expectCanonicalRecord(rawTop, [
+        "ok",
+        "capability",
+        "outputs",
+        "errors",
+        "transcriptRef",
+        "tokens",
+        "durationMs",
+      ]);
+      expect(topParsed.capability).toEqual({
+        name: TOP_STAMP.name,
+        version: TOP_STAMP.version,
+        source: "builtin",
+      });
+      expect(topParsed.errors).toStrictEqual([
+        { type: "user-abort", cause: "kill" },
+      ]);
+      expect(topParsed.transcriptRef).toBe(
+        `${basename(root)}/${CHILD_ID_B}/${CHILD_ID_C}/top/${MINTED_FILE(2)}`,
+      );
+      expect(topEmitter.hasClaimed()).toBe(true);
+      // THE three-node snapshot (sole-child adjacency: node i's child = i+1).
+      const snap = JSON.parse(
+        readFileSync(join(root, "frames.json"), "utf8"),
+      ) as Record<string, unknown>;
+      expect(snap.cause).toBe("user-abort");
+      expect(snap.activeScope).toBe(join(root, CHILD_ID_B, CHILD_ID_C));
+      const rootNodes = snap.frames as unknown[];
+      expect(rootNodes).toHaveLength(1);
+      const n0 = rootNodes[0] as Record<string, unknown>;
+      const n1List = n0.children as unknown[];
+      expect(n1List).toHaveLength(1);
+      const n1 = n1List[0] as Record<string, unknown>;
+      const n2List = n1.children as unknown[];
+      expect(n2List).toHaveLength(1);
+      const n2 = n2List[0] as Record<string, unknown>;
+      expect([n0.depth, n1.depth, n2.depth]).toEqual([0, 1, 2]);
+      expect(n0.scopeDir).toBe(root);
+      expect(n1.scopeDir).toBe(join(root, CHILD_ID_B));
+      expect(n2.scopeDir).toBe(join(root, CHILD_ID_B, CHILD_ID_C));
+      expect(n0.sessionFile).toBe(cFile);
+      expect(n1.sessionFile).toBe(bFile);
+      expect(n2.sessionFile).toBe(cFile); // captured constant (C's own file)
+      expect(n2.children).toStrictEqual([]);
+      // Typed line names the GRANDCHILD.
+      expect(world.stderr).toHaveBeenCalledTimes(1);
+      expect(world.stderr.mock.calls[0]?.[0]).toBe(
+        typedLineReplica("cap-gamma", "3.0.0", 2, "user-abort"),
+      );
+      expect(exitSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual([
+        130,
+      ]);
+      expect(world.terminal.stop).toHaveBeenCalledTimes(1);
+      expect(world.runtime.dispose).toHaveBeenCalledTimes(1);
+      expect(parkedSettled.value).toBe(false);
+      expect(stdoutSpy).not.toHaveBeenCalled();
+    } finally {
+      stdoutSpy.mockRestore();
+    }
+  });
+
+  it("K4 sigterm × top-only (THE SINGLE-FRAME BACK-COMPAT ROW): the guard handler (index 1 — legacy armed FIRST on the fake, guard SECOND) drives the async pass over the SHARED assembly core: the TOP record matches the shipped SIGTERM kill shape ({type:'SIGTERM', cause:'kill'}, same path as the legacy path) and the DELEGATION sub-pin holds (drive the LEGACY handler next ⇒ NO second write — hasClaimed deferral, bytes stable); the one-node snapshot pins cause 'sigterm'; the typed line names top@0.0.0 (depth 0) ended by sigterm; the exit sink receives [1] — NOT 130 (sigterm normalization); PASS-ORIGINATED stop = 1 + dispose = 1 reach the harness recorder via the holder closures; stderr === [typed line]; stdout zero", async () => {
+    const { root, world, top } = buildAlphaWorld("/work/k4");
+    // THE shared fake: the legacy arm lands FIRST (index 0), the guard's
+    // prepend SECOND (index 1) — last-prepended-runs-first.
+    const sharedSignals = makeSignalFake();
+    const harness = attachHarnessTopEmitter(
+      world,
+      top,
+      root,
+      sharedSignals.target,
+    );
+    harness.emitter.armKillCapture();
+    const { exitSpy, signals } = buildGuardSeams(sharedSignals);
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((): boolean => true);
+    try {
+      // Order pin: the fake received EXACTLY two SIGTERM handlers — legacy
+      // FIRST (armed before the guard install), guard SECOND (last-
+      // prepended-runs-first). Drive the GUARD's handler (index 1).
+      expect(signals.handlers).toHaveLength(2);
+      signals.handlers[1]();
+      await vi.waitFor(() => {
+        expect(exitSpy).toHaveBeenCalledTimes(1);
+      });
+      expect(exitSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual([1]); // sigterm normalization — NOT 130
+      // THE top record: the shipped SIGTERM kill shape.
+      const raw = readFileSync(join(root, "top", "status.json"), "utf8");
+      const parsed = expectCanonicalRecord(raw, [
+        "ok",
+        "capability",
+        "outputs",
+        "errors",
+        "transcriptRef",
+        "tokens",
+        "durationMs",
+      ]);
+      expect(parsed.ok).toBe(false);
+      expect(parsed.errors).toStrictEqual([{ type: "SIGTERM", cause: "kill" }]);
+      expect(parsed.capability).toEqual({
+        name: TOP_STAMP.name,
+        version: TOP_STAMP.version,
+        source: "builtin",
+      });
+      expect(parsed.tokens).toBe(0);
+      expect(harness.emitter.hasClaimed()).toBe(true);
+      // DELEGATION sub-pin: drive the LEGACY handler next (index 0) — a
+      // kill-owned claim defers entirely: NO second write.
+      const before = readFileSync(join(root, "top", "status.json"), "utf8");
+      signals.handlers[0]();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(readFileSync(join(root, "top", "status.json"), "utf8")).toBe(
+        before,
+      );
+      // Snapshot one-node tree + sigterm cause token.
+      const snap = JSON.parse(
+        readFileSync(join(root, "frames.json"), "utf8"),
+      ) as Record<string, unknown>;
+      expect(snap.cause).toBe("sigterm");
+      expect(snap.activeScope).toBe(root);
+      // THE typed line — the single stderr line.
+      expect(world.stderr).toHaveBeenCalledTimes(1);
+      expect(world.stderr.mock.calls[0]?.[0]).toBe(
+        typedLineReplica("top", "0.0.0", 0, "sigterm"),
+      );
+      // Pass-originated stop = 1 + dispose = 1 (reached the harness
+      // recorder via the holder closures — no IM simulation in this row).
+      expect(world.terminal.stop).toHaveBeenCalledTimes(1);
+      expect(world.runtime.dispose).toHaveBeenCalledTimes(1);
+      expect(stdoutSpy).not.toHaveBeenCalled();
+    } finally {
+      stdoutSpy.mockRestore();
+    }
+  });
+
+  it("K5 sigterm × mid-child: the INNERMOST (child) record is PARTIAL-SHAPE EXACT (its body never settles — no competitor) while the top record EXISTS EXACTLY ONCE with closed-vocabulary cause presence (shape intentionally UNPINNED — the claim race is platform-timing-dependent; the accepted window is documented, not chased); the held latch rejects with the pinned FrameKillError; the two-node snapshot pins activeScope = the child's scope dir + cause 'sigterm'; the typed line names the child (depth 1); exit [1]; pass stop = 1, dispose = 1; cascade drained home — ALL record files byte-stable post-drain (the zero-double-write pin)", async () => {
+    const { root, world, top } = buildAlphaWorld("/work/k5");
+    attachHarnessTopEmitter(world, top, root);
+    const { exitSpy, signals } = buildGuardSeams();
+    const gate = rowGate();
+    scriptSwitches(world, {
+      kind: "swap",
+      sessionId: "sess-child-a",
+      persist: (path: string): void => {
+        seedTranscript(path, "<seed>\n");
+      },
+    });
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((): boolean => true);
+    try {
+      const promise = materializeFrame({
+        capability: CONTRACT_ALPHA,
+        idSeams: SEAMS_A,
+        body: async (): Promise<Record<string, unknown>> => {
+          gate.enter();
+          await gate.opened;
+          return {};
+        },
+      });
+      await gate.entered;
+      // Early rejection consumption (unhandled-rejection hygiene for the
+      // async trigger window below): the formal expectation drives the
+      // semantics through its own independent handler.
+      promise.catch((error: unknown): unknown => error);
+      // Drive the GUARD's handler (the async sigterm pass + self-exit).
+      signals.handlers[0]();
+      await vi.waitFor(() => {
+        expect(exitSpy).toHaveBeenCalledTimes(1);
+      });
+      expect(exitSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual([1]);
+      // THE innermost record: partial-shape EXACT.
+      const rawChild = readFileSync(
+        join(root, CHILD_ID_A, "top", "status.json"),
+        "utf8",
+      );
+      const childParsed = expectCanonicalRecord(rawChild, [
+        "ok",
+        "capability",
+        "outputs",
+        "errors",
+        "transcriptRef",
+        "tokens",
+        "durationMs",
+      ]);
+      expect(childParsed.ok).toBe(false);
+      expect(childParsed.capability).toEqual({
+        name: "cap-alpha",
+        version: "1.0.0",
+        source: "builtin",
+      });
+      expect(childParsed.errors).toStrictEqual([
+        { type: "SIGTERM", cause: "kill" },
+      ]);
+      // THE top record: EXISTS exactly once, closed-vocabulary cause
+      // PRESENT — shape deliberately unpinned (the accepted claim-race
+      // window: a racily-claimed frame may settle as completion-with-kill-
+      // capture or as partial; the pin is presence + exactly-once + cause).
+      const rawTop = readFileSync(join(root, "top", "status.json"), "utf8");
+      const topParsed = JSON.parse(rawTop) as Record<string, unknown>;
+      expect(topParsed.ok).toBe(false);
+      const topErrors = topParsed.errors as Array<{ cause?: string }>;
+      expect(Array.isArray(topErrors)).toBe(true);
+      expect(topErrors[0]?.cause).toBe("kill");
+      // Latch rejection shape (held promise consumed by expectation).
+      const rejected = await promise.catch((error: unknown): unknown => error);
+      expect(rejected).toBeInstanceOf(FrameKillError);
+      expect(captureError(rejected)).toStrictEqual({
+        type: "FrameKillError",
+        cause: "kill",
+        message: FRAME_KILL_REPLICA,
+      });
+      // Snapshot: two nodes, sigterm cause, innermost scope.
+      const snap = JSON.parse(
+        readFileSync(join(root, "frames.json"), "utf8"),
+      ) as Record<string, unknown>;
+      expect(snap.cause).toBe("sigterm");
+      expect(snap.activeScope).toBe(join(root, CHILD_ID_A));
+      expect(snap.frames).toHaveLength(1);
+      // Typed line: child identity, depth 1, sigterm.
+      expect(world.stderr).toHaveBeenCalledTimes(1);
+      expect(world.stderr.mock.calls[0]?.[0]).toBe(
+        typedLineReplica("cap-alpha", "1.0.0", 1, "sigterm"),
+      );
+      // Pass-originated stops/disposes: exactly one each.
+      expect(world.terminal.stop).toHaveBeenCalledTimes(1);
+      expect(world.runtime.dispose).toHaveBeenCalledTimes(1);
+      // Cascade drained home: ALL record files byte-stable post-drain —
+      // the ZERO double-write pin anywhere.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(
+        readFileSync(join(root, CHILD_ID_A, "top", "status.json"), "utf8"),
+      ).toBe(rawChild);
+      expect(readFileSync(join(root, "top", "status.json"), "utf8")).toBe(
+        rawTop,
+      );
+      const snapBefore = readFileSync(join(root, "frames.json"), "utf8");
+      expect(readFileSync(join(root, "frames.json"), "utf8")).toBe(snapBefore);
+      expect(stdoutSpy).not.toHaveBeenCalled();
+    } finally {
+      stdoutSpy.mockRestore();
+    }
+  });
+
+  it("K6 sigterm × mid-grandchild: same treatment at depth 2 — the INNERMOST (grandchild) record is partial-shape EXACT, B + top exist exactly once with closed-vocabulary cause present (shapes unpinned per the accepted window); the THREE-NODE snapshot pins activeScope = the grandchild's scope dir + cause 'sigterm'; TWO held latches reject with the pinned caused capture; the typed line names the grandchild (depth 2); exit [1]; pass stop = 1, dispose = 1; zero double writes across ALL three records + the snapshot", async () => {
+    const { root, world, top } = buildAlphaWorld("/work/k6");
+    attachHarnessTopEmitter(world, top, root);
+    const { exitSpy, signals } = buildGuardSeams();
+    const gate = rowGate();
+    scriptSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-child-b",
+        persist: (path: string): void => {
+          seedTranscript(path, "<b>\n");
+        },
+      },
+      {
+        kind: "swap",
+        sessionId: "sess-child-c",
+        persist: (path: string): void => {
+          seedTranscript(path, "<c>\n");
+        },
+      },
+    );
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((): boolean => true);
+    try {
+      let innerPromiseRef: Promise<CapabilityResult> | undefined;
+      const outerPromise = materializeFrame({
+        capability: CONTRACT_BETA,
+        idSeams: SEAMS_B,
+        body: async (): Promise<Record<string, unknown>> => {
+          innerPromiseRef = materializeFrame({
+            capability: CONTRACT_GAMMA,
+            idSeams: SEAMS_C,
+            body: async (): Promise<Record<string, unknown>> => {
+              gate.enter();
+              await gate.opened;
+              return {};
+            },
+          });
+          await innerPromiseRef;
+          return {};
+        },
+      });
+      await gate.entered;
+      // Early rejection consumption for BOTH held latches (async trigger
+      // window; the expectations observe via their own handlers).
+      innerPromiseRef!.catch((error: unknown): unknown => error);
+      outerPromise.catch((error: unknown): unknown => error);
+      signals.handlers[0]();
+      await vi.waitFor(() => {
+        expect(exitSpy).toHaveBeenCalledTimes(1);
+      });
+      expect(exitSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual([1]);
+      // THE innermost (grandchild) record: partial-shape EXACT.
+      const rawC = readFileSync(
+        join(root, CHILD_ID_B, CHILD_ID_C, "top", "status.json"),
+        "utf8",
+      );
+      const cParsed = JSON.parse(rawC) as Record<string, unknown>;
+      expect(cParsed.capability).toEqual({
+        name: "cap-gamma",
+        version: "3.0.0",
+        source: "builtin",
+      });
+      expect(cParsed.errors).toStrictEqual([
+        { type: "SIGTERM", cause: "kill" },
+      ]);
+      expect(cParsed.tokens).toBe(0);
+      // B + top: exist exactly once, cause present (shapes unpinned).
+      const rawB = readFileSync(
+        join(root, CHILD_ID_B, "top", "status.json"),
+        "utf8",
+      );
+      const rawTop = readFileSync(join(root, "top", "status.json"), "utf8");
+      for (const raw of [rawB, rawTop]) {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        expect(parsed.ok).toBe(false);
+        const errors = parsed.errors as Array<{ cause?: string }>;
+        expect(errors[0]?.cause).toBe("kill");
+      }
+      // BOTH held latches rejected with the pinned caused capture.
+      const innerRejected = await innerPromiseRef!.catch(
+        (error: unknown): unknown => error,
+      );
+      expect(innerRejected).toBeInstanceOf(FrameKillError);
+      expect(captureError(innerRejected)).toStrictEqual({
+        type: "FrameKillError",
+        cause: "kill",
+        message: FRAME_KILL_REPLICA,
+      });
+      const outerRejected = await outerPromise.catch(
+        (error: unknown): unknown => error,
+      );
+      expect(outerRejected).toBeInstanceOf(FrameKillError);
+      expect(captureError(outerRejected)).toStrictEqual({
+        type: "FrameKillError",
+        cause: "kill",
+        message: FRAME_KILL_REPLICA,
+      });
+      // Three-node snapshot (sigterm cause, innermost scope).
+      const snap = JSON.parse(
+        readFileSync(join(root, "frames.json"), "utf8"),
+      ) as Record<string, unknown>;
+      expect(snap.cause).toBe("sigterm");
+      expect(snap.activeScope).toBe(join(root, CHILD_ID_B, CHILD_ID_C));
+      expect(snap.frames).toHaveLength(1);
+      // Typed line: grandchild identity, depth 2.
+      expect(world.stderr).toHaveBeenCalledTimes(1);
+      expect(world.stderr.mock.calls[0]?.[0]).toBe(
+        typedLineReplica("cap-gamma", "3.0.0", 2, "sigterm"),
+      );
+      expect(world.terminal.stop).toHaveBeenCalledTimes(1);
+      expect(world.runtime.dispose).toHaveBeenCalledTimes(1);
+      // ZERO double writes: all four artifacts byte-stable post-drain.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(
+        readFileSync(
+          join(root, CHILD_ID_B, CHILD_ID_C, "top", "status.json"),
+          "utf8",
+        ),
+      ).toBe(rawC);
+      expect(
+        readFileSync(join(root, CHILD_ID_B, "top", "status.json"), "utf8"),
+      ).toBe(rawB);
+      expect(readFileSync(join(root, "top", "status.json"), "utf8")).toBe(
+        rawTop,
+      );
+      const snapBefore = readFileSync(join(root, "frames.json"), "utf8");
+      expect(readFileSync(join(root, "frames.json"), "utf8")).toBe(snapBefore);
+      expect(stdoutSpy).not.toHaveBeenCalled();
+    } finally {
+      stdoutSpy.mockRestore();
+    }
+  });
+
+  it("K7 fatal × top-only: driven via the TRIGGER channel (async mode, NO self-exit — the exit spy stays EMPTY, the path rides the resolution channel): the TOP record is ABSENT (the fatal walk EXCLUDES the top — the boundary owns it), zero records anywhere under the root (no composed frames ⇒ no partials), the ONE-node snapshot pins cause 'fatal' + activeScope echo, the typed line names top@0.0.0 (depth 0) ended by fatal, PASS-ORIGINATED stop = 1 + dispose = 1 (legs run for non-user-abort triggers), stderr === [typed line], and the trigger PROMISE resolves (awaitable — the boundary contract); stdout zero", async () => {
+    const { root, world, top } = buildAlphaWorld("/work/k7");
+    attachHarnessTopEmitter(world, top, root);
+    const { exitSpy, guard } = buildGuardSeams();
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((): boolean => true);
+    try {
+      // The trigger RESOLVES when the pass completes (through the line).
+      await guard.trigger("fatal");
+      // NO self-exit: the fatal path rides the resolution channel.
+      expect(exitSpy).not.toHaveBeenCalled();
+      // THE top record is ABSENT (the fatal walk excluded it) and there are
+      // no composed frames ⇒ zero records under the whole root.
+      expect(existsSync(join(root, "top", "status.json"))).toBe(false);
+      expect(countStatusFiles(root)).toBe(0);
+      // THE one-node snapshot (fatal cause token, echo activeScope).
+      const snap = JSON.parse(
+        readFileSync(join(root, "frames.json"), "utf8"),
+      ) as Record<string, unknown>;
+      expect(snap.cause).toBe("fatal");
+      expect(snap.activeScope).toBe(root);
+      // THE typed line — the single stderr line.
+      expect(world.stderr).toHaveBeenCalledTimes(1);
+      expect(world.stderr.mock.calls[0]?.[0]).toBe(
+        typedLineReplica("top", "0.0.0", 0, "fatal"),
+      );
+      // Legs ran for the non-user-abort trigger.
+      expect(world.terminal.stop).toHaveBeenCalledTimes(1);
+      expect(world.runtime.dispose).toHaveBeenCalledTimes(1);
+      expect(stdoutSpy).not.toHaveBeenCalled();
+    } finally {
+      stdoutSpy.mockRestore();
+    }
+  });
+
+  it("K8 fatal × mid-child: the COMPOSED child PARTIAL lands ({fatal, kill} literal, partial shape) while the TOP record stays ABSENT (boundary-owned); the child's PENDING latch rejects with the pinned caused capture; the two-node snapshot pins cause 'fatal' + activeScope = the child's scope dir; the typed line names the child (depth 1) ended by fatal; PASS-ORIGINATED stop = 1 + dispose = 1; the exit spy stays EMPTY; stderr === [typed line]; stdout zero", async () => {
+    const { root, world, top } = buildAlphaWorld("/work/k8");
+    attachHarnessTopEmitter(world, top, root);
+    const { exitSpy, guard } = buildGuardSeams();
+    const gate = rowGate();
+    scriptSwitches(world, {
+      kind: "swap",
+      sessionId: "sess-child-a",
+      persist: (path: string): void => {
+        seedTranscript(path, "<seed>\n");
+      },
+    });
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((): boolean => true);
+    try {
+      const promise = materializeFrame({
+        capability: CONTRACT_ALPHA,
+        idSeams: SEAMS_A,
+        body: async (): Promise<Record<string, unknown>> => {
+          gate.enter();
+          await gate.opened;
+          return {};
+        },
+      });
+      await gate.entered;
+      // Early rejection consumption (async trigger window below).
+      promise.catch((error: unknown): unknown => error);
+      await guard.trigger("fatal");
+      // The COMPOSED partial lands (partial shape, the fatal literal).
+      const rawChild = readFileSync(
+        join(root, CHILD_ID_A, "top", "status.json"),
+        "utf8",
+      );
+      const childParsed = expectCanonicalRecord(rawChild, [
+        "ok",
+        "capability",
+        "outputs",
+        "errors",
+        "transcriptRef",
+        "tokens",
+        "durationMs",
+      ]);
+      expect(childParsed.capability).toEqual({
+        name: "cap-alpha",
+        version: "1.0.0",
+        source: "builtin",
+      });
+      expect(childParsed.errors).toStrictEqual([
+        { type: "fatal", cause: "kill" },
+      ]);
+      // THE top record stays ABSENT (the boundary owns it there).
+      expect(existsSync(join(root, "top", "status.json"))).toBe(false);
+      // Latch rejected with the pinned caused capture.
+      const rejected = await promise.catch((error: unknown): unknown => error);
+      expect(rejected).toBeInstanceOf(FrameKillError);
+      expect(captureError(rejected)).toStrictEqual({
+        type: "FrameKillError",
+        cause: "kill",
+        message: FRAME_KILL_REPLICA,
+      });
+      // Two-node snapshot (fatal cause, innermost scope).
+      const snap = JSON.parse(
+        readFileSync(join(root, "frames.json"), "utf8"),
+      ) as Record<string, unknown>;
+      expect(snap.cause).toBe("fatal");
+      expect(snap.activeScope).toBe(join(root, CHILD_ID_A));
+      // Typed line: child identity, depth 1, fatal.
+      expect(world.stderr).toHaveBeenCalledTimes(1);
+      expect(world.stderr.mock.calls[0]?.[0]).toBe(
+        typedLineReplica("cap-alpha", "1.0.0", 1, "fatal"),
+      );
+      expect(world.terminal.stop).toHaveBeenCalledTimes(1);
+      expect(world.runtime.dispose).toHaveBeenCalledTimes(1);
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(stdoutSpy).not.toHaveBeenCalled();
+    } finally {
+      stdoutSpy.mockRestore();
+    }
+  });
+
+  it("K9 fatal × mid-grandchild: the composed records (grandchild + B) land EXACTLY ONCE in a kill-family CLOSED-VOCABULARY form (canonical shape, cause 'kill', type in {literal, caused-capture} — the accepted depth-2 claim-race window: the writer winner alternates between runs; see row body for the deviation note), while the TOP stays ABSENT; BOTH held latches reject with the pinned caused capture (deterministic — leg-(a) lands before any continuation settles); the THREE-NODE snapshot pins cause 'fatal' + activeScope = the grandchild's scope dir; the typed line names the grandchild (depth 2) ended by fatal; PASS-ORIGINATED stop = 1 + dispose = 1; the exit spy stays EMPTY; stderr === [typed line]; stdout zero", async () => {
+    const { root, world, top } = buildAlphaWorld("/work/k9");
+    attachHarnessTopEmitter(world, top, root);
+    const { exitSpy, guard } = buildGuardSeams();
+    const gate = rowGate();
+    scriptSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-child-b",
+        persist: (path: string): void => {
+          seedTranscript(path, "<b>\n");
+        },
+      },
+      {
+        kind: "swap",
+        sessionId: "sess-child-c",
+        persist: (path: string): void => {
+          seedTranscript(path, "<c>\n");
+        },
+      },
+    );
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((): boolean => true);
+    try {
+      let innerPromiseRef: Promise<CapabilityResult> | undefined;
+      const outerPromise = materializeFrame({
+        capability: CONTRACT_BETA,
+        idSeams: SEAMS_B,
+        body: async (): Promise<Record<string, unknown>> => {
+          innerPromiseRef = materializeFrame({
+            capability: CONTRACT_GAMMA,
+            idSeams: SEAMS_C,
+            body: async (): Promise<Record<string, unknown>> => {
+              gate.enter();
+              await gate.opened;
+              return {};
+            },
+          });
+          await innerPromiseRef;
+          return {};
+        },
+      });
+      await gate.entered;
+      // Early rejection consumption for BOTH held latches (async trigger
+      // window below).
+      innerPromiseRef!.catch((error: unknown): unknown => error);
+      outerPromise.catch((error: unknown): unknown => error);
+      await guard.trigger("fatal");
+      // THE composed records land EXACTLY ONCE each. DEVIATION NOTE
+      // (accepted claim-race window, mirroring the K5/K6 top-cell
+      // treatment): at depth 2 the winner between the pass's per-frame
+      // partial ({fatal, kill} literal) and the frames' OWN settlement
+      // emission (the CAUSED CAPTURE form, queued by leg-(a)'s rejection
+      // landing before the partial emission) alternates BETWEEN RUNS —
+      // engine-spec promise-job scheduling outside the contract's
+      // guarantee. What IS contractual and pinned: canonical record
+      // shape, kill-family CLOSED-VOCABULARY error (literal OR caused
+      // capture), exactly-once, and byte-stability under the racing
+      // cascade. (The rejection-FIRST leg order is deliberately kept:
+      // latches die even if every downstream leg faults — fail-safe.
+      //)
+      const rawC = readFileSync(
+        join(root, CHILD_ID_B, CHILD_ID_C, "top", "status.json"),
+        "utf8",
+      );
+      const rawB = readFileSync(
+        join(root, CHILD_ID_B, "top", "status.json"),
+        "utf8",
+      );
+      const cParsed = expectCanonicalRecord(rawC, [
+        "ok",
+        "capability",
+        "outputs",
+        "errors",
+        "transcriptRef",
+        "tokens",
+        "durationMs",
+      ]);
+      const bParsed = expectCanonicalRecord(rawB, [
+        "ok",
+        "capability",
+        "outputs",
+        "errors",
+        "transcriptRef",
+        "tokens",
+        "durationMs",
+      ]);
+      for (const parsed of [cParsed, bParsed]) {
+        expect(parsed.ok).toBe(false);
+        const errs = parsed.errors as Array<{ type?: string; cause?: string }>;
+        expect(errs).toHaveLength(1);
+        expect(errs[0]?.cause).toBe("kill");
+        expect(errs[0]?.type).toBeDefined();
+        expect(["fatal", "FrameKillError"]).toContain(errs[0]?.type);
+      }
+      expect((cParsed.capability as { name: string }).name).toBe("cap-gamma");
+      expect((bParsed.capability as { name: string }).name).toBe("cap-beta");
+      // THE top record stays ABSENT.
+      expect(existsSync(join(root, "top", "status.json"))).toBe(false);
+      // BOTH held latches rejected with the pinned caused capture.
+      const innerRejected = await innerPromiseRef!.catch(
+        (error: unknown): unknown => error,
+      );
+      expect(innerRejected).toBeInstanceOf(FrameKillError);
+      const outerRejected = await outerPromise.catch(
+        (error: unknown): unknown => error,
+      );
+      expect(outerRejected).toBeInstanceOf(FrameKillError);
+      expect(captureError(outerRejected)).toStrictEqual({
+        type: "FrameKillError",
+        cause: "kill",
+        message: FRAME_KILL_REPLICA,
+      });
+      // Three-node snapshot (fatal cause, innermost scope).
+      const snap = JSON.parse(
+        readFileSync(join(root, "frames.json"), "utf8"),
+      ) as Record<string, unknown>;
+      expect(snap.cause).toBe("fatal");
+      expect(snap.activeScope).toBe(join(root, CHILD_ID_B, CHILD_ID_C));
+      // Typed line: grandchild identity, depth 2.
+      expect(world.stderr).toHaveBeenCalledTimes(1);
+      expect(world.stderr.mock.calls[0]?.[0]).toBe(
+        typedLineReplica("cap-gamma", "3.0.0", 2, "fatal"),
+      );
+      expect(world.terminal.stop).toHaveBeenCalledTimes(1);
+      expect(world.runtime.dispose).toHaveBeenCalledTimes(1);
+      expect(exitSpy).not.toHaveBeenCalled();
+      expect(stdoutSpy).not.toHaveBeenCalled();
+    } finally {
+      stdoutSpy.mockRestore();
+    }
+  });
+});
+
+describe("shutdown guard behaviors (G rows)", () => {
+  it("G1(i) clean passthrough (SETTLED claim) passes the ORIGINAL code verbatim (no normalization — the raw 0 reaches the sink), performs NO writes (no frames.json, no typed line, stderr zero) and leaves the guard STATE UNPOISONED — the follow-up 'fatal' trigger runs the FULL pass afterwards (typed line + one-node snapshot land, the settled completion record survives byte-stable, trigger resolves)", async () => {
+    // Variant (i): the settled-claim passthrough.
+    const w1 = buildAlphaWorld("/work/g1i");
+    const h1 = attachHarnessTopEmitter(w1.world, w1.top, w1.root);
+    await h1.emitter.emit({ ok: true, outputs: {} }); // settles the claim
+    const s1 = buildGuardSeams();
+    s1.guard.exit(0);
+    // CLEAN PASSTHROUGH: the original code VERBATIM (0 — NOT normalized).
+    expect(s1.exitSpy).toHaveBeenCalledTimes(1);
+    expect(s1.exitSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual([
+      0,
+    ]);
+    expect(existsSync(join(w1.root, "frames.json"))).toBe(false);
+    expect(w1.world.stderr).not.toHaveBeenCalled();
+    // UNPOISONED: the follow-up fatal trigger runs the full pass.
+    await s1.guard.trigger("fatal");
+    expect(w1.world.stderr).toHaveBeenCalledTimes(1);
+    expect(w1.world.stderr.mock.calls[0]?.[0]).toBe(
+      typedLineReplica("top", "0.0.0", 0, "fatal"),
+    );
+    expect(
+      JSON.parse(readFileSync(join(w1.root, "frames.json"), "utf8")).cause,
+    ).toBe("fatal");
+    // The settled COMPLETION record survived untouched (byte-stable).
+    const completedRaw = readFileSync(
+      join(w1.root, "top", "status.json"),
+      "utf8",
+    );
+    expect(JSON.parse(completedRaw).ok).toBe(true);
+  });
+
+  it("G1(ii) a FIRED guard normalizes repeated exit calls to the mapped code REGARDLESS of the incoming argument (exit(99) ⇒ 130 again — the cause map owns the code, not the caller), performs NO second pass (artifacts byte-stable, zero additional legs — stop/dispose stay at the user-abort leg-skip zeros), and keeps the exit history exactly [130, 130] with a single typed line", async () => {
+    // Variant (ii): the fired-normalization idempotence.
+    const w2 = buildAlphaWorld("/work/g1ii");
+    const h2 = attachHarnessTopEmitter(w2.world, w2.top, w2.root);
+    const s2 = buildGuardSeams();
+    s2.guard.exit(0);
+    const rawFirst = readFileSync(join(w2.root, "top", "status.json"), "utf8");
+    const snapFirst = readFileSync(join(w2.root, "frames.json"), "utf8");
+    s2.guard.exit(99); // ANY argument normalizes to the recorded cause map
+    expect(s2.exitSpy).toHaveBeenCalledTimes(2);
+    expect(s2.exitSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual([
+      130, 130,
+    ]);
+    // NO second pass: artifacts byte-stable, zero additional legs.
+    expect(readFileSync(join(w2.root, "top", "status.json"), "utf8")).toBe(
+      rawFirst,
+    );
+    expect(readFileSync(join(w2.root, "frames.json"), "utf8")).toBe(snapFirst);
+    expect(w2.world.terminal.stop).not.toHaveBeenCalled();
+    expect(w2.world.runtime.dispose).not.toHaveBeenCalled();
+    expect(h2.emitter.hasClaimed()).toBe(true);
+    expect(w2.world.stderr).toHaveBeenCalledTimes(1); // single typed line
+  });
+
+  it("G2 SILENT DEATH (holder NOT installed): the SIGTERM channel's pass writes NOTHING (no frames.json anywhere under the owned root, no typed line) yet still SELF-EXITS through the normalized code [1] (signal listeners defer default termination — the explicit exit is the contract), and the DIRECT trigger channel RESOLVES silently (first-trigger-wins idempotence: the racing trigger is a no-op that resolves, does not hang or throw) with the exit history staying EXACTLY once", async () => {
+    const root = newTempRoot();
+    const { exitSpy, signals, guard } = buildGuardSeams();
+    // THE sigterm channel (the armed handler).
+    signals.handlers[0]();
+    await vi.waitFor(() => {
+      expect(exitSpy).toHaveBeenCalledTimes(1);
+    });
+    expect(exitSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual([1]);
+    // THE direct trigger channel: RESOLVES (idempotent no-op).
+    await guard.trigger("sigterm");
+    // NOTHING WRITTEN under the whole owned tree.
+    expect(recursiveListing(root)).toEqual([]);
+    // Exit history EXACTLY once (the racing trigger exited nothing).
+    expect(exitSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("G3 RACE: the IM internals die while the async pass is mid-flight — the pass's legs AND the row's simulated stop+dispose BOTH reach the recorder (swallowed by design — totals 2/2), the composed partial lands EXACTLY ONCE (byte-stable post-second-exit), the exit history is [1, 1] NOT [0, …] (a racing user-abort sink call after the fire normalizes to the recorded cause instead of leaking the raw 0), the typed line lands once (sigterm cause), and the snapshot pins cause 'sigterm'", async () => {
+    const { root, world, top } = buildAlphaWorld("/work/g3");
+    attachHarnessTopEmitter(world, top, root);
+    const { exitSpy, signals, guard } = buildGuardSeams();
+    const gate = rowGate();
+    scriptSwitches(world, {
+      kind: "swap",
+      sessionId: "sess-child-a",
+      persist: (path: string): void => {
+        seedTranscript(path, "<seed>\n");
+      },
+    });
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((): boolean => true);
+    try {
+      const promise = materializeFrame({
+        capability: CONTRACT_ALPHA,
+        idSeams: SEAMS_A,
+        body: async (): Promise<Record<string, unknown>> => {
+          gate.enter();
+          await gate.opened;
+          return {};
+        },
+      });
+      await gate.entered;
+      // Early rejection consumption (async trigger window below).
+      promise.catch((error: unknown): unknown => error);
+      // THE RACE: the pass starts, the IM internals die concurrently.
+      signals.handlers[0]();
+      world.terminal.stop();
+      await world.runtime.dispose();
+      await vi.waitFor(() => {
+        expect(exitSpy).toHaveBeenCalledTimes(1);
+      });
+      // A racing user-abort sink call AFTER the fire: NORMALIZED (1),
+      // never the raw 0.
+      guard.exit(0);
+      expect(exitSpy).toHaveBeenCalledTimes(2);
+      expect(exitSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual([
+        1, 1,
+      ]);
+      // THE swallows: totals 2/2 (pass leg 1 + IM simulation 1 each).
+      expect(world.terminal.stop).toHaveBeenCalledTimes(2);
+      expect(world.runtime.dispose).toHaveBeenCalledTimes(2);
+      // THE exactly-once artifact: the composed partial, byte-stable.
+      const rawChild = readFileSync(
+        join(root, CHILD_ID_A, "top", "status.json"),
+        "utf8",
+      );
+      expect(
+        (JSON.parse(rawChild) as Record<string, unknown>).errors,
+      ).toStrictEqual([{ type: "SIGTERM", cause: "kill" }]);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(
+        readFileSync(join(root, CHILD_ID_A, "top", "status.json"), "utf8"),
+      ).toBe(rawChild);
+      expect(
+        JSON.parse(readFileSync(join(root, "frames.json"), "utf8")).cause,
+      ).toBe("sigterm");
+      // Single typed line (sigterm cause, child identity, depth 1).
+      expect(world.stderr).toHaveBeenCalledTimes(1);
+      expect(world.stderr.mock.calls[0]?.[0]).toBe(
+        typedLineReplica("cap-alpha", "1.0.0", 1, "sigterm"),
+      );
+      const rejected = await promise.catch((error: unknown): unknown => error);
+      expect(rejected).toBeInstanceOf(FrameKillError);
+      expect(stdoutSpy).not.toHaveBeenCalled();
+    } finally {
+      stdoutSpy.mockRestore();
+    }
+  });
+
+  it("G4 UNINSTALL: double-uninstall is IDEMPOTENT (no throw), and after uninstall every channel degrades to RAW passthrough — the exit wrapper forwards an unmapped code (7 — deliberately distinct from 130/1) VERBATIM, and the armed SIGTERM handler goes INERT (fires the trigger internally, which is a no-op: no self-exit, no writes)", async () => {
+    const { root, world, top } = buildAlphaWorld("/work/g4");
+    attachHarnessTopEmitter(world, top, root);
+    const { exitSpy, signals, guard } = buildGuardSeams();
+    guard.uninstall();
+    guard.uninstall(); // idempotent — no throw
+    guard.exit(7);
+    expect(exitSpy).toHaveBeenCalledTimes(1);
+    expect(exitSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual([7]);
+    // THE inert handler: no self-exit, no pass, no writes.
+    signals.handlers[0]();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(exitSpy).toHaveBeenCalledTimes(1);
+    expect(existsSync(join(root, "frames.json"))).toBe(false);
+    expect(world.stderr).not.toHaveBeenCalled();
+  });
+
+  it("G5 PARKED-LATCH SURVIVAL: the shutdown pass REJECTS the composed latches but STRUCTURALLY SKIPS the outermost (top) frame's parked latch — after the FULL cascade drains home (rejections consumed + macrotask flush × 2 ticks) the parked-top tracker is STILL UNSETTLED (process death reclaims it; settling it would fabricate a consumer the platform never had), and the fired guard's follow-up exit call normalizes WITHOUT re-passing (bytes stable)", async () => {
+    const { root, world, top } = buildAlphaWorld("/work/g5");
+    attachHarnessTopEmitter(world, top, root);
+    const { exitSpy, guard } = buildGuardSeams();
+    const gate = rowGate();
+    scriptSwitches(world, {
+      kind: "swap",
+      sessionId: "sess-child-a",
+      persist: (path: string): void => {
+        seedTranscript(path, "<seed>\n");
+      },
+    });
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((): boolean => true);
+    try {
+      const promise = materializeFrame({
+        capability: CONTRACT_ALPHA,
+        idSeams: SEAMS_A,
+        body: async (): Promise<Record<string, unknown>> => {
+          gate.enter();
+          await gate.opened;
+          return {};
+        },
+      });
+      await gate.entered;
+      // THE parked-top tracker attaches BEFORE the trigger.
+      const parkedSettled = { value: false };
+      activeFrames()[0].latch.value.then(
+        (): void => {
+          parkedSettled.value = true;
+        },
+        (): void => {
+          parkedSettled.value = true;
+        },
+      );
+      guard.exit(0);
+      // Consume the child rejection (hygiene), read the artifacts pre-drain.
+      const rejected = await promise.catch((error: unknown): unknown => error);
+      expect(rejected).toBeInstanceOf(FrameKillError);
+      const rawChild = readFileSync(
+        join(root, CHILD_ID_A, "top", "status.json"),
+        "utf8",
+      );
+      // Full cascade drain + a SECOND flush tick: the parked latch MUST
+      // remain unsettled through it all.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(parkedSettled.value).toBe(false);
+      // Fired-guard follow-up: normalized, no re-pass (bytes stable).
+      guard.exit(42);
+      expect(exitSpy.mock.calls.map((call: unknown[]) => call[0])).toEqual([
+        130, 130,
+      ]);
+      expect(
+        readFileSync(join(root, CHILD_ID_A, "top", "status.json"), "utf8"),
+      ).toBe(rawChild);
+      expect(stdoutSpy).not.toHaveBeenCalled();
+    } finally {
+      stdoutSpy.mockRestore();
+    }
+  });
+});
+
 describe("capture-ladder pre-flight (real status.ts — leaf-pure, no mock)", () => {
   it("captureError over the not-installed error reduces to EXACTLY { type: 'FrameEnvironmentError', message: <pinned> } — bare identity, no cause, no extra keys", () => {
     const captured = captureError(
@@ -1783,6 +3119,14 @@ describe("capture-ladder pre-flight (real status.ts — leaf-pure, no mock)", ()
     expect(captured).toStrictEqual({
       type: "FrameEnvironmentError",
       message: NOT_INSTALLED_REPLICA,
+    });
+  });
+
+  it("captureError over the interruption error reduces to EXACTLY { type: 'FrameKillError', cause: 'kill', message: <pinned> } — the CAUSED shape (unlike the two bare identities above): the shutdown pass is the only producer, and the latch-rejection pins ride this exact reduction", () => {
+    expect(captureError(new FrameKillError())).toStrictEqual({
+      type: "FrameKillError",
+      cause: "kill",
+      message: FRAME_KILL_REPLICA,
     });
   });
 
@@ -1803,13 +3147,17 @@ describe("capture-ladder pre-flight (real status.ts — leaf-pure, no mock)", ()
 });
 
 describe("export surface", () => {
-  it("runtime export surface is EXACTLY ['FrameEnvironmentError', 'HopFaultError', 'activeFrames', 'installFrameEnvironment', 'materializeFrame', 'teardownFrameEnvironment'] (interfaces/types erase under erasable syntax; the latch + holder + orchestrator machinery stays module-private)", async () => {
+  it("runtime export surface is EXACTLY ['FrameEnvironmentError', 'FrameKillError', 'HopFaultError', 'activeFrames', 'attachTopEmitter', 'installExitGuard', 'installFrameEnvironment', 'isFrameEnvironmentInstalled', 'materializeFrame', 'teardownFrameEnvironment'] (interfaces/types erase under erasable syntax; the latch + holder + orchestrator + guard-state machinery stays module-private)", async () => {
     expect(Object.keys(await import("./terminal-takeover.ts")).sort()).toEqual(
       [
         "FrameEnvironmentError",
+        "FrameKillError",
         "HopFaultError",
         "activeFrames",
+        "attachTopEmitter",
+        "installExitGuard",
         "installFrameEnvironment",
+        "isFrameEnvironmentInstalled",
         "materializeFrame",
         "teardownFrameEnvironment",
       ].sort(),
@@ -1823,7 +3171,7 @@ describe("source guards (hop edge discipline over terminal-takeover.ts)", () => 
     "utf8",
   );
 
-  it("static import clauses are EXACTLY the seven admitted specifiers in order (node:path join + SDK AgentSession view + layout seam pair + pio-session pair + status pair — type clauses erase under erasable syntax)", () => {
+  it("static import clauses are EXACTLY the eight admitted specifiers in canonical order (node:path join + SDK AgentSession view + layout seam pair + pio-session pair + status PAIR — the status type clause carries KillCaptureTarget + SessionStatusError alongside CapabilityResult/StatusEmitter; type clauses erase under erasable syntax)", () => {
     const staticClauses = [
       ...src.matchAll(
         /^\s*import\s+(?:type\s+)?[\w${},\s]+?from\s+["']([^"']+)["']/gm,
@@ -1860,8 +3208,17 @@ describe("source guards (hop edge discipline over terminal-takeover.ts)", () => 
     expect(dynThunks).toEqual(['import("@earendil-works/pi-coding-agent")']);
   });
 
-  it("ZERO process. member accesses (no signal handlers, no exits)", () => {
-    expect(/process\.[A-Za-z_$]/.test(src)).toBe(false);
+  it("every process. MEMBER ACCESS (collected exhaustively) is exit-ONLY — the default exit-sink wrap reaches through a structural view (process as ExitSinkView) and signal handlers ride the injected target, so no direct process member spelling survives at all (a zero-match set satisfies the superset pin)", () => {
+    const members = new Set(
+      [...src.matchAll(/process\.(\w+)/g)].map((match) => match[1]),
+    );
+    for (const member of members) {
+      expect(member).toBe("exit");
+    }
+  });
+
+  it("zero occurrences of SIGINT (user-abort interception is the wrapper's job — the module never installs an INT handler nor spells the literal anywhere, not even in comments)", () => {
+    expect(src.includes("SIGINT")).toBe(false);
   });
 
   it("zero occurrences of parentSession (no session lineage is minted by this module)", () => {

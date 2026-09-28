@@ -12,7 +12,7 @@
 // fakes (the fake top frame covers the module's reach path only:
 // runtime.session.sessionFile, counters(), a rebind spy, id); the cast at
 // each scripted site mirrors the sibling suites' single documented cast
-// idiom (zero casts live in the source). beforeEach tears down the
+// idiom. beforeEach tears down the
 // process-scoped holder so no row leaks state into the next; temp roots
 // are removed in afterEach, even on assertion failure.
 //
@@ -26,20 +26,36 @@
 // handles are new objects per open). A cancelled switch performs no
 // teardown; a rejecting switch escapes the RAW error unmasked.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type {
   AgentSession,
   AgentSessionEvent,
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
+import type { IdSeams } from "../sandbox/layout.ts";
+import { ContractViolationError } from "./errors.ts";
+import type { SessionVariableStore } from "./pio-session.ts";
 import { PioSession } from "./pio-session.ts";
-import { captureError } from "./status.ts";
+import type { CapabilityResult } from "./status.ts";
+import { captureError, createStatusEmitter } from "./status.ts";
+import type { ActiveFrame } from "./terminal-takeover.ts";
 import {
   activeFrames,
   FrameEnvironmentError,
+  HopFaultError,
   installFrameEnvironment,
+  materializeFrame,
   teardownFrameEnvironment,
 } from "./terminal-takeover.ts";
 
@@ -299,6 +315,59 @@ function assistantMessageEnd(
       timestamp: 1,
     },
   };
+}
+
+/** Recursive count of status.json files under a dir (zero-record scans).
+ */
+function countStatusFiles(dir: string): number {
+  let count = 0;
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) {
+      count += countStatusFiles(full);
+    } else if (entry === "status.json") {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/** Recursive relative-path listing (sorted) — the audit-tree observation.
+ */
+function recursiveListing(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) {
+      for (const sub of recursiveListing(full)) {
+        out.push(`${entry}/${sub}`);
+      }
+    } else {
+      out.push(entry);
+    }
+  }
+  return out.sort();
+}
+
+/** Pin the canonical record byte shape shared by the H rows: raw-string
+ * pins (trailing newline, 2-space indent start, exact top-level key order)
+ * + durationMs UNPINNED (composed emitters take no clock seam — module
+ * defaults own the clock; accepted boundary, documented in-row). Returns
+ * the parsed record for field pins. */
+function expectCanonicalRecord(
+  raw: string,
+  keyOrder: string[],
+): Record<string, unknown> {
+  expect(raw.endsWith("\n")).toBe(true);
+  expect(raw.startsWith('{\n  "ok"')).toBe(true);
+  const topLevelKeys = [...raw.matchAll(/^ {2}"([A-Za-z]+)":/gm)].map(
+    (match) => match[1],
+  );
+  expect(topLevelKeys).toEqual(keyOrder);
+  const parsed = JSON.parse(raw) as Record<string, unknown>;
+  expect(typeof parsed.durationMs).toBe("number");
+  expect((parsed.durationMs as number) >= 0).toBe(true);
+  return parsed;
 }
 
 /** Mutable observation state behind the fake top frame — mutated AFTER
@@ -590,6 +659,873 @@ describe("harness physics (additive — consumed by the hop matrix)", () => {
   });
 });
 
+// ─── Hop matrix (step 3 — materializeFrame over the physics world) ─────
+// Replica constants over the four pinned hop-fault messages (suite-local;
+// the module owns the originals; escapes mirror the source so the U+2014
+// bytes match).
+const PARENT_UNNAMED_REPLICA =
+  "terminal-takeover: hop aborted \u2014 the parent session is unnamed; no switch source to return to";
+const MINT_UNNAMED_REPLICA =
+  "terminal-takeover: hop aborted \u2014 the platform minted no session file for the child scope";
+const CANCELLED_SWITCH_REPLICA =
+  "terminal-takeover: hop aborted \u2014 the switch out was cancelled; nothing was attached";
+const SWITCH_BACK_FAILED_REPLICA =
+  "terminal-takeover: hop aborted \u2014 the switch back failed; the child record is durable";
+
+/** Deterministic seam sets + hand-computed mints (the id-shape pin stays
+ * observation-independent; layout.ts' own suite locks the arithmetic). */
+const SEAMS_A: IdSeams = {
+  now: (): number => Date.parse("2026-09-28T12:34:56.789Z"),
+  entropy: (): string => "0123abcd",
+};
+const SEAMS_B: IdSeams = {
+  now: (): number => Date.parse("2026-09-28T12:34:57.789Z"),
+  entropy: (): string => "abcdef01",
+};
+const SEAMS_C: IdSeams = {
+  now: (): number => Date.parse("2026-09-28T12:34:58.789Z"),
+  entropy: (): string => "cafe0123",
+};
+const CHILD_ID_A = "20260928T123456789Z-0123abcd";
+const CHILD_ID_B = "20260928T123457789Z-abcdef01";
+const CHILD_ID_C = "20260928T123458789Z-cafe0123";
+
+/** Platform-named file the deterministic harness mint produces at the
+ * Nth create() call (counter resets in beforeEach per row). */
+const MINTED_FILE = (n: number): string =>
+  `20260101T000000Z_${String(n).padStart(8, "0")}.jsonl`;
+
+/** Seed a transcript file AT the scripted switch-in moment (stands for the
+ * platform's own persistence landing): creates the child slot dirs, which
+ * the physics handles themselves do not create. */
+function seedTranscript(path: string, content: string): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content);
+}
+
+const CONTRACT_ALPHA = { name: "cap-alpha", version: "1.0.0" } as const;
+const CONTRACT_BETA = { name: "cap-beta", version: "2.0.0" } as const;
+const CONTRACT_GAMMA = { name: "cap-gamma", version: "3.0.0" } as const;
+
+/** Shared alpha-world fixture: one row-owned tmpdir root, seeded parent
+ * transcript, installed real top frame, scripted switch physics. */
+function buildAlphaWorld(cwd: string): {
+  root: string;
+  world: PhysicsWorld;
+  top: PioSession;
+  parentFile: string;
+} {
+  const root = newTempRoot();
+  const world = buildPhysicsWorld(root, cwd);
+  const parentFile = join(root, "top", "parent-transcript.jsonl");
+  mkdirSync(join(root, "top"), { recursive: true });
+  writeFileSync(parentFile, "<seed>\n");
+  const top = installTopFrame(world, root);
+  return { root, world, top, parentFile };
+}
+
+describe("hop matrix (H rows — materializeFrame over the physics world)", () => {
+  it("H1 THE full success cycle: synchronous dispatch returns the caller's promise identity early; the detached continuation mints the child scope ONE SEGMENT under the current scope dir through the sole SDK thunk, captures the PRE-HOP parent transcript, switches out with cwdOverride, pushes depth 1, runs the body on the adopted frame (fresh token counter), emits the UNCONDITIONAL canonical child record BEFORE settling, switches back onto the CAPTURED parent file, re-arms without a yield, and pops + resolves in one gesture — outputs travel BY REFERENCE, exactly two switch calls, one SDK thunk, zero stdout, zero stderr", async () => {
+    const { root, world, parentFile } = buildAlphaWorld("/work/alpha");
+    const childDir = join(root, CHILD_ID_A, "top");
+    const childFile = join(childDir, MINTED_FILE(1));
+    scriptSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-child-a",
+        persist: (path: string): void => {
+          seedTranscript(path, "<child seed>\n");
+        },
+      },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+    );
+    const outputsA: Record<string, unknown> = { hop: "alpha", passThrough: 7 };
+    let entryRef: ActiveFrame | undefined;
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((): boolean => true);
+    try {
+      const promise = materializeFrame({
+        contract: CONTRACT_ALPHA,
+        idSeams: SEAMS_A,
+        body: async (frame: PioSession): Promise<Record<string, unknown>> => {
+          // Fresh host: the counter starts empty even though the parent
+          // frame saw traffic elsewhere.
+          expect(frame.counters().tokens).toBe(0);
+          emitLive(world.runtime.session, assistantMessageEnd(11, 22, 3, 4));
+          await Promise.resolve();
+          const frames = activeFrames();
+          expect(frames).toHaveLength(2);
+          const entry = frames[1];
+          entryRef = entry;
+          expect(entry.depth).toBe(1);
+          expect(entry.capability).toEqual(CONTRACT_ALPHA);
+          expect(entry.scopeDir).toBe(join(root, CHILD_ID_A));
+          expect(frame.counters().tokens).toBe(40);
+          return outputsA;
+        },
+      });
+      // D-sync consumer view: the latch value IS a native promise.
+      expect(typeof promise.then).toBe("function");
+      const settled = await promise;
+      // Same-payload dual channels: the await mirrors the record BY
+      // REFERENCE (no serialization round-trip).
+      expect(settled.ok).toBe(true);
+      expect(settled.outputs).toBe(outputsA);
+      // Ledger unwound: ONLY the installed top entry remains.
+      const afterUnwind = activeFrames();
+      expect(afterUnwind).toHaveLength(1);
+      expect(afterUnwind[0].capability.name).toBe("top");
+      // Exactly two switch calls in the pinned order and shape.
+      expect(world.runtime.switchSession).toHaveBeenCalledTimes(2);
+      const outArgs = world.runtime.switchSession.mock.calls[0] as unknown[];
+      const backArgs = world.runtime.switchSession.mock.calls[1] as unknown[];
+      expect(outArgs).toEqual([childFile, { cwdOverride: "/work/alpha" }]);
+      expect(backArgs).toEqual([parentFile, { cwdOverride: "/work/alpha" }]);
+      // Current handle: the REOPENED parent — fresh instance, retained
+      // file-backed identity (the measured reopen quirk).
+      const current = world.runtime.session;
+      expect(current.sessionId).toBe("sess-fake-0001");
+      expect(current.sessionFile).toBe(parentFile);
+      expect(current).not.toBe(world.parentHandle);
+      expect(world.parentHandle.disposed).toBe(true);
+      // The CAPTURED CONSTANT survives the unwind: post-back the shared
+      // runtime's current handle is the parent's, yet this accessor still
+      // names the child file.
+      expect(entryRef!.sessionFile()).toBe(childFile);
+      // LIVE tokens over the adopted child host.
+      expect(entryRef!.tokens()).toBe(40);
+      // THE canonical child record bytes (rooted at the child scope dir —
+      // the measured origin derivation; durationMs UNPINNED: composed
+      // emitters take no clock seam, module defaults own the clock).
+      const raw = readFileSync(
+        join(root, CHILD_ID_A, "top", "status.json"),
+        "utf8",
+      );
+      const parsed = expectCanonicalRecord(raw, [
+        "ok",
+        "capability",
+        "outputs",
+        "transcriptRef",
+        "tokens",
+        "durationMs",
+      ]);
+      expect(parsed.ok).toBe(true);
+      expect(parsed.capability).toEqual({
+        name: "cap-alpha",
+        version: "1.0.0",
+        source: "builtin",
+      });
+      expect(parsed.transcriptRef).toBe(`${CHILD_ID_A}/top/${MINTED_FILE(1)}`);
+      expect(parsed.tokens).toBe(40);
+      expect(parsed.outputs).toEqual(outputsA);
+      // Audit tree: child transcript + child record + seeded parent only.
+      expect(recursiveListing(root)).toEqual([
+        `${CHILD_ID_A}/top/${MINTED_FILE(1)}`,
+        `${CHILD_ID_A}/top/status.json`,
+        "top/parent-transcript.jsonl",
+      ]);
+      // THE module's SOLE SDK value reach fired exactly once, rooted at the
+      // child top dir with the runtime's cwd.
+      expect(sdkHarness.create).toHaveBeenCalledTimes(1);
+      expect(sdkHarness.create.mock.calls[0]).toEqual([
+        "/work/alpha",
+        childDir,
+      ]);
+      // No terminal or signal side channel of any kind.
+      expect(stdoutSpy).not.toHaveBeenCalled();
+      expect(world.stderr).not.toHaveBeenCalled();
+      expect(world.terminal.constructions).toBe(1);
+    } finally {
+      stdoutSpy.mockRestore();
+    }
+  });
+
+  it("H2 nested grandchildren (two stacked hops): scopes nest TWO segments under the root, inner child mints under the OUTER child's scope dir, four switch calls run out-A, out-B, back-to-A, back-to-parent, records land at <outer>/<inner>/top and <outer>/top, the harness top-frame record lands at <root>/top, outputs reference the inner settled payload BY REFERENCE, variable stores stay frame-private, one live handle throughout, all ledgers pop", async () => {
+    const { root, world, top, parentFile } = buildAlphaWorld("/work/nest");
+    const outerChildDir = join(root, CHILD_ID_A, "top");
+    const outerChildFile = join(outerChildDir, MINTED_FILE(1));
+    const innerChildDir = join(root, CHILD_ID_A, CHILD_ID_B, "top");
+    const innerChildFile = join(innerChildDir, MINTED_FILE(2));
+    const applied: PhysicsHandle[] = [];
+    // THE MEASURED NESTED ORDER: the inner hop unwinds COMPLETELY (its
+    // switch-back lands on the OUTER CHILD's retained file) before the
+    // outer body resumes into the outer switch-back. Retained file-backed
+    // sessionIds keep every rebind gate passing at each depth.
+    scriptSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-child-a",
+        persist: (path: string): void => {
+          seedTranscript(path, "<outer seed>\n");
+        },
+        observe: (incoming: PhysicsHandle): void => {
+          applied.push(incoming);
+        },
+      },
+      {
+        kind: "swap",
+        sessionId: "sess-child-b",
+        persist: (path: string): void => {
+          seedTranscript(path, "<inner seed>\n");
+        },
+        observe: (incoming: PhysicsHandle): void => {
+          applied.push(incoming);
+        },
+      },
+      {
+        // Inner switch-back: reopens the OUTER child (file-backed id).
+        kind: "swap",
+        sessionId: "sess-child-a",
+        observe: (incoming: PhysicsHandle): void => {
+          applied.push(incoming);
+        },
+      },
+      {
+        // Outer switch-back: reopens the top parent.
+        kind: "swap",
+        sessionId: "sess-fake-0001",
+        observe: (incoming: PhysicsHandle): void => {
+          applied.push(incoming);
+        },
+      },
+    );
+    const innerOutputs: Record<string, unknown> = { value: 42 };
+    let outerStoreRef: SessionVariableStore | undefined;
+    let innerStoreRef: SessionVariableStore | undefined;
+    let innerSettledRef: CapabilityResult | undefined;
+    const settled = await materializeFrame({
+      contract: CONTRACT_ALPHA,
+      idSeams: SEAMS_A,
+      body: async (frame: PioSession): Promise<Record<string, unknown>> => {
+        const outerStore = frame.vars;
+        outerStore.set("ovar", 3);
+        outerStoreRef = outerStore;
+        expect(outerStore.get("ovar")).toBe(3);
+        // Pre-attach guard: the inner record does not exist before its
+        // attach (checked here, mid-hop, strictly BEFORE the inner
+        // dispatch mutates anything).
+        expect(
+          existsSync(join(root, CHILD_ID_A, CHILD_ID_B, "top", "status.json")),
+        ).toBe(false);
+        const innerSettled = await materializeFrame({
+          contract: CONTRACT_BETA,
+          idSeams: SEAMS_B,
+          body: async (grand: PioSession): Promise<Record<string, unknown>> => {
+            const innerStore = grand.vars;
+            innerStore.set("ivar", 99);
+            innerStoreRef = innerStore;
+            expect(innerStore.list()).toEqual(["ivar"]);
+            expect(innerStore.get("ovar")).toBeUndefined();
+            expect(grand.counters().tokens).toBe(0);
+            // Mid-inner-hop: three frames stacked (top, A, B).
+            const frames = activeFrames();
+            expect(frames).toHaveLength(3);
+            expect(frames[2].depth).toBe(2);
+            expect(frames[2].scopeDir).toBe(join(root, CHILD_ID_A, CHILD_ID_B));
+            return innerOutputs;
+          },
+        });
+        innerSettledRef = innerSettled;
+        expect(innerSettled.ok).toBe(true);
+        // Post-attach: the inner record now stands at its slot.
+        expect(
+          existsSync(join(root, CHILD_ID_A, CHILD_ID_B, "top", "status.json")),
+        ).toBe(true);
+        expect(outerStore.get("ivar")).toBeUndefined();
+        return { inner: innerSettled };
+      },
+    });
+    // By-reference nesting: the outer outputs hold the inner settled
+    // object, which holds the inner outputs — no round-trips.
+    expect(settled.ok).toBe(true);
+    expect((settled.outputs as { inner: CapabilityResult }).inner).toBe(
+      innerSettledRef,
+    );
+    expect((settled.outputs as { inner: CapabilityResult }).inner.outputs).toBe(
+      innerOutputs,
+    );
+    // Both ledgers unwound: ONLY the installed top entry remains.
+    expect(activeFrames()[0]?.capability.name).toBe("top");
+    expect(activeFrames()).toHaveLength(1);
+    // Four switch calls in the measured nested order: out-A, out-B,
+    // back-to-the-OUTER-child-file, back-to-the-top-parent.
+    expect(world.runtime.switchSession).toHaveBeenCalledTimes(4);
+    const calls = world.runtime.switchSession.mock.calls.map(
+      (call) => call[0],
+    ) as string[];
+    expect(calls).toEqual([
+      outerChildFile,
+      innerChildFile,
+      outerChildFile,
+      parentFile,
+    ]);
+    expect(world.runtime.switchSession.mock.calls[0][1]).toEqual({
+      cwdOverride: "/work/nest",
+    });
+    // Final current: the second reopened parent handle.
+    const current = world.runtime.session;
+    expect(current).toBe(applied[3]);
+    expect(current.sessionId).toBe("sess-fake-0001");
+    expect(current.sessionFile).toBe(parentFile);
+    // One live handle at every rest point: teardown-before-apply keeps the
+    // count at exactly one (the current).
+    const all = [world.parentHandle, ...applied];
+    const live = all.filter((handle) => !handle.disposed);
+    expect(live).toHaveLength(1);
+    expect(live[0]).toBe(current);
+    // THE two child records at their measured placements (rooted at the
+    // child scope dirs — origin = dirname(scopeDir) — so the refs carry
+    // the <childId> segment; durationMs unpinned as in H1).
+    const outerRaw = readFileSync(
+      join(root, CHILD_ID_A, "top", "status.json"),
+      "utf8",
+    );
+    const outerParsed = expectCanonicalRecord(outerRaw, [
+      "ok",
+      "capability",
+      "outputs",
+      "transcriptRef",
+      "tokens",
+      "durationMs",
+    ]);
+    expect(outerParsed.capability).toEqual({
+      name: "cap-alpha",
+      version: "1.0.0",
+      source: "builtin",
+    });
+    expect(outerParsed.transcriptRef).toBe(
+      `${CHILD_ID_A}/top/${MINTED_FILE(1)}`,
+    );
+    expect(outerParsed.tokens).toBe(0);
+    const innerRaw = readFileSync(
+      join(root, CHILD_ID_A, CHILD_ID_B, "top", "status.json"),
+      "utf8",
+    );
+    const innerParsed = expectCanonicalRecord(innerRaw, [
+      "ok",
+      "capability",
+      "outputs",
+      "transcriptRef",
+      "tokens",
+      "durationMs",
+    ]);
+    expect(innerParsed.capability).toEqual({
+      name: "cap-beta",
+      version: "2.0.0",
+      source: "builtin",
+    });
+    // THE measured placement artifact: the emitter roots at the child
+    // scope dir, so the ref origin is ONE SEGMENT UP (dirname of the
+    // scope dir) — a grandchild ref therefore carries only its OWN id.
+    expect(innerParsed.transcriptRef).toBe(
+      `${CHILD_ID_B}/top/${MINTED_FILE(2)}`,
+    );
+    expect(innerParsed.outputs).toEqual({ value: 42 });
+    // THE harness-owned top-frame emitter (a real status.ts emitter):
+    // emitted AFTER the unwind alongside the caller's result; stamped
+    // from the capability stamp, not the ledger entry.
+    const topEmitter = createStatusEmitter({
+      sessionsRoot: root,
+      capability: { name: "engaged-cap", version: "9.9.9" },
+      tokens: (): number => top.counters().tokens,
+      sessionFile: (): string | undefined => world.runtime.session.sessionFile,
+    });
+    await topEmitter.emit(settled);
+    const topRaw = readFileSync(join(root, "top", "status.json"), "utf8");
+    const topParsed = expectCanonicalRecord(topRaw, [
+      "ok",
+      "capability",
+      "outputs",
+      "transcriptRef",
+      "tokens",
+      "durationMs",
+    ]);
+    expect(topParsed.capability).toEqual({
+      name: "engaged-cap",
+      version: "9.9.9",
+      source: "builtin",
+    });
+    // Same origin derivation as the child records: relative to ONE SEGMENT
+    // UP from the emitter's sessionsRoot (here the mkdtemp root itself, so
+    // the ref carries the root's basename — deterministic per run).
+    expect(topParsed.transcriptRef).toBe(
+      `${basename(root)}/top/parent-transcript.jsonl`,
+    );
+    expect(topParsed.outputs).toEqual(settled.outputs);
+    // Audit tree: both levels + the top slot, nothing else.
+    expect(recursiveListing(root)).toEqual([
+      `${CHILD_ID_A}/${CHILD_ID_B}/top/${MINTED_FILE(2)}`,
+      `${CHILD_ID_A}/${CHILD_ID_B}/top/status.json`,
+      `${CHILD_ID_A}/top/${MINTED_FILE(1)}`,
+      `${CHILD_ID_A}/top/status.json`,
+      "top/parent-transcript.jsonl",
+      "top/status.json",
+    ]);
+    // The SDK thunks: outer first, then the inner mint under the OUTER
+    // child's scope dir.
+    expect(sdkHarness.create).toHaveBeenCalledTimes(2);
+    expect(sdkHarness.create.mock.calls.map((call) => call[0])).toEqual([
+      "/work/nest",
+      "/work/nest",
+    ]);
+    expect(sdkHarness.create.mock.calls.map((call) => call[1])).toEqual([
+      outerChildDir,
+      innerChildDir,
+    ]);
+    // Variable stores: frame-private, separate after the unwind, nothing
+    // persisted on the shared runtime (it carries no variable state).
+    expect(outerStoreRef!.get("ovar")).toBe(3);
+    expect(outerStoreRef!.get("ivar")).toBeUndefined();
+    expect(innerStoreRef!.get("ivar")).toBe(99);
+    expect(innerStoreRef!.get("ovar")).toBeUndefined();
+  });
+
+  it("H3 record placement pin: EXACTLY ONE status.json exists anywhere under the sessions root and it sits at <childScopeDir>/top/status.json with transcriptRef <childId>/top/<platform file> — the child slot derives under the child scope, never under the parent's slots", async () => {
+    const { root, world } = buildAlphaWorld("/work/gamma");
+    scriptSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-child-c",
+        persist: (path: string): void => {
+          seedTranscript(path, "<gamma seed>\n");
+        },
+      },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+    );
+    const settled = await materializeFrame({
+      contract: CONTRACT_GAMMA,
+      idSeams: SEAMS_C,
+      body: async (): Promise<Record<string, unknown>> => ({}),
+    });
+    expect(settled.ok).toBe(true);
+    // Single record under the whole root (no top-slot emission occurred —
+    // the harness emitter belongs to engaged entries, not to this row).
+    expect(countStatusFiles(root)).toBe(1);
+    expect(existsSync(join(root, "top", "status.json"))).toBe(false);
+    const raw = readFileSync(
+      join(root, CHILD_ID_C, "top", "status.json"),
+      "utf8",
+    );
+    const parsed = expectCanonicalRecord(raw, [
+      "ok",
+      "capability",
+      "outputs",
+      "transcriptRef",
+      "tokens",
+      "durationMs",
+    ]);
+    expect(parsed.capability).toEqual({
+      name: "cap-gamma",
+      version: "3.0.0",
+      source: "builtin",
+    });
+    expect(parsed.transcriptRef).toBe(`${CHILD_ID_C}/top/${MINTED_FILE(1)}`);
+  });
+
+  it("H4 token continuity across the lifecycle: usage landing on the CURRENT (child) handle during the body advances the adopted frame's LIVE counters into the record AND stays readable through the popped ledger entry's accessor after the unwind — freshness proven, no double-counting against the parent", async () => {
+    const { root, world } = buildAlphaWorld("/work/tokens");
+    scriptSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-child-a",
+        persist: (path: string): void => {
+          seedTranscript(path, "<seed>\n");
+        },
+      },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+    );
+    let entryRef: ActiveFrame | undefined;
+    const settled = await materializeFrame({
+      contract: CONTRACT_ALPHA,
+      idSeams: SEAMS_A,
+      body: async (frame: PioSession): Promise<Record<string, unknown>> => {
+        expect(frame.counters().tokens).toBe(0);
+        // Usage lands on the CURRENT handle — the child's.
+        emitLive(world.runtime.session, assistantMessageEnd(11, 22, 3, 4));
+        await Promise.resolve();
+        expect(frame.counters().tokens).toBe(40);
+        entryRef = activeFrames()[1];
+        return { atBodyEnd: frame.counters().tokens };
+      },
+    });
+    expect((settled.outputs as { atBodyEnd: number }).atBodyEnd).toBe(40);
+    // Live read AT EMIT time: the record stamps the advanced counter.
+    const raw = readFileSync(
+      join(root, CHILD_ID_A, "top", "status.json"),
+      "utf8",
+    );
+    const parsed = expectCanonicalRecord(raw, [
+      "ok",
+      "capability",
+      "outputs",
+      "transcriptRef",
+      "tokens",
+      "durationMs",
+    ]);
+    expect(parsed.tokens).toBe(40);
+    // The popped entry's accessor still reads the SAME adopted host.
+    expect(entryRef!.tokens()).toBe(40);
+    // Parent untouched: its handle saw no events (disposed anyway — the
+    // original counter lives nowhere shared).
+    expect(world.parentHandle.live).toHaveLength(0);
+  });
+
+  it("H5 the child frame's variable store: set/get/list round-trips in the body and persists across microtasks there, while staying UNPERSISTED across the unwind — frame-private stores, nothing written to the shared runtime or the filesystem", async () => {
+    const { root, world, top } = buildAlphaWorld("/work/vars");
+    scriptSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-child-a",
+        persist: (path: string): void => {
+          seedTranscript(path, "<seed>\n");
+        },
+      },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+    );
+    let storeRef: SessionVariableStore | undefined;
+    const settled = await materializeFrame({
+      contract: CONTRACT_ALPHA,
+      idSeams: SEAMS_A,
+      body: async (frame: PioSession): Promise<Record<string, unknown>> => {
+        const store = frame.vars;
+        store.set("hopvar", 99);
+        storeRef = store;
+        expect(store.get("hopvar")).toBe(99);
+        expect(store.list()).toEqual(["hopvar"]);
+        await Promise.resolve();
+        expect(store.get("hopvar")).toBe(99);
+        return {};
+      },
+    });
+    expect(settled.ok).toBe(true);
+    // After the unwind: the store persists WITH the adopted host object...
+    expect(storeRef!.get("hopvar")).toBe(99);
+    // ...while the top frame's own store stayed clean...
+    expect(top.vars.list()).toEqual([]);
+    // ...and nothing landed on disk beyond the expected minimal tree.
+    expect(recursiveListing(root)).toEqual([
+      `${CHILD_ID_A}/top/${MINTED_FILE(1)}`,
+      `${CHILD_ID_A}/top/status.json`,
+      "top/parent-transcript.jsonl",
+    ]);
+  });
+
+  it("H6 body fault: a throwing body settles as the typed CAPTURE (never a rejection of the caller's promise), emits the failure record BEFORE switching back, and the unwind still completes — switch-back proceeds, the ledger pops, the re-arm lands; the record's ok:false + outputs:{} + captured error are the pins", async () => {
+    const { root, world } = buildAlphaWorld("/work/fault");
+    const applied: PhysicsHandle[] = [];
+    scriptSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-child-b",
+        persist: (path: string): void => {
+          seedTranscript(path, "<seed>\n");
+        },
+        observe: (incoming: PhysicsHandle): void => {
+          applied.push(incoming);
+        },
+      },
+      {
+        kind: "swap",
+        sessionId: "sess-fake-0001",
+        observe: (incoming: PhysicsHandle): void => {
+          applied.push(incoming);
+        },
+      },
+    );
+    const settled = await materializeFrame({
+      contract: CONTRACT_BETA,
+      idSeams: SEAMS_B,
+      body: async (): Promise<Record<string, unknown>> => {
+        throw new ContractViolationError(["body fault"]);
+      },
+    });
+    // THE await RESOLVED (not rejected) with the typed capture ladder.
+    expect(settled).toStrictEqual({
+      ok: false,
+      errors: [
+        {
+          type: "ContractViolationError",
+          cause: "contract",
+          message: "Contract violation: body fault",
+          violations: ["body fault"],
+        },
+      ],
+    });
+    // The failure record stands at the child slot: ok:false, outputs
+    // always serialized as {}, errors BEFORE transcriptRef in the canonical
+    // order, the captured error pinned.
+    const raw = readFileSync(
+      join(root, CHILD_ID_B, "top", "status.json"),
+      "utf8",
+    );
+    const parsed = expectCanonicalRecord(raw, [
+      "ok",
+      "capability",
+      "outputs",
+      "errors",
+      "transcriptRef",
+      "tokens",
+      "durationMs",
+    ]);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.capability).toEqual({
+      name: "cap-beta",
+      version: "2.0.0",
+      source: "builtin",
+    });
+    expect(parsed.outputs).toEqual({});
+    expect(parsed.errors).toEqual([
+      {
+        type: "ContractViolationError",
+        cause: "contract",
+        message: "Contract violation: body fault",
+        violations: ["body fault"],
+      },
+    ]);
+    expect(parsed.tokens).toBe(0);
+    // Unwind completed despite the fault: switched back, composed entry popped (top remains).
+    expect(world.runtime.session).toBe(applied[1]);
+    expect(world.runtime.session.sessionFile).toBe(
+      join(root, "top", "parent-transcript.jsonl"),
+    );
+    expect(activeFrames()).toHaveLength(1);
+  });
+
+  it("H7a cancelled switch-out: the latch RESOLVES with the pinned cancelled HopFaultError — nothing pushed (ledger still shows only the top entry), no record emitted, no teardown performed (the parent handle stays current and undisposed)", async () => {
+    const { root, world } = buildAlphaWorld("/work/cancel");
+    scriptSwitches(world, { kind: "cancel" });
+    const settled = await materializeFrame({
+      contract: CONTRACT_ALPHA,
+      idSeams: SEAMS_A,
+      body: async (): Promise<Record<string, unknown>> => ({}),
+    });
+    expect(settled).toStrictEqual({
+      ok: false,
+      errors: [{ type: "HopFaultError", message: CANCELLED_SWITCH_REPLICA }],
+    });
+    const frames = activeFrames();
+    expect(frames).toHaveLength(1);
+    expect(frames[0].capability.name).toBe("top");
+    // Pre-push fault: the switch mock was called exactly once (out only);
+    // the current handle is unchanged and undisposed.
+    expect(world.runtime.switchSession).toHaveBeenCalledTimes(1);
+    expect(world.runtime.session).toBe(world.parentHandle);
+    expect(world.parentHandle.disposed).toBe(false);
+    expect(countStatusFiles(root)).toBe(0);
+  });
+
+  it("H7b raw switch-out rejection: escapes UNMASKED into the catch-all — the await receives the RAW error capture (NOT a hop-fault mask), ledger untouched, no record, parent still current", async () => {
+    const { root, world } = buildAlphaWorld("/work/reject");
+    scriptSwitches(world, { kind: "reject", message: "raw switch rejection" });
+    const settled = await materializeFrame({
+      contract: CONTRACT_ALPHA,
+      idSeams: SEAMS_A,
+      body: async (): Promise<Record<string, unknown>> => ({}),
+    });
+    expect(settled).toStrictEqual({
+      ok: false,
+      errors: [{ type: "Error", message: "raw switch rejection" }],
+    });
+    const frames = activeFrames();
+    expect(frames).toHaveLength(1);
+    expect(frames[0].capability.name).toBe("top");
+    expect(world.runtime.session).toBe(world.parentHandle);
+    expect(countStatusFiles(root)).toBe(0);
+  });
+
+  it("H8 failed switch-back: the child record is DURABLE (emitted before the back-switch) with the SUCCESS payload, the await instead receives the pinned switch-back HopFaultError — the divergence between record and await is the pin — while the release STILL pops the ledger (winds-unwound holds even when restore fails); the current handle remains the child's (no swap-back happened)", async () => {
+    const { root, world } = buildAlphaWorld("/work/backfail");
+    const childFile = join(root, CHILD_ID_A, "top", MINTED_FILE(1));
+    const applied: PhysicsHandle[] = [];
+    scriptSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-child-a",
+        persist: (path: string): void => {
+          seedTranscript(path, "<seed>\n");
+        },
+        observe: (incoming: PhysicsHandle): void => {
+          applied.push(incoming);
+        },
+      },
+      {
+        kind: "reject",
+        message: "switch-back blowup",
+      },
+    );
+    const settled = await materializeFrame({
+      contract: CONTRACT_ALPHA,
+      idSeams: SEAMS_A,
+      body: async (): Promise<Record<string, unknown>> => ({ durable: true }),
+    });
+    // THE divergence: the await got the machinery fault...
+    expect(settled).toStrictEqual({
+      ok: false,
+      errors: [{ type: "HopFaultError", message: SWITCH_BACK_FAILED_REPLICA }],
+    });
+    // ...while the durable record kept the body's SUCCESS payload.
+    const raw = readFileSync(
+      join(root, CHILD_ID_A, "top", "status.json"),
+      "utf8",
+    );
+    const parsed = expectCanonicalRecord(raw, [
+      "ok",
+      "capability",
+      "outputs",
+      "transcriptRef",
+      "tokens",
+      "durationMs",
+    ]);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.outputs).toEqual({ durable: true });
+    expect(parsed.tokens).toBe(0);
+    // Winds-unwound: the pop happened regardless of the failed restore.
+    const frames = activeFrames();
+    expect(frames).toHaveLength(1);
+    expect(frames[0].capability.name).toBe("top");
+    // No swap-back occurred: the child handle stays current (undisposed);
+    // the outgoing parent WAS disposed by the (successful) out-switch.
+    expect(world.runtime.session).toBe(applied[0]);
+    expect(world.runtime.session.sessionFile).toBe(childFile);
+    expect(world.parentHandle.disposed).toBe(true);
+  });
+
+  it("H9a uninstalled: materializeFrame throws SYNCHRONOUSLY (caught in the same tick, before any latch or mutation) with the pinned not-installed FrameEnvironmentError — the base-level catch-all capture site this sync escape feeds", () => {
+    // beforeEach's teardown guarantees the uninstalled state.
+    let caught: unknown;
+    let threwSynchronously = false;
+    try {
+      const probe = materializeFrame({
+        contract: CONTRACT_GAMMA,
+        body: async (): Promise<Record<string, unknown>> => ({}),
+      });
+      void probe;
+    } catch (error) {
+      caught = error;
+      threwSynchronously = true;
+    }
+    expect(threwSynchronously).toBe(true);
+    expect(caught).toBeInstanceOf(FrameEnvironmentError);
+    expect((caught as FrameEnvironmentError).message).toBe(
+      NOT_INSTALLED_REPLICA,
+    );
+    // No ledger, no holder: nothing mutated on the way out.
+    expect(() => activeFrames()).toThrow(NOT_INSTALLED_REPLICA);
+  });
+
+  it("H9c installed direct-call sanity (the base-dispatch consumer view): an installed environment yields a native-settle promise that resolves with the success payload and leaves the ledger unwound", async () => {
+    const { world } = buildAlphaWorld("/work/direct");
+    scriptSwitches(
+      world,
+      { kind: "swap", sessionId: "sess-child-c" },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+    );
+    const promise = materializeFrame({
+      contract: CONTRACT_GAMMA,
+      idSeams: SEAMS_C,
+      body: async (): Promise<Record<string, unknown>> => ({ direct: true }),
+    });
+    // Native promise shape (what a base-level catch-all would await).
+    expect(typeof promise.then).toBe("function");
+    const settled = await promise;
+    expect(settled).toStrictEqual({ ok: true, outputs: { direct: true } });
+    expect(activeFrames()).toHaveLength(1);
+  });
+
+  it("H10 two sequential hops over ONE world (one terminal lifetime): distinct child scopes per hop, four switch calls alternating child/parent files, two independent records, the same reopened-parent identity each cycle, the module contributes ZERO terminal constructions and the live-handle count stays exactly one at every rest point", async () => {
+    const { root, world, parentFile } = buildAlphaWorld("/work/seq");
+    const applied: PhysicsHandle[] = [];
+    const observe = (incoming: PhysicsHandle): void => {
+      applied.push(incoming);
+    };
+    scriptSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-child-a",
+        persist: (path: string): void => {
+          seedTranscript(path, "<a>\n");
+        },
+        observe,
+      },
+      { kind: "swap", sessionId: "sess-fake-0001", observe },
+      {
+        kind: "swap",
+        sessionId: "sess-child-b",
+        persist: (path: string): void => {
+          seedTranscript(path, "<b>\n");
+        },
+        observe,
+      },
+      { kind: "swap", sessionId: "sess-fake-0001", observe },
+    );
+    const runCycle = (idSeams: IdSeams, cycle: number) =>
+      materializeFrame({
+        contract: CONTRACT_ALPHA,
+        idSeams,
+        body: async (): Promise<Record<string, unknown>> => {
+          expect(activeFrames()).toHaveLength(2);
+          expect(activeFrames()[1].depth).toBe(1);
+          return { cycle };
+        },
+      });
+    const first = await runCycle(SEAMS_A, 1);
+    // Rest point 1: exactly one live handle (the reopened parent #1).
+    expect(
+      [world.parentHandle, ...applied].filter((h) => !h.disposed),
+    ).toHaveLength(1);
+    expect(world.runtime.session).toBe(applied[1]);
+    const second = await runCycle(SEAMS_B, 2);
+    // Rest point 2: same invariant, freshly reopened parent #2.
+    expect(
+      [world.parentHandle, ...applied].filter((h) => !h.disposed),
+    ).toHaveLength(1);
+    expect(world.runtime.session).toBe(applied[3]);
+    expect(second.ok).toBe(true);
+    expect(first).toStrictEqual({ ok: true, outputs: { cycle: 1 } });
+    expect(second).toStrictEqual({ ok: true, outputs: { cycle: 2 } });
+    // Two distinct child scopes, two independent records.
+    expect(countStatusFiles(root)).toBe(2);
+    const aParsed = expectCanonicalRecord(
+      readFileSync(join(root, CHILD_ID_A, "top", "status.json"), "utf8"),
+      ["ok", "capability", "outputs", "transcriptRef", "tokens", "durationMs"],
+    );
+    const bParsed = expectCanonicalRecord(
+      readFileSync(join(root, CHILD_ID_B, "top", "status.json"), "utf8"),
+      ["ok", "capability", "outputs", "transcriptRef", "tokens", "durationMs"],
+    );
+    expect(aParsed.outputs).toEqual({ cycle: 1 });
+    expect(bParsed.outputs).toEqual({ cycle: 2 });
+    // Switch pattern: out-A, back, out-B, back (file-based targets).
+    const calls = world.runtime.switchSession.mock.calls.map(
+      (call) => call[0],
+    ) as string[];
+    expect(calls).toEqual([
+      join(root, CHILD_ID_A, "top", MINTED_FILE(1)),
+      parentFile,
+      join(root, CHILD_ID_B, "top", MINTED_FILE(2)),
+      parentFile,
+    ]);
+    // Mint args: both roots' cwd, per-cycle child top dirs.
+    expect(sdkHarness.create.mock.calls.map((call) => call[1])).toEqual([
+      join(root, CHILD_ID_A, "top"),
+      join(root, CHILD_ID_B, "top"),
+    ]);
+    // One terminal for the lifetime of the row.
+    expect(world.terminal.constructions).toBe(1);
+    expect(world.stderr).not.toHaveBeenCalled();
+    expect(activeFrames()).toHaveLength(1);
+  });
+});
+
 describe("capture-ladder pre-flight (real status.ts — leaf-pure, no mock)", () => {
   it("captureError over the not-installed error reduces to EXACTLY { type: 'FrameEnvironmentError', message: <pinned> } — bare identity, no cause, no extra keys", () => {
     const captured = captureError(
@@ -600,48 +1536,79 @@ describe("capture-ladder pre-flight (real status.ts — leaf-pure, no mock)", ()
       message: NOT_INSTALLED_REPLICA,
     });
   });
+
+  it("captureError over the FOUR hop-fault messages each reduces to { type: 'HopFaultError', message: <pinned replica> } — bare identity, no cause, no extra keys (the pre-flight that the H-row body-fault pins rely on)", () => {
+    const replicas = [
+      PARENT_UNNAMED_REPLICA,
+      MINT_UNNAMED_REPLICA,
+      CANCELLED_SWITCH_REPLICA,
+      SWITCH_BACK_FAILED_REPLICA,
+    ];
+    for (const replica of replicas) {
+      expect(captureError(new HopFaultError(replica))).toStrictEqual({
+        type: "HopFaultError",
+        message: replica,
+      });
+    }
+  });
 });
 
 describe("export surface", () => {
-  it("runtime export surface is EXACTLY ['FrameEnvironmentError', 'activeFrames', 'installFrameEnvironment', 'teardownFrameEnvironment'] (interfaces/types erase under erasable syntax; the createPendingLatch helper stays module-private)", async () => {
+  it("runtime export surface is EXACTLY ['FrameEnvironmentError', 'HopFaultError', 'activeFrames', 'installFrameEnvironment', 'materializeFrame', 'teardownFrameEnvironment'] (interfaces/types erase under erasable syntax; the latch + holder + orchestrator machinery stays module-private)", async () => {
     expect(Object.keys(await import("./terminal-takeover.ts")).sort()).toEqual(
       [
         "FrameEnvironmentError",
+        "HopFaultError",
         "activeFrames",
         "installFrameEnvironment",
+        "materializeFrame",
         "teardownFrameEnvironment",
       ].sort(),
     );
   });
 });
 
-describe("source guards (foundation edge discipline over terminal-takeover.ts)", () => {
+describe("source guards (hop edge discipline over terminal-takeover.ts)", () => {
   const src = readFileSync(
     new URL("./terminal-takeover.ts", import.meta.url),
     "utf8",
   );
 
-  it("ZERO static VALUE import statements — the admitted static clause set is EXACTLY the three `import type` clauses (SDK AgentSession view + sibling PioSession/SessionCounters pair + leaf-pure CapabilityResult; erased under erasable syntax — zero runtime evaluation)", () => {
-    const valueSpecifiers = [
-      ...src.matchAll(
-        /^\s*import\s+(?!type\b)[^\n;]*?from\s+["']([^"']+)["']/gm,
-      ),
-    ].map((match) => match[1]);
-    expect(valueSpecifiers).toEqual([]);
+  it("static import clauses are EXACTLY the seven admitted specifiers in order (node:path join + SDK AgentSession view + layout seam pair + pio-session pair + status pair — type clauses erase under erasable syntax)", () => {
     const staticClauses = [
       ...src.matchAll(
-        /^\s*import\s+(?:type\s+)?[^\n;]*?from\s+["']([^"']+)["']/gm,
+        /^\s*import\s+(?:type\s+)?[\w${},\s]+?from\s+["']([^"']+)["']/gm,
       ),
     ].map((match) => match[1]);
     expect(staticClauses).toEqual([
+      "node:path",
       "@earendil-works/pi-coding-agent",
+      "../sandbox/layout.ts",
+      "../sandbox/layout.ts",
+      "./pio-session.ts",
+      "./pio-session.ts",
+      "./status.ts",
+      "./status.ts",
+    ]);
+  });
+
+  it("the VALUE clause set is EXACTLY [node:path, ../sandbox/layout.ts, ./pio-session.ts, ./status.ts] in order (leaf-pure siblings + one builtin — no SDK value import at module load)", () => {
+    const valueSpecifiers = [
+      ...src.matchAll(
+        /^\s*import\s+(?!type\b)[\w${},\s]+?from\s+["']([^"']+)["']/gm,
+      ),
+    ].map((match) => match[1]);
+    expect(valueSpecifiers).toEqual([
+      "node:path",
+      "../sandbox/layout.ts",
       "./pio-session.ts",
       "./status.ts",
     ]);
   });
 
-  it("ZERO dynamic import( occurrences (zero runtime module evaluation — the type-only edge set admits nothing else)", () => {
-    expect(src.match(/import\(/g)?.length ?? 0).toBe(0);
+  it("EXACTLY ONE dynamic import( occurrence and it is the SDK-root literal thunk (the module's sole SDK value reach, fire-time only)", () => {
+    const dynThunks = src.match(/import\(\s*["'][^"']+["']\s*\)/g) ?? [];
+    expect(dynThunks).toEqual(['import("@earendil-works/pi-coding-agent")']);
   });
 
   it("ZERO process. member accesses (no signal handlers, no exits)", () => {
@@ -650,5 +1617,13 @@ describe("source guards (foundation edge discipline over terminal-takeover.ts)",
 
   it("zero occurrences of parentSession (no session lineage is minted by this module)", () => {
     expect(src.includes("parentSession")).toBe(false);
+  });
+
+  it("zero occurrences of InteractiveMode (composed frames never mount terminals — entry-owned exclusively)", () => {
+    expect(src.includes("InteractiveMode")).toBe(false);
+  });
+
+  it("zero occurrences of armKillCapture (signal concerns belong to the outermost entry alone)", () => {
+    expect(src.includes("armKillCapture")).toBe(false);
   });
 });

@@ -80,7 +80,7 @@ export abstract class PioCapability {
         // slot (the takeover module never assigns the slot itself).
         const takeover = await import("./terminal-takeover.ts");
         return await takeover.materializeFrame({
-          contract: {
+          capability: {
             name: this.contract.name,
             version: this.contract.version,
           },

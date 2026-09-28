@@ -136,7 +136,8 @@ function createPendingLatch<T>(): PendingLatch<T> {
 export interface ActiveFrame {
   /** 0 = outermost. */
   readonly depth: number;
-  /** Stamped identity (composed frames carry their callee contract). */
+  /** Stamped identity (composed frames carry their callee capability
+   * stamp). */
   readonly capability: Readonly<{
     readonly name: string;
     readonly version: string;
@@ -236,13 +237,14 @@ export function activeFrames(): readonly ActiveFrame[] {
   return holder.frames;
 }
 
-/** Input bag for ONE hop: the callee's contract stamp plus the body
+/** Input bag for ONE hop: the callee's capability stamp plus the body
  * closure executed over the adopted child frame. Seams thread into the
  * engagement-id mint (deterministic ids); production omits them. */
 export interface MaterializeFrameInput {
   /** The CALLEE's identity stamp (stamped into the child frame's ledger
-   * entry and its record). */
-  readonly contract: Readonly<{
+   * entry and its record; same house name the downstream fields carry).
+   * Deliberately NOT the full Contract — lineage-free, IO-vocabulary-free. */
+  readonly capability: Readonly<{
     readonly name: string;
     readonly version: string;
   }>;
@@ -370,8 +372,8 @@ class HopOrchestrator {
     const entry: ActiveFrame = {
       depth: frames.length, // top entry is depth 0 → first composed push = 1
       capability: {
-        name: this.#input.contract.name,
-        version: this.#input.contract.version,
+        name: this.#input.capability.name,
+        version: this.#input.capability.version,
       },
       scopeDir: scoped.childScopeDir,
       // CAPTURED CONSTANT — never a live read of the shared runtime's
@@ -395,7 +397,7 @@ class HopOrchestrator {
   /** Host attach + child-emitter wiring WHILE the child handle is current
    * (no yield between the swap and the subscription landing). Composed
    * emitters never arm signal handling — that stays entry-owned. The
-   * record roots at the child scope dir, stamped from the input contract;
+   * record roots at the child scope dir, stamped from the input capability;
    * composed emitters take no clock seam (module defaults apply). */
   #buildChildFrame(attached: AttachedFrame): BuiltFrame {
     const childHost = PioSession.fromRuntime(this.#topFrame.runtime);
@@ -403,8 +405,8 @@ class HopOrchestrator {
     const childEmitter = createStatusEmitter({
       sessionsRoot: attached.childScopeDir,
       capability: {
-        name: this.#input.contract.name,
-        version: this.#input.contract.version,
+        name: this.#input.capability.name,
+        version: this.#input.capability.version,
       },
       // Fresh read at emit time over the adopted host.
       tokens: (): number => childHost.counters().tokens,

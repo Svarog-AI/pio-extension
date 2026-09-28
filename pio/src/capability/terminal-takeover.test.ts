@@ -743,7 +743,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       .mockImplementation((): boolean => true);
     try {
       const promise = materializeFrame({
-        contract: CONTRACT_ALPHA,
+        capability: CONTRACT_ALPHA,
         idSeams: SEAMS_A,
         body: async (frame: PioSession): Promise<Record<string, unknown>> => {
           // Fresh host: the counter starts empty even though the parent
@@ -893,7 +893,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     let innerStoreRef: SessionVariableStore | undefined;
     let innerSettledRef: CapabilityResult | undefined;
     const settled = await materializeFrame({
-      contract: CONTRACT_ALPHA,
+      capability: CONTRACT_ALPHA,
       idSeams: SEAMS_A,
       body: async (frame: PioSession): Promise<Record<string, unknown>> => {
         const outerStore = frame.vars;
@@ -907,7 +907,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
           existsSync(join(root, CHILD_ID_A, CHILD_ID_B, "top", "status.json")),
         ).toBe(false);
         const innerSettled = await materializeFrame({
-          contract: CONTRACT_BETA,
+          capability: CONTRACT_BETA,
           idSeams: SEAMS_B,
           body: async (grand: PioSession): Promise<Record<string, unknown>> => {
             const innerStore = grand.vars;
@@ -1093,7 +1093,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       { kind: "swap", sessionId: "sess-fake-0001" },
     );
     const settled = await materializeFrame({
-      contract: CONTRACT_GAMMA,
+      capability: CONTRACT_GAMMA,
       idSeams: SEAMS_C,
       body: async (): Promise<Record<string, unknown>> => ({}),
     });
@@ -1137,7 +1137,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     );
     let entryRef: ActiveFrame | undefined;
     const settled = await materializeFrame({
-      contract: CONTRACT_ALPHA,
+      capability: CONTRACT_ALPHA,
       idSeams: SEAMS_A,
       body: async (frame: PioSession): Promise<Record<string, unknown>> => {
         expect(frame.counters().tokens).toBe(0);
@@ -1186,7 +1186,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     );
     let storeRef: SessionVariableStore | undefined;
     const settled = await materializeFrame({
-      contract: CONTRACT_ALPHA,
+      capability: CONTRACT_ALPHA,
       idSeams: SEAMS_A,
       body: async (frame: PioSession): Promise<Record<string, unknown>> => {
         const store = frame.vars;
@@ -1236,7 +1236,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       },
     );
     const settled = await materializeFrame({
-      contract: CONTRACT_BETA,
+      capability: CONTRACT_BETA,
       idSeams: SEAMS_B,
       body: async (): Promise<Record<string, unknown>> => {
         throw new ContractViolationError(["body fault"]);
@@ -1298,7 +1298,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     const { root, world } = buildAlphaWorld("/work/cancel");
     scriptSwitches(world, { kind: "cancel" });
     const settled = await materializeFrame({
-      contract: CONTRACT_ALPHA,
+      capability: CONTRACT_ALPHA,
       idSeams: SEAMS_A,
       body: async (): Promise<Record<string, unknown>> => ({}),
     });
@@ -1321,7 +1321,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     const { root, world } = buildAlphaWorld("/work/reject");
     scriptSwitches(world, { kind: "reject", message: "raw switch rejection" });
     const settled = await materializeFrame({
-      contract: CONTRACT_ALPHA,
+      capability: CONTRACT_ALPHA,
       idSeams: SEAMS_A,
       body: async (): Promise<Record<string, unknown>> => ({}),
     });
@@ -1358,7 +1358,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       },
     );
     const settled = await materializeFrame({
-      contract: CONTRACT_ALPHA,
+      capability: CONTRACT_ALPHA,
       idSeams: SEAMS_A,
       body: async (): Promise<Record<string, unknown>> => ({ durable: true }),
     });
@@ -1400,7 +1400,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     let threwSynchronously = false;
     try {
       const probe = materializeFrame({
-        contract: CONTRACT_GAMMA,
+        capability: CONTRACT_GAMMA,
         body: async (): Promise<Record<string, unknown>> => ({}),
       });
       void probe;
@@ -1425,7 +1425,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       { kind: "swap", sessionId: "sess-fake-0001" },
     );
     const promise = materializeFrame({
-      contract: CONTRACT_GAMMA,
+      capability: CONTRACT_GAMMA,
       idSeams: SEAMS_C,
       body: async (): Promise<Record<string, unknown>> => ({ direct: true }),
     });
@@ -1465,7 +1465,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     );
     const runCycle = (idSeams: IdSeams, cycle: number) =>
       materializeFrame({
-        contract: CONTRACT_ALPHA,
+        capability: CONTRACT_ALPHA,
         idSeams,
         body: async (): Promise<Record<string, unknown>> => {
           expect(activeFrames()).toHaveLength(2);

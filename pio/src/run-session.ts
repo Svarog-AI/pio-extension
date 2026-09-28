@@ -34,11 +34,13 @@
 // successful parse: the loader thunk fires on every name past parse; the
 // leaf-pure launcher thunk (SDK-free) fires immediately after loader
 // admission for the TTY fast-fail; the session, emitter, and terminal-class
-// thunks fire only past the gates. Cheap paths — parse errors, the miss
-// refusal, the TTY refusal — never pay for evaluating those consumer
-// graphs, whose reach includes the SDK (evaluated EXACTLY ONCE, at the
-// mount step). The static clauses are pure `import type` — erased under
-// erasable syntax: zero runtime module evaluation.
+// thunks fire only past the gates; the frame-environment thunk fires
+// post-mount/pre-run (a process-scoped, single-shot holder install).
+// Cheap paths — parse errors, the miss refusal, the TTY refusal — never pay
+// for evaluating those consumer graphs, whose reach includes the SDK
+// (evaluated EXACTLY ONCE, at the mount step). The static clauses are
+// pure `import type` — erased under erasable syntax: zero runtime module
+// evaluation.
 
 import type { KillCaptureTarget, StatusEmitter } from "./capability/status.ts";
 import type { TtyStream } from "./sandbox/launcher.ts";
@@ -304,6 +306,22 @@ export async function runSession(
     terminal = new InteractiveMode(session.runtime);
     void terminal.run().catch(() => {
       // Secondary fault — swallowed (never log — terminal ownership).
+    });
+    // Frame-environment install (post-mount / pre-run — the entry's SIXTH
+    // dynamic thunk): installs the process-scoped single-shot holder. NO
+    // local fault handling: an install fault ESCAPES into the boundary
+    // below (teardown runs first — free; the record settles through the
+    // already-constructed emitter, best-effort).
+    const { installFrameEnvironment } = await import(
+      "./capability/terminal-takeover.ts"
+    );
+    installFrameEnvironment({
+      sessionsRoot,
+      topFrame: session,
+      terminalStop: (): void => {
+        terminal?.stop();
+      },
+      stderr: (line: string): void => sink.stderr(line),
     });
     // THE single parsed record, passed BY REFERENCE (no spread/copy at the
     // handoff point): zero-pair invocations hand the EMPTY object — the old

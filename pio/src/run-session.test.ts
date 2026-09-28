@@ -20,13 +20,14 @@
 //
 // Factory-evaluation flags: Vitest runs a mock factory at the mocked
 // module's FIRST import (registration ≠ evaluation). Row order is therefore
-// load-bearing — the cheap-parse block leads (ALL FOUR flags genuinely
+// load-bearing — the cheap-parse block leads (ALL FIVE flags genuinely
 // unevaluated), the miss block is the FIRST importer of the loader (via each
 // row's direct `loaderModule()` thunk) and of the session (via the post-hoc
 // `sessionModule()` fetch its create-uncalled proof performs — that fetch
 // runs the session factory BEFORE the pipeline block executes), the TTY
 // refusal block is the FIRST importer of the launcher (the entry thunk), and
-// the FIRST PIPELINE row is the first importer of the SDK root (the mount
+// the FIRST PIPELINE row is the first importer of BOTH the SDK root (the
+// mount thunk) and the frame-environment module (the post-mount install
 // thunk) — every cheap/refusal/construction-fault row above it pins
 // sdkEvaluated === false. Because a factory runs exactly ONCE per file, a
 // flag-read of `true` is load-bearing only in the row that triggers the
@@ -47,9 +48,9 @@
 // Documented cast seams: the fake session is structurally complete for the
 // entry's reach path (counters + runtime.session.sessionFile + runtime
 // dispose) and is cast to the real static ONCE per scripted site; the
-// captured emitter options are read through a structural view; parsed
-// record bytes are read through Record<string, unknown>. Zero casts live in
-// the SOURCE files.
+// captured emitter options and the recorded install context are read
+// through structural views; parsed record bytes are read through
+// Record<string, unknown>. Zero casts live in the SOURCE files.
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
@@ -70,6 +71,7 @@ const hoisted = vi.hoisted(() => {
     sessionEvaluated: false,
     launcherEvaluated: false,
     sdkEvaluated: false,
+    takeoverEvaluated: false,
   };
   /** Emitter-options captures through the pass-through status factory. */
   const emitterOptionsLog: unknown[] = [];
@@ -92,6 +94,12 @@ const hoisted = vi.hoisted(() => {
     run?: () => Promise<unknown>;
     stop?: () => void;
   } = {};
+  /** Recorded frame-environment install contexts (recording stub — see the
+   * module mock below; the raw bags land here verbatim). */
+  const installCalls: unknown[] = [];
+  /** Per-row scripted behaviors for the install thunk (absent => clean
+   * install; the install-fault row scripts a throw). */
+  const envScripts: { install?: (ctx: unknown) => void } = {};
   /** Fresh tmpdir bases pending forced teardown. */
   const tmpBases: string[] = [];
 
@@ -137,6 +145,8 @@ const hoisted = vi.hoisted(() => {
     lifecycle,
     tuiInstances,
     tuiScripts,
+    installCalls,
+    envScripts,
     tmpBases,
     FakeInteractiveMode,
   };
@@ -190,6 +200,22 @@ vi.mock("./capability/status.ts", async (importOriginal) => {
         return originalEmit(result);
       };
       return real;
+    },
+  };
+});
+// Recording STUB over the frame-environment module (NOT pass-through: the
+// real holder's process-scoped state would double-install from the second
+// pipeline row on; sole consumed export: installFrameEnvironment). Marker
+// lands BEFORE the possibly-throwing scripted body so fault rows keep the
+// inventory total (position-ahead-of-delegation, as in the status
+// pass-through wrapper).
+vi.mock("./capability/terminal-takeover.ts", () => {
+  hoisted.evalFlags.takeoverEvaluated = true;
+  return {
+    installFrameEnvironment: (ctx: unknown): void => {
+      hoisted.installCalls.push(ctx);
+      hoisted.lifecycle.push("env-installed");
+      hoisted.envScripts.install?.(ctx);
     },
   };
 });
@@ -256,8 +282,11 @@ function resetHoistedState(): void {
   hoisted.evalFlags.sessionEvaluated = false;
   hoisted.evalFlags.launcherEvaluated = false;
   hoisted.evalFlags.sdkEvaluated = false;
+  hoisted.evalFlags.takeoverEvaluated = false;
   hoisted.invocations.length = 0;
   hoisted.lifecycle.length = 0;
+  hoisted.installCalls.length = 0;
+  hoisted.envScripts.install = undefined;
   hoisted.emitterOptionsLog.length = 0;
   hoisted.tuiInstances.length = 0;
   hoisted.tuiScripts.construct = undefined;
@@ -373,6 +402,7 @@ describe("runSession (strict positional parse — cheap paths, ZERO module evalu
       expect(hoisted.evalFlags.sessionEvaluated).toBe(false);
       expect(hoisted.evalFlags.launcherEvaluated).toBe(false);
       expect(hoisted.evalFlags.sdkEvaluated).toBe(false);
+      expect(hoisted.evalFlags.takeoverEvaluated).toBe(false);
       expect(hoisted.tuiInstances).toHaveLength(0);
     });
   }
@@ -401,6 +431,7 @@ describe("runSession (loader gate fires before ANY session construction)", () =>
     expect(hoisted.evalFlags.sessionEvaluated).toBe(false);
     expect(hoisted.evalFlags.launcherEvaluated).toBe(false);
     expect(hoisted.evalFlags.sdkEvaluated).toBe(false);
+    expect(hoisted.evalFlags.takeoverEvaluated).toBe(false);
     expect(hoisted.tuiInstances).toHaveLength(0);
     expect(resolveMock).toHaveBeenCalledWith("alpha");
     // Post-hoc fetch (module identity stable): proves create was NEVER called.
@@ -435,6 +466,7 @@ describe("runSession (loader gate fires before ANY session construction)", () =>
       expect(hoisted.evalFlags.sessionEvaluated).toBe(false);
       expect(hoisted.evalFlags.launcherEvaluated).toBe(false);
       expect(hoisted.evalFlags.sdkEvaluated).toBe(false);
+      expect(hoisted.evalFlags.takeoverEvaluated).toBe(false);
       expect(hoisted.tuiInstances).toHaveLength(0);
       const { PioSession } = await sessionModule();
       expect(vi.mocked(PioSession.create)).not.toHaveBeenCalled();
@@ -511,6 +543,7 @@ describe("runSession (in-namespace TTY fast-fail — truth table over injected d
       // Flag reads precede the post-hoc session-module fetch below.
       expect(hoisted.evalFlags.sessionEvaluated).toBe(false);
       expect(hoisted.evalFlags.sdkEvaluated).toBe(false);
+      expect(hoisted.evalFlags.takeoverEvaluated).toBe(false);
       expect(hoisted.tuiInstances).toHaveLength(0);
       expect(hoisted.emitterOptionsLog).toHaveLength(0);
       const { PioSession } = await sessionModule();
@@ -554,6 +587,8 @@ describe("runSession (pre-emitter faults — plain degrade, zero terminal trace)
     ]);
     expect(hoisted.emitterOptionsLog).toHaveLength(0); // emitter never constructed
     expect(hoisted.evalFlags.sdkEvaluated).toBe(false); // mount never reached
+    expect(hoisted.evalFlags.takeoverEvaluated).toBe(false); // install thunk never fired
+    expect(hoisted.installCalls).toHaveLength(0);
     expect(hoisted.tuiInstances).toHaveLength(0);
     expect(hoisted.lifecycle).toEqual([]); // no armed/mounted/stopped/disposed
     expect(readdirSync(base)).toEqual([]); // nothing materialized under the root
@@ -592,6 +627,15 @@ interface CapturedEmitterOptions {
  * canonical interface structurally — no import needed at the test level). */
 interface SignalsTarget {
   prependListener(signal: "SIGTERM", handler: () => void): void;
+}
+
+/** Structural view of the recorded frame-environment install context
+ * (assertion surface — the recording stub hands the raw bag back). */
+interface CapturedInstallContext {
+  readonly sessionsRoot: string;
+  readonly topFrame: Record<string, unknown>;
+  readonly terminalStop: () => void;
+  readonly stderr: (line: string) => void;
 }
 
 /** One fixture instance as observed by the row. */
@@ -763,6 +807,9 @@ describe("runSession (pipeline order and status emission)", () => {
     // down probe-native (stop → dispose) BEFORE the record emission — the
     // FULL interleaving pinned in the one lifecycle channel.
     expect(hoisted.evalFlags.sdkEvaluated).toBe(true); // first importer of the SDK root
+    // Fifth flag flips here — first importer of the frame-environment
+    // thunk (load-bearing only in this row; the factory runs once).
+    expect(hoisted.evalFlags.takeoverEvaluated).toBe(true);
     expect(hoisted.tuiInstances).toHaveLength(1);
     const tuiMount = hoisted.tuiInstances[0];
     expect(tuiMount.ctorArgs).toHaveLength(1);
@@ -772,11 +819,19 @@ describe("runSession (pipeline order and status emission)", () => {
     expect(hoisted.lifecycle).toEqual([
       "armed",
       "mounted",
+      "env-installed",
       "run-called",
       "stopped",
       "disposed",
       "emitted",
     ]);
+
+    // Install: strictly between mount and run (marker above), exactly
+    // once; cheap arg pins here, closure behavior in the args-channel row.
+    expect(hoisted.installCalls).toHaveLength(1);
+    const installedCtx = hoisted.installCalls[0] as CapturedInstallContext;
+    expect(installedCtx.sessionsRoot).toBe(world.sessionsRoot); // the parsed value
+    expect(installedCtx.topFrame).toBe(world.fake); // the created instance BY REFERENCE
 
     // Emitter options (captured through the pass-through seam): identity
     // stamped from the RESOLVED contract, LIVE accessors wired through the
@@ -849,9 +904,11 @@ describe("runSession (pipeline order and status emission)", () => {
     expect(err).toEqual([]);
     expect(hoisted.tuiInstances).toHaveLength(1);
     expect(world.dispose).toHaveBeenCalledTimes(1);
+    expect(hoisted.installCalls).toHaveLength(1); // install fired strictly before the fault
     expect(hoisted.lifecycle).toEqual([
       "armed",
       "mounted",
+      "env-installed",
       "run-called",
       "stopped",
       "disposed",
@@ -913,6 +970,47 @@ describe("runSession (pipeline order and status emission)", () => {
       depth: "2",
     });
     expect(Object.keys(handed)).toEqual(["topic", "depth"]);
+    expect(hoisted.installCalls).toHaveLength(1);
+    expect(hoisted.lifecycle).toEqual([
+      "armed",
+      "mounted",
+      "env-installed",
+      "run-called",
+      "stopped",
+      "disposed",
+      "emitted",
+    ]);
+  });
+
+  it("installed context ARGS behave as wired: invoking terminalStop takes the MOUNTED terminal's stop count up by EXACTLY one (delta taken after teardown's own stop), and invoking stderr appends EXACTLY one verbatim line to the ROW'S sink (outcome pins first, then the probes)", async () => {
+    const world = makePipelineWorld({
+      runBehavior: async () => ({ ok: true, outputs: {} }),
+    });
+    await scriptHitPipeline(world);
+
+    const { io, err } = collectErr();
+    const code = await runSession(
+      ["alpha", "--sessions-root", world.sessionsRoot],
+      io,
+      { signals: world.signalsTarget, exit: world.exitSink, tty: TTY_TRUE },
+    );
+
+    // Outcome pins FIRST (order discipline): clean completion, no stderr.
+    expect(code).toBe(0);
+    expect(err).toEqual([]);
+
+    const installedCtx = hoisted.installCalls[0] as CapturedInstallContext;
+    // Probe 1: the installed terminalStop closure delegates to the MOUNTED
+    // fake terminal (teardown's stop leg already ran — scripted no-op
+    // body); invoking it adds EXACTLY one more stop.
+    const stopBefore = hoisted.tuiInstances[0].stopCalls;
+    expect(stopBefore).toBe(1); // teardown's stop leg ran
+    installedCtx.terminalStop();
+    expect(hoisted.tuiInstances[0].stopCalls).toBe(stopBefore + 1); // delta exactly 1
+    // Probe 2: the installed stderr closure IS the row's sink — invoking it
+    // appends EXACTLY one line, verbatim (RunSessionIO newline convention).
+    installedCtx.stderr("frame-environment probe line");
+    expect(err).toEqual(["frame-environment probe line"]);
   });
 });
 
@@ -947,8 +1045,14 @@ describe("runSession (SIGTERM partial capture through the entry)", () => {
     await world.runStarted;
     expect(hoisted.invocations).toEqual(["constructed", "armed", "run-called"]);
     expect(hoisted.tuiInstances).toHaveLength(1);
-    expect(hoisted.lifecycle).toEqual(["armed", "mounted", "run-called"]);
+    expect(hoisted.lifecycle).toEqual([
+      "armed",
+      "mounted",
+      "env-installed",
+      "run-called",
+    ]);
     expect(world.handlers).toHaveLength(1);
+    expect(hoisted.installCalls).toHaveLength(1); // install fired strictly before the run
     // Manual dispatch of the CAPTURED listener — hermetic: no real signal.
     world.handlers[0]();
     const exitCode = await exited;
@@ -968,7 +1072,12 @@ describe("runSession (SIGTERM partial capture through the entry)", () => {
     // The kill path performs NO entry-side teardown: the record settles
     // exactly once and process death releases the terminal (live
     // cooked-mode recovery is a QG measurement point, not a redesign).
-    expect(hoisted.lifecycle).toEqual(["armed", "mounted", "run-called"]);
+    expect(hoisted.lifecycle).toEqual([
+      "armed",
+      "mounted",
+      "env-installed",
+      "run-called",
+    ]);
     // The pending run never settles — silence the dangling promise.
     void sessionPromise.catch(() => {});
   });
@@ -1004,6 +1113,7 @@ describe("runSession (terminal lifecycle — imperative mount, probe-native tear
     ]);
     expect(hoisted.tuiInstances).toHaveLength(0); // ctor never succeeded
     expect(world.dispose).toHaveBeenCalledTimes(1); // dispose STILL attempted
+    expect(hoisted.installCalls).toHaveLength(0); // mount incomplete — install never reached
     expect(hoisted.lifecycle).toEqual(["armed", "disposed", "emitted"]); // no mounted / no stopped / no run-called
     const record = JSON.parse(
       readFileSync(join(world.sessionsRoot, "top", "status.json"), "utf8"),
@@ -1011,6 +1121,47 @@ describe("runSession (terminal lifecycle — imperative mount, probe-native tear
     expect(record.ok).toBe(false);
     expect(record.errors).toEqual([
       { type: "Error", message: "terminal construction fault" },
+    ]);
+    expect(world.exitCalls).toEqual([]); // boundary capture, not the kill path
+  });
+
+  it("INSTALL THUNK THROWS (post-mount fault): teardown FIRST, record settles through the already-constructed emitter, degrade line byte-stable + 1, and NO run() fires (lifecycle ends before run-called)", async () => {
+    const world = makePipelineWorld({
+      runBehavior: async () => ({ ok: true, outputs: {} }),
+    });
+    await scriptHitPipeline(world);
+    hoisted.envScripts.install = (): void => {
+      throw new Error("frame environment fault");
+    };
+    const { io, err } = collectErr();
+    const code = await runSession(
+      ["alpha", "--sessions-root", world.sessionsRoot],
+      io,
+      { signals: world.signalsTarget, exit: world.exitSink, tty: TTY_TRUE },
+    );
+    expect(code).toBe(1);
+    expect(err).toEqual([
+      "pio-run-session: unexpected error: frame environment fault",
+    ]);
+    expect(hoisted.installCalls).toHaveLength(1); // fired once, then threw
+    expect(hoisted.invocations).toEqual(["constructed", "armed"]); // run never called
+    expect(hoisted.tuiInstances).toHaveLength(1);
+    expect(hoisted.tuiInstances[0].stopCalls).toBe(1);
+    expect(world.dispose).toHaveBeenCalledTimes(1);
+    expect(hoisted.lifecycle).toEqual([
+      "armed",
+      "mounted",
+      "env-installed",
+      "stopped",
+      "disposed",
+      "emitted",
+    ]);
+    const record = JSON.parse(
+      readFileSync(join(world.sessionsRoot, "top", "status.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(record.ok).toBe(false);
+    expect(record.errors).toEqual([
+      { type: "Error", message: "frame environment fault" },
     ]);
     expect(world.exitCalls).toEqual([]); // boundary capture, not the kill path
   });
@@ -1038,9 +1189,11 @@ describe("runSession (terminal lifecycle — imperative mount, probe-native tear
     ]);
     expect(hoisted.tuiInstances[0].stopCalls).toBe(1);
     expect(world.dispose).toHaveBeenCalledTimes(1);
+    expect(hoisted.installCalls).toHaveLength(1); // install fired strictly before the fault
     expect(hoisted.lifecycle).toEqual([
       "armed",
       "mounted",
+      "env-installed",
       "run-called",
       "stopped",
       "disposed",
@@ -1082,9 +1235,11 @@ describe("runSession (terminal lifecycle — imperative mount, probe-native tear
     expect(hoisted.tuiInstances).toHaveLength(1); // WAS constructed (the mount precedes the run)
     expect(hoisted.tuiInstances[0].stopCalls).toBe(1);
     expect(world.dispose).toHaveBeenCalledTimes(1);
+    expect(hoisted.installCalls).toHaveLength(1); // install fired pre-fault
     expect(hoisted.lifecycle).toEqual([
       "armed",
       "mounted",
+      "env-installed",
       "run-called",
       "stopped",
       "disposed",
@@ -1129,9 +1284,11 @@ describe("runSession (last-resort boundary)", () => {
     expect(hoisted.tuiInstances).toHaveLength(1);
     expect(hoisted.tuiInstances[0].stopCalls).toBe(1);
     expect(world.dispose).toHaveBeenCalledTimes(1);
+    expect(hoisted.installCalls).toHaveLength(1); // install fired pre-fault
     expect(hoisted.lifecycle).toEqual([
       "armed",
       "mounted",
+      "env-installed",
       "run-called",
       "stopped",
       "disposed",
@@ -1227,7 +1384,7 @@ describe("source guards (lazy-SDK discipline over run-session.ts)", () => {
     ]);
   });
 
-  it("dynamic specifier set is EXACTLY {'./capability/loader.ts', './capability/pio-session.ts', './capability/status.ts', './sandbox/launcher.ts', '@earendil-works/pi-coding-agent'} — ALL literal, no interpolation (status appears twice: pipeline + boundary)", () => {
+  it("dynamic specifier set is EXACTLY {'./capability/loader.ts', './capability/pio-session.ts', './capability/status.ts', './capability/terminal-takeover.ts', './sandbox/launcher.ts', '@earendil-works/pi-coding-agent'} — ALL literal, no interpolation (status appears twice: pipeline + boundary)", () => {
     const literal = [...src.matchAll(/import\(\s*["']([^"']+)["']\s*\)/g)].map(
       (match) => match[1],
     );
@@ -1237,6 +1394,7 @@ describe("source guards (lazy-SDK discipline over run-session.ts)", () => {
         "./capability/loader.ts",
         "./capability/pio-session.ts",
         "./capability/status.ts",
+        "./capability/terminal-takeover.ts",
         "./sandbox/launcher.ts",
         "@earendil-works/pi-coding-agent",
       ].sort(),

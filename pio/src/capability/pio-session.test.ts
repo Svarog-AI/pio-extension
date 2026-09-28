@@ -8,6 +8,21 @@
 // directly observable. Synthetic events flow through the single documented
 // cast seam asEvent — the sole `as` in this file.
 //
+// Physics-mirror harness upgrade (measured against the installed 0.85.1
+// dist): the fake handles bookkeep LIVE listeners — subscribe appends to a
+// live list and returns a FUNCTIONAL per-listener unsubscribe that removes
+// it (agent-session.d.ts L278–L280), dispose clears the live list and marks
+// the handle disposed (agent-session.js L584–L604), and emit delivers to
+// EVERY live listener of the target handle — behavior-identical in every
+// existing row (at most one live listener per handle) and fatal to any
+// double subscription (every later event would count twice against the
+// exact-sum P-pins). The simulated-swap helper pins switchSession's
+// teardown-first operation order (agent-session-runtime.js L128–L143):
+// dispose the outgoing handle FIRST, then apply a FRESH zero-listener
+// incoming handle, and replay NOTHING (reopened transcripts re-fire no
+// events). No stdout spy is warranted anywhere in this file: the module
+// composes no process-stream bytes — prompt text rides the session channel.
+//
 // Phase-running rows drive the runs themselves through the fake session
 // handle's prompt mock: each queued implementation emits synthetic events
 // through the captured listener and then resolves, where one resolution
@@ -33,6 +48,12 @@ interface FakeSession {
   prompt: ReturnType<typeof vi.fn>;
   sessionId: string;
   dispose: ReturnType<typeof vi.fn>;
+  /** Every listener ever subscribed — append-only counting observability. */
+  captured: Listener[];
+  /** Live listeners: subscribe appends; the returned unsubscribe or the mirrored dispose removes. */
+  live: Listener[];
+  /** Mirrored platform-dispose marker (dist: _eventListeners = []). */
+  disposed: boolean;
 }
 
 interface Round {
@@ -51,6 +72,41 @@ const harness = vi.hoisted(() => {
   const fakeManager = { getCwd: () => managerCwd };
   const fakeServices = { marker: "fake-services" };
 
+  // Physics mirror over the installed 0.85.1 dist: subscribe admits
+  // multiple listeners and returns a FUNCTIONAL per-listener unsubscribe
+  // (agent-session.d.ts L278–L280); dispose clears the live list and marks
+  // the handle disposed (agent-session.js L584–L604). captured stays
+  // append-only for counting; live drives delivery.
+  const mintFakeHandle = (id: string = sessionId): FakeSession => {
+    const captured: Listener[] = [];
+    const live: Listener[] = [];
+    const subscribe = vi.fn((listener: Listener) => {
+      captured.push(listener);
+      live.push(listener);
+      return () => {
+        const index = live.indexOf(listener);
+        if (index !== -1) live.splice(index, 1);
+      };
+    });
+    const prompt = vi.fn(async () => undefined);
+    const dispose = vi.fn();
+    const handle: FakeSession = {
+      sessionId: id,
+      subscribe,
+      prompt,
+      dispose,
+      captured,
+      live,
+      disposed: false,
+    };
+    // Mirrors dist dispose: _eventListeners = [] + agent disconnect.
+    dispose.mockImplementation(() => {
+      handle.disposed = true;
+      live.length = 0;
+    });
+    return handle;
+  };
+
   const getAgentDir = vi.fn(() => agentDir);
   const SessionManager = {
     create: vi.fn(() => fakeManager),
@@ -61,19 +117,12 @@ const harness = vi.hoisted(() => {
   }));
   const createAgentSessionRuntime = vi.fn(async () => {
     // Fresh fakes per invocation so isolation rows observe distinct handles.
-    const captured: Listener[] = [];
-    const subscribe = vi.fn((listener: Listener) => {
-      captured.push(listener);
-      return () => {};
-    });
-    const prompt = vi.fn(async () => undefined);
-    const session: FakeSession = {
-      subscribe,
-      prompt,
-      sessionId,
-      dispose: vi.fn(),
+    const session = mintFakeHandle();
+    const round: Round = {
+      session,
+      runtime: { session },
+      captured: session.captured,
     };
-    const round: Round = { session, runtime: { session }, captured };
     state.rounds.push(round);
     return round.runtime;
   });
@@ -89,6 +138,7 @@ const harness = vi.hoisted(() => {
 
   return {
     state,
+    mintFakeHandle,
     getAgentDir,
     SessionManager,
     createAgentSessionServices,
@@ -125,11 +175,21 @@ async function host(sessionsRoot?: string) {
   return { instance, round: lastRound() };
 }
 
-/** Drive synthetic events through the listener the host attached. */
+/** Drive synthetic events through EVERY live listener on the target handle
+ * (platform fan-out mirror): behavior-identical wherever at most one
+ * listener is live, silent when the live list is empty (a disposed handle
+ * delivers to nobody), and fatal to the exact sums under a double
+ * subscription (every event would count twice). */
+function emitTo(handle: FakeSession, ...events: object[]) {
+  for (const event of events) {
+    const payload = asEvent(event);
+    for (const listener of handle.live) listener(payload);
+  }
+}
+
+/** Drive synthetic events through the round's handle (all-live delivery). */
 function emit(round: Round, ...events: object[]) {
-  const listener = round.captured[0];
-  if (!listener) throw new Error("expected an attached listener");
-  for (const event of events) listener(asEvent(event));
+  emitTo(round.session, ...events);
 }
 
 // --- Event fixtures (shapes mirror the installed dist) --------------------

@@ -7,23 +7,19 @@
 // fake runtime, so subscription counts and per-instance isolation are
 // directly observable. Synthetic events flow through the single documented
 // cast seam asEvent — the sole `as` over synthetic event payloads (the
-// composed-host rows add the documented handle-typing seams asHandle /
-// asRuntime below — the only other assertions in this file).
+// handle-typing seams asHandle / asRuntime below are the only other
+// assertions in this file).
 //
-// Physics-mirror harness upgrade (measured against the installed 0.85.1
-// dist): the fake handles bookkeep LIVE listeners — subscribe appends to a
-// live list and returns a FUNCTIONAL per-listener unsubscribe that removes
-// it (agent-session.d.ts L278–L280), dispose clears the live list and marks
-// the handle disposed (agent-session.js L584–L604), and emit delivers to
-// EVERY live listener of the target handle — behavior-identical in every
-// existing row (at most one live listener per handle) and fatal to any
-// double subscription (every later event would count twice against the
-// exact-sum P-pins). The simulated-swap helper pins switchSession's
-// teardown-first operation order (agent-session-runtime.js L128–L143):
-// dispose the outgoing handle FIRST, then apply a FRESH zero-listener
-// incoming handle, and replay NOTHING (reopened transcripts re-fire no
-// events). No stdout spy is warranted anywhere in this file: the module
-// composes no process-stream bytes — prompt text rides the session channel.
+// Physics-mirror harness (installed 0.85.1 dist): fake handles bookkeep
+// LIVE listeners — subscribe returns a functional per-listener unsubscribe
+// (agent-session.d.ts L278–L280); dispose clears the live list
+// (agent-session.js L584–L604); emitTo delivers to EVERY live listener, so
+// a double-subscribed handle counts every event twice and fails the exact
+// sums. simulateSwap mirrors switchSession's teardown-first order
+// (agent-session-runtime.js L128–L143): dispose the outgoing handle, apply
+// a FRESH zero-listener handle, replay nothing (reopened transcripts
+// re-fire no events). No stdout spy anywhere: the module composes no
+// process-stream bytes — prompt text rides the session channel.
 //
 // Phase-running rows drive the runs themselves through the fake session
 // handle's prompt mock: each queued implementation emits synthetic events
@@ -49,11 +45,9 @@ import { captureError } from "./status.ts";
 // Single documented cast seam for synthetic event payloads.
 const asEvent = (v: unknown): AgentSessionEvent => v as AgentSessionEvent;
 
-// Documented handle-typing seams for the composed-host rows: the fake
-// handles are plain structural objects carrying exactly the module's
-// handle reach (sessionId / subscribe / prompt / dispose); they are
-// presented under the SDK types at the two typed seams (fromRuntime,
-// rebind), which pin their parameters to the real SDK shapes.
+// Handle-typing seams: the fakes carry exactly the module's handle reach
+// (sessionId / subscribe / prompt / dispose) and are presented under the
+// SDK types at the fromRuntime / rebind call sites.
 const asHandle = (v: FakeSession): AgentSession => v as unknown as AgentSession;
 const asRuntime = (r: { session: FakeSession }): AgentSessionRuntime =>
   r as unknown as AgentSessionRuntime;
@@ -68,13 +62,12 @@ interface FakeSession {
   /** One invocation stands for one fully-settled logical run. */
   prompt: ReturnType<typeof vi.fn>;
   sessionId: string;
-  /** Mirrored platform-dispose physics; plain callable type because the
-   * simulated-swap helper invokes it through the interface (the loose
-   * default Mock type is not callable). */
+  /** Mirrored dispose — plain callable type (the default Mock type is not
+   * callable through the interface). */
   dispose: () => void;
   /** Every listener ever subscribed — append-only counting observability. */
   captured: Listener[];
-  /** Live listeners: subscribe appends; the returned unsubscribe or the mirrored dispose removes. */
+  /** Live listeners: subscribe adds; unsubscribe / mirrored dispose remove. */
   live: Listener[];
   /** Mirrored platform-dispose marker (dist: _eventListeners = []). */
   disposed: boolean;
@@ -96,11 +89,9 @@ const harness = vi.hoisted(() => {
   const fakeManager = { getCwd: () => managerCwd };
   const fakeServices = { marker: "fake-services" };
 
-  // Physics mirror over the installed 0.85.1 dist: subscribe admits
-  // multiple listeners and returns a FUNCTIONAL per-listener unsubscribe
-  // (agent-session.d.ts L278–L280); dispose clears the live list and marks
-  // the handle disposed (agent-session.js L584–L604). captured stays
-  // append-only for counting; live drives delivery.
+  // Dist physics mirror: subscribe returns a functional per-listener
+  // unsubscribe (agent-session.d.ts L278–L280); dispose clears the live
+  // list (agent-session.js L584–L604). captured = counts; live = delivery.
   const mintFakeHandle = (id: string = sessionId): FakeSession => {
     const captured: Listener[] = [];
     const live: Listener[] = [];
@@ -199,11 +190,9 @@ async function host(sessionsRoot?: string) {
   return { instance, round: lastRound() };
 }
 
-/** Drive synthetic events through EVERY live listener on the target handle
- * (platform fan-out mirror): behavior-identical wherever at most one
- * listener is live, silent when the live list is empty (a disposed handle
- * delivers to nobody), and fatal to the exact sums under a double
- * subscription (every event would count twice). */
+/** Deliver synthetic events to EVERY live listener on the target handle
+ * (platform fan-out mirror; a disposed handle delivers to nobody, and a
+ * double subscription would count every event twice). */
 function emitTo(handle: FakeSession, ...events: object[]) {
   for (const event of events) {
     const payload = asEvent(event);
@@ -216,20 +205,17 @@ function emit(round: Round, ...events: object[]) {
   emitTo(round.session, ...events);
 }
 
-/** Simulated swap mirroring switchSession's measured operation order
- * (agent-session-runtime.js L128–L143): DISPOSE the outgoing runtime
- * handle FIRST (its listeners die with it), THEN apply the incoming handle
- * to the stored slot. The incoming handle must be FRESH — a factory re-run
- * mints a brand-new AgentSession starting with zero listeners — and the
- * swap REPLAYS NOTHING (reopened transcripts re-fire no events). */
+/** Simulated swap mirroring switchSession's measured order (agent-session-
+ * runtime.js L128–L143): DISPOSE the outgoing handle FIRST, then apply the
+ * FRESH zero-listener incoming handle; replays NOTHING (reopened
+ * transcripts re-fire no events). */
 function simulateSwap(round: Round, incoming: FakeSession): void {
   round.runtime.session.dispose();
   round.runtime.session = incoming;
 }
 
-/** Replica of the module's refusal message for the foreign-handle row —
- * the \u2014 escape replicated IDENTICALLY (glyph-mangling house caution;
- * owner referenced in the module template). */
+/** Replica of the module's refusal message — the \u2014 escape replicated
+ * identically (never a literal em dash in string literals). */
 const REFUSAL_REPLICA =
   "pio-session: rebind refused \u2014 handle 'sess-other-9999' is not this frame's session ('sess-fake-0001')";
 
@@ -1214,18 +1200,16 @@ describe("PioSession — phase result shape", () => {
 
 describe("PioSession — composed-host surface (P-rows)", () => {
   it("fromRuntime constructs synchronously over a settled runtime: immediately usable with one live subscription on the current handle, id and runtime by reference, a fresh vars store, the exact zero counters, zero construction reach, and a distinct observer per host", async () => {
-    // Drive the harness's runtime factory DIRECTLY (hoisted mock — NOT via
-    // PioSession.create) for one settled fake runtime whose current handle
-    // h0 carries the harness identity.
+    // Drive the runtime factory DIRECTLY (not via create): one settled
+    // runtime whose current handle h0 carries the harness identity.
     const rawRuntime = await harness.createAgentSessionRuntime();
     const round = lastRound();
     const h0 = round.session;
     expect(harness.createAgentSessionRuntime).toHaveBeenCalledTimes(1);
     const runtime = asRuntime(round.runtime);
 
-    // Provenance baseline BEFORE the factory call: the four construction
-    // mocks stand at their direct-drive counts (only the runtime factory
-    // moved, and by exactly one).
+    // Provenance baseline: the four construction mocks stand at their
+    // direct-drive counts; fromRuntime must move none of them.
     const provenanceBefore = {
       managerCreate: harness.SessionManager.create.mock.calls.length,
       services: harness.createAgentSessionServices.mock.calls.length,
@@ -1233,8 +1217,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
       runtimeFactory: harness.createAgentSessionRuntime.mock.calls.length,
     };
 
-    // SYNCHRONOUS: the instance is usable IMMEDIATELY — no await between
-    // the factory and the first counter read.
+    // SYNCHRONOUS — usable before any await.
     const H = PioSession.fromRuntime(runtime);
     const zero = H.counters();
     expect(Object.keys(zero).sort()).toEqual([
@@ -1248,25 +1231,22 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     expect(zero.toolUses).toEqual({});
     expect(zero.tokens).toBe(0);
 
-    // EXACTLY ONE subscription landed on h0 (live-listener count 1; total
-    // subscribe invocations on h0 = 1) — and no other handle exists in
-    // this row's world.
+    // Exactly one subscription on h0 (live 1, total 1); no other handle
+    // exists in this world.
     expect(h0.live).toHaveLength(1);
     expect(h0.subscribe).toHaveBeenCalledTimes(1);
 
-    // Identity and placement pins.
     expect(H.id).toBe("sess-fake-0001");
     expect(H.runtime).toBe(rawRuntime);
 
-    // FRESH variable store: empty, set/get/list round-trips.
+    // Fresh vars store: empty, set/get/list round-trips.
     expect(H.vars.list()).toEqual([]);
     H.vars.set("k", "v");
     expect(H.vars.get("k")).toBe("v");
     expect(H.vars.list()).toEqual(["k"]);
 
-    // PROVENANCE: ZERO standalone-construction reach — the SDK
-    // construction mocks stand UNCHANGED by the factory call (the factory
-    // ran once, before; fromRuntime performs zero construction reach).
+    // PROVENANCE: zero standalone-construction reach — all four counts
+    // unchanged by the factory call.
     expect(harness.SessionManager.create.mock.calls.length).toBe(
       provenanceBefore.managerCreate,
     );
@@ -1280,17 +1260,16 @@ describe("PioSession — composed-host surface (P-rows)", () => {
       provenanceBefore.runtimeFactory,
     );
 
-    // OBSERVER FRESHNESS: a second fromRuntime over the SAME runtime mints
-    // a DISTINCT observer — h0 now carries two live listeners, each
-    // routing to its own observer; the vars stores stay distinct objects.
+    // OBSERVER FRESHNESS: a second host on the SAME runtime gets a
+    // DISTINCT observer — two live listeners on h0, each routing to its
+    // own.
     const H2 = PioSession.fromRuntime(runtime);
     expect(h0.live).toHaveLength(2);
     expect(h0.subscribe).toHaveBeenCalledTimes(2);
     expect(H2.vars).not.toBe(H.vars);
     expect(H2.vars.get("k")).toBeUndefined();
-    // Hand-computed per host: Σ10 (1+2+3+4) + Σ26 (5+6+7+8) = 36. Each
-    // scripted assistant-usage event lands in BOTH hosts independently,
-    // counted ONCE each (no cross-routing, no self-doubling).
+    // Hand-computed per host: Σ10 (1+2+3+4) + Σ26 (5+6+7+8) = 36 — each
+    // event counted once per host (no cross-routing, no self-doubling).
     emitTo(h0, messageEnd(assistantMessage(usage(1, 2, 3, 4))));
     expect(H.counters().tokens).toBe(10);
     expect(H2.counters().tokens).toBe(10);
@@ -1302,9 +1281,8 @@ describe("PioSession — composed-host surface (P-rows)", () => {
   it("rebind continues cumulative counters across a simulated swap: the reopen itself adds nothing, emitting on the fresh handle without a rebind changes nothing, re-arming adds no phantom accumulation, post-events land, and the old handle stays inert", async () => {
     const { instance: H, round: R } = await host();
     const h0 = R.session;
-    // Pre-phase on h0 — hand-computed pre-vector N: Σ38 (10+20+5+3)
-    // tokens, one committed write (its start also counts in toolUses),
-    // one bash start.
+    // Pre-vector — hand-computed: Σ38 (10+20+5+3) tokens, one committed
+    // write (its start also counts in toolUses), one bash start.
     emit(
       R,
       agentStart(),
@@ -1321,36 +1299,32 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     };
     expect(H.counters()).toEqual(pre);
 
-    // Swap OUT to a child-like fresh handle, then swap BACK to a FRESH
-    // handle h1 carrying sessionId S again (file-backed identity
-    // retention — a new object, zero listeners).
+    // Swap OUT to a child-like handle, BACK to a FRESH h1@S (file-backed
+    // identity retention — new object, zero listeners).
     simulateSwap(R, harness.mintFakeHandle("sess-child-0002"));
     const h1 = harness.mintFakeHandle(harness.sessionId);
     simulateSwap(R, h1);
     expect(R.runtime.session).toBe(h1);
     expect(h0.disposed).toBe(true);
 
-    // Immediately after swap-back, BEFORE any rebind: the reopen itself
-    // adds nothing — the fresh handle re-fires nothing, and H's old
-    // subscription died with h0's dispose (no loss, no gain).
+    // After swap-back, BEFORE any rebind: the reopen adds nothing — the
+    // fresh handle re-fires nothing; H's old subscription died with h0.
     expect(H.counters()).toEqual(pre);
 
-    // Emitting on h1 WITHOUT a rebind changes nothing — H is not yet
-    // observing the new handle; the re-arm is REQUIRED, not automatic.
+    // Without a rebind, h1 is invisible to H (zero live listeners) — the
+    // re-arm is REQUIRED, not automatic.
     expect(h1.live).toHaveLength(0);
     emitTo(h1, messageEnd(assistantMessage(usage(1, 1, 1, 1))));
     expect(H.counters()).toEqual(pre);
 
-    // Rebind on the runtime's CURRENT handle (the live stored slot): h1's
-    // live-listener count becomes 1; re-arming adds no phantom
-    // accumulation.
+    // Rebind the CURRENT handle: one live listener lands on h1; re-arming
+    // adds no phantom accumulation.
     H.rebind(asHandle(R.runtime.session));
     expect(h1.live).toHaveLength(1);
     expect(H.counters()).toEqual(pre);
 
-    // Post-events scripted on h1 land: final = pre + post EXACTLY —
-    // hand-computed 38 + 800 (100+250+400+50) = 838 tokens, 1 + 1 = 2
-    // committed files; the post write/grep starts join the pre map.
+    // Post-events on h1 land: final = pre + post EXACT — hand-computed
+    // 38 + 800 (100+250+400+50) = 838 tokens, 2 committed files.
     emitTo(
       h1,
       messageEnd(assistantMessage(usage(100, 250, 400, 50))),
@@ -1366,8 +1340,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     };
     expect(H.counters()).toEqual(final);
 
-    // Old handle INERT: poking disposed h0 with events leaves the
-    // counters unchanged.
+    // Old handle INERT: poking disposed h0 changes nothing.
     emitTo(h0, messageEnd(assistantMessage(usage(9, 9, 9, 9))));
     expect(H.counters()).toEqual(final);
   });
@@ -1396,16 +1369,12 @@ describe("PioSession — composed-host surface (P-rows)", () => {
   });
 
   it("full-swap counter continuity over the rich vector: tokens sum EXACT across the rebind, the committed-path master list stays in EVENT ORDER through the open window, toolUses and askUserCalls merge exactly, replay adds nothing, and the disposed old handle stays inert", async () => {
-    // Row-comment rationale: all-live emit delivery makes any
-    // double-subscribe fatal to these exact sums (the no-op gate's
-    // tripwire) — one extra live listener on h1 would double every
-    // post-rebind contribution below.
+    // All-live emit makes any double-subscribe fatal to these exact sums
+    // (the no-op gate's tripwire).
     const { instance: H, round: R } = await host();
     const h0 = R.session;
-    // Pre-vector (on h0) — hand-computed: two assistant usages Σ838
-    // (38 + 800), TWO committed write paths in event order (/pre/a.md,
-    // /pre/b.md), a two-name toolUses map (write: 2, ask_user: 1), and
-    // one ask_user start.
+    // Pre-vector — hand-computed: Σ838 (38 + 800) tokens, two committed
+    // paths in event order, toolUses {write: 2, ask_user: 1}.
     emit(
       R,
       agentStart(),
@@ -1425,15 +1394,13 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     };
     expect(H.counters()).toEqual(pre);
 
-    // Same swap choreography as P2: out to a child-like fresh handle,
-    // back to a FRESH handle h1@S (new object, zero listeners).
+    // Same choreography as P2: out to a child-like handle, back to FRESH h1@S.
     simulateSwap(R, harness.mintFakeHandle("sess-child-0005"));
     const h1 = harness.mintFakeHandle(harness.sessionId);
     simulateSwap(R, h1);
 
-    // Counters read IMMEDIATELY after the swap-back (before rebind) equal
-    // the pre-vector EXACT — the "replay adds nothing" arithmetic guard
-    // restated over the full vector.
+    // Read IMMEDIATELY after swap-back (before rebind): pre-vector EXACT —
+    // "replay adds nothing" over the full vector.
     expect(H.counters()).toEqual(pre);
 
     H.rebind(asHandle(h1));
@@ -1451,18 +1418,15 @@ describe("PioSession — composed-host surface (P-rows)", () => {
 
     // Final tokens = T_pre + T_post EXACT: 838 + 34 = 872.
     expect(H.counters().tokens).toBe(872);
-    // Committed-path master list = [pre-paths…, post-path] in EVENT
-    // ORDER, observed through the count AND the delta content (no resets
-    // issued, so the OPEN window also survives the rebind — delta state
-    // continuity is the same-persistent-observer story).
+    // Master list = [pre…, post] in EVENT ORDER via count AND delta
+    // content (no resets — the open window survives the rebind).
     expect(H.counters().filesWritten).toBe(3);
     expect(H.getFilesWrittenDelta()).toEqual([
       "/pre/a.md",
       "/pre/b.md",
       "/post/c.md",
     ]);
-    // toolUses and askUserCalls merged exactly: write starts 2 + 1 = 3,
-    // one new bash start, ask_user unchanged at 1.
+    // toolUses merged: write 2+1=3, one new bash start, ask_user at 1.
     expect(H.counters().toolUses).toEqual({ write: 3, ask_user: 1, bash: 1 });
     expect(H.counters().askUserCalls).toBe(1);
 
@@ -1480,15 +1444,13 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     const { instance: H, round: R } = await host();
     const h0 = R.session;
 
-    // Script h0's prompt mock to settle one quiet run THROUGH H's own
-    // live listener.
+    // One quiet run settles THROUGH H's own live listener.
     scriptRuns(R, quietRun());
     const result = await H.execute_phase("p5", {
       instructions: "Write the thing",
     });
-    // EXACTLY ONCE, with the BYTE-IDENTICAL framed text a created session
-    // sends (placement-blind framing — the marker escaped identically in
-    // the replica).
+    // Once, with the byte-identical framed text a created session sends
+    // (placement-blind framing).
     expect(h0.prompt).toHaveBeenCalledTimes(1);
     expect(h0.prompt).toHaveBeenCalledWith(
       "\u2014\u2014 p5 \u2014\u2014\nWrite the thing",
@@ -1496,9 +1458,8 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
 
-    // Phase budget parity: a continuation-demanding hook + ceiling
-    // rejects with the SAME PhaseBudgetError a created session raises
-    // (the existing budget row's shape pinned identically).
+    // Budget parity: continuation demand past the ceiling rejects with
+    // the SAME PhaseBudgetError a created session raises.
     scriptRuns(R, quietRun(), quietRun());
     let hookCalls = 0;
     try {
@@ -1526,11 +1487,9 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     expect(hookCalls).toBe(2);
     expect(h0.prompt).toHaveBeenCalledTimes(3);
 
-    // CURRENT-HANDLE TARGETING: after a lightweight P2-style swap +
-    // rebind (fresh handle h1@S), a further execute_phase lands its
-    // prompt on h1's prompt mock with the framed bytes — and h0's prompt
-    // mock is never called for that phase (prompts ride the runtime's
-    // CURRENT handle at call time; execute_phase reads it freshly per
+    // CURRENT-HANDLE TARGETING: after swap + rebind, the next phase lands
+    // on h1's prompt mock with the framed bytes; h0's mock is never called
+    // for it (prompts ride the runtime's CURRENT handle, read freshly per
     // prompt).
     simulateSwap(R, harness.mintFakeHandle("sess-child-0003"));
     const h1 = harness.mintFakeHandle(harness.sessionId);
@@ -1567,24 +1526,19 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     expect(thrown).toBeInstanceOf(Error);
     const fault = thrown as SessionHandleRefusalError;
     expect(fault.name).toBe("SessionHandleRefusalError");
-    // Message BYTE-EQUAL to the replica — the \u2014 escape replicated
-    // IDENTICALLY in the module template and here (glyph-mangling house
-    // caution; owner referenced in the replica).
+    // Byte-equal to the replica — \u2014 escaped identically on both sides.
     expect(fault.message).toBe(REFUSAL_REPLICA);
     expect((thrown as { cause?: unknown }).cause).toBeUndefined();
 
-    // ZERO SIDE EFFECTS: hF was never subscribed; h0's subscription is
-    // untouched; the counters are unmoved.
+    // Zero side effects: hF never subscribed, h0 untouched, counters unmoved.
     expect(hF.subscribe).toHaveBeenCalledTimes(0);
     expect(h0.subscribe).toHaveBeenCalledTimes(1);
     expect(H.counters()).toEqual(before);
 
-    // BINDING INTACT after refusal: a follow-up same-handle rebind is
-    // STILL a no-op (marker unmoved — the subscribe count stays 1)...
+    // Binding intact: the follow-up same-handle rebind is STILL a no-op...
     H.rebind(asHandle(h0));
     expect(h0.subscribe).toHaveBeenCalledTimes(1);
-    // ...and a subsequent legitimate swap-back rebind (fresh handle,
-    // sessionId S) succeeds and resumes delivery.
+    // ...and a legitimate swap-back rebind succeeds and resumes delivery.
     simulateSwap(R, harness.mintFakeHandle("sess-child-0004"));
     const h1 = harness.mintFakeHandle(harness.sessionId);
     simulateSwap(R, h1);
@@ -1594,10 +1548,8 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     emitTo(h1, messageEnd(assistantMessage(usage(1, 2, 3, 4))));
     expect(H.counters().tokens).toBe(10);
 
-    // CAPTURE-LADDER PRE-FLIGHT (Step-1 idiom): the REAL leaf-pure
-    // status.ts (no mock) reduces the error to EXACTLY { type, message }
-    // — bare identity, no cause, no extra keys — locking the bytes for
-    // any downstream row that mirrors them.
+    // Capture-ladder pre-flight (real leaf-pure status.ts, no mock): bare
+    // identity reduces to EXACTLY { type, message } — no cause, no extras.
     const captured = captureError(
       new SessionHandleRefusalError(REFUSAL_REPLICA),
     );
@@ -1609,7 +1561,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
 });
 
 describe("export surface", () => {
-  it("runtime export surface is EXACTLY ['PioSession', 'SessionHandleRefusalError', 'SessionVariableStore', 'renderPhaseMarker'] sorted (interfaces and types erase under erasable syntax; the refusal class is the sole growth)", async () => {
+  it("runtime export surface is EXACTLY ['PioSession', 'SessionHandleRefusalError', 'SessionVariableStore', 'renderPhaseMarker'] sorted (types erase under erasable syntax)", async () => {
     expect(Object.keys(await import("./pio-session.ts")).sort()).toEqual(
       [
         "PioSession",
@@ -1627,23 +1579,23 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     "utf8",
   );
 
-  it("zero occurrences of terminal-takeover (frame-world import ban — criterion test 2)", () => {
+  it("zero occurrences of terminal-takeover (frame-world import ban)", () => {
     expect(src.includes("terminal-takeover")).toBe(false);
   });
 
-  it("zero occurrences of isComposed (placement-flag ban — criterion test 4)", () => {
+  it("zero occurrences of isComposed (placement-flag ban)", () => {
     expect(src.includes("isComposed")).toBe(false);
   });
 
-  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, its normalized byte form pinned with AgentSession LEADING (biome case-insensitive prefix sort) — and the static VALUE clause set is UNCHANGED at exactly ['../session.ts', './errors.ts'] in source order behind the external type clause", () => {
+  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is unchanged at exactly ['../session.ts', './errors.ts'] behind it in source order", () => {
     // EXACTLY ONE clause references the SDK root, and it is the TYPE
     // clause.
     expect(src.match(/from "@earendil-works\/pi-coding-agent"/g)?.length).toBe(
       1,
     );
-    // Normalized to the pinned single-line byte form — whitespace AND
-    // the formatter-mandated trailing comma are neutralized (mechanical
-    // punctuation); names, their order, and the specifier stay pinned.
+    // Normalized to the pinned single-line form — whitespace and the
+    // formatter-mandated trailing comma are neutral (mechanical
+    // punctuation).
     const sdkTypeClause = src.match(
       /import type \{[^}]*\} from "@earendil-works\/pi-coding-agent";/,
     )?.[0];
@@ -1652,16 +1604,14 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     ).toBe(
       'import type { AgentSession, AgentSessionEvent, AgentSessionEventListener, AgentSessionRuntime } from "@earendil-works/pi-coding-agent";',
     );
-    // The static VALUE clause set is UNCHANGED at exactly the two relative
-    // clauses, in source order...
+    // The VALUE clause set, in source order...
     const valueClauses = [
       ...src.matchAll(
         /^\s*import\s+(?!type\b)[^\n;]*?from\s+["']([^"']+)["']/gm,
       ),
     ].map((match) => match[1]);
     expect(valueClauses).toEqual(["../session.ts", "./errors.ts"]);
-    // ...in source order BEHIND the external type clause (external clause
-    // first).
+    // ...BEHIND the external type clause.
     expect(src.indexOf('from "@earendil-works/pi-coding-agent"')).toBeLessThan(
       src.indexOf('from "../session.ts"'),
     );
@@ -1670,7 +1620,7 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     );
   });
 
-  it("ZERO dynamic import( occurrences in the module (the additive surface adds no lazy edge)", () => {
+  it("zero dynamic import( occurrences in the module", () => {
     expect(src.match(/import\(/g)?.length ?? 0).toBe(0);
   });
 });

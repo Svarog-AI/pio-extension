@@ -13,12 +13,11 @@
 // Composed frames ride the same instance surface: fromRuntime hosts a
 // frame on a SETTLED shared runtime — the synchronous sibling of create,
 // placement-blind (no frame-world imports, no placement branches, no
-// placement flag; the sole new internal field is rebind's last-bound
-// handle marker). Cumulative observation state lives in the persistent
-// observer (JS heap), so it spans handle swaps. Reopened transcripts
-// retain their sessionId and re-fire no events, so re-arming the same
-// observer after a swap-back yields exact continuity — no loss, no double
-// count.
+// placement flag). Counter continuity spans handle swaps: cumulative
+// observation state lives in the persistent observer (JS heap), and
+// reopened transcripts retain their sessionId while re-firing no events —
+// re-arming the same observer after a swap-back yields exact continuity,
+// no loss, no double count.
 //
 // Token aggregation is local on purpose: the platform's usage-totals helper
 // is not exported from the installed package root (deep-importing it is
@@ -331,14 +330,11 @@ export class PioSession {
 
   /**
    * Synchronous factory over an ALREADY-SETTLED runtime — the composed-
-   * frame sibling of create (provenance differs: cf. dist
-   * SessionManager.create/open/inMemory). Mints a fresh observer and a
-   * fresh listener routed to it, subscribes it EXACTLY ONCE on the
-   * runtime's CURRENT handle (post-settle by definition of the argument),
-   * and constructs through the same private constructor. Performs ZERO
-   * SDK-construction reach: no SessionManager, services, or runtime-
-   * factory calls. No defensive input validation — the type contract
-   * carries the guarantee.
+   * frame sibling of create (cf. dist SessionManager.create/open/inMemory).
+   * Mints a fresh observer and listener routed to it, subscribes EXACTLY
+   * ONCE on the runtime's CURRENT handle, and constructs through the same
+   * private constructor. Zero SDK-construction reach; no defensive input
+   * validation — the type contract carries the guarantee.
    */
   static fromRuntime(runtime: AgentSessionRuntime): PioSession {
     const observer = new SessionObserver();
@@ -351,17 +347,16 @@ export class PioSession {
 
   /**
    * Re-arm the persistent observer on a freshly applied handle after a
-   * platform session replacement. Gates, fixed order: IDENTITY — a
-   * claimed handle whose sessionId differs from this frame's id refuses
-   * LOUDLY and mutates nothing; NO-OP — the already-bound handle (by
-   * reference) never double-subscribes. Otherwise a FRESH listener closure
-   * routed to the SAME persistent observer subscribes on the claimed
-   * handle and the last-bound marker moves. Accepted edge: rearms assume
-   * the previously bound handle died via platform dispose (true for every
-   * shipped swap path — switchSession tears down first; the same-handle
-   * case is caught by the no-op gate anyway). The returned unsubscribe is
-   * deliberately dropped (construction-seam doctrine). Never reads
-   * this.runtime.session — the explicit argument is the seam.
+   * platform session replacement. Gates, fixed order: IDENTITY — a claimed
+   * handle whose sessionId differs from this frame's id refuses LOUDLY
+   * and mutates nothing; NO-OP — the already-bound handle (by reference)
+   * never double-subscribes. Otherwise a FRESH listener closure routed to
+   * the SAME persistent observer subscribes on the claimed handle and the
+   * last-bound marker moves. Accepted edge: rearms assume the previously
+   * bound handle died via platform dispose (switchSession tears down
+   * first). The returned unsubscribe is deliberately dropped
+   * (construction-seam doctrine). Never reads this.runtime.session — the
+   * explicit argument is the seam.
    */
   rebind(session: AgentSession): void {
     if (session.sessionId !== this.id) {

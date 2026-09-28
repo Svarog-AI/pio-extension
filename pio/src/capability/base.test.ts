@@ -25,8 +25,27 @@
 // (every migrated row runs session-present), so the probe stays unevaluated
 // until the first session-absent row in file order (B1 flips; B8, placed
 // first inside the B block, pins the unflipped state).
+//
+// The B block's world mirrors the sibling physics harness in compact form
+// (scripted switchSession with the measured teardown-then-apply order, a
+// real top frame over the fake runtime through the documented cast seam,
+// tmpdir sessions-root per row with FORCED cleanup). Holder controls are
+// obtained through the SAME deferred import path base.ts uses — a static
+// import would fire the recording factory at file load and rot the B8 pin.
 
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import type {
+  AgentSessionEvent,
+  AgentSessionRuntime,
+} from "@earendil-works/pi-coding-agent";
 import type { CapabilityParams } from "./base.ts";
 import {
   CapabilityEnvError,
@@ -162,8 +181,41 @@ vi.mock("./terminal-takeover.ts", async (importOriginal) => {
   };
 });
 
+let takenOver: typeof import("./terminal-takeover.ts") | undefined;
+
+/** Lazy takeover-module binding: bound on first use (from B1 onward); a
+ * STATIC import would evaluate the recording factory at file load and rot
+ * the B8 pin. */
+async function ensureTakeoverModule(): Promise<
+  typeof import("./terminal-takeover.ts")
+> {
+  takenOver ??= await import("./terminal-takeover.ts");
+  return takenOver;
+}
+
+const bTempRoots: string[] = [];
+let bTempCursor = 0;
+
+/** One row-owned tmpdir sessions-root; afterEach removes it recursively —
+ * FORCED (runs even on assertion failure). */
+function newBTempRoot(): string {
+  const root = mkdtempSync(
+    join(tmpdir(), `pio-base-b-${String(++bTempCursor).padStart(2, "0")}-`),
+  );
+  bTempRoots.push(root);
+  return root;
+}
+
 beforeEach(() => {
   harness.reset();
+  // B-block isolation: no holder state leaks across rows.
+  takenOver?.teardownFrameEnvironment();
+});
+
+afterEach(() => {
+  while (bTempRoots.length > 0) {
+    rmSync(bTempRoots.pop() as string, { recursive: true, force: true });
+  }
 });
 
 function lastRound(): Round {
@@ -208,6 +260,151 @@ function scriptRuns(round: Round, ...passes: object[][]) {
   }
 }
 
+interface BHandle {
+  readonly sessionId: string;
+  readonly sessionFile: string | undefined;
+  /** Plain callable signature added: the default Mock type is not
+   * callable through the interface. */
+  subscribe: ReturnType<typeof vi.fn> & ((listener: Listener) => () => void);
+  dispose: ReturnType<typeof vi.fn> & (() => void);
+  readonly captured: Listener[];
+  readonly live: Listener[];
+  disposed: boolean;
+}
+
+/** Mirror the measured handle physics (S02 idiom): functional per-listener
+ * unsubscribe; dispose clears the live list. */
+function mintBHandle(sessionId: string, sessionFile?: string): BHandle {
+  const captured: Listener[] = [];
+  const live: Listener[] = [];
+  const handle: BHandle = {
+    sessionId,
+    sessionFile,
+    subscribe: vi.fn((listener: Listener) => {
+      captured.push(listener);
+      live.push(listener);
+      return (): void => {
+        const index = live.indexOf(listener);
+        if (index !== -1) {
+          live.splice(index, 1);
+        }
+      };
+    }),
+    dispose: vi.fn((): void => {}),
+    captured,
+    live,
+    disposed: false,
+  };
+  handle.dispose.mockImplementation(() => {
+    handle.disposed = true;
+    live.length = 0;
+  });
+  return handle;
+}
+
+type BSwapStep =
+  | { kind: "swap"; sessionId: string; observe?: (incoming: BHandle) => void }
+  | { kind: "cancel" }
+  | { kind: "reject"; message: string };
+
+interface BWorld {
+  readonly cwd: string;
+  readonly runtime: {
+    readonly cwd: string;
+    session: BHandle;
+    /** Plain callable signature added: the default Mock type is not
+     * callable through the interface. */
+    switchSession: ReturnType<typeof vi.fn> &
+      ((
+        path: string,
+        options?: { readonly cwdOverride?: string },
+      ) => Promise<{ cancelled: boolean }>);
+  };
+  readonly parentHandle: BHandle;
+  readonly parentFile: string;
+  /** Zero-call stderr sink observation (holder context). */
+  readonly stderr: ReturnType<typeof vi.fn> & ((line: string) => void);
+}
+
+/** One B-row world: tmpdir sessions-root with an (empty) top slot dir,
+ * fresh parent handle, placeholder switch physics (rows queue their own
+ * steps). No physical seed file — nothing reads the parent transcript, and
+ * the B2 listing pin snapshots the created layout only. */
+function buildBWorld(root: string, cwd: string): BWorld {
+  mkdirSync(join(root, "top"), { recursive: true });
+  const parentFile = join(root, "top", "parent-transcript.jsonl");
+  const parentHandle = mintBHandle("sess-fake-0001", parentFile);
+  const runtime: BWorld["runtime"] = {
+    cwd,
+    session: parentHandle,
+    switchSession: vi.fn(
+      async (
+        _path: string,
+        _options?: { readonly cwdOverride?: string },
+      ): Promise<{ cancelled: boolean }> => {
+        // Placeholder physics — rows queue their own steps.
+        return { cancelled: false };
+      },
+    ),
+  };
+  return {
+    cwd,
+    runtime,
+    parentHandle,
+    parentFile,
+    stderr: vi.fn((): void => {}),
+  };
+}
+
+/** Queue scripted switch outcomes (the measured teardown-then-apply order).
+ * "cancel" performs no teardown (the current handle stays current);
+ * "reject" escapes the RAW error unmasked. */
+function scriptBSwitches(world: BWorld, ...steps: BSwapStep[]): void {
+  for (const step of steps) {
+    world.runtime.switchSession.mockImplementationOnce(
+      async (path: string): Promise<{ cancelled: boolean }> => {
+        if (step.kind === "cancel") {
+          return { cancelled: true };
+        }
+        if (step.kind === "reject") {
+          throw new Error(step.message);
+        }
+        world.runtime.session.dispose();
+        const incoming = mintBHandle(step.sessionId, path);
+        world.runtime.session = incoming;
+        step.observe?.(incoming);
+        return { cancelled: false };
+      },
+    );
+  }
+}
+
+/** Cast seam presenting the B-world runtime under the SDK type at the
+ * fromRuntime call site (mirrors the adjacent suites' documented cast
+ * idiom). */
+const asRuntime = (runtime: BWorld["runtime"]): AgentSessionRuntime =>
+  runtime as unknown as AgentSessionRuntime;
+
+/** Deterministic harness mint filename (harness.mints resets per row in
+ * beforeEach; n is the 1-based per-row call index). */
+const MINTED_B_FILE = (n: number): string =>
+  `20260101T000000Z_${String(n).padStart(8, "0")}.jsonl`;
+
+/** Install the REAL holder over a B-world (deferred module access — see
+ * the header note on why no static import exists). */
+async function installBHolder(world: BWorld, root: string): Promise<void> {
+  const takeover = await ensureTakeoverModule();
+  const topFrame = PioSession.fromRuntime(asRuntime(world.runtime));
+  takeover.installFrameEnvironment({
+    sessionsRoot: root,
+    topFrame,
+    terminalStop: (): void => {},
+    stderr: (line: string): void => {
+      world.stderr(line);
+    },
+  });
+}
+
 /** Deliberately-fake identity: a test double, not a shipped capability. */
 const FIXTURE_CONTRACT: Contract = {
   name: "fixture-cap",
@@ -232,8 +429,8 @@ describe("PioCapability — happy path & pre-spawn ordering", () => {
   class IdentityCap extends PioCapability {
     readonly contract: Contract = FIXTURE_CONTRACT;
     #returned: Record<string, unknown>;
-    constructor(returned: Record<string, unknown>) {
-      super({});
+    constructor(returned: Record<string, unknown>, session: PioSession) {
+      super({ session });
       this.#returned = returned;
     }
     async call(): Promise<Record<string, unknown>> {
@@ -243,7 +440,8 @@ describe("PioCapability — happy path & pre-spawn ordering", () => {
 
   it("lands the call return in outputs by reference identity with ok:true and no errors key", async () => {
     const outputs = { artifact: "value" };
-    const cap = new IdentityCap(outputs);
+    const { instance } = await host();
+    const cap = new IdentityCap(outputs, instance);
     const result = await cap.run();
     expect(result.ok).toBe(true);
     expect(result.outputs).toBe(outputs);
@@ -265,11 +463,12 @@ describe("PioCapability — happy path & pre-spawn ordering", () => {
         writes: [],
       };
       readonly call = callSpy;
-      constructor() {
-        super({});
+      constructor(session: PioSession) {
+        super({ session });
       }
     }
-    const cap = new ValidatedCap();
+    const { instance } = await host();
+    const cap = new ValidatedCap(instance);
     const result = await cap.run({});
     expect(callSpy).toHaveBeenCalledTimes(0);
     expectSingleFailure(result, {
@@ -290,8 +489,8 @@ describe("PioCapability — happy path & pre-spawn ordering", () => {
         outputs: [],
         writes: [],
       };
-      constructor() {
-        super({});
+      constructor(session: PioSession) {
+        super({ session });
       }
       async call(
         inputs: Record<string, unknown>,
@@ -301,7 +500,8 @@ describe("PioCapability — happy path & pre-spawn ordering", () => {
         return { cleared: true };
       }
     }
-    const cap = new MutatingCap();
+    const { instance } = await host();
+    const cap = new MutatingCap(instance);
     const result = await cap.run({ doc: "pristine" });
     expect(result.ok).toBe(true);
   });
@@ -311,8 +511,8 @@ describe("PioCapability — escape capture", () => {
   class EscapingCap extends PioCapability {
     readonly contract: Contract = FIXTURE_CONTRACT;
     #thrower: () => unknown;
-    constructor(thrower: () => unknown) {
-      super({});
+    constructor(thrower: () => unknown, session: PioSession) {
+      super({ session });
       this.#thrower = thrower;
     }
     async call(): Promise<Record<string, unknown>> {
@@ -323,7 +523,8 @@ describe("PioCapability — escape capture", () => {
   it("captures a ContractViolationError escaping the body with identity violations", async () => {
     const violations = ["output 'r' is missing", "output 'g' is stale"];
     const thrown = new ContractViolationError(violations);
-    const result = await new EscapingCap(() => thrown).run();
+    const { instance } = await host();
+    const result = await new EscapingCap(() => thrown, instance).run();
     expectSingleFailure(result, {
       type: "ContractViolationError",
       cause: "contract",
@@ -376,13 +577,282 @@ describe("PioCapability — escape capture", () => {
   ];
   for (const row of uniformEscapeRows) {
     it(row.label, async () => {
-      const result = await new EscapingCap(row.thrower).run();
+      const { instance } = await host();
+      const result = await new EscapingCap(row.thrower, instance).run();
       expectSingleFailure(result, row.expected);
       if (row.omitCause) {
         expect("cause" in (result.errors?.[0] ?? {})).toBe(false);
       }
     });
   }
+});
+
+// ─── Row-2 dispatch block (B rows) ──────────────────────────────────────
+// Load-bearing order: B8 (factory NEVER evaluated) PRECEDES the first
+// session-absent row — B1 is this file's first-ever pipeline-row
+// evaluation and flips the sticky flag. Every pre-B row is session-present
+// post-migration, so nothing earlier touches the import.
+const NOT_INSTALLED_B_REPLICA =
+  "terminal-takeover: frame environment not installed \u2014 a session-absent capability can only run under the engaged entry";
+
+describe("PioCapability — row-2 dispatch (B rows)", () => {
+  it("B8 — a session-present run() completes with the terminal-takeover factory NEVER EVALUATED (flag false, zero recorded invocations)", async () => {
+    expect(takeoverProbe.evaluated).toBe(false);
+    const { instance } = await host();
+    const marker: Record<string, unknown> = { placed: "present" };
+    class B8Cap extends PioCapability {
+      readonly contract: Contract = FIXTURE_CONTRACT;
+      constructor(session: PioSession) {
+        super({ session });
+      }
+      async call(): Promise<Record<string, unknown>> {
+        return marker;
+      }
+    }
+    const result = await new B8Cap(instance).run();
+    expect(result.ok).toBe(true);
+    expect(result.outputs).toBe(marker);
+    // THE eval-flag pin: session-present executions never evaluate the
+    // module — the recording factory did not run.
+    expect(takeoverProbe.evaluated).toBe(false);
+    expect(takeoverProbe.calls).toHaveLength(0);
+  });
+
+  it("B1 — uninstalled env: the session-absent run() settles the PINNED FrameEnvironmentError capture (call never invoked); the eval flag flips false→true across the call", async () => {
+    expect(takeoverProbe.evaluated).toBe(false);
+    const callSpy = vi.fn(async (): Promise<Record<string, unknown>> => ({}));
+    class B1Cap extends PioCapability {
+      readonly contract: Contract = FIXTURE_CONTRACT;
+      readonly call = callSpy;
+      constructor() {
+        super({});
+      }
+    }
+    const result = await new B1Cap().run();
+    expect(callSpy).toHaveBeenCalledTimes(0);
+    expectSingleFailure(result, {
+      type: "FrameEnvironmentError",
+      message: NOT_INSTALLED_B_REPLICA,
+    });
+    // B1 is the file's first pipeline-row evaluation: the sticky flag
+    // flipped exactly here (mirror of the run-session suite flip pin).
+    expect(takeoverProbe.evaluated).toBe(true);
+  });
+
+  it("B2 — invalid input WITH the env installed: the contract capture settles with ZERO hop side effects (zero switches, zero mints, sessions-root listing unchanged) — the thunk sits strictly AFTER validation", async () => {
+    const root = newBTempRoot();
+    const world = buildBWorld(root, "/work/b2");
+    await installBHolder(world, root);
+    const snapshotBefore = [
+      ...readdirSync(root).sort(),
+      ...readdirSync(join(root, "top")).sort(),
+    ];
+    const callSpy = vi.fn(async (): Promise<Record<string, unknown>> => ({}));
+    class B2Cap extends PioCapability {
+      readonly contract: Contract = {
+        name: "fixture-cap",
+        version: "1.0.0",
+        inputs: [{ name: "doc" }],
+        outputs: [],
+        writes: [],
+      };
+      readonly call = callSpy;
+      constructor() {
+        super({});
+      }
+    }
+    const result = await new B2Cap().run({});
+    expect(callSpy).toHaveBeenCalledTimes(0);
+    expectSingleFailure(result, {
+      type: "ContractViolationError",
+      cause: "contract",
+      message:
+        "Contract violation: input 'doc' expects a non-empty string value",
+      violations: ["input 'doc' expects a non-empty string value"],
+    });
+    // Zero hop side effects: the validation fault precedes the thunk.
+    expect(world.runtime.switchSession).toHaveBeenCalledTimes(0);
+    expect(harness.SessionManager.create).toHaveBeenCalledTimes(0);
+    const snapshotAfter = [
+      ...readdirSync(root).sort(),
+      ...readdirSync(join(root, "top")).sort(),
+    ];
+    expect(snapshotAfter).toEqual(snapshotBefore);
+  });
+
+  it("B3 — settled payload reaches the caller's await BY REFERENCE (marker identity survives the latch round trip; the child record mirrors it); the slot RETAINS the adopted host after the unwind (a second run takes the session-present path — no second hop)", async () => {
+    const root = newBTempRoot();
+    const world = buildBWorld(root, "/work/b3");
+    await installBHolder(world, root);
+    scriptBSwitches(
+      world,
+      { kind: "swap", sessionId: "sess-b-child" },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+    );
+    const marker: Record<string, unknown> = { marker: "b3-distinct" };
+    class B3Cap extends PioCapability {
+      readonly contract: Contract = FIXTURE_CONTRACT;
+      constructor() {
+        super({});
+      }
+      async call(): Promise<Record<string, unknown>> {
+        return marker;
+      }
+    }
+    const cap = new B3Cap();
+    const result = await cap.run();
+    expect(result.ok).toBe(true);
+    expect(result.outputs).toBe(marker);
+    // Relationship pin (base omits seams → ids are non-deterministic): the
+    // switch-out arg IS the mock-minted child file.
+    const childFile = world.runtime.switchSession.mock.calls[0][0] as string;
+    const createDir = harness.SessionManager.create.mock.calls[0][1] as string;
+    expect(childFile).toBe(`${createDir}/${MINTED_B_FILE(1)}`);
+    // THE child record mirrors the SAME payload at the derived slot.
+    const parsed = JSON.parse(
+      readFileSync(join(dirname(childFile), "status.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(parsed.ok).toBe(true);
+    expect(parsed.outputs).toEqual(marker);
+    // Accepted edge: the slot retained the adopted child host — the SECOND
+    // run takes the session-present path (no second hop, no second mint).
+    const again = await cap.run();
+    expect(again.ok).toBe(true);
+    expect(again.outputs).toBe(marker);
+    expect(world.runtime.switchSession).toHaveBeenCalledTimes(2);
+    expect(harness.SessionManager.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("B4 — a body-thrown ContractViolationError surfaces UNMASKED at the await with the hop FULLY unwound (switch args [childFile, parentFile], ledger back to [top], child record mirrors the capture)", async () => {
+    const root = newBTempRoot();
+    const world = buildBWorld(root, "/work/b4");
+    const takeover = await ensureTakeoverModule();
+    await installBHolder(world, root);
+    scriptBSwitches(
+      world,
+      { kind: "swap", sessionId: "sess-b-child" },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+    );
+    const violations = ["output 'r' is missing", "output 'g' is stale"];
+    class B4Cap extends PioCapability {
+      readonly contract: Contract = FIXTURE_CONTRACT;
+      constructor() {
+        super({});
+      }
+      async call(): Promise<Record<string, unknown>> {
+        throw new ContractViolationError(violations);
+      }
+    }
+    const result = await new B4Cap().run();
+    expectSingleFailure(result, {
+      type: "ContractViolationError",
+      cause: "contract",
+      message: "Contract violation: output 'r' is missing; output 'g' is stale",
+      violations,
+    });
+    // The captured array IS the thrown error's own array (reference
+    // passthrough through the dual channels).
+    expect(result.errors?.[0]?.violations as unknown).toBe(violations);
+    // Full unwind: out + back onto the CAPTURED parent file.
+    const calls = world.runtime.switchSession.mock.calls.map(
+      (c) => c[0],
+    ) as string[];
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toBe(world.parentFile);
+    const frames = takeover.activeFrames();
+    expect(frames).toHaveLength(1);
+    expect(frames[0].capability.name).toBe("top");
+    // The child record mirrors the capture (fault BEFORE the switch-back).
+    const parsed = JSON.parse(
+      readFileSync(join(dirname(calls[0]), "status.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(parsed.ok).toBe(false);
+    expect(parsed.errors).toEqual([
+      {
+        type: "ContractViolationError",
+        cause: "contract",
+        message:
+          "Contract violation: output 'r' is missing; output 'g' is stale",
+        violations,
+      },
+    ]);
+  });
+
+  it("B5 — a body-thrown PhaseBudgetError surfaces unmasked at the await ({ type: 'PhaseBudgetError', cause: 'budget', default message }) with the hop fully unwound and the record mirrored", async () => {
+    const root = newBTempRoot();
+    const world = buildBWorld(root, "/work/b5");
+    const takeover = await ensureTakeoverModule();
+    await installBHolder(world, root);
+    scriptBSwitches(
+      world,
+      { kind: "swap", sessionId: "sess-b-child" },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+    );
+    class B5Cap extends PioCapability {
+      readonly contract: Contract = FIXTURE_CONTRACT;
+      constructor() {
+        super({});
+      }
+      async call(): Promise<Record<string, unknown>> {
+        throw new PhaseBudgetError(2);
+      }
+    }
+    const result = await new B5Cap().run();
+    expectSingleFailure(result, {
+      type: "PhaseBudgetError",
+      cause: "budget",
+      message: "Iteration budget exceeded after 2 iterations",
+    });
+    const calls = world.runtime.switchSession.mock.calls.map(
+      (c) => c[0],
+    ) as string[];
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toBe(world.parentFile);
+    const frames = takeover.activeFrames();
+    expect(frames).toHaveLength(1);
+    expect(frames[0].capability.name).toBe("top");
+    const parsed = JSON.parse(
+      readFileSync(join(dirname(calls[0]), "status.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(parsed.ok).toBe(false);
+    expect(parsed.errors).toEqual([
+      {
+        type: "PhaseBudgetError",
+        cause: "budget",
+        message: "Iteration budget exceeded after 2 iterations",
+      },
+    ]);
+  });
+
+  class B7LeafCap extends PioCapability {
+    readonly contract: Contract = FIXTURE_CONTRACT;
+    constructor(params: CapabilityParams = {}) {
+      super(params);
+    }
+    async call(): Promise<Record<string, unknown>> {
+      return {};
+    }
+  }
+
+  it("B7 — execute_phase rejects with the pinned plain Error while no session is present (never-run session-absent instance; expectation verbatim)", async () => {
+    const variants: CapabilityParams[] = [{}, { tty: false, timeoutMs: 5 }];
+    for (const params of variants) {
+      const rejection: unknown = await new B7LeafCap(params)
+        .execute_phase("any")
+        .catch((reason: unknown) => reason);
+      expect(rejection).toBeInstanceOf(Error);
+      expect(rejection).not.toBeInstanceOf(ContractViolationError);
+      expect(rejection).not.toBeInstanceOf(PhaseBudgetError);
+      if (rejection instanceof Error) {
+        expect(rejection.name).toBe("Error");
+        expect(rejection.message).toBe(
+          "no session available: execute_phase requires in-process placement",
+        );
+      } else {
+        throw new Error("expected an Error rejection");
+      }
+    }
+  });
 });
 
 describe("PioCapability — structural pins", () => {
@@ -408,26 +878,6 @@ describe("PioCapability — structural pins", () => {
     expect(bare.timeoutMs).toBeUndefined();
     expect(reserved.tty).toBe(false);
     expect(reserved.timeoutMs).toBe(5);
-  });
-
-  it("rejects with the pinned plain Error while no session is present", async () => {
-    const variants: CapabilityParams[] = [{}, { tty: false, timeoutMs: 5 }];
-    for (const params of variants) {
-      const rejection: unknown = await new LeafCap(params)
-        .execute_phase("any")
-        .catch((reason: unknown) => reason);
-      expect(rejection).toBeInstanceOf(Error);
-      expect(rejection).not.toBeInstanceOf(ContractViolationError);
-      expect(rejection).not.toBeInstanceOf(PhaseBudgetError);
-      if (rejection instanceof Error) {
-        expect(rejection.name).toBe("Error");
-        expect(rejection.message).toBe(
-          "no session available: execute_phase requires in-process placement",
-        );
-      } else {
-        throw new Error("expected an Error rejection");
-      }
-    }
   });
 
   it("neither prototype owns an output-validation member at the consumer edge", () => {
@@ -672,5 +1122,20 @@ describe("PioCapability — engine integration through the base", () => {
     expect(result.outputs).toEqual({
       settled: { done: true, iterations: 1 },
     });
+  });
+});
+
+describe("source guards (row-2 edge discipline over base.ts)", () => {
+  const src = readFileSync(new URL("./base.ts", import.meta.url), "utf8");
+
+  it("EXACTLY ONE dynamic import( occurrence in base.ts and it is the terminal-takeover literal thunk (the ONLY new edge; session-present executions never evaluate the module)", () => {
+    const dynThunks = src.match(/import\(\s*["'][^"']+["']\s*\)/g) ?? [];
+    expect(dynThunks).toEqual(['import("./terminal-takeover.ts")']);
+  });
+
+  it("the session slot is internally assignable: `protected s:` without the readonly modifier while `contract` keeps `declare readonly`", () => {
+    expect(src.includes("protected s: PioSession | undefined")).toBe(true);
+    expect(src.includes("readonly s:")).toBe(false);
+    expect(src.includes("declare readonly contract: Contract")).toBe(true);
   });
 });

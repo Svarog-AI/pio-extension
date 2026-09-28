@@ -9,12 +9,19 @@
 // writes status records — the process boundary completes the terminal
 // record from the returned payload.
 //
-// Session placement is declared at construction: a provided session runs
-// the capability in-process (phase execution available); an absent session
-// marks cross-process placement, which is declared here but never spawned
-// against. The reserved wall-clock fields bind on that path and stay
-// unenforced in this module, mirroring the contract's declared-without-
-// enforcement write-scope slots.
+// Session placement binds at construction: a provided session runs the
+// capability in-process (phase execution available); an ABSENT session
+// routes the run through the row-2 terminal-takeover frame — composed-
+// frame engagement that takes the engaged entry's live terminal under a
+// fresh session hosted on the caller's runtime (lazy module import,
+// evaluated ONLY on that path; the live result payload at the await is the
+// PRIMARY channel, the per-frame status record the SECONDARY). After a
+// completed hop the slot RETAINS the adopted child host, so a subsequent
+// run() takes the session-present path against that host (accepted edge —
+// engagements construct fresh instances). The `tty` reserved field freezes
+// HERE as the interactive sequential-frame meaning (takes and returns the
+// terminal); `timeoutMs` stays reserved-unenforced — the wall-clock cap is
+// deferred (Step 6 tracks it).
 //
 // State-root channel (in-bubble): the bubble env quartet gives exactly one
 // state-root channel — PI_CODING_AGENT_DIR, assigned UNCONDITIONALLY by the
@@ -51,8 +58,10 @@ export interface CapabilityParams {
 export abstract class PioCapability {
   /** Authored identity plus IO vocabulary — supplied by every concrete subclass. */
   declare readonly contract: Contract;
-  /** Placement handle: absent marks cross-process placement (declared only). */
-  protected readonly s: PioSession | undefined;
+  /** Placement handle: absent marks row-2 frame engagement (internally
+   * adoptable — the base assigns the child host at the hop's body stage;
+   * authors never touch the slot). */
+  protected s: PioSession | undefined;
   /** Reserved for the cross-process path; retained unenforced here. */
   readonly tty: boolean | undefined;
   /** Reserved for the cross-process path; retained unenforced here. */
@@ -71,15 +80,34 @@ export abstract class PioCapability {
 
   /**
    * The sole composition seam — never overridden. Validates the caller's
-   * value object against the contract BEFORE the body runs, executes the
-   * body, and returns what was observed. The single catch-all spans both
-   * steps: one thrown value wins per invocation, so this method never
-   * rejects.
+   * value object against the contract BEFORE the placement branch (a
+   * violation settles the capture with ZERO hop side effects), then either
+   * hops the row-2 frame (session absent — the dynamic literal import is
+   * this module's only edge to the takeover mechanics) or executes the body
+   * in place (session present, byte-identical behavior). The single
+   * catch-all spans both placements: one thrown value wins per invocation,
+   * so this method never rejects.
    */
   async run(inputs?: Record<string, unknown>): Promise<CapabilityResult> {
     const values = inputs ?? {};
     try {
       validateInputs(this.contract, values);
+      if (this.s === undefined) {
+        // THE row-2 placement branch: one composed frame per run; the body
+        // closure performs the slot adoption (the takeover module never
+        // assigns the slot itself).
+        const takeover = await import("./terminal-takeover.ts");
+        return await takeover.materializeFrame({
+          contract: {
+            name: this.contract.name,
+            version: this.contract.version,
+          },
+          body: (childFrame: PioSession): Promise<Record<string, unknown>> => {
+            this.s = childFrame;
+            return this.call(values);
+          },
+        });
+      }
       const outputs = await this.call(values);
       return { ok: true, outputs };
     } catch (error) {

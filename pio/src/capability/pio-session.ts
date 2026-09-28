@@ -4,8 +4,21 @@
 //
 // The listener is the sole event feed: it is minted here, passed as a
 // sessionListener option (attached exactly once at construction by the
-// seam), and routes events into instance-owned observation state. There is
-// no other subscription site and no module-level mutable state.
+// seam), and routes events into instance-owned observation state. The live
+// subscription count stays at one at any instant — the construction seam
+// owns the first attach, and rebind owns the re-attach on each reopened
+// handle (subscriptions die with the disposed handle; the returned
+// unsubscribe is dropped by design). No module-level mutable state.
+//
+// Composed frames ride the same instance surface: fromRuntime hosts a
+// frame on a SETTLED shared runtime — the synchronous sibling of create,
+// placement-blind (no frame-world imports, no placement branches, no
+// placement flag; the sole new internal field is rebind's last-bound
+// handle marker). Cumulative observation state lives in the persistent
+// observer (JS heap), so it spans handle swaps. Reopened transcripts
+// retain their sessionId and re-fire no events, so re-arming the same
+// observer after a swap-back yields exact continuity — no loss, no double
+// count.
 //
 // Token aggregation is local on purpose: the platform's usage-totals helper
 // is not exported from the installed package root (deep-importing it is
@@ -26,6 +39,7 @@
 // list and the payload list.
 
 import type {
+  AgentSession,
   AgentSessionEvent,
   AgentSessionEventListener,
   AgentSessionRuntime,
@@ -259,6 +273,19 @@ class SessionObserver {
 }
 
 /**
+ * Refusal raised when rebind is handed a FOREIGN handle — its sessionId
+ * differs from this frame's identity. The message is constructed at the
+ * throw site over the two session ids (claim first, frame second). Bare
+ * identity capture reduces via captureError to {type, message}; NO cause.
+ */
+export class SessionHandleRefusalError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SessionHandleRefusalError";
+  }
+}
+
+/**
  * Host for one capability engagement: owns the constructed session runtime
  * by reference plus the run observation fed by its single attached
  * listener, and runs budgeted phase engines over the session's prompt
@@ -273,19 +300,23 @@ export class PioSession {
   readonly vars: SessionVariableStore;
 
   #observer: SessionObserver;
+  /** Last-bound handle MARKER — rebind's same-handle comparison only. */
+  #lastBound: AgentSession;
 
   private constructor(runtime: AgentSessionRuntime, observer: SessionObserver) {
     this.id = runtime.session.sessionId;
+    this.#lastBound = runtime.session;
     this.runtime = runtime;
     this.vars = new SessionVariableStore();
     this.#observer = observer;
   }
 
   /**
-   * The only construction path: mints the observer and its single
-   * instance-scoped listener, threads the listener through the
-   * construction seam (exactly one subscription across the instance
-   * lifetime), and returns the ready instance.
+   * The only standalone construction path: mints the observer and its
+   * single instance-scoped listener, threads the listener through the
+   * construction seam (exactly one live subscription at any instant), and
+   * returns the ready instance. The composed-frame sibling (fromRuntime)
+   * hosts an already-settled runtime instead.
    */
   static async create(cwd: string, sessionsRoot?: string): Promise<PioSession> {
     const observer = new SessionObserver();
@@ -296,6 +327,56 @@ export class PioSession {
       sessionListener: listener,
     });
     return new PioSession(runtime, observer);
+  }
+
+  /**
+   * Synchronous factory over an ALREADY-SETTLED runtime — the composed-
+   * frame sibling of create (provenance differs: cf. dist
+   * SessionManager.create/open/inMemory). Mints a fresh observer and a
+   * fresh listener routed to it, subscribes it EXACTLY ONCE on the
+   * runtime's CURRENT handle (post-settle by definition of the argument),
+   * and constructs through the same private constructor. Performs ZERO
+   * SDK-construction reach: no SessionManager, services, or runtime-
+   * factory calls. No defensive input validation — the type contract
+   * carries the guarantee.
+   */
+  static fromRuntime(runtime: AgentSessionRuntime): PioSession {
+    const observer = new SessionObserver();
+    const listener: AgentSessionEventListener = (event) => {
+      observer.handle(event);
+    };
+    runtime.session.subscribe(listener);
+    return new PioSession(runtime, observer);
+  }
+
+  /**
+   * Re-arm the persistent observer on a freshly applied handle after a
+   * platform session replacement. Gates, fixed order: IDENTITY — a
+   * claimed handle whose sessionId differs from this frame's id refuses
+   * LOUDLY and mutates nothing; NO-OP — the already-bound handle (by
+   * reference) never double-subscribes. Otherwise a FRESH listener closure
+   * routed to the SAME persistent observer subscribes on the claimed
+   * handle and the last-bound marker moves. Accepted edge: rearms assume
+   * the previously bound handle died via platform dispose (true for every
+   * shipped swap path — switchSession tears down first; the same-handle
+   * case is caught by the no-op gate anyway). The returned unsubscribe is
+   * deliberately dropped (construction-seam doctrine). Never reads
+   * this.runtime.session — the explicit argument is the seam.
+   */
+  rebind(session: AgentSession): void {
+    if (session.sessionId !== this.id) {
+      throw new SessionHandleRefusalError(
+        `pio-session: rebind refused \u2014 handle '${session.sessionId}' is not this frame's session ('${this.id}')`,
+      );
+    }
+    if (session === this.#lastBound) {
+      return;
+    }
+    const listener: AgentSessionEventListener = (event) => {
+      this.#observer.handle(event);
+    };
+    session.subscribe(listener);
+    this.#lastBound = session;
   }
 
   /** Session-cumulative snapshot (fresh object per call). */

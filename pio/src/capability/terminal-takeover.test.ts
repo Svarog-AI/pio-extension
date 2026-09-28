@@ -1,20 +1,16 @@
 // Holder-unit rows for the terminal-takeover foundation module, plus the
 // hop-world harness the hop matrix consumes: an SDK-root factory mock with
-// a DETERMINISTIC manager mint (arg-recording + a platform-named file under
-// the given dir, ZERO filesystem side effects — platform dir/file creation
-// is NOT simulated except SCRIPTED TRANSCRIPT PERSISTENCE driven by the
-// swap script), physics-mirror swap handling, the harness-minted SINGLE
-// terminal-shaped recorder per world (standing for the entry-mounted
-// terminal; the module never constructs or drives a terminal), and
-// forced-teardown tmpdir roots.
+// a DETERMINISTIC manager mint (arg-recording + platform-named file under
+// the given dir; zero filesystem side effects except scripted transcript
+// persistence), physics-mirror swap handling, a harness-minted SINGLE
+// terminal-shaped recorder per world (the module never constructs or drives
+// a terminal), and forced-teardown tmpdir roots.
 //
 // Foundation rows run over the REAL module with structurally-complete
-// fakes (the fake top frame covers the module's reach path only:
-// runtime.session.sessionFile, counters(), a rebind spy, id); the cast at
-// each scripted site mirrors the sibling suites' single documented cast
-// idiom. beforeEach tears down the
-// process-scoped holder so no row leaks state into the next; temp roots
-// are removed in afterEach, even on assertion failure.
+// fakes; casts at scripted sites mirror the sibling suites' documented cast
+// idiom. beforeEach tears down the process-scoped holder so no row leaks
+// state into the next; temp roots are removed in afterEach, even on
+// assertion failure.
 //
 // Physics mirror (installed 0.85.1 dist): handles bookkeep LIVE listeners
 // — subscribe returns a functional per-listener unsubscribe and dispose
@@ -1017,9 +1013,9 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       version: "2.0.0",
       source: "builtin",
     });
-    // THE measured placement artifact: the emitter roots at the child
-    // scope dir, so the ref origin is ONE SEGMENT UP (dirname of the
-    // scope dir) — a grandchild ref therefore carries only its OWN id.
+    // Measured placement artifact: the emitter roots at the child scope
+    // dir, so the ref origin is one segment up — a grandchild ref carries
+    // only its OWN id.
     expect(innerParsed.transcriptRef).toBe(
       `${CHILD_ID_B}/top/${MINTED_FILE(2)}`,
     );
@@ -1048,9 +1044,9 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       version: "9.9.9",
       source: "builtin",
     });
-    // Same origin derivation as the child records: relative to ONE SEGMENT
-    // UP from the emitter's sessionsRoot (here the mkdtemp root itself, so
-    // the ref carries the root's basename — deterministic per run).
+    // Same origin derivation as the child records: relative to one segment
+    // UP from the emitter's sessionsRoot (here the mkdtemp root, so the ref
+    // carries the root's basename — deterministic per run).
     expect(topParsed.transcriptRef).toBe(
       `${basename(root)}/top/parent-transcript.jsonl`,
     );

@@ -1,36 +1,22 @@
-// Base authoring unit for pio capabilities. Subclasses assign a `contract`
-// and implement `call()` — the authored body. Everything about executing a
-// capability funnels through the concrete, base-provided `run()`: pre-spawn
-// input validation against the declared contract, then the body, then the
-// observed outcome assembled into the result payload.
+// Base authoring unit for pio capabilities. Subclasses assign `contract`
+// and implement `call()`; execution funnels through the base-provided
+// `run()` (pre-spawn validation, then the body). Returning from `call()`
+// IS completion; this module never emits or writes status records — the
+// process boundary does.
 //
-// Returning from `call()` IS completion: there is no completion method.
-// This module observes and reports what the run did; it never emits or
-// writes status records — the process boundary completes the terminal
-// record from the returned payload.
+// Session placement binds at construction: a provided session runs in
+// process; an ABSENT session hops the row-2 terminal-takeover frame under
+// a fresh child host (lazy import, evaluated on that path only; the await
+// payload is the primary channel, the per-frame record the secondary).
+// After a completed hop the slot retains the adopted host, so the next
+// run() takes the session-present path (accepted edge — engagements
+// construct fresh instances). `tty` freezes as the interactive
+// sequential-frame meaning (takes and returns the terminal); `timeoutMs`
+// stays reserved-unenforced (wall-clock cap deferred to Step 6).
 //
-// Session placement binds at construction: a provided session runs the
-// capability in-process (phase execution available); an ABSENT session
-// routes the run through the row-2 terminal-takeover frame — composed-
-// frame engagement that takes the engaged entry's live terminal under a
-// fresh session hosted on the caller's runtime (lazy module import,
-// evaluated ONLY on that path; the live result payload at the await is the
-// PRIMARY channel, the per-frame status record the SECONDARY). After a
-// completed hop the slot RETAINS the adopted child host, so a subsequent
-// run() takes the session-present path against that host (accepted edge —
-// engagements construct fresh instances). The `tty` reserved field freezes
-// HERE as the interactive sequential-frame meaning (takes and returns the
-// terminal); `timeoutMs` stays reserved-unenforced — the wall-clock cap is
-// deferred (Step 6 tracks it).
-//
-// State-root channel (in-bubble): the bubble env quartet gives exactly one
-// state-root channel — PI_CODING_AGENT_DIR, assigned UNCONDITIONALLY by the
-// renderer to `<root>/.pi/agent` (PIO_STATE_DIR does NOT propagate in). The
-// inversion below recovers `<root>` from it; loud typed failure, NO silent
-// fallback, ever. Every capability addressing the durable project slot
-// needs this channel, which is why it rides with the authoring base (the
-// Step-6 owner placement ruling — a capability-layer concern, not a sandbox
-// leaf).
+// State-root channel: the renderer assigns PI_CODING_AGENT_DIR=
+// `<root>/.pi/agent` unconditionally; the inversion below recovers `<root>`
+// with loud typed failure and no silent fallback.
 
 import { isAbsolute, resolve } from "node:path";
 import type { Contract } from "./contract.ts";
@@ -79,23 +65,19 @@ export abstract class PioCapability {
   ): Promise<Record<string, unknown>>;
 
   /**
-   * The sole composition seam — never overridden. Validates the caller's
-   * value object against the contract BEFORE the placement branch (a
-   * violation settles the capture with ZERO hop side effects), then either
-   * hops the row-2 frame (session absent — the dynamic literal import is
-   * this module's only edge to the takeover mechanics) or executes the body
-   * in place (session present, byte-identical behavior). The single
-   * catch-all spans both placements: one thrown value wins per invocation,
-   * so this method never rejects.
+   * The sole composition seam — never overridden. Validates inputs before
+   * the placement branch (a violation settles the capture with zero hop
+   * side effects), then hops the row-2 frame (session absent) or runs the
+   * body in place (session present). The catch-all spans both placements:
+   * this method never rejects.
    */
   async run(inputs?: Record<string, unknown>): Promise<CapabilityResult> {
     const values = inputs ?? {};
     try {
       validateInputs(this.contract, values);
       if (this.s === undefined) {
-        // THE row-2 placement branch: one composed frame per run; the body
-        // closure performs the slot adoption (the takeover module never
-        // assigns the slot itself).
+        // Row-2 frame: the body closure adopts the child host into the
+        // slot (the takeover module never assigns the slot itself).
         const takeover = await import("./terminal-takeover.ts");
         return await takeover.materializeFrame({
           contract: {

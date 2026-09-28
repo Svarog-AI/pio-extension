@@ -1,59 +1,44 @@
 // Terminal-takeover composition — process-scoped frame environment + the
 // hop primitive. A FRAME is one composed capability execution held on the
 // shared runtime under the entry's live terminal; the ledger tracks every
-// depth (index 0 = outermost, last = innermost).
+// depth (index 0 = outermost).
 //
-// Single holder per process: a double-install throws LOUDLY without
-// mutating state; an uninstalled read throws the pinned not-installed
-// error (loud failure over quiet mis-layout); teardownFrameEnvironment()
-// is the idempotent inverse. Every ledger entry carries a PendingLatch
-// over a native promise: normal settlement resolves it exclusively, the
-// reject channel belongs to the ordered shutdown pass; the outermost
-// entry's latch is minted and PARKED (never settled — process death
-// reclaims it).
+// Single holder per process: double-install throws loudly without mutating;
+// an uninstalled read throws the pinned error; teardown is the idempotent
+// inverse. Each ledger entry carries a PendingLatch over a native promise:
+// normal settlement resolves it exclusively; the reject channel belongs to
+// the ordered shutdown pass; the outermost latch is minted and parked
+// (process death reclaims it).
 //
-// Hop mechanics (materializeFrame): the caller's promise identity is fixed
-// EARLY — the holder guard runs SYNCHRONOUSLY (an uninstalled read throws
-// the pinned error out of the function before any mutation), the latch is
-// minted before any other step, and a detached continuation owns the rest.
-// The continuation captures the parent transcript PRE-HOP, mints the child
-// scope dir one segment under the CURRENT frame's scope dir, computes the
-// child's platform-named file through the module's SOLE SDK value reach
-// (a hop-time thunk over the SDK root; NO lineage options are ever passed
-// — who-called-whom edges live ONLY in the runtime ledger), switches the
-// shared runtime onto the child, pushes the ledger entry, hosts a fresh
-// composed session while the child handle is current, emits the UNCOND-
-// ITIONAL child record from the settled payload BEFORE settling, switches
-// back, re-arms the parent's persistent observer on the freshly reopened
-// handle with NO yield in between, and pops the entry while resolving the
-// latch in ONE synchronous gesture. The caller's await receives the
-// settled payload BY REFERENCE.
+// Hop mechanics (materializeFrame): synchronous dispatcher — the holder
+// guard throws synchronously when uninstalled, the latch is minted first,
+// and a detached continuation owns mint → switch-out → push → body →
+// record → switch-back → re-arm → pop-with-resolve. It captures the parent
+// transcript pre-hop, mints the child scope dir one segment under the
+// current frame's scope dir (no lineage options ever — who-called-whom
+// edges live only in the ledger), and switches back onto the captured file
+// with no yield before the re-arm. The caller's await mirrors the emitted
+// record by reference.
 //
-// Winds-unwound: everything from the ledger push onward sits in the
-// orchestrator's try/finally — release ALWAYS runs (pop + latch resolve,
-// guarded to exactly once per hop), so the caller's await RESOLVES with a
-// shipped result shape on every reachable fault path: it never hangs and
-// never rejects in this pass (reject stays reserved for the ordered
-// shutdown pass). Pre-push faults leave the ledger untouched; the sole
-// post-attach/pre-record fault case leaves any minted scope dir behind as
-// ACCEPTED RESIDUE — never rmdir a scope the platform may have touched.
-// Linear, non-concurrent, single-process.
+// Winds-unwound: release always runs after the staged span (pop-if-pushed +
+// latch resolve, once per hop), so the await RESOLVES with a shipped result
+// shape on every reachable fault path — it never hangs and never rejects in
+// this pass (reject stays reserved for shutdown). Pre-push faults leave the
+// ledger untouched; a post-attach/pre-record fault leaves the minted scope
+// dir behind as accepted residue (never rmdir a scope the platform may have
+// touched). Linear, non-concurrent, single-process.
 //
-// Stance: this module NEVER constructs or drives the process terminal and
-// attaches NO process handlers of any kind — terminal and signal concerns
-// belong to the outermost entry alone; composed-frame emitters skip kill-
-// capture arming entirely. Edge behavior: a responsive abort while a child
-// owns the terminal settles through the body-fault path (typed capture,
-// record, switch-back proceeds normally); a true wedge freezes the call
-// chain — accepted per the owner hang semantics; recovery belongs to the
-// ordered death pass.
+// Stance: this module never constructs or drives the terminal and attaches
+// no signal handlers — those belong to the outermost entry alone. A
+// responsive abort mid-hop settles through the body-fault path; a true
+// wedge freezes the chain (accepted per owner-hang semantics; recovery is
+// the death pass's).
 //
-// Accepted edge: the top entry's rebind closure performs a SOFT OPTIONAL
-// CALL through TopFrameRebindView (the required counters() member defeats
-// weak-type TS2559; the optional rebind? keeps the assignment legal while
-// PioSession does not declare the method). A missing rebind at call time
-// would skip the re-arm silently — cannot occur in the shipped sequence;
-// downstream suites carry the tripwires.
+// Accepted edge: the top entry's rebind closure performs a soft optional
+// call through TopFrameRebindView (required counters() defeats weak-type
+// TS2559; optional rebind? keeps the assignment legal while PioSession does
+// not declare the method). A missing rebind would skip the re-arm silently —
+// cannot occur in the shipped sequence; downstream suites carry tripwires.
 
 import { join } from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
@@ -64,11 +49,9 @@ import { PioSession } from "./pio-session.ts";
 import type { CapabilityResult, StatusEmitter } from "./status.ts";
 import { captureError, createStatusEmitter } from "./status.ts";
 
-/** Outermost-entry stamp: AUDIT-IDENTITY ONLY — the install context
- * carries no capability identity, so a self-evidently-placeholder stamp
- * keeps the ledger shape uniform across depths. The durable top-frame
- * record identity is owned by the entry's status emitter; this never
- * serializes into a status.json. */
+/** Outermost-entry stamp: audit-identity placeholder keeping the ledger
+ * shape uniform across depths (the durable top record identity is owned by
+ * the entry's emitter and never serializes from here). */
 const TOP_FRAME_STAMP: Readonly<{
   readonly name: string;
   readonly version: string;
@@ -81,9 +64,8 @@ const NOT_INSTALLED_MESSAGE =
 const DOUBLE_INSTALL_MESSAGE =
   "terminal-takeover: frame environment already installed \u2014 single-holder doctrine; teardown before reinstalling";
 
-// THE four pinned hop-fault messages (owner: the HopFaultError throw sites
-// below). Escaped so the U+2014 bytes survive editor and toolkit glyph
-// mangling.
+// THE four pinned hop-fault messages (owner: the throw sites below);
+// \u2014 escaped so the bytes survive toolkit glyph mangling.
 const PARENT_UNNAMED_MESSAGE =
   "terminal-takeover: hop aborted \u2014 the parent session is unnamed; no switch source to return to";
 const MINT_UNNAMED_MESSAGE =
@@ -287,20 +269,18 @@ interface BuiltFrame {
   readonly childEmitter: StatusEmitter;
 }
 
-/** Per-hop orchestration state: the thin sequencer plus the six grouped
- * internals (grouped-methods doctrine — a forced-order unit lives INSIDE
- * one method so misordering is unrepresentable; the group boundaries are
- * the mint / attach / build / record / restore / release spans). */
+/** Per-hop orchestration: a thin sequencer whose grouped internals each
+ * own one forced-order span (mint / attach / build / record / restore /
+ * release). */
 class HopOrchestrator {
   #input: MaterializeFrameInput;
   #latch: PendingLatch<CapabilityResult>;
-  /** Reach path: the shared runtime via topFrame.runtime. */
+  /** Shared runtime reach path via topFrame.runtime. */
   #topFrame: PioSession;
-  /** THE frame this hop attaches UNDER (the current frame at dispatch
-   * time); its rebind closure re-arms the parent after the switch-back. */
+  /** The frame this hop attaches UNDER; its rebind re-arms the parent. */
   #parentEntry: ActiveFrame;
-  /** Assigned at the build stage; the ledger accessors close over it and
-   * are first invoked strictly after the build (body → record / re-arm). */
+  /** Set at the build stage; the ledger accessors close over it and are
+   * first invoked strictly after the build. */
   #childHost: PioSession | undefined;
   /** Set at the ledger push; cleared at the release. */
   #pushed: ActiveFrame | undefined;
@@ -317,13 +297,9 @@ class HopOrchestrator {
     this.#parentEntry = parentEntry;
   }
 
-  /** THE detached continuation: sequences the groups under the
-   * winds-unwound obligation — release ALWAYS runs after the staged span
-   * (pop + latch resolve, exactly once per hop), so the latch settles on
-   * every reachable fault path. The staged span never escapes: every
-   * reachable machinery fault converts to the typed capture payload,
-   * and the unwind-completed payload IS the record (same-payload dual
-   * channels). */
+  /** Detached continuation: the staged span never escapes (every machinery
+   * fault converts to the typed capture); release then runs once, so the
+   * latch settles on every reachable fault path. */
   async run(): Promise<void> {
     let released = false;
     const settled = await (async (): Promise<CapabilityResult> => {
@@ -333,28 +309,22 @@ class HopOrchestrator {
       await this.#restoreParent(attached);
       return record;
     })().catch((error: unknown): CapabilityResult => {
-      // EVERY reachable machinery fault lands here: pre-push (nothing
-      // pushed), post-attach/pre-record (accepted residue), or post-
-      // record (the record stands). The await receives the typed capture
-      // of THIS fault — never the body's payload.
+      // Pre-push (nothing pushed), post-attach (accepted residue), or post-
+      // record (the record stands) — the await receives THIS fault's typed
+      // capture, never the body's payload.
       return { ok: false, errors: [captureError(error)] };
     });
-    // THE release gesture — guarded to exactly once per hop (belt-and-
-    // suspenders over the linear single-process flow; a repeated settle
-    // would be inert under native first-settlement-wins anyway).
     if (!released) {
       released = true;
       this.#releaseFrame(settled);
     }
   }
 
-  /** THE child scope + platform-named file (the mint half of the attach
-   * span). Scope dirs nest ONE SEGMENT PER HOP under the parent frame's
-   * scope dir (grandchildren mint further segments regardless of depth);
-   * the platform-named file is computed through the module's SOLE SDK
-   * value reach — the hop-time thunk. NO lineage options are ever passed:
-   * who-called-whom edges live ONLY in the ledger. The file may not yet
-   * exist — the open preserves the explicit path. */
+  /** Mint half of the attach span: scope dir one segment under the parent
+   * frame's scope dir (grandchildren mint further segments regardless of
+   * depth); the platform-named file comes through the module's SOLE SDK
+   * value reach — the hop-time thunk (no lineage options; the file may not
+   * exist yet — the open preserves the explicit path). */
   async #mintChildScope(): Promise<{
     childScopeDir: string;
     childFile: string;
@@ -362,7 +332,7 @@ class HopOrchestrator {
     const childId = mintEngagementId(this.#input.idSeams);
     const childScopeDir = join(this.#parentEntry.scopeDir, childId);
     const childTopDir = join(childScopeDir, "top");
-    // THE module's ONLY SDK value reach — fires only inside the detached
+    // The module's ONLY SDK value reach — fires only inside the detached
     // continuation (module load stays SDK-value-free).
     const { SessionManager } = await import("@earendil-works/pi-coding-agent");
     const manager = SessionManager.create(
@@ -377,12 +347,11 @@ class HopOrchestrator {
     return { childScopeDir, childFile };
   }
 
-  /** THE switch-out + ledger push (with the mint nested for the fixed
-   * internal order). The parent transcript is captured PRE-HOP — absent
-   * is a guard, not a path. The entry is pushed ONLY after the switch-out
-   * succeeds; a cancelled switch leaves NOTHING pushed with the parent
-   * still current (no teardown occurred); a raw rejection escapes
-   * UNMASKED into the catch-all. */
+  /** Switch-out + ledger push (the mint nested for the fixed internal
+   * order). The parent transcript is captured pre-hop (absent is a guard,
+   * not a path); the entry is pushed only AFTER the switch-out succeeds —
+   * a cancelled switch pushes nothing with the parent still current; a raw
+   * rejection escapes unmasked into the catch-all. */
   async #attachChildFrame(): Promise<AttachedFrame> {
     const runtime = this.#topFrame.runtime;
     const parentFile = runtime.session.sessionFile;
@@ -394,8 +363,7 @@ class HopOrchestrator {
       cwdOverride: runtime.cwd,
     });
     if (switched.cancelled) {
-      // Nothing pushed, no teardown occurred — the parent is still the
-      // runtime's current handle.
+      // Nothing pushed — the parent is still the runtime's current handle.
       throw new HopFaultError(CANCELLED_SWITCH_MESSAGE);
     }
     const frames = requireInstalled().frames;
@@ -406,21 +374,17 @@ class HopOrchestrator {
         version: this.#input.contract.version,
       },
       scopeDir: scoped.childScopeDir,
-      // THE CAPTURED CONSTANT — never a live read of the shared runtime's
-      // current handle (post-switch-back that handle is the PARENT's and a
-      // live read would stamp the parent's transcript into this frame's
-      // record).
+      // CAPTURED CONSTANT — never a live read of the shared runtime's
+      // current handle (post-switch-back that handle is the parent's).
       sessionFile: (): string | undefined => scoped.childFile,
-      // LIVE over the child host. The host attaches at the NEXT stage; the
-      // narrowing cast is sound because the accessor is first invoked
-      // strictly after it (body → record / re-arm).
+      // LIVE over the child host. The narrowing cast is sound: the host
+      // attaches at the next stage and the accessor is first invoked after
+      // it. A closure (not a bare method ref) so `this` survives strict
+      // mode; the same latch the dispatcher minted lets the shutdown pass
+      // find pending composed frames.
       tokens: (): number => (this.#childHost as PioSession).counters().tokens,
-      // Closure capturing the child host: a bare method reference would
-      // detach `this` under strict mode and crash at the re-arm.
       rebind: (session: AgentSession): void =>
         (this.#childHost as PioSession).rebind(session),
-      // THE SAME latch the dispatcher minted — the kill pass finds pending
-      // composed frames through it.
       latch: this.#latch,
     };
     frames.push(entry);
@@ -428,15 +392,11 @@ class HopOrchestrator {
     return { ...scoped, parentFile, entry };
   }
 
-  /** THE host attach + child-emitter wiring, performed WHILE the child
-   * handle is current (adjacency-protected: no yield between the
-   * switch-out resolution and the subscription landing on the child
-   * handle). Composed-frame emitters NEVER arm kill capture — signal
-   * handling stays entry-owned. The child's record lands at
-   * `<childScopeDir>/top/status.json` through the existing top-slot
-   * derivation (rooted at the child scope dir, stamped from the input
-   * contract; grace/now defaults apply — composed emitters take no clock
-   * seam; no settlement hook). */
+  /** Host attach + child-emitter wiring WHILE the child handle is current
+   * (no yield between the swap and the subscription landing). Composed
+   * emitters never arm signal handling — that stays entry-owned. The
+   * record roots at the child scope dir, stamped from the input contract;
+   * composed emitters take no clock seam (module defaults apply). */
   #buildChildFrame(attached: AttachedFrame): BuiltFrame {
     const childHost = PioSession.fromRuntime(this.#topFrame.runtime);
     this.#childHost = childHost;
@@ -446,20 +406,18 @@ class HopOrchestrator {
         name: this.#input.contract.name,
         version: this.#input.contract.version,
       },
-      // LIVE over the child host (fresh read at emit time).
+      // Fresh read at emit time over the adopted host.
       tokens: (): number => childHost.counters().tokens,
-      // THE CAPTURED CONSTANT (see the ledger entry wiring above).
+      // Captured constant (see the ledger entry wiring above).
       sessionFile: (): string | undefined => attached.childFile,
     });
     return { childHost, childEmitter };
   }
 
-  /** THE body → settled → UNCONDITIONAL record emission, BEFORE the group
-   * resolves. The settled payload is assembled IDENTICALLY for both
-   * channels — success: the outputs by reference; fault: the SAME
-   * capture ladder the shipped paths use — and emitted one-shot per
-   * session scope through the emitter's claim discipline. Never throws:
-   * the body's fault IS the captured payload, not an escape. */
+  /** Body → settled → unconditional record emission before the group
+   * resolves. One payload serves both channels (outputs by reference, or
+   * the shipped capture ladder); the body's fault is the captured payload,
+   * never an escape. */
   async #runBodyAndRecord(built: BuiltFrame): Promise<CapabilityResult> {
     let settled: CapabilityResult;
     try {
@@ -472,14 +430,10 @@ class HopOrchestrator {
     return settled;
   }
 
-  /** THE switch-back + parent re-arm with NO yield between them (the
-   * re-arm must land before anything else can observe the swap). The
-   * parent transcript is the CAPTURED pre-hop value, not a re-read. A
-   * rejecting switch-back settles as the pinned switch-back hop fault —
-   * the child record already stands and the re-arm is skipped. By the
-   * measured physics the reopened parent retains its file-backed identity
-   * (the identity gate passes) and is a FRESH handle (the no-op gate
-   * cannot fire). */
+  /** Switch back onto the CAPTURED parent file, then re-arm with no yield
+   * in between. A rejecting switch-back settles as the pinned switch-back
+   * fault — the record already stands; the measured physics keeps the
+   * reopened parent's retained identity past the rebind gate. */
   async #restoreParent(attached: AttachedFrame): Promise<void> {
     const runtime = this.#topFrame.runtime;
     try {
@@ -487,18 +441,15 @@ class HopOrchestrator {
         cwdOverride: runtime.cwd,
       });
     } catch (_error) {
-      // The record (emitted before the switch-back) is durable; the raw
-      // rejection is DELIBERATELY masked by the pinned typed fault.
+      // The record is durable; the raw rejection is deliberately masked.
       throw new HopFaultError(SWITCH_BACK_FAILED_MESSAGE);
     }
-    // NO await between the switch-back resolution and this call.
+    // No await between the switch-back resolution and this call.
     this.#parentEntry.rebind(runtime.session);
   }
 
-  /** THE pop + latch resolution — ONE synchronous gesture. The pop is
-   * conditional on the push having happened (pre-push faults leave the
-   * ledger untouched); repeated settlement is inert (native first-
-   * settlement-wins). */
+  /** Pop (only if this hop pushed) + latch resolve — one synchronous
+   * gesture; repeated settlement is inert (first-settlement-wins). */
   #releaseFrame(settled: CapabilityResult): void {
     if (this.#pushed !== undefined) {
       const frames = requireInstalled().frames;
@@ -512,25 +463,17 @@ class HopOrchestrator {
 }
 
 /**
- * THE row-2 composition entry: takes the terminal for one composed frame
- * and returns the caller's settlement promise immediately.
- *
- * SYNCHRONOUS dispatcher (D-sync refinement, NOT a plain async function):
- * the holder guard runs SYNCHRONOUSLY — an uninstalled read throws the
- * pinned not-installed error OUT of this function (the base-level catch-
- * all captures it; "run never rejects" holds). The latch is minted BEFORE
- * any mutation (the caller's promise identity is fixed early), a DETACHED
- * continuation owns the remaining stages, and the dispatcher RETURNS the
- * latch value. Normal settlement uses `resolve` EXCLUSIVELY — the `reject`
- * channel is reserved for the ordered shutdown pass and is never called
- * from this pass. Native promise semantics provide first-settlement-wins
- * and microtask resumption — no custom promise machinery.
+ * THE row-2 composition entry. Synchronous on purpose: the holder guard
+ * throws OUT of this function when uninstalled (base-level catch-all
+ * captures it), the latch is minted before any mutation, a detached
+ * continuation owns the remaining stages, and the caller receives the
+ * latch value immediately. Settlement uses `resolve` exclusively — the
+ * `reject` channel is reserved for the ordered shutdown pass.
  */
 export function materializeFrame(
   input: MaterializeFrameInput,
 ): Promise<CapabilityResult> {
-  // THE synchronous holder guard + current-frame read (throws the pinned
-  // not-installed error synchronously when uninstalled).
+  // Synchronous holder guard + current-frame read.
   const installed = requireInstalled();
   const frames = installed.frames;
   const latch = createPendingLatch<CapabilityResult>();

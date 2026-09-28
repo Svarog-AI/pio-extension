@@ -1,37 +1,25 @@
-// Hermetic unit suite for the capability base (base.ts).
-// Every SDK value symbol reachable through the session-construction seam is
-// a pure fake: the vi.mock factory references ONLY hoisted bindings and
-// never pulls in the original module, so the real
-// @earendil-works/pi-coding-agent graph is never evaluated. No filesystem,
-// network, env, or process-stream assumptions — wiring rows use value-slot
-// contracts exclusively. Each construction mints a fresh fake session
-// behind a fresh fake runtime, so prompt arguments and per-instance state
-// are directly observable. Synthetic events flow through the single
-// documented cast seam asEvent; the B-world handle-typing seams join it as
-// the documented cast idiom (zero casts live in the source).
+// Hermetic unit suite for the capability base (base.ts). Every SDK value
+// symbol is a pure fake via hoisted vi.mock bindings — the real
+// @earendil-works/pi-coding-agent graph is never evaluated; no filesystem,
+// network, env, or process-stream assumptions. Each construction mints a
+// fresh fake session behind a fresh fake runtime, so prompt arguments and
+// per-instance state are directly observable. Live-harness rows drive the
+// real phase engine over scripted fake prompts (one queued resolution =
+// one settled logical run). Fixture subclasses are inline test doubles.
+// Synthetic events flow through the documented cast seam asEvent; the
+// B-world seams join it as the same idiom.
 //
-// Live-harness rows drive the real phase engine over scripted fake prompts:
-// one queued resolution stands for one fully-settled logical run. Fixture
-// subclasses are defined inline per scenario with deliberately-fake
-// identities — test doubles that register nothing and ship nowhere.
-//
-// Row-2 dispatch probe (additive): the terminal-takeover module is
-// factory-mocked with importOriginal DELEGATION — the factory flips the
-// hoisted evaluated flag the instant it RUNS (factories evaluate ONCE per
-// file; sticky) and wraps materializeFrame in a PLAIN synchronous
-// pass-through that records invocations (an async wrapper would convert the
-// synchronous holder-guard escape into a rejection and mask the sync-
-// escape contract). LOAD-BEARING ROW ORDER: no pre-B row is session-absent
-// (every migrated row runs session-present), so the probe stays unevaluated
-// until the first session-absent row in file order (B1 flips; B8, placed
-// first inside the B block, pins the unflipped state).
-//
-// The B block's world mirrors the sibling physics harness in compact form
-// (scripted switchSession with the measured teardown-then-apply order, a
-// real top frame over the fake runtime through the documented cast seam,
-// tmpdir sessions-root per row with FORCED cleanup). Holder controls are
-// obtained through the SAME deferred import path base.ts uses — a static
-// import would fire the recording factory at file load and rot the B8 pin.
+// Row-2 dispatch probe: ./terminal-takeover.ts is factory-mocked with
+// importOriginal DELEGATION — the factory flips the hoisted eval flag on
+// first evaluation (factories evaluate ONCE per file; sticky) and wraps
+// materializeFrame in a PLAIN synchronous pass-through that records
+// invocations (an async wrapper would mask the sync escape contract).
+// LOAD-BEARING ROW ORDER: every pre-B row is session-present, so the probe
+// stays unevaluated until B1; B8 (first inside the block) pins the
+// unflipped state. The B block's world mirrors the sibling physics harness
+// in compact form; holder controls come through the SAME deferred import
+// path base.ts uses — a static import would fire the factory at file load
+// and rot the B8 pin.
 
 import {
   mkdirSync,
@@ -153,11 +141,10 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSessionRuntime: harness.createAgentSessionRuntime,
 }));
 
-// THE row-2 dispatch probe (see the header discipline note): delegation
-// keeps the REAL mechanics available while the eval flag + invocation log
-// stay observable. The plain synchronous pass-through preserves the sync-
-// throw semantics of the holder-guard escape (the typed wrapper lands with
-// the hop primitive's consumer rows).
+// Row-2 dispatch probe (see header note): delegation keeps the REAL
+// mechanics available while the eval flag + invocation log stay observable;
+// the plain synchronous pass-through preserves the sync-throw semantics of
+// the holder-guard escape.
 const takeoverProbe = vi.hoisted(() => ({
   evaluated: false,
   calls: [] as Array<Record<string, unknown>>,

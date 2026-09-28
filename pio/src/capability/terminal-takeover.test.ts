@@ -40,7 +40,7 @@ import type {
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
 import type { IdSeams } from "../sandbox/layout.ts";
-import { ContractViolationError } from "./errors.ts";
+import { ContractViolationError, PhaseBudgetError } from "./errors.ts";
 import type { SessionVariableStore } from "./pio-session.ts";
 import { PioSession } from "./pio-session.ts";
 import type { CapabilityResult } from "./status.ts";
@@ -256,15 +256,19 @@ function scriptSwitches(world: PhysicsWorld, ...steps: SwapStep[]): void {
 
 /** THE composed-world top frame: REAL PioSession.fromRuntime over the
  * settled fake runtime (the documented cast seam), installed as the
- * outermost ledger entry over the row's tmpdir sessions root. */
-function installTopFrame(world: PhysicsWorld, root: string): PioSession {
+ * outermost ledger entry over the row's tmpdir sessions root. An explicit
+ * terminalStop closure is honored when provided (the death-simulation rows
+ * retain their own reference to invoke later). */
+function installTopFrame(
+  world: PhysicsWorld,
+  root: string,
+  terminalStop?: () => void,
+): PioSession {
   const topFrame = PioSession.fromRuntime(asRuntime(world.runtime));
   installFrameEnvironment({
     sessionsRoot: root,
     topFrame,
-    terminalStop: (): void => {
-      world.terminal.stop();
-    },
+    terminalStop: terminalStop ?? ((): void => world.terminal.stop()),
     stderr: (line: string): void => world.stderr(line),
   });
   return topFrame;
@@ -721,8 +725,8 @@ function buildAlphaWorld(cwd: string): {
 }
 
 describe("hop matrix (H rows — materializeFrame over the physics world)", () => {
-  it("H1 THE full success cycle: synchronous dispatch returns the caller's promise identity early; the detached continuation mints the child scope ONE SEGMENT under the current scope dir through the sole SDK thunk, captures the PRE-HOP parent transcript, switches out with cwdOverride, pushes depth 1, runs the body on the adopted frame (fresh token counter), emits the UNCONDITIONAL canonical child record BEFORE settling, switches back onto the CAPTURED parent file, re-arms without a yield, and pops + resolves in one gesture — outputs travel BY REFERENCE, exactly two switch calls, one SDK thunk, zero stdout, zero stderr", async () => {
-    const { root, world, parentFile } = buildAlphaWorld("/work/alpha");
+  it("H1 THE full success cycle: synchronous dispatch returns the caller's promise identity early; the detached continuation mints the child scope ONE SEGMENT under the current scope dir through the sole SDK thunk, captures the PRE-HOP parent transcript, switches out with cwdOverride, pushes depth 1, runs the body on the adopted frame (fresh token counter), emits the UNCONDITIONAL canonical child record BEFORE settling, switches back onto the CAPTURED parent file, re-arms without a yield, and pops + resolves in one gesture — outputs travel BY REFERENCE, exactly two switch calls, one SDK thunk, zero stdout, zero stderr, the fresh parent handle carries exactly one re-armed listener proven DELIVERING, and the harness IM stops ZERO times during the hop", async () => {
+    const { root, world, top, parentFile } = buildAlphaWorld("/work/alpha");
     const childDir = join(root, CHILD_ID_A, "top");
     const childFile = join(childDir, MINTED_FILE(1));
     scriptSwitches(
@@ -786,6 +790,15 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       expect(current.sessionFile).toBe(parentFile);
       expect(current).not.toBe(world.parentHandle);
       expect(world.parentHandle.disposed).toBe(true);
+      // THE re-arm observable (stage-⑪ adjacency): the fresh post-switch-back
+      // parent handle carries EXACTLY ONE live listener — the persistent
+      // top-frame observer re-subscribed by the ledger's rebind closure —
+      // and it DELIVERS: one synthetic usage payload (Σ14 hand-computed)
+      // advances the top frame's counters by exactly its sum.
+      expect(current.live).toHaveLength(1);
+      emitLive(world.runtime.session, assistantMessageEnd(5, 4, 3, 2));
+      expect(top.counters().tokens).toBe(14);
+      expect(activeFrames()[0].tokens()).toBe(14);
       // The CAPTURED CONSTANT survives the unwind: post-back the shared
       // runtime's current handle is the parent's, yet this accessor still
       // names the child file.
@@ -832,13 +845,16 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       // No terminal or signal side channel of any kind.
       expect(stdoutSpy).not.toHaveBeenCalled();
       expect(world.stderr).not.toHaveBeenCalled();
+      // Constructed ONCE total (at world setup — the module contributes
+      // zero constructions), and stop called ZERO times during the hop.
       expect(world.terminal.constructions).toBe(1);
+      expect(world.terminal.stop).toHaveBeenCalledTimes(0);
     } finally {
       stdoutSpy.mockRestore();
     }
   });
 
-  it("H2 nested grandchildren (two stacked hops): scopes nest TWO segments under the root, inner child mints under the OUTER child's scope dir, four switch calls run out-A, out-B, back-to-A, back-to-parent, records land at <outer>/<inner>/top and <outer>/top, the harness top-frame record lands at <root>/top, outputs reference the inner settled payload BY REFERENCE, variable stores stay frame-private, one live handle throughout, all ledgers pop", async () => {
+  it("H2 nested grandchildren (two stacked hops): scopes nest TWO segments under the root, inner child mints under the OUTER child's scope dir, four switch calls run out-A, out-B, back-to-A, back-to-parent, records land at <outer>/<inner>/top and <outer>/top, the harness top-frame record lands at <root>/top, outputs reference the inner settled payload BY REFERENCE, variable stores stay frame-private, one live handle throughout, all ledgers pop, ONE IM across the whole chain", async () => {
     const { root, world, top, parentFile } = buildAlphaWorld("/work/nest");
     const outerChildDir = join(root, CHILD_ID_A, "top");
     const outerChildFile = join(outerChildDir, MINTED_FILE(1));
@@ -1077,6 +1093,11 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     expect(outerStoreRef!.get("ivar")).toBeUndefined();
     expect(innerStoreRef!.get("ivar")).toBe(99);
     expect(innerStoreRef!.get("ovar")).toBeUndefined();
+    // ONE IM across the WHOLE CHAIN: the harness-minted terminal was
+    // constructed once at world setup (the module contributed zero
+    // constructions) and stop was called never through either hop.
+    expect(world.terminal.constructions).toBe(1);
+    expect(world.terminal.stop).toHaveBeenCalledTimes(0);
   });
 
   it("H3 record placement pin: EXACTLY ONE status.json exists anywhere under the sessions root and it sits at <childScopeDir>/top/status.json with transcriptRef <childId>/top/<platform file> — the child slot derives under the child scope, never under the parent's slots", async () => {
@@ -1122,8 +1143,14 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     expect(parsed.transcriptRef).toBe(`${CHILD_ID_C}/top/${MINTED_FILE(1)}`);
   });
 
-  it("H4 token continuity across the lifecycle: usage landing on the CURRENT (child) handle during the body advances the adopted frame's LIVE counters into the record AND stays readable through the popped ledger entry's accessor after the unwind — freshness proven, no double-counting against the parent", async () => {
-    const { root, world } = buildAlphaWorld("/work/tokens");
+  it("H4 counter/token continuity across the lifecycle: the PRE vector N on the initial parent handle is read back N EXACT immediately after switch-back (the reopen replays NOTHING and a hostile pre-re-arm emission changes NOTHING — the tripwire), the POST vector K takes the parent to N + K EXACT (no loss, no double count), the child's mid-body M stays ISOLATED and frozen through the popped entry's accessor, and the DISPOSED initial parent handle is inert when poked", async () => {
+    const { root, world, top } = buildAlphaWorld("/work/tokens");
+    // Hand-computed vectors (pinned observer arithmetic: tokens = input +
+    // output + cacheRead + cacheWrite): N=17, M=40, K=7 → final N+K=24.
+    const PRE_N = 9 + 4 + 3 + 1;
+    const MID_M = 11 + 22 + 3 + 4;
+    const POST_K = 2 + 2 + 2 + 1;
+    let preReArmRead: number | undefined;
     scriptSwitches(
       world,
       {
@@ -1133,24 +1160,57 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
           seedTranscript(path, "<seed>\n");
         },
       },
-      { kind: "swap", sessionId: "sess-fake-0001" },
+      {
+        kind: "swap",
+        sessionId: "sess-fake-0001",
+        observe: (incoming: PhysicsHandle): void => {
+          // Pre-re-arm tripwire vantage: the scripted-swap observe hook fires
+          // BEFORE the module-driven re-arm lands. A hostile emission on the
+          // fresh handle reaches no listener (the persistent observer is
+          // still detached — only it may be re-attached); the counter read
+          // captured HERE is what the post-await pins must equal.
+          emitLive(incoming, assistantMessageEnd(99, 99, 99, 99));
+          preReArmRead = top.counters().tokens;
+        },
+      },
     );
+    // PRE vector on the INITIAL parent handle, strictly before the hop.
+    emitLive(world.runtime.session, assistantMessageEnd(9, 4, 3, 1));
+    expect(top.counters().tokens).toBe(PRE_N);
     let entryRef: ActiveFrame | undefined;
     const settled = await materializeFrame({
       capability: CONTRACT_ALPHA,
       idSeams: SEAMS_A,
       body: async (frame: PioSession): Promise<Record<string, unknown>> => {
         expect(frame.counters().tokens).toBe(0);
-        // Usage lands on the CURRENT handle — the child's.
+        // MID vector: usage lands on the CURRENT handle — the child's.
         emitLive(world.runtime.session, assistantMessageEnd(11, 22, 3, 4));
         await Promise.resolve();
-        expect(frame.counters().tokens).toBe(40);
+        expect(frame.counters().tokens).toBe(MID_M);
+        // Public mid-body channel: the pushed entry's LIVE accessor reads
+        // the same adopted host (M visible from outside the body).
         entryRef = activeFrames()[1];
-        return { atBodyEnd: frame.counters().tokens };
+        expect(entryRef.tokens()).toBe(MID_M);
+        return {};
       },
     });
-    expect((settled.outputs as { atBodyEnd: number }).atBodyEnd).toBe(40);
-    // Live read AT EMIT time: the record stamps the advanced counter.
+    expect(settled.ok).toBe(true);
+    // THE immediate post-switch-back read — including the tripwire vantage
+    // captured BEFORE the re-arm landed, AFTER a hostile emission on the
+    // fresh handle: N EXACT. The reopen replayed NOTHING and moved NOTHING
+    // until the module-driven re-arm delivered.
+    expect(preReArmRead).toBe(PRE_N);
+    expect(top.counters().tokens).toBe(PRE_N);
+    expect(activeFrames()[0].tokens()).toBe(PRE_N);
+    // POST vector on the FRESH parent handle: the re-armed observer takes
+    // the parent to N + K EXACT (no loss, no double count).
+    emitLive(world.runtime.session, assistantMessageEnd(2, 2, 2, 1));
+    expect(top.counters().tokens).toBe(PRE_N + POST_K);
+    expect(activeFrames()[0].tokens()).toBe(PRE_N + POST_K);
+    // Child's M ISOLATED and frozen: readable through the popped entry's
+    // accessor...
+    expect(entryRef!.tokens()).toBe(MID_M);
+    // ...and stamped into the record AT EMIT time over the child host only.
     const raw = readFileSync(
       join(root, CHILD_ID_A, "top", "status.json"),
       "utf8",
@@ -1163,12 +1223,15 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       "tokens",
       "durationMs",
     ]);
-    expect(parsed.tokens).toBe(40);
-    // The popped entry's accessor still reads the SAME adopted host.
-    expect(entryRef!.tokens()).toBe(40);
-    // Parent untouched: its handle saw no events (disposed anyway — the
-    // original counter lives nowhere shared).
+    expect(parsed.tokens).toBe(MID_M);
+    // POKING the disposed initial parent handle post-dispose changes
+    // NOTHING (inert: per-handle subscriptions die with dispose).
+    emitLive(world.parentHandle, assistantMessageEnd(8, 8, 8, 8));
     expect(world.parentHandle.live).toHaveLength(0);
+    expect(top.counters().tokens).toBe(PRE_N + POST_K);
+    // Isolation both ways: the parent-side traffic never reached the child
+    // host either.
+    expect(entryRef!.tokens()).toBe(MID_M);
   });
 
   it("H5 the child frame's variable store: set/get/list round-trips in the body and persists across microtasks there, while staying UNPERSISTED across the unwind — frame-private stores, nothing written to the shared runtime or the filesystem", async () => {
@@ -1212,87 +1275,141 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     ]);
   });
 
-  it("H6 body fault: a throwing body settles as the typed CAPTURE (never a rejection of the caller's promise), emits the failure record BEFORE switching back, and the unwind still completes — switch-back proceeds, the ledger pops, the re-arm lands; the record's ok:false + outputs:{} + captured error are the pins", async () => {
-    const { root, world } = buildAlphaWorld("/work/fault");
-    const applied: PhysicsHandle[] = [];
-    scriptSwitches(
-      world,
-      {
-        kind: "swap",
-        sessionId: "sess-child-b",
-        persist: (path: string): void => {
-          seedTranscript(path, "<seed>\n");
-        },
-        observe: (incoming: PhysicsHandle): void => {
-          applied.push(incoming);
-        },
+  /** THE specified three-variant body-fault table: each variant drives a
+   * FULL hop whose body THROWS the variant, pinning the identical typed
+   * capture at BOTH channels (await + child record) with the complete
+   * unwind performed. */
+  const H6_CONTRACT_VIOLATIONS = [
+    "output 'r' is missing",
+    "output 'g' is stale",
+  ];
+  const BODY_FAULT_VARIANTS: ReadonlyArray<{
+    readonly label: string;
+    readonly thrown: () => unknown;
+    readonly expected: Record<string, unknown>;
+    readonly violationsRef?: string[];
+  }> = [
+    {
+      label: "bare new Error('boom') — bare identity with no cause key",
+      thrown: (): unknown => new Error("boom"),
+      expected: { type: "Error", message: "boom" },
+    },
+    {
+      label: "PhaseBudgetError(2) — the budget shape",
+      thrown: (): unknown => new PhaseBudgetError(2),
+      expected: {
+        type: "PhaseBudgetError",
+        cause: "budget",
+        message: "Iteration budget exceeded after 2 iterations",
       },
-      {
-        kind: "swap",
-        sessionId: "sess-fake-0001",
-        observe: (incoming: PhysicsHandle): void => {
-          applied.push(incoming);
-        },
-      },
-    );
-    const settled = await materializeFrame({
-      capability: CONTRACT_BETA,
-      idSeams: SEAMS_B,
-      body: async (): Promise<Record<string, unknown>> => {
-        throw new ContractViolationError(["body fault"]);
-      },
-    });
-    // THE await RESOLVED (not rejected) with the typed capture ladder.
-    expect(settled).toStrictEqual({
-      ok: false,
-      errors: [
-        {
-          type: "ContractViolationError",
-          cause: "contract",
-          message: "Contract violation: body fault",
-          violations: ["body fault"],
-        },
-      ],
-    });
-    // The failure record stands at the child slot: ok:false, outputs
-    // always serialized as {}, errors BEFORE transcriptRef in the canonical
-    // order, the captured error pinned.
-    const raw = readFileSync(
-      join(root, CHILD_ID_B, "top", "status.json"),
-      "utf8",
-    );
-    const parsed = expectCanonicalRecord(raw, [
-      "ok",
-      "capability",
-      "outputs",
-      "errors",
-      "transcriptRef",
-      "tokens",
-      "durationMs",
-    ]);
-    expect(parsed.ok).toBe(false);
-    expect(parsed.capability).toEqual({
-      name: "cap-beta",
-      version: "2.0.0",
-      source: "builtin",
-    });
-    expect(parsed.outputs).toEqual({});
-    expect(parsed.errors).toEqual([
-      {
+    },
+    {
+      label: "ContractViolationError([...]) — the contract shape",
+      thrown: (): unknown => new ContractViolationError(H6_CONTRACT_VIOLATIONS),
+      expected: {
         type: "ContractViolationError",
         cause: "contract",
-        message: "Contract violation: body fault",
-        violations: ["body fault"],
+        message:
+          "Contract violation: output 'r' is missing; output 'g' is stale",
+        violations: H6_CONTRACT_VIOLATIONS,
       },
-    ]);
-    expect(parsed.tokens).toBe(0);
-    // Unwind completed despite the fault: switched back, composed entry popped (top remains).
-    expect(world.runtime.session).toBe(applied[1]);
-    expect(world.runtime.session.sessionFile).toBe(
-      join(root, "top", "parent-transcript.jsonl"),
-    );
-    expect(activeFrames()).toHaveLength(1);
-  });
+      violationsRef: H6_CONTRACT_VIOLATIONS,
+    },
+  ];
+  for (const variant of BODY_FAULT_VARIANTS) {
+    it(`H6 ${variant.label}: the body-fault capture reaches BOTH channels IDENTICALLY (exact single-element capture at the await AND the mirrored record bytes incl. errors placement) while switch-back/pop/rebind are STILL PERFORMED ([childFile, parentFile] switch args with cwdOverride, ledger [top], exactly one fresh listener on the post-switch-back parent handle) and the IM recorder stays untouched`, async () => {
+      const { root, world, parentFile } = buildAlphaWorld("/work/fault");
+      const childFile = join(root, CHILD_ID_A, "top", MINTED_FILE(1));
+      const applied: PhysicsHandle[] = [];
+      scriptSwitches(
+        world,
+        {
+          kind: "swap",
+          sessionId: "sess-child-a",
+          persist: (path: string): void => {
+            seedTranscript(path, "<seed>\n");
+          },
+          observe: (incoming: PhysicsHandle): void => {
+            applied.push(incoming);
+          },
+        },
+        {
+          kind: "swap",
+          sessionId: "sess-fake-0001",
+          observe: (incoming: PhysicsHandle): void => {
+            applied.push(incoming);
+          },
+        },
+      );
+      const settled = await materializeFrame({
+        capability: CONTRACT_ALPHA,
+        idSeams: SEAMS_A,
+        body: async (): Promise<Record<string, unknown>> => {
+          throw variant.thrown();
+        },
+      });
+      // THE await RESOLVED (never rejected) with the EXACT single-element
+      // capture — this variant's shipped ladder shape.
+      expect(settled).toStrictEqual({
+        ok: false,
+        errors: [variant.expected],
+      });
+      if (variant.violationsRef !== undefined) {
+        // The captured array IS the thrown error's own array (reference
+        // passthrough at the await side).
+        expect(settled.errors?.[0]?.violations as unknown).toBe(
+          variant.violationsRef,
+        );
+      }
+      // THE MIRRORED RECORD BYTES at the child slot: ok:false, outputs
+      // present as the empty object per the serializer, errors deep-equal
+      // to the await-side capture, canonical key order with errors placed
+      // before transcriptRef (durationMs unpinned as always).
+      const raw = readFileSync(
+        join(root, CHILD_ID_A, "top", "status.json"),
+        "utf8",
+      );
+      const parsed = expectCanonicalRecord(raw, [
+        "ok",
+        "capability",
+        "outputs",
+        "errors",
+        "transcriptRef",
+        "tokens",
+        "durationMs",
+      ]);
+      expect(parsed.ok).toBe(false);
+      expect(parsed.capability).toEqual({
+        name: "cap-alpha",
+        version: "1.0.0",
+        source: "builtin",
+      });
+      expect(parsed.outputs).toEqual({});
+      expect(parsed.errors).toEqual([variant.expected]);
+      expect(parsed.tokens).toBe(0);
+      // FULL UNWIND despite the fault: both switch args in the pinned
+      // shape, the entry popped (ledger back to [top])...
+      expect(world.runtime.switchSession).toHaveBeenCalledTimes(2);
+      expect(world.runtime.switchSession.mock.calls[0]).toEqual([
+        childFile,
+        { cwdOverride: "/work/fault" },
+      ]);
+      expect(world.runtime.switchSession.mock.calls[1]).toEqual([
+        parentFile,
+        { cwdOverride: "/work/fault" },
+      ]);
+      expect(activeFrames()).toHaveLength(1);
+      expect(activeFrames()[0].capability.name).toBe("top");
+      // ...and the RE-ARM LANDED: exactly one fresh listener on the
+      // post-switch-back parent handle.
+      expect(world.runtime.session).toBe(applied[1]);
+      expect(world.runtime.session.live).toHaveLength(1);
+      // THE IM recorder untouched across the fault cycle.
+      expect(world.terminal.constructions).toBe(1);
+      expect(world.terminal.stop).toHaveBeenCalledTimes(0);
+      expect(world.stderr).not.toHaveBeenCalled();
+    });
+  }
 
   it("H7a cancelled switch-out: the latch RESOLVES with the pinned cancelled HopFaultError — nothing pushed (ledger still shows only the top entry), no record emitted, no teardown performed (the parent handle stays current and undisposed)", async () => {
     const { root, world } = buildAlphaWorld("/work/cancel");
@@ -1436,12 +1553,23 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     expect(activeFrames()).toHaveLength(1);
   });
 
-  it("H10 two sequential hops over ONE world (one terminal lifetime): distinct child scopes per hop, four switch calls alternating child/parent files, two independent records, the same reopened-parent identity each cycle, the module contributes ZERO terminal constructions and the live-handle count stays exactly one at every rest point", async () => {
-    const { root, world, parentFile } = buildAlphaWorld("/work/seq");
+  it("H10 acceptance #6 part 1 — ONE terminal lifetime across a combined multi-hop cycle (flat success on seams A, then a NESTED cycle on distinct seams B/C) and the simulated death: the module contributes ZERO terminal constructions, the harness IM stops ZERO times across both cycles, the ledger unwinds to [top] after EACH cycle, and the holder context's terminalStop invoked EXACTLY ONCE reaches the harness IM stop EXACTLY ONCE in total", async () => {
+    const root = newTempRoot();
+    const world = buildPhysicsWorld(root, "/work/lifetime");
+    const parentFile = join(root, "top", "parent-transcript.jsonl");
+    mkdirSync(join(root, "top"), { recursive: true });
+    writeFileSync(parentFile, "<seed>\n");
+    // Retain the installed holder context's terminalStop reference — the
+    // death simulation invokes it exactly once at row end.
+    const terminalStopImpl = vi.fn((): void => world.terminal.stop());
+    installTopFrame(world, root, terminalStopImpl);
     const applied: PhysicsHandle[] = [];
     const observe = (incoming: PhysicsHandle): void => {
       applied.push(incoming);
     };
+    const aFile = join(root, CHILD_ID_A, "top", MINTED_FILE(1));
+    const bFile = join(root, CHILD_ID_B, "top", MINTED_FILE(2));
+    const cFile = join(root, CHILD_ID_B, CHILD_ID_C, "top", MINTED_FILE(3));
     scriptSwitches(
       world,
       {
@@ -1461,64 +1589,99 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
         },
         observe,
       },
+      {
+        kind: "swap",
+        sessionId: "sess-child-c",
+        persist: (path: string): void => {
+          seedTranscript(path, "<c>\n");
+        },
+        observe,
+      },
+      // Nested unwinding order (measured): C-back onto B's retained file
+      // BEFORE B-back onto the top parent.
+      { kind: "swap", sessionId: "sess-child-b", observe },
       { kind: "swap", sessionId: "sess-fake-0001", observe },
     );
-    const runCycle = (idSeams: IdSeams, cycle: number) =>
-      materializeFrame({
-        capability: CONTRACT_ALPHA,
-        idSeams,
-        body: async (): Promise<Record<string, unknown>> => {
-          expect(activeFrames()).toHaveLength(2);
-          expect(activeFrames()[1].depth).toBe(1);
-          return { cycle };
-        },
-      });
-    const first = await runCycle(SEAMS_A, 1);
-    // Rest point 1: exactly one live handle (the reopened parent #1).
-    expect(
-      [world.parentHandle, ...applied].filter((h) => !h.disposed),
-    ).toHaveLength(1);
-    expect(world.runtime.session).toBe(applied[1]);
-    const second = await runCycle(SEAMS_B, 2);
-    // Rest point 2: same invariant, freshly reopened parent #2.
-    expect(
-      [world.parentHandle, ...applied].filter((h) => !h.disposed),
-    ).toHaveLength(1);
-    expect(world.runtime.session).toBe(applied[3]);
-    expect(second.ok).toBe(true);
+    // Cycle 1: the flat success.
+    const first = await materializeFrame({
+      capability: CONTRACT_ALPHA,
+      idSeams: SEAMS_A,
+      body: async (): Promise<Record<string, unknown>> => {
+        expect(activeFrames()).toHaveLength(2);
+        expect(activeFrames()[1].depth).toBe(1);
+        return { cycle: 1 };
+      },
+    });
     expect(first).toStrictEqual({ ok: true, outputs: { cycle: 1 } });
-    expect(second).toStrictEqual({ ok: true, outputs: { cycle: 2 } });
-    // Two distinct child scopes, two independent records.
-    expect(countStatusFiles(root)).toBe(2);
-    const aParsed = expectCanonicalRecord(
-      readFileSync(join(root, CHILD_ID_A, "top", "status.json"), "utf8"),
-      ["ok", "capability", "outputs", "transcriptRef", "tokens", "durationMs"],
+    // Rest point 1: the ledger unwound to [top]...
+    expect(activeFrames()).toHaveLength(1);
+    // ...exactly one live handle (the freshly reopened parent)...
+    expect(
+      [world.parentHandle, ...applied].filter((h) => !h.disposed),
+    ).toHaveLength(1);
+    // ...and the harness IM stopped NEVER.
+    expect(world.terminal.stop).toHaveBeenCalledTimes(0);
+    // Cycle 2: the NESTED cycle (distinct seams B/C).
+    const innerOutputs: Record<string, unknown> = { value: 42 };
+    const second = await materializeFrame({
+      capability: CONTRACT_BETA,
+      idSeams: SEAMS_B,
+      body: async (): Promise<Record<string, unknown>> => {
+        const innerSettled = await materializeFrame({
+          capability: CONTRACT_GAMMA,
+          idSeams: SEAMS_C,
+          body: async (): Promise<Record<string, unknown>> => {
+            expect(activeFrames()).toHaveLength(3);
+            return innerOutputs;
+          },
+        });
+        return { inner: innerSettled };
+      },
+    });
+    expect(second.ok).toBe(true);
+    expect((second.outputs as { inner: CapabilityResult }).inner.outputs).toBe(
+      innerOutputs,
     );
-    const bParsed = expectCanonicalRecord(
-      readFileSync(join(root, CHILD_ID_B, "top", "status.json"), "utf8"),
-      ["ok", "capability", "outputs", "transcriptRef", "tokens", "durationMs"],
-    );
-    expect(aParsed.outputs).toEqual({ cycle: 1 });
-    expect(bParsed.outputs).toEqual({ cycle: 2 });
-    // Switch pattern: out-A, back, out-B, back (file-based targets).
+    // Rest point 2: the ledger unwound to [top] again...
+    expect(activeFrames()).toHaveLength(1);
+    // ...one live handle, the IM STILL untouched.
+    expect(
+      [world.parentHandle, ...applied].filter((h) => !h.disposed),
+    ).toHaveLength(1);
+    expect(world.terminal.stop).toHaveBeenCalledTimes(0);
+    // Three independent records: the flat child plus the nested pair.
+    expect(countStatusFiles(root)).toBe(3);
+    expect(existsSync(join(root, CHILD_ID_A, "top", "status.json"))).toBe(true);
+    expect(existsSync(join(root, CHILD_ID_B, "top", "status.json"))).toBe(true);
+    expect(
+      existsSync(join(root, CHILD_ID_B, CHILD_ID_C, "top", "status.json")),
+    ).toBe(true);
+    // The six switch calls: out-A, back-top, out-B, out-C, back-B,
+    // back-top (each with the runtime's cwdOverride).
     const calls = world.runtime.switchSession.mock.calls.map(
       (call) => call[0],
     ) as string[];
-    expect(calls).toEqual([
-      join(root, CHILD_ID_A, "top", MINTED_FILE(1)),
-      parentFile,
-      join(root, CHILD_ID_B, "top", MINTED_FILE(2)),
-      parentFile,
-    ]);
-    // Mint args: both roots' cwd, per-cycle child top dirs.
+    expect(calls).toEqual([aFile, parentFile, bFile, cFile, bFile, parentFile]);
+    expect(world.runtime.switchSession.mock.calls[0][1]).toEqual({
+      cwdOverride: "/work/lifetime",
+    });
+    // Mint args: per-cycle child top dirs (C nests UNDER B's scope dir).
     expect(sdkHarness.create.mock.calls.map((call) => call[1])).toEqual([
       join(root, CHILD_ID_A, "top"),
       join(root, CHILD_ID_B, "top"),
+      join(root, CHILD_ID_B, CHILD_ID_C, "top"),
     ]);
-    // One terminal for the lifetime of the row.
+    // One terminal construction for the lifetime of the row (world setup)
+    // — the module contributed ZERO.
     expect(world.terminal.constructions).toBe(1);
     expect(world.stderr).not.toHaveBeenCalled();
-    expect(activeFrames()).toHaveLength(1);
+    // DEATH SIMULATION: the holder context's terminalStop invoked exactly
+    // once reaches the harness IM stop EXACTLY ONCE in total (acceptance
+    // #6's scripted proof part 1 — the one-live-UI lifetime pin; part 2
+    // rides Step 4's abort rows).
+    terminalStopImpl();
+    expect(terminalStopImpl).toHaveBeenCalledTimes(1);
+    expect(world.terminal.stop).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -663,6 +663,10 @@ function emitPartialsSync(
   const literal = CAUSE_LITERALS[cause];
   for (let i = frames.length - 1; i >= 0; i -= 1) {
     const frame = frames[i];
+    // THE fatal-top exclusion mirrors the async walk: today's sync
+    // triggers are user-abort only, so this branch stays dormant — but
+    // both walks stay uniform so any future sync cause inherits the
+    // boundary's top-record ownership rule instead of drifting from it.
     if (cause === "fatal" && frame.depth === 0) {
       continue;
     }
@@ -721,7 +725,7 @@ function writeLedgerSnapshot(
     if (file !== undefined) {
       node.sessionFile = file;
     }
-    node["children"] = subtree;
+    node.children = subtree;
     subtree = [node];
   }
   const innermost = frames[frames.length - 1];

@@ -3034,6 +3034,7 @@ describe("shutdown guard behaviors (G rows)", () => {
     const { root, world, top } = buildAlphaWorld("/work/g4");
     attachHarnessTopEmitter(world, top, root);
     const { exitSpy, signals, guard } = buildGuardSeams();
+    // Coverage boundary: the native exit wrap/restore leg is never exercised hermetically (seam discipline — this row drives seam sinks only; nothing mutates the real process sink); it is structurally covered here and observed in the Step 6 manual E2E leg (#4).
     guard.uninstall();
     guard.uninstall(); // idempotent — no throw
     guard.exit(7);

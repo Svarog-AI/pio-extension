@@ -43,7 +43,7 @@ import type { IdSeams } from "../sandbox/layout.ts";
 import { ContractViolationError, PhaseBudgetError } from "./errors.ts";
 import type { SessionVariableStore } from "./pio-session.ts";
 import { PioSession } from "./pio-session.ts";
-import type { CapabilityResult } from "./status.ts";
+import type { CapabilityResult, KillCaptureTarget } from "./status.ts";
 import { captureError, createStatusEmitter } from "./status.ts";
 import type { ActiveFrame } from "./terminal-takeover.ts";
 import {
@@ -191,6 +191,9 @@ interface PhysicsWorld {
         path: string,
         options?: { readonly cwdOverride?: string },
       ) => Promise<{ cancelled: boolean }>);
+    /** Mirrors the SDK's public runtime dispose (the death-simulation legs
+     * drive it; the cast seam absorbs it). */
+    dispose: ReturnType<typeof vi.fn> & (() => Promise<void>);
   };
   readonly parentHandle: PhysicsHandle;
   /** The harness-minted SINGLE terminal recorder (world setup). */
@@ -209,6 +212,7 @@ function buildPhysicsWorld(root: string, cwd: string): PhysicsWorld {
   const runtime: PhysicsWorld["runtime"] = {
     cwd,
     session: parentHandle,
+    dispose: vi.fn(async (): Promise<void> => {}),
     switchSession: vi.fn(
       async (
         _path: string,
@@ -252,6 +256,46 @@ function scriptSwitches(world: PhysicsWorld, ...steps: SwapStep[]): void {
       },
     );
   }
+}
+
+/** Row-owned signal-registration fake: structural KillCaptureTarget
+ * conformance over an append-only handler list — dispatch runs by INDEX
+ * (the row drives handlers explicitly; last-prepended-runs-first is the
+ * row's business, not this fake's). */
+function makeSignalFake(): {
+  readonly target: KillCaptureTarget;
+  readonly handlers: Array<() => void>;
+} {
+  const handlers: Array<() => void> = [];
+  return {
+    target: {
+      prependListener(_signal: "SIGTERM", handler: () => void): void {
+        handlers.push(handler);
+      },
+    },
+    handlers,
+  };
+}
+
+/** A manually-openable promise pair for PENDING composed bodies: the body
+ * reports ENTER (switch-out + push landed) and then parks on the opened
+ * promise (never opened in trigger rows — the latch reject channel settles
+ * instead). Trigger rows await entered BEFORE firing. */
+function rowGate(): {
+  readonly entered: Promise<void>;
+  readonly opened: Promise<void>;
+  enter(): void;
+} {
+  let enterFn: (() => void) | undefined;
+  return {
+    entered: new Promise<void>((resolve) => {
+      enterFn = resolve;
+    }),
+    opened: new Promise<void>(() => {}),
+    enter: (): void => {
+      enterFn?.();
+    },
+  };
 }
 
 /** THE composed-world top frame: REAL PioSession.fromRuntime over the
@@ -1682,6 +1726,52 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     terminalStopImpl();
     expect(terminalStopImpl).toHaveBeenCalledTimes(1);
     expect(world.terminal.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("the world runtime exposes a mirror dispose: the recorded call is awaitable, stays uninvoked until driven, and leaves no side effects on the handles", async () => {
+    const world = buildPhysicsWorld(newTempRoot(), "/work/dispose");
+    expect(world.runtime.dispose).toHaveBeenCalledTimes(0);
+    await world.runtime.dispose();
+    expect(world.runtime.dispose).toHaveBeenCalledTimes(1);
+    // The mirrored dispose touches ONLY its own recorder bookkeeping — the
+    // current handle stays live and undisposed.
+    expect(world.parentHandle.disposed).toBe(false);
+    expect(world.parentHandle.live).toHaveLength(0);
+  });
+
+  it("the signal-target fake conforms structurally to the kill-capture target: each prepend APPENDS (dispatch runs by index), and the row-gate reports enter exactly once while opened parks forever", async () => {
+    const signals = makeSignalFake();
+    const first = (): void => {};
+    const second = (): void => {};
+    signals.target.prependListener("SIGTERM", first);
+    signals.target.prependListener("SIGTERM", second);
+    // Append-only list: dispatch order is the stored order (index-driven).
+    expect(signals.handlers).toEqual([first, second]);
+
+    const gate = rowGate();
+    expect(gate.entered).toBeInstanceOf(Promise);
+    expect(gate.opened).toBeInstanceOf(Promise);
+    const enteredSeen = new Promise<number>((resolve) => {
+      gate.entered.then(
+        (): void => {
+          resolve(1);
+        },
+        (): void => {
+          resolve(0);
+        },
+      );
+    });
+    expect(await Promise.race([enteredSeen, Promise.resolve(0)])).toBe(0); // not yet
+    gate.enter();
+    expect(await enteredSeen).toBe(1); // entered fires exactly once
+    const openedRaced = await Promise.race([
+      gate.opened.then(
+        (): string => "settled",
+        (): string => "settled",
+      ),
+      Promise.resolve("parked"),
+    ]);
+    expect(openedRaced).toBe("parked"); // opened never settles
   });
 });
 

@@ -41,7 +41,10 @@
 // wrapper, the SDK recorder (constructor = mounted, stop = stopped), the
 // world's runtime-dispose wrapper (disposed), and the fixture's run()
 // (run-called) — the legacy `invocations` exact-match pins (constructed /
-// armed / run-called) stay byte-stable beside it. A process.stdout spy
+// armed / run-called) stay byte-stable beside it. The shutdown-guard
+// observations ride ANOTHER channel (attach/install positions recorded as
+// lifecycle cursor reads, never pushes) so that inventory stays untouched.
+// A process.stdout spy
 // asserts the entry performs ZERO stdout writes on EVERY row (outcome-model
 // pin — the presence-only terminal never composes product content).
 //
@@ -97,6 +100,33 @@ const hoisted = vi.hoisted(() => {
   /** Recorded frame-environment install contexts (recording stub — see the
    * module mock below; the raw bags land here verbatim). */
   const installCalls: unknown[] = [];
+  /** Emitter instances through the pass-through status factory (identity
+   * pins for the attach observation). */
+  const emitterInstances: unknown[] = [];
+  /** Shutdown-guard observations on a SEPARATE channel — positions ride
+   * lifecycle CURSOR reads (never pushes), so the byte-stable lifecycle
+   * inventory stays untouched. */
+  const guardObservations = {
+    attachCalls: [] as Array<{ emitter: unknown; lifecycleCursor: number }>,
+    installBags: [] as Array<{ bag: unknown; lifecycleCursor: number }>,
+    handles: [] as Array<Record<string, unknown>>,
+  };
+  /** Per-row scripts over the stubbed guard: marker handler prepend
+   * (absent ⇒ nothing prepended) + trigger-legs override (absent ⇒ the
+   * default simulated legs below). */
+  const guardScripts: {
+    marker?: () => void;
+    legs?: (ctx: {
+      stderr: (line: string) => void;
+      terminalStop: () => void;
+    }) => Promise<void>;
+  } = {};
+  /** Row-registered dispose thunks (one per pipeline world — consumed by
+   * the default trigger legs at the trigger point). */
+  const disposeHooks: Array<() => Promise<void>> = [];
+  /** Predicate stub over the installed-state read (DEFAULTS FALSE — rows
+   * script true where they need the fatal routing; reset per row). */
+  const installedPredicate = vi.fn((): boolean => false);
   /** Per-row scripted behaviors for the install thunk (absent => clean
    * install; the install-fault row scripts a throw). */
   const envScripts: { install?: (ctx: unknown) => void } = {};
@@ -141,6 +171,7 @@ const hoisted = vi.hoisted(() => {
     missLine: (name: string): string =>
       `pio: capability '${name}' is not implemented yet`,
     emitterOptionsLog,
+    emitterInstances,
     invocations,
     lifecycle,
     tuiInstances,
@@ -148,6 +179,10 @@ const hoisted = vi.hoisted(() => {
     installCalls,
     envScripts,
     tmpBases,
+    guardObservations,
+    guardScripts,
+    disposeHooks,
+    installedPredicate,
     FakeInteractiveMode,
   };
 });
@@ -188,6 +223,7 @@ vi.mock("./capability/status.ts", async (importOriginal) => {
     ) => {
       hoisted.emitterOptionsLog.push(args[0]);
       const real = actual.createStatusEmitter(...args);
+      hoisted.emitterInstances.push(real);
       const originalArm = real.armKillCapture.bind(real);
       const originalEmit = real.emit.bind(real);
       real.armKillCapture = (): void => {
@@ -205,10 +241,13 @@ vi.mock("./capability/status.ts", async (importOriginal) => {
 });
 // Recording STUB over the frame-environment module (NOT pass-through: the
 // real holder's process-scoped state would double-install from the second
-// pipeline row on; sole consumed export: installFrameEnvironment). Marker
-// lands BEFORE the possibly-throwing scripted body so fault rows keep the
-// inventory total (position-ahead-of-delegation, as in the status
-// pass-through wrapper).
+// pipeline row on). The shutdown-guard surface is recorded additively:
+// attachTopEmitter / installExitGuard observe their call POSITION via a
+// lifecycle cursor read (the byte-stable inventory itself never grows), the
+// exit-guard handle is a pure stub whose trigger legs are SCRIPTED (default:
+// typed line first, then stop + the world's runtime dispose — identical
+// tokens to the legacy teardown), and the installed-state predicate defaults
+// FALSE (pre-holder drift shield).
 vi.mock("./capability/terminal-takeover.ts", () => {
   hoisted.evalFlags.takeoverEvaluated = true;
   return {
@@ -217,6 +256,77 @@ vi.mock("./capability/terminal-takeover.ts", () => {
       hoisted.lifecycle.push("env-installed");
       hoisted.envScripts.install?.(ctx);
     },
+    attachTopEmitter: (emitter: unknown): void => {
+      hoisted.guardObservations.attachCalls.push({
+        emitter,
+        lifecycleCursor: hoisted.lifecycle.length,
+      });
+    },
+    installExitGuard: (
+      bag: unknown,
+    ): {
+      exit: (code?: number) => void;
+      trigger: (cause: string) => Promise<void>;
+      uninstall: () => void;
+    } => {
+      hoisted.guardObservations.installBags.push({
+        bag,
+        lifecycleCursor: hoisted.lifecycle.length,
+      });
+      const signalsView = bag as
+        | {
+            signals?: {
+              prependListener: (signal: string, h: () => void) => void;
+            };
+          }
+        | undefined;
+      if (
+        hoisted.guardScripts.marker !== undefined &&
+        signalsView?.signals !== undefined
+      ) {
+        signalsView.signals.prependListener(
+          "SIGTERM",
+          hoisted.guardScripts.marker,
+        );
+      }
+      const handle = {
+        exit: vi.fn((): void => {}),
+        trigger: vi.fn(async (_cause: string): Promise<void> => {
+          const ctx = hoisted.installCalls.at(-1) as
+            | { stderr: (line: string) => void; terminalStop: () => void }
+            | undefined;
+          if (ctx === undefined) {
+            throw new Error(
+              "unscripted guard trigger without an install context",
+            );
+          }
+          const legs =
+            hoisted.guardScripts.legs ??
+            (async (context: typeof ctx): Promise<void> => {
+              // Default scripted legs (fatal rows consume these): the
+              // typed line FIRST, then the stop leg + the world's runtime
+              // dispose (identical tokens the legacy teardown pushed).
+              try {
+                context.stderr(
+                  `terminal-takeover: shutdown \u2014 frame 'top@0.0.0' (depth 0) ended by fatal`,
+                );
+              } catch {
+                // Best-effort line leg — a faulting sink loses to the
+                // primary death (mirrors the module's swallow).
+              }
+              context.terminalStop();
+              for (const hook of hoisted.disposeHooks.splice(0)) {
+                await hook();
+              }
+            });
+          await legs(ctx);
+        }),
+        uninstall: vi.fn((): void => {}),
+      };
+      hoisted.guardObservations.handles.push(handle);
+      return handle;
+    },
+    isFrameEnvironmentInstalled: hoisted.installedPredicate,
   };
 });
 // SDK package ROOT: the entry's ONE and ONLY SDK touchpoint is the mount
@@ -286,6 +396,15 @@ function resetHoistedState(): void {
   hoisted.invocations.length = 0;
   hoisted.lifecycle.length = 0;
   hoisted.installCalls.length = 0;
+  hoisted.emitterInstances.length = 0;
+  hoisted.guardObservations.attachCalls.length = 0;
+  hoisted.guardObservations.installBags.length = 0;
+  hoisted.guardObservations.handles.length = 0;
+  hoisted.guardScripts.marker = undefined;
+  hoisted.guardScripts.legs = undefined;
+  hoisted.disposeHooks.length = 0;
+  hoisted.installedPredicate.mockReset();
+  hoisted.installedPredicate.mockReturnValue(false);
   hoisted.envScripts.install = undefined;
   hoisted.emitterOptionsLog.length = 0;
   hoisted.tuiInstances.length = 0;
@@ -692,6 +811,13 @@ function makePipelineWorld(options: {
       },
     },
   };
+  // World-registered dispose thunk (the default guard-trigger legs consume
+  // it at the trigger point — identical token to the legacy teardown leg).
+  hoisted.disposeHooks.length = 0;
+  const runtimeView = fake.runtime as { dispose: () => Promise<void> };
+  hoisted.disposeHooks.push(async (): Promise<void> => {
+    await runtimeView.dispose();
+  });
   const handlers: Array<() => void> = [];
   const signalsTarget: SignalsTarget = {
     prependListener: (_signal, handler) => {

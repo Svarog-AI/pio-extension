@@ -7,12 +7,24 @@
 // contracts exclusively. Each construction mints a fresh fake session
 // behind a fresh fake runtime, so prompt arguments and per-instance state
 // are directly observable. Synthetic events flow through the single
-// documented cast seam asEvent — the sole `as` in this file.
+// documented cast seam asEvent; the B-world handle-typing seams join it as
+// the documented cast idiom (zero casts live in the source).
 //
 // Live-harness rows drive the real phase engine over scripted fake prompts:
 // one queued resolution stands for one fully-settled logical run. Fixture
 // subclasses are defined inline per scenario with deliberately-fake
 // identities — test doubles that register nothing and ship nowhere.
+//
+// Row-2 dispatch probe (additive): the terminal-takeover module is
+// factory-mocked with importOriginal DELEGATION — the factory flips the
+// hoisted evaluated flag the instant it RUNS (factories evaluate ONCE per
+// file; sticky) and wraps materializeFrame in a PLAIN synchronous
+// pass-through that records invocations (an async wrapper would convert the
+// synchronous holder-guard escape into a rejection and mask the sync-
+// escape contract). LOAD-BEARING ROW ORDER: no pre-B row is session-absent
+// (every migrated row runs session-present), so the probe stays unevaluated
+// until the first session-absent row in file order (B1 flips; B8, placed
+// first inside the B block, pins the unflipped state).
 
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { CapabilityParams } from "./base.ts";
@@ -52,14 +64,23 @@ const harness = vi.hoisted(() => {
   const agentDir = "/agent/dir";
   const sessionId = "sess-fake-0001";
 
-  const state: { rounds: Round[] } = { rounds: [] };
+  const state: { rounds: Round[]; mints: number } = { rounds: [], mints: 0 };
 
-  const fakeManager = { getCwd: () => managerCwd };
   const fakeServices = { marker: "fake-services" };
 
   const getAgentDir = vi.fn(() => agentDir);
+  // Additive: arg-recording (inherited) + a deterministic platform-named
+  // file under the given dir — behavior-neutral for the rows that consume
+  // only getCwd().
   const SessionManager = {
-    create: vi.fn(() => fakeManager),
+    create: vi.fn((_cwd: string, sessionDir?: string) => {
+      const fileName = `20260101T000000Z_${String(++state.mints).padStart(8, "0")}.jsonl`;
+      return {
+        getCwd: (): string => managerCwd,
+        getSessionFile: (): string | undefined =>
+          sessionDir === undefined ? undefined : `${sessionDir}/${fileName}`,
+      };
+    }),
   };
   const createAgentSessionServices = vi.fn(async () => fakeServices);
   const createAgentSessionFromServices = vi.fn(async () => ({
@@ -86,6 +107,7 @@ const harness = vi.hoisted(() => {
 
   const reset = () => {
     state.rounds = [];
+    state.mints = 0;
     getAgentDir.mockClear();
     SessionManager.create.mockClear();
     createAgentSessionServices.mockClear();
@@ -111,6 +133,34 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSessionFromServices: harness.createAgentSessionFromServices,
   createAgentSessionRuntime: harness.createAgentSessionRuntime,
 }));
+
+// THE row-2 dispatch probe (see the header discipline note): delegation
+// keeps the REAL mechanics available while the eval flag + invocation log
+// stay observable. The plain synchronous pass-through preserves the sync-
+// throw semantics of the holder-guard escape (the typed wrapper lands with
+// the hop primitive's consumer rows).
+const takeoverProbe = vi.hoisted(() => ({
+  evaluated: false,
+  calls: [] as Array<Record<string, unknown>>,
+}));
+
+type HopDispatcher = (
+  input: Record<string, unknown>,
+) => Promise<CapabilityResult>;
+
+vi.mock("./terminal-takeover.ts", async (importOriginal) => {
+  const original = await importOriginal();
+  takeoverProbe.evaluated = true;
+  const ns = original as { materializeFrame: HopDispatcher };
+  const materializeFrame: HopDispatcher = (input) => {
+    takeoverProbe.calls.push(input);
+    return ns.materializeFrame(input);
+  };
+  return {
+    ...(original as Record<string, unknown>),
+    materializeFrame,
+  };
+});
 
 beforeEach(() => {
   harness.reset();

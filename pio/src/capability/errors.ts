@@ -32,23 +32,6 @@ export class ContractViolationError extends Error {
 }
 
 /**
- * Failure raised when an iteration budget is exceeded. A plain Error, so
- * caller code can catch it narrowly around phase execution.
- */
-export class PhaseBudgetError extends Error {
-  /** Iteration count reached when the budget was exceeded. */
-  readonly iterations: number;
-
-  constructor(iterations: number, message?: string) {
-    super(
-      message ?? `Iteration budget exceeded after ${iterations} iterations`,
-    );
-    this.name = "PhaseBudgetError";
-    this.iterations = iterations;
-  }
-}
-
-/**
  * JSON-safe captured failure: a thrown error reduced to plain data so it
  * survives serialization into the terminal status record's errors array.
  */

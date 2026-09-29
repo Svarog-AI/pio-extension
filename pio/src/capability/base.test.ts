@@ -43,8 +43,8 @@ import {
   settleFileModeOutputs,
 } from "./base.ts";
 import type { Contract } from "./contract.ts";
-import { ContractViolationError, PhaseBudgetError } from "./errors.ts";
-import { PioSession } from "./pio-session.ts";
+import { ContractViolationError } from "./errors.ts";
+import { PioSession, renderCapabilityMarker } from "./pio-session.ts";
 import type { CapabilityResult } from "./status.ts";
 
 // Single documented cast seam for synthetic event payloads.
@@ -58,6 +58,8 @@ interface FakeSession {
   subscribe: ReturnType<typeof vi.fn>;
   /** One invocation stands for one fully-settled logical run. */
   prompt: ReturnType<typeof vi.fn>;
+  /** The no-turn capability-span stamp seam (recording arg-shape). */
+  sendCustomMessage: ReturnType<typeof vi.fn>;
   sessionId: string;
   dispose: ReturnType<typeof vi.fn>;
 }
@@ -103,9 +105,12 @@ const harness = vi.hoisted(() => {
       return () => {};
     });
     const prompt = vi.fn(async () => undefined);
+    // Recording mock for the no-turn custom-message seam.
+    const sendCustomMessage = vi.fn(async (): Promise<void> => {});
     const session: FakeSession = {
       subscribe,
       prompt,
+      sendCustomMessage,
       sessionId,
       dispose: vi.fn(),
     };
@@ -263,6 +268,10 @@ interface BHandle {
   /** Plain callable signature added: the default Mock type is not
    * callable through the interface. */
   subscribe: ReturnType<typeof vi.fn> & ((listener: Listener) => () => void);
+  /** One invocation stands for one fully-settled logical run. */
+  readonly prompt: ReturnType<typeof vi.fn>;
+  /** The no-turn capability-span stamp seam (recording arg-shape). */
+  readonly sendCustomMessage: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn> & (() => void);
   readonly captured: Listener[];
   readonly live: Listener[];
@@ -277,6 +286,8 @@ function mintBHandle(sessionId: string, sessionFile?: string): BHandle {
   const handle: BHandle = {
     sessionId,
     sessionFile,
+    prompt: vi.fn(async (): Promise<void> => {}),
+    sendCustomMessage: vi.fn(async (): Promise<void> => {}),
     subscribe: vi.fn((listener: Listener) => {
       captured.push(listener);
       live.push(listener);
@@ -556,13 +567,12 @@ describe("PioCapability — escape capture", () => {
       },
     },
     {
-      label:
-        "a PhaseBudgetError captures with the budget cause and default message",
-      thrower: () => new PhaseBudgetError(2),
+      label: "a budget-cause Error carries the closed-vocabulary adopted cause",
+      thrower: () => new Error("bounded", { cause: "budget" }),
       expected: {
-        type: "PhaseBudgetError",
+        type: "Error",
         cause: "budget",
-        message: "Iteration budget exceeded after 2 iterations",
+        message: "bounded",
       },
     },
     {
@@ -775,7 +785,7 @@ describe("PioCapability — row-2 dispatch (B rows)", () => {
     ]);
   });
 
-  it("B5 — a body-thrown PhaseBudgetError surfaces unmasked at the await ({ type: 'PhaseBudgetError', cause: 'budget', default message }) with the hop fully unwound and the record mirrored", async () => {
+  it("B5 — a body-thrown budget-cause error surfaces unmasked at the await ({ type: 'Error', cause: 'budget', message }) with the hop fully unwound and the record mirrored", async () => {
     const root = newBTempRoot();
     const world = buildBWorld(root, "/work/b5");
     const takeover = await ensureTakeoverModule();
@@ -791,14 +801,14 @@ describe("PioCapability — row-2 dispatch (B rows)", () => {
         super({});
       }
       async call(): Promise<Record<string, unknown>> {
-        throw new PhaseBudgetError(2);
+        throw new Error("body fault: bounded out", { cause: "budget" });
       }
     }
     const result = await new B5Cap().run();
     expectSingleFailure(result, {
-      type: "PhaseBudgetError",
+      type: "Error",
       cause: "budget",
-      message: "Iteration budget exceeded after 2 iterations",
+      message: "body fault: bounded out",
     });
     const calls = world.runtime.switchSession.mock.calls.map(
       (c) => c[0],
@@ -814,9 +824,9 @@ describe("PioCapability — row-2 dispatch (B rows)", () => {
     expect(parsed.ok).toBe(false);
     expect(parsed.errors).toEqual([
       {
-        type: "PhaseBudgetError",
+        type: "Error",
         cause: "budget",
-        message: "Iteration budget exceeded after 2 iterations",
+        message: "body fault: bounded out",
       },
     ]);
   });
@@ -839,7 +849,6 @@ describe("PioCapability — row-2 dispatch (B rows)", () => {
         .catch((reason: unknown) => reason);
       expect(rejection).toBeInstanceOf(Error);
       expect(rejection).not.toBeInstanceOf(ContractViolationError);
-      expect(rejection).not.toBeInstanceOf(PhaseBudgetError);
       if (rejection instanceof Error) {
         expect(rejection.name).toBe("Error");
         expect(rejection.message).toBe(
@@ -977,6 +986,211 @@ describe("PioCapability — prompt framing passes through untouched", () => {
 });
 
 // ---------------------------------------------------------------------
+// Span stamp: driven through run(); owned by the run() seam alone — the
+// phase path has no awareness of the channel. One no-turn header per
+// session-present span; the row-2 hop body is unstamped. Label =
+// contract.name; content = renderCapabilityMarker's bytes (referenced, not
+// duplicated). The replica below names the module-private customType
+// constant in ./pio-session.ts.
+// ---------------------------------------------------------------------
+/** Replica of the module-private customType namespace (SOLE OWNER: the
+ * PIO_CAPABILITY_CUSTOM_TYPE constant in ./pio-session.ts). */
+const CAPABILITY_CUSTOM_TYPE_REPLICA = "pio-capability";
+
+describe("PioCapability — span stamp (owned solely by the run() seam)", () => {
+  class TwoPhaseStampCap extends PioCapability {
+    readonly contract: Contract = FIXTURE_CONTRACT;
+    constructor(params: CapabilityParams = {}) {
+      super(params);
+    }
+    async call(): Promise<Record<string, unknown>> {
+      const a = await this.execute_phase("phase-a", { instructions: "do A" });
+      const b = await this.execute_phase("phase-b", { instructions: "do B" });
+      return { a: a.iterations, b: b.iterations };
+    }
+  }
+
+  it("stamps EXACTLY ONCE per run() on the provided session: the single sendCustomMessage PRECEDING the span's first phase prompt (log order), labeled with the capability's OWN contract.name at the renderer's pinned bytes", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun(), quietRun());
+    const cap = new TwoPhaseStampCap({ session: instance });
+    const result = await cap.run();
+    expect(result.ok).toBe(true);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledWith({
+      customType: CAPABILITY_CUSTOM_TYPE_REPLICA,
+      content: renderCapabilityMarker("fixture-cap"),
+      display: true,
+      details: undefined,
+    });
+    // NO options object: one argument only (SDK default = no turn).
+    expect(round.session.sendCustomMessage.mock.calls[0]).toHaveLength(1);
+    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+    // Log-order: the settled stamp strictly precedes the span's first
+    // phase prompt.
+    expect(
+      round.session.sendCustomMessage.mock.invocationCallOrder[0],
+    ).toBeLessThan(round.session.prompt.mock.invocationCallOrder[0]);
+  });
+
+  class FloorStampCap extends PioCapability {
+    readonly contract: Contract = FIXTURE_CONTRACT;
+    constructor(params: CapabilityParams = {}) {
+      super(params);
+    }
+    async call(): Promise<Record<string, unknown>> {
+      const a = await this.execute_phase("floored", {
+        instructions: "do F",
+        min: 2,
+      });
+      return { iterations: a.iterations };
+    }
+  }
+
+  it("floor-driven multi-run bodies emit NO further stamps (later runs/phases ⇒ zero — nothing in the phase path knows the channel exists)", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun(), quietRun());
+    const cap = new FloorStampCap({ session: instance });
+    const result = await cap.run();
+    expect(result.ok).toBe(true);
+    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+  });
+
+  class NoBodyStampCap extends PioCapability {
+    readonly contract: Contract = FIXTURE_CONTRACT;
+    constructor(params: CapabilityParams = {}) {
+      super(params);
+    }
+    async call(): Promise<Record<string, unknown>> {
+      return {};
+    }
+  }
+
+  it("a ZERO-PHASE body still persists the bare header: one stamp, zero prompts", async () => {
+    const { instance, round } = await host();
+    const cap = new NoBodyStampCap({ session: instance });
+    const result = await cap.run();
+    expect(result.ok).toBe(true);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+    expect(round.session.prompt).toHaveBeenCalledTimes(0);
+  });
+
+  it("a second run() on the SAME instance opens a FRESH span: a fresh stamp (no state exists to re-arm — one call site per branch per run)", async () => {
+    const { instance, round } = await host();
+    const cap = new NoBodyStampCap({ session: instance });
+    const first = await cap.run();
+    expect(first.ok).toBe(true);
+    const again = await cap.run();
+    expect(again.ok).toBe(true);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(2);
+    expect(round.session.prompt).toHaveBeenCalledTimes(0);
+  });
+
+  class ViolatingStampCap extends PioCapability {
+    readonly contract: Contract = {
+      name: "fixture-cap",
+      version: "1.0.0",
+      inputs: [{ name: "doc" }],
+      outputs: [],
+      writes: [],
+    };
+    constructor(params: CapabilityParams = {}) {
+      super(params);
+    }
+    async call(): Promise<Record<string, unknown>> {
+      return {};
+    }
+  }
+
+  it("a CONTRACT-VIOLATION run stamps NOTHING (pre-execution settlement: zero stamps, zero prompts — the stamp sits strictly AFTER validateInputs)", async () => {
+    const { instance, round } = await host();
+    const cap = new ViolatingStampCap({ session: instance });
+    const result = await cap.run({});
+    expectSingleFailure(result, {
+      type: "ContractViolationError",
+      cause: "contract",
+      message:
+        "Contract violation: input 'doc' expects a non-empty string value",
+      violations: ["input 'doc' expects a non-empty string value"],
+    });
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(0);
+    expect(round.session.prompt).toHaveBeenCalledTimes(0);
+  });
+
+  class FaultAfterSettleStampCap extends PioCapability {
+    readonly contract: Contract = FIXTURE_CONTRACT;
+    constructor(params: CapabilityParams = {}) {
+      super(params);
+    }
+    async call(): Promise<Record<string, unknown>> {
+      await this.execute_phase("fault-after-settle", {
+        shouldStopLoop: async () => true,
+      });
+      // The author-level fault lands AFTER a settled run: the span stamp
+      // outlives it.
+      throw new Error("body fault after a settled run");
+    }
+  }
+
+  it("a fault thrown AFTER a settled run still PERSISTS the span stamp (the mark landed strictly before the first prompt and outlives the rejecting run)", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    const cap = new FaultAfterSettleStampCap({ session: instance });
+    const result = await cap.run();
+    expectSingleFailure(result, {
+      type: "Error",
+      message: "body fault after a settled run",
+    });
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+    expect(
+      round.session.sendCustomMessage.mock.invocationCallOrder[0],
+    ).toBeLessThan(round.session.prompt.mock.invocationCallOrder[0]);
+  });
+
+  it("ROW-2: the hop body stamps NOWHERE — neither child nor parent handle receives a custom message while the callee's single phase prompt rides the adopted child handle", async () => {
+    const root = newBTempRoot();
+    const world = buildBWorld(root, "/work/stamp-hop");
+    await installBHolder(world, root);
+    let child: BHandle | undefined;
+    scriptBSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-stamp-child",
+        observe: (incoming: BHandle) => {
+          child = incoming;
+        },
+      },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+    );
+    class HopPhaseCap extends PioCapability {
+      readonly contract: Contract = FIXTURE_CONTRACT;
+      constructor() {
+        super({});
+      }
+      async call(): Promise<Record<string, unknown>> {
+        const a = await this.execute_phase("hop-phase", {
+          instructions: "do it",
+        });
+        return { iterations: a.iterations };
+      }
+    }
+    const result = await new HopPhaseCap().run();
+    expect(result.ok).toBe(true);
+    const c = child as BHandle;
+    // Absence: the callee span rides the child transcript (phase prompt on
+    // the adopted handle) with no capability header — the child's own
+    // status record names it.
+    expect(c.prompt).toHaveBeenCalledTimes(1);
+    expect(c.sendCustomMessage).not.toHaveBeenCalled();
+    expect(world.parentHandle.sendCustomMessage).not.toHaveBeenCalled();
+    expect(world.parentHandle.prompt).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------
 // State-root inversion (pure; owner: capability/base.ts — the pair lives
 // there: class CapabilityEnvError, message prefix generalized to
 // "capability:"). The message replicas below name that owner. Em dashes
@@ -1026,67 +1240,77 @@ describe("deriveStateRootFromAgentDir (pure)", () => {
 });
 
 describe("PioCapability — engine integration through the base", () => {
-  class BreachCap extends PioCapability {
+  class UncapturedFaultCap extends PioCapability {
     readonly contract: Contract = FIXTURE_CONTRACT;
     constructor(params: CapabilityParams = {}) {
       super(params);
     }
     async call(): Promise<Record<string, unknown>> {
-      const a = await this.execute_phase("breach", {
-        min: 3,
-        max: 2,
-        shouldStopLoop: async () => false,
+      await this.execute_phase("fault-after-settle", {
+        shouldStopLoop: async () => true,
       });
-      return { unreachable: a.iterations };
+      // The author-level fault lands AFTER a settled run: the engine
+      // propagation reaches it untouched (a settled run is not a stop signal
+      // for an escaping fault).
+      throw new Error("body fault after a settled run");
     }
   }
 
-  it("lets an uncaptured budget breach escape the body into the failing result", async () => {
+  it("lets an uncaptured body fault escape the body into the failing result", async () => {
     const { instance, round } = await host();
-    const cap = new BreachCap({ session: instance });
-    scriptRuns(round, quietRun(), quietRun());
+    const cap = new UncapturedFaultCap({ session: instance });
+    scriptRuns(round, quietRun());
     const result = await cap.run();
-    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expectSingleFailure(result, {
-      type: "PhaseBudgetError",
-      cause: "budget",
-      message: "Iteration budget exceeded after 2 iterations",
+      type: "Error",
+      message: "body fault after a settled run",
     });
   });
 
-  class CaughtBreachCap extends PioCapability {
+  /** Locally-minted rejection sentinel standing in for a surviving
+   * propagation-family fault the hook can raise (owner: THIS suite). */
+  class RejectingHookSentinel extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = "RejectingHookSentinel";
+    }
+  }
+
+  class CaughtHookFaultCap extends PioCapability {
     readonly contract: Contract = FIXTURE_CONTRACT;
     constructor(params: CapabilityParams = {}) {
       super(params);
     }
     async call(): Promise<Record<string, unknown>> {
-      let caughtIterations: number | undefined;
+      let caughtMessage: string | undefined;
       try {
-        await this.execute_phase("breach", {
-          min: 3,
-          max: 2,
-          shouldStopLoop: async () => false,
+        await this.execute_phase("hooked-fault", {
+          shouldStopLoop: async () => {
+            throw new RejectingHookSentinel("the hook gave up");
+          },
         });
       } catch (err) {
-        // Authors may catch the breach narrowly around individual calls.
-        if (err instanceof PhaseBudgetError) {
-          caughtIterations = err.iterations;
+        // Authors may catch a rejecting-hook fault narrowly around
+        // individual calls.
+        if (err instanceof RejectingHookSentinel) {
+          caughtMessage = err.message;
         } else {
           throw err;
         }
       }
-      return { caughtIterations };
+      return { caughtMessage };
     }
   }
 
-  it("completes ok when the body catches the breach narrowly", async () => {
+  it("completes ok when the body catches a rejecting-hook fault narrowly (author-level handling coexists with the base catch-all, which never preempts it)", async () => {
     const { instance, round } = await host();
-    const cap = new CaughtBreachCap({ session: instance });
-    scriptRuns(round, quietRun(), quietRun());
+    scriptRuns(round, quietRun());
+    const cap = new CaughtHookFaultCap({ session: instance });
     const result = await cap.run();
-    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(result.ok).toBe(true);
-    expect(result.outputs).toEqual({ caughtIterations: 2 });
+    expect(result.outputs).toEqual({ caughtMessage: "the hook gave up" });
   });
 
   class HookCap extends PioCapability {
@@ -1358,5 +1582,24 @@ describe("source guards (row-2 edge discipline over base.ts)", () => {
     expect(src.includes("protected s: PioSession | undefined")).toBe(true);
     expect(src.includes("readonly s:")).toBe(false);
     expect(src.includes("declare readonly contract: Contract")).toBe(true);
+  });
+
+  it("EXACTLY ONE span-stamp call site (this.s.markCapability()) in base.ts — the session-present branch, strictly before the execute_phase declaration; the phase method body references the channel nowhere", () => {
+    const callSites = [...src.matchAll(/this\.s\.markCapability\(/g)].map(
+      (match) => match.index ?? -1,
+    );
+    expect(callSites).toHaveLength(1);
+    const phaseDecl = src.indexOf("async execute_phase(");
+    expect(phaseDecl).toBeGreaterThan(-1);
+    for (const index of callSites) {
+      expect(index).toBeLessThan(phaseDecl);
+    }
+    // The execute_phase METHOD BODY (from its declaration to the class end)
+    // carries ZERO references to the seam name.
+    const phaseEnd = src.indexOf("\n}", phaseDecl);
+    expect(phaseEnd).toBeGreaterThan(phaseDecl);
+    expect(src.slice(phaseDecl, phaseEnd).includes("markCapability")).toBe(
+      false,
+    );
   });
 });

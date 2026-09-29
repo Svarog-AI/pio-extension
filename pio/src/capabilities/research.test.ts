@@ -32,7 +32,10 @@ import {
   deriveStateRootFromAgentDir,
   PioCapability,
 } from "../capability/base.ts";
-import { PioSession } from "../capability/pio-session.ts";
+import {
+  PioSession,
+  renderCapabilityMarker,
+} from "../capability/pio-session.ts";
 import { deriveProjectKey } from "../sandbox/layout.ts";
 import ResearchCapability, {
   CapabilityEnvError,
@@ -53,6 +56,8 @@ interface FakeSession {
   /** One invocation stands for one fully-settled logical run. */
   prompt: ReturnType<typeof vi.fn>;
   getToolDefinition: ReturnType<typeof vi.fn>;
+  /** The no-turn capability-span stamp seam (recording arg-shape). */
+  sendCustomMessage: ReturnType<typeof vi.fn>;
   sessionId: string;
   dispose: ReturnType<typeof vi.fn>;
 }
@@ -96,10 +101,13 @@ const harness = vi.hoisted(() => {
       name,
       description: "fake tool definition",
     }));
+    // Recording mock for the no-turn custom-message seam.
+    const sendCustomMessage = vi.fn(async (): Promise<void> => {});
     const session: FakeSession = {
       subscribe,
       prompt,
       getToolDefinition,
+      sendCustomMessage,
       sessionId,
       dispose: vi.fn(),
     };
@@ -149,8 +157,8 @@ const preflightStderrLine = (names: string): string =>
   `pio research: web tools unavailable (missing: ${names}) \u2014 expected from the isolated agent dir's pi-native-search provisioning`;
 const preflightThrownMessage = (names: string): string =>
   `web tools unavailable: missing tool definitions for ${names} (provisioning: isolated agent dir 'pi-native-search' local-source registration)`;
-/** The pinned budget-breach truncation note appended after existing report
- * content (<N> = the breached iteration count). */
+/** The pinned truncation note appended at a cap-ended resolution,
+ * after existing report content (<N> = the iteration count at the cap exit). */
 const truncationNote = (runs: number): string =>
   `\n## Truncated at run budget\n\nStopped after ${runs} runs: the run budget was hit before the topic ran dry. Sections above cover answered questions only.\n`;
 /** The pinned sanity-violation line (module-private composition; the suite
@@ -161,6 +169,10 @@ const sanityViolationLine = (target: string): string =>
 /** Engine-composed marker line leading every run's text (U+2014 x2, single
  * spaces — the base.test.ts codepoint discipline). */
 const PHASE_MARKER = "\u2014\u2014 research \u2014\u2014";
+
+/** Replica of the module-private customType namespace (SOLE OWNER: the
+ * PIO_CAPABILITY_CUSTOM_TYPE constant in ../capability/pio-session.ts). */
+const CAPABILITY_CUSTOM_TYPE_REPLICA = "pio-capability";
 /** Instruction {RESUME} variants (PINNED bytes; sole owner: research.ts). */
 const resumeFresh = (topic: string): string =>
   `The report does not exist yet. Create it on your first write, starting with the heading "# Research: ${topic}".`;
@@ -370,7 +382,7 @@ describe("research capability", () => {
       expect(stderrText()).toBe("");
     });
 
-    it("a forced long loop hits the cap: TEN write-settles, typed PhaseBudgetError capture, the pinned truncation note appended, partial report INTACT", async () => {
+    it("a forced long loop RESOLVES at the cap and settles OK: TEN write-settles drive the bounded exit (EXACTLY RESEARCH_MAX_RUNS prompts, NO errors key), the pinned truncation note appended, partial report INTACT", async () => {
       const seed = "seeded sections\n";
       const placement = reportPlacement(TOPIC);
       await seedReport(placement.absolutePath, seed);
@@ -383,12 +395,36 @@ describe("research capability", () => {
       const cap = new ResearchCapability({ session: instance });
       const result = await cap.run({ topic: TOPIC });
       expect(round.session.prompt).toHaveBeenCalledTimes(RESEARCH_MAX_RUNS);
-      expect(result.ok).toBe(false);
-      expect(result.errors?.[0]).toStrictEqual({
-        type: "PhaseBudgetError",
-        cause: "budget",
-        message: "Iteration budget exceeded after 10 iterations",
-      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      // The bounded exit settles: NO errors key at all.
+      expect(result.errors).toBeUndefined();
+      expect(result.outputs).toEqual({ report: placement.absolutePath });
+      const { readFile } = await import("node:fs/promises");
+      expect(await readFile(placement.absolutePath, "utf8")).toBe(
+        seed + truncationNote(RESEARCH_MAX_RUNS),
+      );
+      expect(stderrText()).toBe("");
+    });
+
+    it("a phase ending AT the cap takes the note however the last run broke: writes on runs 1..max-1 plus a quiet final run end the loop AT the ceiling (EXACTLY RESEARCH_MAX_RUNS prompts, ok:true, NO errors key) and the seeded report gains the pinned note", async () => {
+      const seed = "seeded sections\n";
+      const placement = reportPlacement(TOPIC);
+      await seedReport(placement.absolutePath, seed);
+      const { instance, round } = await host();
+      const passes: object[][] = [];
+      for (let i = 1; i < RESEARCH_MAX_RUNS; i++) {
+        passes.push(writeSettle(placement.absolutePath, `w${i}`));
+      }
+      passes.push(quietSettle());
+      scriptRuns(round, ...passes);
+      const cap = new ResearchCapability({ session: instance });
+      const result = await cap.run({ topic: TOPIC });
+      expect(round.session.prompt).toHaveBeenCalledTimes(RESEARCH_MAX_RUNS);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      expect(result.errors).toBeUndefined();
+      expect(result.outputs).toEqual({ report: placement.absolutePath });
       const { readFile } = await import("node:fs/promises");
       expect(await readFile(placement.absolutePath, "utf8")).toBe(
         seed + truncationNote(RESEARCH_MAX_RUNS),
@@ -464,6 +500,24 @@ describe("research capability", () => {
       );
       expect(text).toContain(resumeFresh(TOPIC));
       expect(text).not.toContain(RESUME_EXISTING);
+    });
+
+    it("spans its own header: the run() stamps `capability: research` on the provided session EXACTLY ONCE, strictly BEFORE the research phase's first prompt", async () => {
+      const { instance, round } = await host();
+      scriptRuns(round, quietSettle());
+      const cap = new ResearchCapability({ session: instance });
+      await cap.run({ topic: TOPIC });
+      expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+      expect(round.session.sendCustomMessage).toHaveBeenCalledWith({
+        customType: CAPABILITY_CUSTOM_TYPE_REPLICA,
+        content: renderCapabilityMarker("research"),
+        display: true,
+        details: undefined,
+      });
+      // Log-order pin: the settled stamp precedes the phase's first prompt.
+      expect(
+        round.session.sendCustomMessage.mock.invocationCallOrder[0],
+      ).toBeLessThan(round.session.prompt.mock.invocationCallOrder[0]);
     });
 
     it("pre-seeded row: the first prompt carries the EXISTING resume line, not the fresh one (substring-containment pins over the pinned template text)", async () => {

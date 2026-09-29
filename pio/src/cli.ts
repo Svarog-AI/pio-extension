@@ -69,6 +69,8 @@ const HELP_LINES: readonly string[] = [
   '  pio run research --input topic="<topic>"',
   "  compose-new-session-demo — TEMPORARY: greets the operator, runs research in the taken-over terminal, then reports the top 3 findings",
   "  pio run compose-new-session-demo",
+  "  compose-same-session-demo — greets the operator, runs research in the same session, then reports the top 3 findings",
+  "  pio run compose-same-session-demo",
 ];
 
 function startsWithDash(token: string): boolean {

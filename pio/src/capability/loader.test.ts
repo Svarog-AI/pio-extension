@@ -8,10 +8,11 @@
 // runtime values cross a parse boundary or an assign-widening instead of an
 // annotation (the checkers assert shapes at runtime; the annotation
 // documents shape, not protection). Mechanical source guards pin the import
-// surface and the two-entry table literal.
+// surface and the three-entry table literal.
 
 import { readFileSync } from "node:fs";
 import ComposeNewSessionDemoCapability from "../capabilities/compose-new-session-demo.ts";
+import ComposeSameSessionDemoCapability from "../capabilities/compose-same-session-demo.ts";
 import ResearchCapability from "../capabilities/research.ts";
 import type { CapabilityParams } from "./base.ts";
 import { PioCapability } from "./base.ts";
@@ -82,10 +83,11 @@ const FIXTURE_GAMMA = class extends PioCapability {
 };
 
 describe("miss path (default table)", () => {
-  it("the registration table ships EXACTLY the two entries in INSERTION order ('research' first, then the temporary demo)", () => {
+  it("the registration table ships EXACTLY the three entries in INSERTION order ('research' first, then the temporary demo, then the permanent same-session demo)", () => {
     expect(Object.keys(CAPABILITY_TABLE)).toEqual([
       "research",
       "compose-new-session-demo",
+      "compose-same-session-demo",
     ]);
   });
 
@@ -177,6 +179,24 @@ describe("default-table hits (shipped registrations)", () => {
     // meaningful.
     expect(cap.contract).toStrictEqual({
       name: "compose-new-session-demo",
+      version: "0.1.0",
+      inputs: [],
+      outputs: [{ name: "report" }],
+      writes: [],
+    });
+  });
+
+  it("resolving 'compose-same-session-demo' against the REAL table loads the shipped module through its own thunk: ctor by REFERENCE identity, contract by strict deep equality — INCLUDING the empty inputs/writes lists (the no-inputs identity IS the pin)", async () => {
+    const result = await resolveCapability("compose-same-session-demo");
+    expect(result.ok).toBe(true);
+    const cap = asOk(result);
+    expect(cap.ctor).toBe(ComposeSameSessionDemoCapability);
+    // Pinned contract literal — the SOLE OWNER is the contract field on
+    // ComposeSameSessionDemoCapability in
+    // capabilities/compose-same-session-demo.ts; the copy keeps the pin
+    // meaningful.
+    expect(cap.contract).toStrictEqual({
+      name: "compose-same-session-demo",
       version: "0.1.0",
       inputs: [],
       outputs: [{ name: "report" }],
@@ -634,7 +654,7 @@ describe("lazy discipline and structural guards", () => {
     expect(src.includes("@earendil-works/pi-coding-agent")).toBe(false);
   });
 
-  it("dynamic-import literal specifier set is EXACTLY the two shipped entries in table order AND total import( count equals the literal-set length (no interpolation)", () => {
+  it("dynamic-import literal specifier set is EXACTLY the three shipped entries in table order AND total import( count equals the literal-set length (no interpolation)", () => {
     const literalSet = [
       ...src.matchAll(/import\(\s*["']([^"']*)["']\s*\)/g),
     ].map((match) => match[1]);
@@ -642,6 +662,7 @@ describe("lazy discipline and structural guards", () => {
     expect(literalSet).toEqual([
       "../capabilities/research.ts",
       "../capabilities/compose-new-session-demo.ts",
+      "../capabilities/compose-same-session-demo.ts",
     ]);
     expect(totalImportCalls).toBe(literalSet.length);
   });

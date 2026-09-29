@@ -33,10 +33,10 @@ import type {
   AgentSessionEvent,
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
-import { PhaseBudgetError } from "./errors.ts";
 import type { IterationCtx, PhaseResult } from "./pio-session.ts";
 import {
   PioSession,
+  renderCapabilityMarker,
   renderPhaseMarker,
   SessionHandleRefusalError,
 } from "./pio-session.ts";
@@ -61,6 +61,8 @@ interface FakeSession {
   subscribe: ReturnType<typeof vi.fn>;
   /** One invocation stands for one fully-settled logical run. */
   prompt: ReturnType<typeof vi.fn>;
+  /** The no-turn capability-span stamp seam (recording arg-shape). */
+  sendCustomMessage: ReturnType<typeof vi.fn>;
   sessionId: string;
   /** Mirrored dispose — plain callable type (the default Mock type is not
    * callable through the interface). */
@@ -104,11 +106,14 @@ const harness = vi.hoisted(() => {
       };
     });
     const prompt = vi.fn(async () => undefined);
+    // Recording mock for the no-turn custom-message seam.
+    const sendCustomMessage = vi.fn(async (): Promise<void> => {});
     const dispose = vi.fn(() => undefined);
     const handle: FakeSession = {
       sessionId: id,
       subscribe,
       prompt,
+      sendCustomMessage,
       dispose,
       captured,
       live,
@@ -218,6 +223,62 @@ function simulateSwap(round: Round, incoming: FakeSession): void {
  * identically (never a literal em dash in string literals). */
 const REFUSAL_REPLICA =
   "pio-session: rebind refused \u2014 handle 'sess-other-9999' is not this frame's session ('sess-fake-0001')";
+
+/** Replica of the module-private customType namespace (SOLE OWNER: the
+ * PIO_CAPABILITY_CUSTOM_TYPE constant in ./pio-session.ts). */
+const CAPABILITY_CUSTOM_TYPE_REPLICA = "pio-capability";
+
+describe("renderCapabilityMarker (pure)", () => {
+  it("renders the EXACT pinned capability-line bytes with no trailing newline", () => {
+    // Codepoints: U+2014 U+2014 SPACE `capability:` SPACE label SPACE
+    // U+2014 U+2014 — the layout mirrors renderPhaseMarker with the
+    // reserved `capability:` prefix INSIDE the dash flank.
+    const rendered = renderCapabilityMarker("demo");
+    expect(rendered).toBe("\u2014\u2014 capability: demo \u2014\u2014");
+    expect(rendered.charCodeAt(0)).toBe(0x2014);
+    expect(rendered.charCodeAt(1)).toBe(0x2014);
+    expect(rendered.charCodeAt(2)).toBe(0x20);
+    expect(rendered.charAt(14)).toBe(" ");
+    expect(rendered.charAt(19)).toBe(" ");
+    expect(rendered.charCodeAt(21)).toBe(0x2014);
+    expect(rendered.length).toBe(22);
+    expect(rendered.endsWith("\n")).toBe(false);
+  });
+});
+
+describe("PioSession — markCapability (no-turn custom-message seam)", () => {
+  it("issues EXACTLY ONE sendCustomMessage with the pinned argument shape and NO options object (SDK default = no turn)", async () => {
+    const { instance, round } = await host();
+    await instance.markCapability("res");
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledWith({
+      customType: CAPABILITY_CUSTOM_TYPE_REPLICA,
+      content: renderCapabilityMarker("res"),
+      display: true,
+      details: undefined,
+    });
+    // NO options object: the call carries EXACTLY one argument — the
+    // triggerTurn switch stays at its SDK default (append, never a turn).
+    expect(round.session.sendCustomMessage.mock.calls[0]).toHaveLength(1);
+  });
+
+  it("triggers NO LLM turn from the mark alone and leaves the observation state snapshot-equal across it (custom messages are observation-neutral)", async () => {
+    const { instance, round } = await host();
+    const before = instance.counters();
+    const payloadsBefore = instance.getRunMessages();
+    await instance.markCapability("neutral");
+    // Zero prompt invocations: the mark never starts a run on this plane.
+    expect(round.session.prompt).toHaveBeenCalledTimes(0);
+    // Counters unchanged by reference-content — a fresh snapshot reads
+    // byte-equal to the pre-mark one (no assistant usage fed in).
+    const after = instance.counters();
+    expect(after).toStrictEqual(before);
+    // The payload master list gains nothing (feeds come only from
+    // agent_end; the custom message fires none here).
+    expect(instance.getRunMessages()).toEqual(payloadsBefore);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+  });
+});
 
 // --- Event fixtures (shapes mirror the installed dist) --------------------
 
@@ -774,32 +835,19 @@ describe("PioSession — execute_phase budgets", () => {
     expect(hookCalls).toBe(3);
   });
 
-  it("rejects with PhaseBudgetError at the ceiling when continuation is demanded", async () => {
+  it("resolves the bounded result at the ceiling when continuation is still demanded: done:true with iterations === max, one settled run per iteration, the hook observed on every settling run", async () => {
     const { instance, round } = await host();
     scriptRuns(round, quietRun(), quietRun());
     let hookCalls = 0;
-    try {
-      await instance.execute_phase("ceiling", {
-        max: 2,
-        shouldStopLoop: async () => {
-          hookCalls += 1;
-          return false;
-        },
-      });
-      throw new Error("expected a rejection");
-    } catch (err) {
-      expect(err).toBeInstanceOf(PhaseBudgetError);
-      expect(err).toBeInstanceOf(Error);
-      if (err instanceof PhaseBudgetError) {
-        expect(err.iterations).toBe(2);
-        expect(err.name).toBe("PhaseBudgetError");
-        expect(err.message).toBe(
-          "Iteration budget exceeded after 2 iterations",
-        );
-      } else {
-        throw err;
-      }
-    }
+    const result = await instance.execute_phase("ceiling", {
+      max: 2,
+      shouldStopLoop: async () => {
+        hookCalls += 1;
+        return false;
+      },
+    });
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(2);
     expect(round.session.prompt).toHaveBeenCalledTimes(2);
     expect(hookCalls).toBe(2);
   });
@@ -832,19 +880,15 @@ describe("PioSession — execute_phase budgets", () => {
     expect(round.session.prompt).toHaveBeenCalledTimes(2);
   });
 
-  it("fails loudly at the ceiling when the floor exceeds it", async () => {
+  it("a floor exceeding the ceiling resolves BOUNDED (the ceiling ends the loop after one settled run; the floor never overrides the break)", async () => {
     const { instance, round } = await host();
     scriptRuns(round, quietRun());
-    try {
-      await instance.execute_phase("contradiction", { min: 2, max: 1 });
-      throw new Error("expected a rejection");
-    } catch (err) {
-      if (err instanceof PhaseBudgetError) {
-        expect(err.iterations).toBe(1);
-      } else {
-        throw err;
-      }
-    }
+    const result = await instance.execute_phase("contradiction", {
+      min: 2,
+      max: 1,
+    });
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(1);
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
   });
 
@@ -1109,18 +1153,18 @@ describe("PioSession — read/reset contract", () => {
   });
 });
 
-describe("PioSession — failure-exit isolation", () => {
-  it("closes the message window at a budget breach so the next phase starts clean", async () => {
+describe("PioSession — exit isolation", () => {
+  it("closes the message window at a bounded exit so the next phase starts clean (the ceiling end RESOLVES; the window-close invariant rides the resolved exit)", async () => {
     const { instance, round } = await host();
     round.session.prompt.mockImplementationOnce(async () => {
       emit(round, agentStart(), agentEnd(["a1", "a2"], false));
     });
-    await expect(
-      instance.execute_phase("dead", {
-        max: 1,
-        shouldStopLoop: async () => false,
-      }),
-    ).rejects.toThrow(PhaseBudgetError);
+    const bounded = await instance.execute_phase("dead", {
+      max: 1,
+      shouldStopLoop: async () => false,
+    });
+    expect(bounded.done).toBe(true);
+    expect(bounded.iterations).toBe(1);
 
     round.session.prompt.mockImplementationOnce(async () => {
       emit(round, agentStart(), agentEnd(["b1"], false));
@@ -1440,7 +1484,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     });
   });
 
-  it("the composed host is FIRST-CLASS for phases: byte-identical framed prompts on the shared runtime's current handle (including post-swap targeting of the rebound handle) and the same PhaseBudgetError as a created session", async () => {
+  it("the composed host is FIRST-CLASS for phases: byte-identical framed prompts on the shared runtime's current handle (including post-swap targeting of the rebound handle) and the identical bounded resolution at the ceiling as a created session", async () => {
     const { instance: H, round: R } = await host();
     const h0 = R.session;
 
@@ -1458,32 +1502,20 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
 
-    // Budget parity: continuation demand past the ceiling rejects with
-    // the SAME PhaseBudgetError a created session raises.
+    // Ceiling parity: continuation demand at the ceiling RESOLVES the
+    // bounded result IDENTICALLY to a created session (same done flag,
+    // same iteration count).
     scriptRuns(R, quietRun(), quietRun());
     let hookCalls = 0;
-    try {
-      await H.execute_phase("p5-budget", {
-        max: 2,
-        shouldStopLoop: async () => {
-          hookCalls += 1;
-          return false;
-        },
-      });
-      throw new Error("expected a rejection");
-    } catch (err) {
-      expect(err).toBeInstanceOf(PhaseBudgetError);
-      expect(err).toBeInstanceOf(Error);
-      if (err instanceof PhaseBudgetError) {
-        expect(err.iterations).toBe(2);
-        expect(err.name).toBe("PhaseBudgetError");
-        expect(err.message).toBe(
-          "Iteration budget exceeded after 2 iterations",
-        );
-      } else {
-        throw err;
-      }
-    }
+    const boundedParity = await H.execute_phase("p5-budget", {
+      max: 2,
+      shouldStopLoop: async () => {
+        hookCalls += 1;
+        return false;
+      },
+    });
+    expect(boundedParity.done).toBe(true);
+    expect(boundedParity.iterations).toBe(2);
     expect(hookCalls).toBe(2);
     expect(h0.prompt).toHaveBeenCalledTimes(3);
 
@@ -1561,12 +1593,13 @@ describe("PioSession — composed-host surface (P-rows)", () => {
 });
 
 describe("export surface", () => {
-  it("runtime export surface is EXACTLY ['PioSession', 'SessionHandleRefusalError', 'SessionVariableStore', 'renderPhaseMarker'] sorted (types erase under erasable syntax)", async () => {
+  it("runtime export surface is EXACTLY ['PioSession', 'SessionHandleRefusalError', 'SessionVariableStore', 'renderCapabilityMarker', 'renderPhaseMarker'] sorted (types erase under erasable syntax)", async () => {
     expect(Object.keys(await import("./pio-session.ts")).sort()).toEqual(
       [
         "PioSession",
         "SessionHandleRefusalError",
         "SessionVariableStore",
+        "renderCapabilityMarker",
         "renderPhaseMarker",
       ].sort(),
     );
@@ -1587,7 +1620,7 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     expect(src.includes("isComposed")).toBe(false);
   });
 
-  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is unchanged at exactly ['../session.ts', './errors.ts'] behind it in source order", () => {
+  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly ['../session.ts'] behind it", () => {
     // EXACTLY ONE clause references the SDK root, and it is the TYPE
     // clause.
     expect(src.match(/from "@earendil-works\/pi-coding-agent"/g)?.length).toBe(
@@ -1610,13 +1643,10 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
         /^\s*import\s+(?!type\b)[^\n;]*?from\s+["']([^"']+)["']/gm,
       ),
     ].map((match) => match[1]);
-    expect(valueClauses).toEqual(["../session.ts", "./errors.ts"]);
+    expect(valueClauses).toEqual(["../session.ts"]);
     // ...BEHIND the external type clause.
     expect(src.indexOf('from "@earendil-works/pi-coding-agent"')).toBeLessThan(
       src.indexOf('from "../session.ts"'),
-    );
-    expect(src.indexOf('from "../session.ts"')).toBeLessThan(
-      src.indexOf('from "./errors.ts"'),
     );
   });
 

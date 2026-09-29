@@ -17,7 +17,7 @@ import {
 import os from "node:os";
 import { join } from "node:path";
 import type { CapabilityErrorCause } from "./errors.ts";
-import { ContractViolationError, PhaseBudgetError } from "./errors.ts";
+import { ContractViolationError } from "./errors.ts";
 import type { SessionStatus, StatusEmitter } from "./status.ts";
 import {
   captureError,
@@ -227,16 +227,16 @@ describe("serializeStatus (byte shape)", () => {
     });
   });
 
-  it("failing budget record: cause present, violations ABSENT from the element", () => {
+  it("failing budget-cause record (closed-vocabulary adoption): cause present, violations ABSENT from the element", () => {
     const failing: SessionStatus = {
       ok: false,
       capability: { name: "demo", version: "0.1.0", source: "builtin" },
       outputs: {},
       errors: [
         {
-          type: "PhaseBudgetError",
+          type: "Error",
           cause: "budget",
-          message: "Iteration budget exceeded after 3 iterations",
+          message: "stopped at the iteration bound",
         },
       ],
       tokens: 1,
@@ -245,9 +245,9 @@ describe("serializeStatus (byte shape)", () => {
     const parsed = JSON.parse(serializeStatus(failing));
     expect(Object.keys(parsed.errors[0])).toEqual(["type", "cause", "message"]);
     expect(parsed.errors[0]).toStrictEqual({
-      type: "PhaseBudgetError",
+      type: "Error",
       cause: "budget",
-      message: "Iteration budget exceeded after 3 iterations",
+      message: "stopped at the iteration bound",
     });
   });
 
@@ -428,13 +428,15 @@ describe("captureError (ladder table)", () => {
     expect(captured.violations).toEqual(["v"]);
   });
 
-  it("phase budget: default message, pinned type and cause, no violations key", () => {
-    const captured = captureError(new PhaseBudgetError(3));
+  it("budget cause via standard Error.cause: closed-vocabulary adoption, no violations key", () => {
+    const captured = captureError(
+      new Error("stopped at the iteration bound", { cause: "budget" }),
+    );
     expect(Object.keys(captured)).toEqual(["type", "cause", "message"]);
     expect(captured).toStrictEqual({
-      type: "PhaseBudgetError",
+      type: "Error",
       cause: "budget",
-      message: "Iteration budget exceeded after 3 iterations",
+      message: "stopped at the iteration bound",
     });
   });
 

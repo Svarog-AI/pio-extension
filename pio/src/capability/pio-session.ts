@@ -36,6 +36,13 @@
 // explicit resets move only the baseline, and nothing ever truncates a list
 // or the cumulative counters. The same idiom spans both the committed-path
 // list and the payload list.
+//
+// Capability-span marking rides a no-turn carrier: markCapability appends
+// the span's section header (renderCapabilityMarker's line; customType
+// PIO_CAPABILITY_CUSTOM_TYPE) as a durable custom message — never folded
+// into prompt text, never a turn trigger. Phase ids stay BARE ids; the
+// `capability:` prefix is reserved for that mark (no runtime enforcement).
+// Only session-present runs are stamped, once per span (see base.ts).
 
 import type {
   AgentSession,
@@ -44,7 +51,6 @@ import type {
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
 import { createPioSession } from "../session.ts";
-import { PhaseBudgetError } from "./errors.ts";
 
 /** Tool names whose successful executions commit a file path. */
 const FILE_TOOL_NAMES: ReadonlySet<string> = new Set(["write", "edit"]);
@@ -58,13 +64,27 @@ export function renderPhaseMarker(label: string): string {
   return `\u2014\u2014 ${label} \u2014\u2014`;
 }
 
+/** Capability-span marker: the `capability:` prefix inside the dash flank
+ * of the phase-marker layout (U+2014 x2, single spaces). No input
+ * validation; no trailing newline. */
+export function renderCapabilityMarker(label: string): string {
+  // Escaped so the U+2014 bytes survive editor and toolkit glyph mangling.
+  return `\u2014\u2014 capability: ${label} \u2014\u2014`;
+}
+
+/** The customType namespace identifying pio capability markers among
+ * foreign custom messages. Module-private on purpose: an entry-filtering
+ * tag, not consumer API. */
+const PIO_CAPABILITY_CUSTOM_TYPE = "pio-capability";
+
 /** Closed option bag for one phase execution. */
 export interface PhaseOptions {
   /** Sent below the marker line at every run of the phase. */
   readonly instructions?: string;
   /** Floor: the phase always executes at least this many runs. */
   readonly min?: number;
-  /** Ceiling: demanding continuation past it rejects the phase. */
+  /** Ceiling: bounds execution — continuation still demanded at it ends
+   * the loop; the phase resolves with the bounded result. */
   readonly max?: number;
   /** Runs after every settled run; `true` ends the phase, `false` demands another run. */
   readonly shouldStopLoop?: (ctx: IterationCtx) => Promise<boolean>;
@@ -82,7 +102,7 @@ export interface IterationCtx {
 
 /** Outcome of a completed phase. */
 export interface PhaseResult {
-  /** True on every normal return; a budget breach throws instead. */
+  /** True on every return. */
   readonly done: boolean;
   /** Settled runs executed. */
   readonly iterations: number;
@@ -400,13 +420,28 @@ export class PioSession {
   }
 
   /**
+   * Append the span's section header as a durable custom message WITHOUT
+   * triggering an LLM turn (no options object = the SDK's append-only idle
+   * branch). Same handle reach as execute_phase (the runtime's CURRENT
+   * handle). Awaited before the body acts, so the header precedes the
+   * span's first phase prompt in transcript order.
+   */
+  async markCapability(label: string): Promise<void> {
+    await this.runtime.session.sendCustomMessage({
+      customType: PIO_CAPABILITY_CUSTOM_TYPE,
+      content: renderCapabilityMarker(label),
+      display: true,
+      details: undefined,
+    });
+  }
+
+  /**
    * One phase = a budgeted sequence of settled agent runs driven through the
    * session's prompt channel. The marker line composed once per phase leads
    * every run's text; the between-runs hook observes each settling run's
    * fresh counters and stable per-run window. Every exit — a normal return
-   * or a propagated budget breach / hook / prompt rejection — closes both
-   * windows so a finished phase leaks nothing into the next one on the
-   * same instance.
+   * or a propagated hook / prompt rejection — closes both windows so a
+   * finished phase leaks nothing into the next one on the same instance.
    */
   async execute_phase(id: string, opts?: PhaseOptions): Promise<PhaseResult> {
     const min = opts?.min ?? 1;
@@ -434,10 +469,7 @@ export class PioSession {
           });
           proceed = proceed || !verdict;
         }
-        if (!proceed) break;
-        if (iterations >= max) {
-          throw new PhaseBudgetError(iterations);
-        }
+        if (!proceed || iterations >= max) break;
       }
       const messages = this.getRunMessages();
       const finalSnapshot = this.counters();

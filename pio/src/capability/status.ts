@@ -19,7 +19,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import type { CapabilityErrorCause, SessionStatusError } from "./errors.ts";
-import { ContractViolationError, PhaseBudgetError } from "./errors.ts";
+import { ContractViolationError } from "./errors.ts";
 
 /** Re-exported for cross-module byte reference (the shutdown-pass record
  * literals name this type over the status surface only). */
@@ -207,15 +207,15 @@ const KNOWN_CAUSES: readonly CapabilityErrorCause[] = [
 /**
  * Reduce a thrown value to JSON-safe captured-failure data.
  *
- * Ladder order: typed-class branches first, closed-vocabulary cause adoption
- * second, bare identity fallback last. Typed classes take precedence, so a
- * ContractViolationError's own cause never falls through to the generic
- * Error path. message is OMITTED when it would be empty/undefined (keys
- * absent, never empty-string noise); violations appears ONLY in the
- * ContractViolationError branch. Adoption of the standard ES Error.cause
- * applies only to CLOSED-VOCABULARY members — authors signal deliberate
- * halts by throwing an Error carrying cause:"author-halt"; foreign causes are
- * dropped.
+ * Ladder order: the ContractViolationError typed branch first,
+ * closed-vocabulary cause adoption second, bare identity fallback last.
+ * The typed branch takes precedence, so a ContractViolationError's own
+ * cause never falls through to the generic Error path. message is OMITTED
+ * when it would be empty/undefined (keys absent, never empty-string noise);
+ * violations appears ONLY in the ContractViolationError branch. Adoption of
+ * the standard ES Error.cause applies only to CLOSED-VOCABULARY members —
+ * authors signal deliberate halts by throwing an Error carrying
+ * cause:"author-halt"; foreign causes are dropped.
  */
 export function captureError(error: unknown): SessionStatusError {
   if (error instanceof ContractViolationError) {
@@ -224,13 +224,6 @@ export function captureError(error: unknown): SessionStatusError {
       cause: "contract",
       ...(error.message ? { message: error.message } : {}),
       violations: error.violations,
-    };
-  }
-  if (error instanceof PhaseBudgetError) {
-    return {
-      type: "PhaseBudgetError",
-      cause: "budget",
-      ...(error.message ? { message: error.message } : {}),
     };
   }
   if (error instanceof Error) {

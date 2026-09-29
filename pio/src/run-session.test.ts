@@ -1024,9 +1024,9 @@ describe("runSession (pipeline order and status emission)", () => {
   it("typed-failure pipeline: run() resolves an ok:false payload → mapped exit 1 and the terminal record carries the PAYLOAD'S errors verbatim (outputs default to {}, no ad-hoc enrichment); the terminal is torn down probe-native before the failing record", async () => {
     const payloadErrors = [
       {
-        type: "PhaseBudgetError",
+        type: "Error",
         cause: "budget",
-        message: "phase budget exceeded",
+        message: "phase stopped at the iteration bound",
       },
     ];
     const world = makePipelineWorld({

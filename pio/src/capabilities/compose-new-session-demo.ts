@@ -1,40 +1,23 @@
 // The compose-new-session-demo capability — TEMPORARY.
 //
 // A throwaway demonstration of composed execution: one greeting turn on the
-// caller's own session, then the registered `research` capability invoked
+// caller's own session, then the sibling `research` capability invoked
 // WITHOUT a session (while it runs, the child takes over the live terminal
 // and hands it back), then one summary turn stating the three most important
 // findings from the child's report THROUGH THE SESSION STREAM. The machine
-// deliverable is the child's frozen report token, passed through unchanged;
+// deliverable is the child's settled report value, passed through unchanged;
 // nothing is written to the project slot (the summary only reads the report).
 //
 // TEMPORARY removal schedule: this registration exists solely to exercise the terminal-takeover composition end-to-end, and it is REMOVED at the bulk-migration cutover.
 
-import { join } from "node:path";
 import type { CapabilityParams } from "../capability/base.ts";
-import {
-  deriveStateRootFromAgentDir,
-  PioCapability,
-} from "../capability/base.ts";
+import { PioCapability } from "../capability/base.ts";
 import type { Contract } from "../capability/contract.ts";
-import { resolveCapability } from "../capability/loader.ts";
-import type { CapabilityResult } from "../capability/status.ts";
-import { deriveProjectKey } from "../sandbox/layout.ts";
+import ResearchCapability from "./research.ts";
 
 /** The hard-coded research topic (shrink-only tunable; the suite rows
  * reference this constant, never a duplicated literal). */
 export const DEMO_TOPIC = "Gnosticism in Barcelona";
-
-/** Typed settlement fault for a child outcome that cannot settle the demo
- * (unsuccessful child settlement, a missing/empty report token on a
- * successful one, or an unresolvable callee). Bare identity — the capture
- * reduces to {type:'ChildOutcomeError', message:<…>}. */
-export class ChildOutcomeError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ChildOutcomeError";
-  }
-}
 
 /** The pinned greeting template (PINNED bytes; the suite replica names this
  * owner). One settled turn: greet the operator and briefly name what comes
@@ -58,29 +41,12 @@ ${reportPath}
 4. Do nothing else \u2014 no further tools, no questions, no writes. End your turn right after presenting the three findings.`;
 }
 
-/** The failure-payload form of the settlement message: the child's first
- * captured error type + message embedded verbatim. */
-function childFailureMessage(
-  name: string,
-  version: string,
-  type: string,
-  message: string,
-): string {
-  return `compose-new-session-demo: child capability '${name}@${version}' settled unsuccessfully: ${type}: ${message}`;
-}
-
-/** The malformed-success form: a successful child settlement carrying no
- * usable report token. Em dash U+2014 (escaped). */
-function noReportTokenMessage(name: string, version: string): string {
-  return `compose-new-session-demo: child capability '${name}@${version}' returned no report token \u2014 refusing to settle`;
-}
-
-/** The resolve-refusal form: the named callee did not resolve at all
- * (defensive — shipped registrations always resolve). Em dash U+2014
- * (escaped). */
-function unresolvedChildMessage(): string {
-  return `compose-new-session-demo: child capability 'research' did not resolve \u2014 refusing to compose`;
-}
+/** The single fixed sentence for the one self-detected anomaly: a
+ * successful child settlement carrying no readable report (there is no note
+ * to forward in that case). PINNED bytes; the suite replica names this
+ * owner. Em dash U+2014 (escaped). */
+const EMPTY_REPORT_SETTLEMENT_MESSAGE =
+  "compose-new-session-demo: the research child settled successfully but its outputs carry no report to read \u2014 nothing to summarize";
 
 export default class ComposeNewSessionDemoCapability extends PioCapability {
   readonly contract: Contract = {
@@ -115,76 +81,49 @@ export default class ComposeNewSessionDemoCapability extends PioCapability {
       max: 1,
     });
 
-    // 2. Composition — loader-mediated against the in-artifact table
-    // (production-faithful admission; the direct sibling import would add an
-    // edge production never walks). The child is constructed WITHOUT a
-    // session param so ITS OWN base dispatch hops the terminal-takeover
-    // frame (this module never touches hop machinery; the loader owns the
-    // callee-edge thunk internally).
-    const resolved = await resolveCapability("research");
-    if (!resolved.ok) {
-      // Coverage boundary: bundled registrations always resolve in the
-      // shipped artifact, so this defensive refusal is unreachable
-      // hermetically — pinned by the structural clause set and observed
-      // through the manual E2E runbook legs rather than rowed.
-      throw new ChildOutcomeError(unresolvedChildMessage());
-    }
-    const capName = resolved.capability.contract.name;
-    const capVersion = resolved.capability.contract.version;
-    const child = new resolved.capability.ctor({});
-    const outcome: CapabilityResult = await child.run({ topic: DEMO_TOPIC });
+    // 2. Composition — co-shipping builtins compose over EACH OTHER'S shipped
+    // modules directly (the loader's dispatch machinery is reserved for
+    // startup/top-session resolution). Constructed WITHOUT a session param,
+    // so the child's OWN base dispatch hops the terminal-takeover frame
+    // while it runs and hands the terminal back on return — this module
+    // never touches hop machinery.
+    const child = new ResearchCapability({});
+    const outcome = await child.run({ topic: DEMO_TOPIC });
 
-    // 3. Failure settlement (success-path gate): any non-well-settled child
-    // throws BEFORE derivation or summarizing — the summary never starts.
-    // Masking interaction (settled semantics): a kill fired mid-child
-    // settles this await RESOLVED with the typed kill capture; the demo
-    // mirrors it into its own typed capture, and run() never rejects.
-    const reportToken = outcome.ok ? outcome.outputs?.report : undefined;
-    const wellSettled =
-      outcome.ok === true &&
-      typeof reportToken === "string" &&
-      reportToken.length > 0;
-    if (!wellSettled) {
-      if (outcome.ok === false) {
-        const first = outcome.errors?.[0];
-        throw new ChildOutcomeError(
-          childFailureMessage(
-            capName,
-            capVersion,
-            first?.type ?? "UnknownError",
-            first?.message ?? "",
-          ),
-        );
-      }
-      throw new ChildOutcomeError(noReportTokenMessage(capName, capVersion));
+    // 3. Child-fault settlement — VERBATIM FORWARDING: a failed child
+    // re-projects its FIRST capture unchanged (type + message; failures
+    // received from elsewhere mint no new types here — attribution rides
+    // the record's position, top frame vs child frame). A successful
+    // settlement carrying no readable report settles with the single fixed
+    // sentence instead. Either way the SUMMARY NEVER RUNS behind the gate.
+    if (outcome.ok === false) {
+      const first = outcome.errors?.[0];
+      const forwarded = new Error(first?.message ?? "");
+      forwarded.name = first?.type ?? "Error";
+      throw forwarded;
+    }
+    const report = outcome.outputs?.report;
+    if (typeof report !== "string" || report.length === 0) {
+      throw new Error(EMPTY_REPORT_SETTLEMENT_MESSAGE);
     }
 
     // 4. Summary — success path ONLY, AFTER the return hand-off (the
-    // terminal belongs to the caller frame again). The report's ABSOLUTE
-    // path is PASSTHROUGH-ABSOLUTIZED: the child's token consumed VERBATIM,
-    // joined against the derived state root and project key (the same
-    // shipped channels the child uses; loud typed escape, NO silent
-    // fallback). Exactly ONE settled turn reads the report and states the
-    // findings THROUGH THE SESSION STREAM — no file is written and nothing
-    // is asked; the top-frame transcript is their durable home.
-    const stateRoot = deriveStateRootFromAgentDir(
-      process.env.PI_CODING_AGENT_DIR,
-    );
-    const projectKey = deriveProjectKey(process.cwd());
-    const absoluteReportPath = join(
-      stateRoot,
-      "projects",
-      projectKey,
-      reportToken,
-    );
+    // terminal belongs to the caller frame again). The report value arrives
+    // VERBATIM — the base's settle seam already transformed the child's
+    // file-mode output to this bubble's ABSOLUTE placement (no consumer-side
+    // derivation here). Exactly ONE settled turn reads the report and states
+    // the findings THROUGH THE SESSION STREAM — no file is written and
+    // nothing is asked; the top-frame transcript is their durable home.
     await this.execute_phase("summary", {
-      instructions: summaryInstructions(absoluteReportPath),
+      instructions: summaryInstructions(report),
       min: 1,
       max: 1,
     });
 
-    // 5. Return — the PASSTHROUGH token rides the caller's own terminal
-    // record (emitted by the entry through the outermost-ledger emitter).
-    return { report: reportToken };
+    // 5. Return — the settled report value rides the caller's own terminal
+    // record (emitted by the entry through the outermost-ledger emitter);
+    // the demo's own output slot is a VALUE slot, so the base passes it
+    // through untransformed.
+    return { report };
   }
 }

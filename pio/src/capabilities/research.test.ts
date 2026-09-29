@@ -330,7 +330,7 @@ describe("research capability", () => {
   // ---------------------------------------------------------------------
 
   describe("loop shape", () => {
-    it("continues on a report-write settle and stops on the next quiet settle: EXACTLY two prompts, ok:true payload with the frozen relative-form outputs, undamaged report (the deliverable statement itself travels through the SESSION STREAM — outcome-model settlement, no raw terminal write)", async () => {
+    it("continues on a report-write settle and stops on the next quiet settle: EXACTLY two prompts, ok:true payload with the SETTLED absolute-placement outputs (the base's settle seam absolutized the call-level frozen relative form), undamaged report (the deliverable statement itself travels through the SESSION STREAM — outcome-model settlement, no raw terminal write)", async () => {
       const seed =
         "# Research: quantum computing basics\n\n## First question\nanswered\n";
       const placement = reportPlacement(TOPIC);
@@ -345,7 +345,9 @@ describe("research capability", () => {
       const result = await cap.run({ topic: TOPIC });
       expect(round.session.prompt).toHaveBeenCalledTimes(2);
       expect(result.ok).toBe(true);
-      expect(result.outputs).toEqual({ report: placement.relativeForm });
+      // The settled RESULT carries the ABSOLUTE placement (base-settled at
+      // the run seam); call() itself still returns the frozen relative form.
+      expect(result.outputs).toEqual({ report: placement.absolutePath });
       expect(stderrText()).toBe("");
       const { readFile } = await import("node:fs/promises");
       expect(await readFile(placement.absolutePath, "utf8")).toBe(seed);
@@ -432,7 +434,7 @@ describe("research capability", () => {
   // ---------------------------------------------------------------------
 
   describe("payload shape + instruction framing", () => {
-    it("outputs deep-equals { report: 'research/' + fingerprint(topic) + '.md' } for a multi-word + unicode topic (self-consistent derivation via the imported helper)", async () => {
+    it("settled outputs deep-equal { report: <absolute placement of the frozen 'research/' + fingerprint(topic) + '.md' token> } for a multi-word + unicode topic (self-consistent derivation via the imported helper)", async () => {
       const unicodeTopic = "how do LLMs über generalise?";
       const placement = reportPlacement(unicodeTopic);
       await seedReport(placement.absolutePath, "# seeded\n");
@@ -445,9 +447,9 @@ describe("research capability", () => {
       const cap = new ResearchCapability({ session: instance });
       const result = await cap.run({ topic: unicodeTopic });
       expect(result.ok).toBe(true);
-      expect(result.outputs).toEqual({
-        report: `research/${reportFingerprint(unicodeTopic)}.md`,
-      });
+      // Settled to the ABSOLUTE placement by the base's seam (call()-level
+      // return stays the frozen slot-relative token).
+      expect(result.outputs).toEqual({ report: placement.absolutePath });
     });
 
     it("fresh row: the first prompt begins with the phase marker and carries the ABSOLUTE path pointer + the FRESH resume line, NOT the existing one", async () => {

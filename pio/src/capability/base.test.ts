@@ -34,11 +34,13 @@ import type {
   AgentSessionEvent,
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
+import { deriveProjectKey } from "../sandbox/layout.ts";
 import type { CapabilityParams } from "./base.ts";
 import {
   CapabilityEnvError,
   deriveStateRootFromAgentDir,
   PioCapability,
+  settleFileModeOutputs,
 } from "./base.ts";
 import type { Contract } from "./contract.ts";
 import { ContractViolationError, PhaseBudgetError } from "./errors.ts";
@@ -169,6 +171,7 @@ vi.mock("./terminal-takeover.ts", async (importOriginal) => {
 });
 
 let takenOver: typeof import("./terminal-takeover.ts") | undefined;
+let originalEnv: string | undefined;
 
 /** Lazy takeover-module binding: bound on first use (from B1 onward); a
  * STATIC import would evaluate the recording factory at file load and rot
@@ -197,9 +200,16 @@ beforeEach(() => {
   harness.reset();
   // B-block isolation: no holder state leaks across rows.
   takenOver?.teardownFrameEnvironment();
+  originalEnv = process.env.PI_CODING_AGENT_DIR;
+  delete process.env.PI_CODING_AGENT_DIR; // start UNSET — settle rows opt in
 });
 
 afterEach(() => {
+  if (originalEnv === undefined) {
+    delete process.env.PI_CODING_AGENT_DIR;
+  } else {
+    process.env.PI_CODING_AGENT_DIR = originalEnv;
+  }
   while (bTempRoots.length > 0) {
     rmSync(bTempRoots.pop() as string, { recursive: true, force: true });
   }
@@ -1109,6 +1119,233 @@ describe("PioCapability — engine integration through the base", () => {
     expect(result.outputs).toEqual({
       settled: { done: true, iterations: 1 },
     });
+  });
+});
+
+// ─── Settle-seam placement (file-mode outputs) ──────────────────────────
+// THE success settlement under test: run() absolutizes FILE-MODE contract
+// output slots ONCE at the base, for BOTH placements (in-place and inside
+// the hop's body — one payload serves the child record and the caller's
+// await). Pure-helper rows inject a fixed placement provider (no env/cwd
+// reach); seam rows drive the REAL derivation over a controlled
+// PI_CODING_AGENT_DIR (every row starts UNSET; the lifecycle restores).
+// Em dashes are U+2014 (escaped).
+
+describe("settleFileModeOutputs (pure)", () => {
+  const PLACEMENT = "/state/projects/key";
+  const FILE_SLOT = [{ name: "report", paramKey: "report" }];
+
+  it("absolutizes a FILE-MODE slot's relative string against the placement (paramKey write-back; other keys untouched)", () => {
+    const provider = vi.fn((): string => PLACEMENT);
+    const settled = settleFileModeOutputs(
+      FILE_SLOT,
+      { report: "research/x.md", extra: "value" },
+      provider,
+    );
+    expect(settled).toEqual({
+      report: `${PLACEMENT}/research/x.md`,
+      extra: "value",
+    });
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+
+  it("a VALUE slot passes through BY REFERENCE and NEVER invokes the provider", () => {
+    const provider = vi.fn((): string => PLACEMENT);
+    const outputs = { note: "some value" };
+    expect(settleFileModeOutputs([{ name: "note" }], outputs, provider)).toBe(
+      outputs,
+    );
+    expect(provider).toHaveBeenCalledTimes(0);
+  });
+
+  const passThroughVariants: ReadonlyArray<{
+    label: string;
+    outputs: Record<string, unknown>;
+  }> = [
+    { label: "EMPTY string token", outputs: { report: "" } },
+    { label: "ABSENT token", outputs: {} },
+    { label: "NON-STRING token", outputs: { report: 42 } },
+    { label: "null token", outputs: { report: null } },
+  ];
+  for (const variant of passThroughVariants) {
+    it(`a ${variant.label} in a file-mode slot passes through untouched (provider never invoked)`, () => {
+      const provider = vi.fn((): string => PLACEMENT);
+      expect(settleFileModeOutputs(FILE_SLOT, variant.outputs, provider)).toBe(
+        variant.outputs,
+      );
+      expect(provider).toHaveBeenCalledTimes(0);
+    });
+  }
+
+  it("ALREADY-ABSOLUTE values pass through WITHOUT a second join (provider never invoked)", () => {
+    const provider = vi.fn((): string => PLACEMENT);
+    const outputs = { report: "/elsewhere/report.md" };
+    expect(settleFileModeOutputs(FILE_SLOT, outputs, provider)).toBe(outputs);
+    expect(provider).toHaveBeenCalledTimes(0);
+  });
+
+  it("settles MULTIPLE file-mode slots in declaration order with ONE memoized provider invocation (the static-file form reports the contract-declared location)", () => {
+    const provider = vi.fn((): string => PLACEMENT);
+    const settled = settleFileModeOutputs(
+      [
+        { name: "a", paramKey: "a" },
+        { name: "b", file: "b.md" },
+      ],
+      { a: "rel/a.md", b: "stale/b.md" },
+      provider,
+    );
+    expect(settled).toEqual({
+      a: `${PLACEMENT}/rel/a.md`,
+      b: `${PLACEMENT}/b.md`,
+    });
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("run() success settlement (seam rows — real derivation, both placements)", () => {
+  class SettlingCap extends PioCapability {
+    readonly contract: Contract = {
+      name: "fixture-cap",
+      version: "1.0.0",
+      inputs: [],
+      outputs: [{ name: "report", paramKey: "report" }],
+      writes: [],
+    };
+    #body: () => Promise<Record<string, unknown>>;
+    constructor(
+      body: () => Promise<Record<string, unknown>>,
+      params: CapabilityParams,
+    ) {
+      super(params);
+      this.#body = body;
+    }
+    async call(): Promise<Record<string, unknown>> {
+      return this.#body();
+    }
+  }
+
+  /** Expected placement computed IN-ROW via the same public channels the
+   * seam derives (self-consistent idiom — never a recomputed private math). */
+  function derivedAbsolute(token: string): string {
+    return join(
+      deriveStateRootFromAgentDir(process.env.PI_CODING_AGENT_DIR),
+      "projects",
+      deriveProjectKey(process.cwd()),
+      token,
+    );
+  }
+
+  it("in-place: a file-mode output settles to the derived ABSOLUTE placement when the state-root channel is SET", async () => {
+    const root = newBTempRoot();
+    process.env.PI_CODING_AGENT_DIR = join(root, ".pi", "agent");
+    const { instance } = await host();
+    const result = await new SettlingCap(
+      async () => ({ report: "research/x.md" }),
+      { session: instance },
+    ).run();
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    expect(result.outputs).toStrictEqual({
+      report: derivedAbsolute("research/x.md"),
+    });
+  });
+
+  it("in-place: a settle-time conversion fault settles THIS capability's own capture (pinned CapabilityEnvError bytes) after the body COMPLETED", async () => {
+    delete process.env.PI_CODING_AGENT_DIR; // row-chosen UNSET
+    let completed = false;
+    const { instance } = await host();
+    const cap = new SettlingCap(
+      async (): Promise<Record<string, unknown>> => {
+        completed = true;
+        return { report: "research/x.md" };
+      },
+      { session: instance },
+    );
+    const result = await cap.run();
+    expect(completed).toBe(true);
+    expectSingleFailure(result, {
+      type: "CapabilityEnvError",
+      message: ENV_UNSET_MESSAGE,
+    });
+  });
+
+  it("in-place: a FAILURE result settles UNTRANSFORMED — the body's own capture stands (no env fault masked in behind a failing body)", async () => {
+    delete process.env.PI_CODING_AGENT_DIR;
+    const { instance } = await host();
+    const cap = new SettlingCap(
+      async (): Promise<Record<string, unknown>> => {
+        throw new Error("boom");
+      },
+      { session: instance },
+    );
+    const result = await cap.run();
+    expectSingleFailure(result, { type: "Error", message: "boom" });
+  });
+
+  it("hop placement: the child record AND the caller's await carry the TRANSFORMED token (one payload serves both channels) with the switch-back completed", async () => {
+    const root = newBTempRoot();
+    const world = buildBWorld(root, "/work/settle-hop");
+    await installBHolder(world, root);
+    scriptBSwitches(
+      world,
+      { kind: "swap", sessionId: "sess-settle-child" },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+    );
+    process.env.PI_CODING_AGENT_DIR = join(root, ".pi", "agent");
+    const cap = new SettlingCap(
+      async () => ({ report: "research/hop.md" }),
+      {},
+    );
+    const result = await cap.run();
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    const expected = derivedAbsolute("research/hop.md");
+    expect(result.outputs).toStrictEqual({ report: expected });
+    // THE child record mirrors the SAME transformed payload.
+    const childFile = world.runtime.switchSession.mock.calls[0][0] as string;
+    const parsed = JSON.parse(
+      readFileSync(join(dirname(childFile), "status.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(parsed.ok).toBe(true);
+    expect(parsed.outputs).toEqual({ report: expected });
+    expect(world.runtime.switchSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("hop placement: a conversion fault settles AFTER the unwind — child record ok:false with the typed capture, the await mirrors it, switch args [childFile, parentFile], ledger back to [top]", async () => {
+    const root = newBTempRoot();
+    const world = buildBWorld(root, "/work/settle-hop-fault");
+    const takeover = await ensureTakeoverModule();
+    await installBHolder(world, root);
+    scriptBSwitches(
+      world,
+      { kind: "swap", sessionId: "sess-settle-fault" },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+    );
+    delete process.env.PI_CODING_AGENT_DIR; // row-chosen UNSET
+    const cap = new SettlingCap(
+      async () => ({ report: "research/hop.md" }),
+      {},
+    );
+    const result = await cap.run();
+    expectSingleFailure(result, {
+      type: "CapabilityEnvError",
+      message: ENV_UNSET_MESSAGE,
+    });
+    const calls = world.runtime.switchSession.mock.calls.map(
+      (c) => c[0],
+    ) as string[];
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toBe(world.parentFile);
+    const frames = takeover.activeFrames();
+    expect(frames).toHaveLength(1);
+    expect(frames[0].capability.name).toBe("top");
+    const parsed = JSON.parse(
+      readFileSync(join(dirname(calls[0]), "status.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(parsed.ok).toBe(false);
+    expect(parsed.errors).toEqual([
+      { type: "CapabilityEnvError", message: ENV_UNSET_MESSAGE },
+    ]);
   });
 });
 

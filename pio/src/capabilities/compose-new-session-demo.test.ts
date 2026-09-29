@@ -17,7 +17,10 @@
 // kill capture / bare error / empty-or-absent outputs variants). In these
 // rows the stub anchors the row's host in its placement slot so the REAL
 // base run()'s IN-PROCESS branch carries the scripted settlement — the hop
-// mechanics themselves belong to the physics world below.
+// mechanics themselves belong to the physics world below. Because the stub
+// extends the REAL base, its settle seam transforms the stub's SLOT-RELATIVE
+// token in BOTH worlds; expected settled values compute in-row through the
+// same public channels (never a recomputed fingerprint or key).
 //
 // 2. PHYSICS WORLD (takeover-suite idiom) for the routing rows: the REAL
 // terminal-takeover module with installFrameEnvironment over a
@@ -72,7 +75,6 @@ import {
 } from "../capability/terminal-takeover.ts";
 import { deriveProjectKey } from "../sandbox/layout.ts";
 import ComposeNewSessionDemoCapability, {
-  ChildOutcomeError,
   DEMO_TOPIC,
 } from "./compose-new-session-demo.ts";
 
@@ -509,18 +511,11 @@ ${reportPath}
 3. Present the three findings in your reply as a numbered list: one finding per line, one or two sentences each.
 4. Do nothing else \u2014 no further tools, no questions, no writes. End your turn right after presenting the three findings.`;
 
-/** THE three pinned settlement-message forms (SOLE OWNERS: the three
- * module-private message owners in ./compose-new-session-demo.ts). Em dashes
- * are U+2014 (escaped). */
-const childFailureReplica = (
-  name: string,
-  version: string,
-  type: string,
-  message: string,
-): string =>
-  `compose-new-session-demo: child capability '${name}@${version}' settled unsuccessfully: ${type}: ${message}`;
-const noReportTokenReplica = (name: string, version: string): string =>
-  `compose-new-session-demo: child capability '${name}@${version}' returned no report token \u2014 refusing to settle`;
+/** THE pinned single fixed sentence behind the successful-but-empty
+ * settlement (SOLE OWNER: EMPTY_REPORT_SETTLEMENT_MESSAGE in
+ * ./compose-new-session-demo.ts). Em dash U+2014 (escaped). */
+const EMPTY_REPORT_REPLICA =
+  "compose-new-session-demo: the research child settled successfully but its outputs carry no report to read \u2014 nothing to summarize";
 
 /** Replica of the pinned interruption message (SOLE OWNER: the
  * FRAME_KILL_MESSAGE constant + FrameKillError constructor in
@@ -542,9 +537,9 @@ const greetingPromptText = (): string =>
 const summaryPromptText = (absolutePath: string): string =>
   `${renderPhaseMarker("summary")}\n${summaryReplica(absolutePath)}`;
 
-/** Self-consistent absolute-path derivation via the SAME public helpers the
- * module uses (pure passthrough absolutization of the stub token — never a
- * recomputed fingerprint or key). */
+/** Self-consistent absolute-path derivation via the SAME public channels the
+ * BASE SETTLE SEAM derives (expected settled value of the stub's
+ * slot-relative token — never a recomputed fingerprint or key). */
 function expectedAbsolutePath(token: string): string {
   return join(
     deriveStateRootFromAgentDir(process.env.PI_CODING_AGENT_DIR),
@@ -681,7 +676,7 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     });
   });
 
-  it("C2 the full happy path: EXACTLY TWO settled turns on the demo's own session IN ORDER (greeting, then summary), the summary text carrying the ABSOLUTE report path computed in-row via the SAME public helpers (passthrough absolutization of the stub token), the child CONSTRUCTED session-absent and run with EXACTLY DEMO_TOPIC, the Outcome surfaced into the outputs unchanged, and ZERO demo-side filesystem writes", async () => {
+  it("C2 the full happy path: EXACTLY TWO settled turns on the demo's own session IN ORDER (greeting, then summary), the base settle seam ABSOLUTIZING the stub's slot-relative token (the summary text interpolates the settled value VERBATIM; expected value computed in-row via the SAME public channels), the child CONSTRUCTED session-absent and run with EXACTLY DEMO_TOPIC, and ZERO demo-side filesystem writes", async () => {
     const tmp = newTempRoot();
     enterWorkTree(tmp);
     const { instance, round } = await host();
@@ -689,14 +684,17 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     scriptRuns(round, quietSettle(), quietSettle());
     const demo = new ComposeNewSessionDemoCapability({ session: instance });
     const result = await demo.run();
-    // Settlement: ok:true with the PASSTHROUGH token (untransformed — for
-    // an immutable scalar, value equality is reference-strength).
+    // Settlement: ok:true with the SETTLED absolute value (the real base
+    // seam transformed the stub's slot-relative token; the demo's own
+    // VALUE slot passes it through untransformed).
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
-    expect(result.outputs).toStrictEqual({ report: stubKit.STUB_REPORT_TOKEN });
-    // Exactly two prompts IN ORDER: greeting, then summary (with the
-    // ABSOLUTE report path interpolated — derived in-row through the same
-    // public helpers).
+    expect(result.outputs).toStrictEqual({
+      report: expectedAbsolutePath(stubKit.STUB_REPORT_TOKEN),
+    });
+    // Exactly two prompts IN ORDER: greeting, then summary (carrying the
+    // ABSOLUTE report path interpolated verbatim from the settled value —
+    // derived in-row through the same public channels).
     expect(round.session.prompt).toHaveBeenCalledTimes(2);
     expect(sentAt(round, 0)).toBe(greetingPromptText());
     expect(sentAt(round, 1)).toBe(
@@ -735,10 +733,10 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     },
   ];
   for (const variant of faultVariants) {
-    it(`C3 child-fault (${variant.label}): the demo's run RESOLVES (never rejects) ok:false with the ChildOutcomeError failure-payload capture EXACT — and EXACTLY ONE prompt occurred (the greeting — the summary turn NEVER STARTS)`, async () => {
+    it(`C3 child-fault (${variant.label}): the demo's run RESOLVES (never rejects) ok:false with the child's FIRST capture FORWARDED VERBATIM ({type, message} equal to the child's own entry — no types minted, no cause refinement re-branded) — and EXACTLY ONE prompt occurred (the greeting — the summary turn NEVER STARTS)`, async () => {
       const tmp = newTempRoot();
       enterWorkTree(tmp);
-      delete process.env.PI_CODING_AGENT_DIR; // row-chosen UNSET: the derivation must not even run behind the success gate
+      delete process.env.PI_CODING_AGENT_DIR; // row-chosen UNSET: failure results settle untransformed — no conversion may even run behind the gate
       stubKit.state.mode = variant.mode;
       const { instance, round } = await host();
       stubKit.state.anchor = instance;
@@ -748,15 +746,7 @@ describe("admission, composition, summary, settlement (C rows)", () => {
       expect(result.ok).toBe(false);
       if (result.ok) throw new Error("unreachable");
       expect(result.errors).toStrictEqual([
-        {
-          type: "ChildOutcomeError",
-          message: childFailureReplica(
-            "research",
-            "0.1.0",
-            variant.type,
-            variant.message,
-          ),
-        },
+        { type: variant.type, message: variant.message },
       ]);
       // The summary turn never started: exactly one prompt (the greeting).
       expect(round.session.prompt).toHaveBeenCalledTimes(1);
@@ -774,7 +764,7 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     { label: "an ABSENT outputs.report", mode: "missing-report" },
   ];
   for (const variant of malformedVariants) {
-    it(`C4 malformed-success (${variant.label}): the demo's run RESOLVES ok:false with the pinned malformed-success line — and EXACTLY ONE prompt (greeting only; the summary skips)`, async () => {
+    it(`C4 malformed-success (${variant.label}): the demo's run RESOLVES ok:false with the PLAIN-Error fixed sentence (the one self-detected anomaly — no class minted, nothing to forward) — and EXACTLY ONE prompt (greeting only; the summary skips)`, async () => {
       const tmp = newTempRoot();
       enterWorkTree(tmp);
       delete process.env.PI_CODING_AGENT_DIR;
@@ -787,10 +777,7 @@ describe("admission, composition, summary, settlement (C rows)", () => {
       expect(result.ok).toBe(false);
       if (result.ok) throw new Error("unreachable");
       expect(result.errors).toStrictEqual([
-        {
-          type: "ChildOutcomeError",
-          message: noReportTokenReplica("research", "0.1.0"),
-        },
+        { type: "Error", message: EMPTY_REPORT_REPLICA },
       ]);
       expect(round.session.prompt).toHaveBeenCalledTimes(1);
       expect(sentAt(round, 0)).toBe(greetingPromptText());
@@ -821,7 +808,7 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     },
   ];
   for (const variant of envDefectVariants) {
-    it(`C5 env defect (${variant.label}): the CapabilityEnvError capability-owned capture (pinned bytes) at the summary derivation — EXACTLY ONE prompt (greeting only), the child ran to completion, NO summary turn`, async () => {
+    it(`C5 settle-time conversion fault (${variant.label}): the BASE's seam faults while settling the child's file-mode output (pinned CapabilityEnvError bytes) and the demo FORWARDS the child's capture VERBATIM — EXACTLY ONE prompt (greeting only), the child ran to completion, NO summary turn`, async () => {
       const tmp = newTempRoot();
       enterWorkTree(tmp);
       variant.prepare();
@@ -835,8 +822,9 @@ describe("admission, composition, summary, settlement (C rows)", () => {
       expect(result.errors).toStrictEqual([
         { type: "CapabilityEnvError", message: variant.message },
       ]);
-      // Success-gated: the derivation escaped AFTER the completed child
-      // (bag + inputs recorded) and BEFORE any summary turn (one prompt).
+      // Success-gated: the conversion fault escaped AFTER the completed child
+      // (bag + inputs recorded) and BEFORE any summary turn (one prompt);
+      // the forwarded capture keeps the child's type + message unchanged.
       expect(round.session.prompt).toHaveBeenCalledTimes(1);
       expect(sentAt(round, 0)).toBe(greetingPromptText());
       expect(stubKit.state.bag).toStrictEqual({});
@@ -918,8 +906,10 @@ describe("input routing (R rows — physics world)", () => {
       const result = await resultPromise;
       expect(result.ok).toBe(true);
       if (!result.ok) throw new Error("unreachable");
+      // Settled value: the real base seam (inside the REAL hop body)
+      // absolutized the stub's slot-relative token.
       expect(result.outputs).toStrictEqual({
-        report: stubKit.STUB_REPORT_TOKEN,
+        report: expectedAbsolutePath(stubKit.STUB_REPORT_TOKEN),
       });
       // Switch args: out to the child, back to the CAPTURED parent file.
       expect(world.runtime.switchSession).toHaveBeenCalledTimes(2);
@@ -993,7 +983,11 @@ describe("input routing (R rows — physics world)", () => {
     const result = await demo.run();
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
-    expect(result.outputs).toStrictEqual({ report: stubKit.STUB_REPORT_TOKEN });
+    // Settled value: the base seam absolutized the stub's slot-relative
+    // token (one payload served the child record AND this await).
+    expect(result.outputs).toStrictEqual({
+      report: expectedAbsolutePath(stubKit.STUB_REPORT_TOKEN),
+    });
     // Placement audit: exactly TWO demo-side prompts, BOTH on the top file
     // (pre-handover greeting + post-return summary); zero on the child.
     const childFile = world.runtime.switchSession.mock.calls[0]?.[0] as string;
@@ -1021,7 +1015,7 @@ describe("input routing (R rows — physics world)", () => {
     );
     expect(readdirSync(join(root, "top"))).toEqual(["parent-transcript.jsonl"]);
     expect(existsSync(join(root, "top", "status.json"))).toBe(false);
-    // THE full recursive audit tree: exactly four artifacts, nothing else.
+    // THE full recursive audit tree: exactly THREE artifacts, nothing else.
     expect(recursiveListing(root)).toEqual(
       [
         `${childEntries[0]}/top/${basename(childFile)}`,
@@ -1030,7 +1024,9 @@ describe("input routing (R rows — physics world)", () => {
       ].sort(),
     );
     // THE child record: stamped from the CHILD's own capability over its
-    // scope dir, ok:true, the passthrough token, the child transcript ref.
+    // scope dir, ok:true, the SETTLED absolute report value (the base seam
+    // transformed the stub's slot-relative token inside the hop body —
+    // single payload, both channels), the child transcript ref.
     const raw = readFileSync(join(childScopeDir, "top", "status.json"), "utf8");
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     expect(raw.endsWith("\n")).toBe(true);
@@ -1040,7 +1036,9 @@ describe("input routing (R rows — physics world)", () => {
       version: "0.1.0",
       source: "builtin",
     });
-    expect(parsed.outputs).toEqual({ report: stubKit.STUB_REPORT_TOKEN });
+    expect(parsed.outputs).toEqual({
+      report: expectedAbsolutePath(stubKit.STUB_REPORT_TOKEN),
+    });
     expect(parsed.transcriptRef).toBe(
       `${childEntries[0]}/top/${basename(childFile)}`,
     );
@@ -1079,15 +1077,10 @@ describe("module surface and mechanical source guards", () => {
     "utf8",
   );
 
-  it("runtime export surface is EXACTLY ['ChildOutcomeError', 'DEMO_TOPIC', 'default'] (types erase under erasable syntax) with the bare-identity error name and the owner-bound topic value", async () => {
+  it("runtime export surface is EXACTLY ['DEMO_TOPIC', 'default'] (types erase under erasable syntax; no error class mints here — received failures forward verbatim) with the owner-bound topic value", async () => {
     const mod = await import("./compose-new-session-demo.ts");
-    expect(Object.keys(mod).sort()).toEqual([
-      "ChildOutcomeError",
-      "DEMO_TOPIC",
-      "default",
-    ]);
+    expect(Object.keys(mod).sort()).toEqual(["DEMO_TOPIC", "default"]);
     expect(mod.default).toBe(ComposeNewSessionDemoCapability);
-    expect(new ChildOutcomeError("x").name).toBe("ChildOutcomeError");
     expect(DEMO_TOPIC).toBe("Gnosticism in Barcelona");
   });
 
@@ -1095,26 +1088,15 @@ describe("module surface and mechanical source guards", () => {
     expect((src.match(/Gnosticism in Barcelona/g) ?? []).length).toBe(1);
   });
 
-  it("static VALUE clauses are EXACTLY {node:path (join), ../capability/base.ts (PioCapability + deriveStateRootFromAgentDir), ../capability/loader.ts (resolveCapability), ../sandbox/layout.ts (deriveProjectKey)} in canonical order — and TYPE clauses exactly {../capability/base.ts (CapabilityParams), ../capability/contract.ts (Contract), ../capability/status.ts (CapabilityResult)}", () => {
+  it("named static VALUE clauses are EXACTLY {../capability/base.ts (PioCapability)} in canonical order — and TYPE clauses exactly {../capability/base.ts (CapabilityParams), ../capability/contract.ts (Contract)}", () => {
     const clauses = staticImportClauses(src);
     const valueClauses = clauses.filter((clause) => !clause.typeOnly);
     const typeClauses = clauses.filter((clause) => clause.typeOnly);
     expect(valueClauses).toEqual([
-      { typeOnly: false, names: ["join"], specifier: "node:path" },
       {
         typeOnly: false,
-        names: ["deriveStateRootFromAgentDir", "PioCapability"],
+        names: ["PioCapability"],
         specifier: "../capability/base.ts",
-      },
-      {
-        typeOnly: false,
-        names: ["resolveCapability"],
-        specifier: "../capability/loader.ts",
-      },
-      {
-        typeOnly: false,
-        names: ["deriveProjectKey"],
-        specifier: "../sandbox/layout.ts",
       },
     ]);
     expect(typeClauses).toEqual([
@@ -1128,12 +1110,18 @@ describe("module surface and mechanical source guards", () => {
         names: ["Contract"],
         specifier: "../capability/contract.ts",
       },
-      {
-        typeOnly: true,
-        names: ["CapabilityResult"],
-        specifier: "../capability/status.ts",
-      },
     ]);
+  });
+
+  it("the callee-edge DEFAULT import is EXACTLY one default-form clause bound to the shipped sibling module (outside the named-clause extractor above)", () => {
+    const defaults = [
+      ...src.matchAll(
+        /^\s*import\s+([A-Za-z_$][\w$]*)\s+from\s+["']([^"']+)["'];/gm,
+      ),
+    ];
+    expect(defaults).toHaveLength(1);
+    expect(defaults[0]?.[1]).toBe("ResearchCapability");
+    expect(defaults[0]?.[2]).toBe("./research.ts");
   });
 
   it("ZERO dynamic-import occurrences (zero module-load graph growth — the loader owns the callee-edge thunk internally) and zero occurrences of the SDK specifier", () => {
@@ -1141,11 +1129,9 @@ describe("module surface and mechanical source guards", () => {
     expect(src.includes("@earendil-works/pi-coding-agent")).toBe(false);
   });
 
-  it("process-member accesses are EXACTLY {env, cwd} (collected exhaustively — precisely the two reads the summary-path derivation requires; zero process-stream writers and no other member survives)", () => {
-    const members = [
-      ...new Set([...src.matchAll(/process\.(\w+)/g)].map((match) => match[1])),
-    ].sort();
-    expect(members).toEqual(["cwd", "env"]);
+  it("ZERO process-member accesses (placement math lives at the base's settle seam — no env or cwd read survives in this module; zero process-stream writers too)", () => {
+    const matches = src.match(/process\.\w+/g) ?? [];
+    expect(matches).toEqual([]);
   });
 
   it("zero occurrences of SIGINT / InteractiveMode / armKillCapture / parentSession (no terminal or lineage machinery in the demo module)", () => {

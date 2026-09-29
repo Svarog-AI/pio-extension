@@ -269,7 +269,7 @@ interface BHandle {
   disposed: boolean;
 }
 
-/** Mirror the measured handle physics (S02 idiom): functional per-listener
+/** Mirror the measured handle physics: functional per-listener
  * unsubscribe; dispose clears the live list. */
 function mintBHandle(sessionId: string, sessionFile?: string): BHandle {
   const captured: Listener[] = [];
@@ -977,13 +977,10 @@ describe("PioCapability — prompt framing passes through untouched", () => {
 });
 
 // ---------------------------------------------------------------------
-// State-root inversion (pure; owner: capability/base.ts — the pair moved
-// there from capabilities/research.ts in Step 6 per the owner placement
-// ruling; rows migrated verbatim from research.test.ts, import adjusted;
-// at close-out the owner directed full de-researching — class renamed to
-// CapabilityEnvError and the message prefix generalized to "capability:").
-// The message replicas below name that owner. Em dashes are
-// U+2014 (escaped).
+// State-root inversion (pure; owner: capability/base.ts — the pair lives
+// there: class CapabilityEnvError, message prefix generalized to
+// "capability:"). The message replicas below name that owner. Em dashes
+// are U+2014 (escaped).
 // ---------------------------------------------------------------------
 const ENV_UNSET_MESSAGE =
   "capability: PI_CODING_AGENT_DIR is unset \u2014 cannot derive the state root";

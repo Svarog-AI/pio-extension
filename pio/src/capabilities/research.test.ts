@@ -1,15 +1,14 @@
 // Hermetic unit suite for the research capability (capabilities/research.ts).
-// Harness per the base.test.ts doctrine with the step-4 extensions: the SAME
-// five faked SDK value symbols (the fake session GAINS getToolDefinition —
-// defined-by-default stub; miss rows override a round's lookup to undefined,
-// the S01-shipped total-absence signature), mkdtemp tmpdirs per row with
-// PI_CODING_AGENT_DIR pointed at <tmp>/.pi/agent (saved/restored in
-// afterEach), process.chdir into <tmp>/work for the project-key derivation
-// (restored in afterEach), and a stderr spy for the pinned capability-owned
-// REFUSAL line (the Step-6 outcome-model settlement removed the raw stdout
-// writer — the report pointer now travels through the session stream plus
-// the status.json ledger token; there are no product-content stdout pins
-// left here).
+// Harness per the base.test.ts doctrine: the SAME five faked SDK value
+// symbols (the fake session GAINS getToolDefinition — defined-by-default
+// stub; miss rows override a round's lookup to undefined, the shipped
+// total-absence signature), mkdtemp tmpdirs per row with PI_CODING_AGENT_DIR
+// pointed at <tmp>/.pi/agent (saved/restored in afterEach), process.chdir
+// into <tmp>/work for the project-key derivation (restored in afterEach),
+// and a stderr spy for the pinned capability-owned REFUSAL line (no raw
+// stdout writer — the report pointer travels through the session stream
+// plus the status.json ledger token; there are no product-content stdout
+// pins left here).
 //
 // Doctrine (load-bearing): scripted prompt resolutions emit SYNTHETIC EVENTS
 // ONLY — they observe; they write NOTHING to disk. Rows whose assertions
@@ -139,10 +138,9 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 
 /** Pinned product-line replicas — the SOLE OWNER of every byte below is
  * capabilities/research.ts EXCEPT the env-defect pair, whose sole owner is
- * capability/base.ts after the Step-6 placement ruling (the class + both
- * messages moved there; at close-out the owner directed full de-researching:
- * class → CapabilityEnvError, message prefix → "capability:"); the copies
- * keep the byte-pins meaningful. Em dashes are U+2014 (escaped). */
+ * capability/base.ts (class CapabilityEnvError, message prefix
+ * "capability:"); the copies keep the byte-pins meaningful. Em dashes are
+ * U+2014 (escaped). */
 const ENV_UNSET_MESSAGE =
   "capability: PI_CODING_AGENT_DIR is unset \u2014 cannot derive the state root";
 const envMalformedMessage = (value: string): string =>
@@ -608,7 +606,7 @@ describe("research capability", () => {
       expect(new CapabilityEnvError("x").name).toBe("CapabilityEnvError");
     });
 
-    it("exposes EXACTLY the five named exports beside the default export (the Step-6 placement ruling moved deriveStateRootFromAgentDir + its pinned pair's body to capability/base.ts; CapabilityEnvError stays importable here via the consolidation re-export)", async () => {
+    it("exposes EXACTLY the five named exports beside the default export (deriveStateRootFromAgentDir + its pinned pair's body live in capability/base.ts; CapabilityEnvError stays importable here via the consolidation re-export)", async () => {
       const mod = await import("./research.ts");
       expect(Object.keys(mod).sort()).toEqual([
         "CapabilityEnvError",

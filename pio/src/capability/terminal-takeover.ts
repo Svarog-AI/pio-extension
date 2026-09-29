@@ -150,8 +150,8 @@ export interface PendingLatch<T> {
 }
 
 /** Module-private helper over a native promise + resolver pair. Stays
- * non-exported — the later steps extend THIS file, no cross-module
- * surface needed. */
+ * non-exported — extensions belong in this file; no cross-module surface
+ * needed. */
 function createPendingLatch<T>(): PendingLatch<T> {
   let resolveImpl!: (value: T) => void;
   let rejectImpl!: (reason: Error) => void;

@@ -12,7 +12,7 @@
 // run() takes the session-present path (accepted edge — engagements
 // construct fresh instances). `tty` freezes as the interactive
 // sequential-frame meaning (takes and returns the terminal); `timeoutMs`
-// stays reserved-unenforced (wall-clock cap deferred to Step 6).
+// stays reserved-unenforced (wall-clock cap unbound here).
 //
 // State-root channel: the renderer assigns PI_CODING_AGENT_DIR=
 // `<root>/.pi/agent` unconditionally; the inversion below recovers `<root>`

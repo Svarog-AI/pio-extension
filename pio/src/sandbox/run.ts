@@ -31,8 +31,8 @@ import {
 import { renderProfile, SandboxRenderError } from "./render.ts";
 
 /** Injectable stderr sink — lines arrive WITHOUT a trailing newline; the
- * writer appends it. cli.ts's CliIO satisfies this shape (Step 5 passes
- * its `out` straight through). */
+ * writer appends it. cli.ts's CliIO satisfies this shape (threaded straight
+ * through by the CLI dispatch). */
 export interface RunIO {
   stderr(line: string): void;
 }
@@ -120,7 +120,7 @@ export async function runCapability(
     // Input gates — post-loader-admission, pre-TTY/pre-bwrap (D3): piped
     // misses stay cheap and print BEFORE any side effect; the resolved
     // contract is in hand at this gate. Activation: `inputs === undefined`
-    // skips BOTH checks ENTIRELY (legacy caller shape — the whole pre-step
+    // skips BOTH checks ENTIRELY (legacy caller shape — the whole pre-gate
     // behavior survives byte-for-byte); ANY provided record — including the
     // EMPTY one — activates both, so a declared-but-unsupplied input still
     // reports its miss. Undeclared-key check FIRST (the user-typed

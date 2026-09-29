@@ -3,7 +3,7 @@
 // slot, driven by the write-delta stopping rule over a single marker-stamped
 // execute_phase.
 //
-// Outcome model (Step-6 settlement): the capability states its deliverable
+// Outcome model: the capability states its deliverable
 // through the SESSION STREAM — what the live terminal presents — and the
 // machine ledger (the terminal record's `outputs`) carries the frozen
 // project-slot-relative token. Capability code performs NO raw terminal
@@ -17,9 +17,9 @@
 // host-side expression that would silently target the host's ~/.pio).
 // PI_CODING_AGENT_DIR is the ONLY state-root channel into the bubble; the
 // renderer assigns it UNCONDITIONALLY to `<root>/.pi/agent`, so the CAPABILITY
-// BASE inverts that expression (moved there by the Step-6 owner placement
-// ruling — the in-bubble state-root channel is a capability-layer concern;
-// exactly the two levels the renderer appends: .pi + agent) to recover
+// BASE inverts that expression (the in-bubble state-root channel is a
+// capability-layer concern; exactly the two levels the renderer appends:
+// .pi + agent) to recover
 // `<root>`. The project key derives from
 // process.cwd() because the in-bubble cwd IS the host launch cwd (chdir),
 // matching the host-side derivation. No silent fallback, ever.
@@ -60,8 +60,7 @@ import {
 import { deriveProjectKey } from "../sandbox/layout.ts";
 
 // Re-exported for consumer stability — the body CO-HABITS the capability base
-// per the Step-6 owner placement ruling (moved there WITH its pinned messages;
-// this module imports and re-exports rather than duplicating).
+// (this module imports and re-exports rather than duplicating).
 export { CapabilityEnvError };
 
 /** Run ceiling — the backstop bounding rambling-without-writing loops. */
@@ -91,10 +90,9 @@ function resumeLine(topic: string, reportExists: boolean): string {
     : `The report does not exist yet. Create it on your first write, starting with the heading "# Research: ${topic}".`;
 }
 
-/** The per-run instruction template (authored per D4 — the template this
- * step ships is what Step 5 distills into the authoring guide). Built
- * conditionally on reportExists; module-private, observed through prompt
- * text. Em dashes are U+2014 (escaped). */
+/** The per-run instruction template (authored per D4). Built conditionally
+ * on reportExists; module-private, observed through prompt text. Em dashes
+ * are U+2014 (escaped). */
 function composeInstructions(
   topic: string,
   absolutePath: string,
@@ -247,7 +245,7 @@ export default class ResearchCapability extends PioCapability {
       throw new ContractViolationError([sanityViolationLine(target)]);
     }
 
-    // Outcome-model settlement (Step 6): the capability states its
+    // Outcome-model settlement: the capability states its
     // deliverable through the SESSION STREAM (what the live terminal
     // presents) — no raw terminal writes from capability code; the machine
     // ledger publishes `outputs` unchanged (frozen project-slot-relative

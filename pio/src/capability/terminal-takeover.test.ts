@@ -133,7 +133,7 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   }),
 }));
 
-/** Mirror the measured handle physics (S02 idiom): subscribe returns a
+/** Mirror the measured handle physics: subscribe returns a
  * FUNCTIONAL per-listener unsubscribe (agent-session.d.ts L278–L280);
  * dispose clears the live list (agent-session.js L584–L604). */
 function mintPhysicsHandle(
@@ -777,7 +777,7 @@ describe("harness physics (additive — consumed by the hop matrix)", () => {
   });
 });
 
-// ─── Hop matrix (step 3 — materializeFrame over the physics world) ─────
+// ─── Hop matrix (materializeFrame over the physics world) ──────────────
 // Replica constants over the four pinned hop-fault messages (suite-local;
 // the module owns the originals; escapes mirror the source so the U+2014
 // bytes match).
@@ -1796,7 +1796,7 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
     // DEATH SIMULATION: the holder context's terminalStop invoked exactly
     // once reaches the harness IM stop EXACTLY ONCE in total (acceptance
     // #6's scripted proof part 1 — the one-live-UI lifetime pin; part 2
-    // rides Step 4's abort rows).
+    // rides the abort rows).
     terminalStopImpl();
     expect(terminalStopImpl).toHaveBeenCalledTimes(1);
     expect(world.terminal.stop).toHaveBeenCalledTimes(1);
@@ -3034,7 +3034,7 @@ describe("shutdown guard behaviors (G rows)", () => {
     const { root, world, top } = buildAlphaWorld("/work/g4");
     attachHarnessTopEmitter(world, top, root);
     const { exitSpy, signals, guard } = buildGuardSeams();
-    // Coverage boundary: the native exit wrap/restore leg is never exercised hermetically (seam discipline — this row drives seam sinks only; nothing mutates the real process sink); it is structurally covered here and observed in the Step 6 manual E2E leg (#4).
+    // Coverage boundary: the native exit wrap/restore leg is never exercised hermetically (seam discipline — this row drives seam sinks only; nothing mutates the real process sink); it is structurally covered here and observed in the manual E2E abort leg (#4).
     guard.uninstall();
     guard.uninstall(); // idempotent — no throw
     guard.exit(7);

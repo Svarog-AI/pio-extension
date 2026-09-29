@@ -36,10 +36,9 @@ export interface CliIO {
 }
 
 /** Canonical run-grammar usage string — ONE constant feeds ALL THREE host
- * occurrences: the help usage line and both error-template tails (S03 lifts
- * the S02 usage-byte freeze PRECISELY for these strings because the grammar
- * grew). NOTE the trailing ellipsis is the U+2026 HORIZONTAL ELLIPSIS
- * character — pinned codepoint, never normalized to three dots. */
+ * occurrences: the help usage line and both error-template tails. NOTE the
+ * trailing ellipsis is the U+2026 HORIZONTAL ELLIPSIS character — pinned
+ * codepoint, never normalized to three dots. */
 const RUN_USAGE = "pio run <capability> [--input k=v …]";
 
 const UNKNOWN_OPTION = (token: string): string =>

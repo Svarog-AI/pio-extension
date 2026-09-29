@@ -1,4 +1,4 @@
-// Behavior-matrix TDD suite for the pio CLI (Steps 2–3). Drives `parse` and
+// Behavior-matrix TDD suite for the pio CLI. Drives `parse` and
 // `main(argv, io)` with captured IO, plus mechanical SDK-isolation guards.
 import { readFileSync } from "node:fs";
 import type { CliIO } from "./cli.ts";
@@ -15,7 +15,7 @@ vi.mock("./sandbox/run.ts", () => ({
   runCapability: vi.fn(),
 }));
 
-// S04 help-tail lines — the SOLE OWNERS are HELP_LINES indices 8–9 in
+// Help-tail lines — the SOLE OWNERS are HELP_LINES indices 8–9 in
 // ./cli.ts; the copies keep the byte-pins meaningful. NOTE the em dash is
 // the U+2014 EM DASH character — pinned codepoint, never normalized.
 const RESEARCH_ENTRY_LINE =

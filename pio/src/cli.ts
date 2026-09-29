@@ -68,6 +68,8 @@ const HELP_LINES: readonly string[] = [
   // shell-quoted multi-word-as-ONE-value grammar.
   "  research — bounded web-research loop producing a markdown file report",
   '  pio run research --input topic="<topic>"',
+  "  compose-new-session-demo — TEMPORARY: greets the operator, runs research in the taken-over terminal, then reports the top 3 findings",
+  "  pio run compose-new-session-demo",
 ];
 
 function startsWithDash(token: string): boolean {

@@ -77,7 +77,8 @@ export interface PhaseOptions {
   readonly instructions?: string;
   /** Floor: the phase always executes at least this many runs. */
   readonly min?: number;
-  /** Ceiling: demanding continuation past it rejects the phase. */
+  /** Ceiling: bounds execution — continuation still demanded at it ends
+   * the loop; the phase resolves with the bounded result. */
   readonly max?: number;
   /** Runs after every settled run; `true` ends the phase, `false` demands another run. */
   readonly shouldStopLoop?: (ctx: IterationCtx) => Promise<boolean>;
@@ -109,16 +110,20 @@ form:
 
 ```ts
 // pio/src/capabilities/research.ts
-shouldStopLoop: (ctx) =>
+shouldStopLoop: (ctx) => {
   // Write-delta stopping rule (SR4): CONTINUE iff the PER-RUN delta
   // of COMMITTED write/edit tool paths contains the ABSOLUTE report
   // path; the first settled run without a report write ends the
   // phase. Shell-redirect appends never appear in that observable.
-  Promise.resolve(!ctx.filesWritten.includes(absolutePath)),
+  const wrote = ctx.filesWritten.includes(absolutePath);
+  lastRunWroteReport = wrote;
+  return Promise.resolve(!wrote);
+},
 ```
 
 Note the verdict polarity: `true` = stop, so "continue on write" reads as
-`!includes(...)`.
+`!wrote` (the just-settled run's committed-write window containing the
+artifact's absolute path).
 
 Why disk truth through one delivered observable beats the alternatives —
 status-header schemas, marker parsing, transcript inspection, variables: the
@@ -178,8 +183,11 @@ at each run start.
 
 Shell-redirect appends (`echo`, `tee`, …) NEVER enter the observable — they are
 not `write`/`edit` tool executions. Consequence: the instruction's tool
-mandate (§3.3) is FUNCTIONAL, not stylistic. A shell-appending model burns the
-whole budget and exits on the loud typed breach (§2.4), never on a clean stop.
+mandate (§3.3) is FUNCTIONAL, not stylistic — a shell-appending model can
+never end the loop through the completion signal. When the cap then binds,
+the phase RESOLVES at the bound and the capability settles its annotated
+partial report `ok: true` (bound event recorded in-stream and in the ledger
+— §2.4); there is NO failing-breach exit left.
 
 ### 1.6 Off-limits until the shared-vars spine lands
 
@@ -199,8 +207,8 @@ whole budget and exits on the loud typed breach (§2.4), never on a clean stop.
 
 ## 2. Budget choices
 
-Material: `pio-session.ts` `execute_phase` + `pio/src/capability/errors.ts` +
-`research.ts` constants/span.
+Material: `pio-session.ts` `execute_phase` + `research.ts` (the tunable
+constants + the bound-hit settlement).
 
 ### 2.1 `min` floor vs `max` backstop
 
@@ -218,10 +226,10 @@ const max = opts?.max ?? Infinity;
   happen in a no-report-start world (nothing exists on disk, so any
   "artifact written?" test would already answer no — the first run must still
   happen, and the loop structure guarantees it before any hook evaluates).
-- `max` — the BACKSTOP: demanding continuation past it rejects the phase with
-  the TYPED `PhaseBudgetError(iterations)` — thrown after the Nth settled run
-  when continuation is still demanded (`pio/src/capability/errors.ts`:
-  `readonly iterations: number` — the datum that reaches the terminal record).
+- `max` — the BACKSTOP: it BOUNDS EXECUTION. At the ceiling with continuation
+  still demanded the loop ends THERE and the phase RESOLVES with the bounded
+  result (`done: true`, `iterations === <ceiling>`) — no rejection surface.
+  Settling non-convergence is a CAPABILITY-LAYER decision (§2.4).
 
 An unbounded phase (`max` omitted ⇒ `Infinity`) is LEGAL but rarely right: a
 model that rambles without writing then runs the engagement down with no bound
@@ -254,25 +262,37 @@ Their adjustment posture is shrink-only — bounds tighten, they do not loosen.
 none exist. Adding any knob surface requires a constraint-5 decisions-log
 entry (closeout knowledge record) first; the default posture is zero knobs.
 
-### 2.4 Breach behavior: catch → annotate → re-throw (the fail-meaning rule)
+### 2.4 Bound behavior: detect → annotate → settle `ok` (the no-silent-skip rule)
 
-No silent skip. The shipped pattern (`research.ts` budget span) catches
-`PhaseBudgetError` NARROWLY around `execute_phase` — only that class is
-annotated; every other error propagates untouched — and then:
+No silent skip. Budget exhaustion is not a run failure: the loop breaks at
+the cap (§2.1) and the CAPABILITY decides what non-convergence means. The
+shipped pattern (`research.ts`):
 
-1. ANNOTATE the durable artifact: append a pinned truncation note via
-   filesystem append, so a reader of the PARTIAL FILE ALONE learns the run was
-   cut. The append CREATES the degenerate note-only file if the model never
-   wrote (coherent beats elaborate).
-2. RE-THROW THE SAME error so its typed identity + `iterations` datum reach
-   the terminal record through the base's catch-all: `captureError`
-   (`pio/src/capability/status.ts`) maps it to
-   `{ type: "PhaseBudgetError", cause: "budget" }`, the record lands
-   `ok: false`, and `exitCodeFor` maps failure to exit 1. Surface, don't
-   swallow.
+1. DETECT the bound hit capability-side — NO engine API addition. The
+   resolved `PhaseResult` supplies `iterations === <ceiling>`, and the
+   stopping-rule hook supplies the other half: it observes each settling
+   run's committed-write window (`ctx.filesWritten`) and records it in
+   closure state, so its LAST invocation IS the final run's window (the
+   engine closes both observation windows on every phase exit — no
+   post-phase re-read is possible). Strict equality: an unobserved state
+   never fires the annotation.
+2. ANNOTATE the durable artifact: append the pinned truncation note via a
+   filesystem append, so a reader of the PARTIAL FILE ALONE learns the run
+   was cut. The append CREATES the degenerate note-only file if the model
+   never wrote (coherent beats elaborate).
+3. SETTLE `ok` with the frozen slot-relative token — the outcome model is
+   unchanged (in-stream statement + machine-ledger token, §8.4). The
+   no-silent-skip property rides the truncation note PLUS the
+   transcript/ledger records instead of a failing outcome.
+
+EXPLICIT DISTINCTION — NATURAL CONVERGENCE at EXACTLY the ceiling (the final
+run commits no artifact write) takes NO note: the annotation marks the
+BOUND-HIT event, not the iteration count. Below the bound and at natural
+convergence the outcomes are byte-identical to the pre-bound behavior.
+Non-bound faults propagate untouched, unqualified.
 
 The pinned note bytes (`truncationNote`, module-private in `research.ts`;
-`<N>` = the breached iteration count):
+`<N>` = the iteration count at the bound-hit resolution):
 
 ```
 ## Truncated at run budget
@@ -604,12 +624,14 @@ Each item names its positive exemplar from shipped code.
 ### 5.1 Swallowing typed errors (catch-and-degrade)
 
 Degrading a typed failure to a soft success loses the cause classification
-and the operator signal. Exemplar: the `research.ts` budget span — catch
-narrowly → annotate the partial artifact → RE-THROW THE SAME error (§2.4) —
-keeps the typed identity + `iterations` datum in the terminal record
-(`{ type: "PhaseBudgetError", cause: "budget" }`). If you catch a typed error,
-your last act must be throwing it back out (possibly annotated) — the base
-catch-all + `captureError` own the serialization.
+and the operator signal. Exemplar: the `research.ts` loud web-tools preflight
+(§4.7) — refuse with the capability-owned stderr line, then THROW THE TYPED
+`WebToolsMissingError` — keeps the typed identity in the terminal record
+(`{ type: "WebToolsMissingError", message }`; the env-defect pair likewise
+rides `CapabilityEnvError`'s typed capture alone — the §5.2 pairing rule).
+If you catch a typed error, your last act must be throwing it back out
+(possibly annotated) — the base catch-all + `captureError` own the
+serialization.
 
 ### 5.2 Silent degradation on missing tools
 
@@ -695,7 +717,8 @@ to print during a run.
 
 Completion must hold with NO human present. Exemplar: the write-delta stopping
 rule + the `max` budget backstop — `shouldStopLoop` decides off the
-`IterationCtx` observable alone and the cap rejects regardless; neither
+`IterationCtx` observable alone and the cap ends the loop at the ceiling
+regardless; neither
 consults the operator (§1.3/§2.1; the hard guardrail per §7.2).
 
 ### 5.9 Constructing a second terminal or a competing process-stream writer
@@ -1353,11 +1376,13 @@ Caller-OWNED cause attribution — the await surface authors program against:
 
 - CALLEE THROW ⇒ the typed capture PROPAGATES THROUGH THE AWAIT
   (`{ ok: false, errors: [capture] }` — contract violations settle BEFORE any
-  hop side effect: zero switches/mints/scope dirs; budget breaches and body
-  faults mirror IDENTICALLY into the child record and the await).
+  hop side effect: zero switches/mints/scope dirs; body faults — closed-
+  vocabulary adopted causes included — mirror IDENTICALLY into the child
+  record and the await).
 - COMPOSITION-LEVEL WALL-CLOCK BREACH ⇒ DEFERRED boundary — `timeoutMs` stays
-  RESERVED-UNENFORCED (§9); the parked design names the breach shape (typed
-  `cause: "budget"` error carrying the frame's PARTIAL record at the caller's
+  RESERVED-UNENFORCED (§9); the parked design names the breach shape (an error
+  carrying the closed-vocabulary `cause: "budget"` — adopted by `captureError`
+  — along with the frame's PARTIAL record at the caller's
   await) and lands AFTER the stuck-session proof — named only, never
   demonstrated.
 
@@ -1627,9 +1652,9 @@ export interface CapabilityParams {
   owner ruling; the PARKED DESIGN (compact block, boundary phrasing only):
 
   - Caller-side per-frame timer (opt-in per call; ABSENT = no cap).
-  - Responsive breach = the SHIPPED teardown primitive + a typed
-    `cause: "budget"` error at the caller's await carrying the frame's
-    PARTIAL record.
+  - Responsive breach = the SHIPPED teardown primitive + an error carrying
+    the closed-vocabulary `cause: "budget"` (adopted by `captureError`) at
+    the caller's await with the frame's PARTIAL record.
   - Wedged run (sync loop / hung tool) = whole-process death — the typed
     line + records drive re-entry.
   - Row-3 headless frames (slot 8) INHERIT the same param + primitive — no
@@ -2089,8 +2114,8 @@ spanning this window, roadmap-recorded risk. Contract `writes` /
 THE NO-BLOCKING-MACHINERY RULING — stated explicitly: ZERO runtime
 write-blocking machinery lands at this step — no frame-stack push/pop around
 calls, no in-bubble tool-call guard, no refusal/retry dynamic. Rationale in
-one sentence: a refused-but-instructed write would loop the model until
-budget breach (the infinite-loop trap), and the owner rejected such a gate.
+one sentence: a refused-but-instructed write would loop the model against
+the budget BOUND (the infinite-loop trap), and the owner rejected such a gate.
 The refused-with-readable-reason half rides slot 10 (§11.7).
 
 ### 11.7 Slot-10 boundary (explicit)
@@ -2216,6 +2241,27 @@ phase prompt markers, in this order:
 3. the `—— summary ——` phase carries NO capability header — it resumes the
    demo's scope; no second demo header appears ANYWHERE.
 
+RUN-SHAPE VARIANCE (acceptance-driven). The leg cannot force how many runs
+the research loop takes — the owner's topic may converge early or exhaust
+the cap — so TWO VALID SHAPES are documented, and either is a correct
+observation:
+
+- **(a) EARLY CONVERGENCE** — fewer than `RESEARCH_MAX_RUNS`
+  (`pio/src/capabilities/research.ts`) research-phase prompts; the report
+  ends WITHOUT the truncation note.
+- **(b) FULL BUDGET CONSUMPTION** — exactly `RESEARCH_MAX_RUNS`
+  research-phase prompts followed by the summary resuming; the report
+  CONTAINS the pinned truncation note (`## Truncated at run budget`, §2.4)
+  appended after the seeded sections.
+
+THE BOUND EVENT RIDES BOTH RECORD CHANNELS IN SHAPE (b): IN-STREAM — the
+transcript carries the full-budget shape (exactly the cap's research-phase
+prompts, then the annotated report content the summary reads); IN-LEDGER —
+the settled `outputs.report` token RESOLVES to the annotated artifact. NO
+NEW STREAM MACHINERY ships with this definition: the outcome-model
+constraint of §7.1 — capability code performs NO raw terminal writes — is
+untouched. Both shapes settle `ok: true`, NO `errors`, EXIT 0.
+
 EXPECTED TERMINAL `status.json` (placement `<engagement>/.sessions/top/status.json`;
 canonical serialized shape per `serializeStatus`, quoted for the key order —
 `ok → capability{name, version, source} → outputs → [errors?] →
@@ -2264,8 +2310,11 @@ export function exitCodeFor(status: SessionStatus): number {
 }
 ```
 
-FAILURE POSTURE: any deviation observed ⇒ the leg FAILS with MEASURED
-evidence (reported, blocks per constraint — the §8.8 hard-seam discipline).
+FAILURE POSTURE: any deviation FROM THE CORRECTED EXPECTATIONS ABOVE (a
+failing outcome, an `errors` array, a nonzero exit, a marker-ordering
+violation, or a bound event missing its record channels in shape (b)) ⇒ the
+leg FAILS with MEASURED evidence (reported, blocks per constraint — the
+§8.8 hard-seam discipline).
 
 ### 11.10 Acceptance-evidence map (closeout trace)
 

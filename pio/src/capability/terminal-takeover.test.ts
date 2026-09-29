@@ -40,7 +40,7 @@ import type {
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
 import type { IdSeams } from "../sandbox/layout.ts";
-import { ContractViolationError, PhaseBudgetError } from "./errors.ts";
+import { ContractViolationError } from "./errors.ts";
 import type { SessionVariableStore } from "./pio-session.ts";
 import { PioSession } from "./pio-session.ts";
 import type {
@@ -1413,12 +1413,13 @@ describe("hop matrix (H rows — materializeFrame over the physics world)", () =
       expected: { type: "Error", message: "boom" },
     },
     {
-      label: "PhaseBudgetError(2) — the budget shape",
-      thrown: (): unknown => new PhaseBudgetError(2),
+      label:
+        "an Error carrying the closed 'budget' cause — the adopted budget shape",
+      thrown: (): unknown => new Error("bounded out", { cause: "budget" }),
       expected: {
-        type: "PhaseBudgetError",
+        type: "Error",
         cause: "budget",
-        message: "Iteration budget exceeded after 2 iterations",
+        message: "bounded out",
       },
     },
     {

@@ -8,7 +8,8 @@
 // sessionId/dispose plus the RECORDING sendCustomMessage mock (the
 // session-present span stamps land on it); scripted prompt resolutions emit
 // SYNTHETIC EVENTS ONLY (they observe, write NOTHING to disk); a single-turn
-// settle pass = agent_start · agent_end []. mkdtemp tmpdir roots with
+// settle pass = agent_start · agent_end [] (the bound-shape row commits paths
+// through a write-settle variant instead). mkdtemp tmpdir roots with
 // PI_CODING_AGENT_DIR pointed at <tmp>/.pi/agent (rows choose SET or
 // UNSET/MALFORMED per their pin; saved/restored in afterEach) and
 // process.chdir into <tmp>/work (restored). Every session-driven row mints
@@ -52,7 +53,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import StubResearch from "../capabilities/research.ts";
+import StubResearch, { RESEARCH_MAX_RUNS } from "../capabilities/research.ts";
 import type { CapabilityParams } from "../capability/base.ts";
 import { deriveStateRootFromAgentDir } from "../capability/base.ts";
 import type { CapabilityTable } from "../capability/loader.ts";
@@ -72,6 +73,7 @@ type Listener = (event: AgentSessionEvent) => void;
 /** Stub behavior vocabulary (scripted settlements). */
 type StubMode =
   | "success"
+  | "bound-success"
   | "kill"
   | "bare-error"
   | "empty-report"
@@ -234,6 +236,9 @@ const stubKit = vi.hoisted(() => {
     varsRef: undefined as unknown,
     /** Caller-side seed read FROM the shared store during the callee's span. */
     seenCallerVar: undefined as unknown,
+    /** The absolute path the bound-success stop rule observes per run (set
+     * by the row; the observer plane only — nothing lands on disk). */
+    boundReportPath: undefined as string | undefined,
   };
   const reset = (): void => {
     state.bag = undefined;
@@ -242,6 +247,7 @@ const stubKit = vi.hoisted(() => {
     state.contract = undefined;
     state.varsRef = undefined;
     state.seenCallerVar = undefined;
+    state.boundReportPath = undefined;
   };
   return {
     STUB_REPORT_TOKEN,
@@ -255,6 +261,12 @@ const stubKit = vi.hoisted(() => {
 
 vi.mock("../capabilities/research.ts", async () => {
   const baseMod = await import("../capability/base.ts");
+  // THE tunable referenced by the bound-shape row rides the REAL owner's
+  // export (single-owner doctrine — never a duplicated literal).
+  const actual = await vi.importActual<
+    typeof import("../capabilities/research.ts")
+  >("../capabilities/research.ts");
+  const BOUND_MAX_RUNS = actual.RESEARCH_MAX_RUNS;
   // Pinned deep-copy of the shipped research contract literal (SOLE OWNER:
   // the contract field on ResearchCapability in
   // capabilities/research.ts).
@@ -300,6 +312,22 @@ vi.mock("../capabilities/research.ts", async () => {
           return { report: "" };
         case "missing-report":
           return {};
+        case "bound-success": {
+          // Bound shape over the REAL engine: every settling run COMMITS the
+          // stub report path, so the stop rule demands continuation through
+          // the ceiling — the phase exits BOUNDED (iterations === the cap)
+          // and the settlement below carries the slot-relative token exactly
+          // as the shipped capability would on a bound hit.
+          const target = stubKit.state.boundReportPath ?? "";
+          await this.execute_phase("research", {
+            instructions: stubKit.STUB_RESEARCH_INSTRUCTIONS,
+            min: 1,
+            max: BOUND_MAX_RUNS,
+            shouldStopLoop: (ctx) =>
+              Promise.resolve(!ctx.filesWritten.includes(target)),
+          });
+          return { report: stubKit.STUB_REPORT_TOKEN };
+        }
         default:
           // Success: ONE phase THROUGH the inherited handle (real base
           // execute_phase → marker-lined prompt on the shared handle).
@@ -312,7 +340,7 @@ vi.mock("../capabilities/research.ts", async () => {
       }
     }
   }
-  return { default: StubResearch };
+  return { default: StubResearch, RESEARCH_MAX_RUNS: BOUND_MAX_RUNS };
 });
 
 // ─── Sole-owner replicas (byte-pinned; \u2014 escaped identically) ─────
@@ -474,6 +502,22 @@ function emit(round: Round, ...events: object[]): void {
 function quietSettle(): object[] {
   return [
     { type: "agent_start" },
+    { type: "agent_end", messages: [], willRetry: false },
+  ];
+}
+
+/** A settle that COMMITS the given absolute path to the observer plane
+ * (and ONLY the observer plane — nothing lands on disk). */
+function writeSettle(absolutePath: string, toolCallId: string): object[] {
+  return [
+    { type: "agent_start" },
+    {
+      type: "tool_execution_start",
+      toolCallId,
+      toolName: "write",
+      args: { path: absolutePath },
+    },
+    { type: "tool_execution_end", toolCallId, isError: false },
     { type: "agent_end", messages: [], willRetry: false },
   ];
 }
@@ -721,6 +765,57 @@ describe("admission, composition, summary, settlement (C rows)", () => {
       expect(stderrText()).toBe("");
     });
   }
+
+  it("C6 bound-shaped callee settlement: the stub's scripted activity ends after a FULL RESEARCH_MAX_RUNS-shape bound settlement (every settling run commits the stub report path — the phase exits AT the ceiling, prompts x max) and the demo STILL reaches summary + ok (the verbatim fault-forwarding gate keys ONLY on ok, so a bound-settled callee's ok:true + frozen token passes by construction)", async () => {
+    const tmp = newTempRoot();
+    enterWorkTree(tmp);
+    const { instance, round } = await host();
+    const absoluteReport = expectedAbsolutePath(stubKit.STUB_REPORT_TOKEN);
+    stubKit.state.mode = "bound-success";
+    stubKit.state.boundReportPath = absoluteReport;
+    const boundPasses: object[][] = [];
+    for (let i = 1; i <= RESEARCH_MAX_RUNS; i++) {
+      boundPasses.push(writeSettle(absoluteReport, `w${i}`));
+    }
+    scriptRuns(round, quietSettle(), ...boundPasses, quietSettle());
+    const demo = new ComposeSameSessionDemoCapability({ session: instance });
+    const result = await demo.run();
+    // The inline Outcome RETURNS AT THE AWAIT with ok:true over the
+    // BOUNDED callee settlement, and the demo continued to its remaining
+    // work (the summary).
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    expect(result.outputs).toStrictEqual({ report: absoluteReport });
+    // Greeting + the callee's EXACTLY-AT-the-ceiling phase runs + summary.
+    expect(round.session.prompt).toHaveBeenCalledTimes(RESEARCH_MAX_RUNS + 2);
+    expect(round.timeline).toEqual([
+      { kind: "custom", payload: demoMarkerPayload() },
+      { kind: "prompt", text: greetingPromptText() },
+      { kind: "custom", payload: researchMarkerPayload() },
+      ...Array.from({ length: RESEARCH_MAX_RUNS }, () => ({
+        kind: "prompt" as const,
+        text: researchPhasePromptText(),
+      })),
+      {
+        kind: "prompt",
+        text: summaryPromptText(absoluteReport),
+      },
+    ]);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(2);
+    // D1 placement holds for the bound shape too: the bag deep-equals
+    // EXACTLY { session } BY REFERENCE and no second handle ever mints.
+    expect(stubKit.state.bag).toStrictEqual({ session: instance });
+    expect((stubKit.state.bag as { session: PioSession }).session).toBe(
+      instance,
+    );
+    expect(stubKit.state.inputs).toStrictEqual({ topic: DEMO_TOPIC });
+    expect(sdkKit.state.rounds).toHaveLength(1);
+    // Zero demo-side writes anywhere under the owned tree (scripted events
+    // observe only; nothing seeds or writes the report here).
+    expect(readdirSync(tmp).sort()).toEqual(["work"]);
+    expect(readdirSync(join(tmp, "work"))).toEqual([]);
+    expect(stderrText()).toBe("");
+  });
 });
 
 // ─── A rows: ticket acceptance evidence ─────────────────────────────────

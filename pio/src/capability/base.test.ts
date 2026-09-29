@@ -43,7 +43,7 @@ import {
   settleFileModeOutputs,
 } from "./base.ts";
 import type { Contract } from "./contract.ts";
-import { ContractViolationError, PhaseBudgetError } from "./errors.ts";
+import { ContractViolationError } from "./errors.ts";
 import { PioSession, renderCapabilityMarker } from "./pio-session.ts";
 import type { CapabilityResult } from "./status.ts";
 
@@ -567,13 +567,12 @@ describe("PioCapability — escape capture", () => {
       },
     },
     {
-      label:
-        "a PhaseBudgetError captures with the budget cause and default message",
-      thrower: () => new PhaseBudgetError(2),
+      label: "a budget-cause Error carries the closed-vocabulary adopted cause",
+      thrower: () => new Error("bounded", { cause: "budget" }),
       expected: {
-        type: "PhaseBudgetError",
+        type: "Error",
         cause: "budget",
-        message: "Iteration budget exceeded after 2 iterations",
+        message: "bounded",
       },
     },
     {
@@ -786,7 +785,7 @@ describe("PioCapability — row-2 dispatch (B rows)", () => {
     ]);
   });
 
-  it("B5 — a body-thrown PhaseBudgetError surfaces unmasked at the await ({ type: 'PhaseBudgetError', cause: 'budget', default message }) with the hop fully unwound and the record mirrored", async () => {
+  it("B5 — a body-thrown budget-cause error surfaces unmasked at the await ({ type: 'Error', cause: 'budget', message }) with the hop fully unwound and the record mirrored", async () => {
     const root = newBTempRoot();
     const world = buildBWorld(root, "/work/b5");
     const takeover = await ensureTakeoverModule();
@@ -802,14 +801,14 @@ describe("PioCapability — row-2 dispatch (B rows)", () => {
         super({});
       }
       async call(): Promise<Record<string, unknown>> {
-        throw new PhaseBudgetError(2);
+        throw new Error("body fault: bounded out", { cause: "budget" });
       }
     }
     const result = await new B5Cap().run();
     expectSingleFailure(result, {
-      type: "PhaseBudgetError",
+      type: "Error",
       cause: "budget",
-      message: "Iteration budget exceeded after 2 iterations",
+      message: "body fault: bounded out",
     });
     const calls = world.runtime.switchSession.mock.calls.map(
       (c) => c[0],
@@ -825,9 +824,9 @@ describe("PioCapability — row-2 dispatch (B rows)", () => {
     expect(parsed.ok).toBe(false);
     expect(parsed.errors).toEqual([
       {
-        type: "PhaseBudgetError",
+        type: "Error",
         cause: "budget",
-        message: "Iteration budget exceeded after 2 iterations",
+        message: "body fault: bounded out",
       },
     ]);
   });
@@ -850,7 +849,6 @@ describe("PioCapability — row-2 dispatch (B rows)", () => {
         .catch((reason: unknown) => reason);
       expect(rejection).toBeInstanceOf(Error);
       expect(rejection).not.toBeInstanceOf(ContractViolationError);
-      expect(rejection).not.toBeInstanceOf(PhaseBudgetError);
       if (rejection instanceof Error) {
         expect(rejection.name).toBe("Error");
         expect(rejection.message).toBe(
@@ -1120,32 +1118,31 @@ describe("PioCapability — span stamp (owned solely by the run() seam)", () => 
     expect(round.session.prompt).toHaveBeenCalledTimes(0);
   });
 
-  class BreachStampCap extends PioCapability {
+  class FaultAfterSettleStampCap extends PioCapability {
     readonly contract: Contract = FIXTURE_CONTRACT;
     constructor(params: CapabilityParams = {}) {
       super(params);
     }
     async call(): Promise<Record<string, unknown>> {
-      const a = await this.execute_phase("breach", {
-        min: 3,
-        max: 2,
-        shouldStopLoop: async () => false,
+      await this.execute_phase("fault-after-settle", {
+        shouldStopLoop: async () => true,
       });
-      return { unreachable: a.iterations };
+      // The author-level fault lands AFTER a settled run: the span stamp
+      // outlives it.
+      throw new Error("body fault after a settled run");
     }
   }
 
-  it("a budget-breach body still PERSISTS the span stamp (the mark landed before the body and outlives the rejection)", async () => {
+  it("a fault thrown AFTER a settled run still PERSISTS the span stamp (the mark landed strictly before the first prompt and outlives the rejecting run)", async () => {
     const { instance, round } = await host();
-    scriptRuns(round, quietRun(), quietRun());
-    const cap = new BreachStampCap({ session: instance });
+    scriptRuns(round, quietRun());
+    const cap = new FaultAfterSettleStampCap({ session: instance });
     const result = await cap.run();
     expectSingleFailure(result, {
-      type: "PhaseBudgetError",
-      cause: "budget",
-      message: "Iteration budget exceeded after 2 iterations",
+      type: "Error",
+      message: "body fault after a settled run",
     });
-    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
     expect(
       round.session.sendCustomMessage.mock.invocationCallOrder[0],
@@ -1243,67 +1240,77 @@ describe("deriveStateRootFromAgentDir (pure)", () => {
 });
 
 describe("PioCapability — engine integration through the base", () => {
-  class BreachCap extends PioCapability {
+  class UncapturedFaultCap extends PioCapability {
     readonly contract: Contract = FIXTURE_CONTRACT;
     constructor(params: CapabilityParams = {}) {
       super(params);
     }
     async call(): Promise<Record<string, unknown>> {
-      const a = await this.execute_phase("breach", {
-        min: 3,
-        max: 2,
-        shouldStopLoop: async () => false,
+      await this.execute_phase("fault-after-settle", {
+        shouldStopLoop: async () => true,
       });
-      return { unreachable: a.iterations };
+      // The author-level fault lands AFTER a settled run: the engine
+      // propagation reaches it untouched (a settled run is not a stop signal
+      // for an escaping fault).
+      throw new Error("body fault after a settled run");
     }
   }
 
-  it("lets an uncaptured budget breach escape the body into the failing result", async () => {
+  it("lets an uncaptured body fault escape the body into the failing result", async () => {
     const { instance, round } = await host();
-    const cap = new BreachCap({ session: instance });
-    scriptRuns(round, quietRun(), quietRun());
+    const cap = new UncapturedFaultCap({ session: instance });
+    scriptRuns(round, quietRun());
     const result = await cap.run();
-    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expectSingleFailure(result, {
-      type: "PhaseBudgetError",
-      cause: "budget",
-      message: "Iteration budget exceeded after 2 iterations",
+      type: "Error",
+      message: "body fault after a settled run",
     });
   });
 
-  class CaughtBreachCap extends PioCapability {
+  /** Locally-minted rejection sentinel standing in for a surviving
+   * propagation-family fault the hook can raise (owner: THIS suite). */
+  class RejectingHookSentinel extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = "RejectingHookSentinel";
+    }
+  }
+
+  class CaughtHookFaultCap extends PioCapability {
     readonly contract: Contract = FIXTURE_CONTRACT;
     constructor(params: CapabilityParams = {}) {
       super(params);
     }
     async call(): Promise<Record<string, unknown>> {
-      let caughtIterations: number | undefined;
+      let caughtMessage: string | undefined;
       try {
-        await this.execute_phase("breach", {
-          min: 3,
-          max: 2,
-          shouldStopLoop: async () => false,
+        await this.execute_phase("hooked-fault", {
+          shouldStopLoop: async () => {
+            throw new RejectingHookSentinel("the hook gave up");
+          },
         });
       } catch (err) {
-        // Authors may catch the breach narrowly around individual calls.
-        if (err instanceof PhaseBudgetError) {
-          caughtIterations = err.iterations;
+        // Authors may catch a rejecting-hook fault narrowly around
+        // individual calls.
+        if (err instanceof RejectingHookSentinel) {
+          caughtMessage = err.message;
         } else {
           throw err;
         }
       }
-      return { caughtIterations };
+      return { caughtMessage };
     }
   }
 
-  it("completes ok when the body catches the breach narrowly", async () => {
+  it("completes ok when the body catches a rejecting-hook fault narrowly (author-level handling coexists with the base catch-all, which never preempts it)", async () => {
     const { instance, round } = await host();
-    const cap = new CaughtBreachCap({ session: instance });
-    scriptRuns(round, quietRun(), quietRun());
+    scriptRuns(round, quietRun());
+    const cap = new CaughtHookFaultCap({ session: instance });
     const result = await cap.run();
-    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(result.ok).toBe(true);
-    expect(result.outputs).toEqual({ caughtIterations: 2 });
+    expect(result.outputs).toEqual({ caughtMessage: "the hook gave up" });
   });
 
   class HookCap extends PioCapability {

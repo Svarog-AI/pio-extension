@@ -51,7 +51,6 @@ import type {
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
 import { createPioSession } from "../session.ts";
-import { PhaseBudgetError } from "./errors.ts";
 
 /** Tool names whose successful executions commit a file path. */
 const FILE_TOOL_NAMES: ReadonlySet<string> = new Set(["write", "edit"]);
@@ -84,7 +83,8 @@ export interface PhaseOptions {
   readonly instructions?: string;
   /** Floor: the phase always executes at least this many runs. */
   readonly min?: number;
-  /** Ceiling: demanding continuation past it rejects the phase. */
+  /** Ceiling: bounds execution — continuation still demanded at it ends
+   * the loop; the phase resolves with the bounded result. */
   readonly max?: number;
   /** Runs after every settled run; `true` ends the phase, `false` demands another run. */
   readonly shouldStopLoop?: (ctx: IterationCtx) => Promise<boolean>;
@@ -102,7 +102,7 @@ export interface IterationCtx {
 
 /** Outcome of a completed phase. */
 export interface PhaseResult {
-  /** True on every normal return; a budget breach throws instead. */
+  /** True on every return. */
   readonly done: boolean;
   /** Settled runs executed. */
   readonly iterations: number;
@@ -440,9 +440,8 @@ export class PioSession {
    * session's prompt channel. The marker line composed once per phase leads
    * every run's text; the between-runs hook observes each settling run's
    * fresh counters and stable per-run window. Every exit — a normal return
-   * or a propagated budget breach / hook / prompt rejection — closes both
-   * windows so a finished phase leaks nothing into the next one on the
-   * same instance.
+   * or a propagated hook / prompt rejection — closes both windows so a
+   * finished phase leaks nothing into the next one on the same instance.
    */
   async execute_phase(id: string, opts?: PhaseOptions): Promise<PhaseResult> {
     const min = opts?.min ?? 1;
@@ -470,10 +469,7 @@ export class PioSession {
           });
           proceed = proceed || !verdict;
         }
-        if (!proceed) break;
-        if (iterations >= max) {
-          throw new PhaseBudgetError(iterations);
-        }
+        if (!proceed || iterations >= max) break;
       }
       const messages = this.getRunMessages();
       const finalSnapshot = this.counters();

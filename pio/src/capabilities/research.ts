@@ -53,10 +53,7 @@ import {
 } from "../capability/base.ts";
 import type { Contract } from "../capability/contract.ts";
 import { classifySpec } from "../capability/contract.ts";
-import {
-  ContractViolationError,
-  PhaseBudgetError,
-} from "../capability/errors.ts";
+import { ContractViolationError } from "../capability/errors.ts";
 import { deriveProjectKey } from "../sandbox/layout.ts";
 
 // Re-exported for consumer stability — the body CO-HABITS the capability base
@@ -112,8 +109,8 @@ How to work:
 Work autonomously; do not ask the user anything during the run.`;
 }
 
-/** The pinned budget-breach truncation note appended after existing content
- * (<N> = the breached iteration count). */
+/** The pinned bound-hit truncation note appended after existing content
+ * (<N> = the iteration count at the bound-hit resolution). */
 function truncationNote(iterations: number): string {
   return `\n## Truncated at run budget\n\nStopped after ${iterations} runs: the run budget was hit before the topic ran dry. Sections above cover answered questions only.\n`;
 }
@@ -196,39 +193,50 @@ export default class ResearchCapability extends PioCapability {
     // the instructions; there is no cursor machinery.
     const reportExists = (await stat(absolutePath).catch(() => null)) !== null;
 
-    try {
-      await this.execute_phase("research", {
-        instructions: composeInstructions(topic, absolutePath, reportExists),
-        // min = 1 documents the floor's role in a no-report-start world;
-        // the cap (not any stall counter) bounds rambles-without-writing.
-        min: 1,
-        max: RESEARCH_MAX_RUNS,
-        shouldStopLoop: (ctx) =>
-          // Write-delta stopping rule (SR4): CONTINUE iff the PER-RUN delta
-          // of COMMITTED write/edit tool paths contains the ABSOLUTE report
-          // path; the first settled run without a report write ends the
-          // phase. Shell-redirect appends never appear in that observable.
-          Promise.resolve(!ctx.filesWritten.includes(absolutePath)),
-      });
-    } catch (error) {
-      // Budget span (D5 fail meaning — no silent skip): annotate the
-      // partial report so it stays COHERENT for a reader of the file alone,
-      // then re-throw THE SAME error so its typed identity + iterations
-      // datum reach the terminal record through the base catch-all. No
-      // other error class is annotated; non-budget errors propagate
-      // untouched.
-      if (error instanceof PhaseBudgetError) {
-        // appendFile CREATES the file when the model never wrote it — the
-        // note-only degenerate partial is accepted (coherent beats elaborate).
-        await appendFile(absolutePath, truncationNote(error.iterations));
-      }
-      throw error;
+    // Closure state over the stopping rule's per-run observation: the
+    // engine closes both observation windows on every phase exit, so the
+    // LAST invocation's take IS the final settling run's committed-write
+    // window at resolution time (no post-phase re-read is possible).
+    let lastRunWroteReport: boolean | undefined;
+    const result = await this.execute_phase("research", {
+      instructions: composeInstructions(topic, absolutePath, reportExists),
+      // min = 1 documents the floor's role in a no-report-start world;
+      // the cap (not any stall counter) bounds rambles-without-writing.
+      min: 1,
+      max: RESEARCH_MAX_RUNS,
+      shouldStopLoop: (ctx) => {
+        // Write-delta stopping rule (SR4): CONTINUE iff the PER-RUN delta
+        // of COMMITTED write/edit tool paths contains the ABSOLUTE report
+        // path; the first settled run without a report write ends the
+        // phase. Shell-redirect appends never appear in that observable.
+        const wrote = ctx.filesWritten.includes(absolutePath);
+        lastRunWroteReport = wrote;
+        return Promise.resolve(!wrote);
+      },
+    });
+
+    // Bound hit: the cap ended the loop while the final settling run STILL
+    // COMMITTED a report write (strict equality — an unobserved state can
+    // never fire the note). Append the PINNED truncation note so the
+    // partial report stays COHERENT for a reader of the file alone, then
+    // settle ok below — the post-phase sanity stat passes by construction
+    // (the note guarantees non-empty content). Natural convergence at
+    // exactly the cap (a non-writing final run) takes NO note: the
+    // annotation marks the bound event, not the iteration count.
+    if (
+      result.iterations === RESEARCH_MAX_RUNS &&
+      lastRunWroteReport === true
+    ) {
+      // appendFile CREATES the file when the model never wrote it — the
+      // note-only degenerate partial is accepted (coherent beats elaborate).
+      await appendFile(absolutePath, truncationNote(result.iterations));
     }
 
-    // Post-phase sanity (D4/D8 — capability-local, MINIMAL), reached only on
-    // NATURAL stop: the DECLARED file slot must resolve to an EXISTING AND
-    // NON-EMPTY file joined against the KNOWN PROJECT-SLOT BASE — NO silent
-    // empty-success.
+    // Post-phase sanity (capability-local, MINIMAL): the DECLARED file slot
+    // must resolve to an EXISTING AND NON-EMPTY file joined against the
+    // KNOWN PROJECT-SLOT BASE — NO silent empty-success. On a bound hit the
+    // note above already guarantees non-empty content, so the stat passes
+    // by construction there.
     const values = { report: relativeForm };
     // Shared resolver seam: paramKey precedence over the locally-constructed
     // values object settles file-mode here by construction — no other mode

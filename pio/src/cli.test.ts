@@ -1,4 +1,4 @@
-// Behavior-matrix TDD suite for the pio CLI (Steps 2–3). Drives `parse` and
+// Behavior-matrix TDD suite for the pio CLI. Drives `parse` and
 // `main(argv, io)` with captured IO, plus mechanical SDK-isolation guards.
 import { readFileSync } from "node:fs";
 import type { CliIO } from "./cli.ts";
@@ -15,12 +15,19 @@ vi.mock("./sandbox/run.ts", () => ({
   runCapability: vi.fn(),
 }));
 
-// S04 help-tail lines — the SOLE OWNERS are HELP_LINES indices 8–9 in
+// Help-tail lines — the SOLE OWNERS are HELP_LINES indices 8–9 in
 // ./cli.ts; the copies keep the byte-pins meaningful. NOTE the em dash is
 // the U+2014 EM DASH character — pinned codepoint, never normalized.
 const RESEARCH_ENTRY_LINE =
   "  research — bounded web-research loop producing a markdown file report";
 const CANONICAL_INVOCATION_LINE = '  pio run research --input topic="<topic>"';
+// Compose-demo help-tail lines — the SOLE OWNERS are HELP_LINES indices
+// 10–11 in ./cli.ts; the copies keep the byte-pins meaningful. NOTE the em
+// dash is the U+2014 EM DASH character (pinned codepoint), and the canonical
+// line is the BARE form — the demo takes nothing.
+const COMPOSE_DEMO_ENTRY_LINE =
+  "  compose-new-session-demo — TEMPORARY: greets the operator, runs research in the taken-over terminal, then reports the top 3 findings";
+const COMPOSE_DEMO_INVOCATION_LINE = "  pio run compose-new-session-demo";
 
 // Replicated miss-line literal — the SOLE OWNER is capabilityRefusalLine in
 // capability/loader.ts; the copy follows its owner into the entry suites so
@@ -284,10 +291,10 @@ describe("parse (--input pair grammar — strictness edges, first violation wins
 });
 
 describe("main (behavior matrix)", () => {
-  // Full pinned-array equality: every line of the ten-line pinned form stays
-  // byte-identical — placement pinned, not merely presence (the S04 flip
-  // moved EXACTLY indices 8–9 onto the surviving header; every other line is
-  // untouched).
+  // Full pinned-array equality: every line of the twelve-line pinned form
+  // stays byte-identical — placement pinned, not merely presence (indices
+  // 0–9 byte-stable under the pre-existing owner replicas; the two appended
+  // indices ride their own owner replicas above).
   it("--help: exit 0, stdout deep-equals the full pinned line array, clean stderr", async () => {
     const { io, out, err } = collectIo();
     const code = await main(["--help"], io);
@@ -303,6 +310,8 @@ describe("main (behavior matrix)", () => {
       "Built-in capabilities:",
       RESEARCH_ENTRY_LINE,
       CANONICAL_INVOCATION_LINE,
+      COMPOSE_DEMO_ENTRY_LINE,
+      COMPOSE_DEMO_INVOCATION_LINE,
     ]);
     expect(err).toEqual([]);
   });

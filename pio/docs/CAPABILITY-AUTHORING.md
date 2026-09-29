@@ -21,8 +21,9 @@ Orientation (where things live):
   session host + phase engine (`pio-session.ts`), the terminal record
   (`status.ts`), and the registry (`loader.ts`).
 - `pio/src/capabilities/` — the built-in implementations (plural directory =
-  implementations; singular `capability/` = framework). Today exactly one:
-  `research.ts`.
+  implementations; singular `capability/` = framework). Today exactly two:
+  `research.ts` (permanent) and `compose-new-session-demo.ts` (TEMPORARY
+  composition vehicle — removal scheduled; registry note per §10).
 - `pio/src/sandbox/` — host-side launch mechanics: engagement layout and
   derivation helpers (`layout.ts`), profile renderer (`render.ts`), owned
   extension provisioning (`owned-extensions.ts`), and the gated host pipeline
@@ -51,8 +52,11 @@ async execute_phase(id: string, opts?: PhaseOptions): Promise<PhaseResult>
 
 It delegates the option bag verbatim to `PioSession.execute_phase`
 (`pio/src/capability/pio-session.ts`) and throws a plain `Error` while no
-session is present (cross-process placement is declared by the base but never
-spawned against — in-process placement is the v1 path).
+session is present — pinned message (`pio/src/capability/base.ts`):
+`no session available: execute_phase requires in-process placement`. Session
+absence at the base's `run()` seam is what hops the row-2 terminal-takeover
+frame (§8) — in-process placement remains the default hosting path for every
+top frame.
 
 The marker line is composed ONCE per phase — `renderPhaseMarker`
 (two U+2014 em dashes flanking the label, single spaces: `—— id ——`) — and
@@ -637,10 +641,14 @@ Where a capability MAY own lines versus where the entry/emitter owns them:
   process-stream writes while the live terminal renders (the constructor bag
   is FROZEN by the `CapabilityConstructor` type — `pio/src/capability/loader.ts`
   — so no io seam can be added; suites spy the streams). `research` exemplifies
-  the outcome model: the PROJECT-SLOT-RELATIVE token in `outputs`
-  (`{ report: "research/<fingerprint>.md" }`) alongside the in-stream statement
-  the live terminal presents — naming rides the agent's own words plus the
-  frozen ledger token. Deterministic delivery receipts beyond the in-stream
+  the outcome model: it RETURNS the slot-relative report token
+  (`{ report: "research/<fingerprint>.md" }`); the base's settle seam then
+  transforms FILE-MODE output slots ONCE at success settlement to this
+  bubble's ABSOLUTE placement (`settleFileModeOutputs`,
+  `pio/src/capability/base.ts`; result channels per §8) while VALUE slots pass
+  through untransformed — alongside the in-stream statement the live terminal
+  presents: naming rides the agent's own words plus the settled ledger values.
+  Deterministic delivery receipts beyond the in-stream
   statement are the future default capability's territory — named once as a
   boundary; nothing built, wired, or promised. The `StatusEmitter` publishes
   `outputs` byte-unmodified — expect NO `pio/src/capability/status.ts` edits
@@ -851,9 +859,12 @@ Shipped mechanics, each anchored to the entry:
 RUNTIME, never a session object — so the presentation follows whatever
 session the runtime currently holds natively, and surfacing other sessions
 rides the runtime's own session machinery with zero presentation changes.
-That territory belongs to the later composition goal — named ONCE, NO
-promises (no public rebind API exists on the pinned dist; cross-capability
-invocation stays a frozen ticket non-goal).
+That territory HAS SHIPPED under the terminal-takeover composition: the
+pinned dist exposes `switchSession` publicly (measured), and the row-2 hop
+rides it with the single live terminal following every swap
+(`pio/src/capability/terminal-takeover.ts`; §8). The end-state-binding
+doctrine — presentation follows the RUNTIME, never a session — is UNCHANGED
+and is exactly what makes the swap presentation-free.
 
 **TTY-required execution surface.** User-run top-level capability invocations
 REQUIRE an attached TTY. Two enforced sites, both pre-construction fast-fails
@@ -918,13 +929,16 @@ general license to print during a run.
 Success naming under the outcome model (cross-ref the corrected §5.4): the
 capability states its deliverable in the SESSION STREAM — the agent's own
 words, exactly what the live terminal presents — and the machine ledger
-carries the frozen project-slot-relative token (`serializeStatus` publishes
-`outputs` byte-unmodified, `pio/src/capability/status.ts`). Shipped header
-block, verbatim (`pio/src/capabilities/research.ts`):
+carries WHAT THE BASE SETTLED: `serializeStatus` publishes `outputs`
+byte-unmodified (`pio/src/capability/status.ts`) — the settled absolute
+placement for FILE-MODE slots (the `settleFileModeOutputs` transform,
+`pio/src/capability/base.ts`), verbatim passthrough for VALUE slots; result
+channels per §8. Shipped header block, verbatim
+(`pio/src/capabilities/research.ts`):
 
 ```
 // pio/src/capabilities/research.ts (module header)
-Outcome model (Step-6 settlement): the capability states its deliverable
+Outcome model: the capability states its deliverable
 through the SESSION STREAM — what the live terminal presents — and the
 machine ledger (the terminal record's `outputs`) carries the frozen
 project-slot-relative token. Capability code performs NO raw terminal
@@ -1085,3 +1099,594 @@ collection also ships a bundled skill directory (`pi.skills: ["./skills"]` —
 whether it surfaces as a discoverable skill in bubble sessions is a benign
 availability side-channel the quality gate observes live — this document does
 not teach it.
+
+## 8. Composed execution: the row-2 terminal-takeover frame
+
+Material: `pio/src/capability/base.ts` (header placement clause, the `run()`
+dispatch, the settle seam) · `pio/src/capability/terminal-takeover.ts`
+(frame environment, hop primitive, ordered shutdown pass) ·
+`pio/src/capability/pio-session.ts` (`fromRuntime` / `rebind`) ·
+`pio/src/capability/status.ts` (per-frame terminal records) ·
+`pio/src/run-session.ts` (entry mount + frame-environment install) ·
+`pio/src/capabilities/compose-new-session-demo.ts` (shipped exercise vehicle
+— TEMPORARY, §10) · the installed dist `@earendil-works/pi-coding-agent`
+0.85.1 (`dist/core/agent-session-runtime.d.ts`,
+`dist/core/agent-session-runtime.js`, `dist/modes/interactive/interactive-mode.js`,
+`dist/core/session-manager.js`).
+
+Placement taxonomy of record: **row 1** — shared-conversation composition
+(DECLARED, next slot, unimplemented — boundary only, §9); **row 2** — the
+terminal-takeover frame (this section); **row 3** — headless process spawning
+(slot 8, DECLARED-BUT-UNBOUND — boundary only, §9). Row 2 is this goal's
+landing: a capability invoked WITHOUT a session takes over the operator's
+live terminal under a fresh session hosted on the caller's runtime.
+
+### 8.1 Placement: a separate-context frame inside the caller's process
+
+A capability invoked without a session runs a SEPARATE-context, sequential
+(caller awaits), single-process FRAME — the terminal-takeover frame — INSIDE
+THE CALLER'S PROCESS. No spawn, no second terminal, no second process: one
+engagement / one process / one terminal (§5.9 stands), and zero orphans by
+construction. The binding clause, verbatim (`pio/src/capability/base.ts`
+module header):
+
+```
+// pio/src/capability/base.ts (module header)
+Session placement binds at construction: a provided session runs in
+process; an ABSENT session hops the row-2 terminal-takeover frame under
+a fresh child host (lazy import, evaluated on that path only; the await
+payload is the primary channel, the per-frame record the secondary).
+```
+
+The dispatch seam — `validateInputs` stays placement-AGNOSTIC at its current
+position (a violation settles the capture BEFORE any hop side effect — zero
+switches, mints, or scope dirs), then session-absent hops through the lazy
+literal thunk; session-present executions never evaluate the takeover module
+(eval-flag pin, suite-proven):
+
+```ts
+// pio/src/capability/base.ts (run() placement branch)
+      validateInputs(this.contract, values);
+      if (this.s === undefined) {
+        // Row-2 frame: the body closure adopts the child host into the
+        // slot (the takeover module never assigns the slot itself).
+        const takeover = await import("./terminal-takeover.ts");
+        return await takeover.materializeFrame({
+          capability: {
+            name: this.contract.name,
+            version: this.contract.version,
+          },
+          body: async (
+            childFrame: PioSession,
+          ): Promise<Record<string, unknown>> => {
+            this.s = childFrame;
+            return settle(await this.call(values));
+          },
+        });
+      }
+```
+
+The entire hop sits inside the base catch-all — machinery faults settle as
+the shipped `{ ok: false, errors: [capture] }` shape, and `run` NEVER
+rejects on either placement:
+
+```ts
+// pio/src/capability/base.ts (run() JSDoc)
+  /**
+   * The sole composition seam — never overridden. Validates inputs before
+   * the placement branch (a violation settles the capture with zero hop
+   * side effects), then hops the row-2 frame (session absent) or runs the
+   * body in place (session present). Success settles ONCE at this seam:
+   * file-mode output slots transform to the bubble's absolute placement —
+   * in-place directly, and on the hop path inside the body so the single
+   * payload serves the child record and the caller's await identically.
+   * A conversion fault escapes into THIS capability's catch-all after the
+   * terminal ownership is restored on every reachable path. The catch-all
+   * spans both placements: this method never rejects.
+   */
+```
+
+`materializeFrame` is a SYNCHRONOUS dispatcher on purpose (D-sync doctrine):
+the holder guard throws out of the function synchronously when the frame
+environment is uninstalled (the base catch-all captures it), the latch is
+minted BEFORE any mutation, a detached continuation owns the remaining
+stages, and the caller receives the latch value immediately:
+
+```ts
+// pio/src/capability/terminal-takeover.ts (materializeFrame JSDoc)
+/**
+ * THE row-2 composition entry. Synchronous on purpose: the holder guard
+ * throws OUT of this function when uninstalled (base-level catch-all
+ * captures it), the latch is minted before any mutation, a detached
+ * continuation owns the remaining stages, and the caller receives the
+ * latch value immediately. Settlement uses `resolve` exclusively — the
+ * `reject` channel is reserved for the ordered shutdown pass.
+ */
+```
+
+### 8.2 Actor split: the caller merely invokes
+
+- **The caller MERELY invokes** — construct the callee WITHOUT a session param
+  and `await` its `run(inputs)` (`new B({})` + `await b.run(values)`). It
+  never touches hop machinery: no ledger, no switch, no re-arm.
+- **The frame is MATERIALIZED BY THE CALLEE'S BASE-PROVIDED `run()`** — the
+  never-overridden composition seam (§8.1) — the analogue of a function
+  prologue/epilogue written by neither author. Both sides see ordinary
+  promise semantics; the takeover is an implementation detail of the
+  callee's base.
+- **The callee's fresh session is hosted under the CALLER-SIDE runtime host**
+  via the runtime's NATIVE session machinery — `switchSession` onto a
+  freshly-minted platform-named transcript (§8.5) — NOT a second constructed
+  runtime.
+- **The session always flows INTO the capability instance.** Shipped
+  precedent: the entry constructs the top frame's `PioSession` and injects it
+  at construction (`pio/src/run-session.ts`):
+
+  ```ts
+  // pio/src/run-session.ts (pipeline)
+  const instance = new resolution.capability.ctor({ session });
+  ```
+
+  Same flow, relocated frame site: composed frames are constructed bare
+  (`{}`) and their base materializes the frame instead.
+
+### 8.3 The shipped example: `compose-new-session-demo.ts`
+
+The shipped demonstration (TEMPORARY — §10) composes `research` as a
+co-shipping sibling. The invocation idiom, VERBATIM:
+
+```ts
+// pio/src/capabilities/compose-new-session-demo.ts (import clauses)
+import ResearchCapability from "./research.ts";
+```
+
+```ts
+// pio/src/capabilities/compose-new-session-demo.ts (call(), stage 2)
+    const child = new ResearchCapability({});
+    const outcome = await child.run({ topic: DEMO_TOPIC });
+```
+
+Direct static DEFAULT sibling import + session-absent construction + awaited
+`run({ topic })`. Co-shipping builtins compose over each other's shipped
+modules DIRECTLY — the loader's dispatch machinery stays RESERVED for
+startup/top-level resolution (stage-2 comment, quoted verbatim):
+
+```
+// pio/src/capabilities/compose-new-session-demo.ts (stage-2 comment)
+2. Composition — co-shipping builtins compose over EACH OTHER'S shipped
+modules directly (the loader's dispatch machinery is reserved for
+startup/top-session resolution). Constructed WITHOUT a session param,
+so the child's OWN base dispatch hops the terminal-takeover frame
+while it runs and hands the terminal back on return — this module
+never touches hop machinery.
+```
+
+The demo's THREE-PHASE shape is the canonical illustration of "the caller
+frame owns the terminal around the hop": greeting on the caller's OWN session
+BEFORE the hop → the composition (the child takes and returns the terminal)
+→ post-return summary ON THE PARENT FRAME (reading the settled report value
+and stating the findings through the session stream).
+
+### 8.4 Result channels: live await payload primary, per-frame record secondary
+
+PRIMARY channel = the LIVE `CapabilityResult` returned at the caller's
+`await` — in-process, the caller genuinely RECEIVES the typed payload (settled
+outputs on success; captured errors on failure). SECONDARY/durable channel =
+the callee's PER-FRAME terminal record, written UNCONDITIONALLY before the
+frame releases — one authoritative write per session scope, canonical bytes
+(`pio/src/capability/status.ts`):
+
+```ts
+// pio/src/capability/status.ts (emit contract)
+  /** One authoritative write per emitter; losers await the winner's result. */
+  emit(result: CapabilityResult): Promise<StatusEmissionResult>;
+```
+
+(one emitter per frame scope — the hop builds the child's own emitter rooted
+at the child scope dir, stamped from the callee's identity; the entry owns
+the outermost scope's emitter.)
+
+Settle-seam consequence (taught once, binds both placements): FILE-MODE
+output slots transform ONCE at the base's success settlement to this
+bubble's ABSOLUTE placement — `settleFileModeOutputs`
+(`pio/src/capability/base.ts`):
+
+```ts
+// pio/src/capability/base.ts (settleFileModeOutputs JSDoc)
+/**
+ * Settle FILE-MODE contract output slots to this bubble's ABSOLUTE
+ * placement — the single site where "where do my file deliverables live"
+ * is answered. Pure over explicit arguments: the `placementProvider`
+ * defers the derivation to the CALLER's seam and is invoked LAZILY (memoized
+ * per call) only when a file-mode slot actually carries a relative string.
+ * Value-mode slots, non-string or missing values, and already-absolute
+ * values pass through untouched; the static-file form reports the
+ * contract-declared location under the slot name. When nothing transforms,
+ * the INPUT record survives by reference.
+ */
+```
+
+ONE settled payload serves the child record AND the caller's await
+IDENTICALLY (on the hop path the transform runs inside the body — §8.1
+`run()` JSDoc). Capabilities EMIT slot-relative tokens; consumers TAKE
+settled values VERBATIM — no consumer-side path math (the demo reads the
+child's report at the settled ABSOLUTE path it receives and performs zero
+derivation).
+
+Caller-OWNED cause attribution — the await surface authors program against:
+
+- SUCCESS ⇒ the composed await RESOLVES with `ok: true` (+ the child record
+  landed at `<childScope>/top/status.json`).
+- OPERATOR ABORT ⇒ the shutdown pass REJECTS the pending composed latch with
+  `FrameKillError` at trigger time (§8.7); the base catch-all — spanning the
+  hop — converts that rejection, so the caller's `run()` await settles
+  RESOLVED with the kill capture: closed vocabulary `cause: "kill"`; `run`
+  never rejects. Hermetically observable; in production the exit follows
+  immediately.
+
+  ```ts
+  // pio/src/capability/terminal-takeover.ts
+  export class FrameKillError extends Error {
+    readonly cause: "kill";
+    constructor() {
+      super(FRAME_KILL_MESSAGE);
+      this.name = "FrameKillError";
+      this.cause = "kill";
+    }
+  }
+  ```
+
+  with the fixed message (pinned bytes, source-literal escape rendered here
+  as the character):
+
+  ```ts
+  // pio/src/capability/terminal-takeover.ts
+  const FRAME_KILL_MESSAGE =
+    "terminal-takeover: frame interrupted — the ordered shutdown pass terminated the process";
+  ```
+
+- CALLEE THROW ⇒ the typed capture PROPAGATES THROUGH THE AWAIT
+  (`{ ok: false, errors: [capture] }` — contract violations settle BEFORE any
+  hop side effect: zero switches/mints/scope dirs; budget breaches and body
+  faults mirror IDENTICALLY into the child record and the await).
+- COMPOSITION-LEVEL WALL-CLOCK BREACH ⇒ DEFERRED boundary — `timeoutMs` stays
+  RESERVED-UNENFORCED (§9); the parked design names the breach shape (typed
+  `cause: "budget"` error carrying the frame's PARTIAL record at the caller's
+  await) and lands AFTER the stuck-session proof — named only, never
+  demonstrated.
+
+### 8.5 Terminal physics (measured)
+
+Design basis OUTCOME A — ONE live `InteractiveMode` follows native session
+replacement — measured against the pinned 0.85.1 dist and proven by the
+scripted rows; OUTCOME B (per-frame IM fallback) remained the DOCUMENTED
+FALLBACK and was NOT needed (coverage boundary: §8.8).
+
+- ONE live `InteractiveMode` per process lifetime, mounted by the entry at
+  the explicit mount step (§7.1 quote). The SAME live IM follows EVERY
+  native session replacement automatically: the dist constructor wires
+  `setBeforeSessionInvalidate` / `setRebindSession` on the runtime host
+  (`dist/modes/interactive/interactive-mode.js` L313-317 region), so a
+  `switchSession` re-renders the newly held session's transcript with zero
+  presentation changes.
+- `AgentSessionRuntime.switchSession(sessionPath)` is PUBLICLY exposed
+  (`dist/core/agent-session-runtime.d.ts`): it opens the target via
+  `SessionManager.open(path)`, tears down the outgoing session
+  (`abort()` + persist → `session_shutdown` event → `dispose()`,
+  `teardownCurrent` in `dist/core/agent-session-runtime.js`), then re-runs
+  the STORED factory — pi's own `/resume` flow.
+- Hop switch args EXACTLY `[childFile, parentFile]`, each
+  `cwdOverride`-pinned to the runtime cwd (shipped call sites):
+
+  ```ts
+  // pio/src/capability/terminal-takeover.ts (#attachChildFrame)
+  const switched = await runtime.switchSession(scoped.childFile, {
+    cwdOverride: runtime.cwd,
+  });
+  ```
+
+  ```ts
+  // pio/src/capability/terminal-takeover.ts (#restoreParent)
+  await runtime.switchSession(attached.parentFile, {
+    cwdOverride: runtime.cwd,
+  });
+  ```
+
+- Child anchoring WITHOUT SDK file-format duplication in pio code: the
+  platform-named file comes from standalone `SessionManager.create(cwd,
+  childTopDir)`; `SessionManager.open` PRESERVES the explicit path — an
+  absent file is minted anchored at exactly that path
+  (`dist/core/session-manager.js`):
+
+  ```ts
+  // pio/src/capability/terminal-takeover.ts (#mintChildScope)
+  const manager = SessionManager.create(
+    this.#topFrame.runtime.cwd,
+    childTopDir,
+  );
+  const childFile = manager.getSessionFile();
+  ```
+
+- Reopened transcripts RETAIN their file-backed `sessionId` with FRESH
+  handles (the old handle is disposed by the switch's teardown —
+  `_setSessionFile → _loadEntries → header.id`,
+  `dist/core/session-manager.js`).
+- Per-session subscriptions DIE with the disposed session ⇒ each frame
+  RE-ARMS its own listener after switch-back via `PioSession.rebind`
+  (identity-gated + no-op-gated, `pio/src/capability/pio-session.ts`); a
+  foreign handle refuses LOUDLY with the pinned form (source-literal escape
+  rendered as the character):
+
+  ```ts
+  // pio/src/capability/pio-session.ts (rebind)
+  if (session.sessionId !== this.id) {
+    throw new SessionHandleRefusalError(
+      `pio-session: rebind refused — handle '${session.sessionId}' is not this frame's session ('${this.id}')`,
+    );
+  }
+  ```
+
+- Cumulative counters SURVIVE in the JS heap across swaps, and loaded
+  transcripts RE-FIRE NO events (no double count) — counter continuity is
+  scripted-row-proven (P-row block in `pio/src/capability/pio-session.test.ts`
+  + H4 rows in `pio/src/capability/terminal-takeover.test.ts`); the
+  rationale rides the `pio-session.ts` header (persistent observer in the JS
+  heap, reopened-transcript identity retention).
+
+### 8.6 Scope layout & audit
+
+- Child scopes nest ONE SEGMENT PER HOP under the CURRENT frame's scope dir —
+  `<engagement>/.sessions/{top/, <B>/, <B>/<C>/}/top/`; flat siblings ⇒ one
+  directory tree = the complete audit trail. The inner `top/` is the
+  universal convention (root session of the given scope); records land at
+  `<scopeDir>/top/status.json` uniformly. Grandchildren MINT further segments
+  regardless of depth:
+
+  ```ts
+  // pio/src/capability/terminal-takeover.ts (#mintChildScope JSDoc)
+  /** Mint half of the attach span: scope dir one segment under the parent
+   * frame's scope dir (grandchildren mint further segments regardless of
+   * depth); the platform-named file comes through the module's SOLE SDK
+   * value reach — the hop-time thunk (no lineage options; the file may not
+   * exist yet — the open preserves the explicit path). */
+  ```
+
+- Engagement root: `<stateRoot>/projects/<projectKey>/engagements/<id>/`
+  (`pio/src/sandbox/layout.ts`: `deriveProjectKey` over the slugified launch
+  cwd, `ensureEngagementLayout`); in-bubble the state root rides the
+  `PI_CODING_AGENT_DIR` channel ONLY (§4.8).
+- NO SESSION LINEAGE IS EVER MINTED: the dist `parentSession` genealogy
+  linkage is UNUSED on this substrate — who-called-whom edges live ONLY in
+  the runtime ledger + the abnormal-exit `frames.json` snapshot (§8.7). Clean
+  completion writes NO snapshot: the per-scope record set is already
+  complete, and success-path edge reconstruction has no named consumer in
+  v1 — accepted boundary.
+- Depth: no explicit nesting cap in v1 (a constant would be a knob with no
+  named consumer); practical ceiling = per-hop latency × depth +
+  parked-session RAM.
+
+### 8.7 Clean death: the ordered shutdown pass (what authors see)
+
+ONE ordered shutdown pass OWNED BY THE OUTERMOST FRAME fires on any of: double
+Ctrl-C raw-mode bytes, external SIGTERM, fatal faults at entry/frame
+boundaries. An IDEMPOTENT process-exit guard normalizes whichever termination
+path runs the pass EXACTLY ONCE — user-abort exits 130, SIGTERM/fatal 1:
+
+```ts
+// pio/src/capability/terminal-takeover.ts
+/** THE normalized exit-code map (idempotent under the wrapper — applied
+ * regardless of the incoming argument once fired). 130 matches the host-
+ * side child-exit passthrough. */
+const EXIT_CODES: Record<ShutdownCause, number> = {
+  "user-abort": 130,
+  sigterm: 1,
+  fatal: 1,
+};
+```
+
+Boundary note (measured deviation vs the GOAL narrative, one line): there is
+NO native 130 path anywhere in the pinned dist — the IM self-exits 0
+INTERNALLY on double Ctrl-C (`interactive-mode.js`: double-hit `handleCtrlC`
+⇒ `shutdown()` ⇒ `stop()` ⇒ `runtimeHost.dispose()` ⇒ `process.exit(0)`
+before any pio consumer); the normalized 130 + the typed line arrive SOLELY
+via the pass. Single Ctrl-C clears the editor ONLY (turn abort is bound to
+Escape / `"app.interrupt"`), and external SIGINT kills by signal — hence NO
+SIGINT handler anywhere (raw-mode doctrine unchanged).
+
+Pass legs (shipped ordering, `pio/src/capability/terminal-takeover.ts`
+module header):
+
+```
+// pio/src/capability/terminal-takeover.ts (module header)
+THE ordered shutdown pass (per trigger): rejects pending composed latches
+innermost-first (parked top skipped); for non-user-abort causes stops the
+mounted terminal and disposes the shared runtime (best-effort, stop-
+once); writes the per-frame PARTIALS innermost-first over the trigger-
+time snapshot (fatal excludes the top — its caller owns that record);
+drops ONE best-effort frames.json at the sessions root; lands the typed
+line on the entry's stderr sink.
+```
+
+- Pending COMPOSED latches REJECT with `FrameKillError` first
+  (innermost-first; the parked top latch is skipped — no consumer).
+- The mounted terminal is stopped for non-user-abort causes (stop-once; the
+  user-abort path is IM-owned internally) — cooked mode restored EITHER WAY.
+- Per-frame PARTIAL records INNERMOST-FIRST, claim-AWARE — a completed
+  frame's terminal record is NEVER overwritten. Two shipped variants
+  (`pio/src/capability/status.ts`): the synchronous claim-aware write for
+  the exit-intercepted path (async work cannot complete after a delegated
+  termination) and the async grace-window settle — pinned default bound:
+
+  ```ts
+  // pio/src/capability/status.ts
+  /** Pinned default settlement bound: balances settle odds against exit latency. */
+  export const DEFAULT_KILL_GRACE_MS: number = 250;
+  ```
+
+- ONE compact ENGAGEMENT-LEVEL LEDGER SNAPSHOT at `<sessionsRoot>/frames.json`
+  — abnormal-exit ONLY (shape per the goal's closing decisions record;
+  every fault swallowed — best-effort sync writer):
+
+  ```ts
+  // pio/src/capability/terminal-takeover.ts (writeLedgerSnapshot JSDoc)
+  /** Leg (e): ONE best-effort SYNCHRONOUS ledger snapshot at
+   * `<sessionsRoot>/frames.json` — the frame tree (who-called-whom nesting
+   * edges durable on abnormal exit ONLY), the INNERMOST active scope, and the
+   * cause token. Canonical key order (cause → activeScope → frames; per node
+   * depth → capability → scopeDir → sessionFile → children; sessionFile
+   * ABSENT when the live accessor is unnamed — never null); 2-space indent +
+   * trailing newline (same discipline as serializeStatus). Written ONLY on
+   * pass triggers; every fault swallowed (the writer swallows). */
+  ```
+
+- THEN the typed exit line, AFTER cooked-mode restore, on the entry's stderr
+  sink (lines WITHOUT trailing newline — the sink appends them):
+
+  ```ts
+  // pio/src/capability/terminal-takeover.ts (emitTypedLine)
+  stderr(
+    `terminal-takeover: shutdown — frame '${frame.capability.name}@${frame.capability.version}' (depth ${frame.depth}) ended by ${cause}`,
+  );
+  ```
+
+  Byte form: `` terminal-takeover: shutdown — frame '<name>@<version>'
+  (depth <N>) ended by <cause> `` (`stderr` sink).
+
+Author rules (binding):
+
+- NEVER construct a second terminal or a competing process-stream writer (one
+  engagement / one process / one terminal — anti-pattern §5.9 stands).
+- NEVER depend on KEEPING the terminal: take-and-return semantics — the hop
+  takes the terminal while the child runs and hands it back on return (or the
+  death pass restores cooked mode before the typed line).
+- Completion determinations hold with NO human present (§5.8 stands) — the
+  pass makes clean death independent of the operator too.
+- Zero survivors by physics: the kernel reclaims the shared heap on exit —
+  no leaked listeners/timers/tools; zero orphans BY CONSTRUCTION (one
+  process — nothing to orphan).
+
+### 8.8 Coverage boundary (anti-assert)
+
+Hermetic rows prove PIO-SIDE mechanics over SCRIPTED SDK fakes — consequences
+of ordering, bytes, placement, counter arithmetic, IM counts — NOT dist-side
+realities. The following are OBSERVED in the manual E2E legs (quality gate),
+named here and NEVER asserted in this document: IM rebind RENDERING (takeover
+render / return render), reopen-from-transcript FIDELITY, and
+abort-settlement visuals. A HARD seam mismatch localizes to the NAMED attach
+seam (runtime-host attach via the `switchSession` / `rebind` wiring), is
+reported with measured evidence, and BLOCKS per constraint. Accepted
+carry-overs (consistent with rulings, stay approved): flicker-per-hop
+(twice total: take + return); bounded race window (keystrokes strictly
+between yield and attach DROP; post-handover input reaches the child).
+
+## 9. Reserved constructor parameters (frozen bindings)
+
+Material: `pio/src/capability/base.ts` (`CapabilityParams` + the retained
+fields) · `pio/src/run-session.ts` (the session-injection precedent) ·
+`pio/src/capabilities/compose-new-session-demo.ts` (the `tty` exercise).
+
+The constructor bag is SHRINK-ONLY FROZEN: no NEW constructor parameters are
+added to it — the three meanings below freeze NOW, and implementations arrive
+PER SLOT. Quoted verbatim (`pio/src/capability/base.ts`):
+
+```ts
+// pio/src/capability/base.ts
+/** Constructor parameters for one capability engagement. */
+export interface CapabilityParams {
+  /** Present = same placement (in-process); absent = cross-process marker. */
+  session?: PioSession;
+  /** Reserved — binds on the cross-process path, unenforced here. */
+  tty?: boolean;
+  /** Reserved — binds on the cross-process path, unenforced here. */
+  timeoutMs?: number;
+}
+```
+
+- **`session` PRESENT = same placement (in-process)** — how EVERY top frame is
+  hosted today (the entry constructs the `PioSession` and passes it in,
+  §8.2). Shared-conversation composition (row 1) is the NEXT slot —
+  DECLARED, UNIMPLEMENTED: named as a boundary only, nothing demonstrated.
+- **`session` ABSENT = row 2** — the terminal-takeover frame (§8), this
+  goal's landing.
+- **`tty` defaults TRUE = interactive sequential frame** — takes the terminal
+  while it runs, hands it back on exit. The meaning NOW BINDS: the shipped
+  demo exercises it (the bare invocation takes the operator's terminal for
+  the whole composed run, §8.3).
+- **`tty: false` headless = DECLARED-BUT-UNBOUND** until slot 8: row-3
+  process spawning lands together with that meaning — NOTHING from row 3
+  leaks into row 2 today (boundary only).
+- **`timeoutMs` RESERVED + UNENFORCED** — the wall-clock cap is deferred by
+  owner ruling; the PARKED DESIGN (compact block, boundary phrasing only):
+
+  - Caller-side per-frame timer (opt-in per call; ABSENT = no cap).
+  - Responsive breach = the SHIPPED teardown primitive + a typed
+    `cause: "budget"` error at the caller's await carrying the frame's
+    PARTIAL record.
+  - Wedged run (sync loop / hung tool) = whole-process death — the typed
+    line + records drive re-entry.
+  - Row-3 headless frames (slot 8) INHERIT the same param + primitive — no
+    operator present there to abort.
+  - Disposition: lands AFTER the stuck-session proof as a small follow-up
+    feeding slot 8's headless-watchdog need.
+
+## 10. Temporary built-ins (registry note)
+
+Material: `pio/src/capabilities/compose-new-session-demo.ts` ·
+`pio/src/capability/loader.ts` (`CAPABILITY_TABLE`) · `pio/src/cli.ts`
+(`HELP_LINES`).
+
+The registry carries ONE temporary builtin: `compose-new-session-demo`. Its
+header carries the uppercase TEMPORARY marker AND the removal-schedule
+sentence, both quoted VERBATIM — the phrase is mechanically greppable and
+PINNED by the suite's source guards; KEEP IT STABLE:
+
+```
+// pio/src/capabilities/compose-new-session-demo.ts (module header)
+The compose-new-session-demo capability — TEMPORARY.
+```
+
+```
+// pio/src/capabilities/compose-new-session-demo.ts (module header)
+TEMPORARY removal schedule: this registration exists solely to exercise the terminal-takeover composition end-to-end, and it is REMOVED at the bulk-migration cutover.
+```
+
+That registration exists SOLELY to exercise the terminal-takeover composition
+end-to-end and is REMOVED at the bulk-migration cutover. Registration surface
+(insertion order pinned in the suite):
+
+```ts
+// pio/src/capability/loader.ts
+export const CAPABILITY_TABLE: CapabilityTable = {
+  research: () => import("../capabilities/research.ts"),
+  "compose-new-session-demo": () =>
+    import("../capabilities/compose-new-session-demo.ts"),
+};
+```
+
+```ts
+// pio/src/cli.ts (HELP_LINES built-in block)
+  "  compose-new-session-demo — TEMPORARY: greets the operator, runs research in the taken-over terminal, then reports the top 3 findings",
+  "  pio run compose-new-session-demo",
+```
+
+Author guidance: do NOT pattern-match it as a permanent builtin — its
+zero-input contract and hard-coded `DEMO_TOPIC` are DEMO FIXTURES, not a
+recommended authoring posture:
+
+```ts
+// pio/src/capabilities/compose-new-session-demo.ts
+export const DEMO_TOPIC = "Gnosticism in Barcelona";
+```
+
+```ts
+// pio/src/capabilities/compose-new-session-demo.ts (contract literal)
+readonly contract: Contract = {
+  name: "compose-new-session-demo",
+  version: "0.1.0",
+  inputs: [],
+  outputs: [{ name: "report" }],
+  writes: [],
+};
+```
+
+The §6 checklist applies to every NON-temporary builtin UNCHANGED.

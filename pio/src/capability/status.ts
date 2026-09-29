@@ -15,10 +15,15 @@
 // point wires the accessors to the live session and owns the single emitter
 // instance.
 
+import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import type { CapabilityErrorCause, SessionStatusError } from "./errors.ts";
 import { ContractViolationError, PhaseBudgetError } from "./errors.ts";
+
+/** Re-exported for cross-module byte reference (the shutdown-pass record
+ * literals name this type over the status surface only). */
+export type { SessionStatusError };
 
 /** Machine-readable classification of a capability failure. */
 export interface SessionStatus {
@@ -118,6 +123,17 @@ export interface StatusEmitter {
   emit(result: CapabilityResult): Promise<StatusEmissionResult>;
   /** Installs the SIGTERM kill-capture handler; idempotent. */
   armKillCapture(): void;
+  /** True once ANY emission (completion or kill) claimed this scope's
+   * record — the exit-guard discriminator reads it. */
+  hasClaimed(): boolean;
+  /** THE async claim-aware partial (kill-shape) emission: unclaimed ⇒ claim
+   * + the shipped grace-window settle + write; claimed ⇒ no write, resolves
+   * the winner's result. Never rejects. */
+  emitPartial(errorLiteral: SessionStatusError): Promise<StatusEmissionResult>;
+  /** THE synchronous claim-aware variant for the exit-intercepted path
+   * (async work cannot complete after a delegated termination); every fault
+   * swallowed — never throws. */
+  emitPartialSync(errorLiteral: SessionStatusError): void;
 }
 
 /**
@@ -152,6 +168,19 @@ export function serializeStatus(status: SessionStatus): string {
 /** Pure placement derivation: the terminal record lands in the top session dir. */
 export function statusPath(sessionsRoot: string): string {
   return join(sessionsRoot, "top", "status.json");
+}
+
+/** THE best-effort synchronous UTF-8 writer over an auto-created parent:
+ * the only legal sync FS lane past the claim core — the exit-intercepted
+ * caller cannot await, and an escaping write fault would mask the primary
+ * death. Every fault swallowed. */
+export function writeUtf8Sync(path: string, text: string): void {
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, text, "utf8");
+  } catch {
+    // Termination-path discipline: swallow, never escape.
+  }
 }
 
 /** Pinned default settlement bound: balances settle odds against exit latency. */
@@ -343,23 +372,26 @@ export function createStatusEmitter(
     return { status, exitCode: exitCodeFor(status) };
   }
 
-  /** The kill path: settle best-effort, THEN assemble the partial record from
-   * the PRE-SETTLE snapshots — deterministic whether settlement succeeds,
-   * faults, or overruns — write it, and hand back the mapped exit code. */
-  async function killEmission(
+  /** THE shared partial (kill-shape) assembly core: settle best-effort
+   * WITHIN THE GRACE WINDOW, THEN assemble from the PRE-SETTLE snapshots
+   * (the as-is counters/transcript at emission start are authoritative)
+   * and write. The after-settle hook (when given) runs inside the claim
+   * promise, so claim delegates observe its effect too. */
+  async function partialAssembly(
+    errorLiteral: SessionStatusError,
     preTokens: number,
     preFile: string | undefined,
+    afterSettle?: (result: StatusEmissionResult) => void,
   ): Promise<StatusEmissionResult> {
     await settleWithinGrace();
-    const status = buildStatus(
-      false,
-      {},
-      [{ type: "SIGTERM", cause: "kill" }],
-      preTokens,
-      preFile,
-    );
+    const status = buildStatus(false, {}, [errorLiteral], preTokens, preFile);
     await writeRecord(status);
-    return { status, exitCode: exitCodeFor(status) };
+    const result: StatusEmissionResult = {
+      status,
+      exitCode: exitCodeFor(status),
+    };
+    afterSettle?.(result);
+    return result;
   }
 
   function emit(result: CapabilityResult): Promise<StatusEmissionResult> {
@@ -373,23 +405,84 @@ export function createStatusEmitter(
     return pending;
   }
 
-  /** In-namespace SIGTERM kill-capture: synchronous prelude claims the record
-   * and snapshots the as-is counters/transcript AT SIGNAL TIME (authoritative
-   * for the partial record), then runs the kill emission. Only the claimant
-   * force-exits (mapped code 1); repeat deliveries after the first claim are
-   * no-ops, and a completion-owned claim defers entirely. The body never
-   * throws — secondary faults are silent. */
+  /** Claim visibility over the internal claim record (true once ANY
+   * emission — completion or kill — claimed this scope). */
+  function hasClaimed(): boolean {
+    return claim.result !== null;
+  }
+
+  /** THE async claim-aware partial (kill-shape) emission: UNCLAIMED ⇒ the
+   * owner flips to "kill" SYNCHRONOUSLY at this call site (before any
+   * await — the claim stands even when the write later faults), then the
+   * shared assembly core runs. CLAIMED ⇒ no second write: resolves the
+   * WINNER'S result (pure delegation, mirrors emit). Never rejects. */
+  function emitPartial(
+    errorLiteral: SessionStatusError,
+  ): Promise<StatusEmissionResult> {
+    if (claim.result !== null) {
+      return claim.result;
+    }
+    const pending = partialAssembly(
+      errorLiteral,
+      options.tokens(),
+      options.sessionFile(),
+    );
+    claim.owner = "kill";
+    claim.result = pending;
+    return pending;
+  }
+
+  /** THE synchronous claim-aware variant for the exit-intercepted path:
+   * UNCLAIMED ⇒ claim with a RESOLVED placeholder (racing async consumers
+   * defer consistently), assemble the IDENTICAL shape (same buildStatus;
+   * duration computed synchronously), and write synchronously. EVERY fault
+   * swallowed — an escaping write fault would mask the primary death.
+   * CLAIMED ⇒ silent no-op. Returns nothing. */
+  function emitPartialSync(errorLiteral: SessionStatusError): void {
+    if (claim.result !== null) {
+      return;
+    }
+    let assembled: StatusEmissionResult;
+    try {
+      const status = buildStatus(
+        false,
+        {},
+        [errorLiteral],
+        options.tokens(),
+        options.sessionFile(),
+      );
+      assembled = { status, exitCode: exitCodeFor(status) };
+    } catch {
+      return;
+    }
+    claim.owner = "kill";
+    claim.result = Promise.resolve(assembled);
+    writeUtf8Sync(
+      statusPath(options.sessionsRoot),
+      serializeStatus(assembled.status),
+    );
+  }
+
+  /** In-namespace SIGTERM kill-capture: the synchronous prelude claims the
+   * record (owner "kill", snapshot AT SIGNAL TIME) and routes through the
+   * SHARED partial core under the BYTES-STABLE shipped literal; only the
+   * claimant force-exits (mapped code 1) and the exit rides the claim
+   * promise so claim delegates observe it. Repeat deliveries after the
+   * first claim are no-ops, and a completion-owned claim defers entirely.
+   * The body never throws — secondary faults are silent. */
   function handleSigterm(): void {
     try {
       if (claim.result !== null) {
         return;
       }
-      const preTokens = options.tokens();
-      const preFile = options.sessionFile();
-      const pending = killEmission(preTokens, preFile).then((result) => {
-        exitSink(exitCodeFor(result.status));
-        return result;
-      });
+      const pending = partialAssembly(
+        { type: "SIGTERM", cause: "kill" },
+        options.tokens(),
+        options.sessionFile(),
+        (result) => {
+          exitSink(exitCodeFor(result.status));
+        },
+      );
       claim.owner = "kill";
       claim.result = pending;
     } catch {
@@ -407,5 +500,5 @@ export function createStatusEmitter(
     target.prependListener("SIGTERM", handleSigterm);
   }
 
-  return { emit, armKillCapture };
+  return { emit, armKillCapture, hasClaimed, emitPartial, emitPartialSync };
 }

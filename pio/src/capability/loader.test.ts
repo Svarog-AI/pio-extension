@@ -8,9 +8,10 @@
 // runtime values cross a parse boundary or an assign-widening instead of an
 // annotation (the checkers assert shapes at runtime; the annotation
 // documents shape, not protection). Mechanical source guards pin the import
-// surface and the single-entry table literal.
+// surface and the two-entry table literal.
 
 import { readFileSync } from "node:fs";
+import ComposeNewSessionDemoCapability from "../capabilities/compose-new-session-demo.ts";
 import ResearchCapability from "../capabilities/research.ts";
 import type { CapabilityParams } from "./base.ts";
 import { PioCapability } from "./base.ts";
@@ -81,8 +82,11 @@ const FIXTURE_GAMMA = class extends PioCapability {
 };
 
 describe("miss path (default table)", () => {
-  it("the registration table ships EXACTLY the single 'research' entry", () => {
-    expect(Object.keys(CAPABILITY_TABLE)).toEqual(["research"]);
+  it("the registration table ships EXACTLY the two entries in INSERTION order ('research' first, then the temporary demo)", () => {
+    expect(Object.keys(CAPABILITY_TABLE)).toEqual([
+      "research",
+      "compose-new-session-demo",
+    ]);
   });
 
   for (const name of ["whatever", "delta", "DELTA", ""]) {
@@ -143,7 +147,7 @@ describe("miss path (default table)", () => {
   });
 });
 
-describe("default-table hit (first registration)", () => {
+describe("default-table hits (shipped registrations)", () => {
   it("resolving 'research' against the REAL table loads the bundled capability: ctor by REFERENCE identity, contract by strict deep equality", async () => {
     const result = await resolveCapability("research");
     expect(result.ok).toBe(true);
@@ -159,6 +163,24 @@ describe("default-table hit (first registration)", () => {
       outputs: [{ name: "report", paramKey: "report" }],
       writes: ["research/*.md"],
       allowProjectWrites: true,
+    });
+  });
+
+  it("resolving 'compose-new-session-demo' against the REAL table loads the shipped module through its own thunk: ctor by REFERENCE identity, contract by strict deep equality — INCLUDING the empty inputs/writes lists (the no-inputs identity IS the pin)", async () => {
+    const result = await resolveCapability("compose-new-session-demo");
+    expect(result.ok).toBe(true);
+    const cap = asOk(result);
+    expect(cap.ctor).toBe(ComposeNewSessionDemoCapability);
+    // Pinned contract literal — the SOLE OWNER is the contract field on
+    // ComposeNewSessionDemoCapability in
+    // capabilities/compose-new-session-demo.ts; the copy keeps the pin
+    // meaningful.
+    expect(cap.contract).toStrictEqual({
+      name: "compose-new-session-demo",
+      version: "0.1.0",
+      inputs: [],
+      outputs: [{ name: "report" }],
+      writes: [],
     });
   });
 });
@@ -612,12 +634,15 @@ describe("lazy discipline and structural guards", () => {
     expect(src.includes("@earendil-works/pi-coding-agent")).toBe(false);
   });
 
-  it("dynamic-import literal specifier set is EXACTLY the single shipped entry while one entry ships AND total import( count equals the literal-set length (no interpolation)", () => {
+  it("dynamic-import literal specifier set is EXACTLY the two shipped entries in table order AND total import( count equals the literal-set length (no interpolation)", () => {
     const literalSet = [
       ...src.matchAll(/import\(\s*["']([^"']*)["']\s*\)/g),
     ].map((match) => match[1]);
     const totalImportCalls = (src.match(/import\(/g) ?? []).length;
-    expect(literalSet).toEqual(["../capabilities/research.ts"]);
+    expect(literalSet).toEqual([
+      "../capabilities/research.ts",
+      "../capabilities/compose-new-session-demo.ts",
+    ]);
     expect(totalImportCalls).toBe(literalSet.length);
   });
 

@@ -66,8 +66,8 @@ const missingInputLine = (name: string, key: string): string =>
 // reaches Gate 1 without scripting its own admission gets `undefined` back
 // and fails loudly and locally (TypeError on `.ok` → the last-resort degrade
 // line) instead of silently inheriting an ambient hit from a preceding row
-// (owner ruling, S02 re-execution — admission must be explicit per row, not
-// ambient). Every proceeding-path row calls admitPastGate1() AFTER world
+// (admission must be explicit per row, not ambient). Every proceeding-path
+// row calls admitPastGate1() AFTER world
 // creation (reset + default-shape HIT); miss/sentinel rows script their own
 // refusals; named-resolution rows keep their bespoke hit fixtures (the
 // "loader hit" row is the standing idiom). Admissions are NEVER scripted
@@ -527,7 +527,7 @@ describe("host input gates (post-loader-admission, pre-TTY/pre-bwrap)", () => {
     expect(spawned(world)).toBe(false);
   });
 
-  it("activation pin: `inputs === undefined` SKIPS both checks ENTIRELY — the legacy three-arg call over the shared (malformed-contract) ADMISSION_HIT proceeds to the TTY gate untouched (the pre-step battery's byte-green standing proof)", async () => {
+  it("activation pin: `inputs === undefined` SKIPS both checks ENTIRELY — the legacy three-arg call over the shared (malformed-contract) ADMISSION_HIT proceeds to the TTY gate untouched (the pre-input-gate call path stays byte-identical)", async () => {
     const world = await makeWorld({ ttyInput: {}, ttyOutput: {} });
     await admitPastGate1();
     const code = await runCapability("cap", world.io, world.seams);
@@ -881,7 +881,7 @@ describe("full assembly (happy path — displayed = retained = executed)", () =>
     ]);
   });
 
-  it("resolved stateRoot/key/id flow per the Step 3 functions: PIO_STATE_DIR override wins for the root, the key slugs the launch cwd, the id pins from the injected seams", async () => {
+  it("resolved stateRoot/key/id flow: PIO_STATE_DIR override wins for the root, the key slugs the launch cwd, the id pins from the injected seams", async () => {
     const world = await makeWorld();
     await admitPastGate1();
     await runCapability("cap", world.io, world.seams);

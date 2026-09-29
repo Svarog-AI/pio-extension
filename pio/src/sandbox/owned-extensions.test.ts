@@ -649,12 +649,12 @@ describe("headless provisioning proof (open assumptions 1–2 — the REAL SDK g
     expect(runtime.session.getToolDefinition("web_search")).toBeDefined();
     expect(runtime.session.getToolDefinition("web_fetch")).toBeDefined();
     // R-V3 availability: the vendored structured-feedback tool is defined
-    // over the SAME session (availability ≠ usage — no capability consumes
-    // it this step).
+    // over the SAME session (availability ≠ usage — no built-in capability
+    // consumes it).
     expect(runtime.session.getToolDefinition("ask_user")).toBeDefined();
   }, 120_000);
 
-  it("SILENT-SKIP POSTURE (load-time rule pinned behaviorally): a settings packages entry pointing at an ABSENT path ⇒ session construction SUCCEEDS without error, BOTH getToolDefinitions UNDEFINED, no crash, no stall — offline-safe by construction; provisioning gaps surface through Step 4's loud preflight, never through construction (and nothing reaches for a registry)", async () => {
+  it("SILENT-SKIP POSTURE (load-time rule pinned behaviorally): a settings packages entry pointing at an ABSENT path ⇒ session construction SUCCEEDS without error, BOTH getToolDefinitions UNDEFINED, no crash, no stall — offline-safe by construction; provisioning gaps surface through the capability's loud preflight, never through construction (and nothing reaches for a registry)", async () => {
     const base = await tmpdir("pio-headless-skip-");
     const agentDir = path.join(base, ".pi", "agent");
     // Hand-written settings (skip provisioning entirely): a LOCAL SOURCE whose

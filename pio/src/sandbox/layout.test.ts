@@ -193,7 +193,7 @@ describe("mintEngagementId", () => {
 
 describe("ensureEngagementLayout", () => {
   it("fresh fake root: the created tree is EXACTLY the pinned dir set — nothing else (no files, no stray dirs)", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s03-nesting-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-layout-nesting-"));
     await ensureEngagementLayout({
       stateRoot: root,
       projectKey: FIXED_KEY,
@@ -212,7 +212,7 @@ describe("ensureEngagementLayout", () => {
   });
 
   it("returned handles deep-equal hand-built path.join expectations for all five fields", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s03-handles-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-layout-handles-"));
     const paths = await ensureEngagementLayout({
       stateRoot: root,
       projectKey: FIXED_KEY,
@@ -235,7 +235,7 @@ describe("ensureEngagementLayout", () => {
   });
 
   it("EEXIST race tolerance: pre-existing engagement tree + sentinel profile.json survive a re-ensure byte-identically (resolves, no clobber, equal handles)", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s03-eexist-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-layout-eexist-"));
     const input = {
       stateRoot: root,
       projectKey: FIXED_KEY,
@@ -253,7 +253,7 @@ describe("ensureEngagementLayout", () => {
 
   it("sibling survival on re-ensure: two engagements under one fresh root — re-ensuring A leaves B's subtree intact with sentinel bytes UNCHANGED (the steady-state global-root shape)", async () => {
     const ID_B = "20260920T193233000Z-00ff11ee";
-    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s03-siblings-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-layout-siblings-"));
     const inputA = {
       stateRoot: root,
       projectKey: FIXED_KEY,
@@ -296,7 +296,7 @@ describe("ensureEngagementLayout", () => {
   });
 
   it("genuine fs failures propagate (no catch-and-swallow): a regular file blocking the tree rejects", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s03-fail-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-layout-fail-"));
     await writeFile(path.join(root, "projects"), "a file, not a dir");
     await expect(
       ensureEngagementLayout({
@@ -308,7 +308,7 @@ describe("ensureEngagementLayout", () => {
   });
 
   it("retention proof: two sequential engagements under one fake root keep BOTH profile.json files with their correct bytes — the second write never disturbs the first", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s03-retention-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-layout-retention-"));
     const e1 = await ensureEngagementLayout({
       stateRoot: root,
       projectKey: FIXED_KEY,
@@ -343,8 +343,10 @@ describe("ensureEngagementLayout", () => {
     ).toBe(serializeProfile(p2));
   });
 
-  it("cross-step continuity: the renderer-derived --sessions-root target arg deep-equals ensureEngagementLayout's sessionsDir for the SAME engagement (the two .sessions derivations can never drift)", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s03-xstep-"));
+  it("derivation continuity: the renderer-derived --sessions-root target arg deep-equals ensureEngagementLayout's sessionsDir for the SAME engagement (the two .sessions derivations can never drift)", async () => {
+    const root = await mkdtemp(
+      path.join(os.tmpdir(), "pio-layout-consistency-"),
+    );
     const paths = await ensureEngagementLayout({
       stateRoot: root,
       projectKey: FIXED_KEY,
@@ -392,7 +394,7 @@ describe("ensureEngagementLayout", () => {
 
 describe("ensurePiTree", () => {
   it("first use: absent before ⇒ resolves; <root>/.pi exists AND IS EMPTY (empty-dir-only proof folded in)", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s06-pi-first-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-pitree-first-"));
     expect(await readdir(root)).toEqual([]); // .pi absent before
     const resolved = await ensurePiTree(root);
     expect(resolved).toBe(path.join(root, ".pi"));
@@ -403,7 +405,7 @@ describe("ensurePiTree", () => {
   });
 
   it("idempotency: a second call against the existing tree is a clean no-op (still exactly the empty .pi)", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s06-pi-idem-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-pitree-idem-"));
     const first = await ensurePiTree(root);
     const second = await ensurePiTree(root);
     expect(second).toBe(first);
@@ -413,7 +415,7 @@ describe("ensurePiTree", () => {
   });
 
   it("never clobbers: pre-seeded sentinel bytes under .pi survive byte-identically (steady-state content survives re-ensure)", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s06-pi-keep-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-pitree-keep-"));
     const sentinelPath = path.join(root, ".pi", "agent", "models.json");
     const sentinel = "OPERATOR-CUSTOMIZATION-BYTES\n";
     await mkdir(path.dirname(sentinelPath), { recursive: true });
@@ -423,7 +425,7 @@ describe("ensurePiTree", () => {
   });
 
   it("state-root co-creation: a NONEXISTENT state root under a fresh parent yields BOTH the root and .pi", async () => {
-    const parent = await mkdtemp(path.join(os.tmpdir(), "pio-s06-pi-co-"));
+    const parent = await mkdtemp(path.join(os.tmpdir(), "pio-pitree-co-"));
     const root = path.join(parent, "absent-root");
     const resolved = await ensurePiTree(root);
     expect(resolved).toBe(path.join(root, ".pi"));
@@ -433,7 +435,7 @@ describe("ensurePiTree", () => {
   });
 
   it("return echo + drift proof: the value deep-equals the hand-built path.join AND feeds the renderer candidate verbatim (a renderProfile over ONLY pio-state members composes the trio)", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s06-pi-drift-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-pitree-drift-"));
     const slot = path.join(root, "projects", FIXED_KEY);
     const resolved = await ensurePiTree(root);
     expect(resolved).toEqual(path.join(root, ".pi"));
@@ -482,7 +484,7 @@ describe("ensurePiTree", () => {
   });
 
   it("genuine fs failures propagate (no catch-and-swallow): a regular file blocking the .pi path rejects", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "pio-s06-pi-fail-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "pio-pitree-fail-"));
     await writeFile(path.join(root, ".pi"), "a file, not a dir");
     await expect(ensurePiTree(root)).rejects.toThrow();
   });

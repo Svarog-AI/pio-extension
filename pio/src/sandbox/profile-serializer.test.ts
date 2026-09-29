@@ -106,8 +106,8 @@ describe("buildArgv", () => {
   });
 });
 
-/** S01 cross-step continuity wiring: local copy of the worked-anchor input
- * fixture (keeps this suite decoupled from render.test.ts). */
+/** Anchor-continuity wiring: local copy of the worked-anchor input fixture
+ * (keeps this suite decoupled from render.test.ts). */
 const ANCHOR_EXISTING = [
   // A. always-ro system set
   "/etc/ssl",
@@ -534,8 +534,8 @@ describe("serializeProfile", () => {
   });
 });
 
-describe("S01 cross-step continuity row", () => {
-  it("maps the S01 anchor profile through buildArgv to the full pinned token vector", () => {
+describe("anchor continuity row", () => {
+  it("maps the anchor profile through buildArgv to the full pinned token vector", () => {
     const cmd = buildArgv(renderProfile(s01AnchorInput()));
     expect(cmd.argv).toEqual([
       "bwrap",
@@ -668,7 +668,7 @@ describe("PROFILE_FILE_NAME + writeProfileFile", () => {
   });
 
   it("byte-equal profile file: writes serializeProfile(anchor) verbatim into <engagementDir>/profile.json — one anchor const feeds both calls, file sits DIRECTLY in the engagement dir", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "pio-s03-profile-file-"));
+    const dir = await mkdtemp(path.join(os.tmpdir(), "pio-profile-file-"));
     await writeProfileFile(dir, anchor);
     expect(await readdir(dir)).toEqual([PROFILE_FILE_NAME]);
     const text = await readFile(path.join(dir, PROFILE_FILE_NAME), "utf8");

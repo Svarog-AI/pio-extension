@@ -1,15 +1,14 @@
 // Hermetic unit suite for the research capability (capabilities/research.ts).
-// Harness per the base.test.ts doctrine with the step-4 extensions: the SAME
-// five faked SDK value symbols (the fake session GAINS getToolDefinition —
-// defined-by-default stub; miss rows override a round's lookup to undefined,
-// the S01-shipped total-absence signature), mkdtemp tmpdirs per row with
-// PI_CODING_AGENT_DIR pointed at <tmp>/.pi/agent (saved/restored in
-// afterEach), process.chdir into <tmp>/work for the project-key derivation
-// (restored in afterEach), and a stderr spy for the pinned capability-owned
-// REFUSAL line (the Step-6 outcome-model settlement removed the raw stdout
-// writer — the report pointer now travels through the session stream plus
-// the status.json ledger token; there are no product-content stdout pins
-// left here).
+// Harness per the base.test.ts doctrine: the SAME five faked SDK value
+// symbols (the fake session GAINS getToolDefinition — defined-by-default
+// stub; miss rows override a round's lookup to undefined, the shipped
+// total-absence signature), mkdtemp tmpdirs per row with PI_CODING_AGENT_DIR
+// pointed at <tmp>/.pi/agent (saved/restored in afterEach), process.chdir
+// into <tmp>/work for the project-key derivation (restored in afterEach),
+// and a stderr spy for the pinned capability-owned REFUSAL line (no raw
+// stdout writer — the report pointer travels through the session stream
+// plus the status.json ledger token; there are no product-content stdout
+// pins left here).
 //
 // Doctrine (load-bearing): scripted prompt resolutions emit SYNTHETIC EVENTS
 // ONLY — they observe; they write NOTHING to disk. Rows whose assertions
@@ -139,10 +138,9 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 
 /** Pinned product-line replicas — the SOLE OWNER of every byte below is
  * capabilities/research.ts EXCEPT the env-defect pair, whose sole owner is
- * capability/base.ts after the Step-6 placement ruling (the class + both
- * messages moved there; at close-out the owner directed full de-researching:
- * class → CapabilityEnvError, message prefix → "capability:"); the copies
- * keep the byte-pins meaningful. Em dashes are U+2014 (escaped). */
+ * capability/base.ts (class CapabilityEnvError, message prefix
+ * "capability:"); the copies keep the byte-pins meaningful. Em dashes are
+ * U+2014 (escaped). */
 const ENV_UNSET_MESSAGE =
   "capability: PI_CODING_AGENT_DIR is unset \u2014 cannot derive the state root";
 const envMalformedMessage = (value: string): string =>
@@ -330,7 +328,7 @@ describe("research capability", () => {
   // ---------------------------------------------------------------------
 
   describe("loop shape", () => {
-    it("continues on a report-write settle and stops on the next quiet settle: EXACTLY two prompts, ok:true payload with the frozen relative-form outputs, undamaged report (the deliverable statement itself travels through the SESSION STREAM — outcome-model settlement, no raw terminal write)", async () => {
+    it("continues on a report-write settle and stops on the next quiet settle: EXACTLY two prompts, ok:true payload with the SETTLED absolute-placement outputs (the base's settle seam absolutized the call-level frozen relative form), undamaged report (the deliverable statement itself travels through the SESSION STREAM — outcome-model settlement, no raw terminal write)", async () => {
       const seed =
         "# Research: quantum computing basics\n\n## First question\nanswered\n";
       const placement = reportPlacement(TOPIC);
@@ -345,7 +343,9 @@ describe("research capability", () => {
       const result = await cap.run({ topic: TOPIC });
       expect(round.session.prompt).toHaveBeenCalledTimes(2);
       expect(result.ok).toBe(true);
-      expect(result.outputs).toEqual({ report: placement.relativeForm });
+      // The settled RESULT carries the ABSOLUTE placement (base-settled at
+      // the run seam); call() itself still returns the frozen relative form.
+      expect(result.outputs).toEqual({ report: placement.absolutePath });
       expect(stderrText()).toBe("");
       const { readFile } = await import("node:fs/promises");
       expect(await readFile(placement.absolutePath, "utf8")).toBe(seed);
@@ -432,7 +432,7 @@ describe("research capability", () => {
   // ---------------------------------------------------------------------
 
   describe("payload shape + instruction framing", () => {
-    it("outputs deep-equals { report: 'research/' + fingerprint(topic) + '.md' } for a multi-word + unicode topic (self-consistent derivation via the imported helper)", async () => {
+    it("settled outputs deep-equal { report: <absolute placement of the frozen 'research/' + fingerprint(topic) + '.md' token> } for a multi-word + unicode topic (self-consistent derivation via the imported helper)", async () => {
       const unicodeTopic = "how do LLMs über generalise?";
       const placement = reportPlacement(unicodeTopic);
       await seedReport(placement.absolutePath, "# seeded\n");
@@ -445,9 +445,9 @@ describe("research capability", () => {
       const cap = new ResearchCapability({ session: instance });
       const result = await cap.run({ topic: unicodeTopic });
       expect(result.ok).toBe(true);
-      expect(result.outputs).toEqual({
-        report: `research/${reportFingerprint(unicodeTopic)}.md`,
-      });
+      // Settled to the ABSOLUTE placement by the base's seam (call()-level
+      // return stays the frozen slot-relative token).
+      expect(result.outputs).toEqual({ report: placement.absolutePath });
     });
 
     it("fresh row: the first prompt begins with the phase marker and carries the ABSOLUTE path pointer + the FRESH resume line, NOT the existing one", async () => {
@@ -606,7 +606,7 @@ describe("research capability", () => {
       expect(new CapabilityEnvError("x").name).toBe("CapabilityEnvError");
     });
 
-    it("exposes EXACTLY the five named exports beside the default export (the Step-6 placement ruling moved deriveStateRootFromAgentDir + its pinned pair's body to capability/base.ts; CapabilityEnvError stays importable here via the consolidation re-export)", async () => {
+    it("exposes EXACTLY the five named exports beside the default export (deriveStateRootFromAgentDir + its pinned pair's body live in capability/base.ts; CapabilityEnvError stays importable here via the consolidation re-export)", async () => {
       const mod = await import("./research.ts");
       expect(Object.keys(mod).sort()).toEqual([
         "CapabilityEnvError",

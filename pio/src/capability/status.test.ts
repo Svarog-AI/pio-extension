@@ -7,6 +7,7 @@
 // promises, a stepping injected clock, and real tmpdir FS (fresh mkdtempSync
 // per row, forced teardown).
 import {
+  existsSync,
   mkdtempSync,
   readFileSync,
   renameSync,
@@ -810,6 +811,220 @@ describe("SIGTERM ordering and settlement (seam rows)", () => {
       expect(JSON.parse(h.readRaw()).outputs).toStrictEqual({});
     } finally {
       rmSync(h.root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("claim-aware partial emission (P rows — real leaf module, no mocks)", () => {
+  it("P1 async partial on a fresh claim: the kill-shape record lands at the pinned placement with EXACT parsed fields, canonical key order incl. errors, 2-space indent + trailing newline, durationMs under the injected clock — and hasClaimed flips false -> true", async () => {
+    const clock = steppingClock(1_700_000_000_000);
+    const h = mkHarness({ now: clock.now, tokens: () => 123 });
+    try {
+      expect(h.emitter.hasClaimed()).toBe(false);
+      clock.advance(77);
+      const emitted = await h.emitter.emitPartial({
+        type: "user-abort",
+        cause: "kill",
+      });
+      expect(h.emitter.hasClaimed()).toBe(true);
+      const raw = h.readRaw();
+      expect(raw.endsWith("\n")).toBe(true);
+      expect(raw.startsWith('{\n  "ok"')).toBe(true);
+      const topLevelKeys = [...raw.matchAll(/^ {2}"([A-Za-z]+)":/gm)].map(
+        (match) => match[1],
+      );
+      expect(topLevelKeys).toEqual([
+        "ok",
+        "capability",
+        "outputs",
+        "errors",
+        "transcriptRef",
+        "tokens",
+        "durationMs",
+      ]);
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      expect(parsed.ok).toBe(false);
+      expect(parsed.capability).toStrictEqual({
+        name: "demo",
+        version: "0.1.0",
+        source: "builtin",
+      });
+      expect(parsed.outputs).toStrictEqual({});
+      expect(parsed.errors).toStrictEqual([
+        { type: "user-abort", cause: "kill" },
+      ]);
+      expect(parsed.transcriptRef).toBe(
+        ".sessions/top/20260101T000000Z_deadbeefcafe.jsonl",
+      );
+      expect(parsed.tokens).toBe(123);
+      expect(parsed.durationMs).toBe(77);
+      // The resolved pair matches what landed on disk.
+      expect(serializeStatus(emitted.status)).toBe(raw);
+      expect(emitted.exitCode).toBe(1);
+    } finally {
+      rmSync(h.root, { recursive: true, force: true });
+    }
+  });
+
+  it("P2 async partial honors the grace window: overrun absorbed on the fault-free timeout path, payload built from the PRE-SETTLE snapshots despite mutating accessors post-settle", async () => {
+    let mutated = false;
+    const neverSettles = new Promise<void>(() => {});
+    const h = mkHarness({
+      graceMs: 5,
+      settleLiveRun: async (): Promise<void> => {
+        mutated = true;
+        await neverSettles;
+      },
+      tokens: (): number => (mutated ? 999 : 41),
+    });
+    try {
+      const emitted = await h.emitter.emitPartial({
+        type: "fatal",
+        cause: "kill",
+      });
+      expect(mutated).toBe(true);
+      // PRE-SETTLE snapshot wins over the post-grace world state.
+      expect(emitted.status.tokens).toBe(41);
+      expect(emitted.status.transcriptRef).toBe(
+        ".sessions/top/20260101T000000Z_deadbeefcafe.jsonl",
+      );
+      expect(emitted.exitCode).toBe(1);
+      const parsed = JSON.parse(h.readRaw()) as Record<string, unknown>;
+      expect(parsed.errors).toStrictEqual([{ type: "fatal", cause: "kill" }]);
+      expect(parsed.tokens).toBe(41);
+    } finally {
+      rmSync(h.root, { recursive: true, force: true });
+    }
+  });
+
+  it("P3 completion wins first: emitPartial performs NO write (file bytes BYTE-STABLE pre/post) and resolves the WINNER'S StatusEmissionResult by identity", async () => {
+    const h = mkHarness({ tokens: () => 5 });
+    try {
+      const winner = await h.emitter.emit({ ok: true, outputs: { a: 1 } });
+      const before = h.readRaw();
+      const delegated = await h.emitter.emitPartial({
+        type: "user-abort",
+        cause: "kill",
+      });
+      expect(delegated).toBe(winner);
+      expect(delegated.status.ok).toBe(true);
+      expect(delegated.exitCode).toBe(0);
+      expect(h.readRaw()).toBe(before);
+    } finally {
+      rmSync(h.root, { recursive: true, force: true });
+    }
+  });
+
+  it("P4 kill wins first: a second emitPartial is a silent no-op resolving the FIRST winner's result (bytes stable)", async () => {
+    const h = mkHarness({ tokens: () => 9 });
+    try {
+      const first = await h.emitter.emitPartial({
+        type: "user-abort",
+        cause: "kill",
+      });
+      const before = h.readRaw();
+      const second = await h.emitter.emitPartial({
+        type: "fatal",
+        cause: "kill",
+      });
+      expect(second).toBe(first);
+      expect(second.status.ok).toBe(false);
+      expect(second.exitCode).toBe(1);
+      expect(h.readRaw()).toBe(before);
+    } finally {
+      rmSync(h.root, { recursive: true, force: true });
+    }
+  });
+
+  it("P5 emitPartialSync on a fresh claim: the file lands IMMEDIATELY (no await between call and read), parses to the IDENTICAL shape as the async variant over equal inputs, hasClaimed flips true; a claimed emitter stays a silent no-op with byte-stable files", async () => {
+    // One FROZEN clock serves both worlds ⇒ equal construction/emission
+    // spans ⇒ the parse comparison below also covers durationMs.
+    const clock = steppingClock(1_700_000_000_000);
+    const syncWorld = mkHarness({ now: clock.now, tokens: () => 77 });
+    const asyncWorld = mkHarness({ now: clock.now, tokens: () => 77 });
+    try {
+      syncWorld.emitter.emitPartialSync({ type: "user-abort", cause: "kill" });
+      // Synchronous writer: the file stands at THIS point, with no await in
+      // between.
+      expect(existsSync(statusPath(syncWorld.sessionsRoot))).toBe(true);
+      expect(syncWorld.emitter.hasClaimed()).toBe(true);
+      const asyncEmitted = await asyncWorld.emitter.emitPartial({
+        type: "user-abort",
+        cause: "kill",
+      });
+      const syncParsed = JSON.parse(syncWorld.readRaw());
+      const asyncParsed = JSON.parse(asyncWorld.readRaw());
+      // Identical serialized shape for equal inputs (same assembly core).
+      expect(syncParsed).toEqual(asyncParsed);
+      expect(asyncWorld.readRaw()).toBe(serializeStatus(asyncEmitted.status));
+      // Claimed ⇒ silent no-op, bytes stable.
+      const before = syncWorld.readRaw();
+      syncWorld.emitter.emitPartialSync({ type: "fatal", cause: "kill" });
+      expect(syncWorld.readRaw()).toBe(before);
+    } finally {
+      rmSync(syncWorld.root, { recursive: true, force: true });
+      rmSync(asyncWorld.root, { recursive: true, force: true });
+    }
+  });
+
+  it("P6 emitPartialSync never throws: a sessions root whose parent segment is a FILE faults the recursive mkdir — the call returns normally and NO record file exists (swallow pin)", async () => {
+    const base = mkdtempSync(join(os.tmpdir(), "status-test-"));
+    try {
+      // A plain FILE where the recursive mkdir needs a directory.
+      const blockedSegment = join(base, "blocked");
+      writeFileSync(blockedSegment, "a file blocking the recursive mkdir\n");
+      const sessionsRoot = join(blockedSegment, ".sessions");
+      const signals = makeFakeSignals();
+      const exitCalls: number[] = [];
+      const emitter = createStatusEmitter({
+        sessionsRoot,
+        capability: { name: "demo", version: "0.1.0" },
+        tokens: (): number => 1,
+        sessionFile: (): string => join(sessionsRoot, "top", "unnamed.jsonl"),
+        exit: (code: number): void => {
+          exitCalls.push(code);
+        },
+        signals: signals.target,
+      });
+      expect(() =>
+        emitter.emitPartialSync({ type: "user-abort", cause: "kill" }),
+      ).not.toThrow();
+      expect(exitCalls).toEqual([]);
+      expect(existsSync(join(sessionsRoot, "top", "status.json"))).toBe(false);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it("P7 the pass-shaped SIGTERM partial is BYTE-IDENTICAL to the legacy-handler-written record over identical inputs (two sub-worlds compared raw — frozen clock, equal tokens/file/capability)", async () => {
+    const legacyWorld = mkHarness({
+      now: steppingClock(1_700_000_000_000).now,
+      tokens: () => 33,
+    });
+    const passWorld = mkHarness({
+      now: steppingClock(1_700_000_000_000).now,
+      tokens: () => 33,
+    });
+    try {
+      legacyWorld.emitter.armKillCapture();
+      const firing = legacyWorld.signals.fire();
+      // Delegation to the claim is the deterministic write barrier (the
+      // record lands before the delegated result resolves).
+      const winner = await legacyWorld.emitter.emit({ ok: true, outputs: {} });
+      expect(winner.status.ok).toBe(false);
+      expect(winner.exitCode).toBe(1);
+      await firing;
+      const legacyRaw = legacyWorld.readRaw();
+      await passWorld.emitter.emitPartial({ type: "SIGTERM", cause: "kill" });
+      const passRaw = passWorld.readRaw();
+      expect(passRaw).toBe(legacyRaw);
+      expect(JSON.parse(passRaw).errors).toStrictEqual([
+        { type: "SIGTERM", cause: "kill" },
+      ]);
+      expect(legacyWorld.exitCalls).toEqual([1]);
+    } finally {
+      rmSync(legacyWorld.root, { recursive: true, force: true });
+      rmSync(passWorld.root, { recursive: true, force: true });
     }
   });
 });

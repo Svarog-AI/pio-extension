@@ -1,33 +1,31 @@
-// Base authoring unit for pio capabilities. Subclasses assign a `contract`
-// and implement `call()` — the authored body. Everything about executing a
-// capability funnels through the concrete, base-provided `run()`: pre-spawn
-// input validation against the declared contract, then the body, then the
-// observed outcome assembled into the result payload.
+// Base authoring unit for pio capabilities. Subclasses assign `contract`
+// and implement `call()`; execution funnels through the base-provided
+// `run()` (pre-spawn validation, then the body). Returning from `call()`
+// IS completion; this module never emits or writes status records — the
+// process boundary does.
 //
-// Returning from `call()` IS completion: there is no completion method.
-// This module observes and reports what the run did; it never emits or
-// writes status records — the process boundary completes the terminal
-// record from the returned payload.
+// Session placement binds at construction: a provided session runs in
+// process; an ABSENT session hops the row-2 terminal-takeover frame under
+// a fresh child host (lazy import, evaluated on that path only; the await
+// payload is the primary channel, the per-frame record the secondary).
+// After a completed hop the slot retains the adopted host, so the next
+// run() takes the session-present path (accepted edge — engagements
+// construct fresh instances). `tty` freezes as the interactive
+// sequential-frame meaning (takes and returns the terminal); `timeoutMs`
+// stays reserved-unenforced (wall-clock cap unbound here).
 //
-// Session placement is declared at construction: a provided session runs
-// the capability in-process (phase execution available); an absent session
-// marks cross-process placement, which is declared here but never spawned
-// against. The reserved wall-clock fields bind on that path and stay
-// unenforced in this module, mirroring the contract's declared-without-
-// enforcement write-scope slots.
-//
-// State-root channel (in-bubble): the bubble env quartet gives exactly one
-// state-root channel — PI_CODING_AGENT_DIR, assigned UNCONDITIONALLY by the
-// renderer to `<root>/.pi/agent` (PIO_STATE_DIR does NOT propagate in). The
-// inversion below recovers `<root>` from it; loud typed failure, NO silent
-// fallback, ever. Every capability addressing the durable project slot
-// needs this channel, which is why it rides with the authoring base (the
-// Step-6 owner placement ruling — a capability-layer concern, not a sandbox
-// leaf).
+// State-root channel: the renderer assigns PI_CODING_AGENT_DIR=
+// `<root>/.pi/agent` unconditionally; the inversion below recovers `<root>`
+// with loud typed failure and no silent fallback. The same channels feed
+// the SETTLE SEAM: file-mode contract outputs settle to this bubble's
+// ABSOLUTE placement once at the base's success settlement (both
+// placements); capabilities emit slot-relative tokens and consumers take
+// settled values verbatim — no per-capability or consumer-side path math.
 
-import { isAbsolute, resolve } from "node:path";
-import type { Contract } from "./contract.ts";
-import { validateInputs } from "./contract.ts";
+import { isAbsolute, join, resolve } from "node:path";
+import { deriveProjectKey } from "../sandbox/layout.ts";
+import type { Contract, ContractSpec } from "./contract.ts";
+import { classifySpec, validateInputs } from "./contract.ts";
 import type { PhaseOptions, PhaseResult, PioSession } from "./pio-session.ts";
 import type { CapabilityResult } from "./status.ts";
 import { captureError } from "./status.ts";
@@ -51,8 +49,10 @@ export interface CapabilityParams {
 export abstract class PioCapability {
   /** Authored identity plus IO vocabulary — supplied by every concrete subclass. */
   declare readonly contract: Contract;
-  /** Placement handle: absent marks cross-process placement (declared only). */
-  protected readonly s: PioSession | undefined;
+  /** Placement handle: absent marks row-2 frame engagement (internally
+   * adoptable — the base assigns the child host at the hop's body stage;
+   * authors never touch the slot). */
+  protected s: PioSession | undefined;
   /** Reserved for the cross-process path; retained unenforced here. */
   readonly tty: boolean | undefined;
   /** Reserved for the cross-process path; retained unenforced here. */
@@ -70,18 +70,51 @@ export abstract class PioCapability {
   ): Promise<Record<string, unknown>>;
 
   /**
-   * The sole composition seam — never overridden. Validates the caller's
-   * value object against the contract BEFORE the body runs, executes the
-   * body, and returns what was observed. The single catch-all spans both
-   * steps: one thrown value wins per invocation, so this method never
-   * rejects.
+   * The sole composition seam — never overridden. Validates inputs before
+   * the placement branch (a violation settles the capture with zero hop
+   * side effects), then hops the row-2 frame (session absent) or runs the
+   * body in place (session present). Success settles ONCE at this seam:
+   * file-mode output slots transform to the bubble's absolute placement —
+   * in-place directly, and on the hop path inside the body so the single
+   * payload serves the child record and the caller's await identically.
+   * A conversion fault escapes into THIS capability's catch-all after the
+   * terminal ownership is restored on every reachable path. The catch-all
+   * spans both placements: this method never rejects.
    */
   async run(inputs?: Record<string, unknown>): Promise<CapabilityResult> {
     const values = inputs ?? {};
+    // THE settle seam over the shipped state-root/project-key channels;
+    // the derivation defers to the provider so untouched results never pay
+    // for it (value-only contracts stay env-immune by construction).
+    const settle = (outputs: Record<string, unknown>) =>
+      settleFileModeOutputs(this.contract.outputs, outputs, () =>
+        join(
+          deriveStateRootFromAgentDir(process.env.PI_CODING_AGENT_DIR),
+          "projects",
+          deriveProjectKey(process.cwd()),
+        ),
+      );
     try {
       validateInputs(this.contract, values);
+      if (this.s === undefined) {
+        // Row-2 frame: the body closure adopts the child host into the
+        // slot (the takeover module never assigns the slot itself).
+        const takeover = await import("./terminal-takeover.ts");
+        return await takeover.materializeFrame({
+          capability: {
+            name: this.contract.name,
+            version: this.contract.version,
+          },
+          body: async (
+            childFrame: PioSession,
+          ): Promise<Record<string, unknown>> => {
+            this.s = childFrame;
+            return settle(await this.call(values));
+          },
+        });
+      }
       const outputs = await this.call(values);
-      return { ok: true, outputs };
+      return { ok: true, outputs: settle(outputs) };
     } catch (error) {
       return { ok: false, errors: [captureError(error)] };
     }
@@ -110,6 +143,55 @@ export class CapabilityEnvError extends Error {
     super(message);
     this.name = "CapabilityEnvError";
   }
+}
+
+/**
+ * Settle FILE-MODE contract output slots to this bubble's ABSOLUTE
+ * placement — the single site where "where do my file deliverables live"
+ * is answered. Pure over explicit arguments: the `placementProvider`
+ * defers the derivation to the CALLER's seam and is invoked LAZILY (memoized
+ * per call) only when a file-mode slot actually carries a relative string.
+ * Value-mode slots, non-string or missing values, and already-absolute
+ * values pass through untouched; the static-file form reports the
+ * contract-declared location under the slot name. When nothing transforms,
+ * the INPUT record survives by reference.
+ */
+export function settleFileModeOutputs(
+  specs: readonly ContractSpec[],
+  outputs: Record<string, unknown>,
+  placementProvider: () => string,
+): Record<string, unknown> {
+  let settled: Record<string, unknown> | undefined;
+  let placement: string | undefined;
+  for (const spec of specs) {
+    // The shipped structural discriminator: only FILE-MODE slots settle
+    // placement — value slots are untouched by construction.
+    if (!("file" in spec || "paramKey" in spec)) {
+      continue;
+    }
+    const resolved = classifySpec(spec, outputs);
+    if (resolved.mode !== "file" || isAbsolute(resolved.path)) {
+      continue;
+    }
+    // ParamKey-sourced tokens live under the paramKey; everything else
+    // reports under the slot name (the classifier's own precedence).
+    let key = spec.name;
+    const paramKey = spec.paramKey;
+    if (typeof paramKey === "string") {
+      const candidate = outputs[paramKey];
+      if (typeof candidate === "string" && candidate.length > 0) {
+        key = paramKey;
+      }
+    }
+    if (placement === undefined) {
+      placement = placementProvider();
+    }
+    if (settled === undefined) {
+      settled = { ...outputs };
+    }
+    settled[key] = join(placement, resolved.path);
+  }
+  return settled ?? outputs;
 }
 
 /**

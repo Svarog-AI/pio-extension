@@ -36,10 +36,9 @@ export interface CliIO {
 }
 
 /** Canonical run-grammar usage string — ONE constant feeds ALL THREE host
- * occurrences: the help usage line and both error-template tails (S03 lifts
- * the S02 usage-byte freeze PRECISELY for these strings because the grammar
- * grew). NOTE the trailing ellipsis is the U+2026 HORIZONTAL ELLIPSIS
- * character — pinned codepoint, never normalized to three dots. */
+ * occurrences: the help usage line and both error-template tails. NOTE the
+ * trailing ellipsis is the U+2026 HORIZONTAL ELLIPSIS character — pinned
+ * codepoint, never normalized to three dots. */
 const RUN_USAGE = "pio run <capability> [--input k=v …]";
 
 const UNKNOWN_OPTION = (token: string): string =>
@@ -68,6 +67,8 @@ const HELP_LINES: readonly string[] = [
   // shell-quoted multi-word-as-ONE-value grammar.
   "  research — bounded web-research loop producing a markdown file report",
   '  pio run research --input topic="<topic>"',
+  "  compose-new-session-demo — TEMPORARY: greets the operator, runs research in the taken-over terminal, then reports the top 3 findings",
+  "  pio run compose-new-session-demo",
 ];
 
 function startsWithDash(token: string): boolean {

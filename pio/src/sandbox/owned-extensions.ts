@@ -28,8 +28,8 @@ import { LayoutError } from "./layout.ts";
  *   NO copy/symlink/materialization; this upsert is the minimal embodiment
  *   of the one settings recording that installAndPersist adds on top.
  * - resolveLocalExtensionSource: resolved path ABSENT ⇒ SILENT SKIP
- *   (offline-safe by construction; Step 4's loud preflight is the gap
- *   detector); a DIRECTORY runs collectPackageResources against its
+ *   (offline-safe by construction; the capability's loud preflight is the
+ *   gap detector); a DIRECTORY runs collectPackageResources against its
  *   `pi.*` manifest — resource-collection semantics identical to any
  *   managed layout.
  * - update reconciliation short-circuits `type === "local" || pinned` —
@@ -44,10 +44,10 @@ import { LayoutError } from "./layout.ts";
  *   upserted here IS the bubble sessions' global settings.
  *
  * Steady state is a TOTAL NO-OP (per-package stat + ONE settings read;
- * ZERO writes). Existence-only guard (USER RULING 2026-09-26): the module
- * never reads ANY manifest — version/pin fidelity is owned by the artifact
- * layer (exact dependency + committed lockfile + CI gates on clean
- * installs), deliberately NOT re-mechanized per launch. All faults throw
+ * ZERO writes). Existence-only guard: the module never reads ANY manifest —
+ * version/pin fidelity is owned by the artifact layer (exact dependency +
+ * committed lockfile + CI gates on clean installs), deliberately NOT
+ * re-mechanized per launch. All faults throw
  * the layout-error family (run.ts's existing handler). A corrupted
  * SETTINGS file refuses loud and BYTE-UNTOUCHED (it is a read-modify-write
  * accumulator, not a pure function of pio's inputs).

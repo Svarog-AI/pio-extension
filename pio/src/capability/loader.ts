@@ -5,7 +5,8 @@
 // issuing a literal dynamic import of the capability module — so nothing
 // registered evaluates until its exact name resolves. Registration is a
 // static edit of the literal below; there is no mutation API. The table
-// ships ONE entry — `research`, the first registered built-in, resolving
+// ships TWO entries — `research`, the first registered built-in, and the
+// temporary `compose-new-session-demo` demonstration, both resolving
 // through the dedicated capabilities/ subpackage.
 //
 // Resolution is UI-neutral and never rejects: every outcome, including
@@ -39,10 +40,12 @@ export interface CapabilityModule {
 /** Lazy factory: resolves one registered capability module (literal dynamic import). */
 export type CapabilityFactory = () => Promise<CapabilityModule>;
 
-/** name → factory. Hardcoded, static, in-artifact. Ships the single `research` entry. */
+/** name → factory. Hardcoded, static, in-artifact. Ships the `research` and the temporary `compose-new-session-demo` entries. */
 export type CapabilityTable = Readonly<Record<string, CapabilityFactory>>;
 export const CAPABILITY_TABLE: CapabilityTable = {
   research: () => import("../capabilities/research.ts"),
+  "compose-new-session-demo": () =>
+    import("../capabilities/compose-new-session-demo.ts"),
 };
 
 export interface ResolvedCapability {

@@ -36,6 +36,15 @@
 // explicit resets move only the baseline, and nothing ever truncates a list
 // or the cumulative counters. The same idiom spans both the committed-path
 // list and the payload list.
+//
+// Capability-span marking rides a dedicated NO-TURN carrier: markCapability
+// appends the owning capability's section header (renderCapabilityMarker's
+// pinned line; customType PIO_CAPABILITY_CUSTOM_TYPE) as a durable custom
+// message — never folded into prompt text and never an LLM-turn trigger.
+// Reserved-label grammar: phase ids stay BARE ids; the `capability:` prefix
+// is RESERVED for that mark (documentation only — no runtime enforcement).
+// This host merely exposes the generic seam; the OWNING base's run() seam
+// drives it (exactly one header per run span — see capability/base.ts).
 
 import type {
   AgentSession,
@@ -57,6 +66,23 @@ export function renderPhaseMarker(label: string): string {
   // Escaped so the U+2014 bytes survive editor and toolkit glyph mangling.
   return `\u2014\u2014 ${label} \u2014\u2014`;
 }
+
+/**
+ * Capability-span marker: the reserved `capability:` prefix INSIDE the dash
+ * flank of the phase-marker layout (U+2014 x2, single spaces). SOLE OWNER
+ * of the pinned capability-line bytes — suites replicate them behind named
+ * constants citing this owner. No input validation (the renderer is dumb);
+ * no trailing newline.
+ */
+export function renderCapabilityMarker(label: string): string {
+  // Escaped so the U+2014 bytes survive editor and toolkit glyph mangling.
+  return `\u2014\u2014 capability: ${label} \u2014\u2014`;
+}
+
+/** The customType namespace identifying pio capability markers among
+ * foreign custom messages. Module-private on purpose: an entry-filtering
+ * tag, not consumer API. */
+const PIO_CAPABILITY_CUSTOM_TYPE = "pio-capability";
 
 /** Closed option bag for one phase execution. */
 export interface PhaseOptions {
@@ -397,6 +423,28 @@ export class PioSession {
   /** Advance the message baseline past all recorded payloads. */
   resetRunMessages(): void {
     this.#observer.resetMessageBaseline();
+  }
+
+  /**
+   * THE capability-span header seam: appends the owning capability's
+   * section header as a DURABLE custom message and NEVER triggers an LLM
+   * turn — no options object, so on this session's idle plane the SDK's
+   * append-only branch applies (agent state + session entry, no turn).
+   * Same handle reach as execute_phase (the runtime's CURRENT handle):
+   * one handle, one transcript, counter/observer continuity by
+   * construction. Positioned in transcript order relative to whatever
+   * prompt FOLLOWS the call site: the owning base's run() awaits this
+   * before the body can act, so the header persists above the span's
+   * first phase line. The audience is after-the-fact transcript readers
+   * (operator / quality-gate audit), not the model.
+   */
+  async markCapability(label: string): Promise<void> {
+    await this.runtime.session.sendCustomMessage({
+      customType: PIO_CAPABILITY_CUSTOM_TYPE,
+      content: renderCapabilityMarker(label),
+      display: true,
+      details: undefined,
+    });
   }
 
   /**

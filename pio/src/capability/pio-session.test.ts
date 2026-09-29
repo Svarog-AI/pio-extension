@@ -37,6 +37,7 @@ import { PhaseBudgetError } from "./errors.ts";
 import type { IterationCtx, PhaseResult } from "./pio-session.ts";
 import {
   PioSession,
+  renderCapabilityMarker,
   renderPhaseMarker,
   SessionHandleRefusalError,
 } from "./pio-session.ts";
@@ -61,6 +62,8 @@ interface FakeSession {
   subscribe: ReturnType<typeof vi.fn>;
   /** One invocation stands for one fully-settled logical run. */
   prompt: ReturnType<typeof vi.fn>;
+  /** The no-turn capability-span stamp seam (recording arg-shape). */
+  sendCustomMessage: ReturnType<typeof vi.fn>;
   sessionId: string;
   /** Mirrored dispose — plain callable type (the default Mock type is not
    * callable through the interface). */
@@ -104,11 +107,15 @@ const harness = vi.hoisted(() => {
       };
     });
     const prompt = vi.fn(async () => undefined);
+    // Recording mock for the no-turn custom-message seam (arg-shape
+    // observable; never triggers a turn on this plane).
+    const sendCustomMessage = vi.fn(async (): Promise<void> => {});
     const dispose = vi.fn(() => undefined);
     const handle: FakeSession = {
       sessionId: id,
       subscribe,
       prompt,
+      sendCustomMessage,
       dispose,
       captured,
       live,
@@ -218,6 +225,62 @@ function simulateSwap(round: Round, incoming: FakeSession): void {
  * identically (never a literal em dash in string literals). */
 const REFUSAL_REPLICA =
   "pio-session: rebind refused \u2014 handle 'sess-other-9999' is not this frame's session ('sess-fake-0001')";
+
+/** Replica of the module-private customType namespace (SOLE OWNER: the
+ * PIO_CAPABILITY_CUSTOM_TYPE constant in ./pio-session.ts). */
+const CAPABILITY_CUSTOM_TYPE_REPLICA = "pio-capability";
+
+describe("renderCapabilityMarker (pure)", () => {
+  it("renders the EXACT pinned capability-line bytes with no trailing newline", () => {
+    // Codepoints: U+2014 U+2014 SPACE `capability:` SPACE label SPACE
+    // U+2014 U+2014 — the layout mirrors renderPhaseMarker with the
+    // reserved `capability:` prefix INSIDE the dash flank.
+    const rendered = renderCapabilityMarker("demo");
+    expect(rendered).toBe("\u2014\u2014 capability: demo \u2014\u2014");
+    expect(rendered.charCodeAt(0)).toBe(0x2014);
+    expect(rendered.charCodeAt(1)).toBe(0x2014);
+    expect(rendered.charCodeAt(2)).toBe(0x20);
+    expect(rendered.charAt(14)).toBe(" ");
+    expect(rendered.charAt(19)).toBe(" ");
+    expect(rendered.charCodeAt(21)).toBe(0x2014);
+    expect(rendered.length).toBe(22);
+    expect(rendered.endsWith("\n")).toBe(false);
+  });
+});
+
+describe("PioSession — markCapability (no-turn custom-message seam)", () => {
+  it("issues EXACTLY ONE sendCustomMessage with the pinned argument shape and NO options object (SDK default = no turn)", async () => {
+    const { instance, round } = await host();
+    await instance.markCapability("res");
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledWith({
+      customType: CAPABILITY_CUSTOM_TYPE_REPLICA,
+      content: renderCapabilityMarker("res"),
+      display: true,
+      details: undefined,
+    });
+    // NO options object: the call carries EXACTLY one argument — the
+    // triggerTurn switch stays at its SDK default (append, never a turn).
+    expect(round.session.sendCustomMessage.mock.calls[0]).toHaveLength(1);
+  });
+
+  it("triggers NO LLM turn from the mark alone and leaves the observation state snapshot-equal across it (custom messages are observation-neutral)", async () => {
+    const { instance, round } = await host();
+    const before = instance.counters();
+    const payloadsBefore = instance.getRunMessages();
+    await instance.markCapability("neutral");
+    // Zero prompt invocations: the mark never starts a run on this plane.
+    expect(round.session.prompt).toHaveBeenCalledTimes(0);
+    // Counters unchanged by reference-content — a fresh snapshot reads
+    // byte-equal to the pre-mark one (no assistant usage fed in).
+    const after = instance.counters();
+    expect(after).toStrictEqual(before);
+    // The payload master list gains nothing (feeds come only from
+    // agent_end; the custom message fires none here).
+    expect(instance.getRunMessages()).toEqual(payloadsBefore);
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+  });
+});
 
 // --- Event fixtures (shapes mirror the installed dist) --------------------
 
@@ -1561,12 +1624,13 @@ describe("PioSession — composed-host surface (P-rows)", () => {
 });
 
 describe("export surface", () => {
-  it("runtime export surface is EXACTLY ['PioSession', 'SessionHandleRefusalError', 'SessionVariableStore', 'renderPhaseMarker'] sorted (types erase under erasable syntax)", async () => {
+  it("runtime export surface is EXACTLY ['PioSession', 'SessionHandleRefusalError', 'SessionVariableStore', 'renderCapabilityMarker', 'renderPhaseMarker'] sorted (types erase under erasable syntax)", async () => {
     expect(Object.keys(await import("./pio-session.ts")).sort()).toEqual(
       [
         "PioSession",
         "SessionHandleRefusalError",
         "SessionVariableStore",
+        "renderCapabilityMarker",
         "renderPhaseMarker",
       ].sort(),
     );

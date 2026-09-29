@@ -95,6 +95,8 @@ interface FakeSession {
   /** One invocation stands for one fully-settled logical run. */
   prompt: ReturnType<typeof vi.fn>;
   getToolDefinition: ReturnType<typeof vi.fn>;
+  /** The no-turn capability-span stamp seam (recording arg-shape). */
+  sendCustomMessage: ReturnType<typeof vi.fn>;
   sessionId: string;
   dispose: ReturnType<typeof vi.fn>;
 }
@@ -142,10 +144,14 @@ const sdkKit = vi.hoisted(() => {
       name,
       description: "fake tool definition",
     }));
+    // Recording mock for the no-turn custom-message seam (the real base
+    // run() stamps on it; never a turn trigger).
+    const sendCustomMessage = vi.fn(async (): Promise<void> => {});
     const session: FakeSession = {
       subscribe,
       prompt,
       getToolDefinition,
+      sendCustomMessage,
       sessionId: "sess-fake-demo-01",
       dispose: vi.fn(),
     };
@@ -280,6 +286,10 @@ interface PhysicsHandle {
   /** Plain callable signature added: the default Mock type is not
    * callable through the interface. */
   readonly prompt: ReturnType<typeof vi.fn> & ((text: string) => Promise<void>);
+  /** The no-turn capability-span stamp seam (recording arg-shape; plain
+   * callable signature added for the same reason). */
+  readonly sendCustomMessage: ReturnType<typeof vi.fn> &
+    ((message: unknown) => Promise<void>);
   /** Mirrored platform subscribe: returns a FUNCTIONAL per-listener
    * unsubscribe (dist physics). */
   readonly subscribe: (listener: Listener) => () => void;
@@ -306,6 +316,7 @@ function mintPhysicsHandle(
     prompt: vi.fn(async (text: string): Promise<void> => {
       log.push({ text, file: sessionFile });
     }),
+    sendCustomMessage: vi.fn(async (_message: unknown): Promise<void> => {}),
     subscribe: (listener: Listener): (() => void) => {
       captured.push(listener);
       live.push(listener);

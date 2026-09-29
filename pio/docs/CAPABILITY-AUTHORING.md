@@ -21,9 +21,11 @@ Orientation (where things live):
   session host + phase engine (`pio-session.ts`), the terminal record
   (`status.ts`), and the registry (`loader.ts`).
 - `pio/src/capabilities/` — the built-in implementations (plural directory =
-  implementations; singular `capability/` = framework). Today exactly two:
-  `research.ts` (permanent) and `compose-new-session-demo.ts` (TEMPORARY
-  composition vehicle — removal scheduled; registry note per §10).
+  implementations; singular `capability/` = framework). Today exactly three:
+  `research.ts` (permanent), `compose-new-session-demo.ts` (TEMPORARY
+  composition vehicle — removal scheduled; registry note per §10), and
+  `compose-same-session-demo.ts` (PERMANENT standing same-session demo — §11;
+  the operational QG E2E target).
 - `pio/src/sandbox/` — host-side launch mechanics: engagement layout and
   derivation helpers (`layout.ts`), profile renderer (`render.ts`), owned
   extension provisioning (`owned-extensions.ts`), and the gated host pipeline
@@ -1115,7 +1117,7 @@ dispatch, the settle seam) · `pio/src/capability/terminal-takeover.ts`
 `dist/core/session-manager.js`).
 
 Placement taxonomy of record: **row 1** — shared-conversation composition
-(DECLARED, next slot, unimplemented — boundary only, §9); **row 2** — the
+(SHIPPED — §11); **row 2** — the
 terminal-takeover frame (this section); **row 3** — headless process spawning
 (slot 8, DECLARED-BUT-UNBOUND — boundary only, §9). Row 2 is this goal's
 landing: a capability invoked WITHOUT a session takes over the operator's
@@ -1159,6 +1161,7 @@ literal thunk; session-present executions never evaluate the takeover module
           body: async (
             childFrame: PioSession,
           ): Promise<Record<string, unknown>> => {
+            // Unstamped on purpose: the child's own status record names it.
             this.s = childFrame;
             return settle(await this.call(values));
           },
@@ -1176,8 +1179,11 @@ rejects on either placement:
    * The sole composition seam — never overridden. Validates inputs before
    * the placement branch (a violation settles the capture with zero hop
    * side effects), then hops the row-2 frame (session absent) or runs the
-   * body in place (session present). Success settles ONCE at this seam:
-   * file-mode output slots transform to the bubble's absolute placement —
+   * body in place (session present). The session-present branch stamps its
+   * span header once at span start (post-validation/pre-body); the row-2
+   * hop body carries none (the child's own record covers identity). Success
+   * settles ONCE at this seam: file-mode output slots transform to the
+   * bubble's absolute placement —
    * in-place directly, and on the hop path inside the body so the single
    * payload serves the child record and the caller's await identically.
    * A conversion fault escapes into THIS capability's catch-all after the
@@ -1604,8 +1610,10 @@ export interface CapabilityParams {
 
 - **`session` PRESENT = same placement (in-process)** — how EVERY top frame is
   hosted today (the entry constructs the `PioSession` and passes it in,
-  §8.2). Shared-conversation composition (row 1) is the NEXT slot —
-  DECLARED, UNIMPLEMENTED: named as a boundary only, nothing demonstrated.
+  §8.2). Shared-conversation composition (row 1) is IMPLEMENTED: the
+  shared-conversation placement invoked with the session-param idiom of §11
+  (construct the callee with the caller's session INSTANCE, await `run()`);
+  exercise vehicle: `compose-same-session-demo` (§11.8).
 - **`session` ABSENT = row 2** — the terminal-takeover frame (§8), this
   goal's landing.
 - **`tty` defaults TRUE = interactive sequential frame** — takes the terminal
@@ -1660,6 +1668,8 @@ export const CAPABILITY_TABLE: CapabilityTable = {
   research: () => import("../capabilities/research.ts"),
   "compose-new-session-demo": () =>
     import("../capabilities/compose-new-session-demo.ts"),
+  "compose-same-session-demo": () =>
+    import("../capabilities/compose-same-session-demo.ts"),
 };
 ```
 
@@ -1667,6 +1677,8 @@ export const CAPABILITY_TABLE: CapabilityTable = {
 // pio/src/cli.ts (HELP_LINES built-in block)
   "  compose-new-session-demo — TEMPORARY: greets the operator, runs research in the taken-over terminal, then reports the top 3 findings",
   "  pio run compose-new-session-demo",
+  "  compose-same-session-demo — greets the operator, runs research in the same session, then reports the top 3 findings",
+  "  pio run compose-same-session-demo",
 ```
 
 Author guidance: do NOT pattern-match it as a permanent builtin — its
@@ -1690,3 +1702,604 @@ readonly contract: Contract = {
 ```
 
 The §6 checklist applies to every NON-temporary builtin UNCHANGED.
+
+## 11. Composed execution: the row-1 same-session composition
+
+Material: `pio/src/capabilities/compose-same-session-demo.ts` (module header
+contrast block, stage-2 construction, contract literal) ·
+`pio/src/capability/base.ts` (header span-stamp block, `CapabilityParams`,
+`run()` seam + stamp site, `settleFileModeOutputs`) ·
+`pio/src/capability/pio-session.ts` (header no-turn-carrier note,
+`renderCapabilityMarker`, `PIO_CAPABILITY_CUSTOM_TYPE`, `markCapability`,
+`SessionVariableStore`) · `pio/src/capability/contract.ts`
+(`validateInputs`) · `pio/src/capability/errors.ts`
+(`ContractViolationError`) · `pio/src/capability/status.ts`
+(`serializeStatus`, `exitCodeFor`, `CapabilityResult`) ·
+`pio/src/capability/loader.ts` (`CAPABILITY_TABLE`) · `pio/src/cli.ts`
+(`HELP_LINES`) · `pio/src/run-session.ts` (top-frame construction) ·
+`pio/src/capabilities/compose-new-session-demo.ts` (temporary sibling header
+and stage-2 contrast) · `src/guards/validation.ts` (root-tree `tool_call`
+refusal precedent) · `pio/src/capability/base.test.ts` +
+`pio/src/capabilities/compose-same-session-demo.test.ts` +
+`pio/src/capabilities/research.test.ts` (evidence rows).
+
+Placement taxonomy of record (§8 opening): **row 1** is this section — one
+capability runs another INSIDE THE CALLER'S OWN SESSION. The callee is
+constructed holding the caller's existing `PioSession` INSTANCE by reference,
+driven through ITS OWN base-provided `run()`, and the `CapabilityResult`
+settles at the caller's AWAIT. No new process, no hand-off, no terminal
+change: to the operator the same conversation simply keeps going. The
+exercise vehicle is the standing demo `compose-same-session-demo` (§11.8);
+the manual E2E leg is DEFINED at §11.9 and the acceptance-evidence map sits
+at §11.10.
+
+### 11.1 Invocation idiom: the caller's session INSTANCE by reference
+
+The idiom, VERBATIM from the shipped exercise vehicle (stage 2 of
+`pio/src/capabilities/compose-same-session-demo.ts`):
+
+```ts
+// pio/src/capabilities/compose-same-session-demo.ts (call(), stage 2)
+    const child = new ResearchCapability({ session: this.s });
+    const outcome = await child.run({ topic: DEMO_TOPIC });
+```
+
+Construct the callee WITH the caller's session INSTANCE, drive it through
+ITS OWN base-provided `run()` (never overridden — §6 step 1), and receive
+the typed result inline AT THE AWAIT: `ok` / `outputs` on success, `errors`
+on failure — the settled `CapabilityResult` channels of §8.4, quoted for
+this placement (`pio/src/capability/status.ts`):
+
+```ts
+// pio/src/capability/status.ts
+export interface CapabilityResult {
+  readonly ok: boolean;
+  readonly outputs?: Record<string, unknown>;
+  /** Non-empty when ok is false. */
+  readonly errors?: SessionStatusError[];
+}
+```
+
+No process spawn, no IPC, no terminal change: the session-present branch
+runs the body IN PLACE, and the row-2 lazy import (`./terminal-takeover.ts`)
+is NEVER evaluated on this path (eval-flag pin, suite-proven — the B8 row in
+`pio/src/capability/base.test.ts`; cross-ref §8.1).
+
+THE DELIBERATE CONTRAST with §8.2/§8.3: there the callee is constructed
+WITHOUT a session param to select the row-2 hop —
+
+```ts
+// pio/src/capabilities/compose-new-session-demo.ts (call(), stage 2)
+    const child = new ResearchCapability({});
+    const outcome = await child.run({ topic: DEMO_TOPIC });
+```
+
+— while here `{ session }` selects row 1. One bag difference decides the
+placement: absent ⇒ hop the terminal-takeover frame (§8); present ⇒ run in
+the caller's own session (this section).
+
+WHY instance identity — and NOT a `fromRuntime` sibling over the same
+runtime: observation state (the listener feeding the counters store) and the
+vars store are PER INSTANCE (`pio/src/capability/pio-session.ts` module
+header):
+
+```
+// pio/src/capability/pio-session.ts (module header)
+Session host for capability authoring: wraps one constructed agent
+session runtime BY REFERENCE and feeds its counters store from the single
+instance-scoped listener threaded through the construction seam.
+```
+
+One instance ⇒ ONE observer plus ONE `SessionVariableStore` — continuous
+shared counters AND bidirectional variable sharing hold BY CONSTRUCTION
+(§11.4). A `fromRuntime` sibling would mint a SECOND observer and a SECOND
+store (a fresh accumulation start point; "No module-level mutable state"
+separates instances), needing bridging machinery that does not exist before
+slot 11 (named boundary — never demonstrated).
+
+Grounding clauses, already pinned verbatim elsewhere: the `base.ts` header
+placement clause (§8.1 — "a provided session runs in process; an ABSENT
+session hops the row-2 terminal-takeover frame") and
+`CapabilityParams.session`'s JSDoc (§9 — "Present = same placement
+(in-process); absent = cross-process marker.").
+
+Direct-import pattern: co-shipping builtins compose over EACH OTHER'S shipped
+modules DIRECTLY — stage 2 imports the `research` default export statically
+(`import ResearchCapability from "./research.ts"`) rather than resolving
+through the loader; the loader's dispatch machinery stays RESERVED for
+startup/top-session resolution (consistent with §5.6/§6). The stage-2
+comment, quoted verbatim:
+
+```
+// pio/src/capabilities/compose-same-session-demo.ts (stage-2 comment)
+2. Composition — co-shipping builtins compose over EACH OTHER'S shipped
+modules directly (the loader's dispatch machinery is reserved for
+startup/top-session resolution). Constructed WITH the caller's OWN
+session instance BY REFERENCE (nothing else crosses the boundary), so
+the child's OWN base dispatch runs its body IN THIS SAME SESSION
+(no spawn, no terminal change) — this module never touches hop
+machinery.
+```
+
+### 11.2 Ownership doctrine: what crosses the boundary
+
+The settled doctrine, stated once: the callee and the caller share ONLY the
+session context (conversation/transcript, cumulative counters) and the
+variables — everything else is isolated. Nothing from the caller's declared
+scope, no second vars object, no caller contract crossing.
+
+What crosses, mechanically — EXACTLY `{ session }` at construction. The bag
+carries nothing else (the suite pins the construction bag DEEP-EQUAL to
+`{ session }` — C2/A1 rows, §11.10); beyond it, only the validated inputs
+record handed to `run()` — here `{ topic: DEMO_TOPIC }`. Each capability
+instance carries its OWN `contract`:
+
+```ts
+// pio/src/capability/base.ts
+  /** Authored identity plus IO vocabulary — supplied by every concrete subclass. */
+  declare readonly contract: Contract;
+```
+
+`declare readonly` — the base never crosses contracts between instances.
+Observation state is instance-owned with NO module-level linking ("No
+module-level mutable state" — `pio-session.ts` header); the rebind/handle-
+swap mechanics of §8.5 are UNUSED on this path — one handle throughout, so
+there is no switch whose re-arm could matter.
+
+Consequence: the callee's phases ride the CALLER'S conversation — same
+session stream, same cumulative counters, one engagement / one process /
+one terminal (§5.9 stands unchanged).
+
+### 11.3 Span markers: form, reserved grammar, no-turn carrier, placement policy
+
+FORM + OWNER. The marker line is `—— capability: <label> ——` (two U+2014 em
+dashes flanking the label, single spaces; label = the OWNING capability's
+`contract.name`). Sole owner `renderCapabilityMarker`, quoted verbatim — the
+source escapes the glyph so editor/toolkit mangling cannot rot the bytes:
+
+```ts
+// pio/src/capability/pio-session.ts
+/** Capability-span marker: the `capability:` prefix inside the dash flank
+ * of the phase-marker layout (U+2014 x2, single spaces). No input
+ * validation; no trailing newline. */
+export function renderCapabilityMarker(label: string): string {
+  // Escaped so the U+2014 bytes survive editor and toolkit glyph mangling.
+  return `\u2014\u2014 capability: ${label} \u2014\u2014`;
+}
+```
+
+RESERVED LABEL GRAMMAR. Phase ids stay BARE ids; the `capability:` prefix is
+reserved for the span mark (no runtime enforcement). The module header names
+both rules together with the carrier doctrine:
+
+```
+// pio/src/capability/pio-session.ts (module header)
+Capability-span marking rides a no-turn carrier: markCapability appends
+the span's section header (renderCapabilityMarker's line; customType
+PIO_CAPABILITY_CUSTOM_TYPE) as a durable custom message — never folded
+into prompt text, never a turn trigger. Phase ids stay BARE ids; the
+`capability:` prefix is reserved for that mark (no runtime enforcement).
+Only session-present runs are stamped, once per span (see base.ts).
+```
+
+CARRIER — what actually ships. The marker is a NO-TURN DURABLE CUSTOM
+MESSAGE: never folded into prompt text, never a turn trigger. `markCapability`,
+quoted verbatim:
+
+```ts
+// pio/src/capability/pio-session.ts
+  async markCapability(label: string): Promise<void> {
+    await this.runtime.session.sendCustomMessage({
+      customType: PIO_CAPABILITY_CUSTOM_TYPE,
+      content: renderCapabilityMarker(label),
+      display: true,
+      details: undefined,
+    });
+  }
+```
+
+Mechanics: NO options object = the SDK's append-only idle branch — one
+durable transcript entry, zero LLM turns (method JSDoc, same file: "no
+options object = the SDK's append-only idle branch"); `display: true` makes
+the entry visible in the session stream; `details: undefined` keeps it plain
+content. The namespace constant identifies the mark among foreign custom
+messages — MODULE-PRIVATE on purpose (cite it via its owner; do not
+reconstruct the bytes at other call sites):
+
+```ts
+// pio/src/capability/pio-session.ts
+const PIO_CAPABILITY_CUSTOM_TYPE = "pio-capability";
+```
+
+PLACEMENT — ONCE PER `run()` SPAN. The base `run()` session-present branch
+stamps EXACTLY ONCE, strictly AFTER `validateInputs` / BEFORE `call()` — the
+sole call site in the artifact (source-guard pinned, `base.test.ts`):
+
+```ts
+// pio/src/capability/base.ts (run() session-present branch)
+      // Span stamp: settled before the body can issue any phase prompt.
+      await this.s.markCapability(this.contract.name);
+```
+
+Awaited ⇒ the header SETTLES ABOVE the span's first phase line in transcript
+order. Observable manifestation: the marker MESSAGE precedes the span's
+FIRST phase prompt. Contrast the phase markers, which lead every run's
+PROMPT TEXT (§1.1) — different carrier (durable custom message vs prompt
+line), different granularity (once per span vs every run).
+
+POLICY EDGES, each exactly as the shipped pins define them:
+
+- Floor-driven re-runs and later phases of the same span carry NO FURTHER
+  header — once per `run()`; nothing in the phase path knows the channel
+  exists (span-stamp matrix, `base.test.ts`; the phase-side restamping
+  contrast per §1.1).
+- Span RETURNS are IMPLICIT — section-header scoping: a header scopes
+  everything until the next header appears. There is no close-mark and no
+  stamp state to unwind (base.ts header: "span return is implicit
+  (section-header scoping); no stamp state exists").
+- A SECOND `run()` on the same instance re-stamps — a fresh span; no state
+  exists to re-arm (one call site per branch per run).
+- A ZERO-PHASE `run()` persists a bare header — one stamp, zero prompts
+  (documented accepted edge).
+- A CONTRACT-VIOLATING run stamps NOTHING — validation precedes the stamp
+  site, so a violating run settles with zero side effects (typed capture;
+  no marker, no body).
+
+TOP-LEVEL UNIFORMITY. The entry constructs EVERY top frame WITH `{ session }`
+—
+
+```ts
+// pio/src/run-session.ts (pipeline)
+    const instance = new resolution.capability.ctor({ session });
+```
+
+— so every admitted run stamps its own capability header; transcripts audit
+END-TO-END, including the top capability's scope opening.
+
+ROW-2 EXCLUSION. The hop BODY is unstamped ON PURPOSE — the child
+engagement's own terminal record already names the callee (per-frame records,
+§8.4). Pinned as ABSENCE rows in `base.test.ts` (row-2 uniformity) and
+commented at the adoption site (refreshed §8.1 dispatch quote).
+
+AUDIENCE. After-the-fact transcript readers — the operator's audit, the QG
+session, the future slot-10 per-span attribution (§11.7) — NOT the model:
+prompt text never carries the mark. The terminal record stamps only the TOP
+capability's identity (the emitter's identity is stamped from the resolved
+top contract — entry wiring, `pio/src/run-session.ts`), so this is the
+cheapest durable proof that a composed callee ran at all.
+
+### 11.4 Shared variables until the wrapping layer lands (slot-11 handoff)
+
+Operational meaning AT THIS RUNG: the SAME `SessionVariableStore` object via
+session-instance identity. One instance ⇒ ONE store reachable from BOTH
+vantage points, so callee `set` → caller `get` AND caller `set` → callee
+`get` hold over one raw Map with ZERO new machinery. Bidirectional
+visibility holds BY CONSTRUCTION; the VAR-FREE suite row A2 asserts exactly
+this (the caller-side seed is visible INSIDE the callee's span and the
+callee-side write is visible AFTER the run — §11.10).
+
+WHAT DOES NOT LAND HERE. No new API, coercion, or validation — `set` is RAW:
+
+```ts
+// pio/src/capability/pio-session.ts
+  /** Raw assignment — value-shape coercion belongs to the wrapping layer. */
+  set(name: string, value: unknown): void {
+    this.#entries.set(name, value);
+  }
+```
+
+NO MODEL-SIDE WRITER exists and none is added: `PhaseResult.varsDelta` stays
+EMPTY BY CONSTRUCTION and the idle `customTools` slot stays RESERVED
+(boundary per §1.6 — cross-referenced, not restated).
+
+WRAP-NOT-RENAME HANDOFF. The store's own JSDoc states the inheritance rule
+verbatim — "later work wraps this same store rather than renaming it":
+
+```ts
+// pio/src/capability/pio-session.ts
+/**
+ * Minimal instance variable store (get/set/list over a Map). Deliberately
+ * distinct from the root tree's richer same-named class (different
+ * package, different surface); later work wraps this same store rather
+ * than renaming it.
+ */
+export class SessionVariableStore {
+```
+
+— the wrapping layer (slot 11: the single validated entry point plus
+`varsDelta`) WRAPS this same store and inherits the sharing automatically.
+Named boundary — not demonstrated at this rung.
+
+### 11.5 Pre-call enforcement placement (the base-seam `validateInputs`)
+
+NO NEW GATE. The base-seam `validateInputs(this.contract, values)` — at its
+position relative to the placement branch shown in the refreshed §8.1
+dispatch quote — remains the SOLE pre-execution enforcement point for either
+placement. Because composition drives the callee THROUGH ITS OWN `run()`, the
+callee's inputs are ALWAYS validated against the CALLEE'S contract before
+`call()` executes — the same preflight a standalone launch gets.
+
+Violation behavior: a typed `ContractViolationError` (collect-all violations,
+cause `"contract"` — thrown by `validateInputs`,
+`pio/src/capability/contract.ts`) settles as
+`{ ok: false, errors: [capture] }` AT THE CALLER'S AWAIT:
+
+```ts
+// pio/src/capability/errors.ts
+export class ContractViolationError extends Error {
+  /** Every collected violation — the defining datum. */
+  readonly violations: string[];
+  /** Refines built-in Error.cause?: unknown; always "contract". */
+  readonly cause: CapabilityErrorCause;
+
+  constructor(violations: string[], message?: string) {
+    super(message ?? `Contract violation: ${violations.join("; ")}`);
+    this.name = "ContractViolationError";
+    this.violations = violations;
+    this.cause = "contract";
+  }
+}
+```
+
+The callee body NEVER runs and NO span stamp occurs — validation precedes
+the stamp site, so a violating run is a ZERO-side-effect settlement (the
+suite's three A3 variants evidence this, incl. zero `sendCustomMessage`
+calls — §11.10).
+
+Discovery-placement invariance: the check lives in the BASE SEAM, not the
+loader — direct-instantiation composition (import the class, construct, await
+`run()`) gets the identical preflight. Static load-time `checkContract`
+continues to apply ONLY to loader-table registrations (cross-ref §6 step 2).
+
+### 11.6 Frame governance settlement (D2): self-containment, structural return, no blocking machinery
+
+CALLEE SELF-CONTAINMENT. Composition hands the callee only `{ session }` +
+its validated inputs. The callee never receives, inherits, or borrows any of
+the caller's declared scope — its OWN contract IS its whole frame. The
+session-present branch invokes the body with no scope plumbing beyond the
+inputs record (quoted verbatim — the entire composed-run body):
+
+```ts
+// pio/src/capability/base.ts (run() session-present branch)
+      // Span stamp: settled before the body can issue any phase prompt.
+      await this.s.markCapability(this.contract.name);
+      const outputs = await this.call(values);
+      return { ok: true, outputs: settle(outputs) };
+```
+
+The suite A1 row pins the isolation: the bag carries NO caller-contract/scope
+keys, the stub callee carries the REAL research contract (not the caller's),
+and the caller's declared contract is UNCHANGED after the call.
+
+"CALLER'S RULES RETURN" IS STRUCTURAL, NOT MECHANICAL. After `run()` settles
+— SUCCESS OR FAILURE: every reachable path RESOLVES, the catch-all spans both
+placements, `run` never rejects (the §8.4 doctrine stands) — the caller's
+remaining phases continue under the caller's OWN contract. Nothing ever
+changed mid-call ⇒ no residue, nothing to restore. A1 structural-resume
+evidence: the post-call continuation runs under caller-only references, and
+the marker channel attributes each transcript segment to its OWNING
+capability in call order.
+
+PHYSICAL WRITE BOUNDARY AT THIS STEP. It remains the SANDBOX MOUNT PROFILE —
+project-slot rw LAST bind ordering (§4.6), system ro: the ACCEPTED BACKSTOP
+spanning this window, roadmap-recorded risk. Contract `writes` /
+`allowProjectWrites` stay DECLARED-UNENFORCED
+(`pio/src/capability/contract.ts`); they name intent, not enforcement.
+
+THE NO-BLOCKING-MACHINERY RULING — stated explicitly: ZERO runtime
+write-blocking machinery lands at this step — no frame-stack push/pop around
+calls, no in-bubble tool-call guard, no refusal/retry dynamic. Rationale in
+one sentence: a refused-but-instructed write would loop the model until
+budget breach (the infinite-loop trap), and the owner rejected such a gate.
+The refused-with-readable-reason half rides slot 10 (§11.7).
+
+### 11.7 Slot-10 boundary (explicit)
+
+Boundary voice throughout — named, cited, never demonstrated.
+
+The per-write BLOCKING half — a write the callee's contract denies is
+REFUSED with a READABLE REASON under the callee's frame — lands together with
+SLOT 10's guard layer. Slot 10 BUILDS ON — extends, not reinvents — the frame
+semantics and marker attribution pinned in this section
+(callee-frame-is-its-own-contract; per-span frame attribution via the
+capability header of §11.3). THIS STEP SHIPS NO BLOCKING MECHANISM.
+
+SDK facts shaping the boundary (measured against owned pin 0.85.1 —
+GOAL-measured grounding, recorded as measured fact):
+
+- The SDK session EVENT channel is PASSIVE — subscribe delivers events to a
+  void-returning listener; it CANNOT refuse a tool call.
+- The extension-API `tool_call` handler (`{ block: true, reason }`) is the
+  identified in-process refusal path. Precedent: the legacy root-tree guard
+  `src/guards/validation.ts` — `pi.on("tool_call", …)` with `block: true`
+  write refusals for paths outside its allowlist.
+- In-bubble pi loads extensions from the isolated agent dir — the
+  owned-extension provisioning of §4 stands, so an extension-installed guard
+  reaches bubble sessions.
+
+WHICH concrete install mechanism slot 10 uses (owned-extension registration
+vs inline extension vs other) is slot-10 planning territory — deliberately
+left open here.
+
+### 11.8 Fixture registry note
+
+Registry state: THREE builtins — `research` (permanent),
+`compose-new-session-demo` (TEMPORARY — §10's note stands unchanged), and
+`compose-same-session-demo` (PERMANENT standing row-1 demo — the operational
+QG E2E target, §11.9). The registration surface (three-entry table, uniform
+lazy-thunk form; insertion order research → compose-new-session-demo →
+compose-same-session-demo pinned in the loader suite; the `HELP_LINES`
+two-line idiom pairs with it) is pinned at HEAD in the refreshed §10 quotes.
+
+THE SINGLE STANDING DEMO. `compose-same-session-demo` — PERMANENT, REGISTERED
+— is a STRUCTURAL MIRROR of the temporary row-2 demo differing ONLY in
+placement: the same-session callee construction (`{ session: this.s }` here
+vs session-absent `{}` there). Same contract shape — zero inputs, a single
+`report` output (a VALUE slot passing through the settled research report
+token), empty `writes`:
+
+```ts
+// pio/src/capabilities/compose-same-session-demo.ts (contract literal)
+  readonly contract: Contract = {
+    name: "compose-same-session-demo",
+    version: "0.1.0",
+    inputs: [],
+    outputs: [{ name: "report" }],
+    writes: [],
+  };
+```
+
+Same three-phase flow (greeting → the awaited composition → summary), same
+fault vocabulary: verbatim fault forwarding (re-project the child's first
+capture — type + message; no new types minted), the one fixed sentence for
+the successful-but-unreadable report, kill/empty variants carried
+identically.
+
+THE CONTRAST STATEMENT LIVES IN BOTH MODULES' HEADERS. The permanent
+module's, quoted verbatim:
+
+```
+// pio/src/capabilities/compose-same-session-demo.ts (module header)
+Permanent registration: unlike its sibling `compose-new-session-demo` — a
+temporary demonstration removed at the bulk-migration cutover — this
+module stays registered. The single placement difference between the two
+is the callee construction: WITH the caller's session instance by
+reference here, session-absent in the sibling.
+```
+
+The sibling's uppercase `TEMPORARY removal schedule` line is already pinned
+byte-intact in §10. Prose about the permanent demo uses lowercase
+"temporary" ONLY — the uppercase token is the deletion-sweep grep signature
+of the row-2 module (zero occurrences in this module's source — suite-guard-
+pinned).
+
+WITHDRAWAL NOTE. The goal-proposed leaf-callee fixture
+(`compose-same-session-callee` — tiny, unregistered, import-direct) is
+WITHDRAWN: the planning-phase owner directive superseded the two-asset shape
+with this single standing demo subsuming its role.
+
+AUTHOR POSTURE (carrying §10's guidance over to both demos). Zero-input
+contracts plus hard-coded `DEMO_TOPIC` constants are DEMO FIXTURES, not a
+recommended authoring posture:
+
+```ts
+// pio/src/capabilities/compose-same-session-demo.ts
+export const DEMO_TOPIC = "Gnosticism in Belgrade, Serbia";
+```
+
+The §6 checklist governs every non-demo builtin unchanged.
+
+### 11.9 Quality-gate manual E2E leg (definition)
+
+Anti-assert voice (§7.1/§8.8): the items below are EXPECTED OBSERVATIONS
+defined for the owner-run measurement — measurement points, NOT document
+assertions.
+
+Framing: OWNER-RUN on a provisioned host (live model + state root). This
+goal builds ZERO E2E machinery — the leg is DEFINED here and feeds the
+quality-gate session directly (QG precedent of the last three rungs: manual
+E2E leg + PR code review vs `experimental`; QG approval = completion
+confirmation).
+
+LEG: `pio run compose-same-session-demo` under an attached TTY. The
+TTY-required surface of §7.1 applies (both enforced sites stand); zero
+declared inputs ⇒ no `--input` needed.
+
+EXPECTED TRANSCRIPT MARKER ORDERING — durable capability custom messages plus
+phase prompt markers, in this order:
+
+1. `—— capability: compose-same-session-demo ——` PRECEDES the greeting
+   phase's `—— greeting ——` marker;
+2. `—— capability: research ——` PRECEDES the FIRST run's `—— research ——`
+   phase marker of the research loop — and multi-run loops stamp NO FURTHER
+   capability headers (once-per-run ruling, §11.3);
+3. the `—— summary ——` phase carries NO capability header — it resumes the
+   demo's scope; no second demo header appears ANYWHERE.
+
+EXPECTED TERMINAL `status.json` (placement `<engagement>/.sessions/top/status.json`;
+canonical serialized shape per `serializeStatus`, quoted for the key order —
+`ok → capability{name, version, source} → outputs → [errors?] →
+[transcriptRef?] → tokens → durationMs`, 2-space indent + trailing newline):
+
+```ts
+// pio/src/capability/status.ts
+export function serializeStatus(status: SessionStatus): string {
+  const record: Record<string, unknown> = {
+    ok: status.ok,
+    capability: {
+      name: status.capability.name,
+      version: status.capability.version,
+      source: status.capability.source,
+    },
+    outputs: status.outputs,
+    ...(status.errors !== undefined ? { errors: status.errors } : {}),
+    ...(status.transcriptRef !== undefined
+      ? { transcriptRef: status.transcriptRef }
+      : {}),
+    tokens: status.tokens,
+    durationMs: status.durationMs,
+  };
+  return `${JSON.stringify(record, null, 2)}\n`;
+}
+```
+
+The expected field-by-field observations:
+
+- `ok: true`;
+- `capability: { name: "compose-same-session-demo", version: "0.1.0", source: "builtin" }`;
+- `outputs.report` = the BUBBLE-ABSOLUTE report path — the callee's FILE-MODE
+  slot settled to absolute placement during its awaited run (same bubble ⇒
+  same project-slot placement), and the demo's own `report` slot is a VALUE
+  slot that passes the settled value through UNTRANSFORMED
+  (`settleFileModeOutputs` touches file-mode slots only — §8.4);
+- NUMERIC `tokens`; NUMERIC `durationMs`; optional `transcriptRef`; NO
+  `errors`.
+
+EXIT CODE 0 — the exit-code map (`pio/src/capability/status.ts`):
+
+```ts
+// pio/src/capability/status.ts
+export function exitCodeFor(status: SessionStatus): number {
+  return status.ok ? 0 : 1;
+}
+```
+
+FAILURE POSTURE: any deviation observed ⇒ the leg FAILS with MEASURED
+evidence (reported, blocks per constraint — the §8.8 hard-seam discipline).
+
+### 11.10 Acceptance-evidence map (closeout trace)
+
+Every ticket AC (#1–#6) mapped to its named evidence at this rung, so a
+reader (or the QG session) verifies completeness without re-deriving it:
+
+- **#1 — parent calls callee with the session param; inline `Outcome`; parent
+  continues.** `compose-same-session-demo.test.ts` **C2** (full happy path —
+  the exact five-event sequence on the ONE shared handle; construction-bag +
+  reference-identity pins; inline settled `CapabilityResult`; zero demo-side
+  writes) + the live QG leg (§11.9).
+- **#2 — mid-span gating (settled by D2: frame governance now, per-write
+  blocking later).** **A1** (callee-isolation + structural resume); the
+  blocking half is the §11.7 slot-10 boundary — NO machinery shipped.
+- **#3 — shared variables both directions.** **A2** (VAR-FREE store identity
+  over the single instance — sharing holds by construction under D1).
+- **#4 — contract violation rejected before execution.** **A3** ×3 variants
+  (typed `ContractViolationError` capture at the await; callee body never ran;
+  zero span stamp).
+- **#5 — transcript shows both capabilities' segment markers in call order.**
+  **C2** interleaving pins (once-per-span counts) + the `base.test.ts`
+  present-branch span-stamp matrix (exactly-one-per-run, log-order precedence,
+  floor/multi-run no-further-stamps, second-`run()` fresh span, zero-phase
+  bare header, violating-run zero side effects, row-2 ABSENCE uniformity) +
+  the `research.test.ts` stamp-evidence row + the live QG-leg ordering
+  expectation (§11.9).
+- **#6 — nested same-session calls complete with correct frame restoration.**
+  NOT exercised at this rung — the hermetic three-instance nesting was dropped
+  during planning (synthetic doubles exercise no shipped code path; no real
+  nested capability exists yet). Named as a boundary; re-proven when the first
+  real nested capability lands. Section-header scoping makes nesting read
+  naturally in transcripts — the scheme requires no per-nesting-level
+  machinery.
+
+The fault-forwarding families ground the §11.1/§11.6 forwarding claims:
+**C3** ×2 (verbatim child-fault), **C4** ×2 (malformed-success fixed
+sentence), **C5** ×2 (settle-time conversion fault).

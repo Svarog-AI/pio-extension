@@ -101,8 +101,7 @@ const harness = vi.hoisted(() => {
       name,
       description: "fake tool definition",
     }));
-    // Recording mock for the no-turn custom-message seam (the real base
-    // run() stamps on it; arg-shape observable, never a turn trigger).
+    // Recording mock for the no-turn custom-message seam.
     const sendCustomMessage = vi.fn(async (): Promise<void> => {});
     const session: FakeSession = {
       subscribe,
@@ -479,7 +478,7 @@ describe("research capability", () => {
       expect(text).not.toContain(RESUME_EXISTING);
     });
 
-    it("spans its own header: the run() stamps `capability: research` on the provided session EXACTLY ONCE, strictly BEFORE the research phase's first prompt (mechanism-step evidence lives here, not in the composition suite)", async () => {
+    it("spans its own header: the run() stamps `capability: research` on the provided session EXACTLY ONCE, strictly BEFORE the research phase's first prompt", async () => {
       const { instance, round } = await host();
       scriptRuns(round, quietSettle());
       const cap = new ResearchCapability({ session: instance });

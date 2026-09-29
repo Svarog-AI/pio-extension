@@ -22,19 +22,13 @@
 // placements); capabilities emit slot-relative tokens and consumers take
 // settled values verbatim — no per-capability or consumer-side path math.
 //
-// Span stamps: each SESSION-PRESENT run() opens its capability span with
-// EXACTLY ONE no-turn durable custom-message header (seam:
-// PioSession.markCapability, label = this capability's OWN contract.name)
-// emitted at span start — strictly AFTER validateInputs (a violating run
-// settles with ZERO side effects) and BEFORE the body can act, so the
-// settled entry persists ABOVE the span's first phase line; span RETURN is
-// implicit (section-header scoping). NO per-instance stamp state exists —
-// one call site is the entire enforcement (no flag, no counter, nothing to
-// disarm), and the phase path (execute_phase) deliberately has NO awareness
-// of the channel. The row-2 hop body is STAMP-FREE by owner ruling: a
-// session-absent callee becomes its own engagement whose identity-bearing
-// durable record (child status.json) already stamps its name — a header in
-// the child transcript would be redundant.
+// Span stamps: each session-present run() opens its span with exactly ONE
+// no-turn durable custom-message header (PioSession.markCapability, label
+// = contract.name), awaited post-validation/pre-body so it settles above
+// the span's first phase line. A violating run stamps nothing; span return
+// is implicit (section-header scoping); no stamp state exists. The row-2
+// hop body is unstamped: the child engagement's own status record already
+// names the callee.
 
 import { isAbsolute, join, resolve } from "node:path";
 import { deriveProjectKey } from "../sandbox/layout.ts";
@@ -88,11 +82,10 @@ export abstract class PioCapability {
    * the placement branch (a violation settles the capture with zero hop
    * side effects), then hops the row-2 frame (session absent) or runs the
    * body in place (session present). The session-present branch stamps its
-   * OWN span header exactly ONCE at span start (post-validation/pre-body)
-   * so it settles before any phase prompt of the span can issue; the row-2
-   * hop body carries NO stamp (owner ruling — the child's own record covers
-   * identity). Success settles ONCE at this seam:
-   * file-mode output slots transform to the bubble's absolute placement —
+   * span header once at span start (post-validation/pre-body); the row-2
+   * hop body carries none (the child's own record covers identity). Success
+   * settles ONCE at this seam: file-mode output slots transform to the
+   * bubble's absolute placement —
    * in-place directly, and on the hop path inside the body so the single
    * payload serves the child record and the caller's await identically.
    * A conversion fault escapes into THIS capability's catch-all after the
@@ -126,16 +119,13 @@ export abstract class PioCapability {
           body: async (
             childFrame: PioSession,
           ): Promise<Record<string, unknown>> => {
-            // THE hop body is deliberately UNSTAMPED (owner ruling): the
-            // adopted child engagement's own record stamps its identity —
-            // a marker in the child transcript would be redundant.
+            // Unstamped on purpose: the child's own status record names it.
             this.s = childFrame;
             return settle(await this.call(values));
           },
         });
       }
-      // THE span stamp (session-present branch): strictly post-validation,
-      // pre-body — the span opens before ANY phase prompt it may issue.
+      // Span stamp: settled before the body can issue any phase prompt.
       await this.s.markCapability(this.contract.name);
       const outputs = await this.call(values);
       return { ok: true, outputs: settle(outputs) };

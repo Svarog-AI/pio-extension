@@ -107,8 +107,7 @@ const harness = vi.hoisted(() => {
       };
     });
     const prompt = vi.fn(async () => undefined);
-    // Recording mock for the no-turn custom-message seam (arg-shape
-    // observable; never triggers a turn on this plane).
+    // Recording mock for the no-turn custom-message seam.
     const sendCustomMessage = vi.fn(async (): Promise<void> => {});
     const dispose = vi.fn(() => undefined);
     const handle: FakeSession = {

@@ -37,16 +37,12 @@
 // or the cumulative counters. The same idiom spans both the committed-path
 // list and the payload list.
 //
-// Capability-span marking rides a dedicated NO-TURN carrier: markCapability
-// appends the owning capability's section header (renderCapabilityMarker's
-// pinned line; customType PIO_CAPABILITY_CUSTOM_TYPE) as a durable custom
-// message — never folded into prompt text and never an LLM-turn trigger.
-// Reserved-label grammar: phase ids stay BARE ids; the `capability:` prefix
-// is RESERVED for that mark (documentation only — no runtime enforcement).
-// This host merely exposes the generic seam; the OWNING base's
-// SESSION-PRESENT run() seam drives it (exactly one header per such span;
-// session-absent runs stay unstamped — the child's own record covers
-// identity — see capability/base.ts).
+// Capability-span marking rides a no-turn carrier: markCapability appends
+// the span's section header (renderCapabilityMarker's line; customType
+// PIO_CAPABILITY_CUSTOM_TYPE) as a durable custom message — never folded
+// into prompt text, never a turn trigger. Phase ids stay BARE ids; the
+// `capability:` prefix is reserved for that mark (no runtime enforcement).
+// Only session-present runs are stamped, once per span (see base.ts).
 
 import type {
   AgentSession,
@@ -69,13 +65,9 @@ export function renderPhaseMarker(label: string): string {
   return `\u2014\u2014 ${label} \u2014\u2014`;
 }
 
-/**
- * Capability-span marker: the reserved `capability:` prefix INSIDE the dash
- * flank of the phase-marker layout (U+2014 x2, single spaces). SOLE OWNER
- * of the pinned capability-line bytes — suites replicate them behind named
- * constants citing this owner. No input validation (the renderer is dumb);
- * no trailing newline.
- */
+/** Capability-span marker: the `capability:` prefix inside the dash flank
+ * of the phase-marker layout (U+2014 x2, single spaces). No input
+ * validation; no trailing newline. */
 export function renderCapabilityMarker(label: string): string {
   // Escaped so the U+2014 bytes survive editor and toolkit glyph mangling.
   return `\u2014\u2014 capability: ${label} \u2014\u2014`;
@@ -428,17 +420,11 @@ export class PioSession {
   }
 
   /**
-   * THE capability-span header seam: appends the owning capability's
-   * section header as a DURABLE custom message and NEVER triggers an LLM
-   * turn — no options object, so on this session's idle plane the SDK's
-   * append-only branch applies (agent state + session entry, no turn).
-   * Same handle reach as execute_phase (the runtime's CURRENT handle):
-   * one handle, one transcript, counter/observer continuity by
-   * construction. Positioned in transcript order relative to whatever
-   * prompt FOLLOWS the call site: the owning base's run() awaits this
-   * before the body can act, so the header persists above the span's
-   * first phase line. The audience is after-the-fact transcript readers
-   * (operator / quality-gate audit), not the model.
+   * Append the span's section header as a durable custom message WITHOUT
+   * triggering an LLM turn (no options object = the SDK's append-only idle
+   * branch). Same handle reach as execute_phase (the runtime's CURRENT
+   * handle). Awaited before the body acts, so the header precedes the
+   * span's first phase prompt in transcript order.
    */
   async markCapability(label: string): Promise<void> {
     await this.runtime.session.sendCustomMessage({

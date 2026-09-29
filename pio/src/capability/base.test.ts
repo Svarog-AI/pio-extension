@@ -105,8 +105,7 @@ const harness = vi.hoisted(() => {
       return () => {};
     });
     const prompt = vi.fn(async () => undefined);
-    // Recording mock for the no-turn custom-message seam (arg-shape
-    // observable; never triggers a turn on this plane).
+    // Recording mock for the no-turn custom-message seam.
     const sendCustomMessage = vi.fn(async (): Promise<void> => {});
     const session: FakeSession = {
       subscribe,
@@ -989,13 +988,12 @@ describe("PioCapability — prompt framing passes through untouched", () => {
 });
 
 // ---------------------------------------------------------------------
-// Span stamp: owned SOLELY by the run() seam (owner scope ruling — the
-// phase path has NO awareness of the channel). Each run() opens its span
-// with EXACTLY ONE no-turn durable custom-message header on whichever
-// branch holds the span; label = the capability's OWN contract.name;
-// content = the renderer's pinned bytes (single-owner reference — the
-// suite never duplicates the line bytes). The replica below names the
-// module-private namespace owner in ./pio-session.ts.
+// Span stamp: driven through run(); owned by the run() seam alone — the
+// phase path has no awareness of the channel. One no-turn header per
+// session-present span; the row-2 hop body is unstamped. Label =
+// contract.name; content = renderCapabilityMarker's bytes (referenced, not
+// duplicated). The replica below names the module-private customType
+// constant in ./pio-session.ts.
 // ---------------------------------------------------------------------
 /** Replica of the module-private customType namespace (SOLE OWNER: the
  * PIO_CAPABILITY_CUSTOM_TYPE constant in ./pio-session.ts). */
@@ -1030,8 +1028,8 @@ describe("PioCapability — span stamp (owned solely by the run() seam)", () => 
     // NO options object: one argument only (SDK default = no turn).
     expect(round.session.sendCustomMessage.mock.calls[0]).toHaveLength(1);
     expect(round.session.prompt).toHaveBeenCalledTimes(2);
-    // Log-order pin: the settled stamp strictly precedes the span's FIRST
-    // phase prompt — the header reads as a section header above it.
+    // Log-order: the settled stamp strictly precedes the span's first
+    // phase prompt.
     expect(
       round.session.sendCustomMessage.mock.invocationCallOrder[0],
     ).toBeLessThan(round.session.prompt.mock.invocationCallOrder[0]);
@@ -1071,7 +1069,7 @@ describe("PioCapability — span stamp (owned solely by the run() seam)", () => 
     }
   }
 
-  it("a ZERO-PHASE body still persists the bare header (the flipped accepted edge — pinned as intended, not special-cased away): one stamp, zero prompts", async () => {
+  it("a ZERO-PHASE body still persists the bare header: one stamp, zero prompts", async () => {
     const { instance, round } = await host();
     const cap = new NoBodyStampCap({ session: instance });
     const result = await cap.run();
@@ -1154,7 +1152,7 @@ describe("PioCapability — span stamp (owned solely by the run() seam)", () => 
     ).toBeLessThan(round.session.prompt.mock.invocationCallOrder[0]);
   });
 
-  it("ROW-2 uniformity: the hop body stamps NOWHERE — the child handle and the parent handle both stay unstamped across the callee span (owner ruling: the stamp is redundant there — the child engagement carries its own identity-bearing durable record; exactly ONE phase prompt rides the child handle)", async () => {
+  it("ROW-2: the hop body stamps NOWHERE — neither child nor parent handle receives a custom message while the callee's single phase prompt rides the adopted child handle", async () => {
     const root = newBTempRoot();
     const world = buildBWorld(root, "/work/stamp-hop");
     await installBHolder(world, root);
@@ -1185,9 +1183,9 @@ describe("PioCapability — span stamp (owned solely by the run() seam)", () => 
     const result = await new HopPhaseCap().run();
     expect(result.ok).toBe(true);
     const c = child as BHandle;
-    // THE absence pins: the callee span executes in the child transcript
-    // (its phase prompt lands on the adopted handle) but carries NO pio
-    // capability header — the child's own record stamps its identity.
+    // Absence: the callee span rides the child transcript (phase prompt on
+    // the adopted handle) with no capability header — the child's own
+    // status record names it.
     expect(c.prompt).toHaveBeenCalledTimes(1);
     expect(c.sendCustomMessage).not.toHaveBeenCalled();
     expect(world.parentHandle.sendCustomMessage).not.toHaveBeenCalled();
@@ -1579,7 +1577,7 @@ describe("source guards (row-2 edge discipline over base.ts)", () => {
     expect(src.includes("declare readonly contract: Contract")).toBe(true);
   });
 
-  it("THE scope ruling pinned mechanically: EXACTLY ONE span-stamp call site (this.s.markCapability()) in base.ts — the session-present branch alone — strictly BEFORE the execute_phase declaration, and the phase path references the stamp channel NOWHERE (one call site; the row-2 hop body is stamped-free by owner ruling)", () => {
+  it("EXACTLY ONE span-stamp call site (this.s.markCapability()) in base.ts — the session-present branch, strictly before the execute_phase declaration; the phase method body references the channel nowhere", () => {
     const callSites = [...src.matchAll(/this\.s\.markCapability\(/g)].map(
       (match) => match.index ?? -1,
     );

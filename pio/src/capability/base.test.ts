@@ -1154,7 +1154,7 @@ describe("PioCapability — span stamp (owned solely by the run() seam)", () => 
     ).toBeLessThan(round.session.prompt.mock.invocationCallOrder[0]);
   });
 
-  it("ROW-2 uniformity: the hop body stamps the CALLEE'S span on the ADOPTED child handle after adoption and BEFORE the body's first phase prompt — the parent frame stays unstamped", async () => {
+  it("ROW-2 uniformity: the hop body stamps NOWHERE — the child handle and the parent handle both stay unstamped across the callee span (owner ruling: the stamp is redundant there — the child engagement carries its own identity-bearing durable record; exactly ONE phase prompt rides the child handle)", async () => {
     const root = newBTempRoot();
     const world = buildBWorld(root, "/work/stamp-hop");
     await installBHolder(world, root);
@@ -1185,23 +1185,11 @@ describe("PioCapability — span stamp (owned solely by the run() seam)", () => 
     const result = await new HopPhaseCap().run();
     expect(result.ok).toBe(true);
     const c = child as BHandle;
-    // THE stamp lands on the CHILD frame's handle, at the renderer's pinned
-    // bytes labeled with the CALLEE's own name.
-    expect(c.sendCustomMessage).toHaveBeenCalledTimes(1);
-    expect(c.sendCustomMessage).toHaveBeenCalledWith({
-      customType: CAPABILITY_CUSTOM_TYPE_REPLICA,
-      content: renderCapabilityMarker("fixture-cap"),
-      display: true,
-      details: undefined,
-    });
-    expect(c.sendCustomMessage.mock.calls[0]).toHaveLength(1);
-    // ...strictly BEFORE the callee span's first phase prompt.
+    // THE absence pins: the callee span executes in the child transcript
+    // (its phase prompt lands on the adopted handle) but carries NO pio
+    // capability header — the child's own record stamps its identity.
     expect(c.prompt).toHaveBeenCalledTimes(1);
-    expect(c.sendCustomMessage.mock.invocationCallOrder[0]).toBeLessThan(
-      c.prompt.mock.invocationCallOrder[0],
-    );
-    // The parent frame is UNSTAMPED: the header opened in the child's
-    // transcript, not the caller's.
+    expect(c.sendCustomMessage).not.toHaveBeenCalled();
     expect(world.parentHandle.sendCustomMessage).not.toHaveBeenCalled();
     expect(world.parentHandle.prompt).not.toHaveBeenCalled();
   });
@@ -1591,11 +1579,11 @@ describe("source guards (row-2 edge discipline over base.ts)", () => {
     expect(src.includes("declare readonly contract: Contract")).toBe(true);
   });
 
-  it("THE scope ruling pinned mechanically: EXACTLY TWO span-stamp call sites (this.s.markCapability()) in base.ts, both strictly BEFORE the execute_phase declaration — the phase path references the stamp channel NOWHERE (one call site per branch; the stamp expression itself occurs nowhere else)", () => {
+  it("THE scope ruling pinned mechanically: EXACTLY ONE span-stamp call site (this.s.markCapability()) in base.ts — the session-present branch alone — strictly BEFORE the execute_phase declaration, and the phase path references the stamp channel NOWHERE (one call site; the row-2 hop body is stamped-free by owner ruling)", () => {
     const callSites = [...src.matchAll(/this\.s\.markCapability\(/g)].map(
       (match) => match.index ?? -1,
     );
-    expect(callSites).toHaveLength(2);
+    expect(callSites).toHaveLength(1);
     const phaseDecl = src.indexOf("async execute_phase(");
     expect(phaseDecl).toBeGreaterThan(-1);
     for (const index of callSites) {

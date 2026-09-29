@@ -43,8 +43,10 @@
 // message — never folded into prompt text and never an LLM-turn trigger.
 // Reserved-label grammar: phase ids stay BARE ids; the `capability:` prefix
 // is RESERVED for that mark (documentation only — no runtime enforcement).
-// This host merely exposes the generic seam; the OWNING base's run() seam
-// drives it (exactly one header per run span — see capability/base.ts).
+// This host merely exposes the generic seam; the OWNING base's
+// SESSION-PRESENT run() seam drives it (exactly one header per such span;
+// session-absent runs stay unstamped — the child's own record covers
+// identity — see capability/base.ts).
 
 import type {
   AgentSession,

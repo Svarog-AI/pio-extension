@@ -22,18 +22,19 @@
 // placements); capabilities emit slot-relative tokens and consumers take
 // settled values verbatim — no per-capability or consumer-side path math.
 //
-// Span stamps: each run() opens its capability span with EXACTLY ONE
-// no-turn durable custom-message header (seam: PioSession.markCapability,
-// label = this capability's OWN contract.name) emitted at span start on
-// whichever branch holds the span — the session-present branch strictly
-// AFTER validateInputs (a violating run settles with ZERO side effects)
-// and the row-2 hop body immediately after adopting the child host (the
-// earliest moment a handle and the span coexist there). Awaited BEFORE the
-// body can act, the settled entry persists ABOVE the span's first phase
-// line; span RETURN is implicit (section-header scoping). NO per-instance
-// stamp state exists — one call site per branch per run is the entire
-// enforcement (no flag, no counter, nothing to disarm), and the phase path
-// (execute_phase) deliberately has NO awareness of the channel.
+// Span stamps: each SESSION-PRESENT run() opens its capability span with
+// EXACTLY ONE no-turn durable custom-message header (seam:
+// PioSession.markCapability, label = this capability's OWN contract.name)
+// emitted at span start — strictly AFTER validateInputs (a violating run
+// settles with ZERO side effects) and BEFORE the body can act, so the
+// settled entry persists ABOVE the span's first phase line; span RETURN is
+// implicit (section-header scoping). NO per-instance stamp state exists —
+// one call site is the entire enforcement (no flag, no counter, nothing to
+// disarm), and the phase path (execute_phase) deliberately has NO awareness
+// of the channel. The row-2 hop body is STAMP-FREE by owner ruling: a
+// session-absent callee becomes its own engagement whose identity-bearing
+// durable record (child status.json) already stamps its name — a header in
+// the child transcript would be redundant.
 
 import { isAbsolute, join, resolve } from "node:path";
 import { deriveProjectKey } from "../sandbox/layout.ts";
@@ -86,11 +87,11 @@ export abstract class PioCapability {
    * The sole composition seam — never overridden. Validates inputs before
    * the placement branch (a violation settles the capture with zero hop
    * side effects), then hops the row-2 frame (session absent) or runs the
-   * body in place (session present). Each branch stamps its OWN span
-   * header exactly ONCE at span start — post-validation/pre-body in place;
-   * post-adoption/pre-body on the hop — before any phase prompt of the
-   * span can issue (the awaited seam call precedes the body wholesale).
-   * Success settles ONCE at this seam:
+   * body in place (session present). The session-present branch stamps its
+   * OWN span header exactly ONCE at span start (post-validation/pre-body)
+   * so it settles before any phase prompt of the span can issue; the row-2
+   * hop body carries NO stamp (owner ruling — the child's own record covers
+   * identity). Success settles ONCE at this seam:
    * file-mode output slots transform to the bubble's absolute placement —
    * in-place directly, and on the hop path inside the body so the single
    * payload serves the child record and the caller's await identically.
@@ -125,13 +126,10 @@ export abstract class PioCapability {
           body: async (
             childFrame: PioSession,
           ): Promise<Record<string, unknown>> => {
+            // THE hop body is deliberately UNSTAMPED (owner ruling): the
+            // adopted child engagement's own record stamps its identity —
+            // a marker in the child transcript would be redundant.
             this.s = childFrame;
-            // THE span stamp (row-2 hop branch): on the JUST-ADOPTED handle
-            // — at run() entry this instance held no handle, so adoption
-            // is the earliest moment the stamp can land in the CHILD
-            // frame's transcript — strictly before the body, opening the
-            // callee's span above its first phase line.
-            await this.s.markCapability(this.contract.name);
             return settle(await this.call(values));
           },
         });

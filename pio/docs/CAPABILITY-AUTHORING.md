@@ -110,20 +110,16 @@ form:
 
 ```ts
 // pio/src/capabilities/research.ts
-shouldStopLoop: (ctx) => {
+shouldStopLoop: (ctx) =>
   // Write-delta stopping rule (SR4): CONTINUE iff the PER-RUN delta
   // of COMMITTED write/edit tool paths contains the ABSOLUTE report
   // path; the first settled run without a report write ends the
   // phase. Shell-redirect appends never appear in that observable.
-  const wrote = ctx.filesWritten.includes(absolutePath);
-  lastRunWroteReport = wrote;
-  return Promise.resolve(!wrote);
-},
+  Promise.resolve(!ctx.filesWritten.includes(absolutePath)),
 ```
 
 Note the verdict polarity: `true` = stop, so "continue on write" reads as
-`!wrote` (the just-settled run's committed-write window containing the
-artifact's absolute path).
+`!includes(...)`.
 
 Why disk truth through one delivered observable beats the alternatives —
 status-header schemas, marker parsing, transcript inspection, variables: the
@@ -186,8 +182,8 @@ not `write`/`edit` tool executions. Consequence: the instruction's tool
 mandate (§3.3) is FUNCTIONAL, not stylistic — a shell-appending model can
 never end the loop through the completion signal. When the cap then binds,
 the phase RESOLVES at the bound and the capability settles its annotated
-partial report `ok: true` (bound event recorded in-stream and in the ledger
-— §2.4); there is NO failing-breach exit left.
+report `ok: true` (the note rides any cap-ended phase — §2.4); there is NO
+failing-breach exit left.
 
 ### 1.6 Off-limits until the shared-vars spine lands
 
@@ -265,17 +261,13 @@ entry (closeout knowledge record) first; the default posture is zero knobs.
 ### 2.4 Bound behavior: detect → annotate → settle `ok` (the no-silent-skip rule)
 
 No silent skip. Budget exhaustion is not a run failure: the loop breaks at
-the cap (§2.1) and the CAPABILITY decides what non-convergence means. The
+the cap (§2.1) and the CAPABILITY decides what a cap-ended phase means. The
 shipped pattern (`research.ts`):
 
-1. DETECT the bound hit capability-side — NO engine API addition. The
-   resolved `PhaseResult` supplies `iterations === <ceiling>`, and the
-   stopping-rule hook supplies the other half: it observes each settling
-   run's committed-write window (`ctx.filesWritten`) and records it in
-   closure state, so its LAST invocation IS the final run's window (the
-   engine closes both observation windows on every phase exit — no
-   post-phase re-read is possible). Strict equality: an unobserved state
-   never fires the annotation.
+1. DETECT the cap-ended phase off the RESOLVED `PhaseResult` alone:
+   `iterations === <ceiling>` — the stop rule guarantees every below-cap exit
+   is a natural convergence, so the cap equality IS the trigger; no closure
+   bookkeeping, no engine API addition.
 2. ANNOTATE the durable artifact: append the pinned truncation note via a
    filesystem append, so a reader of the PARTIAL FILE ALONE learns the run
    was cut. The append CREATES the degenerate note-only file if the model
@@ -285,14 +277,15 @@ shipped pattern (`research.ts`):
    no-silent-skip property rides the truncation note PLUS the
    transcript/ledger records instead of a failing outcome.
 
-EXPLICIT DISTINCTION — NATURAL CONVERGENCE at EXACTLY the ceiling (the final
-run commits no artifact write) takes NO note: the annotation marks the
-BOUND-HIT event, not the iteration count. Below the bound and at natural
-convergence the outcomes are byte-identical to the pre-bound behavior.
-Non-bound faults propagate untouched, unqualified.
+WHEN THE NOTE LANDS. Every phase ending AT the cap takes the note — clipped
+mid-answer or converging on the final permitted run alike; a cap-reached
+loop by construction committed the artifact write on runs 1..cap−1 (a quiet
+run would have ended it earlier), so the note always lands on substantial
+content. Below the cap the outcomes are byte-identical to the pre-bound
+behavior. Non-bound faults propagate untouched, unqualified.
 
 The pinned note bytes (`truncationNote`, module-private in `research.ts`;
-`<N>` = the iteration count at the bound-hit resolution):
+`<N>` = the iteration count at the cap exit):
 
 ```
 ## Truncated at run budget

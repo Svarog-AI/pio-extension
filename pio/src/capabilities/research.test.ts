@@ -157,8 +157,8 @@ const preflightStderrLine = (names: string): string =>
   `pio research: web tools unavailable (missing: ${names}) \u2014 expected from the isolated agent dir's pi-native-search provisioning`;
 const preflightThrownMessage = (names: string): string =>
   `web tools unavailable: missing tool definitions for ${names} (provisioning: isolated agent dir 'pi-native-search' local-source registration)`;
-/** The pinned bound-hit truncation note appended after existing report
- * content (<N> = the iteration count at the bound-hit resolution). */
+/** The pinned truncation note appended at a cap-ended resolution,
+ * after existing report content (<N> = the iteration count at the cap exit). */
 const truncationNote = (runs: number): string =>
   `\n## Truncated at run budget\n\nStopped after ${runs} runs: the run budget was hit before the topic ran dry. Sections above cover answered questions only.\n`;
 /** The pinned sanity-violation line (module-private composition; the suite
@@ -407,7 +407,7 @@ describe("research capability", () => {
       expect(stderrText()).toBe("");
     });
 
-    it("natural convergence at EXACTLY the cap appends NO note: writes on runs 1..max-1 plus a quiet final run end the loop AT the ceiling (EXACTLY RESEARCH_MAX_RUNS prompts, ok:true, NO errors key) and the seeded report stays byte-identical — the annotation marks the bound hit, not the iteration count", async () => {
+    it("a phase ending AT the cap takes the note however the last run broke: writes on runs 1..max-1 plus a quiet final run end the loop AT the ceiling (EXACTLY RESEARCH_MAX_RUNS prompts, ok:true, NO errors key) and the seeded report gains the pinned note", async () => {
       const seed = "seeded sections\n";
       const placement = reportPlacement(TOPIC);
       await seedReport(placement.absolutePath, seed);
@@ -426,7 +426,9 @@ describe("research capability", () => {
       expect(result.errors).toBeUndefined();
       expect(result.outputs).toEqual({ report: placement.absolutePath });
       const { readFile } = await import("node:fs/promises");
-      expect(await readFile(placement.absolutePath, "utf8")).toBe(seed);
+      expect(await readFile(placement.absolutePath, "utf8")).toBe(
+        seed + truncationNote(RESEARCH_MAX_RUNS),
+      );
       expect(stderrText()).toBe("");
     });
   });

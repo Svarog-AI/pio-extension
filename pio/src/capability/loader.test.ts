@@ -8,7 +8,7 @@
 // runtime values cross a parse boundary or an assign-widening instead of an
 // annotation (the checkers assert shapes at runtime; the annotation
 // documents shape, not protection). Mechanical source guards pin the import
-// surface and the single-entry table literal.
+// surface and the two-entry table literal.
 
 import { readFileSync } from "node:fs";
 import ComposeNewSessionDemoCapability from "../capabilities/compose-new-session-demo.ts";

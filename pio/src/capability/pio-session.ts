@@ -43,7 +43,38 @@
 // into prompt text, never a turn trigger. Phase ids stay BARE ids; the
 // `capability:` prefix is reserved for that mark (no runtime enforcement).
 // Only session-present runs are stamped, once per span (see base.ts).
+//
+// Settlement gate (write: expectations): a phase that declares deliverable
+// paths cannot settle until they exist. The gate sits strictly at the normal
+// settlement break (stop-rule verdict or budget break) — floor/hook
+// continuations pre-break see no gate. Each settlement consults FRESH
+// existsSync over the resolved declared paths: directories pass
+// mechanically; non-emptiness stays a capability-local quality bar. Any
+// missing path denies the settlement: a dedicated expectation-retry counter
+// (independent of the iteration budget and the stopping rule) increments and
+// the phase re-enters the loop body; iterations counts all settled runs,
+// retries included.
+//
+// Durable-declaration retention owed to slot 9: entries resolve ONCE at
+// phase start (absolute normalized; relative under process.cwd()) into a
+// list retained for the whole phase duration — never consumed transiently.
+// Slot 9 (per-session-write-gate) consumes this same declaration as its
+// write-permission frame; enforcement itself is slot 9's scope.
+//
+// Corrective-note channel: gate-triggered retries alone append ONE fresh
+// deterministic line (every currently-missing resolved path plus the
+// settled-run count at that point) strictly after the marker-leading
+// baseline text; landed paths drop off, no history accumulates, and the
+// composition stays private to execute_phase.
+//
+// Typed failure at the ceiling: with MAX_EXPECTATION_RETRIES corrective
+// re-runs settled and paths still missing, the phase throws the error
+// home's ContractViolationError (collect-all, one line per missing path) —
+// unwrapped through the finally closeout into the standard containment
+// channels on both placements.
 
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import type {
   AgentSession,
   AgentSessionEvent,
@@ -51,6 +82,7 @@ import type {
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
 import { createPioSession } from "../session.ts";
+import { ContractViolationError } from "./errors.ts";
 
 /** Tool names whose successful executions commit a file path. */
 const FILE_TOOL_NAMES: ReadonlySet<string> = new Set(["write", "edit"]);
@@ -77,6 +109,32 @@ export function renderCapabilityMarker(label: string): string {
  * tag, not consumer API. */
 const PIO_CAPABILITY_CUSTOM_TYPE = "pio-capability";
 
+/** Ceiling for corrective expectation re-runs (shrink-only, no per-phase
+ * override; module-private — the export surface stays at the pinned five
+ * keys and the suite pins the ceiling behaviorally). */
+const MAX_EXPECTATION_RETRIES = 3;
+
+/** One corrective line for a gate-triggered retry: every currently-missing
+ * resolved path (declaration order) plus the settled-run count at the
+ * denial point; fresh per retry, so landed paths drop off. */
+function renderExpectationRetryLine(
+  iterations: number,
+  missing: readonly string[],
+): string {
+  return `Required phase output(s) still missing after ${iterations} run(s): ${missing.join(", ")}. Create each listed file with the write or edit tool before you finish this run.`;
+}
+
+/** One collect-all violation line per still-missing declared path at the
+ * exhausted ceiling (<entry> raw, <resolvedPath> resolved; the em dash is
+ * U+2014-escaped like every other pinned byte in this module). */
+function renderMissingOutputLine(
+  phaseId: string,
+  entry: string,
+  resolvedPath: string,
+): string {
+  return `phase '${phaseId}' output '${entry}' missing at ${resolvedPath} \u2014 still absent after ${MAX_EXPECTATION_RETRIES} expectation re-run(s); the ceiling is exhausted`;
+}
+
 /** Closed option bag for one phase execution. */
 export interface PhaseOptions {
   /** Sent below the marker line at every run of the phase. */
@@ -88,6 +146,14 @@ export interface PhaseOptions {
   readonly max?: number;
   /** Runs after every settled run; `true` ends the phase, `false` demands another run. */
   readonly shouldStopLoop?: (ctx: IterationCtx) => Promise<boolean>;
+  /** Declared deliverable PATHS the phase MUST produce before it may
+   * settle (absent or empty = no expectations; presence turns enforcement
+   * ON — mandatory, always on, no opt-out). Entries are paths: absolute
+   * entries pass through normalized; relative entries resolve under
+   * process.cwd(). Permission-neutral in THIS module — slot 9
+   * (per-session-write-gate) consumes this same declaration as its
+   * write-permission frame. */
+  readonly write?: readonly string[];
 }
 
 /** Decision window handed to the between-runs hook. */
@@ -437,11 +503,13 @@ export class PioSession {
 
   /**
    * One phase = a budgeted sequence of settled agent runs driven through the
-   * session's prompt channel. The marker line composed once per phase leads
-   * every run's text; the between-runs hook observes each settling run's
-   * fresh counters and stable per-run window. Every exit — a normal return
-   * or a propagated hook / prompt rejection — closes both windows so a
-   * finished phase leaks nothing into the next one on the same instance.
+   * session's prompt channel; the once-composed marker line leads every
+   * run's text and the between-runs hook observes each settling run.
+   * Declared deliverable paths (write) arm the settlement gate: every
+   * normal break point passes a fresh existence consult before settling —
+   * a denial burns one corrective re-run (max MAX_EXPECTATION_RETRIES) and
+   * the ceiling throws the error home's ContractViolationError. Every exit
+   * closes both windows so the phase leaks nothing into the next one.
    */
   async execute_phase(id: string, opts?: PhaseOptions): Promise<PhaseResult> {
     const min = opts?.min ?? 1;
@@ -450,13 +518,27 @@ export class PioSession {
     const text =
       renderPhaseMarker(id) +
       (opts?.instructions ? `\n${opts.instructions}` : "");
+    // Resolved once at phase start and retained for the whole duration
+    // (slot-9 storage property): the gate and the ceiling both consult it.
+    const declarations = (opts?.write ?? []).map((entry) => ({
+      entry,
+      resolved: resolve(entry),
+    }));
     let iterations = 0;
+    // Independent of budget and stop rule; never surfaced on PhaseResult.
+    let expectationRetries = 0;
+    // Next run's corrective line: set only at a gate denial, consumed once —
+    // floor/hook continuations re-send the untouched baseline.
+    let pendingNote: string | undefined;
     try {
       for (;;) {
         // Close the previous run's window before this run's can open.
         this.resetFilesWrittenDelta();
         iterations += 1;
-        await this.runtime.session.prompt(text);
+        const outgoing =
+          pendingNote !== undefined ? `${text}\n${pendingNote}` : text;
+        pendingNote = undefined;
+        await this.runtime.session.prompt(outgoing);
         const counters = this.counters();
         const filesWritten = this.getFilesWrittenDelta();
         let proceed = iterations < min;
@@ -469,7 +551,35 @@ export class PioSession {
           });
           proceed = proceed || !verdict;
         }
-        if (!proceed || iterations >= max) break;
+        if (!proceed || iterations >= max) {
+          // Settlement gate — this break path only: fresh existsSync over
+          // the retained resolved declarations (declaration order); an
+          // absent/empty declaration settles identically to the ungated case.
+          const missing = declarations.filter(
+            (declaration) => !existsSync(declaration.resolved),
+          );
+          if (missing.length > 0) {
+            if (expectationRetries >= MAX_EXPECTATION_RETRIES) {
+              // Ceiling exhausted: collect-all typed failure.
+              throw new ContractViolationError(
+                missing.map((declaration) =>
+                  renderMissingOutputLine(
+                    id,
+                    declaration.entry,
+                    declaration.resolved,
+                  ),
+                ),
+              );
+            }
+            expectationRetries += 1;
+            pendingNote = renderExpectationRetryLine(
+              iterations,
+              missing.map((declaration) => declaration.resolved),
+            );
+            continue; // denied settlement: re-enter the loop body
+          }
+          break;
+        }
       }
       const messages = this.getRunMessages();
       const finalSnapshot = this.counters();

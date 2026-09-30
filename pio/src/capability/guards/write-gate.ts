@@ -1,50 +1,34 @@
-// Per-session write gate — the pure enforcement module for agent-hook write
-// interception on the pio runtime. One pure object per session owns the whole
-// rule: permission derives from exactly TWO declared sources (the active
-// capability contract and the active phase declaration) and ONE effective
-// allowlist exists at decision time — never two sets consulted together, no
-// intersection, no union, no special cases. Depth-0 turns (no span active)
-// run the identical code path as an empty-contract span: one branch, where
-// "the empty set" simply happens to be the running state's sources.
+// Per-session write gate: one pure object per session owning enter/exit
+// bookkeeping, the single effective allowlist at decision time, and denial
+// rendering. Permission derives from exactly TWO declared sources (the
+// active capability contract and the active phase declaration); depth-0
+// turns run the IDENTICAL branch as an empty-contract span — one code path,
+// no special cases, no intersection, no union.
 //
-// Terminology is deliberate: a span record on the LIFO stack is a LAYER
-// ("frame" is reserved for composed-execution units elsewhere in this
-// package). Enter/exit is save/restore bookkeeping for composition nesting
-// only — a child span pushed over the caller suspends the caller's pair and
-// restores it intact on pop, so running-capability-exclusive governance falls
-// out of the stack mechanics with zero policy code.
+// Terminology: stack entries are LAYERS ("frame" is reserved for
+// composed-execution units elsewhere in this package). Enter/exit is
+// save/restore bookkeeping for composition nesting — a child span suspends
+// the caller's pair and restores it intact on pop.
 //
-// Purity doctrine: the constructor stores two LAZY PROVIDER CLOSURES and
-// touches nothing else — no env reads, no filesystem access (existence
-// checks belong to the engine's settlement gate, never here), no SDK reach.
-// A faulty channel fails LOUDLY: the producer's typed no-silent-fallback
-// error propagates VERBATIM at first consult; this module never catches,
-// wraps, or substitutes provider errors. Verdicts cover EXACTLY the observed
-// writer-tool set (`write`/`edit` via string `input.path`); bash stays
-// ungated by design (backlog territory) and there is no
-// vscode_apply_workspace_edit branch (absent from the bubble roster). The
-// `/tmp/` prefix parity class is always allowed before any other
-// consideration, at every depth — legacy parity, exact `startsWith("/tmp/")`
-// semantics (`/tmp` itself and `/tmpfoo/*` are NOT covered).
-//
-// Every denial RETURNS a house-style message (`{ block: true, reason }`) —
-// the ONLY feedback the model gets: the single governing source named (the
-// phase id, the capability name, or the no-span state), the effective
-// allowlist inline ("none" when nothing is — clamped-away declarations are
-// simply absent from that list), and the `/tmp/` parity clause in EVERY line.
+// Purity: the constructor stores two LAZY PROVIDER CLOSURES — no env, no
+// filesystem access, no SDK reach; provider faults propagate VERBATIM at
+// first consult (never caught, wrapped, or fallen back to). Verdicts cover
+// EXACTLY `write`/`edit` via string `input.path` (bash stays ungated —
+// backlog); the `/tmp/` prefix is always allowed before any other
+// consideration, at every depth. Every refusal RETURNS a house-style
+// message — the ONLY feedback — naming the governing source (phase id,
+// capability name, or no-span state), the effective allowlist inline
+// ("none" when nothing is; clamped-away declarations are simply absent),
+// and the /tmp/ parity clause in every line.
 
 import { resolve } from "node:path";
 import { hasWildcard } from "../../sandbox/fsview.ts";
 
-/** Lazy channels — the ONLY way the gate learns paths. Stored at
- * construction, consulted lazily; either may THROW the producer's typed
- * no-silent-fallback error (e.g. base.ts's CapabilityEnvError behind the
- * root provider) on a faulty channel — the gate propagates it verbatim,
- * never catches/wraps/falls back. */
+/** Lazy channels — the ONLY way the gate learns paths. Stored at construction,
+ * consulted lazily; either may THROW the producer's typed no-silent-fallback
+ * error on a faulty channel — propagated verbatim. */
 export interface WriteGateProviders {
-  /** Project-slot root for pattern anchoring: <stateRoot>/projects/<projectKey> —
-   * the SAME root the base's settle seam computes (arrive normalized, no
-   * trailing separator; the producer guarantees this). */
+  /** Project-slot root for pattern anchoring (<stateRoot>/projects/<key>), normalized, no trailing separator. */
   projectSlotRoot(): string;
   /** Session launch cwd — the allowProjectWrites scope (resolved form). */
   workspaceCwd(): string;
@@ -68,10 +52,8 @@ export interface WriteGateVerdict {
   reason: string;
 }
 
-/** Module-local typed refusal for broken enter/exit bookkeeping — loud, never
- * silent: silent tolerance would corrupt the layer stack invisibly, and
- * enforcement integrity demands deterministic state. Deliberately NOT part
- * of the pinned export surface (consumers observe `name` + message bytes). */
+/** Typed refusal for broken enter/exit bookkeeping — loud, never silent.
+ * Deliberately unexported: consumers observe `name` + message bytes. */
 class WriteGateBookkeepingError extends Error {
   constructor(message: string) {
     super(message);
@@ -79,16 +61,9 @@ class WriteGateBookkeepingError extends Error {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Denial rendering — NEW house-style lines (legacy byte-parity cut per the
-// owner ruling): the message ALWAYS shows the effective permission set at
-// the moment of refusal. U+2014 enters these pinned literals ONLY as the
-// \u2014 escape (house discipline).
-// ---------------------------------------------------------------------------
-
 const TMP_PARITY_CLAUSE = "Scratch files under /tmp/ stay open.";
 
-/** SOLE DENIAL LINE SHAPES — the suite goldens mirror these byte-for-byte. */
+// SOLE DENIAL LINE SHAPES — the suite goldens mirror these byte-for-byte.
 const renderPhaseDenial = (
   phaseId: string,
   survivors: readonly string[],
@@ -108,26 +83,20 @@ const renderCapabilityDenial = (
 };
 
 const renderNoSpanDenial = (): string =>
-  // Escaped so the U+2014 bytes survive editor and toolkit glyph mangling.
+  // \u2014 escaped so the em-dash bytes survive editor/toolkit glyph mangling.
   `Writing is refused \u2014 no capability span is active. Allowed targets: none. ${TMP_PARITY_CLAUSE}`;
 
-// ---------------------------------------------------------------------------
-// The pattern-direction membership predicate — the REVERSE of FsView.glob()
-// (pattern → existing files): does this candidate target path, which does
-// NOT yet exist, fall inside this declared slot-relative pattern? Converts
-// the documented fsview glob dialect (fsview.ts header) to permission
-// direction per segment: equal segment counts after anchoring, per-segment
-// {a,b} arm split with independent recursion (nesting honored), [seq]/[!seq]
-// classes with ! negation and ranges, ? = one char, * = zero-or-more WITHIN
-// THE SEGMENT ONLY, every non-metacharacter literal (regex specials escaped
-// by exhaustive literal comparison). Out-of-dialect text FAILS CLOSED:
-// reports no-match, never throws, invents no second dialect.
-// ---------------------------------------------------------------------------
-
-/** Locate the FIRST well-formed top-level brace group in `text`. */
+// Pattern-direction membership: the REVERSE of FsView.glob() (pattern →
+// existing files) — does a candidate target path that does NOT yet exist fall
+// inside this declared slot-relative pattern? Converts the documented fsview
+// dialect (fsview.ts header) per segment: equal segment counts after strict
+// anchoring under `root`, {a,b} arm split with independent recursion
+// (nesting honored), [seq]/[!seq] classes, ? = one char, * = zero-or-more
+// WITHIN THE SEGMENT ONLY, everything else literal. Out-of-dialect text FAILS
+// CLOSED: no-match, never throws, no second dialect.
 type BraceScan =
   | { kind: "group"; start: number; end: number }
-  | { kind: "stray" } // unpaired close, or an open left unclosed
+  | { kind: "stray" }
   | { kind: "none" };
 
 function scanFirstBrace(text: string): BraceScan {
@@ -147,9 +116,8 @@ function scanFirstBrace(text: string): BraceScan {
   return depth > 0 ? { kind: "stray" } : { kind: "none" };
 }
 
-/** Split a brace-group interior into arms at TOP-LEVEL commas (nested brace
- * groups keep their commas). No comma ⇒ single arm = the whole interior
- * (engine-faithful `{a}` → `a`). */
+// Split a brace interior into arms at TOP-LEVEL commas. No comma ⇒ single
+// arm = the whole interior (engine-faithful `{a}` → `a`).
 function splitTopLevelArms(interior: string): string[] {
   const arms: string[] = [];
   let depth = 0;
@@ -167,9 +135,8 @@ function splitTopLevelArms(interior: string): string[] {
   return arms;
 }
 
-/** Membership of one character in a translated `[seq]` body (negation handled
- * by the caller). Degenerate ranges (lo > hi) fall through to literal
- * handling — engine-faithful; a lone leading '-' is literal by guard. */
+// Degenerate ranges (lo > hi) fall through to literal handling —
+// engine-faithful; a lone leading '-' is literal by guard.
 function classContains(body: string, ch: string): boolean {
   let i = 0;
   while (i < body.length) {
@@ -193,11 +160,9 @@ function classContains(body: string, ch: string): boolean {
   return false;
 }
 
-/** Linear (brace-free) segment match: `[cls]`, `?`, `*` (segment-confined
- * by construction — segments never contain '/') and exhaustive literal
- * comparison, which gives literal-special fidelity for free. Fails closed on
- * unclosed classes, empty class bodies, and backslash escapes (out of the
- * documented surface). */
+// Linear (brace-free) segment match. Exhaustive literal comparison gives
+// literal-special fidelity for free. Fails closed on unclosed classes, empty
+// class bodies, and backslash escapes (out of the documented surface).
 function linearSegmentMatches(pattern: string, target: string): boolean {
   let i = 0;
   let j = 0;
@@ -218,11 +183,11 @@ function linearSegmentMatches(pattern: string, target: string): boolean {
     }
     if (token === "[") {
       const close = pattern.indexOf("]", i + 1);
-      if (close === -1) return false; // unclosed class — fail closed
+      if (close === -1) return false;
       const raw = pattern.slice(i + 1, close);
       if (raw.length === 0 || raw.includes("\\")) return false;
       const negated = raw.startsWith("!");
-      if (negated && raw.length === 1) return false; // '[!' — fail closed
+      if (negated && raw.length === 1) return false;
       const body = negated ? raw.slice(1) : raw;
       if (j >= target.length) return false;
       if (classContains(body, target[j]) === negated) return false;
@@ -238,14 +203,11 @@ function linearSegmentMatches(pattern: string, target: string): boolean {
   return j === target.length;
 }
 
-/** Match one pattern segment against one target segment (recursive descent:
- * each brace arm is substituted and re-parsed as a whole segment, so arms
- * carry wildcards/nested braces freely). `hasWildcard` is a FAST-PATH HINT
- * ONLY — brace-only segments take the full transform even when it reports
- * false. Never throws; out-of-dialect text answers no-match. */
+// Recursive descent: each brace arm is substituted and re-parsed as a whole
+// segment, so arms carry wildcards/nested braces freely. `hasWildcard` is a
+// FAST-PATH HINT ONLY — brace-only segments take the full transform even
+// when it reports false; a stray '}' fails closed on the fast path too.
 function segmentMatches(pattern: string, target: string): boolean {
-  // A stray '}' with no opener is out-of-dialect too — fail closed even
-  // though the fast-path hint (and the brace test) would not see it.
   if (
     !hasWildcard(pattern) &&
     !pattern.includes("{") &&
@@ -267,10 +229,9 @@ function segmentMatches(pattern: string, target: string): boolean {
   return linearSegmentMatches(pattern, target);
 }
 
-/** The pattern-direction membership predicate. Anchors strictly under `root`
- * (target === root is no match; out-of-root targets never match, even when
- * the suffix textually fits — compare on full resolved strings first), then
- * requires EQUAL segment counts and a per-segment dialect match. */
+/** Anchors strictly under `root` (target === root is no match; out-of-root
+ * targets never match, even when the suffix textually fits), then requires
+ * EQUAL segment counts and a per-segment dialect match. Pure. Never throws. */
 export function matchesAnchoredGlob(
   pattern: string,
   root: string,
@@ -289,20 +250,12 @@ export function matchesAnchoredGlob(
   return true;
 }
 
-// ---------------------------------------------------------------------------
-// The gate object — bookkeeping (single scalar pair per layer) + verdict.
-// ---------------------------------------------------------------------------
-
-/** One entry of the LIFO layer stack — the ENTIRE permission world while it
- * sits innermost: the running capability's sources plus its current phase
- * entry (or none). The verdict consults ONLY the innermost layer's pair. */
 interface PhaseEntry {
   id: string;
   /** Surviving confirmed paths (already-resolved absolute, declaration
    * order, deduplicated). EMPTY confers no phase governance (fall-through). */
   survivors: string[];
-  /** Save/restore half: whatever occupied the slot before this entry
-   * attached (production flows mirror entries, so normally null). */
+  /** Save/restore half: whatever occupied the slot before this entry. */
   previous: PhaseEntry | null;
 }
 
@@ -311,14 +264,14 @@ interface GateLayer {
   phase: PhaseEntry | null;
 }
 
-/** The running writer-tool coverage — the OBSERVED set only (local const;
- * the observer's FILE_TOOL_NAMES is deliberately not imported). Any other
- * tool (including bash) yields no target: allowed by silence. */
+// The observed writer-tool set only (local const; the observer's
+// FILE_TOOL_NAMES is deliberately not imported). Any other tool — including
+// bash — yields no target: allowed by silence.
 const WRITER_TOOLS = new Set(["edit", "write"]);
 
-/** The session-base pair at depth 0 — the EMPTY set (owner ruling 6):
- * total default-deny beyond the `/tmp/` parity class, computed through the
- * IDENTICAL branch as an empty-contract span. One code path, no special case. */
+// The session-base pair at depth 0 — the EMPTY set: total default-deny
+// beyond the /tmp/ parity class, computed through the identical branch as an
+// empty-contract span.
 const BASE_SOURCES: CapabilitySources = {
   name: "",
   writes: [],
@@ -329,7 +282,6 @@ const BASE_SOURCES: CapabilitySources = {
  * lazy providers and explicit enter/exit calls from producers. */
 export class WriteGate {
   private readonly providers: WriteGateProviders;
-  /** LIFO capability layers; depth 0 = the empty-set session base. */
   private layers: GateLayer[] = [];
 
   /** Closure storage ONLY — no env, no fs, no defaults from process state. */
@@ -337,14 +289,13 @@ export class WriteGate {
     this.providers = providers;
   }
 
-  /** Push a capability layer (span start). Saves the suspended outer pair by
-   * stack mechanics — the new layer's pair is the whole world while active. */
+  /** Push a capability layer (span start); the new pair governs exclusively. */
   enterCapability(sources: CapabilitySources): void {
     this.layers.push({ sources, phase: null });
   }
 
   /** Pop the capability layer (span settlement — success AND catch-all).
-   * Mismatched exits throw: underflow OR an outstanding phase entry. */
+   * Throws on underflow OR an outstanding phase entry (LIFO symmetry). */
   exitCapability(): void {
     const top = this.layers[this.layers.length - 1];
     if (top === undefined) {
@@ -354,22 +305,18 @@ export class WriteGate {
     }
     if (top.phase !== null) {
       throw new WriteGateBookkeepingError(
-        // Escaped so the U+2014 bytes survive editor and toolkit glyph mangling.
         "write gate: exitCapability() with an outstanding phase entry \u2014 exitPhase() first",
       );
     }
     this.layers.pop();
   }
 
-  /** Confirm/clamp `declaredPaths` (ALREADY-RESOLVED absolute paths — the
-   * producer resolves once at phase start; consumed VERBATIM, never
-   * re-resolved) against the current top layer's sources; attach the
-   * surviving set as the phase entry. Uncovered entries are DROPPED AT ENTRY
-   * — silent, never granted, absent from every denial listing. Validates
-   * ALL confirmation before mutating: a provider fault mid-confirmation
-   * escapes with the layer untouched (the phase never entered). An empty
-   * declaration is a valid no-op confirmation (empty set ⇒ no phase
-   * governance) so the paired exit stays symmetric. */
+  /** Confirm/clamp ALREADY-RESOLVED absolute paths (consumed verbatim, never
+   * re-resolved) against the top layer's sources; attach the surviving set.
+   * Uncovered entries are DROPPED AT ENTRY — silent, never granted, absent
+   * from every denial listing. Validates ALL confirmation before mutating:
+   * a provider fault mid-confirmation escapes with the layer untouched. An
+   * empty declaration is a valid no-op confirmation (no phase governance). */
   enterPhase(phaseId: string, declaredPaths: readonly string[]): void {
     const top = this.layers[this.layers.length - 1];
     if (top === undefined) {
@@ -400,17 +347,13 @@ export class WriteGate {
     this.layers.length = 0;
   }
 
-  /** One tool-call verdict: `undefined` = allowed; a verdict = the refusal
-   * message. Pinned verdict order, one pass per target: (1) the `/tmp/`
-   * prefix is ALWAYS allowed, before any other consideration, at every
-   * depth; (2) a NON-EMPTY confirmed set is exhaustive — exact string-set
-   * membership, span sources never consulted alongside it; (3)+(4) ONE
-   * branch — the active capability span governs (pattern membership OR the
-   * project-scope disjunct), where depth 0 computes the identical
-   * computation over the empty base sources. Every DENY returns a
-   * house-style message: the ONLY feedback (no terminate, no steering).
-   * Non-writer tools and missing/non-string paths yield NO target:
-   * `undefined` with zero provider consultations and zero bookkeeping. */
+  /** One tool-call verdict: `undefined` = allowed; a verdict = the refusal.
+   * Pinned order, one pass per target: (1) `/tmp/` always allowed, every
+   * depth; (2) a NON-EMPTY confirmed set is exhaustive — exact membership,
+   * span sources never consulted alongside it; (3)+(4) ONE branch — the
+   * active span governs, depth 0 computing over the empty base sources.
+   * Non-writer tools and missing/non-string paths yield NO target: allowed
+   * with zero provider consultations and zero bookkeeping change. */
   decide(toolName: string, input: unknown): WriteGateVerdict | undefined {
     const target = WRITER_TOOLS.has(toolName) ? extractTarget(input) : null;
     if (target === null) return undefined;
@@ -433,12 +376,11 @@ export class WriteGate {
     return { block: true, reason };
   }
 
-  /** Single disjunction used by BOTH the span verdict and phase-entry
-   * confirmation — one coverage definition, no drift between the two.
-   * Disjunct (i) consults the root provider ONLY when `writes` is
-   * non-empty; disjunct (ii) the cwd provider ONLY when the flag is set;
-   * empty sources consult NOTHING (the one-code-path guarantee). Provider
-   * faults escape verbatim. */
+  // Single disjunction used by BOTH the span verdict and phase-entry
+  // confirmation — one coverage definition, no drift between the two.
+  // Disjunct (i) consults the root provider ONLY when `writes` is non-empty;
+  // (ii) the cwd provider ONLY when the flag is set; empty sources consult
+  // NOTHING. Provider faults escape verbatim.
   private admittedBy(
     sources: CapabilitySources,
     target: string,
@@ -459,9 +401,8 @@ export class WriteGate {
   }
 }
 
-/** Extract the resolved target from a writer-tool call: a non-null object
- * input carrying a STRING `path`, normalized with path.resolve. Any other
- * shape yields `null` — no target, no consultation, no bookkeeping. */
+// A non-null object carrying a STRING `path`, normalized with path.resolve;
+// any other shape yields `null` — no target, no consultation, no bookkeeping.
 function extractTarget(input: unknown): string | null {
   if (input === null || typeof input !== "object") return null;
   const pathValue = (input as Record<string, unknown>).path;

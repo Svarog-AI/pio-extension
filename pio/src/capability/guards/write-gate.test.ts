@@ -1,11 +1,9 @@
 // Hermetic unit suite for the per-session write gate (guards/write-gate.ts).
-// Self-contained island: the module's import surface is node:path plus the
-// sandbox fsview wildcard hint — there is NO SDK dependency to mock, so every
-// row drives the REAL module directly. Layout rows mint an mkdtemp tmpdir
-// with a realistic slot-root + workspace-cwd pair; providers are plain
-// closures over those strings (faulty variants throw a sentinel error class
-// standing in for the producer's typed no-silent-fallback error). Mechanical
-// source guards pin the import surface and the \u2014 escape discipline.
+// Self-contained island: zero SDK imports to mock — every row drives the
+// REAL module directly. One mkdtemp layout per row; providers are plain
+// closures over it (faulty variants throw a sentinel standing in for the
+// producer's typed no-silent-fallback error). Mechanical guards pin the
+// import surface and the \u2014 escape discipline.
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,15 +25,11 @@ class SentinelFault extends Error {
 }
 
 /** One realistic tmpdir layout: project-slot root + workspace-cwd pair,
- * wired through plain lazy provider closures.
- *
- * NOTE ON ANCHORING: os.tmpdir() IS under /tmp on this host, so literal
- * tmpdir paths would fall in the /tmp/ parity class (always allowed) and
- * make every denial row unreachable. The layout minted here is the
- * structural skeleton (directories really exist); the PROVIDER VALUES are
- * the same layout mapped onto a /tmp-free synthetic root — row-unique via
- * the tmpdir basename. The gate never consults the filesystem, so nothing
- * depends on the physical location either way. */
+ * wired through plain lazy provider closures. os.tmpdir() IS under /tmp on
+ * this host, so literal tmpdir paths would fall in the always-allowed parity
+ * class and make denial rows unreachable — the minted dirs are the skeleton,
+ * the PROVIDER VALUES are the same layout mapped onto a /tmp-free synthetic
+ * root (row-unique via the tmpdir basename; the gate never consults the fs). */
 function layout(): {
   base: string;
   slotRoot: string;
@@ -44,11 +38,8 @@ function layout(): {
 } {
   const base = mkdtempSync(join(tmpdir(), "write-gate-"));
   const uid = base.split("/").pop();
-  // Physical skeleton dirs (the layout really exists) — created but never
-  // consulted by the gate (purity: existence checks belong elsewhere).
   mkdirSync(join(base, "state", "projects", "proj-x"), { recursive: true });
   mkdirSync(join(base, "workspace"), { recursive: true });
-  // Provider values: the same layout mapped onto a /tmp-free synthetic root.
   const slotRoot = `/pio-test/${uid}/state/projects/proj-x`;
   const cwd = `/pio-test/${uid}/workspace`;
   trackCleanup(base);

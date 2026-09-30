@@ -21,11 +21,13 @@ Orientation (where things live):
   session host + phase engine (`pio-session.ts`), the terminal record
   (`status.ts`), and the registry (`loader.ts`).
 - `pio/src/capabilities/` — the built-in implementations (plural directory =
-  implementations; singular `capability/` = framework). Today exactly three:
+  implementations; singular `capability/` = framework). Today exactly four:
   `research.ts` (permanent), `compose-new-session-demo.ts` (TEMPORARY
-  composition vehicle — removal scheduled; registry note per §10), and
-  `compose-same-session-demo.ts` (PERMANENT standing same-session demo — §11;
-  the operational QG E2E target).
+  composition vehicle — removal scheduled; registry note per §10),
+  `compose-same-session-demo.ts` (PERMANENT standing row-1 demo — §11; the
+  operational QG E2E target), and `guards-demo.ts` (PERMANENT
+  guard-demonstration home — the live exemplar of the §1.4 expectation loop;
+  §10 registry note; future guard demonstrations accumulate here).
 - `pio/src/sandbox/` — host-side launch mechanics: engagement layout and
   derivation helpers (`layout.ts`), profile renderer (`render.ts`), owned
   extension provisioning (`owned-extensions.ts`), and the gated host pipeline
@@ -82,6 +84,14 @@ export interface PhaseOptions {
   readonly max?: number;
   /** Runs after every settled run; `true` ends the phase, `false` demands another run. */
   readonly shouldStopLoop?: (ctx: IterationCtx) => Promise<boolean>;
+  /** Declared deliverable PATHS the phase MUST produce before it may
+   * settle (absent or empty = no expectations; presence turns enforcement
+   * ON — mandatory, always on, no opt-out). Entries are paths: absolute
+   * entries pass through normalized; relative entries resolve under
+   * process.cwd(). Permission-neutral in THIS module — slot 9
+   * (per-session-write-gate) consumes this same declaration as its
+   * write-permission frame. */
+  readonly write?: readonly string[];
 }
 
 export interface IterationCtx {
@@ -99,6 +109,10 @@ ends the phase, `false` demands another run. The decision happens BETWEEN
 runs, never mid-run. The floor dominates early stops: even when the hook has
 already returned `true`, the loop keeps settling runs until `min` of them have
 completed — so `min` is an absolute guarantee (defaults and intent: §2.1).
+Declaring `write` additionally turns the engine-owned settlement gate ON —
+the phase cannot settle while any declared path is missing (engine retries
+are capped; exhaustion throws the typed contract violation); the full
+mechanic lives in §1.4.
 
 ### 1.3 The write-delta stopping rule (canonical bounded-loop pattern)
 
@@ -135,7 +149,131 @@ base (via the shared `classifySpec` resolver seam,
 `ContractViolationError` (cause `"contract"`), so a dry-up that wrote nothing
 lands in the terminal record as a typed violation, not an empty success.
 
-### 1.4 What each `IterationCtx` observable means — and the wrong-observable trap
+### 1.4 Expectation declarations: the engine-owned settlement gate
+
+Material: the `write` field of the §1.2 option bag plus its enforcement
+internals in `pio/src/capability/pio-session.ts` (the module-header
+documentation covers the settlement gate, durable retention, the
+corrective-note channel, and the typed failure at the ceiling). The
+declaration arms the engine's OWN settlement check over the declared paths.
+Normative claims below stay at BEHAVIOR level: the module-private names
+(`renderExpectationRetryLine`, `renderMissingOutputLine`,
+`MAX_EXPECTATION_RETRIES`) serve as provenance for the pinned bytes only —
+module-private means not public API, the standing pattern of
+`PIO_CAPABILITY_CUSTOM_TYPE`.
+
+**Presence semantics.** Declaring `write:` turns enforcement ON — mandatory,
+always on, NO kill switch, no opt-out. An absent field or an empty array is
+behavior IDENTICAL to pre-declaration: byte-identical composed prompt texts
+and zero gate consults.
+
+**The join convention.** Entries are PATHS, not legacy output names:
+absolute entries pass through normalized; relative entries resolve under
+`process.cwd()`. Each entry resolves ONCE at phase start, and the resolved
+declaration is RETAINED durably for the whole phase duration — the storage
+property slot 9 (the per-session-write-gate) will consume as its
+write-permission frame; permission ENFORCEMENT itself is slot 9's scope, so
+intermediate/scratch writes are neither blocked nor required here. Stated
+honestly, the degenerate case: an empty-string entry resolves to
+`process.cwd()` (an existing directory) and passes mechanically — no
+entry-validation machinery exists.
+
+**The gate mechanic.** Every normal settlement path passes a FRESH
+disk-existence check over the resolved declared paths AT THE BREAK POINTS
+ONLY — the stop-rule verdict or the budget break; floor/hook continuations
+before the break never see the gate. A resolvable DIRECTORY passes
+mechanically; NON-EMPTINESS stays a capability-local quality bar (the engine
+never reads content). The retry counter is INDEPENDENT of both the iteration
+budget and the capability's stopping rule; `iterations` counts ALL settled
+runs, gate retries included; `min` is consumed before any gate consult. The
+stop rule and the declaration COEXIST uniformly — the hook governs
+continuation between runs, the gate denies settlement while files are
+missing — and a mid-run rejection escapes unwrapped exactly as today (the
+gate is consulted only on the normal settlement path).
+
+**The decision-only declaration pattern.** A phase with NO hook AND NO `max`
+is LEGAL: with the floor consumed, the expectation gate plus its ceiling
+become the SOLE settlement authority. The shipped exemplar — walked through
+below — is `guards-demo`'s `guard-probe` phase.
+
+**The corrective-note channel.** Gate-triggered retries ALONE append ONE
+fresh deterministic line strictly AFTER the marker-leading baseline text;
+landed paths drop off the recomputed missing set (fresh per retry, no
+history), and normal budget/hook re-runs keep byte-identical composed texts.
+Pinned line format (SOLE OWNER: `renderExpectationRetryLine`,
+`pio/src/capability/pio-session.ts`):
+
+``Required phase output(s) still missing after ${iterations} run(s): ${missing.join(", ")}. Create each listed file with the write or edit tool before you finish this run.``
+
+where `${iterations}` is the honest settled-run count at the denial point and
+the list carries EVERY currently-missing RESOLVED path in declaration order.
+
+**The ceiling.** Fixed module constant (value 3), shrink-only tunable,
+suite-pinned behaviorally, module-private (the export surface stays at the
+pinned five keys). At the ceiling with files still missing the phase THROWS
+the reused `ContractViolationError` — collect-all: one deterministic line per
+STILL-MISSING path, declaration order, each naming the checked RESOLVED path
+and stating the ceiling was exhausted. Pinned line format (SOLE OWNER: the
+same module; the em dash arrives as the literal `\u2014` escape in the
+source template — kept ESCAPED in this quote; rendered value N=3):
+
+``phase '${phaseId}' output '${entry}' missing at ${resolvedPath} \u2014 still absent after ${MAX_EXPECTATION_RETRIES} expectation re-run(s); the ceiling is exhausted``
+
+The throw travels unwrapped through the standard containment channels on BOTH
+placements: the typed `ok:false` settlement, `violations[]` surfaced by
+`captureError`'s typed-first ladder, and `exitCodeFor` → exit 1.
+
+**DIVERGENCE from the write-delta stopping rule (§1.3).** The canonical §1.3
+pattern decides on the COMMITTED-WRITE OBSERVABLE — `ctx.filesWritten`, the
+per-run delta of committed `write`/`edit` tool paths; the engine gate checks
+DISK EXISTENCE instead. Consequence for an author choosing between the two
+observables: a shell-redirection write (e.g. `echo … > file`) SATISFIES the
+expectation gate but NEVER appears in the committed-write observable — it
+can end a gated phase yet it CANNOT satisfy research's hook. Both
+observables are real; name which one each mechanism gives.
+
+**The shipped exemplar walkthrough — `guards-demo`.** Top to bottom through
+`pio/src/capabilities/guards-demo.ts`: the FIXED project-slot artifact token
+(exported const `GUARDS_DEMO_ARTIFACT`, project-slot-relative; the absolute
+placement derives through the SAME state-root/project-key channels as
+research — loud typed env failure escapes PRE-everything, zero prompts); the
+capability-owned REPEATABLE RESET (the error-swallowed unlink of the known
+artifact immediately before the guarded phase — without it a pre-existing
+artifact lets the gate pass silently and the demonstration would not trigger;
+a surviving stale artifact degrades to the graceful settle rather than
+aborting); the DECLARATION-ONLY guarded phase (the decision-only pattern
+above instantiated: instruction + `min: 1` + `write: [<absolute artifact>]`,
+no hook, no `max`, awaited UNWRAPPED); ONE static instruction text teaching
+BOTH passes, disambiguated solely by the presence/absence of the engine's
+corrective note (the mechanic taught in-stream: first pass drafts in reply
+only with no write/edit call; the corrective pass creates the file AT THE
+EXACT path); the GRACEFUL SUMMARY keyed only on observables (variant
+selected by observed `PhaseResult.iterations`: `>= 2` states the guard
+denied first-pass settlement and forced the corrective re-run, naming the
+count; `=== 1` states the loop was armed but not triggered — the backing
+local `stat` degrades WORDING only; no third variant, never a hard failure on
+model non-determinism); FAULT POSTURE (the ceiling-exhaustion
+`ContractViolationError` escapes `call()` VERBATIM — never wrapped or
+downgraded — and the base catch-all captures it into the typed `ok:false`
+settlement); OUTCOME SETTLEMENT (returns the RELATIVE token; the base settle
+seam absolutizes it once at success — `status.json`'s `outputs.report`
+carries the absolute placement). Standing role: future guard demonstrations
+accumulate in this module — it is a PERMANENT builtin (registry note: §10).
+
+**The superset authoring convention (documented and enforced NOWHERE).** The
+contract's `outputs[]` must CONTAIN the files that phase-level declarations
+can ever write to. There is NO runtime or load-time cross-check in this
+goal — it is an author-side invariant, named now because slot 9's permission
+frame builds on the same declaration.
+
+**The research non-migration note.** `research` keeps its stopping hook PLUS
+its post-phase local sanity check UNCHANGED: the hook encodes a per-run
+WRITE-DELTA policy with resume-session semantics (the delta observable is
+deliberately per-run), strictly finer than the gate's disk-existence check.
+The equivalence review of migrating research onto declarations is
+W4-wave/follow-up territory — named as deferred, not demonstrated.
+
+### 1.5 What each `IterationCtx` observable means — and the wrong-observable trap
 
 ```ts
 // pio/src/capability/pio-session.ts
@@ -159,7 +297,7 @@ export interface SessionCounters {
   observable.
 - `vars` — the per-instance `SessionVariableStore`, passed BY REFERENCE
   (`get`/`set`/`list` over a Map). Today nothing writes into it mid-run — see
-  §1.6.
+  §1.7.
 
 The canonical mistake is deciding a per-run question off a cumulative counter.
 `counters.filesWritten` tells you how many writes committed over the ENTIRE
@@ -167,7 +305,7 @@ session; it cannot tell you whether the just-settled run wrote your artifact.
 Cumulative monotonically grows — use the delta for decisions, the counters for
 reporting.
 
-### 1.5 Only committed TOOL writes are visible — the tool mandate is functional
+### 1.6 Only committed TOOL writes are visible — the tool mandate is functional
 
 Only COMMITTED `write`/`edit` TOOL executions enter the observable. Mechanism
 (prose, from `pio/src/capability/pio-session.ts`): the observer records the
@@ -185,11 +323,11 @@ the phase RESOLVES at the bound and the capability settles its annotated
 report `ok: true` (the note rides any cap-ended phase — §2.4); there is NO
 failing-breach exit left.
 
-### 1.6 Off-limits until the shared-vars spine lands
+### 1.7 Off-limits until the shared-vars spine lands
 
 - Steering the loop by parsing transcripts or message payloads is fragile
   coupling to platform shape. The delivered steering channels are the three
-  `IterationCtx` observables (§1.4); the payload list behind
+  `IterationCtx` observables (§1.5); the payload list behind
   `PhaseResult.messages` is outcome data, not a decision input.
 - Mid-run variable WRITES are not yet part of the protocol:
   `PhaseResult.varsDelta` is EMPTY BY CONSTRUCTION ("no mid-run variable writes
@@ -368,7 +506,7 @@ mid-run death loses at most the in-flight unit (kill-safety).
 
 Ending a run WITHOUT writing the artifact IS the stop signal (§1.3). Instruct
 the model explicitly, because the loop's termination depends on it — and pair
-it with the tool-committed-only caveat (§1.5) so "invisible" shell appends
+it with the tool-committed-only caveat (§1.6) so "invisible" shell appends
 cannot spoof completion. The shipped template says both, in one place: item 4
 (tell the model shell redirection will never end the loop) immediately
 precedes item 5 (ending without a write signals completion).
@@ -735,7 +873,7 @@ only — `new InteractiveMode(session.runtime)` at the mount, the runtime's
 Disk truth + delivered observables ONLY, restated against the new surface:
 the live terminal DISPLAYS the session stream — it is not a data channel.
 Read the `IterationCtx` observables and the committed-write record; never
-parse rendered frames to drive loop decisions (§1.4/§3.1 standing doctrine).
+parse rendered frames to drive loop decisions (§1.5/§3.1 standing doctrine).
 
 ## 6. Registering a new built-in (checklist)
 
@@ -1011,7 +1149,7 @@ await this.runtime.session.prompt(text);
 
 Operator messages enter the SAME prompt channel — they do not become steering
 inputs; the delivered steering channels remain the three `IterationCtx`
-observables (§1.6).
+observables (§1.7).
 
 **HARD GUARDRAIL.** A capability's completion MUST hold with NO human
 present — the write-delta stop and budget backstops never depend on an
@@ -1688,6 +1826,7 @@ export const CAPABILITY_TABLE: CapabilityTable = {
     import("../capabilities/compose-new-session-demo.ts"),
   "compose-same-session-demo": () =>
     import("../capabilities/compose-same-session-demo.ts"),
+  "guards-demo": () => import("../capabilities/guards-demo.ts"),
 };
 ```
 
@@ -1717,6 +1856,35 @@ readonly contract: Contract = {
   outputs: [{ name: "report" }],
   writes: [],
 };
+```
+
+PERMANENT REGISTRATION: `guards-demo`. Its module header carries the
+PERMANENT marker and the registration-contrast statement — five complete
+physical source lines, quoted VERBATIM with their `// ` prefixes stripped per
+this section's sibling quote convention:
+
+```
+// pio/src/capabilities/guards-demo.ts (module header)
+The guards-demo capability — PERMANENT: the standing home for guard
+demonstrations (future guard tests accumulate here). Registration contrast:
+its row-2 sibling compose-new-session-demo is a temporary demonstration
+whose removal is scheduled at the bulk-migration cutover; this module stays
+registered.
+```
+
+This registration STAYS — unlike the TEMPORARY sibling above, whose removal
+is scheduled, its removal is never scheduled. Standing role: the permanent
+home for guard demonstrations, the operational target of the quality gate's
+manual live-run leg, and the live exemplar walked through in §1.4.
+Registration surface — fourth `CAPABILITY_TABLE` entry appended last (the
+table quote above now closes on it), and the appended two-line `HELP_LINES`
+pair, verbatim (raw U+2014, two-space content indent, trailing commas — the
+canonical line is the BARE form; the demo takes nothing):
+
+```ts
+// pio/src/cli.ts (HELP_LINES built-in block, appended pair)
+  "  guards-demo — PERMANENT guard demonstration: first pass skips the declared write, the expectation guard denies settlement with a corrective note naming the exact path, the compliant re-run settles, then a summary states the outcome",
+  "  pio run guards-demo",
 ```
 
 The §6 checklist applies to every NON-temporary builtin UNCHANGED.
@@ -2008,7 +2176,7 @@ WHAT DOES NOT LAND HERE. No new API, coercion, or validation — `set` is RAW:
 
 NO MODEL-SIDE WRITER exists and none is added: `PhaseResult.varsDelta` stays
 EMPTY BY CONSTRUCTION and the idle `customTools` slot stays RESERVED
-(boundary per §1.6 — cross-referenced, not restated).
+(boundary per §1.7 — cross-referenced, not restated).
 
 WRAP-NOT-RENAME HANDOFF. The store's own JSDoc states the inheritance rule
 verbatim — "later work wraps this same store rather than renaming it":
@@ -2141,13 +2309,15 @@ left open here.
 
 ### 11.8 Fixture registry note
 
-Registry state: THREE builtins — `research` (permanent),
-`compose-new-session-demo` (TEMPORARY — §10's note stands unchanged), and
+Registry state: FOUR builtins — `research` (permanent),
+`compose-new-session-demo` (TEMPORARY — §10's note stands unchanged),
 `compose-same-session-demo` (PERMANENT standing row-1 demo — the operational
-QG E2E target, §11.9). The registration surface (three-entry table, uniform
-lazy-thunk form; insertion order research → compose-new-session-demo →
-compose-same-session-demo pinned in the loader suite; the `HELP_LINES`
-two-line idiom pairs with it) is pinned at HEAD in the refreshed §10 quotes.
+QG E2E target, §11.9), and `guards-demo` (PERMANENT guard-demonstration home
+— §10). The registration surface (four-entry table, uniform lazy-thunk form;
+insertion order research → compose-new-session-demo →
+compose-same-session-demo → guards-demo pinned in the loader suite; the
+`HELP_LINES` two-line idiom pairs with it) is pinned at HEAD in the
+refreshed §10 quotes.
 
 THE SINGLE STANDING DEMO. `compose-same-session-demo` — PERMANENT, REGISTERED
 — is a STRUCTURAL MIRROR of the temporary row-2 demo differing ONLY in

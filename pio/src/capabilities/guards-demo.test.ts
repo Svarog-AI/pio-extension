@@ -207,11 +207,13 @@ ${absoluteArtifact}
 2. Do nothing else \u2014 no further tools, no questions, no writes. End your turn right after that statement.`;
 };
 
-/** Engine-owned corrective-line replica (SOLE OWNER: the module-private
- * retry template in ../capability/pio-session.ts): every currently-missing
- * resolved path (declaration order) plus the settled-run count. */
+/** Engine-owned corrective-block replica (SOLE OWNER: the module-private
+ * retry template in ../capability/pio-session.ts): the flanked em-dash
+ * delimiter line labeled output guard above the body sentence — every
+ * currently-missing resolved path (declaration order) plus the settled-run
+ * count; U+2014 arrives as \u2014 escapes identically on both sides. */
 const correctiveLine = (iterations: number, missing: string[]): string =>
-  `Required phase output(s) still missing after ${iterations} run(s): ${missing.join(", ")}. Create each listed file with the write or edit tool before you finish this run.`;
+  `\u2014\u2014 output guard \u2014\u2014\nRequired phase output(s) still missing after ${iterations} run(s): ${missing.join(", ")}. Create each listed file with the write or edit tool before you finish this run.`;
 
 /** Engine-owned ceiling-violation line replica (SOLE OWNER: the module-
  * private violation template in ../capability/pio-session.ts): raw entry +
@@ -398,7 +400,7 @@ async function seedArtifact(
 // ─── C rows: the expectation-guard demonstration flow ───────────────────
 
 describe("expectation-guard demonstration flow (C rows)", () => {
-  it("C1 full happy chain (BINDING leg): pass one skips the write => the engine denies settlement and the pass-two prompt carries the IDENTICAL baseline PLUS the pinned corrective line (run count 1, naming the tmpdir-ABSOLUTE path) => pass two commits the REAL fs write and settles at iterations === 2, the span stamp lands EXACTLY ONCE strictly before the first prompt, ok:true with the ABSOLUTE settled outputs.report (the base seam engaged), the terminal record + exit code 0 — EXACTLY 4 prompts (1 greeting + 2 guard-probe + 1 summary)", async () => {
+  it("C1 full happy chain (BINDING leg): pass one skips the write => the engine denies settlement and the pass-two prompt carries the IDENTICAL baseline PLUS the pinned DELIMITED corrective block (delimiter line above the unchanged body; run count 1, naming the tmpdir-ABSOLUTE path) => pass two commits the REAL fs write and settles at iterations === 2, the span stamp lands EXACTLY ONCE strictly before the first prompt, ok:true with the ABSOLUTE settled outputs.report (the base seam engaged), the terminal record + exit code 0 — EXACTLY 4 prompts (1 greeting + 2 guard-probe + 1 summary)", async () => {
     const placement = artifactPlacement();
     const { instance, round } = await host();
     // Trajectory: greeting quiet; probe pass ONE quiet (no events, no fs);
@@ -417,14 +419,15 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     const result = await cap.run();
 
     // Prompt-total arithmetic: 1 + 2 + 1 = 4 — a wrong total reveals a
-    // corrective line attributed to the wrong phase or a stray prompt.
+    // corrective block attributed to the wrong phase or a stray prompt.
     expect(round.session.prompt).toHaveBeenCalledTimes(4);
     expect(sentAt(round, 0)).toBe(greetingPromptText());
     expect(sentAt(round, 1)).toBe(
       guardProbePromptText(placement.absoluteArtifact),
     );
     // Pass two: marker-leading baseline UNCHANGED + ONE appended fresh
-    // corrective line (settled-run count 1, the tmpdir-absolute path).
+    // corrective block (two lines: delimiter above the body; settled-run
+    // count 1, the tmpdir-absolute path).
     expect(sentAt(round, 2)).toBe(
       `${guardProbePromptText(placement.absoluteArtifact)}\n${correctiveLine(1, [placement.absoluteArtifact])}`,
     );
@@ -505,7 +508,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(stderrText()).toBe("");
   });
 
-  it("C2 disobedient-compliance: the model commits the file on PASS ONE (real fs write inside the scripted pass) => the gate passes on the FIRST break — all-baseline prompt texts, ZERO corrective lines, iterations === 1 — and the SUMMARY observes the graceful ARMED-BUT-NOT-TRIGGERED variant (variant B) — ok:true, EXACTLY 3 prompts (1 + 1 + 1)", async () => {
+  it("C2 disobedient-compliance: the model commits the file on PASS ONE (real fs write inside the scripted pass) => the gate passes on the FIRST break — all-baseline prompt texts, ZERO corrective blocks, iterations === 1 — and the SUMMARY observes the graceful ARMED-BUT-NOT-TRIGGERED variant (variant B) — ok:true, EXACTLY 3 prompts (1 + 1 + 1)", async () => {
     const placement = artifactPlacement();
     const { instance, round } = await host();
     scriptRuns(round, quietSettle());
@@ -522,7 +525,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
 
     expect(round.session.prompt).toHaveBeenCalledTimes(3);
     expect(sentAt(round, 0)).toBe(greetingPromptText());
-    // All-baseline: strict equality PROVES zero corrective lines.
+    // All-baseline: strict equality PROVES zero corrective blocks.
     expect(sentAt(round, 1)).toBe(
       guardProbePromptText(placement.absoluteArtifact),
     );
@@ -551,7 +554,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(stderrText()).toBe("");
   });
 
-  it("C3 never-write: quiet passes burn the ceiling — the guard-probe receives EXACTLY 4 prompts (texts 2–4 each equal the baseline PLUS ONE appended corrective replica, run counts 1..3), execute_phase REJECTS with the pinned ContractViolationError forwarded VERBATIM through call() (engine-level violations carry EXACTLY the pinned line naming the tmpdir target; no wrap/downgrade), the base capture is ok:false with the typed CVE shape, the emitted status.json NAMES the missing file, exit code 1, and the SUMMARY NEVER RAN (EXACTLY 5 prompts total — no sixth)", async () => {
+  it("C3 never-write: quiet passes burn the ceiling — the guard-probe receives EXACTLY 4 prompts (texts 2–4 each equal the baseline PLUS ONE appended corrective block, run counts 1..3), execute_phase REJECTS with the pinned ContractViolationError forwarded VERBATIM through call() (engine-level violations carry EXACTLY the pinned line naming the tmpdir target; no wrap/downgrade), the base capture is ok:false with the typed CVE shape, the emitted status.json NAMES the missing file, exit code 1, and the SUMMARY NEVER RAN (EXACTLY 5 prompts total — no sixth)", async () => {
     const placement = artifactPlacement();
     const line = violationLine(
       "guard-probe",
@@ -574,7 +577,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(round.session.prompt).toHaveBeenCalledTimes(5);
     expect(sentAt(round, 0)).toBe(greetingPromptText());
     // Guard-probe runs 1..4: the FIRST is all-baseline; runs 2-4 carry ONE
-    // appended fresh corrective line each (run counts 1, 2, 3).
+    // appended fresh corrective block each (run counts 1, 2, 3).
     expect(sentAt(round, 1)).toBe(
       guardProbePromptText(placement.absoluteArtifact),
     );
@@ -648,7 +651,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(stderrText()).toBe("");
   });
 
-  it("C4 repeatability: a pre-existing artifact (REAL fs seed BEFORE call()) is REMOVED by the repeatable reset before the guarded phase — observable: during the first guard-probe run a sync fs read reports ABSENT — and the first-pass gate fires IDENTICALLY (same corrective line, same trajectory as the unseeded happy chain), ok:true, EXACTLY 4 prompts", async () => {
+  it("C4 repeatability: a pre-existing artifact (REAL fs seed BEFORE call()) is REMOVED by the repeatable reset before the guarded phase — observable: during the first guard-probe run a sync fs read reports ABSENT — and the first-pass gate fires IDENTICALLY (same corrective block, same trajectory as the unseeded happy chain), ok:true, EXACTLY 4 prompts", async () => {
     const placement = artifactPlacement();
     await seedArtifact(placement.absoluteArtifact, "stale artifact\n");
     const { instance, round } = await host();
@@ -716,7 +719,7 @@ describe("instruction framing (F rows)", () => {
 
     // Byte replica of the FIRST-PASS guard-probe prompt: the marker-leading
     // baseline is exactly renderer + "\\n" + the pinned template (no
-    // corrective line yet on run one).
+    // corrective block yet on run one).
     expect(sentAt(round, 0)).toBe(greetingPromptText());
     expect(sentAt(round, 1)).toBe(
       `${renderPhaseMarker("guard-probe")}\n${guardProbeReplica(placement.absoluteArtifact)}`,

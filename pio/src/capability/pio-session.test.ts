@@ -1653,10 +1653,12 @@ class FixtureCapability extends PioCapability {
 const GUARDED_BASELINE = "\u2014\u2014 guarded \u2014\u2014\nWrite the thing";
 
 /** Pinned corrective-note replica (SOLE OWNER: the module-private template
- * in ./pio-session.ts): every currently-missing resolved path, declaration
- * order, plus the settled-run count at the denial point. */
+ * in ./pio-session.ts): the flanked em-dash delimiter line labeled output
+ * guard above the body sentence — every currently-missing resolved path,
+ * declaration order, plus the settled-run count at the denial point;
+ * U+2014 arrives as \u2014 escapes identically on both sides. */
 const correctiveNoteReplica = (iterations: number, missing: string[]): string =>
-  `Required phase output(s) still missing after ${iterations} run(s): ${missing.join(", ")}. Create each listed file with the write or edit tool before you finish this run.`;
+  `\u2014\u2014 output guard \u2014\u2014\nRequired phase output(s) still missing after ${iterations} run(s): ${missing.join(", ")}. Create each listed file with the write or edit tool before you finish this run.`;
 
 /** Pinned ceiling-violation line replica (SOLE OWNER: the module-private
  * template in ./pio-session.ts): raw entry + resolved path; em dash
@@ -1683,7 +1685,7 @@ describe("PioSession — expectation gate (write:)", () => {
   const sentTexts = (round: Round): unknown[] =>
     round.session.prompt.mock.calls.map((call: readonly unknown[]) => call[0]);
 
-  it("BINDING leg 1 (auto re-run and normal settle): the scripted first pass does NOT write the declared file, the engine denies settlement and re-runs with the pinned corrective line, the second pass's real fs write lets the gate pass, and the FULL chain (fixture call() -> real base run() -> real emitter) settles ok:true with exit code 0", async () => {
+  it("BINDING leg 1 (auto re-run and normal settle): the scripted first pass does NOT write the declared file, the engine denies settlement and re-runs with the pinned corrective block, the second pass's real fs write lets the gate pass, and the FULL chain (fixture call() -> real base run() -> real emitter) settles ok:true with exit code 0", async () => {
     const target = path.join(tmp, "deliverable.md");
     const { instance, round } = await host();
     // Pass one: quiet only — the gate alone drives the re-run.
@@ -1823,7 +1825,7 @@ describe("PioSession — expectation gate (write:)", () => {
     expect(result.iterations).toBe(1);
   });
 
-  it("corrective-note freshness (property v): two declared paths, the first lands during retry one — the retry-two line lists ONLY the still-missing path (landed path dropped; declaration-order comma-space join preserved on the earlier line) and the ceiling throw carries one line per STILL-MISSING path only", async () => {
+  it("corrective-note freshness (property v): two declared paths, the first lands during retry one — the retry-two block lists ONLY the still-missing path (landed path dropped; declaration-order comma-space join preserved on the earlier block) and the ceiling throw carries one line per STILL-MISSING path only", async () => {
     const first = path.join(tmp, "first.md");
     const second = path.join(tmp, "second.md");
     const baseline = "\u2014\u2014 multi \u2014\u2014";
@@ -1966,7 +1968,7 @@ describe("PioSession — expectation gate (write:)", () => {
     expect(result.iterations).toBe(1);
   });
 
-  it("mechanical semantics (ii): a RELATIVE entry resolves under process.cwd() with NO chdir (the expectation is computed at assertion time via node:path resolve) and the never-write ceiling names the cwd-resolved path in every corrective line AND the violation line", async () => {
+  it("mechanical semantics (ii): a RELATIVE entry resolves under process.cwd() with NO chdir (the expectation is computed at assertion time via node:path resolve) and the never-write ceiling names the cwd-resolved path in every corrective block AND the violation line", async () => {
     const entry = `pio-expectation-relative-${randomUUID()}.md`;
     const baseline = "\u2014\u2014 relative-write \u2014\u2014";
     const { instance, round } = await host();

@@ -62,10 +62,11 @@
 // write-permission frame; enforcement itself is slot 9's scope.
 //
 // Corrective-note channel: gate-triggered retries alone append ONE fresh
-// deterministic line (every currently-missing resolved path plus the
-// settled-run count at that point) strictly after the marker-leading
-// baseline text; landed paths drop off, no history accumulates, and the
-// composition stays private to execute_phase.
+// deterministic MARKED BLOCK (a flanked em-dash delimiter line labeled
+// output guard above the body sentence — every currently-missing resolved
+// path plus the settled-run count at that point) strictly after the
+// marker-leading baseline text; landed paths drop off, no history
+// accumulates, and the composition stays private to execute_phase.
 //
 // Typed failure at the ceiling: with MAX_EXPECTATION_RETRIES corrective
 // re-runs settled and paths still missing, the phase throws the error
@@ -114,14 +115,17 @@ const PIO_CAPABILITY_CUSTOM_TYPE = "pio-capability";
  * keys and the suite pins the ceiling behaviorally). */
 const MAX_EXPECTATION_RETRIES = 3;
 
-/** One corrective line for a gate-triggered retry: every currently-missing
- * resolved path (declaration order) plus the settled-run count at the
- * denial point; fresh per retry, so landed paths drop off. */
+/** One corrective MARKED BLOCK for a gate-triggered retry: the flanked
+ * em-dash delimiter line (U+2014-escaped like every other pinned byte in
+ * this module) labeled output guard above the body sentence — every
+ * currently-missing resolved path (declaration order) plus the settled-run
+ * count at the denial point; fresh per retry, so landed paths drop off.
+ * Two lines joined by a single LF; no trailing newline. */
 function renderExpectationRetryLine(
   iterations: number,
   missing: readonly string[],
 ): string {
-  return `Required phase output(s) still missing after ${iterations} run(s): ${missing.join(", ")}. Create each listed file with the write or edit tool before you finish this run.`;
+  return `\u2014\u2014 output guard \u2014\u2014\nRequired phase output(s) still missing after ${iterations} run(s): ${missing.join(", ")}. Create each listed file with the write or edit tool before you finish this run.`;
 }
 
 /** One collect-all violation line per still-missing declared path at the
@@ -527,7 +531,7 @@ export class PioSession {
     let iterations = 0;
     // Independent of budget and stop rule; never surfaced on PhaseResult.
     let expectationRetries = 0;
-    // Next run's corrective line: set only at a gate denial, consumed once —
+    // Next run's corrective block: set only at a gate denial, consumed once —
     // floor/hook continuations re-send the untouched baseline.
     let pendingNote: string | undefined;
     try {

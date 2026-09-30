@@ -197,13 +197,20 @@ become the SOLE settlement authority. The shipped exemplar — walked through
 below — is `guards-demo`'s `guard-probe` phase.
 
 **The corrective-note channel.** Gate-triggered retries ALONE append ONE
-fresh deterministic line strictly AFTER the marker-leading baseline text;
-landed paths drop off the recomputed missing set (fresh per retry, no
-history), and normal budget/hook re-runs keep byte-identical composed texts.
-Pinned line format (SOLE OWNER: `renderExpectationRetryLine`,
-`pio/src/capability/pio-session.ts`):
+fresh deterministic MARKED BLOCK strictly AFTER the marker-leading baseline
+text: a flanked em-dash delimiter line reading —— output guard —— above the
+unchanged body sentence; landed paths drop off the recomputed missing set
+(fresh per retry, no history), and normal budget/hook re-runs keep
+byte-identical composed texts. Pinned block format (SOLE OWNER:
+`renderExpectationRetryLine`, `pio/src/capability/pio-session.ts`) — the two
+lines joined by a single LF with NO trailing newline; the em dashes arrive as
+the literal `\u2014` escapes in the source template and are kept ESCAPED in
+this quote:
 
-``Required phase output(s) still missing after ${iterations} run(s): ${missing.join(", ")}. Create each listed file with the write or edit tool before you finish this run.``
+```
+\u2014\u2014 output guard \u2014\u2014
+Required phase output(s) still missing after ${iterations} run(s): ${missing.join(", ")}. Create each listed file with the write or edit tool before you finish this run.
+```
 
 where `${iterations}` is the honest settled-run count at the denial point and
 the list carries EVERY currently-missing RESOLVED path in declaration order.

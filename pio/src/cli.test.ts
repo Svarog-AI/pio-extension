@@ -35,6 +35,13 @@ const COMPOSE_DEMO_INVOCATION_LINE = "  pio run compose-new-session-demo";
 const SAME_SESSION_DEMO_ENTRY_LINE =
   "  compose-same-session-demo — greets the operator, runs research in the same session, then reports the top 3 findings";
 const SAME_SESSION_DEMO_INVOCATION_LINE = "  pio run compose-same-session-demo";
+// Guards-demo help-tail lines — the SOLE OWNERS are HELP_LINES indices 14–15
+// in ./cli.ts; the copies keep the byte-pins meaningful. NOTE the em dash is
+// the U+2014 EM DASH character (pinned codepoint), and the canonical line is
+// the BARE form — the demo takes nothing.
+const GUARDS_DEMO_ENTRY_LINE =
+  "  guards-demo — PERMANENT guard demonstration: first pass skips the declared write, the expectation guard denies settlement with a corrective note naming the exact path, the compliant re-run settles, then a summary states the outcome";
+const GUARDS_DEMO_INVOCATION_LINE = "  pio run guards-demo";
 
 // Replicated miss-line literal — the SOLE OWNER is capabilityRefusalLine in
 // capability/loader.ts; the copy follows its owner into the entry suites so
@@ -298,9 +305,9 @@ describe("parse (--input pair grammar — strictness edges, first violation wins
 });
 
 describe("main (behavior matrix)", () => {
-  // Full pinned-array equality: every line of the fourteen-line pinned form
+  // Full pinned-array equality: every line of the sixteen-line pinned form
   // stays byte-identical — placement pinned, not merely presence (indices
-  // 0–9 byte-stable under the pre-existing owner replicas; the four appended
+  // 0–13 byte-stable under the pre-existing owner replicas; the two appended
   // indices ride their own owner replicas above).
   it("--help: exit 0, stdout deep-equals the full pinned line array, clean stderr", async () => {
     const { io, out, err } = collectIo();
@@ -321,6 +328,8 @@ describe("main (behavior matrix)", () => {
       COMPOSE_DEMO_INVOCATION_LINE,
       SAME_SESSION_DEMO_ENTRY_LINE,
       SAME_SESSION_DEMO_INVOCATION_LINE,
+      GUARDS_DEMO_ENTRY_LINE,
+      GUARDS_DEMO_INVOCATION_LINE,
     ]);
     expect(err).toEqual([]);
   });
@@ -335,6 +344,8 @@ describe("main (behavior matrix)", () => {
     expect(joined).toContain(CANONICAL_INVOCATION_LINE);
     expect(joined).toContain(SAME_SESSION_DEMO_ENTRY_LINE);
     expect(joined).toContain(SAME_SESSION_DEMO_INVOCATION_LINE);
+    expect(joined).toContain(GUARDS_DEMO_ENTRY_LINE);
+    expect(joined).toContain(GUARDS_DEMO_INVOCATION_LINE);
     expect(err).toEqual([]);
   });
 

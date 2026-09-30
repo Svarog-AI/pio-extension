@@ -3,7 +3,11 @@
 // pure fake: the vi.mock factory references ONLY hoisted bindings and never
 // pulls in the original module, so the real @earendil-works/pi-coding-agent
 // graph is never evaluated. No filesystem, network, env, or process-stream
-// assumptions. Each construction mints a fresh fake session behind a fresh
+// assumptions — except the filesystem-scoped expectation-gate rows, which
+// drive the disk-truth gate with real node:fs reads and writes against
+// per-row mkdtemp tmpdir targets (disk seeding is row duty there; every
+// other row remains fs/env-free). Each construction mints a fresh fake
+// session behind a fresh
 // fake runtime, so subscription counts and per-instance isolation are
 // directly observable. Synthetic events flow through the single documented
 // cast seam asEvent — the sole `as` over synthetic event payloads (the
@@ -26,13 +30,20 @@
 // through the captured listener and then resolves, where one resolution
 // stands for one fully-settled logical run. The agentEnd fixture mirrors
 // the installed dist payload shape ({ type, messages, willRetry }).
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type {
   AgentSession,
   AgentSessionEvent,
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
+import type { CapabilityParams } from "./base.ts";
+import { PioCapability } from "./base.ts";
+import type { Contract } from "./contract.ts";
+import { ContractViolationError } from "./errors.ts";
 import type { IterationCtx, PhaseResult } from "./pio-session.ts";
 import {
   PioSession,
@@ -40,7 +51,12 @@ import {
   renderPhaseMarker,
   SessionHandleRefusalError,
 } from "./pio-session.ts";
-import { captureError } from "./status.ts";
+import {
+  captureError,
+  createStatusEmitter,
+  exitCodeFor,
+  statusPath,
+} from "./status.ts";
 
 // Single documented cast seam for synthetic event payloads.
 const asEvent = (v: unknown): AgentSessionEvent => v as AgentSessionEvent;
@@ -1591,6 +1607,468 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     });
   });
 });
+// ---------------------------------------------------------------------
+// Expectation gate (write:) — engine-owned per-phase file expectations.
+// FixtureCapability is TEST-LOCAL (extends the real base, session-present,
+// never registered in the production loader table). Real node:fs writes
+// against per-row mkdtemp targets are row duty, never harness magic; the
+// fixture's empty contract outputs keep the base settle seam
+// PI_CODING_AGENT_DIR-immune.
+// ---------------------------------------------------------------------
+
+class FixtureCapability extends PioCapability {
+  readonly contract: Contract = {
+    name: "fixture",
+    version: "0.1.0",
+    inputs: [],
+    outputs: [],
+    writes: [],
+  };
+  /** Observed phase results — the assertion channel for the BINDING legs. */
+  readonly phaseResults: PhaseResult[] = [];
+  #target: string;
+
+  constructor(params: CapabilityParams & { target: string }) {
+    super(params);
+    this.#target = params.target;
+  }
+
+  async call(
+    _inputs: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    // Declaration-only phase: write, no hook, no max — the gate plus its
+    // ceiling are the sole settlement authority.
+    this.phaseResults.push(
+      await this.execute_phase("guarded", {
+        instructions: "Write the thing",
+        write: [this.#target],
+      }),
+    );
+    return {};
+  }
+}
+
+/** Replica of the fixture phase's marker-leading baseline text (U+2014 x2,
+ * single spaces — the existing prompt-text golden discipline). */
+const GUARDED_BASELINE = "\u2014\u2014 guarded \u2014\u2014\nWrite the thing";
+
+/** Pinned corrective-note replica (SOLE OWNER: the module-private template
+ * in ./pio-session.ts): the flanked em-dash delimiter line labeled output
+ * guard above the body sentence — every currently-missing resolved path,
+ * declaration order, plus the settled-run count at the denial point;
+ * U+2014 arrives as \u2014 escapes identically on both sides. */
+const correctiveNoteReplica = (iterations: number, missing: string[]): string =>
+  `\u2014\u2014 output guard \u2014\u2014\nRequired phase output(s) still missing after ${iterations} run(s): ${missing.join(", ")}. Create each listed file with the write or edit tool before you finish this run.`;
+
+/** Pinned ceiling-violation line replica (SOLE OWNER: the module-private
+ * template in ./pio-session.ts): raw entry + resolved path; em dash
+ * U+2014-escaped identically on both sides; N = 3 pinned ceiling. */
+const violationLineReplica = (
+  phaseId: string,
+  entry: string,
+  resolvedPath: string,
+): string =>
+  `phase '${phaseId}' output '${entry}' missing at ${resolvedPath} \u2014 still absent after 3 expectation re-run(s); the ceiling is exhausted`;
+
+describe("PioSession — expectation gate (write:)", () => {
+  let tmp: string;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(path.join(tmpdir(), "pio-expectation-"));
+  });
+
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  /** Captured prompt texts in send order (one element per prompt call). */
+  const sentTexts = (round: Round): unknown[] =>
+    round.session.prompt.mock.calls.map((call: readonly unknown[]) => call[0]);
+
+  it("BINDING leg 1 (auto re-run and normal settle): the scripted first pass does NOT write the declared file, the engine denies settlement and re-runs with the pinned corrective block, the second pass's real fs write lets the gate pass, and the FULL chain (fixture call() -> real base run() -> real emitter) settles ok:true with exit code 0", async () => {
+    const target = path.join(tmp, "deliverable.md");
+    const { instance, round } = await host();
+    // Pass one: quiet only — the gate alone drives the re-run.
+    round.session.prompt.mockImplementationOnce(async () => {
+      emit(round, ...quietRun());
+    });
+    // Pass two: a REAL fs write of the target before the run settles.
+    round.session.prompt.mockImplementationOnce(async () => {
+      await writeFile(target, "settled on pass two\n");
+      emit(round, ...quietRun());
+    });
+    const cap = new FixtureCapability({ session: instance, target });
+    const sessionsRoot = path.join(tmp, ".sessions");
+    const emitter = createStatusEmitter({
+      sessionsRoot,
+      capability: { name: cap.contract.name, version: cap.contract.version },
+      tokens: () => instance.counters().tokens,
+      sessionFile: () => undefined,
+    });
+    const result = await cap.run({});
+    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+    expect(round.session.prompt.mock.calls[0]?.[0]).toBe(GUARDED_BASELINE);
+    expect(round.session.prompt.mock.calls[1]?.[0]).toBe(
+      `${GUARDED_BASELINE}\n${correctiveNoteReplica(1, [target])}`,
+    );
+    expect(round.session.sendCustomMessage).toHaveBeenCalledTimes(1);
+    // A retry IS a run: the accounting invariant.
+    expect(cap.phaseResults).toHaveLength(1);
+    expect(cap.phaseResults[0].done).toBe(true);
+    expect(cap.phaseResults[0].iterations).toBe(2);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    expect(result.outputs).toEqual({});
+    const emission = await emitter.emit(result);
+    expect(emission.status.ok).toBe(true);
+    expect(emission.exitCode).toBe(0);
+    expect(exitCodeFor(emission.status)).toBe(0);
+    const record = JSON.parse(
+      readFileSync(statusPath(sessionsRoot), "utf8"),
+    ) as {
+      ok: boolean;
+      capability: { name: string; version: string; source: string };
+      outputs: Record<string, unknown>;
+      errors?: unknown;
+    };
+    expect(record.ok).toBe(true);
+    expect(record.capability).toEqual({
+      name: "fixture",
+      version: "0.1.0",
+      source: "builtin",
+    });
+    expect(record.outputs).toEqual({});
+    expect(record.errors).toBeUndefined();
+  });
+
+  it("BINDING leg 2 (never materializes => typed failure at the gate's OWN ceiling): four quiet passes burn the first pass + exactly 3 corrective re-runs, execute_phase REJECTS with the pinned ContractViolationError (engine-level), and through the FULL chain the captured record names the missing file with ok:false and exit code 1 — distinct from, and not disturbing, the budget break-and-settle", async () => {
+    // ENGINE-LEVEL: the raw rejection shape over a dedicated host.
+    const engineTarget = path.join(tmp, "engine-ghost.md");
+    const engine = await host();
+    scriptRuns(engine.round, quietRun(), quietRun(), quietRun(), quietRun());
+    let thrown: unknown;
+    try {
+      await engine.instance.execute_phase("guarded", {
+        instructions: "Write the thing",
+        write: [engineTarget],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ContractViolationError);
+    expect((thrown as ContractViolationError).violations).toEqual([
+      violationLineReplica("guarded", engineTarget, engineTarget),
+    ]);
+
+    // FULL CHAIN: the same trajectory through the fixture -> real base
+    // run() -> real emitter.
+    const chainTarget = path.join(tmp, "chain-ghost.md");
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun(), quietRun(), quietRun(), quietRun());
+    const cap = new FixtureCapability({
+      session: instance,
+      target: chainTarget,
+    });
+    const sessionsRoot = path.join(tmp, ".sessions");
+    const emitter = createStatusEmitter({
+      sessionsRoot,
+      capability: { name: cap.contract.name, version: cap.contract.version },
+      tokens: () => instance.counters().tokens,
+      sessionFile: () => undefined,
+    });
+    const result = await cap.run({});
+    // First pass + 3 corrective re-runs — the gate's own ceiling.
+    expect(round.session.prompt).toHaveBeenCalledTimes(4);
+    const sent = sentTexts(round);
+    expect(sent[0]).toBe(GUARDED_BASELINE);
+    expect(sent[1]).toBe(
+      `${GUARDED_BASELINE}\n${correctiveNoteReplica(1, [chainTarget])}`,
+    );
+    expect(sent[2]).toBe(
+      `${GUARDED_BASELINE}\n${correctiveNoteReplica(2, [chainTarget])}`,
+    );
+    expect(sent[3]).toBe(
+      `${GUARDED_BASELINE}\n${correctiveNoteReplica(3, [chainTarget])}`,
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    const line = violationLineReplica("guarded", chainTarget, chainTarget);
+    expect(result.errors?.[0]).toStrictEqual({
+      type: "ContractViolationError",
+      cause: "contract",
+      message: `Contract violation: ${line}`,
+      violations: [line],
+    });
+    const emission = await emitter.emit(result);
+    expect(emission.status.ok).toBe(false);
+    expect(emission.exitCode).toBe(1);
+    expect(exitCodeFor(emission.status)).toBe(1);
+    const record = JSON.parse(
+      readFileSync(statusPath(sessionsRoot), "utf8"),
+    ) as { ok: boolean; errors?: Array<{ violations?: string[] }> };
+    expect(record.ok).toBe(false);
+    expect(record.errors?.[0]?.violations).toEqual([line]);
+  });
+  it("companion: a PRE-EXISTING declared file makes the gate pass on the FIRST break with zero retries — one prompt, all-baseline text, iterations === 1, done: true", async () => {
+    const target = path.join(tmp, "preexisting.md");
+    await writeFile(target, "seeded before the phase\n");
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    const result = await instance.execute_phase("preexisting", {
+      write: [target],
+    });
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      "\u2014\u2014 preexisting \u2014\u2014",
+    );
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(1);
+  });
+
+  it("corrective-note freshness (property v): two declared paths, the first lands during retry one — the retry-two block lists ONLY the still-missing path (landed path dropped; declaration-order comma-space join preserved on the earlier block) and the ceiling throw carries one line per STILL-MISSING path only", async () => {
+    const first = path.join(tmp, "first.md");
+    const second = path.join(tmp, "second.md");
+    const baseline = "\u2014\u2014 multi \u2014\u2014";
+    const { instance, round } = await host();
+    // Pass two writes ONLY the first declared path; the others stay quiet.
+    round.session.prompt.mockImplementationOnce(async () => {
+      emit(round, ...quietRun());
+    });
+    round.session.prompt.mockImplementationOnce(async () => {
+      await writeFile(first, "lands on retry one\n");
+      emit(round, ...quietRun());
+    });
+    scriptRuns(round, quietRun(), quietRun());
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("multi", { write: [first, second] });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ContractViolationError);
+    const sent = sentTexts(round);
+    expect(sent[0]).toBe(baseline);
+    // Both paths listed in declaration order...
+    expect(sent[1]).toBe(
+      `${baseline}\n${correctiveNoteReplica(1, [first, second])}`,
+    );
+    // ...then the landed path drops off (fresh per retry).
+    expect(sent[2]).toBe(`${baseline}\n${correctiveNoteReplica(2, [second])}`);
+    expect(sent[3]).toBe(`${baseline}\n${correctiveNoteReplica(3, [second])}`);
+    expect((thrown as ContractViolationError).violations).toEqual([
+      violationLineReplica("multi", second, second),
+    ]);
+  });
+
+  it("normal budget re-runs with the SAME setup MINUS the declaration stay byte-identical to the baseline at every run (hook-driven continuations carry no corrective note)", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun(), quietRun());
+    let calls = 0;
+    const result = await instance.execute_phase("plain-rerun", {
+      shouldStopLoop: async () => {
+        calls += 1;
+        return calls === 2;
+      },
+    });
+    expect(sentTexts(round)).toEqual([
+      "\u2014\u2014 plain-rerun \u2014\u2014",
+      "\u2014\u2014 plain-rerun \u2014\u2014",
+    ]);
+    expect(calls).toBe(2);
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(2);
+  });
+
+  it("independence and accounting: a declared phase whose hook ALWAYS demands continuation past max: 3 keeps passing the gate beyond the budget — EXACTLY 6 prompts (budget runs 3 + corrective 3) then the typed throw, with iterations counted as 6 settled runs", async () => {
+    const target = path.join(tmp, "never-lands.md");
+    const baseline = "\u2014\u2014 coexist \u2014\u2014";
+    const { instance, round } = await host();
+    scriptRuns(
+      round,
+      quietRun(),
+      quietRun(),
+      quietRun(),
+      quietRun(),
+      quietRun(),
+      quietRun(),
+    );
+    let hookCalls = 0;
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("coexist", {
+        max: 3,
+        shouldStopLoop: async () => {
+          hookCalls += 1;
+          return false;
+        },
+        write: [target],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(hookCalls).toBe(6);
+    expect(thrown).toBeInstanceOf(ContractViolationError);
+    expect(round.session.prompt).toHaveBeenCalledTimes(6);
+    const sent = sentTexts(round);
+    // Budget runs re-send the baseline: the gate sits strictly at breaks.
+    expect(sent.slice(0, 3)).toEqual([baseline, baseline, baseline]);
+    expect(sent[3]).toBe(`${baseline}\n${correctiveNoteReplica(3, [target])}`);
+    expect(sent[4]).toBe(`${baseline}\n${correctiveNoteReplica(4, [target])}`);
+    expect(sent[5]).toBe(`${baseline}\n${correctiveNoteReplica(5, [target])}`);
+    expect((thrown as ContractViolationError).violations).toEqual([
+      violationLineReplica("coexist", target, target),
+    ]);
+  });
+
+  it("the CEILING rejection closes both windows: after the typed throw the next phase on the SAME host sees empty deltas and messages (the finally closeout fires on the new reject cause; cumulative counters survive)", async () => {
+    const target = path.join(tmp, "window-ghost.md");
+    const { instance, round } = await host();
+    // Runs commit fake-plane writes + payloads: the windows WOULD leak.
+    const deadPass = [
+      agentStart(),
+      start("d1", "write", { path: "/leaked/a.md" }),
+      end("d1", "write", false),
+      agentEnd(["d1"], false),
+    ];
+    scriptRuns(round, deadPass, deadPass, deadPass, deadPass);
+    await expect(
+      instance.execute_phase("ceiling-die", { write: [target] }),
+    ).rejects.toBeInstanceOf(ContractViolationError);
+    // The finally closeout fires on the reject cause too.
+    expect(instance.getFilesWrittenDelta()).toEqual([]);
+    expect(instance.getRunMessages()).toEqual([]);
+    expect(instance.counters().filesWritten).toBe(4);
+
+    round.session.prompt.mockImplementationOnce(async () => {
+      emit(round, agentStart(), agentEnd(["n1"], false));
+    });
+    let first: IterationCtx | undefined;
+    const next = await instance.execute_phase("after", {
+      shouldStopLoop: async (ctx) => {
+        first = ctx;
+        return true;
+      },
+    });
+    expect(next.messages).toEqual(["n1"]);
+    expect(first?.filesWritten).toEqual([]);
+    expect(first?.counters.filesWritten).toBe(4);
+  });
+  it("mechanical semantics (i): a resolvable DIRECTORY declared as an expected path passes mechanically — one prompt, all-baseline text, done: true", async () => {
+    // The mkdtemp root itself is an existing directory — declare IT.
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    const result = await instance.execute_phase("dir-expects", {
+      write: [tmp],
+    });
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      "\u2014\u2014 dir-expects \u2014\u2014",
+    );
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(1);
+  });
+
+  it("mechanical semantics (ii): a RELATIVE entry resolves under process.cwd() with NO chdir (the expectation is computed at assertion time via node:path resolve) and the never-write ceiling names the cwd-resolved path in every corrective block AND the violation line", async () => {
+    const entry = `pio-expectation-relative-${randomUUID()}.md`;
+    const baseline = "\u2014\u2014 relative-write \u2014\u2014";
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun(), quietRun(), quietRun(), quietRun());
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("relative-write", { write: [entry] });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ContractViolationError);
+    // Same resolution the module performs (location-independent).
+    const resolved = path.resolve(process.cwd(), entry);
+    const sent = sentTexts(round);
+    expect(sent[0]).toBe(baseline);
+    expect(sent[1]).toBe(
+      `${baseline}\n${correctiveNoteReplica(1, [resolved])}`,
+    );
+    expect(sent[2]).toBe(
+      `${baseline}\n${correctiveNoteReplica(2, [resolved])}`,
+    );
+    expect(sent[3]).toBe(
+      `${baseline}\n${correctiveNoteReplica(3, [resolved])}`,
+    );
+    expect((thrown as ContractViolationError).violations).toEqual([
+      violationLineReplica("relative-write", entry, resolved),
+    ]);
+  });
+
+  it("accounting (c): the min floor is consumed BEFORE any gate consult — with min: 2 and a never-landing file the first two prompts are BOTH pure baseline (the floor-driven continuation sees no gate) and the first denial carries run count 2 (5 prompts: floor+break runs 2 + corrective 3)", async () => {
+    const target = path.join(tmp, "floored-ghost.md");
+    const baseline = "\u2014\u2014 floored-write \u2014\u2014";
+    const { instance, round } = await host();
+    scriptRuns(
+      round,
+      quietRun(),
+      quietRun(),
+      quietRun(),
+      quietRun(),
+      quietRun(),
+    );
+    let thrown: unknown;
+    try {
+      await instance.execute_phase("floored-write", {
+        min: 2,
+        write: [target],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ContractViolationError);
+    expect(round.session.prompt).toHaveBeenCalledTimes(5);
+    expect(sentTexts(round)).toEqual([
+      baseline,
+      baseline,
+      `${baseline}\n${correctiveNoteReplica(2, [target])}`,
+      `${baseline}\n${correctiveNoteReplica(3, [target])}`,
+      `${baseline}\n${correctiveNoteReplica(4, [target])}`,
+    ]);
+  });
+
+  it("base case (e): a DECLARED phase settling at its BUDGET break passes the gate and settles normally once its file exists — the delivered break-and-settle is undisturbed under the gate (one prompt, all-baseline, done: true)", async () => {
+    const target = path.join(tmp, "budget-file.md");
+    await writeFile(target, "present before the budget break\n");
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    const result = await instance.execute_phase("budget-gate", {
+      max: 1,
+      shouldStopLoop: async () => false,
+      write: [target],
+    });
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      "\u2014\u2014 budget-gate \u2014\u2014",
+    );
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(1);
+  });
+
+  it("degenerate declarations: an UNDECLARED phase and an EMPTY write: [] phase each reproduce today's bytes — one prompt, exact baseline text, done: true (the existing goldens hold untouched as the primary regression proof)", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    const a = await instance.execute_phase("unguarded-baseline");
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(round.session.prompt.mock.calls[0]?.[0]).toBe(
+      "\u2014\u2014 unguarded-baseline \u2014\u2014",
+    );
+    expect(a.done).toBe(true);
+    expect(a.iterations).toBe(1);
+
+    scriptRuns(round, quietRun());
+    const b = await instance.execute_phase("empty-decl", { write: [] });
+    expect(round.session.prompt).toHaveBeenCalledTimes(2);
+    expect(round.session.prompt.mock.calls[1]?.[0]).toBe(
+      "\u2014\u2014 empty-decl \u2014\u2014",
+    );
+    expect(b.done).toBe(true);
+    expect(b.iterations).toBe(1);
+  });
+});
 
 describe("export surface", () => {
   it("runtime export surface is EXACTLY ['PioSession', 'SessionHandleRefusalError', 'SessionVariableStore', 'renderCapabilityMarker', 'renderPhaseMarker'] sorted (types erase under erasable syntax)", async () => {
@@ -1620,7 +2098,7 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     expect(src.includes("isComposed")).toBe(false);
   });
 
-  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly ['../session.ts'] behind it", () => {
+  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly ['node:fs', 'node:path', '../session.ts', './errors.ts'] behind it", () => {
     // EXACTLY ONE clause references the SDK root, and it is the TYPE
     // clause.
     expect(src.match(/from "@earendil-works\/pi-coding-agent"/g)?.length).toBe(
@@ -1637,13 +2115,19 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     ).toBe(
       'import type { AgentSession, AgentSessionEvent, AgentSessionEventListener, AgentSessionRuntime } from "@earendil-works/pi-coding-agent";',
     );
-    // The VALUE clause set, in source order...
+    // The VALUE clause set, in source order (formatter-authoritative: node:*
+    // builtins lead, then the session seam, then the reused error home)...
     const valueClauses = [
       ...src.matchAll(
         /^\s*import\s+(?!type\b)[^\n;]*?from\s+["']([^"']+)["']/gm,
       ),
     ].map((match) => match[1]);
-    expect(valueClauses).toEqual(["../session.ts"]);
+    expect(valueClauses).toEqual([
+      "node:fs",
+      "node:path",
+      "../session.ts",
+      "./errors.ts",
+    ]);
     // ...BEHIND the external type clause.
     expect(src.indexOf('from "@earendil-works/pi-coding-agent"')).toBeLessThan(
       src.indexOf('from "../session.ts"'),

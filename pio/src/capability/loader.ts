@@ -5,9 +5,11 @@
 // issuing a literal dynamic import of the capability module — so nothing
 // registered evaluates until its exact name resolves. Registration is a
 // static edit of the literal below; there is no mutation API. The table
-// ships THREE entries — `research`, the first registered built-in; the
-// temporary `compose-new-session-demo` demonstration; and the permanent
-// `compose-same-session-demo` demonstration — all resolving through the
+// ships FOUR entries — `research`, the first registered built-in; the
+// temporary `compose-new-session-demo` demonstration (removal scheduled at
+// the bulk-migration cutover); the permanent `compose-same-session-demo`
+// demonstration; and the PERMANENT `guards-demo` guard-demonstration home
+// (future guard tests accumulate there) — all resolving through the
 // dedicated capabilities/ subpackage.
 //
 // Resolution is UI-neutral and never rejects: every outcome, including
@@ -41,7 +43,7 @@ export interface CapabilityModule {
 /** Lazy factory: resolves one registered capability module (literal dynamic import). */
 export type CapabilityFactory = () => Promise<CapabilityModule>;
 
-/** name → factory. Hardcoded, static, in-artifact. Ships the `research`, the temporary `compose-new-session-demo`, and the permanent `compose-same-session-demo` entries. */
+/** name → factory. Hardcoded, static, in-artifact. Ships the `research`, the temporary `compose-new-session-demo`, the permanent `compose-same-session-demo`, and the PERMANENT `guards-demo` guard-demonstration-home entries. */
 export type CapabilityTable = Readonly<Record<string, CapabilityFactory>>;
 export const CAPABILITY_TABLE: CapabilityTable = {
   research: () => import("../capabilities/research.ts"),
@@ -49,6 +51,7 @@ export const CAPABILITY_TABLE: CapabilityTable = {
     import("../capabilities/compose-new-session-demo.ts"),
   "compose-same-session-demo": () =>
     import("../capabilities/compose-same-session-demo.ts"),
+  "guards-demo": () => import("../capabilities/guards-demo.ts"),
 };
 
 export interface ResolvedCapability {

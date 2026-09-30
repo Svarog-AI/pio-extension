@@ -71,6 +71,11 @@ const HELP_LINES: readonly string[] = [
   "  pio run compose-new-session-demo",
   "  compose-same-session-demo — greets the operator, runs research in the same session, then reports the top 3 findings",
   "  pio run compose-same-session-demo",
+  // NOTE the em dash is the U+2014 EM DASH character (pinned codepoint),
+  // matching the pair style above; the canonical line is the BARE form —
+  // the demo takes nothing.
+  "  guards-demo — PERMANENT guard demonstration: first pass skips the declared write, the expectation guard denies settlement with a corrective note naming the exact path, the compliant re-run settles, then a summary states the outcome",
+  "  pio run guards-demo",
 ];
 
 function startsWithDash(token: string): boolean {

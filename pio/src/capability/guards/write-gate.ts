@@ -86,15 +86,16 @@ export function decideWrite(
         effective.push(declared);
       }
     }
-    // The scope class is a CLASS, not a path-list entry: a DISTINCT inline
-    // proposition at this site (never folded into the single coverage
-    // disjunction above), strictly-under-cwd by the standing prefix form.
-    const scopeClassActive =
+    // The project-files scope class is a CLASS, not a path-list entry:
+    // projectWritesActive is the DISTINCT decision-time proposition at
+    // this site (never folded into the single coverage disjunction
+    // above), strictly-under-cwd by the standing prefix form.
+    const projectWritesActive =
       phase.allowProjectWrites && sources.allowProjectWrites;
-    if (effective.length > 0 || scopeClassActive) {
+    if (effective.length > 0 || projectWritesActive) {
       if (
         effective.includes(target) ||
-        (scopeClassActive &&
+        (projectWritesActive &&
           target.startsWith(`${snapshot.paths.workspaceCwd}/`))
       ) {
         return undefined;
@@ -104,7 +105,7 @@ export function decideWrite(
         reason: renderPhaseDenial(
           phase.id,
           effective,
-          scopeClassActive ? snapshot.paths.workspaceCwd : null,
+          projectWritesActive ? snapshot.paths.workspaceCwd : null,
         ),
       };
     }

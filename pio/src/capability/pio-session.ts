@@ -626,7 +626,7 @@ export class PioSession {
     // Normalized primitive (absent implies false) fed VERBATIM beside the
     // retained list: the phase's project-files scope declaration, judged
     // only at decision time (clamped there against the contract flag).
-    const projectScopeFlag = Boolean(opts?.allowProjectWrites);
+    const allowProjectWrites = Boolean(opts?.allowProjectWrites);
     // The retained resolved entries AND the normalized scope flag feed the
     // execution state VERBATIM when EITHER dimension is declared: attach
     // STRICTLY AT PHASE START (outside the try block, so a loud
@@ -640,9 +640,9 @@ export class PioSession {
     let attached = false;
     if (
       this.#executionState !== undefined &&
-      (declaredPaths.length > 0 || projectScopeFlag)
+      (declaredPaths.length > 0 || allowProjectWrites)
     ) {
-      this.#executionState.attachPhase(id, declaredPaths, projectScopeFlag);
+      this.#executionState.attachPhase(id, declaredPaths, allowProjectWrites);
       attached = true;
     }
     let iterations = 0;

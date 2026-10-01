@@ -1,13 +1,19 @@
-// ── sandbox/string-match-helpers.ts — ANCHORED-GLOB MATCHER CHAIN
-// (pure strings; never touches the filesystem) - colocated beside
-// fsview.ts, the dialect home whose header documents the very dialect
-// this converter speaks. Sole owner of matchesAnchoredGlob (the guards
-// write gate re-exports it); consumes hasWildcard from ./fsview.ts ONLY.
-// Out-of-dialect text FAILS CLOSED: no match, never throws, no second
-// dialect.
+// ── sandbox/string-match-helpers.ts — PATTERN-DIRECTION STRING HELPERS
+// (pure strings; never touches the filesystem) - the anchored-glob matcher
+// chain plus the shared hasWildcard routing predicate. Sole owner of
+// matchesAnchoredGlob (the guards write gate re-exports it) AND hasWildcard
+// (the profile renderer consumes it from here). Converts the documented
+// fsview dialect (see the fsview.ts header). Out-of-dialect text FAILS
+// CLOSED: no match, never throws, no second dialect.
 // ──
 
-import { hasWildcard } from "./fsview.ts";
+/** Predicate deciding which glob candidates carry wildcards: any of `* ? [`
+ * in the text. Shared consumer-facing routing predicate (candidate triage)
+ * for both the anchored-glob matcher below and the profile renderer; the
+ * FsView adapters in fsview.ts must handle this class. */
+export function hasWildcard(text: string): boolean {
+  return text.includes("*") || text.includes("?") || text.includes("[");
+}
 
 // Pattern-direction membership: the REVERSE of FsView.glob() (pattern →
 // existing files) — does a candidate target path that does NOT yet exist fall

@@ -860,8 +860,9 @@ describe("channel freedom + runtime namespace surface", () => {
     expect(Object.keys(stateModule)).toEqual([]);
   });
 
-  it("the sandbox matcher module exports EXACTLY {matchesAnchoredGlob} at runtime - the private helper chain never leaks", () => {
+  it("the sandbox matcher module exports EXACTLY {hasWildcard, matchesAnchoredGlob} at runtime - the private helper chain never leaks", () => {
     expect(Object.keys(stringMatchHelpersModule).sort()).toEqual([
+      "hasWildcard",
       "matchesAnchoredGlob",
     ]);
   });
@@ -1009,18 +1010,9 @@ describe("mechanical source guards - all swept files", () => {
     ]);
   });
 
-  it("string-match-helpers.ts: value imports EXACTLY [./fsview.ts], no type imports, zero node:fs, NO class declarations", () => {
+  it("string-match-helpers.ts: ZERO import lines (self-contained - owns hasWildcard), zero node:fs, NO class declarations", () => {
     expect(HELPER_SOURCE.includes("node:fs")).toBe(false);
-    expect(HELPER_SOURCE.match(/^import\s+type\b/gm)).toBeNull();
-    const helperValueSpecifiers = HELPER_SOURCE.split("\n")
-      .filter(
-        (line) =>
-          line.startsWith("import ") && !line.startsWith("import type "),
-      )
-      .flatMap((line) =>
-        [...line.matchAll(/from "([^"]+)"/g)].map((match) => match[1]),
-      );
-    expect(helperValueSpecifiers).toEqual(["./fsview.ts"]);
+    expect(HELPER_SOURCE.match(/^import\b/gm)).toBeNull();
     expect(partitionSource(HELPER_SOURCE).code.match(/\bclass\b/g)).toBeNull();
   });
 

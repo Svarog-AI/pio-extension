@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { hasWildcard, nodeFsView } from "./fsview.ts";
+import { nodeFsView } from "./fsview.ts";
 
 /** Fixture tree shared by every row — seeded once per test under a fresh
  * tmpdir so no row depends on real $HOME or system state. Layout:
@@ -75,19 +75,13 @@ describe("nodeFsView.glob", () => {
   it("wildcard-free patterns pass through as LITERAL paths (existing ⇒ [path], missing ⇒ [])", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "pio-fsview-literal-"));
     await seedTree(root);
+    // The uniform built-in glob surface decides this: a wildcard-free
+    // pattern resolves as a LITERAL path (candidate-triage routing is a
+    // consumer-side concern, never the worker's dispatch).
     expect(nodeFsView.glob(path.join(root, "plain", "name"))).toEqual([
       path.join(root, "plain", "name"),
     ]);
     expect(nodeFsView.glob(path.join(root, "plain", "ghost"))).toEqual([]);
-    // The uniform built-in glob surface decides this (a wildcard-free
-    // pattern resolves as a literal path); hasWildcard is NOT the worker's
-    // dispatch — it is a consumer-facing routing predicate (candidate
-    // triage), whose pinned predicate is asserted here.
-    expect(hasWildcard(path.join(root, "plain", "name"))).toBe(false);
-    expect(hasWildcard("a*b")).toBe(true);
-    expect(hasWildcard("a?b")).toBe(true);
-    expect(hasWildcard("a[b]")).toBe(true);
-    expect(hasWildcard("a b")).toBe(false);
   });
 
   it("multi-match results are lexicographically sorted AND deduplicated (seeded out of order ⇒ ascending; re-calls deep-equal)", async () => {

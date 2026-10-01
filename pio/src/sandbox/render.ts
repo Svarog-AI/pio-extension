@@ -1,7 +1,6 @@
 import path from "node:path";
 import { PIO_PACKAGE_ROOT } from "../constants.ts";
 import type { FsView } from "./fsview.ts";
-import { hasWildcard } from "./fsview.ts";
 import { OWNED_EXTENSION_PACKAGES } from "./owned-extensions.ts";
 import type {
   EnvAssignment,
@@ -11,6 +10,7 @@ import type {
   TargetCommand,
 } from "./profile.ts";
 import { conservativeDefaultSources, STANDARD_PATH_BASE } from "./profile.ts";
+import { hasWildcard } from "./string-match-helpers.ts";
 
 /** Process identity pair substituted into the base flags + derived mounts. */
 export interface RenderIdentity {

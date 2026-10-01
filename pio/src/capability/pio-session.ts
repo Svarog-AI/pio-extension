@@ -59,9 +59,11 @@
 // (absolute normalized; relative under process.cwd()) into a list retained
 // for the whole phase duration — never consumed transiently. The retained
 // resolved entries arm BOTH the settlement gate (consulted at break points)
-// and the execution-state feed (attached verbatim at phase start when
-// non-empty, detached on every exit cause): the session's per-phase write
-// permission frame rides this single retained list.
+// and the execution-state feed (attached verbatim at phase start alongside
+// the phase's normalized project-files scope flag, detached on every exit
+// cause): the session's per-phase write permission frame rides this single
+// retained list plus the flag - the phase's TWO declared permission
+// dimensions.
 //
 // Corrective-note channel: gate-triggered retries alone append ONE fresh
 // deterministic MARKED BLOCK (a flanked em-dash delimiter line labeled
@@ -88,8 +90,9 @@
 // discovers the state from the settled handle's symbol stamp via cast-free
 // instanceof narrowing; an unstamped foreign handle carries NO state and
 // every gate operation no-ops cleanly. execute_phase feeds its retained
-// resolved declarations into the top span strictly at phase start (non-
-// empty lists only; empty or absent attaches nothing) and detaches on
+// resolved declarations AND its normalized project-files scope flag into
+// the top span strictly at phase start (a phase attaches when EITHER
+// dimension is declared; neither declared attaches nothing) and detaches on
 // every exit cause. rebind leaves the execution state UNTOUCHED on every
 // path - span integrity belongs to the balanced enter/exit lifecycle, not
 // to the swap. The enterCapability / exitCapability pair is the
@@ -185,6 +188,13 @@ export interface PhaseOptions {
    * session's execution state (attached verbatim at phase start), arming
    * the per-phase write permission frame. */
   readonly write?: readonly string[];
+  /** The phase's project-files (workspace-cwd) SCOPE declaration:
+   * CLAMPED at decision time against the running capability's contract
+   * flag - an unbacked flag is INVISIBLE (never granted, never listed).
+   * With the `write` bag it forms the phase's TWO declared permission
+   * dimensions (both feed the session's execution state verbatim);
+   * absent means false. */
+  readonly allowProjectWrites?: boolean;
 }
 
 /** Decision window handed to the between-runs hook. */
@@ -613,18 +623,26 @@ export class PioSession {
       entry,
       resolved: resolve(entry),
     }));
-    // The retained resolved entries feed the execution state VERBATIM when
-    // non-empty: attach STRICTLY AT PHASE START (outside the try block, so
-    // a loud bookkeeping fault escapes with no finally-side bookkeeping to
+    // Normalized primitive (absent implies false) fed VERBATIM beside the
+    // retained list: the phase's project-files scope declaration, judged
+    // only at decision time (clamped there against the contract flag).
+    const projectScopeFlag = Boolean(opts?.allowProjectWrites);
+    // The retained resolved entries AND the normalized scope flag feed the
+    // execution state VERBATIM when EITHER dimension is declared: attach
+    // STRICTLY AT PHASE START (outside the try block, so a loud
+    // bookkeeping fault escapes with no finally-side bookkeeping to
     // untangle); the attached flag keeps the closeout detach symmetric over
-    // every exit cause. Absent or empty declarations attach NOTHING - the
+    // every exit cause. Neither dimension declared attaches NOTHING - the
     // capability's sources govern unchanged.
     const declaredPaths = declarations.map(
       (declaration) => declaration.resolved,
     );
     let attached = false;
-    if (this.#executionState !== undefined && declaredPaths.length > 0) {
-      this.#executionState.attachPhase(id, declaredPaths);
+    if (
+      this.#executionState !== undefined &&
+      (declaredPaths.length > 0 || projectScopeFlag)
+    ) {
+      this.#executionState.attachPhase(id, declaredPaths, projectScopeFlag);
       attached = true;
     }
     let iterations = 0;

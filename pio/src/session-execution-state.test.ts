@@ -130,7 +130,7 @@ describe("bookkeeping - LIFO span layers and the scalar phase slot", () => {
   it("exitCapability with an OUTSTANDING PHASE faults (message carries the attached id) and leaves the stack intact", () => {
     const staged = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     staged.enterCapability(SOURCES_A);
-    staged.attachPhase("phase-x", [TARGET_A1]);
+    staged.attachPhase("phase-x", [TARGET_A1], false);
     const err = captureError(() => staged.exitCapability());
     expect(err.name).toBe(FAULT_NAME);
     expect(err.message).toBe(
@@ -143,7 +143,9 @@ describe("bookkeeping - LIFO span layers and the scalar phase slot", () => {
 
   it("attachPhase at DEPTH 0 faults (message carries the id)", () => {
     const cold = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
-    const err = captureError(() => cold.attachPhase("phase-y", [TARGET_A1]));
+    const err = captureError(() =>
+      cold.attachPhase("phase-y", [TARGET_A1], false),
+    );
     expect(err.name).toBe(FAULT_NAME);
     expect(err.message).toBe(
       "execution state: attachPhase('phase-y') called with no capability span active",
@@ -160,7 +162,7 @@ describe("bookkeeping - LIFO span layers and the scalar phase slot", () => {
     // the SAME single form fires at positive depth with an empty slot:
     const emptied = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     emptied.enterCapability(SOURCES_A);
-    emptied.attachPhase("phase-z", [TARGET_A1]);
+    emptied.attachPhase("phase-z", [TARGET_A1], false);
     emptied.detachPhase();
     const emptiedErr = captureError(() => emptied.detachPhase());
     expect(emptiedErr.name).toBe(FAULT_NAME);
@@ -172,9 +174,9 @@ describe("bookkeeping - LIFO span layers and the scalar phase slot", () => {
   it("reset() drains regardless of outstanding entries (spans with attached phases) and is idempotent - post-drain re-enter behaves fresh", () => {
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(SOURCES_A);
-    state.attachPhase("phase-a", [TARGET_A1]);
+    state.attachPhase("phase-a", [TARGET_A1], false);
     state.enterCapability(SOURCES_B);
-    state.attachPhase("phase-b", [TARGET_B1]);
+    state.attachPhase("phase-b", [TARGET_B1], false);
     state.reset();
     const drained = state.snapshot();
     expect(drained.sources).toBeNull();
@@ -193,14 +195,15 @@ describe("bookkeeping - LIFO span layers and the scalar phase slot", () => {
 // ---------------------------------------------------------------------------
 // (c) ATTACH-STORES-VERBATIM + DECISION-TIME COMPOSITION - real state ->
 // snapshot() -> real decideWrite; the five coverage outcomes plus snapshot-
-// read semantics. Fresh scenario objects per row.
+// read semantics. Fresh scenario objects per row. Both declared dimensions
+// (the paths and the scope flag) ride the same raw verbatim storage.
 // ---------------------------------------------------------------------------
 
 describe("attach-stores-verbatim + decision-time composition", () => {
   it("pattern-hit admission: a declared path covered by a writes pattern anchored at the object's slot root is allowed", () => {
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(SOURCES_A);
-    state.attachPhase("p1", [TARGET_A1]);
+    state.attachPhase("p1", [TARGET_A1], false);
     expect(driveOf(state)("write", TARGET_A1)).toBeUndefined();
     expect(driveOf(state)("edit", TARGET_A1)).toBeUndefined();
   });
@@ -214,7 +217,7 @@ describe("attach-stores-verbatim + decision-time composition", () => {
     const PROJECT_FILE = `${CWD_A}/notes.md`;
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(APW);
-    state.attachPhase("p2", [PROJECT_FILE]);
+    state.attachPhase("p2", [PROJECT_FILE], false);
     expect(driveOf(state)("write", PROJECT_FILE)).toBeUndefined();
   });
 
@@ -222,7 +225,7 @@ describe("attach-stores-verbatim + decision-time composition", () => {
     const FOREIGN = "/elsewhere/declared.md";
     const withPhase = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     withPhase.enterCapability(SOURCES_A);
-    withPhase.attachPhase("clamp", [FOREIGN]);
+    withPhase.attachPhase("clamp", [FOREIGN], false);
     const withoutPhase = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     withoutPhase.enterCapability(SOURCES_A);
     const rWith = asRefusal(driveOf(withPhase)("write", FOREIGN));
@@ -241,7 +244,7 @@ describe("attach-stores-verbatim + decision-time composition", () => {
     const FOREIGN = "/elsewhere/partial.md";
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(SOURCES_A);
-    state.attachPhase("mixed", [TARGET_A1, FOREIGN]);
+    state.attachPhase("mixed", [TARGET_A1, FOREIGN], false);
     expect(driveOf(state)("write", TARGET_A1)).toBeUndefined();
     const refusal = asRefusal(driveOf(state)("write", FOREIGN));
     expect(refusal.reason).toContain("'mixed'");
@@ -268,12 +271,12 @@ describe("attach-stores-verbatim + decision-time composition", () => {
       channelsFor(SENTINEL_A.projectSlotRoot, SENTINEL_A.workspaceCwd),
     );
     stateA.enterCapability(WIPED);
-    stateA.attachPhase("wiped", [TARGET]);
+    stateA.attachPhase("wiped", [TARGET], false);
     const stateB = new SessionExecutionState(
       channelsFor(SENTINEL_B.projectSlotRoot, SENTINEL_B.workspaceCwd),
     );
     stateB.enterCapability(WIPED);
-    stateB.attachPhase("wiped", [TARGET]);
+    stateB.attachPhase("wiped", [TARGET], false);
     const rA = asRefusal(driveOf(stateA)("write", TARGET));
     const rB = asRefusal(driveOf(stateB)("write", TARGET));
     // byte-identical across distinct placeholder anchors:
@@ -291,7 +294,11 @@ describe("attach-stores-verbatim + decision-time composition", () => {
     // and the no-span line governs:
     const nullSnapA: ExecutionSnapshot = {
       sources: null,
-      phase: { id: "wiped-null", declared: [TARGET] },
+      phase: {
+        id: "wiped-null",
+        declared: [TARGET],
+        allowProjectWrites: false,
+      },
       paths: SENTINEL_A,
     };
     const nullSnapB: ExecutionSnapshot = {
@@ -311,11 +318,28 @@ describe("attach-stores-verbatim + decision-time composition", () => {
     const sources = SOURCES_A;
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(sources);
-    state.attachPhase("verbatim", declaredArg);
+    state.attachPhase("verbatim", declaredArg, false);
     const snap = state.snapshot();
     // zero-copy pin: identity, not just content equality
     expect(snap.phase?.declared).toBe(declaredArg);
     expect(snap.sources).toBe(sources);
+  });
+
+  it("two-dimension verbatim storage: the RAW scope flag stored UNFILTERED next to the paths - snapshot() reads the FULL RECORD back VERBATIM (deep equality over the whole record including the flag) and the declared array keeps its identity passthrough", () => {
+    const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
+    state.enterCapability(SOURCES_A);
+    const declaredArg: readonly string[] = [TARGET_A1];
+    state.attachPhase("flagged", declaredArg, true);
+    const snap = state.snapshot();
+    // the flag is stored RAW - asserted through the full record:
+    expect(snap.phase).toEqual({
+      id: "flagged",
+      declared: declaredArg,
+      allowProjectWrites: true,
+    });
+    // zero-copy pin on the paths dimension survives alongside the flag:
+    expect(snap.phase?.declared).toBe(declaredArg);
+    expect(snap.phase?.allowProjectWrites).toBe(true);
   });
 
   it("snapshot-fault rows: a throwing channel propagates VERBATIM (instance identity) from snapshot() at each position; first fault wins; a healthy pair resolves both fields; a faulty channel AT DEPTH 0 still throws", () => {
@@ -382,7 +406,7 @@ describe("attach-stores-verbatim + decision-time composition", () => {
     const state = new SessionExecutionState(channels);
     state.enterCapability(SOURCES_A);
     const arg: readonly string[] = [TARGET_A1];
-    expect(() => state.attachPhase("committed", arg)).not.toThrow();
+    expect(() => state.attachPhase("committed", arg, false)).not.toThrow();
     // while the holder faults, snapshot escapes the held instance verbatim:
     expect(captureError(() => state.snapshot())).toBe(fault);
     fault = null;
@@ -391,7 +415,11 @@ describe("attach-stores-verbatim + decision-time composition", () => {
       projectSlotRoot: SLOT_A,
       workspaceCwd: CWD_A,
     });
-    expect(healed.phase).toEqual({ id: "committed", declared: arg });
+    expect(healed.phase).toEqual({
+      id: "committed",
+      declared: arg,
+      allowProjectWrites: false,
+    });
   });
 
   it("read semantics: two consecutive unmutated snapshots are !== (fresh wrapper) but deep-equal; a counting channel proves EXACTLY ONE fresh consult per field per call", () => {
@@ -426,7 +454,7 @@ describe("scalar-slot symmetry - no phase save/restore", () => {
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(SOURCES_A);
     const pre = state.snapshot();
-    state.attachPhase("p", [TARGET_A1]);
+    state.attachPhase("p", [TARGET_A1], false);
     state.detachPhase();
     const post = state.snapshot();
     expect(post).toEqual(pre);
@@ -437,11 +465,15 @@ describe("scalar-slot symmetry - no phase save/restore", () => {
     const OTHER = `${SLOT_A}/artifacts/other.md`;
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(SOURCES_A);
-    state.attachPhase("first", [TARGET_A1]);
+    state.attachPhase("first", [TARGET_A1], false);
     state.detachPhase();
-    state.attachPhase("second", [OTHER]);
+    state.attachPhase("second", [OTHER], false);
     const snap = state.snapshot();
-    expect(snap.phase).toEqual({ id: "second", declared: [OTHER] });
+    expect(snap.phase).toEqual({
+      id: "second",
+      declared: [OTHER],
+      allowProjectWrites: false,
+    });
     expect(snap.phase?.id).not.toBe("first");
     expect(snap.phase?.declared).not.toContain(TARGET_A1);
   });
@@ -450,9 +482,13 @@ describe("scalar-slot symmetry - no phase save/restore", () => {
     const TWO = `${SLOT_A}/artifacts/two.md`;
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(SOURCES_A);
-    state.attachPhase("p1", [TARGET_A1]);
-    state.attachPhase("p2", [TWO]);
-    expect(state.snapshot().phase).toEqual({ id: "p2", declared: [TWO] });
+    state.attachPhase("p1", [TARGET_A1], false);
+    state.attachPhase("p2", [TWO], false);
+    expect(state.snapshot().phase).toEqual({
+      id: "p2",
+      declared: [TWO],
+      allowProjectWrites: false,
+    });
     state.detachPhase();
     expect(state.snapshot().phase).toBeNull();
   });
@@ -482,15 +518,17 @@ describe("leg-2 hermetic concurrency - adversarial interleave over two independe
   });
 
   it("stage 2 - both attach their phases (verbatim declarations stored per object)", () => {
-    A.attachPhase("phase-a", [TARGET_A1]);
-    B.attachPhase("phase-b", [TARGET_B1]);
+    A.attachPhase("phase-a", [TARGET_A1], false);
+    B.attachPhase("phase-b", [TARGET_B1], false);
     expect(A.snapshot().phase).toEqual({
       id: "phase-a",
       declared: [TARGET_A1],
+      allowProjectWrites: false,
     });
     expect(B.snapshot().phase).toEqual({
       id: "phase-b",
       declared: [TARGET_B1],
+      allowProjectWrites: false,
     });
   });
 
@@ -517,13 +555,13 @@ describe("leg-2 hermetic concurrency - adversarial interleave over two independe
     // behavioral equality to the solo-object expectations:
     const soloA = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     soloA.enterCapability(SOURCES_A);
-    soloA.attachPhase("phase-a", [TARGET_A1]);
+    soloA.attachPhase("phase-a", [TARGET_A1], false);
     expect(crossA.reason).toBe(
       asRefusal(driveOf(soloA)("write", TARGET_B1)).reason,
     );
     const soloB = new SessionExecutionState(channelsFor(SLOT_B, CWD_B));
     soloB.enterCapability(SOURCES_B);
-    soloB.attachPhase("phase-b", [TARGET_B1]);
+    soloB.attachPhase("phase-b", [TARGET_B1], false);
     expect(crossB.reason).toBe(
       asRefusal(driveOf(soloB)("write", TARGET_A1)).reason,
     );
@@ -531,7 +569,7 @@ describe("leg-2 hermetic concurrency - adversarial interleave over two independe
 
   it("stage 4 - clamped mid-flight: A's slot OVERWRITTEN with a contract-uncovered entry - driveA refuses it AS IF UNDECLARED while driveB remains undisturbed under its phase", () => {
     const FOREIGN_A = `${SLOT_A}/foreign/x.md`; // artifacts/*.md does not cover it
-    A.attachPhase("phase-a2", [FOREIGN_A]); // overwrite - last-wins
+    A.attachPhase("phase-a2", [FOREIGN_A], false); // overwrite - last-wins
     const clampA = asRefusal(driveA("write", FOREIGN_A));
     expect(clampA.reason).toContain("'cap-a'"); // capability-named line
     expect(clampA.reason).toContain("artifacts/*.md"); // effective set listed

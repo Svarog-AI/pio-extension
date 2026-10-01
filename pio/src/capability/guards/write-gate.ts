@@ -17,9 +17,14 @@
 // string `input.path` (bash stays ungated). The verdict order is pinned, one
 // pass per target:
 //   1. `/tmp/` (exact prefix) — always allowed, every depth;
-//   2. an active phase with a NON-EMPTY declaration governs exclusively over
-//      its EFFECTIVE set (declared ∩ contract-covered, materialized per call —
-//      an empty effective set confers NO phase governance and falls through);
+//   2. an active phase whose declaration confers governance governs
+//      exclusively over its EFFECTIVE set, materialized FRESH per call:
+//      the surviving paths (declared intersect contract-covered) UNION the
+//      project-files scope class - the class admits a target only while
+//      BOTH the phase's own flag and the running sources' contract flag
+//      agree (decision-time clamp; null sources coalesce onto the empty
+//      base, where the class term stays inert - one code path). An EMPTY
+//      effective set confers NO phase governance and falls through;
 //   3. span admission over the running capability's sources (null coalesces
 //      to the empty base — one code path, no special cases);
 //   4. deny.
@@ -62,10 +67,16 @@ export function decideWrite(
   if (target.startsWith("/tmp/")) return undefined;
   const sources = snapshot.sources ?? BASE_SOURCES;
   const phase = snapshot.phase;
-  if (phase !== null && phase.declared.length > 0) {
+  if (
+    phase !== null &&
+    (phase.declared.length > 0 || phase.allowProjectWrites)
+  ) {
     // Effective set: declared ∩ contract-covered, materialized FRESH per call
-    // — declaration order, first-occurrence dedupe. EMPTY confers NO phase
-    // governance: the lazy fall-through below keeps one code path.
+    // — declaration order, first-occurrence dedupe; PLUS the project-files
+    // scope class, active ONLY while both the phase's own flag and the
+    // sources' contract flag agree (the decision-time clamp). An EMPTY
+    // effective set confers NO phase governance: the lazy fall-through
+    // below keeps one code path.
     const effective: string[] = [];
     const seen = new Set<string>();
     for (const declared of phase.declared) {
@@ -75,9 +86,27 @@ export function decideWrite(
         effective.push(declared);
       }
     }
-    if (effective.length > 0) {
-      if (effective.includes(target)) return undefined;
-      return { block: true, reason: renderPhaseDenial(phase.id, effective) };
+    // The scope class is a CLASS, not a path-list entry: a DISTINCT inline
+    // proposition at this site (never folded into the single coverage
+    // disjunction above), strictly-under-cwd by the standing prefix form.
+    const scopeClassActive =
+      phase.allowProjectWrites && sources.allowProjectWrites;
+    if (effective.length > 0 || scopeClassActive) {
+      if (
+        effective.includes(target) ||
+        (scopeClassActive &&
+          target.startsWith(`${snapshot.paths.workspaceCwd}/`))
+      ) {
+        return undefined;
+      }
+      return {
+        block: true,
+        reason: renderPhaseDenial(
+          phase.id,
+          effective,
+          scopeClassActive ? snapshot.paths.workspaceCwd : null,
+        ),
+      };
     }
   }
   if (admittedBy(sources, target, snapshot.paths)) return undefined;
@@ -114,11 +143,23 @@ function admittedBy(
 const TMP_PARITY_CLAUSE = "Scratch files under /tmp/ stay open.";
 
 // SOLE DENIAL LINE SHAPES — the suite goldens mirror these byte-for-byte.
+// The phase line carries the two-dimension listing: surviving paths in
+// declaration order with the scope element APPENDED LAST when the class is
+// active (byte-parity with the capability line's element); the join-or-
+// "none" constructor shape is kept for structural parity (structurally
+// unreachable here - rendering is gated on a non-empty effective set).
 const renderPhaseDenial = (
   phaseId: string,
   survivors: readonly string[],
-): string =>
-  `Writing is refused during phase '${phaseId}'. Allowed targets: ${survivors.join(", ")}. ${TMP_PARITY_CLAUSE}`;
+  workspaceCwd: string | null,
+): string => {
+  const parts: string[] = [...survivors];
+  if (workspaceCwd !== null) {
+    parts.push(`project files under ${workspaceCwd}`);
+  }
+  const allowlist = parts.length === 0 ? "none" : parts.join(", ");
+  return `Writing is refused during phase '${phaseId}'. Allowed targets: ${allowlist}. ${TMP_PARITY_CLAUSE}`;
+};
 
 const renderCapabilityDenial = (
   sources: CapabilitySources,

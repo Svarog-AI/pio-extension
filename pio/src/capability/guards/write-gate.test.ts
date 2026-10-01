@@ -50,8 +50,12 @@ const RESEARCH: CapabilitySources = {
 const replicaPhaseDenial = (
   phaseId: string,
   survivors: readonly string[],
-): string =>
-  `Writing is refused during phase '${phaseId}'. Allowed targets: ${survivors.join(", ")}. Scratch files under /tmp/ stay open.`;
+  workspaceCwd: string | null,
+): string => {
+  const parts: string[] = [...survivors];
+  if (workspaceCwd !== null) parts.push(`project files under ${workspaceCwd}`);
+  return `Writing is refused during phase '${phaseId}'. Allowed targets: ${parts.length === 0 ? "none" : parts.join(", ")}. Scratch files under /tmp/ stay open.`;
+};
 
 const replicaCapabilityDenial = (
   name: string,
@@ -86,7 +90,7 @@ describe("fixture shapes - the singular effective allowlist", () => {
     const DECLARED = `${SLOT_ROOT}/research/alpha.md`;
     const snap: ExecutionSnapshot = {
       sources: RESEARCH,
-      phase: { id: "gather", declared: [DECLARED] },
+      phase: { id: "gather", declared: [DECLARED], allowProjectWrites: false },
       paths: PATHS,
     };
     expect(decideWrite(snap, "write", { path: DECLARED })).toBeUndefined();
@@ -98,7 +102,7 @@ describe("fixture shapes - the singular effective allowlist", () => {
     const STRAY = `${SLOT_ROOT}/research/beta.md`;
     const snap: ExecutionSnapshot = {
       sources: RESEARCH,
-      phase: { id: "gather", declared: [KEPT] },
+      phase: { id: "gather", declared: [KEPT], allowProjectWrites: false },
       paths: PATHS,
     };
     const refusal = asRefusal(decideWrite(snap, "write", { path: STRAY }));
@@ -111,7 +115,11 @@ describe("fixture shapes - the singular effective allowlist", () => {
     const UNCOVERED = `${SLOT_ROOT}/outside/dropped.txt`;
     const snap: ExecutionSnapshot = {
       sources: RESEARCH,
-      phase: { id: "clamp", declared: [UNCOVERED, KEPT] },
+      phase: {
+        id: "clamp",
+        declared: [UNCOVERED, KEPT],
+        allowProjectWrites: false,
+      },
       paths: PATHS,
     };
     const refusal = asRefusal(decideWrite(snap, "write", { path: UNCOVERED }));
@@ -126,7 +134,7 @@ describe("fixture shapes - the singular effective allowlist", () => {
     const MISS = `${SLOT_ROOT}/docs/other.md`;
     const emptyDecl: ExecutionSnapshot = {
       sources: RESEARCH,
-      phase: { id: "narrate", declared: [] },
+      phase: { id: "narrate", declared: [], allowProjectWrites: false },
       paths: PATHS,
     };
     const noPhase: ExecutionSnapshot = {
@@ -190,7 +198,7 @@ describe("/tmp/ parity at every depth", () => {
     const KEPT = `${SLOT_ROOT}/research/alpha.md`;
     const snap: ExecutionSnapshot = {
       sources: RESEARCH,
-      phase: { id: "gather", declared: [KEPT] },
+      phase: { id: "gather", declared: [KEPT], allowProjectWrites: false },
       paths: PATHS,
     };
     expect(
@@ -206,7 +214,7 @@ describe("/tmp/ parity at every depth", () => {
     };
     const snap: ExecutionSnapshot = {
       sources: WIPED,
-      phase: { id: "wiped", declared: [] },
+      phase: { id: "wiped", declared: [], allowProjectWrites: false },
       paths: PATHS,
     };
     expect(
@@ -242,7 +250,7 @@ describe("phase-branch decision-time matrix", () => {
     const KEPT = `${SLOT_ROOT}/research/kept.md`;
     const snap: ExecutionSnapshot = {
       sources: RESEARCH,
-      phase: { id: "p", declared: [KEPT] },
+      phase: { id: "p", declared: [KEPT], allowProjectWrites: false },
       paths: PATHS,
     };
     expect(decideWrite(snap, "write", { path: KEPT })).toBeUndefined();
@@ -257,7 +265,7 @@ describe("phase-branch decision-time matrix", () => {
     const PROJECT_FILE = `${WORKSPACE_CWD}/notes.md`;
     const snap: ExecutionSnapshot = {
       sources: APW,
-      phase: { id: "p", declared: [PROJECT_FILE] },
+      phase: { id: "p", declared: [PROJECT_FILE], allowProjectWrites: false },
       paths: PATHS,
     };
     expect(decideWrite(snap, "write", { path: PROJECT_FILE })).toBeUndefined();
@@ -272,7 +280,7 @@ describe("phase-branch decision-time matrix", () => {
     const FOREIGN = `/elsewhere/file.md`;
     const snap: ExecutionSnapshot = {
       sources: APW,
-      phase: { id: "p", declared: [FOREIGN] },
+      phase: { id: "p", declared: [FOREIGN], allowProjectWrites: false },
       paths: PATHS,
     };
     const refusal = asRefusal(decideWrite(snap, "write", { path: FOREIGN }));
@@ -287,7 +295,11 @@ describe("phase-branch decision-time matrix", () => {
     const DROPPED = `${SLOT_ROOT}/else/nope.txt`;
     const snap: ExecutionSnapshot = {
       sources: RESEARCH,
-      phase: { id: "mixed", declared: [KEPT_A, DROPPED, KEPT_B] },
+      phase: {
+        id: "mixed",
+        declared: [KEPT_A, DROPPED, KEPT_B],
+        allowProjectWrites: false,
+      },
       paths: PATHS,
     };
     expect(decideWrite(snap, "write", { path: KEPT_A })).toBeUndefined();
@@ -297,7 +309,9 @@ describe("phase-branch decision-time matrix", () => {
     );
     // Exhaustive survivor listing, declaration order, deduplicated - no
     // third path:
-    expect(refusal.reason).toBe(replicaPhaseDenial("mixed", [KEPT_A, KEPT_B]));
+    expect(refusal.reason).toBe(
+      replicaPhaseDenial("mixed", [KEPT_A, KEPT_B], null),
+    );
   });
 
   it("duplicate declared entries DEDUPE to the first occurrence - listed exactly once, declaration order", () => {
@@ -305,7 +319,11 @@ describe("phase-branch decision-time matrix", () => {
     const UNCOVERED = `${SLOT_ROOT}/else/nope.txt`;
     const snap: ExecutionSnapshot = {
       sources: RESEARCH,
-      phase: { id: "dedupe", declared: [UNCOVERED, DUP, UNCOVERED, DUP] },
+      phase: {
+        id: "dedupe",
+        declared: [UNCOVERED, DUP, UNCOVERED, DUP],
+        allowProjectWrites: false,
+      },
       paths: PATHS,
     };
     // The repeated entry still admits its target exactly as a single one...
@@ -315,7 +333,7 @@ describe("phase-branch decision-time matrix", () => {
     );
     // ...and the denial lists the survivor EXACTLY ONCE (first-occurrence
     // dedupe over declaration order) - never double-listed:
-    expect(refusal.reason).toBe(replicaPhaseDenial("dedupe", [DUP]));
+    expect(refusal.reason).toBe(replicaPhaseDenial("dedupe", [DUP], null));
   });
 
   it("EMPTY-CONTRACT fall-through: the wiped phase behaves byte-identically to the undeclared shape - sentinel anchors provably unused", () => {
@@ -336,6 +354,7 @@ describe("phase-branch decision-time matrix", () => {
       phase: {
         id: "wiped",
         declared: [TARGET, `${SENTINEL_PATHS.workspaceCwd}/proj.md`],
+        allowProjectWrites: false,
       },
       paths: SENTINEL_PATHS,
     };
@@ -366,11 +385,224 @@ describe("phase-branch decision-time matrix", () => {
     const TARGET = "/outside/b.md";
     const snap: ExecutionSnapshot = {
       sources: null,
-      phase: { id: "stray-phase", declared: [TARGET] },
+      phase: {
+        id: "stray-phase",
+        declared: [TARGET],
+        allowProjectWrites: false,
+      },
       paths: PATHS,
     };
     const refusal = asRefusal(decideWrite(snap, "write", { path: TARGET }));
     expect(refusal.reason).toBe(replicaNoSpanDenial());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The FLAG-CLAMP DECISION-TIME MATRIX - the project-files (workspace-cwd)
+// scope class as a PER-PHASE DECLARATION: a phase admits the class only when
+// BOTH its own flag and the running sources' contract flag are true, judged
+// at decision time. An unbacked flag is INVISIBLE - never granted, never
+// listed; a phase that declares nothing confers NO phase governance (the
+// lazy fall-through is kept). Fixtures reuse the standing constants; the
+// flag-backed twin raises the contract flag.
+// ---------------------------------------------------------------------------
+
+describe("flag-clamp decision-time matrix - the per-phase scope declaration", () => {
+  /** The RESEARCH twin with the contract flag raised (backed rows). */
+  const BACKED: CapabilitySources = {
+    name: "research",
+    writes: ["research/*.md"],
+    allowProjectWrites: true,
+  };
+
+  it("(a) backed flag-only: EXCLUSIVE class governance - the cwd-scope target admitted, the /tmp/ scratch admitted FIRST, and the slot-pattern target REFUSED with the phase named and the class-only full line", () => {
+    const snap: ExecutionSnapshot = {
+      sources: BACKED,
+      phase: { id: "scope-only", declared: [], allowProjectWrites: true },
+      paths: PATHS,
+    };
+    // The cwd-scope class admits a strictly-under-cwd target:
+    expect(
+      decideWrite(snap, "write", { path: `${WORKSPACE_CWD}/notes.md` }),
+    ).toBeUndefined();
+    // /tmp/ precedence holds under the new governance shape (first pass):
+    expect(
+      decideWrite(snap, "write", { path: "/tmp/wg-scratch/scopeonly.txt" }),
+    ).toBeUndefined();
+    // A slot-pattern target OUTSIDE the class is refused despite contract
+    // coverage - slot-pattern targets are not class-admitted during a
+    // flag-only phase:
+    const refusal = asRefusal(
+      decideWrite(snap, "write", { path: `${SLOT_ROOT}/research/beta.md` }),
+    );
+    expect(refusal.reason).toContain("'scope-only'");
+    expect(refusal.reason).toBe(
+      replicaPhaseDenial("scope-only", [], WORKSPACE_CWD),
+    );
+  });
+
+  it("(b) unbacked flag: INVISIBLE - with a paths+flag phase the covered survivor is admitted while a slot stray refuses with SURVIVORS ONLY in the listing and a cwd target is ALSO refused (lost scope dimension); a flag-only-no-paths phase confers NO phase governance (capability named, byte-identical to the phase-null reading)", () => {
+    const KEPT = `${SLOT_ROOT}/research/kept.md`;
+    const pathsFlagged: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: {
+        id: "unbacked",
+        declared: [KEPT],
+        allowProjectWrites: true,
+      },
+      paths: PATHS,
+    };
+    expect(decideWrite(pathsFlagged, "write", { path: KEPT })).toBeUndefined();
+    // Shape 1: survivors-only listing - no scope element anywhere:
+    const strayRefusal = asRefusal(
+      decideWrite(pathsFlagged, "write", {
+        path: `${SLOT_ROOT}/research/stray.md`,
+      }),
+    );
+    expect(strayRefusal.reason).toBe(
+      replicaPhaseDenial("unbacked", [KEPT], null),
+    );
+    expect(strayRefusal.reason).not.toContain("project files under");
+    // The cwd dimension is lost too (same survivors-only line):
+    const cwdRefusal = asRefusal(
+      decideWrite(pathsFlagged, "write", { path: `${WORKSPACE_CWD}/m.md` }),
+    );
+    expect(cwdRefusal.reason).toBe(
+      replicaPhaseDenial("unbacked", [KEPT], null),
+    );
+    // Shape 2: flag-only, no paths - NO phase governance, capability named:
+    const flagOnly: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: { id: "flag-only", declared: [], allowProjectWrites: true },
+      paths: PATHS,
+    };
+    const noPhase: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: null,
+      paths: PATHS,
+    };
+    expect(
+      asRefusal(
+        decideWrite(flagOnly, "write", { path: `${WORKSPACE_CWD}/m.md` }),
+      ).reason,
+    ).toBe(
+      asRefusal(
+        decideWrite(noPhase, "write", { path: `${WORKSPACE_CWD}/m.md` }),
+      ).reason,
+    );
+  });
+
+  it("(c) paths + flag, both backed: the covered survivor admitted, a cwd target ADMITTED (the delta vs exclusive governance), a slot stray refused with the FULL survivors-plus-class line, and the scope element cross-pinned byte-parity against the capability line's element", () => {
+    const KEPT = `${SLOT_ROOT}/research/kept.md`;
+    const snap: ExecutionSnapshot = {
+      sources: BACKED,
+      phase: {
+        id: "both",
+        declared: [KEPT],
+        allowProjectWrites: true,
+      },
+      paths: PATHS,
+    };
+    expect(decideWrite(snap, "write", { path: KEPT })).toBeUndefined();
+    expect(
+      decideWrite(snap, "write", { path: `${WORKSPACE_CWD}/notes.md` }),
+    ).toBeUndefined();
+    const refusal = asRefusal(
+      decideWrite(snap, "write", { path: `${SLOT_ROOT}/research/stray.md` }),
+    );
+    expect(refusal.reason).toBe(
+      replicaPhaseDenial("both", [KEPT], WORKSPACE_CWD),
+    );
+    // Cross-pin: the scope element is BYTE-PARITY with the capability
+    // line's existing element over the same sources:
+    const capLine = asRefusal(
+      decideWrite({ sources: BACKED, phase: null, paths: PATHS }, "write", {
+        path: "/outside/scope.md",
+      }),
+    ).reason;
+    expect(capLine).toContain(`project files under ${WORKSPACE_CWD}`);
+    expect(refusal.reason).toContain(`project files under ${WORKSPACE_CWD}`);
+  });
+
+  it("(d) paths-only phase inside a flag-TRUE span: the scope dimension is LOST - a cwd target outside the declared paths is REFUSED with the phase named and a survivors-only listing (no implicit allowance from the span's own flag)", () => {
+    const KEPT = `${SLOT_ROOT}/research/kept.md`;
+    const snap: ExecutionSnapshot = {
+      sources: BACKED,
+      phase: { id: "paths-only", declared: [KEPT], allowProjectWrites: false },
+      paths: PATHS,
+    };
+    expect(decideWrite(snap, "write", { path: KEPT })).toBeUndefined();
+    const refusal = asRefusal(
+      decideWrite(snap, "write", { path: `${WORKSPACE_CWD}/leak.md` }),
+    );
+    expect(refusal.reason).toContain("'paths-only'");
+    expect(refusal.reason).toBe(replicaPhaseDenial("paths-only", [KEPT], null));
+  });
+
+  it("(e) nothing declared (no paths, no flag): NO phase governance - the cwd target is ADMITTED via the span flag and the miss-target refusal bytes are identical between the phase-present and phase-null readings (capability named)", () => {
+    const bare: ExecutionSnapshot = {
+      sources: BACKED,
+      phase: { id: "bare", declared: [], allowProjectWrites: false },
+      paths: PATHS,
+    };
+    const noPhase: ExecutionSnapshot = {
+      sources: BACKED,
+      phase: null,
+      paths: PATHS,
+    };
+    expect(
+      decideWrite(bare, "write", { path: `${WORKSPACE_CWD}/notes.md` }),
+    ).toBeUndefined();
+    const MISS = `${SLOT_ROOT}/else/miss.md`;
+    expect(asRefusal(decideWrite(bare, "write", { path: MISS })).reason).toBe(
+      asRefusal(decideWrite(noPhase, "write", { path: MISS })).reason,
+    );
+  });
+
+  it("(f) null sources + flag-carrying phase: the class is INERT on the ONE code path - the NO-SPAN line governs (full-line golden with the escaped em dash), sentinel anchors vary with IDENTICAL bytes (paths provably unconsulted), and the flag-TRUE reading is byte-identical to the flag-FALSE counterpart (the flag never branches when sources are null)", () => {
+    const TARGET = "/outside/f.md";
+    const SENTINEL_A: PathAnchors = {
+      projectSlotRoot: "MKR-slot-f",
+      workspaceCwd: "MKR-cwd-f",
+    };
+    const SENTINEL_B: PathAnchors = {
+      projectSlotRoot: "MKR-slot-f2",
+      workspaceCwd: "MKR-cwd-f2",
+    };
+    const flaggedTrue: ExecutionSnapshot = {
+      sources: null,
+      phase: {
+        id: "flagged",
+        declared: [TARGET, `${SENTINEL_A.workspaceCwd}/proj.md`],
+        allowProjectWrites: true,
+      },
+      paths: SENTINEL_A,
+    };
+    const moved: ExecutionSnapshot = { ...flaggedTrue, paths: SENTINEL_B };
+    const flaggedFalse: ExecutionSnapshot = {
+      sources: null,
+      phase: {
+        id: "flagged",
+        declared: [TARGET, `${SENTINEL_A.workspaceCwd}/proj.md`],
+        allowProjectWrites: false,
+      },
+      paths: SENTINEL_A,
+    };
+    expect(
+      asRefusal(decideWrite(flaggedTrue, "write", { path: TARGET })).reason,
+    ).toBe(replicaNoSpanDenial());
+    // Sentinel-anchor variation: identical bytes - paths never consulted:
+    expect(
+      asRefusal(decideWrite(moved, "write", { path: TARGET })).reason,
+    ).toBe(
+      asRefusal(decideWrite(flaggedTrue, "write", { path: TARGET })).reason,
+    );
+    // Flag never branches when sources are null:
+    expect(
+      asRefusal(decideWrite(flaggedFalse, "write", { path: TARGET })).reason,
+    ).toBe(
+      asRefusal(decideWrite(flaggedTrue, "write", { path: TARGET })).reason,
+    );
   });
 });
 
@@ -595,10 +827,10 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
   it("phase-named denial with non-empty survivors", () => {
     const KEPT = `${SLOT_ROOT}/research/a.md`;
     // SOLE OWNER: renderPhaseDenial in guards/write-gate.ts.
-    const GOLDEN_PHASE_NAMED = replicaPhaseDenial("guard-probe", [KEPT]);
+    const GOLDEN_PHASE_NAMED = replicaPhaseDenial("guard-probe", [KEPT], null);
     const snap: ExecutionSnapshot = {
       sources: RESEARCH,
-      phase: { id: "guard-probe", declared: [KEPT] },
+      phase: { id: "guard-probe", declared: [KEPT], allowProjectWrites: false },
       paths: PATHS,
     };
     expect(
@@ -606,6 +838,67 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
         decideWrite(snap, "write", { path: `${SLOT_ROOT}/research/b.md` }),
       ).reason,
     ).toBe(GOLDEN_PHASE_NAMED);
+  });
+
+  it("phase-named denial with the SCOPE CLASS ACTIVE ALONE (flag-only shape): the class element stands in the listing alone - new class-active full-line golden", () => {
+    // SOLE OWNER: renderPhaseDenial (class-active form) in write-gate.ts.
+    const BACKED: CapabilitySources = {
+      name: "research",
+      writes: ["research/*.md"],
+      allowProjectWrites: true,
+    };
+    const GOLDEN_CLASS_ONLY = replicaPhaseDenial(
+      "scope-only",
+      [],
+      WORKSPACE_CWD,
+    );
+    const snap: ExecutionSnapshot = {
+      sources: BACKED,
+      phase: { id: "scope-only", declared: [], allowProjectWrites: true },
+      paths: PATHS,
+    };
+    expect(
+      asRefusal(
+        decideWrite(snap, "write", { path: `${SLOT_ROOT}/research/b.md` }),
+      ).reason,
+    ).toBe(GOLDEN_CLASS_ONLY);
+    expect(GOLDEN_CLASS_ONLY).toContain(`project files under ${WORKSPACE_CWD}`);
+  });
+
+  it("phase-named denial with SURVIVORS AND the scope class active: the class element appended AFTER the surviving paths - new class-active full-line golden", () => {
+    // SOLE OWNER: renderPhaseDenial (survivors-plus-class form) in
+    // write-gate.ts.
+    const BACKED: CapabilitySources = {
+      name: "research",
+      writes: ["research/*.md"],
+      allowProjectWrites: true,
+    };
+    const KEPT = `${SLOT_ROOT}/research/a.md`;
+    const GOLDEN_SURVIVORS_AND_CLASS = replicaPhaseDenial(
+      "both",
+      [KEPT],
+      WORKSPACE_CWD,
+    );
+    const snap: ExecutionSnapshot = {
+      sources: BACKED,
+      phase: {
+        id: "both",
+        declared: [KEPT],
+        allowProjectWrites: true,
+      },
+      paths: PATHS,
+    };
+    expect(
+      asRefusal(
+        decideWrite(snap, "write", { path: `${SLOT_ROOT}/research/c.md` }),
+      ).reason,
+    ).toBe(GOLDEN_SURVIVORS_AND_CLASS);
+    // The trailing clause stays last (structural pin):
+    expect(
+      GOLDEN_SURVIVORS_AND_CLASS.endsWith(
+        "Scratch files under /tmp/ stay open.",
+      ),
+    ).toBe(true);
   });
 
   it("capability-named denial with patterns only (no project-scope note)", () => {
@@ -705,7 +998,11 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
         decideWrite(
           {
             sources: APW_RESEARCH,
-            phase: { id: "guard-probe", declared: [KEPT] },
+            phase: {
+              id: "guard-probe",
+              declared: [KEPT],
+              allowProjectWrites: false,
+            },
             paths: PATHS,
           },
           "write",
@@ -773,6 +1070,7 @@ describe("coverage is exactly write/edit - short-circuit before any snapshot con
     phase: {
       id: "MKR-poisoned-phase",
       declared: ["MKR-poisoned-declared"],
+      allowProjectWrites: false,
     },
     paths: {
       projectSlotRoot: "MKR-poisoned-slot",
@@ -813,7 +1111,11 @@ describe("coverage is exactly write/edit - short-circuit before any snapshot con
   it("the same no-target inputs under an ACTIVE-SPAN-shaped snapshot - still no verdict", () => {
     const SPAN_SHAPED: ExecutionSnapshot = {
       sources: RESEARCH,
-      phase: { id: "gather", declared: [`${SLOT_ROOT}/research/a.md`] },
+      phase: {
+        id: "gather",
+        declared: [`${SLOT_ROOT}/research/a.md`],
+        allowProjectWrites: false,
+      },
       paths: PATHS,
     };
     for (const [toolName, input] of NO_TARGET_INPUTS) {
@@ -833,7 +1135,7 @@ describe("channel freedom + runtime namespace surface", () => {
     const KEPT = `${SLOT_ROOT}/research/a.md`;
     const allowedSnap: ExecutionSnapshot = {
       sources: RESEARCH,
-      phase: { id: "gather", declared: [KEPT] },
+      phase: { id: "gather", declared: [KEPT], allowProjectWrites: false },
       paths: PATHS,
     };
     expect(decideWrite(allowedSnap, "write", { path: KEPT })).toBeUndefined();

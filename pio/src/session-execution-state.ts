@@ -4,13 +4,15 @@
 // Records WHAT IS EXECUTING RIGHT NOW for a whole session: a LIFO stack of
 // capability SPAN layers (the outer pair suspends, never destroys — only the
 // innermost governs) plus the one executing phase in the TOP layer's SCALAR
-// slot (stored VERBATIM; there is no save/restore, ever). Owns the session's
+// slot (both declared dimensions stored VERBATIM; there is no save/restore,
+// ever). Owns the session's
 // PATH CHANNELS exclusively: snapshot() resolves both closures FRESH on every
 // call (NO caching anywhere — the first fault escapes verbatim, half-
 // application impossible) and hands PLAIN VALUES downstream: nothing past this
 // module ever sees a closure. Stores PLAIN DATA only (sources by reference,
-// declared paths verbatim — zero-copy trust boundary; caller mutation is
-// documented, not defended against). Bookkeeping corruption is deterministic
+// the phase's two declared dimensions verbatim - raw resolved paths plus the
+// scope flag, zero-copy trust boundary; caller mutation is documented, not
+// defended against). Bookkeeping corruption is deterministic
 // and LOUD: the unexported ExecutionStateError carries the four fault forms;
 // silent tolerance is forbidden.
 //
@@ -109,21 +111,31 @@ export class SessionExecutionState {
     this.layers.pop();
   }
 
-  /** Store the CURRENT phase AS A RECORD: { id, declared } VERBATIM in the
-   * top layer's SCALAR slot — RAW resolved paths exactly as passed (no
-   * filtering, validation, contract consultation, channel consult, or copy-
-   * transformation). Attaching while a phase is already attached OVERWRITES
-   * the slot (last-wins). An EMPTY declaration is a valid no-op attachment
-   * (confers no governance — the predicate's phase branch falls through
-   * lazily; keeps detach symmetric). Sole fault: depth 0. */
-  attachPhase(phaseId: string, declaredPaths: readonly string[]): void {
+  /** Store the CURRENT phase AS A RECORD: { id, declared,
+   * allowProjectWrites } VERBATIM in the top layer's SCALAR slot - the TWO
+   * declared permission dimensions exactly as passed (raw resolved paths
+   * plus the raw scope flag: no filtering, validation, contract
+   * consultation, channel consult, or copy-transformation). Attaching while
+   * a phase is already attached OVERWRITES the slot (last-wins). An EMPTY
+   * declaration with a FALSE flag is a valid no-op attachment (confers no
+   * governance - the predicate's phase branch falls through lazily; keeps
+   * detach symmetric). Sole fault: depth 0. */
+  attachPhase(
+    phaseId: string,
+    declaredPaths: readonly string[],
+    allowProjectWrites: boolean,
+  ): void {
     const top = this.layers.at(-1);
     if (top === undefined) {
       throw new ExecutionStateError(
         `execution state: attachPhase('${phaseId}') called with no capability span active`,
       );
     }
-    top.phase = { id: phaseId, declared: declaredPaths };
+    top.phase = {
+      id: phaseId,
+      declared: declaredPaths,
+      allowProjectWrites,
+    };
   }
 
   /** Clear the top layer's SCALAR phase slot. Loud when no phase is attached

@@ -2466,7 +2466,7 @@ describe("PioSession \u2014 gate mint + threading (producer side)", () => {
         writes: ["research/*.md"],
         allowProjectWrites: false,
       });
-      gate.state.attachPhase("freshness", [coveredTarget]);
+      gate.state.attachPhase("freshness", [coveredTarget], false);
       expect(gate.toolCallHandler(toolCall("write", coveredInput))).toBe(
         undefined,
       );
@@ -2655,6 +2655,19 @@ describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () =>
   const attachNoSpanReplica = (phaseId: string): string =>
     `execution state: attachPhase('${phaseId}') called with no capability span active`;
 
+  /** Structural mirror of the mid-run phase reading (hook-observed through
+   * the REAL state snapshot - never a fake of the system under test). */
+  type PhaseRecord = {
+    id: string;
+    declared: readonly string[];
+    allowProjectWrites: boolean;
+  };
+  const recordOf = (phase: PhaseRecord): PhaseRecord => ({
+    id: phase.id,
+    declared: phase.declared,
+    allowProjectWrites: phase.allowProjectWrites,
+  });
+
   it("ATTACH stores the RAW declared VERBATIM: a double declaration (BOTH files seeded so the expectation gate passes) is stored WHOLE at the mid-run reading - declaration order pinned, the contract-uncovered ghost entry present, proving NO filtering at attach - the phase id pinned, and the post-detach reading STRUCTURALLY IDENTICAL to the pre-attach reading", async () => {
     await withAgentDir(AGENT_DIR_LITERAL, async () => {
       const tmp = await mkdtemp(path.join(tmpdir(), "pio-gate-verbatim-"));
@@ -2811,6 +2824,111 @@ describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () =>
       expect(fault.message).toBe(attachNoSpanReplica("loud"));
     });
   });
+
+  it("FLAG-ONLY ATTACHES: a scope-flag declaration WITHOUT the write bag attaches the two-dimension record (the hook-observed mid-run reading deep-equals the FULL RECORD) and detaches after the normal break - the write bag stays the sole expectation source", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { instance, round, gate } = await host();
+      scriptRuns(round, quietRun());
+      const records: PhaseRecord[] = [];
+      const result = await instance.execute_phase("flag-only-leg", {
+        allowProjectWrites: true,
+        shouldStopLoop: async () => {
+          const phase = gate.state.snapshot().phase;
+          if (phase !== null) records.push(recordOf(phase));
+          return true;
+        },
+      });
+      expect(result.done).toBe(true);
+      expect(result.iterations).toBe(1);
+      expect(records).toHaveLength(1);
+      expect(records[0]).toStrictEqual({
+        id: "flag-only-leg",
+        declared: [],
+        allowProjectWrites: true,
+      });
+      // Normal-break detach over the widened attach:
+      expect(gate.state.snapshot().phase).toBeNull();
+    });
+  });
+
+  it("PATHS+FLAG STORE BOTH DIMENSIONS: a seeded file plus the scope flag feeds the full two-dimension record verbatim (the mid-run reading deep-equals the resolved path AND the stored flag - extending the verbatim-storage semantics to the flag)", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const tmp = await mkdtemp(path.join(tmpdir(), "pio-gate-flag-both-"));
+      try {
+        const seeded = path.join(tmp, "both.md");
+        await writeFile(seeded, "seeded\n");
+        const { instance, round, gate } = await host();
+        scriptRuns(round, quietRun());
+        const records: PhaseRecord[] = [];
+        const result = await instance.execute_phase("both-leg", {
+          write: [seeded],
+          allowProjectWrites: true,
+          shouldStopLoop: async () => {
+            const phase = gate.state.snapshot().phase;
+            if (phase !== null) records.push(recordOf(phase));
+            return true;
+          },
+        });
+        expect(result.done).toBe(true);
+        expect(result.iterations).toBe(1);
+        expect(records).toHaveLength(1);
+        expect(records[0]).toStrictEqual({
+          id: "both-leg",
+          declared: [path.resolve(seeded)],
+          allowProjectWrites: true,
+        });
+        expect(gate.state.snapshot().phase).toBeNull();
+      } finally {
+        await rm(tmp, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("FLAG-ONLY BUDGET BREAK SYMMETRY: max: 1 with an always-continuing stop rule RESOLVES bounded over the flag-only attach - attached mid-run, detached after the bounded resolution", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { instance, round, gate } = await host();
+      scriptRuns(round, quietRun());
+      const records: PhaseRecord[] = [];
+      const result = await instance.execute_phase("flag-budget-leg", {
+        max: 1,
+        allowProjectWrites: true,
+        shouldStopLoop: async () => {
+          const phase = gate.state.snapshot().phase;
+          if (phase !== null) records.push(recordOf(phase));
+          return false;
+        },
+      });
+      expect(result.done).toBe(true);
+      expect(result.iterations).toBe(1);
+      expect(records).toHaveLength(1);
+      expect(records[0].id).toBe("flag-budget-leg");
+      expect(records[0].allowProjectWrites).toBe(true);
+      expect(gate.state.snapshot().phase).toBeNull();
+    });
+  });
+
+  it("CEILING-THROW DETACH OVER A TWO-DIMENSION ATTACH: an unseeded target plus the scope flag REJECTS with the typed violation (unwrapped - containment unchanged) with the windows closed AND the phase detached post-reject (the finally fires on the throw cause for the widened attach)", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { instance, round, gate } = await host();
+      const deadPass = [
+        agentStart(),
+        start("d1", "write", { path: "/leaked/a.md" }),
+        end("d1", "write", false),
+        agentEnd(["d1"], false),
+      ];
+      scriptRuns(round, deadPass, deadPass, deadPass, deadPass);
+      await expect(
+        instance.execute_phase("ceiling-both", {
+          write: ["/absent/x.md"],
+          allowProjectWrites: true,
+        }),
+      ).rejects.toBeInstanceOf(ContractViolationError);
+      // Windows closed (the standing invariant) AND the phase detached.
+      expect(instance.getFilesWrittenDelta()).toEqual([]);
+      expect(instance.getRunMessages()).toEqual([]);
+      expect(gate.state.snapshot().phase).toBeNull();
+    });
+  });
 });
 
 describe("PioSession \u2014 gate rebind span survival (a successful swap leaves the state intact)", () => {
@@ -2824,7 +2942,7 @@ describe("PioSession \u2014 gate rebind span survival (a successful swap leaves 
         allowProjectWrites: false,
       };
       gate.state.enterCapability(extraSpan);
-      gate.state.attachPhase("open-window", ["/window/declared.md"]);
+      gate.state.attachPhase("open-window", ["/window/declared.md"], false);
       expect(gate.state.snapshot().phase?.id).toBe("open-window");
 
       const h1 = harness.mintFakeHandle(harness.sessionId);
@@ -2839,7 +2957,7 @@ describe("PioSession \u2014 gate rebind span survival (a successful swap leaves 
       // A follow-up enter/attach round-trips UNDER the surviving layers
       // cleanly (the LIFO stack composes after the swap).
       gate.state.enterCapability(FIXTURE_SPAN);
-      gate.state.attachPhase("post-switch", ["/post/x.md"]);
+      gate.state.attachPhase("post-switch", ["/post/x.md"], false);
       expect(gate.state.snapshot().phase?.id).toBe("post-switch");
       gate.state.detachPhase();
       gate.state.exitCapability();

@@ -855,9 +855,9 @@ describe("channel freedom + runtime namespace surface", () => {
     ]);
   });
 
-  it("the vocabulary and the state skeleton export NOTHING at runtime - types-only, mechanically", () => {
+  it("the vocabulary exports NOTHING at runtime (types-only) and the state module exports EXACTLY {SessionExecutionState} - its types erase, mechanically", () => {
     expect(Object.keys(vocabularyModule)).toEqual([]);
-    expect(Object.keys(stateModule)).toEqual([]);
+    expect(Object.keys(stateModule).sort()).toEqual(["SessionExecutionState"]);
   });
 
   it("the sandbox matcher module exports EXACTLY {hasWildcard, matchesAnchoredGlob} at runtime - the private helper chain never leaks", () => {
@@ -1060,7 +1060,7 @@ describe("mechanical source guards - all swept files", () => {
     ]);
   });
 
-  it("session-execution-state.ts: ONE type-only import clause (three names, the vocabulary specifier), ONE interface export, no class/function", () => {
+  it("session-execution-state.ts: ONE type-only import clause (three names, the vocabulary specifier), the EXACTLY THREE pinned export declarations, no function declarations", () => {
     const importStatements = STATE_SOURCE.match(/^import\b/gm);
     expect(importStatements?.length ?? 0).toBe(1);
     const clause = STATE_SOURCE.match(
@@ -1080,12 +1080,13 @@ describe("mechanical source guards - all swept files", () => {
     const exportLines = STATE_SOURCE.split("\n").filter((line) =>
       line.startsWith("export "),
     );
-    expect(exportLines).toHaveLength(1);
-    expect(
-      exportLines[0].match(/^export interface ExecutionSnapshot \{$/),
-    ).not.toBeNull();
+    // The completed module's pinned three-name export surface:
+    expect(exportLines.sort()).toEqual([
+      "export class SessionExecutionState {",
+      "export interface AnchorChannels {",
+      "export interface ExecutionSnapshot {",
+    ]);
     const codeOnly = partitionSource(STATE_SOURCE).code;
-    expect(codeOnly.match(/\bclass\b/g)).toBeNull();
     expect(codeOnly.match(/\bfunction\b/g)).toBeNull();
   });
 

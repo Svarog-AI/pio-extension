@@ -7,10 +7,12 @@
 // layer-bookkeeping tier, the two-object interleave tier, and the
 // channel-fault rows live in the execution-state suite — that component owns
 // the lifecycle and the channels. Mechanical guards pin the import
-// partition, the escape discipline, and the retired-identifier absence across
-// ALL FOUR sibling files.
+// partition, the escape discipline, and the retired-identifier absence
+// across all five swept files (the three guard siblings, the relocated
+// state skeleton, and the sandbox matcher module).
 
 import { readFileSync } from "node:fs";
+import * as stringMatchHelpersModule from "../../sandbox/string-match-helpers.ts";
 import type { ExecutionSnapshot } from "../../session-execution-state.ts";
 import * as stateModule from "../../session-execution-state.ts";
 import type { CapabilitySources, PathAnchors } from "./guard-vocabulary.ts";
@@ -79,8 +81,8 @@ function asRefusal(verdict: { block: true; reason: string } | undefined): {
 // cases (phase-named AND capability-named refusals).
 // ---------------------------------------------------------------------------
 
-describe("fixture shapes — the singular effective allowlist", () => {
-  it("in-list: a declared, contract-covered target is allowed — write and edit alike", () => {
+describe("fixture shapes - the singular effective allowlist", () => {
+  it("in-list: a declared, contract-covered target is allowed - write and edit alike", () => {
     const DECLARED = `${SLOT_ROOT}/research/alpha.md`;
     const snap: ExecutionSnapshot = {
       sources: RESEARCH,
@@ -119,7 +121,7 @@ describe("fixture shapes — the singular effective allowlist", () => {
     expect(decideWrite(snap, "write", { path: KEPT })).toBeUndefined();
   });
 
-  it("inherited: an EMPTY declaration confers no phase governance — the capability's sources apply unchanged", () => {
+  it("inherited: an EMPTY declaration confers no phase governance - the capability's sources apply unchanged", () => {
     const HIT = `${SLOT_ROOT}/research/ok.md`;
     const MISS = `${SLOT_ROOT}/docs/other.md`;
     const emptyDecl: ExecutionSnapshot = {
@@ -261,7 +263,7 @@ describe("phase-branch decision-time matrix", () => {
     expect(decideWrite(snap, "write", { path: PROJECT_FILE })).toBeUndefined();
   });
 
-  it("FULLY-UNCOVERED: no declared entry contract-covered ⇒ NO phase governance ⇒ refused AS IF UNDECLARED (the CAPABILITY is named — a phase-named line would be WRONG)", () => {
+  it("FULLY-UNCOVERED: no declared entry contract-covered ⇒ NO phase governance ⇒ refused AS IF UNDECLARED (the CAPABILITY is named - a phase-named line would be WRONG)", () => {
     const APW: CapabilitySources = {
       name: "cap-apw",
       writes: ["artifacts/*.md"],
@@ -279,7 +281,7 @@ describe("phase-branch decision-time matrix", () => {
     expect(refusal.reason).not.toContain(FOREIGN);
   });
 
-  it("PARTIAL coverage: mixed declared — survivors visible in declaration order, uncovered ones ABSENT (lockstep)", () => {
+  it("PARTIAL coverage: mixed declared - survivors visible in declaration order, uncovered ones ABSENT (lockstep)", () => {
     const KEPT_A = `${SLOT_ROOT}/research/a.md`;
     const KEPT_B = `${SLOT_ROOT}/research/b.md`;
     const DROPPED = `${SLOT_ROOT}/else/nope.txt`;
@@ -293,12 +295,30 @@ describe("phase-branch decision-time matrix", () => {
     const refusal = asRefusal(
       decideWrite(snap, "write", { path: `${SLOT_ROOT}/research/c.md` }),
     );
-    // Exhaustive survivor listing, declaration order, deduplicated — no
+    // Exhaustive survivor listing, declaration order, deduplicated - no
     // third path:
     expect(refusal.reason).toBe(replicaPhaseDenial("mixed", [KEPT_A, KEPT_B]));
   });
 
-  it("EMPTY-CONTRACT fall-through: the wiped phase behaves byte-identically to the undeclared shape — sentinel anchors provably unused", () => {
+  it("duplicate declared entries DEDUPE to the first occurrence - listed exactly once, declaration order", () => {
+    const DUP = `${SLOT_ROOT}/research/dup.md`;
+    const UNCOVERED = `${SLOT_ROOT}/else/nope.txt`;
+    const snap: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: { id: "dedupe", declared: [UNCOVERED, DUP, UNCOVERED, DUP] },
+      paths: PATHS,
+    };
+    // The repeated entry still admits its target exactly as a single one...
+    expect(decideWrite(snap, "write", { path: DUP })).toBeUndefined();
+    const refusal = asRefusal(
+      decideWrite(snap, "write", { path: `${SLOT_ROOT}/research/x.md` }),
+    );
+    // ...and the denial lists the survivor EXACTLY ONCE (first-occurrence
+    // dedupe over declaration order) - never double-listed:
+    expect(refusal.reason).toBe(replicaPhaseDenial("dedupe", [DUP]));
+  });
+
+  it("EMPTY-CONTRACT fall-through: the wiped phase behaves byte-identically to the undeclared shape - sentinel anchors provably unused", () => {
     const EMPTY: CapabilitySources = {
       name: "empty-cap",
       writes: [],
@@ -342,7 +362,7 @@ describe("phase-branch decision-time matrix", () => {
     ).toBe(replicaCapabilityDenial("empty-cap", [], null));
   });
 
-  it("null sources + active phase: the effective set is empty and the NO-SPAN line governs — never a phase-named line", () => {
+  it("null sources + active phase: the effective set is empty and the NO-SPAN line governs - never a phase-named line", () => {
     const TARGET = "/outside/b.md";
     const snap: ExecutionSnapshot = {
       sources: null,
@@ -412,7 +432,7 @@ describe("project-file admission under allowProjectWrites", () => {
 // pattern" for a path that does not yet exist).
 // ---------------------------------------------------------------------------
 
-describe("matchesAnchoredGlob — the documented fsview dialect in permission direction", () => {
+describe("matchesAnchoredGlob - the documented fsview dialect in permission direction", () => {
   const R = "/state/projects/proj-x"; // fixed project-slot root
 
   it("brace-only pattern receives the full transform even when hasWildcard reports false", () => {
@@ -571,7 +591,7 @@ describe("matchesAnchoredGlob — the documented fsview dialect in permission di
 // the SOLE OWNER of each template.
 // ---------------------------------------------------------------------------
 
-describe("goldens — lockstep byte-equality on every refusal shape", () => {
+describe("goldens - lockstep byte-equality on every refusal shape", () => {
   it("phase-named denial with non-empty survivors", () => {
     const KEPT = `${SLOT_ROOT}/research/a.md`;
     // SOLE OWNER: renderPhaseDenial in guards/write-gate.ts.
@@ -634,7 +654,7 @@ describe("goldens — lockstep byte-equality on every refusal shape", () => {
     );
   });
 
-  it("capability-named 'none' — the empty-contract span refusal", () => {
+  it("capability-named 'none' - the empty-contract span refusal", () => {
     // SOLE OWNER: renderCapabilityDenial (empty-sources form) in write-gate.ts.
     const GOLDEN_CAP_NONE = replicaCapabilityDenial("compose-demo", [], null);
     const COMPOSE_DEMO: CapabilitySources = {
@@ -655,7 +675,7 @@ describe("goldens — lockstep byte-equality on every refusal shape", () => {
     expect(GOLDEN_CAP_NONE).toContain("Allowed targets: none.");
   });
 
-  it("no-span 'none' — the depth-0 refusal (carries the escaped U+2014 em dash)", () => {
+  it("no-span 'none' - the depth-0 refusal (carries the escaped U+2014 em dash)", () => {
     // SOLE OWNER: renderNoSpanDenial in guards/write-gate.ts.
     const GOLDEN_NO_SPAN = replicaNoSpanDenial();
     const snap: ExecutionSnapshot = {
@@ -742,7 +762,7 @@ describe("goldens — lockstep byte-equality on every refusal shape", () => {
 // be found if ever interpolated into a returned string.
 // ---------------------------------------------------------------------------
 
-describe("coverage is exactly write/edit — short-circuit before any snapshot consultation", () => {
+describe("coverage is exactly write/edit - short-circuit before any snapshot consultation", () => {
   // MARKER-POISONED snapshot: every field carries a unique marker substring.
   const POISONED: ExecutionSnapshot = {
     sources: {
@@ -777,7 +797,7 @@ describe("coverage is exactly write/edit — short-circuit before any snapshot c
     ["write", undefined],
   ];
 
-  it("non-writer tools and malformed writer inputs yield NO target — no verdict, no exception, markers uninterpolated", () => {
+  it("non-writer tools and malformed writer inputs yield NO target - no verdict, no exception, markers uninterpolated", () => {
     for (const [toolName, input] of NO_TARGET_INPUTS) {
       for (const snap of [WELL_FORMED, POISONED]) {
         // Strict undefined: there is no returned string in which a marker
@@ -790,7 +810,7 @@ describe("coverage is exactly write/edit — short-circuit before any snapshot c
     }
   });
 
-  it("the same no-target inputs under an ACTIVE-SPAN-shaped snapshot — still no verdict", () => {
+  it("the same no-target inputs under an ACTIVE-SPAN-shaped snapshot - still no verdict", () => {
     const SPAN_SHAPED: ExecutionSnapshot = {
       sources: RESEARCH,
       phase: { id: "gather", declared: [`${SLOT_ROOT}/research/a.md`] },
@@ -809,7 +829,7 @@ describe("coverage is exactly write/edit — short-circuit before any snapshot c
 // ---------------------------------------------------------------------------
 
 describe("channel freedom + runtime namespace surface", () => {
-  it("every public signature takes PLAIN VALUES — allowed AND refused end-to-end on structural literals only", () => {
+  it("every public signature takes PLAIN VALUES - allowed AND refused end-to-end on structural literals only", () => {
     const KEPT = `${SLOT_ROOT}/research/a.md`;
     const allowedSnap: ExecutionSnapshot = {
       sources: RESEARCH,
@@ -828,27 +848,33 @@ describe("channel freedom + runtime namespace surface", () => {
     ).toBe(true);
   });
 
-  it("write-gate's runtime namespace is EXACTLY {decideWrite, matchesAnchoredGlob} — the type erases", () => {
+  it("write-gate's runtime namespace is EXACTLY {decideWrite, matchesAnchoredGlob} - the type erases", () => {
     expect(Object.keys(writeGateModule).sort()).toEqual([
       "decideWrite",
       "matchesAnchoredGlob",
     ]);
   });
 
-  it("the vocabulary and the state skeleton export NOTHING at runtime — types-only, mechanically", () => {
+  it("the vocabulary and the state skeleton export NOTHING at runtime - types-only, mechanically", () => {
     expect(Object.keys(vocabularyModule)).toEqual([]);
     expect(Object.keys(stateModule)).toEqual([]);
+  });
+
+  it("the sandbox matcher module exports EXACTLY {matchesAnchoredGlob} at runtime - the private helper chain never leaks", () => {
+    expect(Object.keys(stringMatchHelpersModule).sort()).toEqual([
+      "matchesAnchoredGlob",
+    ]);
   });
 });
 
 // ---------------------------------------------------------------------------
 // (i) MECHANICAL SOURCE GUARDS — self-source reads (house idiom:
-// readFileSync(new URL(file, import.meta.url))) covering ALL FOUR files:
-// import partition, statelessness, types-only surfaces, escape discipline,
-// retired-identifier absence.
+// readFileSync(new URL(file, import.meta.url))) covering ALL FIVE swept
+// files: import partition, statelessness, types-only surfaces, escape
+// discipline, retired-identifier absence.
 // ---------------------------------------------------------------------------
 
-describe("mechanical source guards — all four sibling files", () => {
+describe("mechanical source guards - all swept files", () => {
   const GATE_SOURCE = readFileSync(
     new URL("./write-gate.ts", import.meta.url),
     "utf8",
@@ -865,29 +891,109 @@ describe("mechanical source guards — all four sibling files", () => {
     new URL("../../session-execution-state.ts", import.meta.url),
     "utf8",
   );
+  const HELPER_SOURCE = readFileSync(
+    new URL("../../sandbox/string-match-helpers.ts", import.meta.url),
+    "utf8",
+  );
 
-  /** Strip block and line comments FIRST so quote-paired "spans" cannot cross
-   * comment text (quoted words in prose would create phantom spans). Raw
-   * glyphs in prose comments are house precedent — not pinned bytes. */
-  function stripComments(source: string): string {
-    return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  /** Single-pass, STATE-AWARE scan over the raw source: elides comments
+   * (line and block), consumes every string/template literal to its
+   * matching close quote HONORING BACKSLASH ESCAPES (recording each raw
+   * interior in `payloads`, blanking it in the returned `code` with the
+   * quote characters kept around a `P` placeholder), and recognizes
+   * REGEX LITERALS — a `/` opens one only after an expression-start
+   * character (a division `/` never does), consumed through the closing
+   * `/` with `[...]` class and backslash-escape fidelity. The downstream
+   * assertions are thereby sound: a block-comment opener inside a glob
+   * string can no longer swallow real code, an apostrophe in prose can
+   * no longer open a phantom literal, a quote inside a regex can no
+   * longer desynchronize pairing, and no pairing crosses a line
+   * blindly. Raw glyphs in prose comments are house precedent — comments
+   * elide here; literals are recorded, not elided. */
+  const REGEX_STARTERS = "{[(,=;:!?&|+-*%~^<>";
+  function partitionSource(source: string): {
+    code: string;
+    payloads: string[];
+  } {
+    const payloads: string[] = [];
+    let code = "";
+    let prevSig: string | undefined; // last significant code char (regex hint)
+    let i = 0;
+    while (i < source.length) {
+      const ch = source[i];
+      const next = source[i + 1];
+      if (ch === "/" && next === "/") {
+        const end = source.indexOf("\n", i);
+        i = end === -1 ? source.length : end; // keep the newline itself
+        continue;
+      }
+      if (ch === "/" && next === "*") {
+        const end = source.indexOf("*/", i + 2);
+        i = end === -1 ? source.length : end + 2;
+        continue;
+      }
+      if (
+        ch === "/" &&
+        (prevSig === undefined || REGEX_STARTERS.includes(prevSig))
+      ) {
+        // Regex literal: consume to the unescaped close slash outside [..]
+        const regexStart = i;
+        let inClass = false;
+        i += 1;
+        while (i < source.length) {
+          const rc = source[i];
+          if (rc === "\\") {
+            i += 2;
+            continue;
+          }
+          if (rc === "[") inClass = true;
+          else if (rc === "]") inClass = false;
+          else if (rc === "/" && !inClass) {
+            i += 1;
+            break;
+          }
+          i += 1;
+        }
+        code += source.slice(regexStart, i);
+        prevSig = "/";
+        continue;
+      }
+      if (ch === "'" || ch === '"' || ch === "`") {
+        const start = i + 1;
+        i += 1;
+        while (i < source.length && source[i] !== ch) {
+          i += source[i] === "\\" ? 2 : 1;
+        }
+        const end = Math.min(i, source.length);
+        payloads.push(source.slice(start, end));
+        code += ch + "P" + ch;
+        prevSig = ch;
+        i = end + 1;
+        continue;
+      }
+      code += ch;
+      prevSig = /\s/.test(ch) ? prevSig : ch;
+      i += 1;
+    }
+    return { code, payloads };
   }
 
   // Assembled at runtime so this guard does not self-match its own text.
   const SDK_SPECIFIER = ["@earendil-works", "pi-coding-agent"].join("/");
 
-  it("zero occurrences of the SDK specifier in ANY of the four files", () => {
+  it("zero occurrences of the SDK specifier in ANY swept file", () => {
     for (const source of [
       GATE_SOURCE,
       SUITE_SOURCE,
       VOCAB_SOURCE,
       STATE_SOURCE,
+      HELPER_SOURCE,
     ]) {
       expect(source.includes(SDK_SPECIFIER)).toBe(false);
     }
   });
 
-  it("write-gate.ts: value imports are EXACTLY [node:path, ../../sandbox/fsview.ts] — zero node:fs, zero value sibling imports", () => {
+  it("write-gate.ts: value imports are EXACTLY [node:path, ../../sandbox/string-match-helpers.ts] - zero node:fs, zero value sibling imports", () => {
     expect(GATE_SOURCE.includes("node:fs")).toBe(false);
     const valueSpecifiers = GATE_SOURCE.split("\n")
       .filter(
@@ -897,7 +1003,25 @@ describe("mechanical source guards — all four sibling files", () => {
       .flatMap((line) =>
         [...line.matchAll(/from "([^"]+)"/g)].map((match) => match[1]),
       );
-    expect(valueSpecifiers).toEqual(["node:path", "../../sandbox/fsview.ts"]);
+    expect(valueSpecifiers).toEqual([
+      "node:path",
+      "../../sandbox/string-match-helpers.ts",
+    ]);
+  });
+
+  it("string-match-helpers.ts: value imports EXACTLY [./fsview.ts], no type imports, zero node:fs, NO class declarations", () => {
+    expect(HELPER_SOURCE.includes("node:fs")).toBe(false);
+    expect(HELPER_SOURCE.match(/^import\s+type\b/gm)).toBeNull();
+    const helperValueSpecifiers = HELPER_SOURCE.split("\n")
+      .filter(
+        (line) =>
+          line.startsWith("import ") && !line.startsWith("import type "),
+      )
+      .flatMap((line) =>
+        [...line.matchAll(/from "([^"]+)"/g)].map((match) => match[1]),
+      );
+    expect(helperValueSpecifiers).toEqual(["./fsview.ts"]);
+    expect(partitionSource(HELPER_SOURCE).code.match(/\bclass\b/g)).toBeNull();
   });
 
   it("write-gate.ts: type-only imports are a SUBSET of the two siblings, and the state edge is REQUIRED (erased at compile time)", () => {
@@ -917,12 +1041,13 @@ describe("mechanical source guards — all four sibling files", () => {
     expect(typeSpecifiers).toContain("../../session-execution-state.ts");
   });
 
-  it("write-gate.ts: NO class declarations — statelessness asserted mechanically", () => {
-    expect(stripComments(GATE_SOURCE).match(/\bclass\b/g)).toBeNull();
+  it("write-gate.ts: NO class declarations - statelessness asserted mechanically", () => {
+    expect(partitionSource(GATE_SOURCE).code.match(/\bclass\b/g)).toBeNull();
   });
 
   it("write-gate.ts: the single coverage rule is defined ONCE and called EXACTLY TWICE (one definition + two call sites)", () => {
-    const occurrences = stripComments(GATE_SOURCE).match(/\badmittedBy\b/g);
+    const occurrences =
+      partitionSource(GATE_SOURCE).code.match(/\badmittedBy\b/g);
     expect(occurrences?.length ?? 0).toBe(3);
   });
 
@@ -967,30 +1092,40 @@ describe("mechanical source guards — all four sibling files", () => {
     expect(
       exportLines[0].match(/^export interface ExecutionSnapshot \{$/),
     ).not.toBeNull();
-    const codeOnly = stripComments(STATE_SOURCE);
+    const codeOnly = partitionSource(STATE_SOURCE).code;
     expect(codeOnly.match(/\bclass\b/g)).toBeNull();
     expect(codeOnly.match(/\bfunction\b/g)).toBeNull();
   });
 
-  it("\\u2014 discipline: the pinned escaped literal is retained; NO raw U+2014 inside any string LITERAL of any of the four files", () => {
+  it("\\u2014 discipline: the pinned escaped literal is retained; NO raw U+2014 inside ANY string LITERAL of any swept file", () => {
     expect(
       GATE_SOURCE.includes("Writing is refused \\u2014 no capability span"),
     ).toBe(true);
     const rawGlyph = String.fromCharCode(0x2014);
+    // Sound sweep: partitionSource extracts every literal payload
+    // escape-aware and elides comments in the SAME pass — the former
+    // two-regex pipeline opened phantom block comments from block-opener
+    // sequences inside glob strings and paired quotes blindly across
+    // lines, passing vacuously over live violations in this very file.
+    // Violations are COLLECTED first so one failure surfaces the full
+    // finding list (self-match-proofing: this suite sweeps ITSELF too).
+    const violations: string[] = [];
     for (const [label, source] of [
       ["write-gate.ts", GATE_SOURCE],
       ["write-gate.test.ts", SUITE_SOURCE],
       ["guard-vocabulary.ts", VOCAB_SOURCE],
       ["session-execution-state.ts", STATE_SOURCE],
+      ["string-match-helpers.ts", HELPER_SOURCE],
     ]) {
-      const codeOnly = stripComments(source);
-      for (const match of codeOnly.matchAll(/["'`]([^"'`]*)["'`]/g)) {
-        expect(
-          match[1],
-          `${label}: raw glyph in a string literal`,
-        ).not.toContain(rawGlyph);
+      const { code, payloads } = partitionSource(source);
+      for (const payload of payloads) {
+        if (payload.includes(rawGlyph)) violations.push(label);
       }
+      // A glyph outside every literal (in plain code) would be equally
+      // wrong — none may exist.
+      if (code.includes(rawGlyph)) violations.push(`${label} (non-literal)`);
     }
+    expect(violations).toEqual([]);
   });
 
   it("retired combined-module identifiers are absent from BOTH rewritten files (fragments assembled at runtime prevent self-match)", () => {
@@ -1017,7 +1152,7 @@ describe("mechanical source guards — all four sibling files", () => {
     }
   });
 
-  it("tiers absent by design — the bookkeeping block, the two-object interleave tier, and the faulty-channel tier belong to the execution-state suite", () => {
+  it("tiers absent by design - the bookkeeping block, the two-object interleave tier, and the faulty-channel tier belong to the execution-state suite", () => {
     // Assembled at runtime so this check does not self-match its own text.
     const BOOKKEEPING_TITLE = "Write" + "Gate bookkeeping";
     const INTERLEAVE_TITLE = "leg-" + "2 hermetic concurrency";

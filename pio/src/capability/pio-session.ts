@@ -89,8 +89,9 @@
 // every gate operation no-ops cleanly. execute_phase feeds its retained
 // resolved declarations into the top span strictly at phase start (non-
 // empty lists only; empty or absent attaches nothing) and detaches on
-// every exit cause. rebind drains the state to depth zero after both gates
-// on a successful swap. The enterCapability / exitCapability pair is the
+// every exit cause. rebind leaves the execution state UNTOUCHED on every
+// path - span integrity belongs to the balanced enter/exit lifecycle, not
+// to the swap. The enterCapability / exitCapability pair is the
 // instance-level span-producer surface; no public verdict surface exists,
 // verdicts firing exclusively inside the interceptor closure.
 
@@ -462,7 +463,7 @@ export class PioSession {
     });
     // THE V1 handler closure: every tool-call verdict consults a FRESH
     // snapshot through the stateless predicate — late binding survives
-    // rebind drain and span churn; no containment anywhere.
+    // rebind swaps and span churn; no containment anywhere.
     const v1Handler = (toolName: string, input: unknown) =>
       decideWrite(executionState.snapshot(), toolName, input);
     const runtime = await createPioSession(cwd, sessionsRoot, {
@@ -513,8 +514,10 @@ export class PioSession {
    * last-bound marker moves. Accepted edge: rearms assume the previously
    * bound handle died via platform dispose (switchSession tears down
    * first). The returned unsubscribe is deliberately dropped
-   * (construction-seam doctrine). Never reads this.runtime.session — the
-   * explicit argument is the seam.
+   * (construction-seam doctrine). The execution state is left INTACT
+   * across the swap on purpose: span layers belong to the balanced
+   * enter/exit lifecycle and survive a handle replacement. Never reads
+   * this.runtime.session — the explicit argument is the seam.
    */
   rebind(session: AgentSession): void {
     if (session.sessionId !== this.id) {
@@ -525,10 +528,6 @@ export class PioSession {
     if (session === this.#lastBound) {
       return;
     }
-    // A replaced handle starts fresh: drain the execution state to depth
-    // zero so no stale span or phase survives the swap (only after BOTH
-    // gates passed - refusal and same-handle no-op leave it untouched).
-    this.#executionState?.reset();
     const listener: AgentSessionEventListener = (event) => {
       this.#observer.handle(event);
     };

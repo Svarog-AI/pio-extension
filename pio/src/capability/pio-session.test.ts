@@ -2326,7 +2326,8 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
 
 // ---------------------------------------------------------------------
 // Per-session write-gate producer wiring: mint + threading, discovery,
-// phase feeding, rebind drain. Identity-over-goldens doctrine - verdict
+// phase feeding, rebind span survival. Identity-over-goldens doctrine -
+// verdict
 // assertions deep-equal the REAL predicate over the same state reading;
 // no refusal-byte goldens live here (sole owner: ./guards/write-gate.ts).
 // Every PI_CODING_AGENT_DIR touch is row-scoped save/restore (vitest
@@ -2595,7 +2596,7 @@ describe("PioSession \u2014 gate discovery (fromRuntime symbol stamp)", () => {
     });
   });
 
-  it("a FOREIGN (unstamped) handle: fromRuntime finds NO state - a non-empty write: phase RESOLVES normally (attach silently skipped, no depth-0 fault), rebind over a successful swap is fault-free (drain no-op), counters and markCapability unaffected, and BOTH span-producer methods are clean no-ops (no throw, no observable effect)", async () => {
+  it("a FOREIGN (unstamped) handle: fromRuntime finds NO state - a non-empty write: phase RESOLVES normally (attach silently skipped, no depth-0 fault), rebind over a successful swap is fault-free (it owns no execution state - the swap touches nothing state-side), counters and markCapability unaffected, and BOTH span-producer methods are clean no-ops (no throw, no observable effect)", async () => {
     const tmp = await mkdtemp(path.join(tmpdir(), "pio-gate-foreign-"));
     try {
       const hf = harness.mintFakeHandle();
@@ -2629,7 +2630,8 @@ describe("PioSession \u2014 gate discovery (fromRuntime symbol stamp)", () => {
       expect(result.done).toBe(true);
       expect(result.iterations).toBe(1);
 
-      // Successful-swap rebind: fault-free, drain no-op (nothing to drain),
+      // Successful-swap rebind: fault-free (this instance owns no
+      // execution state - the swap touches nothing state-side),
       // subscription re-armed on the fresh handle.
       const h1 = harness.mintFakeHandle(harness.sessionId);
       foreign.rebind(asHandle(h1));
@@ -2811,16 +2813,17 @@ describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () =>
   });
 });
 
-describe("PioSession \u2014 gate rebind drain", () => {
-  it("a SUCCESSFUL swap rebind DRAINS the state to depth-0 (follow-up enter/attach round-trips cleanly - structurally fresh), and the next consultation through the extracted handler renders the NO-SPAN refusal by identity with the real predicate (drain visibility end-to-end)", async () => {
+describe("PioSession \u2014 gate rebind span survival (a successful swap leaves the state intact)", () => {
+  it("a SUCCESSFUL swap rebind LEAVES THE STATE INTACT: the pre-existing outer span layer survives the switch-back ON THE SHARED STATE (by reference, phase still attached), a follow-up enter/attach round-trips under it, and the extracted handler's consultations track the surviving layers by identity with the real predicate (span-survival visibility end-to-end)", async () => {
     await withAgentDir(AGENT_DIR_LITERAL, async () => {
       const { instance, round, gate } = await host();
       // Simulated open window: an EXTRA span plus an attached phase.
-      gate.state.enterCapability({
+      const extraSpan: CapabilitySources = {
         name: "extra",
         writes: [],
         allowProjectWrites: false,
-      });
+      };
+      gate.state.enterCapability(extraSpan);
       gate.state.attachPhase("open-window", ["/window/declared.md"]);
       expect(gate.state.snapshot().phase?.id).toBe("open-window");
 
@@ -2828,24 +2831,50 @@ describe("PioSession \u2014 gate rebind drain", () => {
       simulateSwap(round, h1);
       instance.rebind(asHandle(h1));
 
-      const drained = gate.state.snapshot();
-      expect(drained.sources).toBeNull();
-      expect(drained.phase).toBeNull();
-      // Structurally fresh: a full span/phase round-trip succeeds after
-      // the drain.
+      // NO drain: the open window survives the switch-back INTACT - the
+      // innermost span still governs BY REFERENCE and its phase stays
+      // attached on the shared state.
+      expect(gate.state.snapshot().sources).toBe(extraSpan);
+      expect(gate.state.snapshot().phase?.id).toBe("open-window");
+      // A follow-up enter/attach round-trips UNDER the surviving layers
+      // cleanly (the LIFO stack composes after the swap).
       gate.state.enterCapability(FIXTURE_SPAN);
-      gate.state.attachPhase("post-drain", ["/post/x.md"]);
-      expect(gate.state.snapshot().phase?.id).toBe("post-drain");
+      gate.state.attachPhase("post-switch", ["/post/x.md"]);
+      expect(gate.state.snapshot().phase?.id).toBe("post-switch");
       gate.state.detachPhase();
       gate.state.exitCapability();
+      expect(gate.state.snapshot().sources).toBe(extraSpan);
 
-      // Next consultation through the extracted handler: the NO-SPAN
-      // refusal by identity with the real predicate.
-      const input = { path: "/outside/z.md" };
-      expect(gate.toolCallHandler(toolCall("write", input))).toStrictEqual(
-        decideWrite(gate.state.snapshot(), "write", input),
+      // The extracted handler consults the SURVIVING shared state: denied
+      // by identity under the surviving empty-contract span, then a
+      // covering span entered AFTER the swap flips the SAME target (late
+      // binding rides the live state across the swap).
+      const slotRoot = gate.state.snapshot().paths.projectSlotRoot;
+      const coveredInput = {
+        path: path.join(slotRoot, "research", "note.md"),
+      };
+      expect(
+        gate.toolCallHandler(toolCall("write", coveredInput)),
+      ).toStrictEqual(
+        decideWrite(gate.state.snapshot(), "write", coveredInput),
       );
-      expect(gate.toolCallHandler(toolCall("write", input))).toBeDefined();
+      expect(
+        gate.toolCallHandler(toolCall("write", coveredInput)),
+      ).toBeDefined();
+      gate.state.enterCapability({
+        name: "covering",
+        writes: ["research/*.md"],
+        allowProjectWrites: false,
+      });
+      expect(gate.toolCallHandler(toolCall("write", coveredInput))).toBe(
+        undefined,
+      );
+      // Balanced unwind of every added layer: the fixture span keeps
+      // governing once the window and the covering span pop.
+      gate.state.exitCapability();
+      gate.state.detachPhase();
+      gate.state.exitCapability();
+      expect(gate.state.snapshot().sources).toBe(FIXTURE_SPAN);
     });
   });
 

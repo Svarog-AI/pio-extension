@@ -1,209 +1,48 @@
-// Hermetic unit suite for the per-session write gate (guards/write-gate.ts).
-// Self-contained island: zero SDK imports to mock — every row drives the
-// REAL module directly. One mkdtemp layout per row; providers are plain
-// closures over it (faulty variants throw a sentinel standing in for the
-// producer's typed no-silent-fallback error). Mechanical guards pin the
-// import surface and the \u2014 escape discipline.
+// Hermetic unit suite for the stateless write-guard predicate
+// (guards/write-gate.ts). Self-contained island: zero SDK imports — every row
+// drives the REAL module directly with HAND-BUILT SNAPSHOTS as plain
+// structural literals over LITERAL ABSOLUTE POSIX paths (path.resolve is
+// identity on them, so literals round-trip byte-exactly). The module never
+// touches disk: no minted directories, no provider closures, no async. The
+// layer-bookkeeping tier, the two-object interleave tier, and the
+// channel-fault rows live in the execution-state suite — that component owns
+// the lifecycle and the channels. Mechanical guards pin the import
+// partition, the escape discipline, and the retired-identifier absence across
+// ALL FOUR sibling files.
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { CapabilitySources, WriteGateProviders } from "./write-gate.ts";
-import { matchesAnchoredGlob, WriteGate } from "./write-gate.ts";
-
-// ---------------------------------------------------------------------------
-// Shared hermetic fixtures — one mkdtemp layout per row.
-// ---------------------------------------------------------------------------
-
-/** Sentinel error standing in for the producer's typed no-silent-fallback
- * error (e.g. base.ts's CapabilityEnvError behind the root provider). */
-class SentinelFault extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "SentinelFault";
-  }
-}
-
-/** One realistic tmpdir layout: project-slot root + workspace-cwd pair,
- * wired through plain lazy provider closures. os.tmpdir() IS under /tmp on
- * this host, so literal tmpdir paths would fall in the always-allowed parity
- * class and make denial rows unreachable — the minted dirs are the skeleton,
- * the PROVIDER VALUES are the same layout mapped onto a /tmp-free synthetic
- * root (row-unique via the tmpdir basename; the gate never consults the fs). */
-function layout(): {
-  base: string;
-  slotRoot: string;
-  cwd: string;
-  providers: WriteGateProviders;
-} {
-  const base = mkdtempSync(join(tmpdir(), "write-gate-"));
-  const uid = base.split("/").pop();
-  mkdirSync(join(base, "state", "projects", "proj-x"), { recursive: true });
-  mkdirSync(join(base, "workspace"), { recursive: true });
-  const slotRoot = `/pio-test/${uid}/state/projects/proj-x`;
-  const cwd = `/pio-test/${uid}/workspace`;
-  trackCleanup(base);
-  const providers: WriteGateProviders = {
-    projectSlotRoot: () => slotRoot,
-    workspaceCwd: () => cwd,
-  };
-  return { base, slotRoot, cwd, providers };
-}
-
-const cleanups: Array<() => void> = [];
-function trackCleanup(base: string): void {
-  cleanups.push(() => rmSync(base, { recursive: true, force: true }));
-}
-afterEach(() => {
-  while (cleanups.length > 0) cleanups.pop()?.();
-});
-
-/** Capture a thrown error (row-invariant guard: the op MUST throw). */
-function capture(fn: () => void): Error {
-  try {
-    fn();
-  } catch (error) {
-    return error as Error;
-  }
-  throw new Error("expected the operation to throw");
-}
+import { readFileSync } from "node:fs";
+import type { CapabilitySources, PathAnchors } from "./guard-vocabulary.ts";
+import * as vocabularyModule from "./guard-vocabulary.ts";
+import type { ExecutionSnapshot } from "./session-execution-state.ts";
+import * as stateModule from "./session-execution-state.ts";
+import * as writeGateModule from "./write-gate.ts";
+import { decideWrite, matchesAnchoredGlob } from "./write-gate.ts";
 
 // ---------------------------------------------------------------------------
-// (bookkeeping) the single-pair discipline — LIFO layers, save/restore,
-// mismatched-exit loudness, sanctioned drain.
+// Shared hermetic fixtures — plain structural literals. One anchor pair;
+// literal absolute posix paths everywhere (resolve() is identity on them).
 // ---------------------------------------------------------------------------
 
-describe("WriteGate bookkeeping — single scalar pair per layer", () => {
-  const PARENT: CapabilitySources = {
-    name: "parent-cap",
-    writes: ["p/*.md"],
-    allowProjectWrites: false,
-  };
-  const CHILD: CapabilitySources = {
-    name: "child-cap",
-    writes: ["c/*.md"],
-    allowProjectWrites: false,
-  };
+const SLOT_ROOT = "/state/projects/proj-x";
+const WORKSPACE_CWD = "/workspace/proj-x";
+const PATHS: PathAnchors = {
+  projectSlotRoot: SLOT_ROOT,
+  workspaceCwd: WORKSPACE_CWD,
+};
 
-  it("mismatched exits throw the typed module-local error (loud, never silent)", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-
-    // Either exit on an empty stack — underflow.
-    const underflowCap = capture(() => gate.exitCapability());
-    expect(underflowCap.name).toBe("WriteGateBookkeepingError");
-    expect(underflowCap.message).toBe(
-      "write gate: exitCapability() with no active capability layer",
-    );
-    const underflowPhase = capture(() => gate.exitPhase());
-    expect(underflowPhase.name).toBe("WriteGateBookkeepingError");
-    expect(underflowPhase.message).toBe(
-      "write gate: exitPhase() with no active phase entry",
-    );
-
-    // enterPhase without any active layer.
-    const orphanPhase = capture(() => gate.enterPhase("orphan", []));
-    expect(orphanPhase.name).toBe("WriteGateBookkeepingError");
-    expect(orphanPhase.message).toBe(
-      "write gate: enterPhase() with no active capability layer",
-    );
-  });
-
-  it("exitCapability with an outstanding phase entry refuses and leaves the layer intact", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    gate.enterCapability(PARENT);
-    gate.enterPhase("inner", [`${fx.slotRoot}/p/a.md`]);
-
-    const premature = capture(() => gate.exitCapability());
-    expect(premature.name).toBe("WriteGateBookkeepingError");
-    expect(premature.message).toBe(
-      // U+2014 arrives escaped in the module literal — compare unescaped.
-      "write gate: exitCapability() with an outstanding phase entry \u2014 exitPhase() first",
-    );
-
-    // State intact: the mirrored unwind still succeeds, then depth-0 again.
-    gate.exitPhase();
-    gate.exitCapability();
-    expect(() => gate.exitCapability()).toThrowError(
-      /no active capability layer/,
-    );
-  });
-
-  it("nested capability layers suspend and restore the outer pair intact", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    const pTarget = `${fx.slotRoot}/p/a.md`;
-    const cTarget = `${fx.slotRoot}/c/b.md`;
-
-    gate.enterCapability(PARENT);
-    expect(gate.decide("write", { path: pTarget })).toBeUndefined(); // parent governs
-
-    gate.enterCapability(CHILD);
-    // The innermost layer is the ENTIRE permission world now:
-    expect(gate.decide("write", { path: cTarget })).toBeUndefined(); // child allows
-    const suspended = gate.decide("write", { path: pTarget });
-    // …the suspended parent's pair is invisible (named source is the child).
-    expect(suspended?.reason).toContain("'child-cap'");
-
-    gate.exitCapability();
-    expect(gate.decide("write", { path: pTarget })).toBeUndefined(); // restored intact
-    const backToChildScope = gate.decide("write", { path: cTarget });
-    expect(backToChildScope?.reason).toContain("'parent-cap'");
-  });
-
-  it("enterPhase replaces the current phase entry, saving it for symmetric restore", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    gate.enterCapability(PARENT);
-    const first = `${fx.slotRoot}/p/one.md`;
-    const second = `${fx.slotRoot}/p/two.md`;
-
-    gate.enterPhase("first-phase", [first]);
-    expect(gate.decide("write", { path: first })).toBeUndefined();
-    expect(gate.decide("write", { path: second })?.reason).toContain(
-      "'first-phase'",
-    );
-
-    // Re-entrant entry attaches over (and saves) the existing entry.
-    gate.enterPhase("second-phase", [second]);
-    expect(gate.decide("write", { path: second })).toBeUndefined();
-    expect(gate.decide("write", { path: first })?.reason).toContain(
-      "'second-phase'",
-    );
-
-    // Symmetric restore: the saved entry governs again, then none at all.
-    gate.exitPhase();
-    expect(gate.decide("write", { path: first })).toBeUndefined();
-    expect(gate.decide("write", { path: second })?.reason).toContain(
-      "'first-phase'",
-    );
-    gate.exitPhase();
-    const spanLevel = gate.decide("write", {
-      path: `${fx.slotRoot}/x/other.md`,
-    });
-    expect(spanLevel?.reason).toContain("'parent-cap'");
-  });
-
-  it("reset() drains to depth-0 regardless of outstanding entries, idempotently", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    gate.enterCapability(PARENT);
-    gate.enterPhase("stale", [`${fx.slotRoot}/p/a.md`]);
-
-    gate.reset();
-    gate.reset(); // idempotent
-    // Depth-0 again: the no-span refusal governs (empty-set code path).
-    const refusal = gate.decide("write", { path: `${fx.slotRoot}/p/a.md` });
-    expect(refusal?.reason).toContain("no capability span is active");
-  });
-});
+/** The standing research-shaped sources (the default source shape unless a
+ * row states otherwise). */
+const RESEARCH: CapabilitySources = {
+  name: "research",
+  writes: ["research/*.md"],
+  allowProjectWrites: false,
+};
 
 // ---------------------------------------------------------------------------
 // Suite-side replicas of the module's denial templates — SOLE OWNER of each
 // byte shape is guards/write-gate.ts (renderPhaseDenial /
 // renderCapabilityDenial / renderNoSpanDenial); these constructions exist
-// only to assert lockstep byte-equality on decide()'s `reason`.
+// only to assert lockstep byte-equality on decideWrite()'s `reason`.
 // ---------------------------------------------------------------------------
 
 const replicaPhaseDenial = (
@@ -241,76 +80,75 @@ function asRefusal(verdict: { block: true; reason: string } | undefined): {
 // ---------------------------------------------------------------------------
 
 describe("fixture shapes — the singular effective allowlist", () => {
-  const RESEARCH: CapabilitySources = {
-    name: "research",
-    writes: ["research/*.md"],
-    allowProjectWrites: false,
-  };
-
-  it("in-list: a write inside the non-empty confirmed set is allowed", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    const declared = `${fx.slotRoot}/research/alpha.md`;
-    gate.enterCapability(RESEARCH);
-    gate.enterPhase("gather", [declared]);
-    expect(gate.decide("write", { path: declared })).toBeUndefined();
-    expect(gate.decide("edit", { path: declared })).toBeUndefined(); // same coverage
+  it("in-list: a declared, contract-covered target is allowed — write and edit alike", () => {
+    const DECLARED = `${SLOT_ROOT}/research/alpha.md`;
+    const snap: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: { id: "gather", declared: [DECLARED] },
+      paths: PATHS,
+    };
+    expect(decideWrite(snap, "write", { path: DECLARED })).toBeUndefined();
+    expect(decideWrite(snap, "edit", { path: DECLARED })).toBeUndefined();
   });
 
-  it("out-of-list: a write outside the confirmed set refuses with the PHASE named, survivors listed", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    const kept = `${fx.slotRoot}/research/alpha.md`;
-    const stray = `${fx.slotRoot}/research/beta.md`;
-    gate.enterCapability(RESEARCH);
-    gate.enterPhase("gather", [kept]);
-    expect(asRefusal(gate.decide("write", { path: stray })).reason).toContain(
-      "'gather'",
-    );
-    expect(asRefusal(gate.decide("write", { path: stray })).reason).toContain(
-      kept,
-    );
+  it("out-of-list: a target outside the effective set refuses with the PHASE named, survivor listed", () => {
+    const KEPT = `${SLOT_ROOT}/research/alpha.md`;
+    const STRAY = `${SLOT_ROOT}/research/beta.md`;
+    const snap: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: { id: "gather", declared: [KEPT] },
+      paths: PATHS,
+    };
+    const refusal = asRefusal(decideWrite(snap, "write", { path: STRAY }));
+    expect(refusal.reason).toContain("'gather'");
+    expect(refusal.reason).toContain(KEPT);
   });
 
-  it("clamped-away: an uncovered declaration is dropped at entry — absent from the listing, refused under phase governance", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    const kept = `${fx.slotRoot}/research/kept.md`;
-    const dropped = `${fx.slotRoot}/outside/dropped.txt`; // pattern-miss + no apw scope
-    gate.enterCapability(RESEARCH);
-    gate.enterPhase("clamp", [dropped, kept]);
-
-    // The dropped path is REFUSED — the phase names itself…
-    const refusal = asRefusal(gate.decide("write", { path: dropped }));
+  it("clamped-away-as-if-undeclared: a contract-uncovered declared entry is refused at DECISION TIME, absent from the listing", () => {
+    const KEPT = `${SLOT_ROOT}/research/kept.md`;
+    const UNCOVERED = `${SLOT_ROOT}/outside/dropped.txt`;
+    const snap: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: { id: "clamp", declared: [UNCOVERED, KEPT] },
+      paths: PATHS,
+    };
+    const refusal = asRefusal(decideWrite(snap, "write", { path: UNCOVERED }));
     expect(refusal.reason).toContain("'clamp'");
-    // …with only the SURVIVOR listed (the clamp is invisible) …
-    expect(refusal.reason).toContain(kept);
-    expect(refusal.reason).not.toContain(dropped);
-    // …while the survivor stays granted.
-    expect(gate.decide("write", { path: kept })).toBeUndefined();
+    expect(refusal.reason).toContain(KEPT);
+    expect(refusal.reason).not.toContain(UNCOVERED);
+    expect(decideWrite(snap, "write", { path: KEPT })).toBeUndefined();
   });
 
-  it("inherited: a no-declaration phase takes the capability's sources unchanged", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    gate.enterCapability(RESEARCH); // no enterPhase at all
-    // Pattern hit allowed …
-    expect(
-      gate.decide("write", { path: `${fx.slotRoot}/research/ok.md` }),
-    ).toBeUndefined();
-    // …pattern miss refuses with the CAPABILITY named.
-    const refusal = asRefusal(
-      gate.decide("write", { path: `${fx.slotRoot}/docs/other.md` }),
-    );
-    expect(refusal.reason).toContain("'research'");
-    expect(refusal.reason).toContain("research/*.md");
+  it("inherited: an EMPTY declaration confers no phase governance — the capability's sources apply unchanged", () => {
+    const HIT = `${SLOT_ROOT}/research/ok.md`;
+    const MISS = `${SLOT_ROOT}/docs/other.md`;
+    const emptyDecl: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: { id: "narrate", declared: [] },
+      paths: PATHS,
+    };
+    const noPhase: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: null,
+      paths: PATHS,
+    };
+    expect(decideWrite(emptyDecl, "write", { path: HIT })).toBeUndefined();
+    expect(decideWrite(noPhase, "write", { path: HIT })).toBeUndefined();
+    const refEmpty = asRefusal(decideWrite(emptyDecl, "write", { path: MISS }));
+    const refNone = asRefusal(decideWrite(noPhase, "write", { path: MISS }));
+    expect(refEmpty.reason).toBe(refNone.reason);
+    expect(refEmpty.reason).toContain("'research'");
+    expect(refEmpty.reason).toContain("research/*.md");
   });
 
-  it("no-span: depth-0 yields the empty-set refusal naming the no-span state", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
+  it("no-span: null sources with no phase yield the empty-set refusal naming the no-span state", () => {
+    const snap: ExecutionSnapshot = {
+      sources: null,
+      phase: null,
+      paths: PATHS,
+    };
     const refusal = asRefusal(
-      gate.decide("write", { path: `${fx.cwd}/anything.md` }),
+      decideWrite(snap, "write", { path: `${WORKSPACE_CWD}/anything.md` }),
     );
     expect(refusal.block).toBe(true);
     expect(refusal.reason).toContain("no capability span is active");
@@ -324,187 +162,195 @@ describe("fixture shapes — the singular effective allowlist", () => {
 // ---------------------------------------------------------------------------
 
 describe("/tmp/ parity at every depth", () => {
-  const RESEARCH: CapabilitySources = {
-    name: "research",
-    writes: ["research/*.md"],
-    allowProjectWrites: false,
-  };
-
-  it("depth-0: allowed before any span exists", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
+  it("depth-0 (null sources): allowed before any span exists", () => {
+    const snap: ExecutionSnapshot = {
+      sources: null,
+      phase: null,
+      paths: PATHS,
+    };
     expect(
-      gate.decide("write", { path: "/tmp/wg-scratch/depth0.txt" }),
+      decideWrite(snap, "write", { path: "/tmp/wg-scratch/depth0.txt" }),
     ).toBeUndefined();
   });
 
-  it("span-only: allowed while a capability layer is innermost", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    gate.enterCapability(RESEARCH);
+  it("span-only: allowed while a capability span governs", () => {
+    const snap: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: null,
+      paths: PATHS,
+    };
     expect(
-      gate.decide("write", { path: "/tmp/wg-scratch/spanonly.txt" }),
+      decideWrite(snap, "write", { path: "/tmp/wg-scratch/spanonly.txt" }),
     ).toBeUndefined();
   });
 
-  it("span + non-empty phase: allowed despite an exhaustive confirmed set", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    gate.enterCapability(RESEARCH);
-    gate.enterPhase("gather", [`${fx.slotRoot}/research/alpha.md`]);
+  it("span + non-empty effective phase: allowed despite the exhaustive phase set", () => {
+    const KEPT = `${SLOT_ROOT}/research/alpha.md`;
+    const snap: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: { id: "gather", declared: [KEPT] },
+      paths: PATHS,
+    };
     expect(
-      gate.decide("write", { path: "/tmp/wg-scratch/phased.txt" }),
+      decideWrite(snap, "write", { path: "/tmp/wg-scratch/phased.txt" }),
     ).toBeUndefined();
   });
 
-  it("span + fully-clamped (empty) declaration: allowed even though nothing was declared", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    const EMPTY_CONTRACT: CapabilitySources = {
+  it("span + wiped phase (empty-contract sources): allowed even though nothing is covered", () => {
+    const WIPED: CapabilitySources = {
       name: "empty-cap",
       writes: [],
       allowProjectWrites: false,
     };
-    gate.enterCapability(EMPTY_CONTRACT);
-    gate.enterPhase("wiped", []);
+    const snap: ExecutionSnapshot = {
+      sources: WIPED,
+      phase: { id: "wiped", declared: [] },
+      paths: PATHS,
+    };
     expect(
-      gate.decide("write", { path: "/tmp/wg-scratch/clamped.txt" }),
+      decideWrite(snap, "write", { path: "/tmp/wg-scratch/clamped.txt" }),
     ).toBeUndefined();
   });
 
-  it("prefix semantics are EXACTLY legacy: '/tmp' itself and '/tmpfoo/*' are NOT covered", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    // Both fall through to the depth-0 empty-set refusal.
-    expect(asRefusal(gate.decide("write", { path: "/tmp" })).reason).toBe(
+  it("prefix semantics are EXACTLY the invariant: '/tmp' itself and '/tmpfoo/*' are NOT covered", () => {
+    const snap: ExecutionSnapshot = {
+      sources: null,
+      phase: null,
+      paths: PATHS,
+    };
+    // Both fall through to the empty-set refusal (no-span bytes, lockstep).
+    expect(asRefusal(decideWrite(snap, "write", { path: "/tmp" })).reason).toBe(
       replicaNoSpanDenial(),
     );
     expect(
-      asRefusal(gate.decide("write", { path: "/tmpfoo/scratch.txt" })).reason,
+      asRefusal(decideWrite(snap, "write", { path: "/tmpfoo/scratch.txt" }))
+        .reason,
     ).toBe(replicaNoSpanDenial());
   });
 });
 
 // ---------------------------------------------------------------------------
-// (c) The clamp-at-entry matrix — confirmation against the top layer's
-// sources; silent drop; validate-then-commit; partial vs total wipe.
+// (c) The PHASE-BRANCH DECISION-TIME MATRIX — five coverage outcomes driven
+// over snapshots carrying RAW `declared` sets (attach stores verbatim; the
+// judgment runs per call — there is no attach-time clamp anywhere).
 // ---------------------------------------------------------------------------
 
-describe("clamp-at-entry matrix", () => {
-  it("pattern hit survives confirmation", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    const kept = `${fx.slotRoot}/research/kept.md`;
-    gate.enterCapability({
-      name: "research",
-      writes: ["research/*.md"],
-      allowProjectWrites: false,
-    });
-    gate.enterPhase("p", [kept]);
-    expect(gate.decide("write", { path: kept })).toBeUndefined(); // survived ⇒ governs
+describe("phase-branch decision-time matrix", () => {
+  it("pattern-hit admission: a declared entry covered by a writes pattern is allowed", () => {
+    const KEPT = `${SLOT_ROOT}/research/kept.md`;
+    const snap: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: { id: "p", declared: [KEPT] },
+      paths: PATHS,
+    };
+    expect(decideWrite(snap, "write", { path: KEPT })).toBeUndefined();
   });
 
-  it("allowProjectWrites-scope hit survives without pattern coverage", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    const projectFile = `${fx.cwd}/notes.md`; // under cwd, no pattern covers it
-    gate.enterCapability({
+  it("allowProjectWrites-scope-hit admission: a declared entry under the cwd without pattern coverage is allowed", () => {
+    const APW: CapabilitySources = {
       name: "cap-apw",
       writes: ["artifacts/*.md"],
       allowProjectWrites: true,
-    });
-    gate.enterPhase("p", [projectFile]);
-    expect(gate.decide("write", { path: projectFile })).toBeUndefined();
+    };
+    const PROJECT_FILE = `${WORKSPACE_CWD}/notes.md`;
+    const snap: ExecutionSnapshot = {
+      sources: APW,
+      phase: { id: "p", declared: [PROJECT_FILE] },
+      paths: PATHS,
+    };
+    expect(decideWrite(snap, "write", { path: PROJECT_FILE })).toBeUndefined();
   });
 
-  it("neither pattern nor scope → the entry is dropped at entry", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    const foreign = `/elsewhere/file.md`;
-    gate.enterCapability({
+  it("FULLY-UNCOVERED: no declared entry contract-covered ⇒ NO phase governance ⇒ refused AS IF UNDECLARED (the CAPABILITY is named — a phase-named line would be WRONG)", () => {
+    const APW: CapabilitySources = {
       name: "cap-apw",
       writes: ["artifacts/*.md"],
       allowProjectWrites: true,
-    });
-    gate.enterPhase("p", [foreign]); // wiped: outside slot patterns AND outside cwd
-    // Refused AS IF UNDECLARED — the capability's sources govern (non-empty here):
-    const refusal = asRefusal(gate.decide("write", { path: foreign }));
+    };
+    const FOREIGN = `/elsewhere/file.md`;
+    const snap: ExecutionSnapshot = {
+      sources: APW,
+      phase: { id: "p", declared: [FOREIGN] },
+      paths: PATHS,
+    };
+    const refusal = asRefusal(decideWrite(snap, "write", { path: FOREIGN }));
     expect(refusal.reason).toContain("'cap-apw'");
-    expect(refusal.reason).not.toContain(foreign);
+    expect(refusal.reason).not.toContain("during phase");
+    expect(refusal.reason).not.toContain(FOREIGN);
   });
 
-  it("partial clamp: some survive, some drop — ONLY survivors govern", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    const keptA = `${fx.slotRoot}/research/a.md`;
-    const keptB = `${fx.slotRoot}/research/b.md`;
-    const dropped = `${fx.slotRoot}/else/nope.txt`;
-    gate.enterCapability({
-      name: "research",
-      writes: ["research/*.md"],
-      allowProjectWrites: false,
-    });
-    gate.enterPhase("mixed", [keptA, dropped, keptB]);
-    expect(gate.decide("write", { path: keptA })).toBeUndefined();
-    expect(gate.decide("write", { path: keptB })).toBeUndefined();
+  it("PARTIAL coverage: mixed declared — survivors visible in declaration order, uncovered ones ABSENT (lockstep)", () => {
+    const KEPT_A = `${SLOT_ROOT}/research/a.md`;
+    const KEPT_B = `${SLOT_ROOT}/research/b.md`;
+    const DROPPED = `${SLOT_ROOT}/else/nope.txt`;
+    const snap: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: { id: "mixed", declared: [KEPT_A, DROPPED, KEPT_B] },
+      paths: PATHS,
+    };
+    expect(decideWrite(snap, "write", { path: KEPT_A })).toBeUndefined();
+    expect(decideWrite(snap, "write", { path: KEPT_B })).toBeUndefined();
     const refusal = asRefusal(
-      gate.decide("write", { path: `${fx.slotRoot}/research/c.md` }),
+      decideWrite(snap, "write", { path: `${SLOT_ROOT}/research/c.md` }),
     );
-    // Exhaustive survivor listing, declaration order, deduplicated — no third path:
-    expect(refusal.reason).toBe(replicaPhaseDenial("mixed", [keptA, keptB]));
+    // Exhaustive survivor listing, declaration order, deduplicated — no
+    // third path:
+    expect(refusal.reason).toBe(replicaPhaseDenial("mixed", [KEPT_A, KEPT_B]));
   });
 
-  it("empty-contract wipe: every entry dropped — the wiped phase behaves byte-identically to the undeclared shape", () => {
-    const fx = layout();
+  it("EMPTY-CONTRACT fall-through: the wiped phase behaves byte-identically to the undeclared shape — sentinel anchors provably unused", () => {
     const EMPTY: CapabilitySources = {
       name: "empty-cap",
       writes: [],
       allowProjectWrites: false,
     };
-    const target = `${fx.slotRoot}/whatever/x.md`;
-
-    // Wiped shape: a phase entered with declarations the empty contract wipes.
-    const wipedGate = new WriteGate(fx.providers);
-    wipedGate.enterCapability(EMPTY);
-    wipedGate.enterPhase("wiped", [target, `${fx.cwd}/proj.md`]);
-
-    // Undeclared shape: the identical span, no phase entry at all.
-    const plainGate = new WriteGate(fx.providers);
-    plainGate.enterCapability(EMPTY);
-
-    expect(asRefusal(wipedGate.decide("write", { path: target })).reason).toBe(
-      asRefusal(plainGate.decide("write", { path: target })).reason,
-    );
-    expect(asRefusal(wipedGate.decide("write", { path: target })).reason).toBe(
-      replicaCapabilityDenial("empty-cap", [], null),
-    );
+    const TARGET = "/outside/a.md";
+    // SENTINEL PLACEHOLDER anchors — unique marker substrings engineered to
+    // be found if ever interpolated into the denial:
+    const SENTINEL_PATHS: PathAnchors = {
+      projectSlotRoot: "MKR-slot-sentinel",
+      workspaceCwd: "MKR-cwd-sentinel",
+    };
+    const wiped: ExecutionSnapshot = {
+      sources: EMPTY,
+      phase: {
+        id: "wiped",
+        declared: [TARGET, `${SENTINEL_PATHS.workspaceCwd}/proj.md`],
+      },
+      paths: SENTINEL_PATHS,
+    };
+    const plain: ExecutionSnapshot = {
+      sources: EMPTY,
+      phase: null,
+      paths: SENTINEL_PATHS,
+    };
+    expect(
+      asRefusal(decideWrite(wiped, "write", { path: TARGET })).reason,
+    ).toBe(asRefusal(decideWrite(plain, "write", { path: TARGET })).reason);
+    expect(
+      asRefusal(decideWrite(wiped, "write", { path: TARGET })).reason,
+    ).toBe(replicaCapabilityDenial("empty-cap", [], null));
+    // Swap in DIFFERENT placeholder anchors: identical bytes — `paths` is
+    // provably never consulted for the wiped phase.
+    const OTHER_PATHS: PathAnchors = {
+      projectSlotRoot: "MKR-other-slot",
+      workspaceCwd: "MKR-other-cwd",
+    };
+    const moved: ExecutionSnapshot = { ...wiped, paths: OTHER_PATHS };
+    expect(
+      asRefusal(decideWrite(moved, "write", { path: TARGET })).reason,
+    ).toBe(replicaCapabilityDenial("empty-cap", [], null));
   });
 
-  it("enterPhase(id, []) is a valid no-op confirmation — verdict-identical to no entry", () => {
-    const fx = layout();
-    const RESEARCH: CapabilitySources = {
-      name: "research",
-      writes: ["research/*.md"],
-      allowProjectWrites: false,
+  it("null sources + active phase: the effective set is empty and the NO-SPAN line governs — never a phase-named line", () => {
+    const TARGET = "/outside/b.md";
+    const snap: ExecutionSnapshot = {
+      sources: null,
+      phase: { id: "stray-phase", declared: [TARGET] },
+      paths: PATHS,
     };
-    const target = `${fx.slotRoot}/research/a.md`;
-
-    const withEmptyEntry = new WriteGate(fx.providers);
-    withEmptyEntry.enterCapability(RESEARCH);
-    withEmptyEntry.enterPhase("empty-decl", []);
-
-    const noEntry = new WriteGate(fx.providers);
-    noEntry.enterCapability(RESEARCH);
-
-    // Identical allowance (pattern hit) AND identical denial bytes elsewhere:
-    expect(withEmptyEntry.decide("write", { path: target })).toBeUndefined();
-    expect(noEntry.decide("write", { path: target })).toBeUndefined();
-    const straggler = `${fx.slotRoot}/stray.md`;
-    expect(
-      asRefusal(withEmptyEntry.decide("write", { path: straggler })).reason,
-    ).toBe(asRefusal(noEntry.decide("write", { path: straggler })).reason);
-    // And the paired exit stays symmetric (no bookkeeping refusal).
-    expect(() => withEmptyEntry.exitPhase()).not.toThrow();
+    const refusal = asRefusal(decideWrite(snap, "write", { path: TARGET }));
+    expect(refusal.reason).toBe(replicaNoSpanDenial());
   });
 });
 
@@ -517,548 +363,53 @@ describe("project-file admission under allowProjectWrites", () => {
   const TARGET_RELPATH = "src/helper.ts"; // under the workspace cwd, no pattern coverage
 
   it("a contract WITHOUT allowProjectWrites refuses the project file, capability named", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    gate.enterCapability({
-      name: "research",
-      writes: ["research/*.md"],
-      allowProjectWrites: false,
-    });
-    const target = join(fx.cwd, TARGET_RELPATH);
-    const refusal = asRefusal(gate.decide("write", { path: target }));
+    const target = `${WORKSPACE_CWD}/${TARGET_RELPATH}`;
+    const snap: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: null,
+      paths: PATHS,
+    };
+    const refusal = asRefusal(decideWrite(snap, "write", { path: target }));
     expect(refusal.reason).toContain("'research'");
     expect(refusal.reason).not.toContain("project files under"); // no scope note
   });
 
-  it("the INVERSE row: the same target is allowed with allowProjectWrites true", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    gate.enterCapability({
+  it("the INVERSE row: the same target is allowed WITH allowProjectWrites true", () => {
+    const target = `${WORKSPACE_CWD}/${TARGET_RELPATH}`;
+    const APW_RESEARCH: CapabilitySources = {
       name: "research",
       writes: ["research/*.md"],
       allowProjectWrites: true,
-    });
-    const target = join(fx.cwd, TARGET_RELPATH);
-    expect(gate.decide("write", { path: target })).toBeUndefined();
+    };
+    const snap: ExecutionSnapshot = {
+      sources: APW_RESEARCH,
+      phase: null,
+      paths: PATHS,
+    };
+    expect(decideWrite(snap, "write", { path: target })).toBeUndefined();
   });
 
   it("the scope is STRICTLY under the workspace cwd (cwd itself is not admitted)", () => {
-    const fx = layout();
-    const gate = new WriteGate(fx.providers);
-    gate.enterCapability({
+    const APW_ONLY: CapabilitySources = {
       name: "cap-apw",
       writes: [],
       allowProjectWrites: true,
-    });
-    expect(gate.decide("write", { path: fx.cwd })).toBeDefined(); // '/'-sibling prefix check
+    };
+    const snap: ExecutionSnapshot = {
+      sources: APW_ONLY,
+      phase: null,
+      paths: PATHS,
+    };
+    expect(decideWrite(snap, "write", { path: WORKSPACE_CWD })).toBeDefined();
   });
 });
 
 // ---------------------------------------------------------------------------
-// (f) NEW-LINE GOLDENS — full-byte pins for EVERY denial shape. Each replica
-// constant asserts LOCKSTEP byte-equality between decide()'s `reason` and
-// the suite-side construction above; the module's render* functions are the
-// SOLE OWNER of each template.
-// ---------------------------------------------------------------------------
-
-describe("new-line goldens — lockstep byte-equality on every refusal shape", () => {
-  const RESEARCH: CapabilitySources = {
-    name: "research",
-    writes: ["research/*.md"],
-    allowProjectWrites: false,
-  };
-
-  it("phase-named denial with non-empty survivors", () => {
-    const fx = layout();
-    const kept = `${fx.slotRoot}/research/a.md`;
-    // SOLE OWNER: renderPhaseDenial in guards/write-gate.ts.
-    const GOLDEN_PHASE_NAMED = replicaPhaseDenial("guard-probe", [kept]);
-    const gate = new WriteGate(fx.providers);
-    gate.enterCapability(RESEARCH);
-    gate.enterPhase("guard-probe", [kept]);
-    expect(
-      asRefusal(gate.decide("write", { path: `${fx.slotRoot}/research/b.md` }))
-        .reason,
-    ).toBe(GOLDEN_PHASE_NAMED);
-  });
-
-  it("capability-named denial with patterns only (no project-scope note)", () => {
-    const fx = layout();
-    // SOLE OWNER: renderCapabilityDenial (apw-off form) in guards/write-gate.ts.
-    const GOLDEN_CAP_PATTERNS = replicaCapabilityDenial(
-      "research",
-      ["research/*.md"],
-      null,
-    );
-    const gate = new WriteGate(fx.providers);
-    gate.enterCapability(RESEARCH);
-    expect(
-      asRefusal(gate.decide("write", { path: `${fx.slotRoot}/docs/other.md` }))
-        .reason,
-    ).toBe(GOLDEN_CAP_PATTERNS);
-  });
-
-  it("capability-named denial with patterns AND the project-scope note carrying the actual cwd", () => {
-    const fx = layout();
-    // SOLE OWNER: renderCapabilityDenial (apw-on form) in guards/write-gate.ts.
-    const GOLDEN_CAP_PROJECT_NOTE = replicaCapabilityDenial(
-      "research",
-      ["research/*.md"],
-      fx.cwd,
-    );
-    const gate = new WriteGate(fx.providers);
-    gate.enterCapability({ ...RESEARCH, allowProjectWrites: true });
-    // A pattern-miss OUTSIDE the cwd scope reaches the denial with the note:
-    expect(
-      asRefusal(gate.decide("write", { path: `/outside/scope.md` })).reason,
-    ).toBe(GOLDEN_CAP_PROJECT_NOTE);
-    expect(GOLDEN_CAP_PROJECT_NOTE).toContain(`project files under ${fx.cwd}`);
-  });
-
-  it("capability-named 'none' — the empty-contract span refusal", () => {
-    const fx = layout();
-    // SOLE OWNER: renderCapabilityDenial (empty-sources form) in write-gate.ts.
-    const GOLDEN_CAP_NONE = replicaCapabilityDenial("compose-demo", [], null);
-    const gate = new WriteGate(fx.providers);
-    gate.enterCapability({
-      name: "compose-demo",
-      writes: [],
-      allowProjectWrites: false,
-    });
-    expect(
-      asRefusal(gate.decide("write", { path: `${fx.slotRoot}/anything/x.md` }))
-        .reason,
-    ).toBe(GOLDEN_CAP_NONE);
-    expect(GOLDEN_CAP_NONE).toContain("Allowed targets: none.");
-  });
-
-  it("no-span 'none' — the depth-0 refusal (carries the escaped U+2014 em dash)", () => {
-    const fx = layout();
-    // SOLE OWNER: renderNoSpanDenial in guards/write-gate.ts.
-    const GOLDEN_NO_SPAN = replicaNoSpanDenial();
-    const gate = new WriteGate(fx.providers);
-    expect(
-      asRefusal(gate.decide("write", { path: `${fx.slotRoot}/anything/x.md` }))
-        .reason,
-    ).toBe(GOLDEN_NO_SPAN);
-    expect(GOLDEN_NO_SPAN).toContain("\u2014"); // the structural clause is present
-  });
-
-  it("every denial carries the /tmp/ parity clause (all four shapes)", () => {
-    const fx = layout();
-    const withScope = new WriteGate(fx.providers);
-    withScope.enterCapability({
-      name: "research",
-      writes: ["research/*.md"],
-      allowProjectWrites: true,
-    });
-    withScope.enterPhase("guard-probe", [`${fx.slotRoot}/research/a.md`]);
-    const shapes: Array<{ block: true; reason: string }> = [
-      // Phase-named (non-empty survivors):
-      asRefusal(
-        withScope.decide("write", { path: `${fx.slotRoot}/research/b.md` }),
-      ),
-    ];
-    withScope.exitPhase();
-    // Capability-named WITH the project-scope note (target outside the scope):
-    shapes.push(
-      asRefusal(withScope.decide("write", { path: "/outside/x.md" })),
-    );
-    withScope.exitCapability();
-    // No-span (depth-0):
-    shapes.push(
-      asRefusal(withScope.decide("write", { path: "/outside/y.md" })),
-    );
-    // Capability-named WITHOUT the note (empty-contract span):
-    const emptyGate = new WriteGate(fx.providers);
-    emptyGate.enterCapability({
-      name: "empty-cap",
-      writes: [],
-      allowProjectWrites: false,
-    });
-    shapes.push(
-      asRefusal(emptyGate.decide("write", { path: `/outside/z.md` })),
-    );
-
-    for (const shape of shapes) {
-      expect(shape.block).toBe(true);
-      expect(
-        shape.reason.endsWith("Scratch files under /tmp/ stay open."),
-      ).toBe(true);
-    }
-  });
-
-  it("coverage is EXACTLY write/edit — other tools and malformed inputs never touch providers or state", () => {
-    const fx = layout();
-    let consulted = 0;
-    const countingProviders: WriteGateProviders = {
-      projectSlotRoot: () => {
-        consulted += 1;
-        return fx.slotRoot;
-      },
-      workspaceCwd: () => {
-        consulted += 1;
-        return fx.cwd;
-      },
-    };
-    const gate = new WriteGate(countingProviders);
-    // Non-writer tools — including bash (backlog territory) — yield no target:
-    expect(
-      gate.decide("bash", { command: "touch /outside/x.md" }),
-    ).toBeUndefined();
-    expect(gate.decide("read", { path: "/outside/x.md" })).toBeUndefined();
-    expect(gate.decide("vscode_apply_workspace_edit", {})).toBeUndefined();
-    // Writer tools with missing/non-string paths yield no target:
-    expect(gate.decide("write", {})).toBeUndefined();
-    expect(gate.decide("write", { path: 42 })).toBeUndefined();
-    expect(gate.decide("write", null)).toBeUndefined();
-    expect(gate.decide("write", undefined)).toBeUndefined();
-    expect(consulted).toBe(0); // zero provider consultations
-    // And the same calls under an active span (state unchanged either way):
-    gate.enterCapability(RESEARCH);
-    expect(gate.decide("bash", { command: "echo hi" })).toBeUndefined();
-    expect(consulted).toBe(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// (g) Faulty channels — producer faults propagate VERBATIM at first consult;
-// construction stays pure; empty sources make the fault structurally moot.
-// ---------------------------------------------------------------------------
-
-describe("faulty channels — loud typed failure at consult, never swallowed", () => {
-  it("a throwing root provider propagates verbatim from a span decision (first pattern consult)", () => {
-    const fx = layout();
-    const fault = new SentinelFault("state-root-channel-fault");
-    const providers: WriteGateProviders = {
-      projectSlotRoot: () => {
-        throw fault;
-      },
-      workspaceCwd: () => fx.cwd,
-    };
-    const gate = new WriteGate(providers);
-    gate.enterCapability({
-      name: "research",
-      writes: ["research/*.md"],
-      allowProjectWrites: false,
-    });
-    try {
-      gate.decide("write", { path: `/outside/a.md` }); // pattern disjunct consults first
-      throw new Error("expected the provider fault to escape");
-    } catch (error) {
-      expect(error).toBe(fault); // SENTINEL IDENTITY — not caught/wrapped/fallen back
-      expect((error as Error).message).toBe("state-root-channel-fault");
-    }
-  });
-
-  it("a throwing root provider propagates verbatim from pattern-anchored confirmation (enterPhase)", () => {
-    const fx = layout();
-    const fault = new SentinelFault("confirm-fault");
-    const providers: WriteGateProviders = {
-      projectSlotRoot: () => {
-        throw fault;
-      },
-      workspaceCwd: () => fx.cwd,
-    };
-    const gate = new WriteGate(providers);
-    gate.enterCapability({
-      name: "research",
-      writes: ["research/*.md"],
-      allowProjectWrites: false,
-    });
-    try {
-      gate.enterPhase("p", [`${fx.slotRoot}/research/a.md`]);
-      throw new Error("expected the provider fault to escape");
-    } catch (error) {
-      expect(error).toBe(fault);
-    }
-    // Validate-then-commit: the layer was left UNTOUCHED — the mirrored
-    // unwind still succeeds (an entered phase would have made exitCapability throw).
-    gate.exitCapability();
-    expect(() => gate.exitCapability()).toThrowError(
-      /no active capability layer/,
-    );
-  });
-
-  it("a throwing cwd provider propagates verbatim from the scope disjunct", () => {
-    const fx = layout();
-    const fault = new SentinelFault("cwd-channel-fault");
-    const providers: WriteGateProviders = {
-      projectSlotRoot: () => fx.slotRoot,
-      workspaceCwd: () => {
-        throw fault;
-      },
-    };
-    const gate = new WriteGate(providers);
-    // Empty writes skip the root consult; the apw disjunct must consult cwd:
-    gate.enterCapability({
-      name: "cap-apw",
-      writes: [],
-      allowProjectWrites: true,
-    });
-    try {
-      gate.decide("write", { path: `/outside/a.md` });
-      throw new Error("expected the provider fault to escape");
-    } catch (error) {
-      expect(error).toBe(fault);
-    }
-  });
-
-  it("construction with throwing providers succeeds — zero consults at construction", () => {
-    const alwaysFaults = (): string => {
-      throw new SentinelFault("never-consulted");
-    };
-    expect(
-      () =>
-        new WriteGate({
-          projectSlotRoot: alwaysFaults,
-          workspaceCwd: alwaysFaults,
-        }),
-    ).not.toThrow();
-  });
-
-  it("empty sources render denials NORMALLY despite a throwing root provider (zero-consult guarantee)", () => {
-    const fx = layout();
-    const fault = new SentinelFault("structurally-unreachable");
-    const providers: WriteGateProviders = {
-      projectSlotRoot: () => {
-        throw fault;
-      },
-      workspaceCwd: () => fx.cwd,
-    };
-    const gate = new WriteGate(providers);
-    gate.enterCapability({
-      name: "empty-cap",
-      writes: [],
-      allowProjectWrites: false,
-    });
-    // Both branches skip — the cannot-determine-project-root condition is
-    // STRUCTURALLY UNREACHABLE: a loud typed failure at consult instead of
-    // a per-write refusal.
-    const refusal = asRefusal(gate.decide("write", { path: `/outside/a.md` }));
-    expect(refusal.reason).toBe(replicaCapabilityDenial("empty-cap", [], null));
-  });
-});
-
-// ---------------------------------------------------------------------------
-// (h) LEG-2 HERMETIC CONCURRENCY TIER — the REAL gate module driven with
-// TWO independent per-session gate objects under ADVERSARIAL INTERLEAVED
-// request ordering (deterministic script, alternating A/B operations across
-// all five fixture shapes, staggered exits). Zero cross-talk: every verdict
-// equals its SOLO-RUN expectation under the interleave; neither object's
-// state ever leaks into the other's verdicts; both drain to depth-0.
-// Fast CI leg — script-driven, no real async parallelism.
-// ---------------------------------------------------------------------------
-
-describe("leg-2 hermetic concurrency — two gates, adversarial interleave", () => {
-  it("zero cross-talk across all five fixture shapes; both objects drain to depth-0", () => {
-    const fa = layout();
-    const fb = layout();
-    const gateA = new WriteGate(fa.providers);
-    const gateB = new WriteGate(fb.providers);
-
-    // Session A — pattern-governed span (the "research" shape).
-    const ALPHA: CapabilitySources = {
-      name: "alpha",
-      writes: ["artifacts/*.md"],
-      allowProjectWrites: false,
-    };
-    const aInList = `${fa.slotRoot}/artifacts/one.md`;
-    const aOutOfList = `${fa.slotRoot}/artifacts/two.md`;
-    const aInheritedMiss = `${fa.slotRoot}/docs/inherited.md`;
-    const aDropped = `/clamped-a/file.md`; // outside slot AND outside cwdA
-    const aKept = `${fa.slotRoot}/artifacts/kept.md`;
-
-    // Session B — scope-governed span (the "allowProjectWrites" shape).
-    const BETA: CapabilitySources = {
-      name: "beta",
-      writes: [],
-      allowProjectWrites: true,
-    };
-    const bProjectOk = `${fb.cwd}/docs/note.md`; // apw-scope survivor
-    const bForeign = `/foreign-b/file.md`; // wiped: outside slot, outside cwdB
-    const bPost = `${fb.cwd}/post.md`;
-
-    const expectAllowed = (
-      verdict: { block: true; reason: string } | undefined,
-      label: string,
-    ) => {
-      expect(verdict, `expected allowed at ${label}`).toBeUndefined();
-    };
-    const expectRefusalAt = (
-      verdict: { block: true; reason: string } | undefined,
-      expectedReason: string,
-      label: string,
-    ) => {
-      expect(asRefusal(verdict).reason, `wrong bytes at ${label}`).toBe(
-        expectedReason,
-      );
-    };
-
-    // Op 01–03: staggered entries — A opens its span+phase first…
-    gateA.enterCapability(ALPHA);
-    // …B opens its span while A sits inside a phase…
-    gateB.enterCapability(BETA);
-    gateA.enterPhase("gather-a", [aInList]);
-
-    // Op 04–07: decisions interleave at DIFFERENT depths/shapes.
-    expectAllowed(
-      gateB.decide("write", { path: "/tmp/wg-leg2/b-span.txt" }),
-      "op04 b /tmp span-only",
-    );
-    expectAllowed(
-      gateB.decide("write", { path: bProjectOk }),
-      "op05 b inherited apw scope",
-    );
-    expectRefusalAt(
-      gateA.decide("write", { path: aOutOfList }),
-      replicaPhaseDenial("gather-a", [aInList]),
-      "op06 a out-of-list (phase-named)",
-    );
-    expectAllowed(gateA.decide("write", { path: aInList }), "op07 a in-list");
-
-    // Op 08–11: B takes a clamped phase while A still governs its own.
-    gateB.enterPhase("scope-b", [bProjectOk, bForeign]); // bForeign wipes
-    expectAllowed(
-      gateB.decide("write", { path: bProjectOk }),
-      "op08 b in-list (survivor)",
-    );
-    expectRefusalAt(
-      gateB.decide("write", { path: bForeign }),
-      replicaPhaseDenial("scope-b", [bProjectOk]),
-      "op09 b clamped-away (dropped absent from listing)",
-    );
-    expectAllowed(
-      gateA.decide("write", { path: "/tmp/wg-leg2/a-phased.txt" }),
-      "op10 a /tmp non-empty phase",
-    );
-    expectRefusalAt(
-      gateB.decide("write", { path: `${fb.slotRoot}/x/y.md` }),
-      replicaPhaseDenial("scope-b", [bProjectOk]),
-      "op11 b out-of-list (pattern-miss inside slot)",
-    );
-
-    // Op 12–15: symmetric exits, then span-level governance resumes.
-    gateA.exitPhase();
-    gateB.exitPhase();
-    expectRefusalAt(
-      gateA.decide("write", { path: aInheritedMiss }),
-      replicaCapabilityDenial("alpha", ["artifacts/*.md"], null),
-      "op12 a inherited (capability-named)",
-    );
-    gateB.enterPhase("empty-b", []); // B's empty-declaration phase entry
-    expectAllowed(
-      gateA.decide("write", { path: "/tmp/wg-leg2/a-spanonly.txt" }),
-      "op14 a /tmp span-only",
-    );
-    expectRefusalAt(
-      gateB.decide("write", { path: bForeign }),
-      replicaCapabilityDenial("beta", [], fb.cwd),
-      "op15 b empty-set fall-through (capability-named + scope note)",
-    );
-
-    // Op 16–19: B DRAINS while A enters its clamped-away phase.
-    gateA.enterPhase("clamp-a", [aDropped, aKept]);
-    gateB.exitPhase();
-    gateB.exitCapability();
-    expectRefusalAt(
-      gateA.decide("write", { path: aDropped }),
-      replicaPhaseDenial("clamp-a", [aKept]),
-      "op18 a clamped-away (survivor listed, dropped absent)",
-    );
-    expectRefusalAt(
-      gateB.decide("write", { path: bPost }),
-      replicaNoSpanDenial(),
-      "op19 b no-span (drained)",
-    );
-
-    // Op 20–22: A unwinds and drains.
-    expectAllowed(
-      gateA.decide("write", { path: aKept }),
-      "op20 a survivor still granted",
-    );
-    gateA.exitPhase();
-    gateA.exitCapability();
-    expectRefusalAt(
-      gateA.decide("write", { path: aInheritedMiss }),
-      replicaNoSpanDenial(),
-      "op21 a no-span (drained)",
-    );
-
-    // Drained proofs: both objects sit at depth-0 — a further pop underflows.
-    expect(() => gateA.exitCapability()).toThrowError(
-      /no active capability layer/,
-    );
-    expect(() => gateB.exitCapability()).toThrowError(
-      /no active capability layer/,
-    );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// (i) Mechanical rows — self-source guards (house idiom:
-// readFileSync(import.meta.url)), pinning import surface + escape discipline.
-// ---------------------------------------------------------------------------
-
-describe("mechanical source guards", () => {
-  const MODULE_URL = new URL("./write-gate.ts", import.meta.url);
-  const SUITE_URL = new URL("./write-gate.test.ts", import.meta.url);
-  const moduleSource = readFileSync(MODULE_URL, "utf8");
-  const suiteSource = readFileSync(SUITE_URL, "utf8");
-
-  // Assembled at runtime so this guard does not self-match its own text.
-  const SDK_SPECIFIER = ["@earendil-works", "pi-coding-agent"].join("/");
-
-  it("zero occurrences of the SDK specifier in the module AND the suite", () => {
-    expect(moduleSource.includes(SDK_SPECIFIER)).toBe(false);
-    expect(suiteSource.includes(SDK_SPECIFIER)).toBe(false);
-  });
-
-  it("the module's value-import clause set is within {node:path, ../../sandbox/fsview.ts} — zero node:fs", () => {
-    expect(moduleSource.includes("node:fs")).toBe(false);
-    const importLines = moduleSource
-      .split("\n")
-      .filter((line) => line.startsWith("import "));
-    const specifiers = importLines.flatMap((line) =>
-      [...line.matchAll(/from "([^"]+)"/g)].map((match) => match[1]),
-    );
-    expect(specifiers).toEqual(["node:path", "../../sandbox/fsview.ts"]);
-  });
-
-  it("pinned denial literals carry \\u2014 escapes — never a raw glyph in a string literal", () => {
-    // The escaped form must be present in the module's pinned literals…
-    expect(
-      moduleSource.includes(`Writing is refused \\u2014 no capability span`),
-    ).toBe(true);
-    expect(
-      moduleSource.includes(
-        `outstanding phase entry \\u2014 exitPhase() first`,
-      ),
-    ).toBe(true);
-    // …and NO raw U+2014 may occur inside any string LITERAL of the module
-    // (raw glyphs in prose comments are house precedent — not pinned bytes).
-    // Comments are stripped first so quote-paired "spans" cannot cross
-    // comment text (quoted words in prose would create phantom spans).
-    const codeOnly = moduleSource
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/\/\/[^\n]*/g, "");
-    const rawGlyph = String.fromCharCode(0x2014);
-    const literalSpans = [...codeOnly.matchAll(/["'`]([^"'`]*)["'`]/g)].map(
-      (m) => m[1],
-    );
-    expect(literalSpans.some((span) => span.includes(rawGlyph))).toBe(false);
-    // The suite's golden replicas mirror the escaped bytes (lockstep proof):
-    expect(
-      suiteSource.includes(`Writing is refused \\u2014 no capability span`),
-    ).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// (e) The pattern-direction membership predicate — edge rows drive
-// matchesAnchoredGlob directly over fixed string roots (no filesystem needed:
-// the predicate answers "would this candidate target fall inside this
-// declared pattern" for a path that does not yet exist).
+// (e) The pattern-direction membership predicate — the documented fsview
+// dialect in permission direction. All TEN carried rows drive
+// matchesAnchoredGlob directly over fixed string roots (pure strings; the
+// predicate answers "would this candidate target fall inside this declared
+// pattern" for a path that does not yet exist).
 // ---------------------------------------------------------------------------
 
 describe("matchesAnchoredGlob — the documented fsview dialect in permission direction", () => {
@@ -1210,5 +561,469 @@ describe("matchesAnchoredGlob — the documented fsview dialect in permission di
     expect(
       matchesAnchoredGlob("plain/readme.md", R, `${R}/plain/readme.MD`),
     ).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (f) GOLDENS — lockstep byte-equality on EVERY refusal shape. Each replica
+// constant asserts LOCKSTEP byte-equality between decideWrite()'s `reason`
+// and the suite-side construction above; the module's render* functions are
+// the SOLE OWNER of each template.
+// ---------------------------------------------------------------------------
+
+describe("goldens — lockstep byte-equality on every refusal shape", () => {
+  it("phase-named denial with non-empty survivors", () => {
+    const KEPT = `${SLOT_ROOT}/research/a.md`;
+    // SOLE OWNER: renderPhaseDenial in guards/write-gate.ts.
+    const GOLDEN_PHASE_NAMED = replicaPhaseDenial("guard-probe", [KEPT]);
+    const snap: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: { id: "guard-probe", declared: [KEPT] },
+      paths: PATHS,
+    };
+    expect(
+      asRefusal(
+        decideWrite(snap, "write", { path: `${SLOT_ROOT}/research/b.md` }),
+      ).reason,
+    ).toBe(GOLDEN_PHASE_NAMED);
+  });
+
+  it("capability-named denial with patterns only (no project-scope note)", () => {
+    // SOLE OWNER: renderCapabilityDenial (apw-off form) in guards/write-gate.ts.
+    const GOLDEN_CAP_PATTERNS = replicaCapabilityDenial(
+      "research",
+      ["research/*.md"],
+      null,
+    );
+    const snap: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: null,
+      paths: PATHS,
+    };
+    expect(
+      asRefusal(
+        decideWrite(snap, "write", { path: `${SLOT_ROOT}/docs/other.md` }),
+      ).reason,
+    ).toBe(GOLDEN_CAP_PATTERNS);
+  });
+
+  it("capability-named denial with patterns AND the project-scope note carrying the actual cwd", () => {
+    // SOLE OWNER: renderCapabilityDenial (apw-on form) in guards/write-gate.ts.
+    const GOLDEN_CAP_PROJECT_NOTE = replicaCapabilityDenial(
+      "research",
+      ["research/*.md"],
+      WORKSPACE_CWD,
+    );
+    const APW_RESEARCH: CapabilitySources = {
+      name: "research",
+      writes: ["research/*.md"],
+      allowProjectWrites: true,
+    };
+    const snap: ExecutionSnapshot = {
+      sources: APW_RESEARCH,
+      phase: null,
+      paths: PATHS,
+    };
+    // A pattern-miss OUTSIDE the cwd scope reaches the denial with the note:
+    expect(
+      asRefusal(decideWrite(snap, "write", { path: `/outside/scope.md` }))
+        .reason,
+    ).toBe(GOLDEN_CAP_PROJECT_NOTE);
+    expect(GOLDEN_CAP_PROJECT_NOTE).toContain(
+      `project files under ${WORKSPACE_CWD}`,
+    );
+  });
+
+  it("capability-named 'none' — the empty-contract span refusal", () => {
+    // SOLE OWNER: renderCapabilityDenial (empty-sources form) in write-gate.ts.
+    const GOLDEN_CAP_NONE = replicaCapabilityDenial("compose-demo", [], null);
+    const COMPOSE_DEMO: CapabilitySources = {
+      name: "compose-demo",
+      writes: [],
+      allowProjectWrites: false,
+    };
+    const snap: ExecutionSnapshot = {
+      sources: COMPOSE_DEMO,
+      phase: null,
+      paths: PATHS,
+    };
+    expect(
+      asRefusal(
+        decideWrite(snap, "write", { path: `${SLOT_ROOT}/anything/x.md` }),
+      ).reason,
+    ).toBe(GOLDEN_CAP_NONE);
+    expect(GOLDEN_CAP_NONE).toContain("Allowed targets: none.");
+  });
+
+  it("no-span 'none' — the depth-0 refusal (carries the escaped U+2014 em dash)", () => {
+    // SOLE OWNER: renderNoSpanDenial in guards/write-gate.ts.
+    const GOLDEN_NO_SPAN = replicaNoSpanDenial();
+    const snap: ExecutionSnapshot = {
+      sources: null,
+      phase: null,
+      paths: PATHS,
+    };
+    expect(
+      asRefusal(
+        decideWrite(snap, "write", { path: `${SLOT_ROOT}/anything/x.md` }),
+      ).reason,
+    ).toBe(GOLDEN_NO_SPAN);
+    expect(GOLDEN_NO_SPAN).toContain("\u2014"); // the structural clause is present
+  });
+
+  it("every denial carries the /tmp/ parity clause (all four line shapes)", () => {
+    const APW_RESEARCH: CapabilitySources = {
+      name: "research",
+      writes: ["research/*.md"],
+      allowProjectWrites: true,
+    };
+    const KEPT = `${SLOT_ROOT}/research/a.md`;
+    const shapes: Array<{ block: true; reason: string }> = [];
+    // Phase-named (non-empty survivors):
+    shapes.push(
+      asRefusal(
+        decideWrite(
+          {
+            sources: APW_RESEARCH,
+            phase: { id: "guard-probe", declared: [KEPT] },
+            paths: PATHS,
+          },
+          "write",
+          { path: `${SLOT_ROOT}/research/b.md` },
+        ),
+      ),
+    );
+    // Capability-named WITH the project-scope note (target outside the scope):
+    shapes.push(
+      asRefusal(
+        decideWrite(
+          { sources: APW_RESEARCH, phase: null, paths: PATHS },
+          "write",
+          { path: "/outside/x.md" },
+        ),
+      ),
+    );
+    // No-span (depth-0):
+    shapes.push(
+      asRefusal(
+        decideWrite({ sources: null, phase: null, paths: PATHS }, "write", {
+          path: "/outside/y.md",
+        }),
+      ),
+    );
+    // Capability-named WITHOUT the note (empty-contract span):
+    const EMPTY: CapabilitySources = {
+      name: "empty-cap",
+      writes: [],
+      allowProjectWrites: false,
+    };
+    shapes.push(
+      asRefusal(
+        decideWrite({ sources: EMPTY, phase: null, paths: PATHS }, "write", {
+          path: `/outside/z.md`,
+        }),
+      ),
+    );
+
+    for (const shape of shapes) {
+      expect(shape.block).toBe(true);
+      expect(
+        shape.reason.endsWith("Scratch files under /tmp/ stay open."),
+      ).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (g) Coverage is EXACTLY write/edit — non-writer tools and malformed inputs
+// bail BEFORE touching the snapshot's pair fields: immediate `undefined`,
+// zero side effects. Driven against a well-formed snapshot AND a
+// MARKER-POISONED snapshot whose fields carry unique substrings engineered to
+// be found if ever interpolated into a returned string.
+// ---------------------------------------------------------------------------
+
+describe("coverage is exactly write/edit — short-circuit before any snapshot consultation", () => {
+  // MARKER-POISONED snapshot: every field carries a unique marker substring.
+  const POISONED: ExecutionSnapshot = {
+    sources: {
+      name: "MKR-poisoned-name",
+      writes: ["MKR-poisoned-pattern"],
+      allowProjectWrites: true,
+    },
+    phase: {
+      id: "MKR-poisoned-phase",
+      declared: ["MKR-poisoned-declared"],
+    },
+    paths: {
+      projectSlotRoot: "MKR-poisoned-slot",
+      workspaceCwd: "MKR-poisoned-cwd",
+    },
+  };
+  const WELL_FORMED: ExecutionSnapshot = {
+    sources: RESEARCH,
+    phase: null,
+    paths: PATHS,
+  };
+
+  const NO_TARGET_INPUTS: Array<[string, unknown]> = [
+    // Non-writer tools — including bash (backlog territory) — yield no target:
+    ["bash", { command: "touch /outside/x.md" }],
+    ["read", { path: "/outside/x.md" }],
+    ["vscode_apply_workspace_edit", {}],
+    // Writer tools with missing/non-string/absent paths yield no target:
+    ["write", {}],
+    ["write", { path: 42 }],
+    ["write", null],
+    ["write", undefined],
+  ];
+
+  it("non-writer tools and malformed writer inputs yield NO target — no verdict, no exception, markers uninterpolated", () => {
+    for (const [toolName, input] of NO_TARGET_INPUTS) {
+      for (const snap of [WELL_FORMED, POISONED]) {
+        // Strict undefined: there is no returned string in which a marker
+        // could appear, and no exception is thrown.
+        expect(
+          decideWrite(snap, toolName, input),
+          `unexpected verdict for ${toolName}`,
+        ).toBeUndefined();
+      }
+    }
+  });
+
+  it("the same no-target inputs under an ACTIVE-SPAN-shaped snapshot — still no verdict", () => {
+    const SPAN_SHAPED: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: { id: "gather", declared: [`${SLOT_ROOT}/research/a.md`] },
+      paths: PATHS,
+    };
+    for (const [toolName, input] of NO_TARGET_INPUTS) {
+      expect(decideWrite(SPAN_SHAPED, toolName, input)).toBeUndefined();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (h) Channel-freedom + runtime-namespace surface pins — every public
+// signature takes PLAIN VALUES; the runtime module namespaces expose ONLY
+// the value exports (the types erase to nothing).
+// ---------------------------------------------------------------------------
+
+describe("channel freedom + runtime namespace surface", () => {
+  it("every public signature takes PLAIN VALUES — allowed AND refused end-to-end on structural literals only", () => {
+    const KEPT = `${SLOT_ROOT}/research/a.md`;
+    const allowedSnap: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: { id: "gather", declared: [KEPT] },
+      paths: PATHS,
+    };
+    expect(decideWrite(allowedSnap, "write", { path: KEPT })).toBeUndefined();
+    const refusedSnap: ExecutionSnapshot = {
+      sources: null,
+      phase: null,
+      paths: PATHS,
+    };
+    expect(
+      asRefusal(decideWrite(refusedSnap, "write", { path: "/outside/h.md" }))
+        .block,
+    ).toBe(true);
+  });
+
+  it("write-gate's runtime namespace is EXACTLY {decideWrite, matchesAnchoredGlob} — the type erases", () => {
+    expect(Object.keys(writeGateModule).sort()).toEqual([
+      "decideWrite",
+      "matchesAnchoredGlob",
+    ]);
+  });
+
+  it("the vocabulary and the state skeleton export NOTHING at runtime — types-only, mechanically", () => {
+    expect(Object.keys(vocabularyModule)).toEqual([]);
+    expect(Object.keys(stateModule)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (i) MECHANICAL SOURCE GUARDS — self-source reads (house idiom:
+// readFileSync(new URL(file, import.meta.url))) covering ALL FOUR files:
+// import partition, statelessness, types-only surfaces, escape discipline,
+// retired-identifier absence.
+// ---------------------------------------------------------------------------
+
+describe("mechanical source guards — all four sibling files", () => {
+  const GATE_SOURCE = readFileSync(
+    new URL("./write-gate.ts", import.meta.url),
+    "utf8",
+  );
+  const SUITE_SOURCE = readFileSync(
+    new URL("./write-gate.test.ts", import.meta.url),
+    "utf8",
+  );
+  const VOCAB_SOURCE = readFileSync(
+    new URL("./guard-vocabulary.ts", import.meta.url),
+    "utf8",
+  );
+  const STATE_SOURCE = readFileSync(
+    new URL("./session-execution-state.ts", import.meta.url),
+    "utf8",
+  );
+
+  /** Strip block and line comments FIRST so quote-paired "spans" cannot cross
+   * comment text (quoted words in prose would create phantom spans). Raw
+   * glyphs in prose comments are house precedent — not pinned bytes. */
+  function stripComments(source: string): string {
+    return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  }
+
+  // Assembled at runtime so this guard does not self-match its own text.
+  const SDK_SPECIFIER = ["@earendil-works", "pi-coding-agent"].join("/");
+
+  it("zero occurrences of the SDK specifier in ANY of the four files", () => {
+    for (const source of [
+      GATE_SOURCE,
+      SUITE_SOURCE,
+      VOCAB_SOURCE,
+      STATE_SOURCE,
+    ]) {
+      expect(source.includes(SDK_SPECIFIER)).toBe(false);
+    }
+  });
+
+  it("write-gate.ts: value imports are EXACTLY [node:path, ../../sandbox/fsview.ts] — zero node:fs, zero value sibling imports", () => {
+    expect(GATE_SOURCE.includes("node:fs")).toBe(false);
+    const valueSpecifiers = GATE_SOURCE.split("\n")
+      .filter(
+        (line) =>
+          line.startsWith("import ") && !line.startsWith("import type "),
+      )
+      .flatMap((line) =>
+        [...line.matchAll(/from "([^"]+)"/g)].map((match) => match[1]),
+      );
+    expect(valueSpecifiers).toEqual(["node:path", "../../sandbox/fsview.ts"]);
+  });
+
+  it("write-gate.ts: type-only imports are a SUBSET of the two siblings, and the state edge is REQUIRED (erased at compile time)", () => {
+    const typeSpecifiers = GATE_SOURCE.split("\n")
+      .filter((line) => line.startsWith("import type "))
+      .flatMap((line) =>
+        [...line.matchAll(/from "([^"]+)"/g)].map((match) => match[1]),
+      );
+    expect(typeSpecifiers.length).toBeGreaterThanOrEqual(1);
+    for (const spec of typeSpecifiers) {
+      expect(spec).toMatch(/^\.\//);
+      expect([
+        "./guard-vocabulary.ts",
+        "./session-execution-state.ts",
+      ]).toContain(spec);
+    }
+    expect(typeSpecifiers).toContain("./session-execution-state.ts");
+  });
+
+  it("write-gate.ts: NO class declarations — statelessness asserted mechanically", () => {
+    expect(stripComments(GATE_SOURCE).match(/\bclass\b/g)).toBeNull();
+  });
+
+  it("write-gate.ts: the single coverage rule is defined ONCE and called EXACTLY TWICE (one definition + two call sites)", () => {
+    const occurrences = stripComments(GATE_SOURCE).match(/\badmittedBy\b/g);
+    expect(occurrences?.length ?? 0).toBe(3);
+  });
+
+  it("guard-vocabulary.ts: ZERO import lines; EXACTLY three `export interface` members, name-set pinned", () => {
+    expect(VOCAB_SOURCE.match(/^import\b/gm)).toBeNull();
+    const exportLines = VOCAB_SOURCE.split("\n").filter((line) =>
+      line.startsWith("export"),
+    );
+    expect(exportLines).toHaveLength(3);
+    const names = exportLines.flatMap((line) => {
+      const match = line.match(/^export interface (\w+)/);
+      return match ? [match[1]] : [];
+    });
+    expect(names.sort()).toEqual([
+      "CapabilitySources",
+      "PathAnchors",
+      "PhasePermission",
+    ]);
+  });
+
+  it("session-execution-state.ts: ONE type-only import clause (three names, the vocabulary specifier), ONE interface export, no class/function", () => {
+    const importStatements = STATE_SOURCE.match(/^import\b/gm);
+    expect(importStatements?.length ?? 0).toBe(1);
+    const clause = STATE_SOURCE.match(
+      /import\s+type\s*\{([\s\S]*?)\}\s*from\s+"(\.[^"]+)"/,
+    );
+    expect(clause).not.toBeNull();
+    const importedNames = clause![1]
+      .split(",")
+      .map((name) => name.trim())
+      .filter((name) => name.length > 0);
+    expect(importedNames.sort()).toEqual([
+      "CapabilitySources",
+      "PathAnchors",
+      "PhasePermission",
+    ]);
+    expect(clause![2]).toBe("./guard-vocabulary.ts");
+    const exportLines = STATE_SOURCE.split("\n").filter((line) =>
+      line.startsWith("export "),
+    );
+    expect(exportLines).toHaveLength(1);
+    expect(
+      exportLines[0].match(/^export interface ExecutionSnapshot \{$/),
+    ).not.toBeNull();
+    const codeOnly = stripComments(STATE_SOURCE);
+    expect(codeOnly.match(/\bclass\b/g)).toBeNull();
+    expect(codeOnly.match(/\bfunction\b/g)).toBeNull();
+  });
+
+  it("\\u2014 discipline: the pinned escaped literal is retained; NO raw U+2014 inside any string LITERAL of any of the four files", () => {
+    expect(
+      GATE_SOURCE.includes("Writing is refused \\u2014 no capability span"),
+    ).toBe(true);
+    const rawGlyph = String.fromCharCode(0x2014);
+    for (const [label, source] of [
+      ["write-gate.ts", GATE_SOURCE],
+      ["write-gate.test.ts", SUITE_SOURCE],
+      ["guard-vocabulary.ts", VOCAB_SOURCE],
+      ["session-execution-state.ts", STATE_SOURCE],
+    ]) {
+      const codeOnly = stripComments(source);
+      for (const match of codeOnly.matchAll(/["'`]([^"'`]*)["'`]/g)) {
+        expect(
+          match[1],
+          `${label}: raw glyph in a string literal`,
+        ).not.toContain(rawGlyph);
+      }
+    }
+  });
+
+  it("retired combined-module identifiers are absent from BOTH rewritten files (fragments assembled at runtime prevent self-match)", () => {
+    const RETIRED_FAMILIES: Array<[string, string]> = [
+      ["W", "riteGate"],
+      ["W", "riteGateProviders"],
+      ["W", "riteGateBookkeepingError"],
+      ["ent", "erCapability"],
+      ["ext", "itCapability"],
+      ["ent", "erPhase"],
+      ["ext", "itPhase"],
+    ];
+    for (const [head, tail] of RETIRED_FAMILIES) {
+      const identifier = head + tail;
+      const pattern = new RegExp(`\\b${identifier}\\b`, "g");
+      expect(
+        GATE_SOURCE.match(pattern),
+        `module leaks ${identifier}`,
+      ).toBeNull();
+      expect(
+        SUITE_SOURCE.match(pattern),
+        `suite leaks ${identifier}`,
+      ).toBeNull();
+    }
+  });
+
+  it("tiers absent by design — the bookkeeping block, the two-object interleave tier, and the faulty-channel tier belong to the execution-state suite", () => {
+    // Assembled at runtime so this check does not self-match its own text.
+    const BOOKKEEPING_TITLE = "Write" + "Gate bookkeeping";
+    const INTERLEAVE_TITLE = "leg-" + "2 hermetic concurrency";
+    const FAULTY_TITLE = "faulty" + " channels";
+    expect(SUITE_SOURCE).not.toContain(BOOKKEEPING_TITLE);
+    expect(SUITE_SOURCE).not.toContain(INTERLEAVE_TITLE);
+    expect(SUITE_SOURCE).not.toContain(FAULTY_TITLE);
   });
 });

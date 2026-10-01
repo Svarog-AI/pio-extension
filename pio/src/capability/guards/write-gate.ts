@@ -1,49 +1,41 @@
-// Per-session write gate: one pure object per session owning enter/exit
-// bookkeeping, the single effective allowlist at decision time, and denial
-// rendering. Permission derives from exactly TWO declared sources (the
-// active capability contract and the active phase declaration); depth-0
-// turns run the IDENTICAL branch as an empty-contract span — one code path,
-// no special cases, no intersection, no union.
+// ── guards/write-gate.ts — STATELESS PREDICATE (value imports: node:path,
+// ../../sandbox/fsview.ts; type-only: ./guard-vocabulary.ts,
+// ./session-execution-state.ts — the latter ERASED at compile time;
+// COMPLETE surface: exactly THREE exports) ──
+//
+// Half of the two-component write gate — the stateless decision point (PDP):
+// given ONE tool call plus the GIVEN inputs, it answers whether the write/edit
+// is allowed. It stores nothing and owns no lifecycle; the interceptor runner
+// (which tool_call reaches the agent) and the per-session execution state
+// (which records what is executing right now and supplies the snapshot) are
+// its siblings. This file consumes the snapshot GIVEN at call time — plain
+// values, no closures — and judges per call.
+//
+// Purity: the snapshot carries the session's path anchors as RESOLVED STRINGS,
+// so this module reads no env, touches no filesystem, and reaches no SDK
+// (channel-free by construction). Coverage is EXACTLY `write`/`edit` via
+// string `input.path` (bash stays ungated). The verdict order is pinned, one
+// pass per target:
+//   1. `/tmp/` (exact prefix) — always allowed, every depth;
+//   2. an active phase with a NON-EMPTY declaration governs exclusively over
+//      its EFFECTIVE set (declared ∩ contract-covered, materialized per call —
+//      an empty effective set confers NO phase governance and falls through);
+//   3. span admission over the running capability's sources (null coalesces
+//      to the empty base — one code path, no special cases);
+//   4. deny.
+// Every refusal RETURNS a house-style message — the ONLY feedback — naming
+// the governing source (phase id, capability name, or no-span state), the
+// effective allowlist inline ("none" when nothing is; over-declared,
+// contract-uncovered entries simply absent — never granted, never listed),
+// and the /tmp/ parity clause in every line.
 //
 // Terminology: stack entries are LAYERS ("frame" is reserved for
-// composed-execution units elsewhere in this package). Enter/exit is
-// save/restore bookkeeping for composition nesting — a child span suspends
-// the caller's pair and restores it intact on pop.
-//
-// Purity: the constructor stores two LAZY PROVIDER CLOSURES — no env, no
-// filesystem access, no SDK reach; provider faults propagate VERBATIM at
-// first consult (never caught, wrapped, or fallen back to). Verdicts cover
-// EXACTLY `write`/`edit` via string `input.path` (bash stays ungated —
-// backlog); the `/tmp/` prefix is always allowed before any other
-// consideration, at every depth. Every refusal RETURNS a house-style
-// message — the ONLY feedback — naming the governing source (phase id,
-// capability name, or no-span state), the effective allowlist inline
-// ("none" when nothing is; clamped-away declarations are simply absent),
-// and the /tmp/ parity clause in every line.
+// composed-execution units elsewhere in this package).
 
 import { resolve } from "node:path";
 import { hasWildcard } from "../../sandbox/fsview.ts";
-
-/** Lazy channels — the ONLY way the gate learns paths. Stored at construction,
- * consulted lazily; either may THROW the producer's typed no-silent-fallback
- * error on a faulty channel — propagated verbatim. */
-export interface WriteGateProviders {
-  /** Project-slot root for pattern anchoring (<stateRoot>/projects/<key>), normalized, no trailing separator. */
-  projectSlotRoot(): string;
-  /** Session launch cwd — the allowProjectWrites scope (resolved form). */
-  workspaceCwd(): string;
-}
-
-/** The running capability's sources — PLAIN DATA (contract values as-is; the
- * module deliberately does NOT import contract.ts, keeping it hermetic). */
-export interface CapabilitySources {
-  /** Capability name — the governing source named in span denials. */
-  name: string;
-  /** Slot-relative pattern list (contract.writes verbatim). */
-  writes: readonly string[];
-  /** Legacy role retained: admits project-root files beyond the declared patterns. */
-  allowProjectWrites: boolean;
-}
+import type { CapabilitySources, PathAnchors } from "./guard-vocabulary.ts";
+import type { ExecutionSnapshot } from "./session-execution-state.ts";
 
 /** Structural denial shape — assignable to the SDK's ToolCallEventResult
  * without importing it. `reason` is the ONLY feedback the model gets. */
@@ -52,13 +44,67 @@ export interface WriteGateVerdict {
   reason: string;
 }
 
-/** Typed refusal for broken enter/exit bookkeeping — loud, never silent.
- * Deliberately unexported: consumers observe `name` + message bytes. */
-class WriteGateBookkeepingError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "WriteGateBookkeepingError";
+/** One tool-call verdict: `undefined` = allowed; a verdict = the refusal.
+ * Judges PER CALL over the RAW snapshot — the phase branch's contract-
+ * existence half runs HERE at decision time; there is no attach-time
+ * confirmation anywhere. */
+export function decideWrite(
+  snapshot: ExecutionSnapshot,
+  toolName: string,
+  input: unknown,
+): WriteGateVerdict | undefined {
+  const target = WRITER_TOOLS.has(toolName) ? extractTarget(input) : null;
+  if (target === null) return undefined;
+  if (target.startsWith("/tmp/")) return undefined;
+  const sources = snapshot.sources ?? BASE_SOURCES;
+  const phase = snapshot.phase;
+  if (phase !== null && phase.declared.length > 0) {
+    // Effective set: declared ∩ contract-covered, materialized FRESH per call
+    // — declaration order, first-occurrence dedupe. EMPTY confers NO phase
+    // governance: the lazy fall-through below keeps one code path.
+    const effective: string[] = [];
+    const seen = new Set<string>();
+    for (const declared of phase.declared) {
+      if (seen.has(declared)) continue;
+      if (admittedBy(sources, declared, snapshot.paths)) {
+        seen.add(declared);
+        effective.push(declared);
+      }
+    }
+    if (effective.length > 0) {
+      if (effective.includes(target)) return undefined;
+      return { block: true, reason: renderPhaseDenial(phase.id, effective) };
+    }
   }
+  if (admittedBy(sources, target, snapshot.paths)) return undefined;
+  return {
+    block: true,
+    reason:
+      snapshot.sources === null
+        ? renderNoSpanDenial()
+        : renderCapabilityDenial(snapshot.sources, snapshot.paths.workspaceCwd),
+  };
+}
+
+// THE single disjunction used by BOTH the span verdict and the effective-set
+// filter — one coverage definition, no drift between the two sites. Disjunct
+// (i) consults the slot-root anchor ONLY when `writes` is non-empty; (ii) the
+// cwd anchor ONLY when the flag is set; empty sources consult NOTHING. Pure
+// over plain values — no channels exist here to fault.
+function admittedBy(
+  sources: CapabilitySources,
+  target: string,
+  anchors: PathAnchors,
+): boolean {
+  if (sources.writes.length > 0) {
+    for (const pattern of sources.writes) {
+      if (matchesAnchoredGlob(pattern, anchors.projectSlotRoot, target))
+        return true;
+    }
+  }
+  return (
+    sources.allowProjectWrites && target.startsWith(`${anchors.workspaceCwd}/`)
+  );
 }
 
 const TMP_PARITY_CLAUSE = "Scratch files under /tmp/ stay open.";
@@ -72,10 +118,10 @@ const renderPhaseDenial = (
 
 const renderCapabilityDenial = (
   sources: CapabilitySources,
-  workspaceCwd: string | undefined,
+  workspaceCwd: string,
 ): string => {
   const parts: string[] = [...sources.writes];
-  if (sources.allowProjectWrites && workspaceCwd !== undefined) {
+  if (sources.allowProjectWrites) {
     parts.push(`project files under ${workspaceCwd}`);
   }
   const allowlist = parts.length === 0 ? "none" : parts.join(", ");
@@ -250,159 +296,22 @@ export function matchesAnchoredGlob(
   return true;
 }
 
-interface PhaseEntry {
-  id: string;
-  /** Surviving confirmed paths (already-resolved absolute, declaration
-   * order, deduplicated). EMPTY confers no phase governance (fall-through). */
-  survivors: string[];
-  /** Save/restore half: whatever occupied the slot before this entry. */
-  previous: PhaseEntry | null;
-}
-
-interface GateLayer {
-  sources: CapabilitySources;
-  phase: PhaseEntry | null;
-}
-
 // The observed writer-tool set only (local const; the observer's
 // FILE_TOOL_NAMES is deliberately not imported). Any other tool — including
 // bash — yields no target: allowed by silence.
 const WRITER_TOOLS = new Set(["edit", "write"]);
 
-// The session-base pair at depth 0 — the EMPTY set: total default-deny
-// beyond the /tmp/ parity class, computed through the identical branch as an
-// empty-contract span.
+// The session-base pair — the EMPTY set: total default-deny beyond the /tmp/
+// parity class, computed through the identical branch as an empty-contract
+// span. Null sources coalesce onto this — one code path, no special cases.
 const BASE_SOURCES: CapabilitySources = {
   name: "",
   writes: [],
   allowProjectWrites: false,
 };
 
-/** The per-session write gate: a pure in-memory enforcement object fed by
- * lazy providers and explicit enter/exit calls from producers. */
-export class WriteGate {
-  private readonly providers: WriteGateProviders;
-  private layers: GateLayer[] = [];
-
-  /** Closure storage ONLY — no env, no fs, no defaults from process state. */
-  constructor(providers: WriteGateProviders) {
-    this.providers = providers;
-  }
-
-  /** Push a capability layer (span start); the new pair governs exclusively. */
-  enterCapability(sources: CapabilitySources): void {
-    this.layers.push({ sources, phase: null });
-  }
-
-  /** Pop the capability layer (span settlement — success AND catch-all).
-   * Throws on underflow OR an outstanding phase entry (LIFO symmetry). */
-  exitCapability(): void {
-    const top = this.layers[this.layers.length - 1];
-    if (top === undefined) {
-      throw new WriteGateBookkeepingError(
-        "write gate: exitCapability() with no active capability layer",
-      );
-    }
-    if (top.phase !== null) {
-      throw new WriteGateBookkeepingError(
-        "write gate: exitCapability() with an outstanding phase entry \u2014 exitPhase() first",
-      );
-    }
-    this.layers.pop();
-  }
-
-  /** Confirm/clamp ALREADY-RESOLVED absolute paths (consumed verbatim, never
-   * re-resolved) against the top layer's sources; attach the surviving set.
-   * Uncovered entries are DROPPED AT ENTRY — silent, never granted, absent
-   * from every denial listing. Validates ALL confirmation before mutating:
-   * a provider fault mid-confirmation escapes with the layer untouched. An
-   * empty declaration is a valid no-op confirmation (no phase governance). */
-  enterPhase(phaseId: string, declaredPaths: readonly string[]): void {
-    const top = this.layers[this.layers.length - 1];
-    if (top === undefined) {
-      throw new WriteGateBookkeepingError(
-        "write gate: enterPhase() with no active capability layer",
-      );
-    }
-    const survivors = new Set<string>();
-    for (const target of declaredPaths) {
-      if (this.admittedBy(top.sources, target).allowed) survivors.add(target);
-    }
-    top.phase = { id: phaseId, survivors: [...survivors], previous: top.phase };
-  }
-
-  /** Restore the pre-phase state (symmetric, every exit cause). */
-  exitPhase(): void {
-    const top = this.layers[this.layers.length - 1];
-    if (top === undefined || top.phase === null) {
-      throw new WriteGateBookkeepingError(
-        "write gate: exitPhase() with no active phase entry",
-      );
-    }
-    top.phase = top.phase.previous;
-  }
-
-  /** Drain to depth-0, idempotent — the sanctioned non-mirrored path. */
-  reset(): void {
-    this.layers.length = 0;
-  }
-
-  /** One tool-call verdict: `undefined` = allowed; a verdict = the refusal.
-   * Pinned order, one pass per target: (1) `/tmp/` always allowed, every
-   * depth; (2) a NON-EMPTY confirmed set is exhaustive — exact membership,
-   * span sources never consulted alongside it; (3)+(4) ONE branch — the
-   * active span governs, depth 0 computing over the empty base sources.
-   * Non-writer tools and missing/non-string paths yield NO target: allowed
-   * with zero provider consultations and zero bookkeeping change. */
-  decide(toolName: string, input: unknown): WriteGateVerdict | undefined {
-    const target = WRITER_TOOLS.has(toolName) ? extractTarget(input) : null;
-    if (target === null) return undefined;
-    if (target.startsWith("/tmp/")) return undefined;
-    const layer = this.layers[this.layers.length - 1];
-    const phase = layer?.phase ?? null;
-    if (phase !== null && phase.survivors.length > 0) {
-      if (phase.survivors.includes(target)) return undefined;
-      return {
-        block: true,
-        reason: renderPhaseDenial(phase.id, phase.survivors),
-      };
-    }
-    const admission = this.admittedBy(layer?.sources ?? BASE_SOURCES, target);
-    if (admission.allowed) return undefined;
-    const reason =
-      layer === undefined
-        ? renderNoSpanDenial()
-        : renderCapabilityDenial(layer.sources, admission.cwd);
-    return { block: true, reason };
-  }
-
-  // Single disjunction used by BOTH the span verdict and phase-entry
-  // confirmation — one coverage definition, no drift between the two.
-  // Disjunct (i) consults the root provider ONLY when `writes` is non-empty;
-  // (ii) the cwd provider ONLY when the flag is set; empty sources consult
-  // NOTHING. Provider faults escape verbatim.
-  private admittedBy(
-    sources: CapabilitySources,
-    target: string,
-  ): { allowed: true } | { allowed: false; cwd?: string } {
-    if (sources.writes.length > 0) {
-      const root = this.providers.projectSlotRoot();
-      for (const pattern of sources.writes) {
-        if (matchesAnchoredGlob(pattern, root, target))
-          return { allowed: true };
-      }
-    }
-    if (sources.allowProjectWrites) {
-      const cwd = this.providers.workspaceCwd();
-      if (target.startsWith(`${cwd}/`)) return { allowed: true };
-      return { allowed: false, cwd };
-    }
-    return { allowed: false };
-  }
-}
-
 // A non-null object carrying a STRING `path`, normalized with path.resolve;
-// any other shape yields `null` — no target, no consultation, no bookkeeping.
+// any other shape yields `null` — no target, no consultation, no side effect.
 function extractTarget(input: unknown): string | null {
   if (input === null || typeof input !== "object") return null;
   const pathValue = (input as Record<string, unknown>).path;

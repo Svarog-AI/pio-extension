@@ -1089,6 +1089,29 @@ describe("mechanical source guards - all swept files", () => {
     expect(codeOnly.match(/\bfunction\b/g)).toBeNull();
   });
 
+  it("zero `as` assertion casts over the four swept PRODUCTION modules - the zero-cast convention enforced mechanically (suite excluded: its namespace imports and harness narrowing legitimately carry the token)", () => {
+    // Assembled at runtime so this guard does not self-match its own text.
+    const CAST_TOKEN = ["a", "s"].join("");
+    const castPattern = new RegExp(`\\b${CAST_TOKEN}\\b`, "g");
+    // Sweeps EXACTLY the production files — the suite itself uses `* as` in
+    // its namespace imports and one documented narrowing seam, both outside
+    // the convention's reach.
+    const offenders: string[] = [];
+    for (const [label, source] of [
+      ["write-gate.ts", GATE_SOURCE],
+      ["guard-vocabulary.ts", VOCAB_SOURCE],
+      ["session-execution-state.ts", STATE_SOURCE],
+      ["string-match-helpers.ts", HELPER_SOURCE],
+    ]) {
+      // Comments elide and every literal payload blanks in the SAME sound
+      // pass (partitionSource), so prose `as` words cannot false-positive:
+      // only real code residue is scanned.
+      const hits = partitionSource(source).code.match(castPattern);
+      if (hits !== null) offenders.push(`${label}: ${hits.length}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("\\u2014 discipline: the pinned escaped literal is retained; NO raw U+2014 inside ANY string LITERAL of any swept file", () => {
     expect(
       GATE_SOURCE.includes("Writing is refused \\u2014 no capability span"),

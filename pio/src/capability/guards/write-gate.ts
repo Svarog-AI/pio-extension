@@ -151,10 +151,13 @@ const BASE_SOURCES: CapabilitySources = {
 };
 
 // A non-null object carrying a STRING `path`, normalized with path.resolve;
-// any other shape yields `null` — no target, no consultation, no side effect.
+// any other shape yields `null` — no target, no consultation, no side
+// effect. Cast-free by convention: an object-shape guard, an `in` key check,
+// then a `typeof` check on the narrowed member — written validation branches
+// where the former single assertion stood.
 function extractTarget(input: unknown): string | null {
   if (input === null || typeof input !== "object") return null;
-  const pathValue = (input as Record<string, unknown>).path;
-  if (typeof pathValue !== "string") return null;
-  return resolve(pathValue);
+  if (!("path" in input)) return null;
+  if (typeof input.path !== "string") return null;
+  return resolve(input.path);
 }

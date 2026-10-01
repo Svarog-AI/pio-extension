@@ -80,10 +80,11 @@
 // SessionExecutionState over its two owned anchor channels (the
 // project-slot root recovered through the base's loud state-root channel
 // plus the launch cwd; the workspace cwd itself) and threads it into the
-// construction seam's guard install alongside the V1 handler closure. That
-// closure consults a FRESH snapshot through the stateless predicate per
-// call, eager for every tool name: a faulty channel faults every call
-// verbatim (fail-safe tail), and no containment hides it. fromRuntime
+// construction seam's guard install alongside the write tool-call handler
+// closure. That closure consults a FRESH snapshot through the stateless
+// predicate per call, eager for every tool name: a faulty channel faults
+// every call verbatim (fail-safe tail), and no containment hides it.
+// fromRuntime
 // discovers the state from the settled handle's symbol stamp via cast-free
 // instanceof narrowing; an unstamped foreign handle carries NO state and
 // every gate operation no-ops cleanly. execute_phase feeds its retained
@@ -439,10 +440,10 @@ export class PioSession {
    * The only standalone construction path: mints the observer and its
    * single instance-scoped listener PLUS the one per-session execution
    * state over the owned anchor channels, threads the listener and the
-   * UNCONDITIONAL guard install (state + V1 handler closure) through the
-   * construction seam (exactly one live subscription at any instant), and
-   * returns the ready instance. The composed-frame sibling (fromRuntime)
-   * hosts an already-settled runtime instead.
+   * UNCONDITIONAL guard install (state + write tool-call handler closure)
+   * through the construction seam (exactly one live subscription at any
+   * instant), and returns the ready instance. The composed-frame sibling
+   * (fromRuntime) hosts an already-settled runtime instead.
    */
   static async create(cwd: string, sessionsRoot?: string): Promise<PioSession> {
     const observer = new SessionObserver();
@@ -461,14 +462,14 @@ export class PioSession {
         ),
       workspaceCwd: () => resolve(cwd),
     });
-    // THE V1 handler closure: every tool-call verdict consults a FRESH
-    // snapshot through the stateless predicate — late binding survives
-    // rebind swaps and span churn; no containment anywhere.
-    const v1Handler = (toolName: string, input: unknown) =>
+    // THE write tool-call handler closure: every tool-call verdict consults
+    // a FRESH snapshot through the stateless predicate — late binding
+    // survives rebind swaps and span churn; no containment anywhere.
+    const writeToolCallHandler = (toolName: string, input: unknown) =>
       decideWrite(executionState.snapshot(), toolName, input);
     const runtime = await createPioSession(cwd, sessionsRoot, {
       sessionListener: listener,
-      guardInstall: { executionState, handlers: [v1Handler] },
+      guardInstall: { executionState, handlers: [writeToolCallHandler] },
     });
     return new PioSession(runtime, observer, executionState);
   }

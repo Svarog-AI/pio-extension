@@ -27,6 +27,13 @@
 // product literals carry a comment naming the SOLE OWNER. NOTE the em dashes
 // are U+2014 EM DASH characters — escaped so the pinned codepoints survive
 // editor and toolkit glyph mangling; never normalize.
+// NOTE the host() helper also drives the stored runtime-factory closure
+// ONCE per construction: the real seam stamps the minted execution state
+// onto the additive from-services carrier handle, the helper recovers that
+// state cast-free (descriptor read plus instanceof) and enters the pinned
+// empty-contract fixture span, so every guarded phase in this suite runs
+// against a live span exactly as production does. Return shape stays
+// { instance, round }.
 
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -49,6 +56,8 @@ import {
   statusPath,
 } from "../capability/status.ts";
 import { deriveProjectKey } from "../sandbox/layout.ts";
+import { EXECUTION_STATE_STAMP } from "../session.ts";
+import { SessionExecutionState } from "../session-execution-state.ts";
 import GuardsDemoCapability, { GUARDS_DEMO_ARTIFACT } from "./guards-demo.ts";
 
 type Listener = (event: AgentSessionEvent) => void;
@@ -82,10 +91,27 @@ interface Round {
   passes: Array<() => Promise<void>>;
 }
 
+/** Structural fake of the stored runtime-factory closure input (erased
+ * harness typing is sanctioned): deliberately wider than the SDK type. */
+type StoredClosure = (input: {
+  cwd: string;
+  agentDir: string;
+  sessionManager: { getCwd: () => string };
+  sessionStartEvent: unknown;
+}) => Promise<unknown>;
+
 // ─── Scripted-event top world (fake SDK root) ──────────────────────────
 
 const sdkKit = vi.hoisted(() => {
-  const state: { rounds: Round[] } = { rounds: [] };
+  const state: {
+    rounds: Round[];
+    storedFactories: StoredClosure[];
+    stampCarriers: FakeSession[];
+  } = {
+    rounds: [],
+    storedFactories: [],
+    stampCarriers: [],
+  };
   const create = vi.fn((cwd: string) => ({
     getCwd: (): string => cwd,
   }));
@@ -93,10 +119,21 @@ const sdkKit = vi.hoisted(() => {
   const createAgentSessionServices = vi.fn(async () => ({
     marker: "fake-services",
   }));
-  const createAgentSessionFromServices = vi.fn(async () => ({
-    extensionsResult: {},
-  }));
-  const createAgentSessionRuntime = vi.fn(async () => {
+  const createAgentSessionFromServices = vi.fn(async () => {
+    // Additive stamp carrier: the real seam stamps the minted execution
+    // state onto the created handle; host() reads back that descriptor.
+    const carrier: FakeSession = {
+      subscribe: vi.fn((): (() => void) => () => {}),
+      prompt: vi.fn(async (): Promise<void> => {}),
+      sendCustomMessage: vi.fn(async (): Promise<void> => {}),
+      sessionId: "sess-fake-guards-01",
+      dispose: vi.fn(),
+    };
+    state.stampCarriers.push(carrier);
+    return { extensionsResult: {}, session: carrier };
+  });
+  const createAgentSessionRuntime = vi.fn(async (factory?: StoredClosure) => {
+    if (factory !== undefined) state.storedFactories.push(factory);
     // Fresh fakes per invocation; every row of THIS suite mints exactly ONE
     // such handle (the single-host invariant the rows pin on).
     const captured: Listener[] = [];
@@ -138,6 +175,8 @@ const sdkKit = vi.hoisted(() => {
   });
   const reset = (): void => {
     state.rounds = [];
+    state.storedFactories = [];
+    state.stampCarriers = [];
     create.mockClear();
     getAgentDir.mockClear();
     createAgentSessionServices.mockClear();
@@ -308,10 +347,44 @@ function lastRound(): Round {
   return round;
 }
 
-/** Build the SINGLE host handle plus the construction round backing it. */
+/** Pinned empty-contract fixture span: confers no governance - purely the
+ * structural precondition a non-empty declaration attaches against. */
+const FIXTURE_SPAN = {
+  name: "host-fixture",
+  writes: [],
+  allowProjectWrites: false,
+};
+
+/** Build the SINGLE host handle plus the construction round backing it.
+ * Span-precondition accommodation: the stored closure is driven ONCE so
+ * the real seam stamps the minted execution state onto the from-services
+ * carrier, the state is recovered cast-free (descriptor read plus
+ * instanceof), and the pinned fixture span enters before any guarded
+ * phase runs. */
 async function host(): Promise<{ instance: PioSession; round: Round }> {
   const instance = await PioSession.create(process.cwd());
-  return { instance, round: lastRound() };
+  const round = lastRound();
+  const factory =
+    sdkKit.state.storedFactories[sdkKit.state.storedFactories.length - 1];
+  if (!factory) throw new Error("expected a stored runtime factory");
+  await factory({
+    cwd: process.cwd(),
+    agentDir: "/agent/dir",
+    sessionManager: { getCwd: () => process.cwd() },
+    sessionStartEvent: undefined,
+  });
+  const carrier =
+    sdkKit.state.stampCarriers[sdkKit.state.stampCarriers.length - 1];
+  if (!carrier) throw new Error("expected a stamped carrier handle");
+  const stamped = Object.getOwnPropertyDescriptor(
+    carrier,
+    EXECUTION_STATE_STAMP,
+  )?.value;
+  if (!(stamped instanceof SessionExecutionState)) {
+    throw new Error("expected the carrier to carry a minted execution state");
+  }
+  stamped.enterCapability(FIXTURE_SPAN);
+  return { instance, round };
 }
 
 /** Drive synthetic events through the listener the host attached. */

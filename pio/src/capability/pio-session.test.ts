@@ -30,6 +30,15 @@
 // through the captured listener and then resolves, where one resolution
 // stands for one fully-settled logical run. The agentEnd fixture mirrors
 // the installed dist payload shape ({ type, messages, willRetry }).
+//
+// Gate-wiring rows: host() drives the stored runtime-factory closure ONCE
+// per construction so the real seam's stamp path lands on the additive
+// from-services carrier handle; the minted state is recovered cast-free
+// (descriptor read plus instanceof - no second cast seam) and the pinned
+// empty-contract fixture span enters before any phase runs. Verdict
+// assertions ride identity over the REAL predicate (the refusal bytes stay
+// owned by ./guards/write-gate.ts); every PI_CODING_AGENT_DIR touch is
+// row-scoped save/restore.
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -40,10 +49,19 @@ import type {
   AgentSessionEvent,
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
+import { deriveProjectKey } from "../sandbox/layout.ts";
+import { EXECUTION_STATE_STAMP } from "../session.ts";
+import { SessionExecutionState } from "../session-execution-state.ts";
 import type { CapabilityParams } from "./base.ts";
-import { PioCapability } from "./base.ts";
+import {
+  CapabilityEnvError,
+  deriveStateRootFromAgentDir,
+  PioCapability,
+} from "./base.ts";
 import type { Contract } from "./contract.ts";
 import { ContractViolationError } from "./errors.ts";
+import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
+import { decideWrite } from "./guards/write-gate.ts";
 import type { IterationCtx, PhaseResult } from "./pio-session.ts";
 import {
   PioSession,
@@ -97,12 +115,71 @@ interface Round {
   captured: Listener[];
 }
 
+type ManagerFake = { getCwd: () => string };
+
+interface RuntimeOpts {
+  cwd: string;
+  agentDir: string;
+  sessionManager: ManagerFake;
+}
+
+interface FactoryInput {
+  cwd: string;
+  agentDir: string;
+  sessionManager: ManagerFake;
+  sessionStartEvent: unknown;
+}
+
+/** Widened structural fake of the SDK tool_call event: deliberately wider
+ * than the discriminated union so plain literal payloads typecheck with zero
+ * casts (asEvent stays the sole payload cast seam in this file). */
+interface FakeToolCallEvent {
+  type: "tool_call";
+  toolCallId: string;
+  toolName: string;
+  input: unknown;
+}
+
+type Verdict = { block: true; reason: string };
+
+type RecordedHandler = (event: FakeToolCallEvent) => Verdict | undefined;
+
+interface FakeRegistration {
+  event: string;
+  handler: RecordedHandler;
+}
+
+interface FakePi {
+  registrations: FakeRegistration[];
+  on: (event: string, handler: RecordedHandler) => void;
+}
+
+/** Structural fake of the services options shape (erased harness typing is
+ * sanctioned): deliberately wider than the SDK type. */
+interface ServicesOpts {
+  cwd: string;
+  agentDir?: string;
+  resourceLoaderOptions?: {
+    extensionFactories?: ReadonlyArray<(pi: FakePi) => void | Promise<void>>;
+  };
+}
+
 const harness = vi.hoisted(() => {
   const managerCwd = "/managed/cwd";
   const agentDir = "/agent/dir";
   const sessionId = "sess-fake-0001";
 
-  const state: { rounds: Round[] } = { rounds: [] };
+  const state: {
+    rounds: Round[];
+    storedFactories: ((input: FactoryInput) => Promise<unknown>)[];
+    servicesArgs: ServicesOpts[];
+    stampCarriers: FakeSession[];
+  } = {
+    rounds: [],
+    storedFactories: [],
+    servicesArgs: [],
+    stampCarriers: [],
+  };
 
   const fakeManager = { getCwd: () => managerCwd };
   const fakeServices = { marker: "fake-services" };
@@ -147,24 +224,41 @@ const harness = vi.hoisted(() => {
   const SessionManager = {
     create: vi.fn(() => fakeManager),
   };
-  const createAgentSessionServices = vi.fn(async () => fakeServices);
-  const createAgentSessionFromServices = vi.fn(async () => ({
-    extensionsResult: {},
-  }));
-  const createAgentSessionRuntime = vi.fn(async () => {
-    // Fresh fakes per invocation so isolation rows observe distinct handles.
-    const session = mintFakeHandle();
-    const round: Round = {
-      session,
-      runtime: { session },
-      captured: session.captured,
-    };
-    state.rounds.push(round);
-    return round.runtime;
+  const createAgentSessionServices = vi.fn(async (options: ServicesOpts) => {
+    state.servicesArgs.push(options);
+    return fakeServices;
   });
+  const createAgentSessionFromServices = vi.fn(async () => {
+    // Additive stamp carrier: the real seam stamps the guard install onto
+    // the created handle; rows read back that descriptor cast-free.
+    const carrier = mintFakeHandle();
+    state.stampCarriers.push(carrier);
+    return { extensionsResult: {}, session: carrier };
+  });
+  const createAgentSessionRuntime = vi.fn(
+    async (
+      factory?: (input: FactoryInput) => Promise<unknown>,
+      _runtimeOpts?: RuntimeOpts,
+    ) => {
+      if (factory !== undefined) state.storedFactories.push(factory);
+      // Fresh fakes per invocation so isolation rows observe distinct
+      // handles.
+      const session = mintFakeHandle();
+      const round: Round = {
+        session,
+        runtime: { session },
+        captured: session.captured,
+      };
+      state.rounds.push(round);
+      return round.runtime;
+    },
+  );
 
   const reset = () => {
     state.rounds = [];
+    state.storedFactories = [];
+    state.servicesArgs = [];
+    state.stampCarriers = [];
     getAgentDir.mockClear();
     SessionManager.create.mockClear();
     createAgentSessionServices.mockClear();
@@ -205,10 +299,96 @@ function lastRound(): Round {
   return round;
 }
 
-/** Build a host plus the construction round backing it. */
+/** Pinned empty-contract fixture span: confers no governance - purely the
+ * structural precondition a non-empty declaration attaches against. */
+const FIXTURE_SPAN: CapabilitySources = {
+  name: "host-fixture",
+  writes: [],
+  allowProjectWrites: false,
+};
+
+/** Read the stamp value off a handle by descriptor (cast-free discovery:
+ * the value lands in an unknown channel and is narrowed by instanceof -
+ * no additional cast seam in this file). */
+function stampValue(handle: object): unknown {
+  return Object.getOwnPropertyDescriptor(handle, EXECUTION_STATE_STAMP)?.value;
+}
+
+function assertMintedState(stamped: unknown): SessionExecutionState {
+  if (!(stamped instanceof SessionExecutionState)) {
+    throw new Error("expected the handle to carry a minted execution state");
+  }
+  return stamped;
+}
+
+function lastServicesArg(): ServicesOpts {
+  const o = harness.state.servicesArgs[harness.state.servicesArgs.length - 1];
+  if (!o) throw new Error("expected recorded services options");
+  return o;
+}
+
+/** Drive the round's stored runtime-factory closure ONCE with synthetic
+ * inputs (the factory-driving channel): the real seam's services arg
+ * records and the freshly minted from-services handle carries the stamp.
+ * Deliberately NOT auto-invoked by the runtime factory - existing rows
+ * keep their pre-minted-handle worlds untouched. */
+async function driveStoredClosure(): Promise<{
+  servicesArg: ServicesOpts;
+  createdHandle: FakeSession;
+}> {
+  const factory =
+    harness.state.storedFactories[harness.state.storedFactories.length - 1];
+  if (!factory) throw new Error("expected a stored runtime factory");
+  await factory({
+    cwd: CWD,
+    agentDir: harness.agentDir,
+    sessionManager: { getCwd: () => harness.managerCwd },
+    sessionStartEvent: undefined,
+  });
+  const createdHandle =
+    harness.state.stampCarriers[harness.state.stampCarriers.length - 1];
+  if (!createdHandle) throw new Error("expected a stamped created handle");
+  return { servicesArg: lastServicesArg(), createdHandle };
+}
+
+/** Drive one bare extension factory with a structurally typed recording pi
+ * and hand back its registered tool_call handler (zero casts). */
+async function captureToolCallHandler(
+  extensionFactory: (pi: FakePi) => void | Promise<void>,
+): Promise<RecordedHandler> {
+  const registrations: FakeRegistration[] = [];
+  const pi: FakePi = {
+    registrations,
+    on: (event, handler) => {
+      registrations.push({ event, handler });
+    },
+  };
+  await extensionFactory(pi);
+  const registration = registrations.find((r) => r.event === "tool_call");
+  if (!registration) {
+    throw new Error("expected a registered tool_call handler");
+  }
+  return registration.handler;
+}
+
+/** Build a host plus the construction round backing it, and RECOVER THE
+ * GATE PLUMBING: the stored closure is driven once so the real seam's
+ * stamp path lands, the minted state is recovered cast-free, the pinned
+ * fixture span enters, and the threaded tool_call handler is captured.
+ * The gate record is additive - invisible to every pre-existing
+ * destructuring. */
 async function host(sessionsRoot?: string) {
   const instance = await PioSession.create(CWD, sessionsRoot);
-  return { instance, round: lastRound() };
+  const round = lastRound();
+  const { servicesArg, createdHandle } = await driveStoredClosure();
+  const state = assertMintedState(stampValue(createdHandle));
+  state.enterCapability(FIXTURE_SPAN);
+  const factories = servicesArg.resourceLoaderOptions?.extensionFactories ?? [];
+  if (factories.length !== 1) {
+    throw new Error("expected exactly one threaded extension factory");
+  }
+  const toolCallHandler = await captureToolCallHandler(factories[0]);
+  return { instance, round, gate: { state, createdHandle, toolCallHandler } };
 }
 
 /** Deliver synthetic events to EVERY live listener on the target handle
@@ -2098,7 +2278,7 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     expect(src.includes("isComposed")).toBe(false);
   });
 
-  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly ['node:fs', 'node:path', '../session.ts', './errors.ts'] behind it", () => {
+  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly the pinned eight-specifier gate-wiring set behind it", () => {
     // EXACTLY ONE clause references the SDK root, and it is the TYPE
     // clause.
     expect(src.match(/from "@earendil-works\/pi-coding-agent"/g)?.length).toBe(
@@ -2115,8 +2295,9 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     ).toBe(
       'import type { AgentSession, AgentSessionEvent, AgentSessionEventListener, AgentSessionRuntime } from "@earendil-works/pi-coding-agent";',
     );
-    // The VALUE clause set, in source order (formatter-authoritative: node:*
-    // builtins lead, then the session seam, then the reused error home)...
+    // The VALUE clause set, in source order (formatter-authoritative:
+    // node:* builtins lead, then the package-top-level modules, then the
+    // capability-local edge modules)...
     const valueClauses = [
       ...src.matchAll(
         /^\s*import\s+(?!type\b)[^\n;]*?from\s+["']([^"']+)["']/gm,
@@ -2125,8 +2306,12 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     expect(valueClauses).toEqual([
       "node:fs",
       "node:path",
+      "../sandbox/layout.ts",
       "../session.ts",
+      "../session-execution-state.ts",
+      "./base.ts",
       "./errors.ts",
+      "./guards/write-gate.ts",
     ]);
     // ...BEHIND the external type clause.
     expect(src.indexOf('from "@earendil-works/pi-coding-agent"')).toBeLessThan(
@@ -2136,5 +2321,654 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
 
   it("zero dynamic import( occurrences in the module", () => {
     expect(src.match(/import\(/g)?.length ?? 0).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------
+// Per-session write-gate producer wiring: mint + threading, discovery,
+// phase feeding, rebind drain. Identity-over-goldens doctrine - verdict
+// assertions deep-equal the REAL predicate over the same state reading;
+// no refusal-byte goldens live here (sole owner: ./guards/write-gate.ts).
+// Every PI_CODING_AGENT_DIR touch is row-scoped save/restore (vitest
+// workers share the process; a leaked deletion poisons sibling rows).
+// ---------------------------------------------------------------------
+
+/** Literal absolute agent dir for env-controlled rows (never a /tmp/ root
+ * - the parity class would silently admit refusal-shaped targets). */
+const AGENT_DIR_LITERAL = "/lit/state/.pi/agent";
+
+/** Env-unset message replica (SOLE OWNER: deriveStateRootFromAgentDir in
+ * ./base.ts - class CapabilityEnvError); U+2014 arrives as an escape
+ * identically on both sides. */
+const ENV_UNSET_REPLICA =
+  "capability: PI_CODING_AGENT_DIR is unset \u2014 cannot derive the state root";
+
+/** Row-scoped env switch with guaranteed restore. */
+async function withAgentDir(
+  agentDir: string | undefined,
+  body: () => Promise<void>,
+): Promise<void> {
+  const saved = process.env.PI_CODING_AGENT_DIR;
+  try {
+    if (agentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = agentDir;
+    await body();
+  } finally {
+    if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = saved;
+  }
+}
+
+/** Structural tool-call payload for handler queries (plain literal over the
+ * widened fake keeps zero casts in this file). */
+function toolCall(toolName: string, input: unknown): FakeToolCallEvent {
+  return { type: "tool_call", toolCallId: "tc-1", toolName, input };
+}
+
+describe("PioSession \u2014 gate mint + threading (producer side)", () => {
+  it("EXACTLY ONE execution-state mint per create threads through the guard install: the driven services arg carries the single resourceLoaderOptions key with ONE bare extension factory, and the created handle's stamp descriptor is a non-enumerable configurable own data property carrying that very state", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { round, gate } = await host();
+      const servicesArg = lastServicesArg();
+      expect(
+        Object.keys(servicesArg.resourceLoaderOptions ?? {}).sort(),
+      ).toEqual(["extensionFactories"]);
+      const factories =
+        servicesArg.resourceLoaderOptions?.extensionFactories ?? [];
+      expect(factories).toHaveLength(1);
+      expect(typeof factories[0]).toBe("function");
+
+      const d = Object.getOwnPropertyDescriptor(
+        gate.createdHandle,
+        EXECUTION_STATE_STAMP,
+      );
+      expect(d).toBeDefined();
+      expect(d?.value).toBe(gate.state);
+      expect(d?.enumerable).toBe(false);
+      expect(d?.configurable).toBe(true);
+      expect(gate.state).toBeInstanceOf(SessionExecutionState);
+      // The stamp lands on the closure-rerun carrier, distinct from the
+      // initial round handle (whose subscription world predates the
+      // closure).
+      expect(round.session).not.toBe(gate.createdHandle);
+    });
+  });
+
+  it("two sequential constructions yield DISTINCT states by identity (per-construction isolation at the producer)", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const first = await host();
+      const second = await host();
+      expect(first.gate.state).not.toBe(second.gate.state);
+      expect(first.gate.state).toBeInstanceOf(SessionExecutionState);
+      expect(second.gate.state).toBeInstanceOf(SessionExecutionState);
+    });
+  });
+
+  it("channel derivation is BYTE-EQUAL to the settle-seam root formula over the same env and cwd (in-row public channels - never a hardcoded slug), workspaceCwd is resolve(cwd), and after exiting the fixture span the depth-0 reading is the null/null empty-set base", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { gate } = await host();
+      // Self-consistent in-row derivation through the imported public
+      // channels. The all-slash cwd divergence between slugify and
+      // deriveProjectKey stays unreachable here (a launch cwd is mounted
+      // real; the settle seam rejects such cwds loud upstream).
+      const expectedSlot = path.join(
+        deriveStateRootFromAgentDir(AGENT_DIR_LITERAL),
+        "projects",
+        deriveProjectKey(CWD),
+      );
+      const snap = gate.state.snapshot();
+      expect(snap.paths.projectSlotRoot).toBe(expectedSlot);
+      expect(snap.paths.workspaceCwd).toBe(path.resolve(CWD));
+      // Fixture span live: sources by reference, phase slot empty.
+      expect(snap.sources).toBe(FIXTURE_SPAN);
+      expect(snap.phase).toBeNull();
+      // Depth-0 base once the fixture span exits.
+      gate.state.exitCapability();
+      const base = gate.state.snapshot();
+      expect(base.sources).toBeNull();
+      expect(base.phase).toBeNull();
+    });
+  });
+
+  it("the registered tool_call handler COMPOSES snapshot() + decideWrite - identity with the REAL predicate over deny and allow shapes, and PER-CALL FRESHNESS across a mutated state between two invocations", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { gate } = await host();
+      // Deny shape: the empty-contract fixture span admits nothing beyond
+      // the /tmp/ parity class.
+      const deniedTarget = "/outside/a.md";
+      const deniedInput = { path: deniedTarget };
+      expect(
+        gate.toolCallHandler(toolCall("write", deniedInput)),
+      ).toStrictEqual(decideWrite(gate.state.snapshot(), "write", deniedInput));
+      expect(
+        gate.toolCallHandler(toolCall("write", deniedInput)),
+      ).toBeDefined();
+      // Allow shape: the /tmp/ parity class, both sides agreeing.
+      const tmpInput = { path: "/tmp/scratch.md" };
+      expect(decideWrite(gate.state.snapshot(), "write", tmpInput)).toBe(
+        undefined,
+      );
+      expect(gate.toolCallHandler(toolCall("write", tmpInput))).toBeUndefined();
+
+      // PER-CALL FRESHNESS: mutate the state BETWEEN two invocations - a
+      // covering span plus a phase declaration flips the SAME target from
+      // refused to allowed (a stale one-shot snapshot could not observe
+      // this shift).
+      const slotRoot = gate.state.snapshot().paths.projectSlotRoot;
+      const coveredTarget = path.join(slotRoot, "research", "note.md");
+      const coveredInput = { path: coveredTarget };
+      expect(
+        gate.toolCallHandler(toolCall("write", coveredInput)),
+      ).toBeDefined();
+      gate.state.enterCapability({
+        name: "covering",
+        writes: ["research/*.md"],
+        allowProjectWrites: false,
+      });
+      gate.state.attachPhase("freshness", [coveredTarget]);
+      expect(gate.toolCallHandler(toolCall("write", coveredInput))).toBe(
+        undefined,
+      );
+      // A non-covered sibling target stays refused - identity again.
+      const siblingInput = { path: path.join(slotRoot, "other.md") };
+      expect(
+        gate.toolCallHandler(toolCall("edit", siblingInput)),
+      ).toStrictEqual(decideWrite(gate.state.snapshot(), "edit", siblingInput));
+      expect(
+        gate.toolCallHandler(toolCall("edit", siblingInput)),
+      ).toBeDefined();
+      // Balanced unwind of the added layer.
+      gate.state.detachPhase();
+      gate.state.exitCapability();
+    });
+  });
+
+  it("eager consult over UNGATED tools: bash resolves undefined (silence = allowed) under a healthy env and THROWS the producer's env fault with the env deleted - even for bash (the fail-safe tail)", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { gate } = await host();
+      expect(
+        gate.toolCallHandler(toolCall("bash", { command: "ls" })),
+      ).toBeUndefined();
+    });
+    await withAgentDir(undefined, async () => {
+      const { gate } = await host();
+      let thrown: unknown;
+      try {
+        gate.toolCallHandler(toolCall("bash", { command: "ls" }));
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(CapabilityEnvError);
+      expect((thrown as CapabilityEnvError).message).toBe(ENV_UNSET_REPLICA);
+    });
+  });
+
+  it("faulty channel: a deleted PI_CODING_AGENT_DIR makes snapshot() throw the producer's CapabilityEnvError VERBATIM (name + message bytes) on every call until healthy", async () => {
+    await withAgentDir(undefined, async () => {
+      const { gate } = await host();
+      let first: unknown;
+      try {
+        gate.state.snapshot();
+      } catch (error) {
+        first = error;
+      }
+      expect(first).toBeInstanceOf(CapabilityEnvError);
+      expect((first as CapabilityEnvError).name).toBe("CapabilityEnvError");
+      expect((first as CapabilityEnvError).message).toBe(ENV_UNSET_REPLICA);
+      // Fault persists VERBATIM on the next call (fresh wrapper, no caching
+      // anywhere: name + message bytes identical again).
+      let second: unknown;
+      try {
+        gate.state.snapshot();
+      } catch (error) {
+        second = error;
+      }
+      expect(second).toBeInstanceOf(CapabilityEnvError);
+      expect((second as CapabilityEnvError).name).toBe("CapabilityEnvError");
+      expect((second as CapabilityEnvError).message).toBe(ENV_UNSET_REPLICA);
+    });
+  });
+});
+
+describe("PioSession \u2014 gate discovery (fromRuntime symbol stamp)", () => {
+  it("a STAMPED shared handle: two fromRuntime instances over the same runtime discover the SAME row-held state by reference - A's phase run observes its phase attached mid-run on the row-held state, B's subsequent run observes the SAME external state consulted again, both post-phase readings detached", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const tmp = await mkdtemp(path.join(tmpdir(), "pio-gate-share-"));
+      try {
+        // Direct-drive idiom (the existing P-row channel): one settled
+        // runtime whose current handle h0 the row stamps ITSELF.
+        await harness.createAgentSessionRuntime();
+        const round = lastRound();
+        const h0 = round.session;
+        const rowState = new SessionExecutionState({
+          projectSlotRoot: () => "/proj/lit-slot",
+          workspaceCwd: () => "/work/lit",
+        });
+        Object.defineProperty(h0, EXECUTION_STATE_STAMP, {
+          value: rowState,
+          enumerable: false,
+          configurable: true,
+        });
+        const A = PioSession.fromRuntime(asRuntime(round.runtime));
+        const B = PioSession.fromRuntime(asRuntime(round.runtime));
+
+        // Span-producer delegation pin folded here: A's enter reaches the
+        // row-held state BY REFERENCE (B delegates to the same object).
+        A.enterCapability(FIXTURE_SPAN);
+        expect(rowState.snapshot().sources).toBe(FIXTURE_SPAN);
+
+        const seededA = path.join(tmp, "a.md");
+        await writeFile(seededA, "seeded\n");
+        scriptRuns(round, quietRun());
+        let sawA: string | null = null;
+        const resultA = await A.execute_phase("shared-a", {
+          write: [seededA],
+          shouldStopLoop: async () => {
+            sawA = rowState.snapshot().phase?.id ?? null;
+            return true;
+          },
+        });
+        expect(resultA.iterations).toBe(1);
+        expect(sawA).toBe("shared-a");
+        expect(rowState.snapshot().phase).toBeNull();
+
+        const seededB = path.join(tmp, "b.md");
+        await writeFile(seededB, "seeded\n");
+        scriptRuns(round, quietRun());
+        let sawB: string | null = null;
+        const resultB = await B.execute_phase("shared-b", {
+          write: [seededB],
+          shouldStopLoop: async () => {
+            sawB = rowState.snapshot().phase?.id ?? null;
+            return true;
+          },
+        });
+        expect(resultB.iterations).toBe(1);
+        expect(sawB).toBe("shared-b");
+        expect(rowState.snapshot().phase).toBeNull();
+        // Balanced unwind through B's delegation.
+        B.exitCapability();
+        expect(rowState.snapshot().sources).toBeNull();
+      } finally {
+        await rm(tmp, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("a FOREIGN (unstamped) handle: fromRuntime finds NO state - a non-empty write: phase RESOLVES normally (attach silently skipped, no depth-0 fault), rebind over a successful swap is fault-free (drain no-op), counters and markCapability unaffected, and BOTH span-producer methods are clean no-ops (no throw, no observable effect)", async () => {
+    const tmp = await mkdtemp(path.join(tmpdir(), "pio-gate-foreign-"));
+    try {
+      const hf = harness.mintFakeHandle();
+      const foreign = PioSession.fromRuntime(asRuntime({ session: hf }));
+      expect(foreign.id).toBe(harness.sessionId);
+
+      // Span producers: no throw, no observable effect anywhere.
+      foreign.enterCapability(FIXTURE_SPAN);
+      foreign.exitCapability();
+
+      // No-turn mark + zero counters behave exactly like an ordinary host.
+      await foreign.markCapability("foreign");
+      expect(hf.sendCustomMessage).toHaveBeenCalledTimes(1);
+      expect(foreign.counters()).toEqual({
+        filesWritten: 0,
+        askUserCalls: 0,
+        toolUses: {},
+        tokens: 0,
+      });
+
+      // Non-empty declaration settles NORMALLY: no state at all, hence no
+      // depth-0 fault - attach silently skipped.
+      const seeded = path.join(tmp, "x.md");
+      await writeFile(seeded, "seeded\n");
+      hf.prompt.mockImplementationOnce(async () => {
+        emitTo(hf, ...quietRun());
+      });
+      const result = await foreign.execute_phase("foreign-phase", {
+        write: [seeded],
+      });
+      expect(result.done).toBe(true);
+      expect(result.iterations).toBe(1);
+
+      // Successful-swap rebind: fault-free, drain no-op (nothing to drain),
+      // subscription re-armed on the fresh handle.
+      const h1 = harness.mintFakeHandle(harness.sessionId);
+      foreign.rebind(asHandle(h1));
+      expect(h1.live).toHaveLength(1);
+      expect(foreign.counters()).toEqual({
+        filesWritten: 0,
+        askUserCalls: 0,
+        toolUses: {},
+        tokens: 0,
+      });
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () => {
+  /** Depth-0 attach fault message replica (SOLE OWNER: attachPhase in
+   * ../session-execution-state.ts - the unexported ExecutionStateError
+   * bookkeeping class). */
+  const attachNoSpanReplica = (phaseId: string): string =>
+    `execution state: attachPhase('${phaseId}') called with no capability span active`;
+
+  it("ATTACH stores the RAW declared VERBATIM: a double declaration (BOTH files seeded so the expectation gate passes) is stored WHOLE at the mid-run reading - declaration order pinned, the contract-uncovered ghost entry present, proving NO filtering at attach - the phase id pinned, and the post-detach reading STRUCTURALLY IDENTICAL to the pre-attach reading", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const tmp = await mkdtemp(path.join(tmpdir(), "pio-gate-verbatim-"));
+      try {
+        const seededTarget = path.join(tmp, "lands.md");
+        const uncoveredGhost = path.join(tmp, "ghost.md");
+        await writeFile(seededTarget, "seeded\n");
+        await writeFile(uncoveredGhost, "ghost seeded - contract-uncovered\n");
+        const { instance, round, gate } = await host();
+        const preAttach = gate.state.snapshot();
+        scriptRuns(round, quietRun());
+        let observedPhaseId: string | null = null;
+        let observedDeclared: string[] | null = null;
+        await instance.execute_phase("verbatim", {
+          write: [seededTarget, uncoveredGhost],
+          shouldStopLoop: async () => {
+            const snap = gate.state.snapshot();
+            observedPhaseId = snap.phase?.id ?? null;
+            observedDeclared = snap.phase ? [...snap.phase.declared] : null;
+            return true;
+          },
+        });
+        expect(observedPhaseId).toBe("verbatim");
+        // Deep-equal to the retained resolved array, order-pinned; the
+        // ghost survives attach untouched.
+        expect(observedDeclared).toStrictEqual([
+          path.resolve(seededTarget),
+          path.resolve(uncoveredGhost),
+        ]);
+        // Post-exit: the phase slot is empty and the reading structurally
+        // identical to the pre-attach one (same sources / phase-null /
+        // paths record shape).
+        const postDetach = gate.state.snapshot();
+        expect(postDetach.phase).toBeNull();
+        expect(postDetach).toEqual(preAttach);
+      } finally {
+        await rm(tmp, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("SYMMETRY leg 1 (NORMAL break): the phase attaches at start and detaches after one quiet settle over a seeded file - attached mid-run, detached post-run", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const tmp = await mkdtemp(path.join(tmpdir(), "pio-gate-normal-"));
+      try {
+        const seeded = path.join(tmp, "n.md");
+        await writeFile(seeded, "seeded\n");
+        const { instance, round, gate } = await host();
+        scriptRuns(round, quietRun());
+        let saw: string | null = null;
+        const result = await instance.execute_phase("normal-leg", {
+          write: [seeded],
+          shouldStopLoop: async () => {
+            saw = gate.state.snapshot().phase?.id ?? null;
+            return true;
+          },
+        });
+        expect(result.done).toBe(true);
+        expect(result.iterations).toBe(1);
+        expect(saw).toBe("normal-leg");
+        expect(gate.state.snapshot().phase).toBeNull();
+      } finally {
+        await rm(tmp, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("SYMMETRY leg 2 (BUDGET break): max: 1 with an always-continuing stop rule RESOLVES bounded (a resolve, not a reject), the phase attached mid-run and detached after the bounded resolution", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const tmp = await mkdtemp(path.join(tmpdir(), "pio-gate-budget-"));
+      try {
+        const seeded = path.join(tmp, "b.md");
+        await writeFile(seeded, "seeded\n");
+        const { instance, round, gate } = await host();
+        scriptRuns(round, quietRun());
+        let saw: string | null = null;
+        const result = await instance.execute_phase("budget-leg", {
+          max: 1,
+          write: [seeded],
+          shouldStopLoop: async () => {
+            saw = gate.state.snapshot().phase?.id ?? null;
+            return false;
+          },
+        });
+        expect(result.done).toBe(true);
+        expect(result.iterations).toBe(1);
+        expect(saw).toBe("budget-leg");
+        expect(gate.state.snapshot().phase).toBeNull();
+      } finally {
+        await rm(tmp, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it("SYMMETRY leg 3 (CEILING-FAULT throw): four quiet passes over an unseeded target REJECT with the typed violation, the windows close AND the phase detaches post-reject (the finally fires on the throw cause too)", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { instance, round, gate } = await host();
+      const deadPass = [
+        agentStart(),
+        start("d1", "write", { path: "/leaked/a.md" }),
+        end("d1", "write", false),
+        agentEnd(["d1"], false),
+      ];
+      scriptRuns(round, deadPass, deadPass, deadPass, deadPass);
+      await expect(
+        instance.execute_phase("ceiling-leg", { write: ["/absent/x.md"] }),
+      ).rejects.toBeInstanceOf(ContractViolationError);
+      // Windows closed (the standing invariant) AND the phase detached.
+      expect(instance.getFilesWrittenDelta()).toEqual([]);
+      expect(instance.getRunMessages()).toEqual([]);
+      expect(gate.state.snapshot().phase).toBeNull();
+    });
+  });
+
+  it("ABSENT/EMPTY declaration pair: no write and an explicit write: [] each leave snapshot().phase null THROUGH THE WHOLE RUN (hook-observed) - the valid no-op keeps the capability's sources governing unchanged", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { instance, round, gate } = await host();
+      scriptRuns(round, quietRun(), quietRun());
+      const seenAbsent: boolean[] = [];
+      const seenEmpty: boolean[] = [];
+      await instance.execute_phase("no-decl", {
+        shouldStopLoop: async () => {
+          seenAbsent.push(gate.state.snapshot().phase === null);
+          return seenAbsent.length === 1;
+        },
+      });
+      await instance.execute_phase("empty-decl", {
+        write: [],
+        shouldStopLoop: async () => {
+          seenEmpty.push(gate.state.snapshot().phase === null);
+          return seenEmpty.length === 1;
+        },
+      });
+      expect(seenAbsent).toEqual([true]);
+      expect(seenEmpty).toEqual([true]);
+      expect(gate.state.snapshot().phase).toBeNull();
+    });
+  });
+
+  it("containment-free loudness: a non-empty declaration over a state-PRESENT-but-span-LESS state throws the state's bookkeeping fault UNWRAPPED (name + message bytes) - never swallowed into any settlement path", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { instance, round, gate } = await host();
+      gate.state.exitCapability(); // consume the fixture span -> depth 0
+      scriptRuns(round, quietRun());
+      let thrown: unknown;
+      try {
+        await instance.execute_phase("loud", { write: ["/lit/deep/x.md"] });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(Error);
+      const fault = thrown as Error;
+      expect(fault.name).toBe("ExecutionStateError");
+      expect(fault.message).toBe(attachNoSpanReplica("loud"));
+    });
+  });
+});
+
+describe("PioSession \u2014 gate rebind drain", () => {
+  it("a SUCCESSFUL swap rebind DRAINS the state to depth-0 (follow-up enter/attach round-trips cleanly - structurally fresh), and the next consultation through the extracted handler renders the NO-SPAN refusal by identity with the real predicate (drain visibility end-to-end)", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { instance, round, gate } = await host();
+      // Simulated open window: an EXTRA span plus an attached phase.
+      gate.state.enterCapability({
+        name: "extra",
+        writes: [],
+        allowProjectWrites: false,
+      });
+      gate.state.attachPhase("open-window", ["/window/declared.md"]);
+      expect(gate.state.snapshot().phase?.id).toBe("open-window");
+
+      const h1 = harness.mintFakeHandle(harness.sessionId);
+      simulateSwap(round, h1);
+      instance.rebind(asHandle(h1));
+
+      const drained = gate.state.snapshot();
+      expect(drained.sources).toBeNull();
+      expect(drained.phase).toBeNull();
+      // Structurally fresh: a full span/phase round-trip succeeds after
+      // the drain.
+      gate.state.enterCapability(FIXTURE_SPAN);
+      gate.state.attachPhase("post-drain", ["/post/x.md"]);
+      expect(gate.state.snapshot().phase?.id).toBe("post-drain");
+      gate.state.detachPhase();
+      gate.state.exitCapability();
+
+      // Next consultation through the extracted handler: the NO-SPAN
+      // refusal by identity with the real predicate.
+      const input = { path: "/outside/z.md" };
+      expect(gate.toolCallHandler(toolCall("write", input))).toStrictEqual(
+        decideWrite(gate.state.snapshot(), "write", input),
+      );
+      expect(gate.toolCallHandler(toolCall("write", input))).toBeDefined();
+    });
+  });
+
+  it("GATE ORDER: a same-handle rebind does NOT drain (the fixture span survives the no-op) and a refused foreign-id rebind THROWS first and leaves the state INTACT (the span survives the refusal)", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { instance, round, gate } = await host();
+      expect(gate.state.snapshot().sources).toBe(FIXTURE_SPAN);
+      // No-op same-handle rebind: no drain.
+      instance.rebind(asHandle(round.session));
+      expect(gate.state.snapshot().sources).toBe(FIXTURE_SPAN);
+      // Foreign-id refusal: throws, state intact.
+      const hF = harness.mintFakeHandle("sess-other-9999");
+      let thrown: unknown;
+      try {
+        instance.rebind(asHandle(hF));
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(SessionHandleRefusalError);
+      expect(gate.state.snapshot().sources).toBe(FIXTURE_SPAN);
+    });
+  });
+});
+
+describe("mechanical discipline over the gate-wiring bytes", () => {
+  const GATE_SUITE_SOURCE = readFileSync(
+    new URL("./pio-session.test.ts", import.meta.url),
+    "utf8",
+  );
+  const GUARDS_SUITE_SOURCE = readFileSync(
+    new URL("../capabilities/guards-demo.test.ts", import.meta.url),
+    "utf8",
+  );
+  // The module under test itself (the source-guard describe above keeps its
+  // own scoped copy).
+  const MODULE_SOURCE = readFileSync(
+    new URL("./pio-session.ts", import.meta.url),
+    "utf8",
+  );
+
+  /** Compact comment/literal-aware scan (house precedent: prose comments
+   * are elided and exempt; literal payloads are recorded, not elided).
+   * Soundness rests on the pinned no-slash-survives rule below - this
+   * module ships zero regex literals, so no expression-start heuristic is
+   * needed. */
+  function partitionForScan(source: string): {
+    residue: string;
+    payloads: string[];
+  } {
+    const payloads: string[] = [];
+    let residue = "";
+    let i = 0;
+    while (i < source.length) {
+      const ch = source[i];
+      const next = source[i + 1];
+      if (ch === "/" && next === "/") {
+        const end = source.indexOf("\n", i);
+        i = end === -1 ? source.length : end;
+        continue;
+      }
+      if (ch === "/" && next === "*") {
+        const end = source.indexOf("*/", i + 2);
+        i = end === -1 ? source.length : end + 2;
+        continue;
+      }
+      if (ch === "'" || ch === '"' || ch === "`") {
+        const start = i + 1;
+        i += 1;
+        while (i < source.length && source[i] !== ch) {
+          i += source[i] === "\\" ? 2 : 1;
+        }
+        const end = Math.min(i, source.length);
+        payloads.push(source.slice(start, end));
+        residue += `${ch}P${ch}`;
+        i = end + 1;
+        continue;
+      }
+      residue += ch;
+      i += 1;
+    }
+    return { residue, payloads };
+  }
+
+  const CAST_TOKEN = ["a", "s"].join("");
+  const RAW_GLYPH = String.fromCharCode(0x2014);
+
+  it("scoped purity residue: ZERO `as` casts and ZERO explicit `any` over the comment/literal-stripped residue of pio-session.ts (whole-file superset of the touched regions) - and NO slash survives the elision (the soundness pin keeping this scan valid)", () => {
+    const { residue } = partitionForScan(MODULE_SOURCE);
+    expect(residue.match(new RegExp(`\\b${CAST_TOKEN}\\b`, "g"))).toBeNull();
+    expect(residue.match(/\bany\b/g)).toBeNull();
+    expect(residue.includes("/")).toBe(false);
+  });
+
+  it("glyph discipline: NO raw U+2014 in any literal payload or in the comment-free code residue of pio-session.ts - and NO slash survives the elision (the zero-regex-literals pin that keeps this scan sound)", () => {
+    const { residue, payloads } = partitionForScan(MODULE_SOURCE);
+    for (const payload of payloads) {
+      expect(payload.includes(RAW_GLYPH)).toBe(false);
+    }
+    expect(residue.includes(RAW_GLYPH)).toBe(false);
+    expect(residue.includes("/")).toBe(false);
+  });
+
+  it("dev-process-marker scan over the FINAL three touched files: zero step-attribution / planning-meta tokens (needles assembled from fragments so the scan cannot match itself)", () => {
+    const markers: string[] = [
+      "\\bstep\\s+\\d",
+      "\\bS" + "0\\d\\b",
+      "\\bD#\\d",
+      "\\u00a7",
+      "(?:TASK|PLAN)" + "\\.md",
+      `\\b${["ske", "leton"].join("")}\\b`,
+      "\\b20\\d{2}-\\d{2}-\\d{2}\\b",
+    ];
+    for (const source of [
+      MODULE_SOURCE,
+      GATE_SUITE_SOURCE,
+      GUARDS_SUITE_SOURCE,
+    ]) {
+      for (const pattern of markers) {
+        expect(
+          source.match(new RegExp(pattern, "gi")),
+          `marker slipped through: ${pattern}`,
+        ).toBeNull();
+      }
+    }
   });
 });

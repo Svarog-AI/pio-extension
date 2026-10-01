@@ -55,11 +55,13 @@
 // the phase re-enters the loop body; iterations counts all settled runs,
 // retries included.
 //
-// Durable-declaration retention owed to slot 9: entries resolve ONCE at
-// phase start (absolute normalized; relative under process.cwd()) into a
-// list retained for the whole phase duration — never consumed transiently.
-// Slot 9 (per-session-write-gate) consumes this same declaration as its
-// write-permission frame; enforcement itself is slot 9's scope.
+// Durable-declaration retention: entries resolve ONCE at phase start
+// (absolute normalized; relative under process.cwd()) into a list retained
+// for the whole phase duration — never consumed transiently. The retained
+// resolved entries arm BOTH the settlement gate (consulted at break points)
+// and the execution-state feed (attached verbatim at phase start when
+// non-empty, detached on every exit cause): the session's per-phase write
+// permission frame rides this single retained list.
 //
 // Corrective-note channel: gate-triggered retries alone append ONE fresh
 // deterministic MARKED BLOCK (a flanked em-dash delimiter line labeled
@@ -73,17 +75,40 @@
 // home's ContractViolationError (collect-all, one line per missing path) —
 // unwrapped through the finally closeout into the standard containment
 // channels on both placements.
+//
+// Per-session write-gate producer wiring: create mints EXACTLY ONE
+// SessionExecutionState over its two owned anchor channels (the
+// project-slot root recovered through the base's loud state-root channel
+// plus the launch cwd; the workspace cwd itself) and threads it into the
+// construction seam's guard install alongside the V1 handler closure. That
+// closure consults a FRESH snapshot through the stateless predicate per
+// call, eager for every tool name: a faulty channel faults every call
+// verbatim (fail-safe tail), and no containment hides it. fromRuntime
+// discovers the state from the settled handle's symbol stamp via cast-free
+// instanceof narrowing; an unstamped foreign handle carries NO state and
+// every gate operation no-ops cleanly. execute_phase feeds its retained
+// resolved declarations into the top span strictly at phase start (non-
+// empty lists only; empty or absent attaches nothing) and detaches on
+// every exit cause. rebind drains the state to depth zero after both gates
+// on a successful swap. The enterCapability / exitCapability pair is the
+// instance-level span-producer surface; no public verdict surface exists,
+// verdicts firing exclusively inside the interceptor closure.
 
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import type {
   AgentSession,
   AgentSessionEvent,
   AgentSessionEventListener,
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
-import { createPioSession } from "../session.ts";
+import { slugify } from "../sandbox/layout.ts";
+import { createPioSession, EXECUTION_STATE_STAMP } from "../session.ts";
+import { SessionExecutionState } from "../session-execution-state.ts";
+import { deriveStateRootFromAgentDir } from "./base.ts";
 import { ContractViolationError } from "./errors.ts";
+import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
+import { decideWrite } from "./guards/write-gate.ts";
 
 /** Tool names whose successful executions commit a file path. */
 const FILE_TOOL_NAMES: ReadonlySet<string> = new Set(["write", "edit"]);
@@ -154,9 +179,9 @@ export interface PhaseOptions {
    * settle (absent or empty = no expectations; presence turns enforcement
    * ON — mandatory, always on, no opt-out). Entries are paths: absolute
    * entries pass through normalized; relative entries resolve under
-   * process.cwd(). Permission-neutral in THIS module — slot 9
-   * (per-session-write-gate) consumes this same declaration as its
-   * write-permission frame. */
+   * process.cwd(). Non-empty retained entries additionally feed the
+   * session's execution state (attached verbatim at phase start), arming
+   * the per-phase write permission frame. */
   readonly write?: readonly string[];
 }
 
@@ -391,18 +416,29 @@ export class PioSession {
   #observer: SessionObserver;
   /** Last-bound handle MARKER — rebind's same-handle comparison only. */
   #lastBound: AgentSession;
+  /** Execution state minted by create or discovered through the settled
+   * handle's symbol stamp (fromRuntime); ABSENT means no state — every
+   * gate operation on such an instance no-ops cleanly. */
+  #executionState: SessionExecutionState | undefined;
 
-  private constructor(runtime: AgentSessionRuntime, observer: SessionObserver) {
+  private constructor(
+    runtime: AgentSessionRuntime,
+    observer: SessionObserver,
+    executionState: SessionExecutionState | undefined = undefined,
+  ) {
     this.id = runtime.session.sessionId;
     this.#lastBound = runtime.session;
     this.runtime = runtime;
     this.vars = new SessionVariableStore();
     this.#observer = observer;
+    this.#executionState = executionState;
   }
 
   /**
    * The only standalone construction path: mints the observer and its
-   * single instance-scoped listener, threads the listener through the
+   * single instance-scoped listener PLUS the one per-session execution
+   * state over the owned anchor channels, threads the listener and the
+   * UNCONDITIONAL guard install (state + V1 handler closure) through the
    * construction seam (exactly one live subscription at any instant), and
    * returns the ready instance. The composed-frame sibling (fromRuntime)
    * hosts an already-settled runtime instead.
@@ -412,19 +448,39 @@ export class PioSession {
     const listener: AgentSessionEventListener = (event) => {
       observer.handle(event);
     };
+    // THE one per-session execution state: minted over the two owned anchor
+    // channels (storage ONLY — resolution defers to snapshot(), zero env/
+    // fs at construction).
+    const executionState = new SessionExecutionState({
+      projectSlotRoot: () =>
+        join(
+          deriveStateRootFromAgentDir(process.env.PI_CODING_AGENT_DIR),
+          "projects",
+          slugify(cwd),
+        ),
+      workspaceCwd: () => resolve(cwd),
+    });
+    // THE V1 handler closure: every tool-call verdict consults a FRESH
+    // snapshot through the stateless predicate — late binding survives
+    // rebind drain and span churn; no containment anywhere.
+    const v1Handler = (toolName: string, input: unknown) =>
+      decideWrite(executionState.snapshot(), toolName, input);
     const runtime = await createPioSession(cwd, sessionsRoot, {
       sessionListener: listener,
+      guardInstall: { executionState, handlers: [v1Handler] },
     });
-    return new PioSession(runtime, observer);
+    return new PioSession(runtime, observer, executionState);
   }
 
   /**
    * Synchronous factory over an ALREADY-SETTLED runtime — the composed-
    * frame sibling of create (cf. dist SessionManager.create/open/inMemory).
    * Mints a fresh observer and listener routed to it, subscribes EXACTLY
-   * ONCE on the runtime's CURRENT handle, and constructs through the same
-   * private constructor. Zero SDK-construction reach; no defensive input
-   * validation — the type contract carries the guarantee.
+   * ONCE on the runtime's CURRENT handle, DISCOVERS the execution state
+   * from that handle's symbol stamp (cast-free narrowing; absent for a
+   * foreign handle), and constructs through the same private constructor.
+   * Zero SDK-construction reach; no defensive input validation — the type
+   * contract carries the guarantee.
    */
   static fromRuntime(runtime: AgentSessionRuntime): PioSession {
     const observer = new SessionObserver();
@@ -432,7 +488,19 @@ export class PioSession {
       observer.handle(event);
     };
     runtime.session.subscribe(listener);
-    return new PioSession(runtime, observer);
+    // Cast-free discovery over the settled handle's symbol stamp: the
+    // Reflect.get read lands in an unknown local, narrowed by instanceof.
+    // A pio-constructed shared handle FINDS THE EXACT object minted at
+    // create (composed frames share it by handle identity); an unstamped
+    // foreign handle resolves undefined — no execution state, every gate
+    // operation below no-ops.
+    const stamped: unknown = Reflect.get(
+      runtime.session,
+      EXECUTION_STATE_STAMP,
+    );
+    const executionState =
+      stamped instanceof SessionExecutionState ? stamped : undefined;
+    return new PioSession(runtime, observer, executionState);
   }
 
   /**
@@ -457,11 +525,27 @@ export class PioSession {
     if (session === this.#lastBound) {
       return;
     }
+    // A replaced handle starts fresh: drain the execution state to depth
+    // zero so no stale span or phase survives the swap (only after BOTH
+    // gates passed - refusal and same-handle no-op leave it untouched).
+    this.#executionState?.reset();
     const listener: AgentSessionEventListener = (event) => {
       this.#observer.handle(event);
     };
     session.subscribe(listener);
     this.#lastBound = session;
+  }
+
+  /** Push the running capability's sources as a span layer on the session's
+   * execution state. No-op when the instance carries no execution state. */
+  enterCapability(sources: CapabilitySources): void {
+    this.#executionState?.enterCapability(sources);
+  }
+
+  /** Pop the session's execution-state span layer (span settlement).
+   * No-op when the instance carries no execution state. */
+  exitCapability(): void {
+    this.#executionState?.exitCapability();
   }
 
   /** Session-cumulative snapshot (fresh object per call). */
@@ -522,12 +606,27 @@ export class PioSession {
     const text =
       renderPhaseMarker(id) +
       (opts?.instructions ? `\n${opts.instructions}` : "");
-    // Resolved once at phase start and retained for the whole duration
-    // (slot-9 storage property): the gate and the ceiling both consult it.
+    // Resolved once at phase start and retained for the whole duration:
+    // the settlement gate, the ceiling failure, and the execution-state
+    // feed all consult this same retained list.
     const declarations = (opts?.write ?? []).map((entry) => ({
       entry,
       resolved: resolve(entry),
     }));
+    // The retained resolved entries feed the execution state VERBATIM when
+    // non-empty: attach STRICTLY AT PHASE START (outside the try block, so
+    // a loud bookkeeping fault escapes with no finally-side bookkeeping to
+    // untangle); the attached flag keeps the closeout detach symmetric over
+    // every exit cause. Absent or empty declarations attach NOTHING - the
+    // capability's sources govern unchanged.
+    const declaredPaths = declarations.map(
+      (declaration) => declaration.resolved,
+    );
+    let attached = false;
+    if (this.#executionState !== undefined && declaredPaths.length > 0) {
+      this.#executionState.attachPhase(id, declaredPaths);
+      attached = true;
+    }
     let iterations = 0;
     // Independent of budget and stop rule; never surfaced on PhaseResult.
     let expectationRetries = 0;
@@ -599,6 +698,7 @@ export class PioSession {
       // Windows never leak into the next phase regardless of the exit cause.
       this.resetFilesWrittenDelta();
       this.resetRunMessages();
+      if (attached) this.#executionState?.detachPhase();
     }
   }
 }

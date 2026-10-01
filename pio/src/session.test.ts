@@ -497,6 +497,40 @@ describe("createPioSession — threaded guard install + runner semantics", () =>
     };
     expect(await handler(ev)).toBe(verdict);
     expect(h).toHaveBeenCalledWith("bash", bashInput);
+    // Reference identity of the forwarded input: verbatim reference, not a copy.
+    expect(h.mock.calls[0][1]).toBe(bashInput);
+  });
+
+  it("no-refusal fall-through: consultation ending WITHOUT any refusal resolves undefined — both the empty-handler-list and single-allowing-handler shapes", async () => {
+    // Shape (i): an empty handler list leaves the runner loop no return value.
+    await createPioSession(CWD, undefined, {
+      guardInstall: { executionState: {}, handlers: [] },
+    });
+    const evEmpty: FakeToolCallEvent = {
+      type: "tool_call",
+      toolCallId: "u-1",
+      toolName: "write",
+      input: { path: "/u1.md" },
+    };
+    const firstHandler = lastFakePi().registrations[0].handler;
+    expect(await firstHandler(evEmpty)).toBeUndefined();
+
+    // Shape (ii): a single allowing handler returns undefined.
+    const allowing = vi.fn(
+      (_n: string, _i: unknown): Verdict | undefined => undefined,
+    );
+    await createPioSession(CWD, undefined, {
+      guardInstall: { executionState: {}, handlers: [allowing] },
+    });
+    const evAllow: FakeToolCallEvent = {
+      type: "tool_call",
+      toolCallId: "u-2",
+      toolName: "write",
+      input: { path: "/u2.md" },
+    };
+    const secondHandler = lastFakePi().registrations[0].handler;
+    expect(await secondHandler(evAllow)).toBeUndefined();
+    expect(allowing).toHaveBeenCalledTimes(1);
   });
 
   it("fault-free interception: a THROWING handler escapes the runner verbatim (same instance, no containment layer swallows it)", async () => {
@@ -635,7 +669,7 @@ describe("createPioSession — symbol stamp + scripted closure re-run", () => {
   });
 });
 
-describe("mechanical source guards - session.ts leaf seam", () => {
+describe("mechanical source guards — session.ts leaf seam", () => {
   const SESSION_SOURCE = readFileSync(
     new URL("./session.ts", import.meta.url),
     "utf8",
@@ -644,7 +678,7 @@ describe("mechanical source guards - session.ts leaf seam", () => {
 
   /** Compact comment/literal-aware scan (house precedent: prose comments
    * elide and are exempt; literal payloads are recorded, not elided).
-   * Soundness rests on the pinned zero-slash residue rule below - session.ts
+   * Soundness rests on the pinned zero-slash residue rule below — session.ts
    * ships no regex literals, so no expression-start heuristic is needed. */
   function partitionForScan(source: string): {
     residue: string;
@@ -687,7 +721,7 @@ describe("mechanical source guards - session.ts leaf seam", () => {
   const CAST_TOKEN = ["a", "s"].join("");
   const RAW_GLYPH = String.fromCharCode(0x2014);
 
-  it("LEAF POSITION: the import-clause set is UNCHANGED - exactly three clauses over two unique specifiers, no capability or state specifier (statement-wise)", () => {
+  it("LEAF POSITION: the import-clause set is UNCHANGED — exactly three clauses over two unique specifiers, no capability or state specifier (statement-wise)", () => {
     const clauseCount = (SESSION_SOURCE.match(/^import\b/gm) ?? []).length;
     expect(clauseCount).toBe(3);
     const specifiers = [...SESSION_SOURCE.matchAll(/\bfrom\s+"([^"]+)"/g)]
@@ -716,7 +750,7 @@ describe("mechanical source guards - session.ts leaf seam", () => {
     ]);
   });
 
-  it("scoped purity residue: ZERO `as` casts and ZERO explicit `any` over the comment/literal-stripped residue of session.ts (whole-file superset of the touched regions) - and NO slash survives the elision (the soundness pin keeping this scan valid)", () => {
+  it("scoped purity residue: ZERO `as` casts and ZERO explicit `any` over the comment/literal-stripped residue of session.ts (whole-file superset of the touched regions) — and NO slash survives the elision (the soundness pin keeping this scan valid)", () => {
     const { residue } = partitionForScan(SESSION_SOURCE);
     expect(residue.match(new RegExp(`\\b${CAST_TOKEN}\\b`, "g"))).toBeNull();
     expect(residue.match(/\bany\b/g)).toBeNull();

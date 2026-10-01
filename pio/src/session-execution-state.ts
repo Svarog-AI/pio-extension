@@ -1,11 +1,17 @@
-// ── guards/session-execution-state.ts — TYPES-ONLY SKELETON (Step 1); completed
-// in Step 2 (class + channels + lifecycle added AROUND this type) ──
+// ── session-execution-state.ts — THE PER-SESSION EXECUTION STATE (types-only
+// skeleton in Step 1; completed in Step 2 — class + channels + lifecycle
+// added AROUND this type) ──
+//
+// Placement: top level of the pio package, sibling of session.ts — it records
+// WHAT IS EXECUTING RIGHT NOW for a whole session and is not a guard member
+// itself, so it sits beside the mechanism rather than inside the guards/
+// subpackage (which keeps the predicate and the shared decision vocabulary).
 
 import type {
   CapabilitySources,
   PathAnchors,
   PhasePermission,
-} from "./guard-vocabulary.ts";
+} from "./capability/guards/guard-vocabulary.ts";
 
 /** THE ONE frozen per-call reading: WHAT IS EXECUTING RIGHT NOW plus the
  * session's invariant paths — the execution state's `snapshot()` (Step 2),

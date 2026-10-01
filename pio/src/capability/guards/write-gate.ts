@@ -1,6 +1,6 @@
 // ── guards/write-gate.ts — STATELESS PREDICATE (value imports: node:path,
 // ../../sandbox/fsview.ts; type-only: ./guard-vocabulary.ts,
-// ./session-execution-state.ts — the latter ERASED at compile time;
+// ../../session-execution-state.ts — the latter ERASED at compile time;
 // COMPLETE surface: exactly THREE exports) ──
 //
 // Half of the two-component write gate — the stateless decision point (PDP):
@@ -34,8 +34,8 @@
 
 import { resolve } from "node:path";
 import { hasWildcard } from "../../sandbox/fsview.ts";
+import type { ExecutionSnapshot } from "../../session-execution-state.ts";
 import type { CapabilitySources, PathAnchors } from "./guard-vocabulary.ts";
-import type { ExecutionSnapshot } from "./session-execution-state.ts";
 
 /** Structural denial shape — assignable to the SDK's ToolCallEventResult
  * without importing it. `reason` is the ONLY feedback the model gets. */

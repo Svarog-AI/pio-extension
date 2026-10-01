@@ -11,10 +11,10 @@
 // ALL FOUR sibling files.
 
 import { readFileSync } from "node:fs";
+import type { ExecutionSnapshot } from "../../session-execution-state.ts";
+import * as stateModule from "../../session-execution-state.ts";
 import type { CapabilitySources, PathAnchors } from "./guard-vocabulary.ts";
 import * as vocabularyModule from "./guard-vocabulary.ts";
-import type { ExecutionSnapshot } from "./session-execution-state.ts";
-import * as stateModule from "./session-execution-state.ts";
 import * as writeGateModule from "./write-gate.ts";
 import { decideWrite, matchesAnchoredGlob } from "./write-gate.ts";
 
@@ -862,7 +862,7 @@ describe("mechanical source guards — all four sibling files", () => {
     "utf8",
   );
   const STATE_SOURCE = readFileSync(
-    new URL("./session-execution-state.ts", import.meta.url),
+    new URL("../../session-execution-state.ts", import.meta.url),
     "utf8",
   );
 
@@ -908,13 +908,13 @@ describe("mechanical source guards — all four sibling files", () => {
       );
     expect(typeSpecifiers.length).toBeGreaterThanOrEqual(1);
     for (const spec of typeSpecifiers) {
-      expect(spec).toMatch(/^\.\//);
+      expect(spec).toMatch(/^\.\.?\//);
       expect([
         "./guard-vocabulary.ts",
-        "./session-execution-state.ts",
+        "../../session-execution-state.ts",
       ]).toContain(spec);
     }
-    expect(typeSpecifiers).toContain("./session-execution-state.ts");
+    expect(typeSpecifiers).toContain("../../session-execution-state.ts");
   });
 
   it("write-gate.ts: NO class declarations — statelessness asserted mechanically", () => {
@@ -959,7 +959,7 @@ describe("mechanical source guards — all four sibling files", () => {
       "PathAnchors",
       "PhasePermission",
     ]);
-    expect(clause![2]).toBe("./guard-vocabulary.ts");
+    expect(clause![2]).toBe("./capability/guards/guard-vocabulary.ts");
     const exportLines = STATE_SOURCE.split("\n").filter((line) =>
       line.startsWith("export "),
     );

@@ -32,6 +32,7 @@ import {
   deriveStateRootFromAgentDir,
   PioCapability,
 } from "../capability/base.ts";
+import type { PhaseOptions } from "../capability/pio-session.ts";
 import {
   PioSession,
   renderCapabilityMarker,
@@ -178,6 +179,27 @@ const resumeFresh = (topic: string): string =>
   `The report does not exist yet. Create it on your first write, starting with the heading "# Research: ${topic}".`;
 const RESUME_EXISTING =
   "The report already exists. Read it FIRST: every existing section is an answered question \u2014 do not duplicate or repeat it; continue from the first question that is still open or unanswered.";
+/** One collect-all ceiling violation line per still-missing declared path
+ * at the exhausted ceiling (<entry> raw, <resolvedPath> resolved; the em dash
+ * is U+2014-escaped). SOLE OWNER: the module-private renderMissingOutputLine
+ * in capability/pio-session.ts (embedding its module-private ceiling constant
+ * 3); the copy keeps the pin meaningful. */
+const ceilingViolationLine = (
+  phaseId: string,
+  entry: string,
+  resolvedPath: string,
+): string =>
+  `phase '${phaseId}' output '${entry}' missing at ${resolvedPath} \u2014 still absent after 3 expectation re-run(s); the ceiling is exhausted`;
+/** One corrective MARKED BLOCK riding the transcript channel strictly after
+ * the marker-leading baseline following a gate denial (two LF-joined lines;
+ * no trailing newline; the em dashes are U+2014-escaped). SOLE OWNER: the
+ * module-private renderExpectationRetryLine in capability/pio-session.ts.
+ */
+const expectationRetryBlock = (
+  iterations: number,
+  missingPaths: readonly string[],
+): string =>
+  `\u2014\u2014 output guard \u2014\u2014\nRequired phase output(s) still missing after ${iterations} run(s): ${missingPaths.join(", ")}. Create each listed file with the write or edit tool before you finish this run.`;
 
 // Default topic for the flow rows (multi-word; Unicode coverage rides the
 // payload-shape row).
@@ -363,22 +385,38 @@ describe("research capability", () => {
       expect(await readFile(placement.absolutePath, "utf8")).toBe(seed);
     });
 
-    it("dry-up stops at the FIRST no-write settle: prompt invoked EXACTLY ONCE (zero wasted iterations) and the outcome is the sanity violation", async () => {
+    it("dry-up (zero writes committed) settles on the GATE, not the stop rule: the floor run breaks fileless, min: 1 already consumed after run 1, so the three further runs are GATE-DRIVEN corrective re-entries ending in the SAME ceiling-line capture (EXACTLY 4 prompts; notes ride calls[1..3] at 1/2/3 run(s); stderr empty)", async () => {
       const placement = reportPlacement(TOPIC);
       const { instance, round } = await host();
-      scriptRuns(round, quietSettle());
+      const passes: object[][] = [];
+      for (let i = 1; i <= 4; i++) {
+        passes.push(quietSettle());
+      }
+      scriptRuns(round, ...passes);
       const cap = new ResearchCapability({ session: instance });
       const result = await cap.run({ topic: TOPIC });
-      expect(round.session.prompt).toHaveBeenCalledTimes(1);
+      expect(round.session.prompt).toHaveBeenCalledTimes(4);
       expect(result.ok).toBe(false);
+      // The floor-trajectory twin of the cap-without-file capture: same
+      // ceiling byte, different run counts.
+      const line = ceilingViolationLine(
+        "research",
+        placement.absolutePath,
+        placement.absolutePath,
+      );
       expect(result.errors?.[0]).toStrictEqual({
         type: "ContractViolationError",
         cause: "contract",
-        message: `Contract violation: ${sanityViolationLine(
-          placement.absolutePath,
-        )}`,
-        violations: [sanityViolationLine(placement.absolutePath)],
+        message: `Contract violation: ${line}`,
+        violations: [line],
       });
+      for (let n = 1; n <= 3; n++) {
+        const sent: unknown = round.session.prompt.mock.calls[n]?.[0];
+        const text = typeof sent === "string" ? sent : "";
+        expect(
+          text.endsWith(expectationRetryBlock(n, [placement.absolutePath])),
+        ).toBe(true);
+      }
       expect(stderrText()).toBe("");
     });
 
@@ -430,6 +468,191 @@ describe("research capability", () => {
         seed + truncationNote(RESEARCH_MAX_RUNS),
       );
       expect(stderrText()).toBe("");
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // Settlement-gate interplay over the armed write declaration
+  // ---------------------------------------------------------------------
+
+  describe("settlement-gate interplay over the armed write declaration", () => {
+    it("phase options carry the write bag declaring the ALREADY-DERIVED absolute report path: the spied execute_phase capture deep-equals [absolutePath] beside the corroborated budget/stopping-rule shape (min/max pins, instructions defined, shouldStopLoop a function; instruction bytes belong to the framing rows)", async () => {
+      const seed = "# seeded\n";
+      const placement = reportPlacement(TOPIC);
+      await seedReport(placement.absolutePath, seed);
+      const { instance, round } = await host();
+      // Delegating passthrough spy: mirrors the argument while the REAL
+      // implementation still runs (observation seam, zero behavioral change);
+      // the row-local instance keeps the spy self-contained.
+      const original = instance.execute_phase.bind(instance);
+      let observed: PhaseOptions | undefined;
+      vi.spyOn(instance, "execute_phase").mockImplementation(
+        (id: string, opts?: PhaseOptions) => {
+          observed = opts;
+          return original(id, opts);
+        },
+      );
+      scriptRuns(
+        round,
+        writeSettle(placement.absolutePath, "w1"),
+        quietSettle(),
+      );
+      const cap = new ResearchCapability({ session: instance });
+      const result = await cap.run({ topic: TOPIC });
+      expect(round.session.prompt).toHaveBeenCalledTimes(2);
+      expect(result.ok).toBe(true);
+      expect(observed).toBeDefined();
+      if (observed === undefined) throw new Error("unreachable");
+      expect(observed.write).toEqual([placement.absolutePath]);
+      expect(observed.min).toBe(1);
+      expect(observed.max).toBe(RESEARCH_MAX_RUNS);
+      expect(typeof observed.instructions).toBe("string");
+      expect(typeof observed.shouldStopLoop).toBe("function");
+    });
+
+    it("bounded cap WITHOUT the report flips to the typed ceiling failure: TEN synthetic write-settles break AT the cap, the three gate-driven corrective re-runs ride the transcript ('after 10/11/12 run(s)'), and the settlement ends in the collect-all ContractViolationError with the pinned ceiling line (prompt invoked EXACTLY 13 times; disk ENOENT post-hoc; the ceiling throw escapes call() BEFORE any appendFile)", async () => {
+      const placement = reportPlacement(TOPIC);
+      const { instance, round } = await host();
+      const passes: object[][] = [];
+      for (let i = 1; i <= RESEARCH_MAX_RUNS; i++) {
+        passes.push(writeSettle(placement.absolutePath, `w${i}`));
+      }
+      for (let i = 1; i <= 3; i++) {
+        passes.push(quietSettle());
+      }
+      scriptRuns(round, ...passes);
+      const cap = new ResearchCapability({ session: instance });
+      const result = await cap.run({ topic: TOPIC });
+      expect(round.session.prompt).toHaveBeenCalledTimes(RESEARCH_MAX_RUNS + 3);
+      expect(result.ok).toBe(false);
+      // Entry and resolved path coincide here (the absolute entry resolves
+      // to itself).
+      const line = ceilingViolationLine(
+        "research",
+        placement.absolutePath,
+        placement.absolutePath,
+      );
+      expect(result.errors?.[0]).toStrictEqual({
+        type: "ContractViolationError",
+        cause: "contract",
+        message: `Contract violation: ${line}`,
+        violations: [line],
+      });
+      // TRANSCRIPT CHANNEL: runs 11..13 (calls[10..12]) each carry a FRESH
+      // corrective marked block strictly after the marker-leading baseline
+      // (containment pins inside the replica: the flanked delimiter line, the
+      // settled-run count at the denial point, the full checked path).
+      for (let n = 10; n <= 12; n++) {
+        const sent: unknown = round.session.prompt.mock.calls[n]?.[0];
+        const text = typeof sent === "string" ? sent : "";
+        expect(text.startsWith(PHASE_MARKER)).toBe(true);
+        expect(
+          text.endsWith(expectationRetryBlock(n, [placement.absolutePath])),
+        ).toBe(true);
+      }
+      expect(stderrText()).toBe("");
+      // Disk truth post-hoc: the report is ABSENT (the note-append is
+      // unreachable on this trajectory).
+      const { stat: statCheck } = await import("node:fs/promises");
+      await expect(statCheck(placement.absolutePath)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    });
+
+    it("STRICTLY BETTER THAN TODAY (which immediate-threw the sanity violation after ONE prompt): the floor run ends fileless, the 'after 1 run(s)' corrective block rides the second prompt, and the model's run-2 write settles OK (EXACTLY 3 prompts, NO errors key, disk content SEED-EXACT; no truncation note)", async () => {
+      const seed =
+        "# Research: quantum computing basics\n\n## First question\nanswered\n";
+      const placement = reportPlacement(TOPIC);
+      const { instance, round } = await host();
+      // Run 1: the floor run settles quietly, fileless.
+      round.session.prompt.mockImplementationOnce(async () => {
+        emit(round, ...quietSettle());
+      });
+      // Run 2: the MODEL commits the report during this pass; the real file
+      // lands BEFORE the synthetic settle emits (seeding supplies the disk
+      // truth the settlement gate later consults).
+      round.session.prompt.mockImplementationOnce(async () => {
+        await seedReport(placement.absolutePath, seed);
+        emit(round, ...writeSettle(placement.absolutePath, "w1"));
+      });
+      // Run 3: quiet; the gate passes over the seeded disk truth.
+      round.session.prompt.mockImplementationOnce(async () => {
+        emit(round, ...quietSettle());
+      });
+      const cap = new ResearchCapability({ session: instance });
+      const result = await cap.run({ topic: TOPIC });
+      expect(round.session.prompt).toHaveBeenCalledTimes(3);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      expect(result.errors).toBeUndefined();
+      expect(result.outputs).toEqual({ report: placement.absolutePath });
+      // The output-guard block rides RUN 2's prompt (calls[1]).
+      const sent: unknown = round.session.prompt.mock.calls[1]?.[0];
+      const text = typeof sent === "string" ? sent : "";
+      expect(text.startsWith(PHASE_MARKER)).toBe(true);
+      expect(
+        text.endsWith(expectationRetryBlock(1, [placement.absolutePath])),
+      ).toBe(true);
+      const { readFile } = await import("node:fs/promises");
+      expect(await readFile(placement.absolutePath, "utf8")).toBe(seed);
+      expect(stderrText()).toBe("");
+    });
+
+    it("recovered via retry PAST the cap silences the exact-equality truncation guard: the cap-ended settle FAILS the gate, the model's run-11 write recovers the file, and the phase settles with the disk content SEED-EXACT; NO note suffix (EXACTLY RESEARCH_MAX_RUNS + 1 prompts, ok:true, NO errors key)", async () => {
+      const seed =
+        "# Research: quantum computing basics\n\n## First question\nanswered\n";
+      const placement = reportPlacement(TOPIC);
+      const { instance, round } = await host();
+      const passes: object[][] = [];
+      for (let i = 1; i <= RESEARCH_MAX_RUNS; i++) {
+        passes.push(writeSettle(placement.absolutePath, `w${i}`));
+      }
+      scriptRuns(round, ...passes);
+      // Run 11 (the gate-driven corrective re-entry): the MODEL commits the
+      // report; seeded BEFORE the synthetic settle emits.
+      round.session.prompt.mockImplementationOnce(async () => {
+        await seedReport(placement.absolutePath, seed);
+        emit(round, ...writeSettle(placement.absolutePath, "w11"));
+      });
+      const cap = new ResearchCapability({ session: instance });
+      const result = await cap.run({ topic: TOPIC });
+      expect(round.session.prompt).toHaveBeenCalledTimes(RESEARCH_MAX_RUNS + 1);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      expect(result.errors).toBeUndefined();
+      expect(result.outputs).toEqual({ report: placement.absolutePath });
+      // Run 11's prompt (calls[10]) carries the cap-denial block:
+      // 'after 10 run(s)'.
+      const sent: unknown = round.session.prompt.mock.calls[10]?.[0];
+      const text = typeof sent === "string" ? sent : "";
+      expect(text.startsWith(PHASE_MARKER)).toBe(true);
+      expect(
+        text.endsWith(
+          expectationRetryBlock(RESEARCH_MAX_RUNS, [placement.absolutePath]),
+        ),
+      ).toBe(true);
+      // Byte-for-byte seed: the note claims only cap-EXACT settles that
+      // passed the gate; iterations 11 exceeds the cap, so the guard stays
+      // silent and appends nothing.
+      const { readFile } = await import("node:fs/promises");
+      expect(await readFile(placement.absolutePath, "utf8")).toBe(seed);
+      expect(stderrText()).toBe("");
+    });
+
+    it("pins the FULL contract literal (params-free new ResearchCapability({}); the params bag's session field is optional): every field byte-frozen durably, the version byte moved to 0.2.0 for the write-bag migration", () => {
+      // Pinned contract literal; the SOLE OWNER is the contract field on
+      // ResearchCapability in capabilities/research.ts; the copy keeps the
+      // pin meaningful (durable-shape corroboration: every field except the
+      // version byte byte-frozen).
+      const cap = new ResearchCapability({});
+      expect(cap.contract).toStrictEqual({
+        name: "research",
+        version: "0.2.0",
+        inputs: [{ name: "topic" }],
+        outputs: [{ name: "report", paramKey: "report" }],
+        writes: ["research/*.md"],
+        allowProjectWrites: true,
+      });
     });
   });
 

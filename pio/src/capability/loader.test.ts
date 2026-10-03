@@ -162,7 +162,7 @@ describe("default-table hits (shipped registrations)", () => {
     // meaningful.
     expect(cap.contract).toStrictEqual({
       name: "research",
-      version: "0.1.0",
+      version: "0.2.0",
       inputs: [{ name: "topic" }],
       outputs: [{ name: "report", paramKey: "report" }],
       writes: ["research/*.md"],

@@ -262,9 +262,10 @@ only with no write/edit call; the corrective pass creates the file AT THE
 EXACT path); the GRACEFUL SUMMARY keyed only on observables (variant
 selected by observed `PhaseResult.iterations`: `>= 2` states the guard
 denied first-pass settlement and forced the corrective re-run, naming the
-count; `=== 1` states the loop was armed but not triggered — the backing
-local `stat` degrades WORDING only; no third variant, never a hard failure on
-model non-determinism); FAULT POSTURE (the ceiling-exhaustion
+count; `=== 1` states the loop was armed but not triggered - no local `stat`, no
+third variant: disk checks are ABSENT by design (a shrunk summary narration
+keyed only on the observed iteration count), and it is never a hard failure
+on model non-determinism); FAULT POSTURE (the ceiling-exhaustion
 `ContractViolationError` escapes `call()` VERBATIM — never wrapped or
 downgraded — and the base catch-all captures it into the typed `ok:false`
 settlement); OUTCOME SETTLEMENT (returns the RELATIVE token; the base settle
@@ -278,12 +279,22 @@ can ever write to. There is NO runtime or load-time cross-check in this
 goal — it is an author-side invariant, named now because slot 9's permission
 frame builds on the same declaration.
 
-**The research non-migration note.** `research` keeps its stopping hook PLUS
-its post-phase local sanity check UNCHANGED: the hook encodes a per-run
-WRITE-DELTA policy with resume-session semantics (the delta observable is
-deliberately per-run), strictly finer than the gate's disk-existence check.
-The equivalence review of migrating research onto declarations is
-W4-wave/follow-up territory — named as deferred, not demonstrated.
+**The research migration record.** The guarded-phase pattern is now
+capability-owned rather than engine-owned: `research` declares its report
+path in the phase's `write` bag AND keeps its stopping hook - the
+DOUBLE-DUTY declaration (bag = file appearance + write permission frame;
+hook = content-convergence stop policy). Exact-equality refinement:
+research's expectation gate now fires on EXACTLY the declared file (the
+legacy existence-scan over the slot root retired with the slot 9 work).
+The first-miss corner flips from silent to LOUD: when a pass ends without
+materializing the declared deliverable, the engine re-enters the phase with a
+corrective note up to the module-private retry ceiling, at which point the
+run ends as a typed CEILING FAILURE (`ok:false`, exit 1) instead of settling
+silently - a quality-gate live leg that hits this corner is therefore a
+REGRESSION SIGNAL, not normal behavior. Unchanged: SR4, min/max budgets,
+resume-session semantics, fingerprinting, and the post-phase local sanity
+check (the hook encodes a per-run WRITE-DELTA policy, strictly finer than
+the gate's disk-existence check).
 
 ### 1.5 What each `IterationCtx` observable means — and the wrong-observable trap
 
@@ -2532,8 +2543,9 @@ sentence), **C5** ×2 (settle-time conversion fault).
 
 Material: `pio/src/capability/guards/write-gate.ts` (the stateless
 predicate - `decideWrite`, the re-exported `matchesAnchoredGlob`,
-`WriteGateVerdict`, and the module-private denial renderers whose bytes the
-suite goldens mirror byte-for-byte) · `pio/src/session-execution-state.ts`
+`WriteGateVerdict`, and the module-private pinned line shapes - the
+universal no-permission tail constant and the phase-line renderer - whose
+bytes the suite goldens mirror byte-for-byte) · `pio/src/session-execution-state.ts`
 (the dedicated per-session execution state at package TOP LEVEL, sibling of
 `session.ts` - LIFO span layers, the scalar phase slot, the owned anchor
 channels, fresh-per-call `snapshot()`) ·
@@ -2542,7 +2554,8 @@ vocabulary - `CapabilitySources`, `PhasePermission`, `PathAnchors`; types
 only, imports nothing) · `pio/src/sandbox/string-match-helpers.ts` (the
 anchored-glob matcher DIALECT HOME behind the `write-gate.ts` re-export) ·
 `pio/src/capability/pio-session.ts` (`PhaseOptions.write` plus
-`PhaseOptions.allowProjectWrites` - the phase's TWO declared permission
+`PhaseOptions.allowProjectWrites` plus the phase-only
+`PhaseOptions.tmpDirAllowed` - the phase's THREE declared permission
 dimensions, fed verbatim at phase start and detached on every exit cause) ·
 `pio/src/session.ts` (the interceptor runner - the write tool-call handler
 closure threaded through the construction seam, consulting a FRESH snapshot
@@ -2552,49 +2565,73 @@ span window in the session-present `run()` branch - enter strictly
 post-validation at the stamp site, exit at settlement on success AND the
 catch-all; `CapabilityEnvError`, the loud env-root failure) ·
 `pio/src/capabilities/guards-demo.ts` (the standing LIVE demonstration -
-five gate probes including the composed `project-file-not-allowed` child) +
+five PLAIN-PHASE gate probes under ONE span: the same-target contrast and
+the declared-scratch probe included) +
 its colocated suite (the first home of the denial-line goldens, the mid-pass
 real-predicate consults, and the module-driven shape rows).
 
 ### 12.1 Unified declaration doctrine
 
 Permission derives from EXACTLY TWO declared sources: the ACTIVE
-CAPABILITY'S CONTRACT and the ACTIVE PHASE'S DECLARATION. Both DIMENSIONS of
-the phase declaration - concrete PATHS (the `write` bag) AND the
-project-files SCOPE flag (`allowProjectWrites`) - are CLAMPED by the running
-capability's contract flag AT DECISION TIME: a phase admits the workspace-cwd
-scope only while the phase declares the flag AND the contract flag is true.
-Unbacked flags and uncovered paths are INVISIBLE - never granted, never
-listed: an over-declared, contract-uncovered path disappears from the
-effective allowlist at the decision point, and a flag with no contract
-backing confers NOTHING (the refusal reads byte-identically to the no-phase
-reading, capability-named - the child-shaped row in the guards-demo suite
-pins the clamp at the source).
+CAPABILITY'S CONTRACT and the ACTIVE PHASE'S DECLARATION. The phase
+declaration carries THREE DIMENSIONS - concrete PATHS (the `write` bag),
+the project-files SCOPE flag (`allowProjectWrites`), and the phase-only
+SCRATCH flag (`tmpDirAllowed`). Paths AND the scope flag are CLAMPED by the
+running capability's contract flag AT DECISION TIME: a phase admits the
+workspace-cwd scope only while the phase declares the flag AND the contract
+flag is true. Unbacked flags and uncovered paths are INVISIBLE - never
+granted, never listed: an over-declared, contract-uncovered path disappears
+from the effective allowlist at the decision point, and a flag with no
+contract backing confers NOTHING (the refusal reads byte-identically to the
+no-phase reading - the universal no-permission byte - the suite's pure
+plain-data unbacked-flag fixture row pins the clamp at the source). The
+scratch dimension has NO contract-side counterpart (single-flag doctrine -
+there is nothing to clamp). Mandated corollary: the SPAN SITE ADMITS
+NOTHING - phase confirmation is the SOLE admitting authority for
+contract-covered files. And the HONEST-LISTING RULE: listings show the
+MOMENT'S effective set - never raw contract patterns, never what is
+refused.
 
 ### 12.2 Empty-contract corollary
 
-Nothing in the contract ⇒ nothing allowed: total DEFAULT-DENY beyond the
-`/tmp/` parity class. A capability with EMPTY `writes` and NO scope flag
-admits no slot or project-scope write anywhere, and a DEPTH-0 turn (no
-capability span at all) runs the IDENTICAL code path - null sources COALESCE
-onto the empty base inside the predicate, one code path, no special cases;
-the refusal line merely switches from the capability-named "none" listing to
-the no-span line. The depth-0 uniformity is pinned by the no-span golden.
+Nothing in the contract ⇒ nothing allowed: TOTAL DEFAULT-DENY, genuinely
+total. A capability with EMPTY `writes` and NO scope flag admits no slot or
+project-scope write ANYWHERE - the only grant that can exist under such a
+span is a phase-DECLARED scratch declaration, which lives in the PHASE, not
+in the contract. A DEPTH-0 turn (no capability span at all) runs the
+IDENTICAL code path - null sources COALESCE onto the empty base inside the
+predicate, one code path, no special cases; depth-0, no-phase, and
+flag-less silent windows refuse EVERYTHING including scratch. The refusal
+never "switches" between tail lines: EVERY non-governing window emits the
+SINGLE universal no-permission byte, span-present and span-absent readings
+byte-identical - the depth-0 uniformity is pinned by the no-span golden and
+its convergence companions.
 
 ### 12.3 Singular enforcement at decision time
 
 ONE effective allowlist materializes FRESH at EVERY tool-call decision - no
 cached set, no attach-time confirmation, no second judgment site. The
 singular effective-set formula is `(declared ∩ contract-covered) ∪
-(phaseFlag ∧ contractFlag ⇒ cwd-scope class)`, recomputed per call. Phase
-declarations are RECORDED VERBATIM at attach (raw resolved paths plus the raw
-scope flag, zero-copy trust boundary) and JUDGED at DECISION TIME - lazy by
-the standing owner requirement that a phase's write declarations EXIST in the
-running capability contract. An EMPTY effective set confers NO phase
-governance: the predicate falls through lazily to span admission over the
-capability's own sources (one code path - a fully-uncovered phase is judged
-exactly as if no phase were attached, and a flag-only-no-paths phase is
-judged exactly the same way when its flag lacks backing).
+(phaseFlag ∧ contractFlag ⇒ cwd-scope class) ∪ (phase.tmpDirAllowed ⇒ /tmp/
+prefix class)`, recomputed per call. Phase declarations are RECORDED
+VERBATIM at attach (raw resolved paths plus the raw scope and scratch flags,
+zero-copy trust boundary) and JUDGED at DECISION TIME - lazy by the standing
+owner requirement that a phase's write declarations EXIST in the running
+capability contract. An EMPTY effective construction confers NO phase
+governance: the NON-ADMITTING TAIL refuses with the universal no-permission
+byte (span admission RETIRED - the span supplies the filter-site clamp
+ceiling and the scope-class second flag ONLY; one code path - a fully-
+uncovered phase and an unbacked flag-only phase are judged exactly as if no
+phase were attached). The newly-refused corners, each with its live
+demonstration: SILENT or INERT phases under ANY contract - flag-true or
+flag-false alike (the reshaped `project-file-not-allowed` probe refuses the
+SAME workspace target the flag-declaring `project-file` probe admits, and
+the declare-nothing `deny` probe refuses its contract-covered stray alike -
+hermetic twin: the module-driven inverted `inherited` row) and UNDECLARED
+scratch at EVERY depth (the redefined `tmp-parity` probe DECLARES the flag
+for its GRANTED-scratch pass, while the undeclared-window contrast over the
+SAME real pinned path is pinned suite-side - hermetic twins: the module-
+driven scratch-class rows).
 
 ### 12.4 The two-component shape (shipped homes)
 
@@ -2607,9 +2644,12 @@ The gate is TWO components plus a shared vocabulary - never a monolith:
   construction). Coverage is EXACTLY `write`/`edit` via string `input.path`;
   bash stays UNGATED (ungated by silence - any other tool yields no target:
   no consultation, no side effect). Verdict order, pinned, one pass per
-  target: `/tmp/` parity first, then the active phase's EFFECTIVE set when it
-  confers governance, then span admission over the capability's sources,
-  then deny.
+  target: extract the target, then the active phase's EFFECTIVE construction
+  governs EXCLUSIVELY while it is non-empty (surviving paths plus the scope
+  class plus the scratch class, all judged at decision time), then deny - the
+  SPAN SITE is documented as NON-ADMITTING (it supplies the clamp ceiling and
+  the scope-class second flag ONLY; its name renders in NO refusal; the
+  layer's name rides the transcript's durable span-marker channel).
 - THE RECORDER - the DEDICATED PER-SESSION EXECUTION STATE at
   `pio/src/session-execution-state.ts` (package TOP LEVEL, sibling of
   `session.ts`): records WHAT IS EXECUTING RIGHT NOW (the LIFO capability
@@ -2619,16 +2659,16 @@ The gate is TWO components plus a shared vocabulary - never a monolith:
   past this module ever sees a closure.
 - THE SHARED VOCABULARY - `pio/src/capability/guards/guard-vocabulary.ts`
   (types only, imports nothing): `CapabilitySources` (the running
-  capability's contract values as-is), `PhasePermission` (the phase's TWO
-  declared dimensions verbatim), `PathAnchors` (plain resolved strings,
-  session-invariant).
+  capability's contract values as-is), `PhasePermission` (the phase's FULL
+  RECORD verbatim - paths plus the scope and scratch flags), `PathAnchors`
+  (plain resolved strings, session-invariant).
 - THE MATCHER DIALECT HOME - `matchesAnchoredGlob` lives in
   `pio/src/sandbox/string-match-helpers.ts` and is RE-EXPORTED by
   `write-gate.ts`, so the gate's boundary stays name-stable. Out-of-dialect
   pattern text FAILS CLOSED (no match, never throws); wildcard-free,
   brace-free segments compare by SEGMENT-WISE STRING EQUALITY - the literal
-  fast path the guards-demo child's single CONCRETE wildcard-free `writes`
-  token exercises for the first time in shipped form.
+  fast path (a dialect PROPERTY; pattern coverage feeds the decision-time
+  filter ONLY, never any span-site admission).
 
 PEP framing: the INTERCEPTOR RUNNER is the PEP (policy enforcement point) -
 `pio/src/session.ts`, the write tool-call handler closure consulted PER CALL
@@ -2650,12 +2690,14 @@ policy, not an accident.
 Capability SPANS stack LIFO with SUSPEND/RESTORE semantics: the outer layer
 suspends (never destroys) and GOVERNS AGAIN once the inner pops - mandatory
 for row-1 nesting (§11), where the RUNNING CALLEE governs EXCLUSIVELY for its
-span and the parent resumes governing after the child settles (the guards-
-demo transcript shows the double span boundary visibly: the parent marker,
-the probe phases, the child marker strictly before the child phase prompt).
-The PHASE is a SCALAR SLOT holding the RAW declaration - both dimensions
-stored VERBATIM, judged ONLY at decision time; attaching while a phase is
-already attached OVERWRITES (last-wins), and detach runs on EVERY exit cause.
+span and the parent resumes governing after the callee settles (the COMPOSE
+DEMOS remain the standing living proof of the nesting story, §11; the
+guards-demo transcript shows EXACTLY ONE span marker - the vehicle composes
+no nested span).
+The PHASE is a SCALAR SLOT holding the RAW declaration - the FULL RECORD
+stored VERBATIM (paths plus the scope and scratch flags), judged ONLY at
+decision time; attaching while a phase is already attached OVERWRITES
+(last-wins), and detach runs on EVERY exit cause.
 "FRAME" stays RESERVED for composed-execution units (§8); the stack entries
 are LAYERS.
 
@@ -2668,24 +2710,33 @@ pattern `writes`, no scope flag - the patterns-only reader),
 `compose-same-session-demo` and `compose-new-session-demo` (`writes: []`
 value passthroughs - the empty-contract readers), and `guards-demo` (the
 demo pattern PLUS the scope flag TRUE, exercised by its flag-declaring
-`project-file` phase and its flag-less composed child). The CONCRETE
-WILDCARD-FREE `writes` ENTRY FORM validates as durable shape alongside the
-glob form: the child's single concrete token is a declared pattern like any
-other (it admits its exact absolute placement under the slot root and lists
-RAW in capability-named lines). Listings carry the ASYMMETRY BY DESIGN -
-phase lines list RESOLVED surviving paths, capability lines list RAW contract
-tokens - do NOT normalize either direction.
+`project-file` phase and REFUSED at its flag-less SILENT `project-file-
+not-allowed` phase - the exact case the ruling retired, demonstrated live).
+Listings follow the MOMENT-SET DOCTRINE: the universal no-permission byte
+where no phase governs (listing nothing, naming nothing); phase lines list
+RESOLVED survivors plus the scope element iff the class is active plus the
+scratch element iff the flag is active. RAW CONTRACT PATTERNS appear in NO
+listing - do NOT normalize either direction.
 
-### 12.7 The /tmp/ parity class
+### 12.7 The phase-declared scratch class
 
-The EXACT PREFIX `/tmp/` check precedes ALL ELSE at EVERY depth (depth 0,
-span-only, phase-active alike): scratch writes are admitted BEFORE any span,
-phase, or contract judgment, and every refusal line carries the pinned
-closing clause ("Scratch files under /tmp/ stay open."). SCRATCH-RESIDUE
-DOCTRINE for the live vehicle: `guards-demo`'s `tmp-parity` probe LEAVES ITS
-RESIDUE WITHIN THE RUN (asserted post-run, documented - the standing
-real-`/tmp` exception: unique pinned basename, error-swallowed pre-phase
-SWEEP self-heals across runs, and within the run the residue stays put).
+Scratch (/tmp/) admission is NOT AMBIENT at any depth: the EXACT PREFIX
+`/tmp/` is admitted ONLY while the ACTIVE PHASE declares `tmpDirAllowed:
+true` - a SINGLE phase flag with NO contract-side counterpart (scratch is
+private to the phase - the v1 `Contract` shape is byte-untouched). Depth-0,
+no-span, and flag-less silent/inert windows REFUSE scratch (total
+default-deny, genuinely total). On the phase line the SCRATCH ELEMENT is
+APPENDED LAST - after the scope element, whenever the flag is active (same
+sentence shape as the scope element: `scratch files under /tmp/`). The
+VEHICLE'S STANDING LIVE DEMONSTRATION is the redefined `tmp-parity` probe:
+GRANTED scratch from the declared flag, with the undeclared-window contrast
+pinned suite-side (a refusal consult over the SAME real pinned path in a
+non-declaring window beside the admission consult in the declared-flag
+window). SCRATCH-RESIDUE DOCTRINE survives: `guards-demo`'s `tmp-parity`
+probe LEAVES ITS RESIDUE WITHIN THE RUN (asserted post-run, SUITE-SIDE - the
+standing real-`/tmp` exception: unique pinned basename, error-swallowed
+pre-phase SWEEP self-heals across runs, and within the run the residue stays
+put; the capability performs NO disk checks).
 
 ### 12.8 Structural denial facts
 
@@ -2700,6 +2751,19 @@ unset or malformed escapes with ZERO prompts), and a faulty anchor channel
 FAULTS LOUDLY at snapshot time (fresh resolution, first fault escapes
 verbatim) instead of denying by mistake.
 
+Refusals RETURN EXACTLY TWO line shapes system-wide: the PHASE line (named
+by the phase id, listing the MOMENT'S effective set - surviving paths in
+declaration order, then the scope element while the class is active, then
+the scratch element while the flag is active) and the UNIVERSAL NO-
+PERMISSION BYTE (ONE parameter-free pinned constant emitted for EVERY
+non-governing window regardless of span presence). The capability-named and
+no-span shapes are RETIRED by the merge ruling (post-retirement both stated
+the SAME permission state - "nothing is permitted"; the capability NAME is
+metadata the transcript's durable span markers already carry - the refusal
+line names the governing STATE, the marker channel names the LAYER); and the
+uniform `/tmp/` closing clause dies with the total principle (it was false
+wherever scratch is refused).
+
 ### 12.9 Documented boundary: foreign-runtime hosts
 
 `PioSession.fromRuntime` hosting an UNSTAMPED FOREIGN HANDLE discovers NO
@@ -2712,19 +2776,25 @@ that stamp - the no-op behavior IS the boundary.
 
 ### 12.10 No-refusal-cycle property
 
-Demanded ⊆ declared = GRANTED: because the gate judges the EFFECTIVE set
-(demand intersected with declaration), a demand for something the phase
-legitimately declares can never loop on REFUSAL - `guards-demo`'s `deny`
-probe keeps its declaration aligned with its mandate, so even the
-EXPECTATION-GATE corrective re-run (which demands EXACTLY the granted file)
+The governing laws: NO ADAPTIVE DENIAL CYCLE - a refusal NEVER mutates any
+permission state; every permission fact is fixed at span entry and phase
+attach. TOTAL PRINCIPLES - contract-EMPTY spans grant NOTHING beyond what
+phases declare; scratch is granted ONLY by the declaring phase itself. The
+SILENT-PHASE LIVE CONTRAST stands beside the scope contrast above: the SAME
+target refused on the universal byte INSIDE its own flag-true span is the
+confirmation principle made visible at the source. Demanded ⊆ declared =
+GRANTED: because the gate judges the EFFECTIVE set (demand intersected with
+declaration), a demand for something the phase legitimately declares can never
+loop on REFUSAL - `guards-demo`'s probes keep their demands aligned with
+their declarations: the silent `project-file-not-allowed` probe and the
+REFUSAL-ONLY `deny` probe DEMAND nothing of their own (both declare NOTHING -
+the former attempts one workspace write it expects to be rejected; the latter
+performs ONLY the refused attempt on the stray, containing no write of any
+kind, so its single settled run ends exactly as instructed), while the
+EXPECTATION-GATE corrective re-run (which demands EXACTLY the declared file)
 converges. The gate is a SYNCHRONOUS PER-CALL INTERCEPT, NOT A LOOP: the
 denial line is the ONLY feedback, and denials converge on INFORMATION within
 the model's OWN turn (the model reads the reason, adapts the plan, finishes
-the turn). The FIVE LIVE PROBES ARE THE STANDING DEMONSTRATION, including the
-not-allowed probe's LIVE CONTRAST: the SAME workspace-cwd target ADMITTED in
-the parent's flag-declaring `project-file` phase (the scope element is the
-WHOLE listing there) and REFUSED - capability-named, scope element ABSENT -
-inside the child's flag-less span (identical target, opposite verdicts, the
-clamp visible at the source). From this step forward, any live
-`pio run guards-demo` engagement IS the standing end-to-end demonstration:
-expectation guard plus all five gate probes in one run.
+the turn). From this step forward, ANY live `pio run guards-demo`
+engagement IS the standing end-to-end demonstration: expectation guard plus
+all five PLAIN-PHASE gate probes in one run.

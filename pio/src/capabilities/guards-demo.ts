@@ -11,15 +11,16 @@
 // note naming the exact path -> compliant second run -> settle.
 //
 // What it ALSO exhibits: the standing live write-gate demonstration - five
-// gate probes after the guarded phase, in fixed order: deny (a
-// phase-declared path admitted while an undeclared contract-covered sibling
-// is refused), allow (a declared path lands), project-file (a flag-declaring
-// phase admits the workspace scope and NOTHING else), the composed
-// project-file-not-allowed child (the same workspace target REFUSED inside a
-// span whose contract backs no scope - the decision-time clamp made visible),
-// and tmp-parity (the scratch area stays open under a phase that declares no
-// permissions at all). Each probe's disk outcome degrades the extended
-// summary WORDING only - never a hard failure.
+// PLAIN-PHASE gate probes after the guarded phase, under ONE span, in fixed
+// order: deny (REFUSAL-ONLY - a phase that declares NOTHING attempts the
+// contract-covered stray and nothing is written), allow (the declared path
+// lands on pure admission), project-file (a flag-declaring phase admits the
+// workspace scope and NOTHING else), project-file-not-allowed (the SAME
+// workspace target REFUSED by a flag-less SILENT phase despite this
+// capability's own flag-TRUE contract - the universal no-permission byte
+// inside its own span), and tmp-parity (scratch ADMITTED because the phase
+// declares the scratch flag). The closing summary is a disk-check-free
+// narration keyed only on the observed iteration count.
 //
 // Outcome model: NO raw terminal writes — the phase prompts ARE the
 // in-stream statements, and the machine ledger (the terminal record's
@@ -27,12 +28,12 @@
 // seam has transformed the returned slot-relative token.
 //
 // Repeatable reset: immediately before each gated or probed phase the known
-// artifacts are unlink-swallowed — pre-existing copies would let an
-// observation pass silently or contaminate an ABSENT reading, and a stale
-// stray would survive into the next run. Swallowing is deliberate: a
-// surviving stale artifact degrades to degraded wording rather than
-// aborting the demonstration. The tmp-parity residue is INTENTIONALLY left
-// in place within the run (the pre-phase sweep self-heals across runs).
+// artifacts are unlink-swallowed - repeatability HYGIENE (the sweeps are
+// writes, not checks): a surviving stale copy would let a prior run's
+// residue contaminate this run's readings, and swallowing is deliberate so
+// a stale artifact never aborts the demonstration. The tmp-parity residue
+// is INTENTIONALLY left in place within the run (the pre-phase sweep
+// self-heals across runs).
 //
 // The guarded phase is DECLARATION-ONLY (a write declaration plus the floor;
 // no stopping hook, no budget ceiling): with the floor consumed, the
@@ -42,7 +43,7 @@
 // or downgraded; the base catch-all captures them into the typed ok:false
 // settlement. Em dashes are U+2014 (escaped) in every pinned byte below.
 
-import { rm, stat } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type CapabilityParams,
@@ -81,12 +82,6 @@ export const GUARDS_DEMO_PROJECT_PROBE_FILE =
 export const GUARDS_DEMO_TMP_PARITY_FILE =
   "pio-guards-demo-tmp-parity-scratch.txt";
 
-/** The NOT-ALLOWED child's declared deliverable (slot-relative, CONCRETE
- * wildcard-free — the child's sole legal target; the first shipped
- * occurrence exercising the matcher dialect's literal-segment branch). */
-export const GUARDS_DEMO_PROJECT_FILE_NOT_ALLOWED_ARTIFACT =
-  "guards-demo/project-file-not-allowed.md";
-
 /** The pinned greeting template (PINNED bytes; the suite replica names this
  * owner). One settled turn: greet the operator and briefly name what the
  * demo exhibits (the expectation guard denying first-pass settlement until
@@ -114,154 +109,82 @@ Work autonomously; do not ask the user anything during the run.`;
 }
 
 /** The pinned deny-probe instruction template (PINNED bytes; the suite
- * replica names this owner). One settled turn: create the LEGAL artifact,
- * THEN attempt the stray (named explicitly as expected-to-be-refused),
- * state what the refusal reported, never retry. Em dashes are U+2014
- * (escaped). */
-function denyInstructions(
-  absoluteLegalArtifact: string,
-  absoluteStrayArtifact: string,
-): string {
-  return `This run demonstrates the write gate's phase-level path enforcement.
-Legal artifact (absolute path): ${absoluteLegalArtifact}
-Stray artifact (absolute path): ${absoluteStrayArtifact}
-
-Rules for THIS run:
-1. Create the LEGAL artifact AT ITS EXACT absolute path above with minimal content \u2014 a short heading line stating that the write gate admitted it.
-2. THEN attempt to write the STRAY artifact AT ITS EXACT absolute path above. Name it explicitly in your reply as expected to be refused \u2014 this phase declared only the legal path, so the stray must come back refused.
-3. STATE WHAT THE REFUSAL REPORTED in your reply (quote the allowed-targets part of the refusal if you can).
-4. DO NOT retry the same target. End your turn right after that statement.`;
+ * replica names this owner). REFUSAL-ONLY: a single PARAMETER (the stray
+ * absolute path) - the probe performs ONLY the refused attempt and contains
+ * NO write of any kind, so the phase declares NOTHING and settles with
+ * nothing produced. Three beats: attempt-imperative / expectation /
+ * one-sentence verdict; no em dash occurs in the body. */
+function denyInstructions(absoluteStrayArtifact: string): string {
+  return `Attempt to write a file ${absoluteStrayArtifact}. The expectation is that it's rejected. Describe in one sentence if it's satisfied.`;
 }
 
 /** The pinned allow-probe instruction template (PINNED bytes; the suite
- * replica names this owner). One settled turn: create the declared artifact
- * at its exact absolute path and state that the admission needed nothing
- * beyond the declaration itself. Em dashes are U+2014 (escaped). */
+ * replica names this owner). Three beats: imperative / expectation /
+ * one-sentence verdict. Em dashes are U+2014 (escaped). */
 function allowInstructions(absoluteArtifact: string): string {
-  return `This run demonstrates write-gate ADMISSION of a phase-declared path.
-Artifact (absolute path): ${absoluteArtifact}
-
-Rules for THIS run:
-1. Create the file AT THAT EXACT absolute path with minimal content \u2014 a short heading line.
-2. Briefly state in your reply that the write succeeded despite nothing special being declared beyond the file itself \u2014 the phase declared exactly this one path, and the gate admitted it.
-3. Do nothing else. End your turn right after that statement.`;
+  return `Write a file ${absoluteArtifact}. The expectation is that the write is ADMITTED with nothing special declared beyond the path itself \u2014 the phase declared exactly this one path. Describe in one sentence if it's satisfied.`;
 }
 
 /** The pinned project-file instruction template (PINNED bytes; the suite
- * replica names this owner). One settled turn: create the workspace-cwd file
- * under a phase that declares the project-files SCOPE and NO specific paths.
- * No stray-attempt mandate — deterministic single creation; the exclusive-
- * governance proof lives in the suite's mid-pass consultation. Em dashes are
- * U+2014 (escaped). */
+ * replica names this owner). Three beats: imperative / expectation /
+ * one-sentence verdict. No stray-attempt mandate — deterministic single
+ * creation; the exclusive-governance proof lives in the suite's mid-pass
+ * consultation. Em dashes are U+2014 (escaped). */
 function projectFileInstructions(absoluteCwdFile: string): string {
-  return `This run demonstrates the write gate's project-files SCOPE class for a phase that declares the scope and NO specific paths.
-Workspace file (absolute path): ${absoluteCwdFile}
-
-Rules for THIS run:
-1. Create the file AT THAT EXACT absolute path with minimal content \u2014 a short heading line.
-2. State in your reply that it landed with the phase declaring the project-files scope and NO specific paths.
-3. Do not attempt any other write. End your turn right after that statement.`;
+  return `Write a file ${absoluteCwdFile}. The expectation is that it LANDS with the phase declaring the project-files SCOPE and NO specific paths. Describe in one sentence if it's satisfied.`;
 }
 
 /** The pinned not-allowed probe instruction template (SOLE OWNER of these
  * PINNED bytes; the suite replica names this owner). ONE settled turn for
- * the composed child's single quiet phase: narrate the sibling probe's
- * create-and-remove act, attempt the SAME shared workspace target, expect
- * the refusal (the capability's contract backs no scope), state what the
- * refusal attributed, never retry. Em dashes are U+2014 (escaped). */
-function notAllowedProbeInstructions(
-  absoluteSharedCwdFile: string,
-  absoluteDeclaredDeliverable: string,
-): string {
-  return `This run demonstrates the decision-time CLAMP for a capability whose contract carries NO project-writes scope.
-Shared workspace file (absolute path): ${absoluteSharedCwdFile}
-Declared deliverable (absolute path, NOT touched by this probe): ${absoluteDeclaredDeliverable}
-
-Context: the sibling project-file probe earlier in this engagement created the shared workspace file above and then REMOVED it again - under a phase whose running capability granted the project-files scope.
-
-Rules for THIS run:
-1. Attempt to create the SHARED workspace file AT ITS EXACT absolute path with minimal content \u2014 one short heading line. Your phase declares the project-files scope, but this capability's contract does not back it - the scope class is INVISIBLE at the source, so the attempt must come back refused.
-2. STATE WHAT THE REFUSAL REPORTED in your reply, including which capability the refusal attributed.
-3. DO NOT retry the same target and DO NOT write the declared deliverable. End your turn right after that statement.`;
+ * the flag-less SILENT plain phase: attempt the SAME shared workspace target
+ * the sibling project-file probe admitted moments earlier; expect the
+ * refusal (this phase declares NOTHING and the running capability's own
+ * flag-TRUE contract changes nothing); the universal byte attributes to NO
+ * layer, so there is NO capability-attribution mandate. Three beats:
+ * attempt-imperative / expectation / one-sentence verdict. Em dashes are
+ * U+2014 (escaped). */
+function notAllowedInstructions(absoluteSharedCwdFile: string): string {
+  return `Attempt to write a file ${absoluteSharedCwdFile}. The expectation is that the write comes back REFUSED \u2014 this phase declares NOTHING (no paths, no scope flag), and the running capability's own contract flag being TRUE changes nothing \u2014 the refusal states the allowed set as NONE; do not retry the target. Describe in one sentence if it's satisfied.`;
 }
 
 /** The pinned tmp-parity instruction template (PINNED bytes; the suite
- * replica names this owner). One settled turn: create the pinned scratch
- * file under /tmp/ under a phase that declares NO permissions at all, and
- * state that the scratch area stayed open regardless. Em dashes are U+2014
- * (escaped). */
+ * replica names this owner). The DECLARED-scratch form: the grant rides the
+ * phase's own scratch flag, while the same target is refused in any window
+ * where no active phase declares it. Three beats: imperative / expectation /
+ * one-sentence verdict. Em dashes are U+2014 (escaped). */
 function tmpParityInstructions(absoluteScratchFile: string): string {
-  return `This run demonstrates the /tmp/ parity class under a phase that declares NO permissions at all.
-Scratch file (absolute path): ${absoluteScratchFile}
-
-Rules for THIS run:
-1. Create the scratch file AT THAT EXACT absolute path with minimal content \u2014 a short heading line.
-2. State in your reply that the scratch area stayed open DESPITE the phase declaring no permissions at all \u2014 the invariant this probe exists to demonstrate: /tmp/ parity precedes every other rule.
-3. Do not attempt any other write. End your turn right after that statement.`;
+  return `Write a file ${absoluteScratchFile}. The expectation is that the scratch write is ADMITTED because this phase declares the scratch flag \u2014 the same scratch target is REFUSED in any window where no active phase declares it (the grant is phase-declared, not ambient). Describe in one sentence if it's satisfied.`;
 }
 
 /** The pinned summary template (PINNED bytes; the suite replica names this
  * owner). Variant selection keys ONLY on the observed iteration count (A:
- * >= 2 — the guard forced the corrective re-run, naming the count; B: === 1
- * — armed but NOT triggered, graceful); there is no third variant. The five
- * trailing booleans degrade each gate-probe OBSERVATION sentence individually
- * (wording only — never a hard failure on model non-determinism). Both
- * variants name the ABSOLUTE artifact path and end with the closing
- * ordering. Em dashes are U+2014 (escaped). */
+ * >= 2 — the guard denied first-pass settlement and forced the corrective
+ * re-run, naming the count; B: === 1 — armed but NOT triggered); there is no
+ * third variant. Disk-check-free closing narration: the placement line is
+ * FIXED (naming the ABSOLUTE artifact path) and no per-probe disk booleans
+ * exist — the module performs no disk observation feeding any wording. It
+ * ends with the standard closing order (state what was demonstrated, naming
+ * the five gate probes, then end the turn right after). Em dashes are
+ * U+2014 (escaped). */
 function summaryInstructions(
   absoluteArtifact: string,
   iterations: number,
-  fileConfirmed: boolean,
-  strayAbsent: boolean,
-  allowPresent: boolean,
-  projectPresent: boolean,
-  notAllowedTargetAbsent: boolean,
-  tmpPresent: boolean,
 ): string {
-  const placementLine = fileConfirmed
-    ? "The deliverable is present at (absolute path):"
-    : "The declared deliverable path is (absolute):";
   const outcome =
     iterations >= 2
       ? `The guard demonstration has finished after ${iterations} runs: the engine's expectation guard DENIED first-pass settlement \u2014 the declared deliverable was missing \u2014 and FORCED the corrective re-run until the file existed.`
       : `The guard demonstration has finished after 1 run: the expectation guard's loop was ARMED but NOT triggered \u2014 the deliverable landed on the very first run, so the engine settled it immediately.`;
-  const observations = [
-    strayAbsent
-      ? "the deny probe's stray was refused and left ABSENT on disk"
-      : "the deny probe's stray could not be confirmed absent (degraded wording)",
-    allowPresent
-      ? "the allow probe's declared artifact is PRESENT"
-      : "the allow probe's artifact could not be confirmed present (degraded wording)",
-    projectPresent
-      ? "the project-file probe's workspace file was confirmed PRESENT before the self-clean removed it"
-      : "the project-file probe's workspace file could not be confirmed present (degraded wording)",
-    notAllowedTargetAbsent
-      ? "the not-allowed probe left the shared workspace target ABSENT - the refusal held"
-      : "the not-allowed probe's shared target could not be confirmed absent (degraded wording)",
-    tmpPresent
-      ? "the tmp-parity scratch is PRESENT under /tmp/ despite the undeclared phase"
-      : "the tmp-parity scratch could not be confirmed present (degraded wording)",
-  ];
   return `${outcome}
-${placementLine}
+The deliverable is placed at (absolute path):
 ${absoluteArtifact}
-Gate-probe observations:
-${observations.map((line) => `- ${line}`).join("\n")}
-1. State in one short sentence what was demonstrated, naming the five gate probes above.
+1. State in one short sentence what was demonstrated, naming the five gate probes: deny, allow, project-file, project-file-not-allowed, tmp-parity.
 2. Do nothing else \u2014 no further tools, no questions, no writes. End your turn right after that statement.`;
-}
-
-/** One disk-truth observation (WORDING-only feeder for the summary): true
- * when the path EXISTS. A missing path degrades the observation sentence,
- * never a throw site. */
-async function isPresent(path: string): Promise<boolean> {
-  return (await stat(path).catch(() => null)) !== null;
 }
 
 export default class GuardsDemoCapability extends PioCapability {
   readonly contract: Contract = {
     name: "guards-demo",
-    version: "0.2.0",
+    version: "0.3.0",
     inputs: [],
     outputs: [{ name: "report", paramKey: "report" }],
     writes: ["guards-demo/*.md"],
@@ -317,28 +240,23 @@ export default class GuardsDemoCapability extends PioCapability {
       write: [absoluteArtifact],
     });
 
-    // 4. Post-phase observation backing the summary wording: the gate
-    // already guarantees existence at settle, so a null stat degrades the
-    // WORDING only — no new throw site, never a hard failure.
-    const fileConfirmed = await isPresent(absoluteArtifact);
-
-    // 5. DENY probe — the phase declares the LEGAL artifact ONLY: the
-    // contract-covered stray is UNDECLARED and must be refused as if
-    // undeclared. Pre-phase sweep clears BOTH targets (a surviving stale
-    // stray must not contaminate the ABSENT observation). One settled run.
+    // 4. DENY probe - REFUSAL-ONLY: the probe performs ONLY the refused
+    // attempt and contains NO write of any kind (the stray at its exact
+    // absolute path comes back refused on the universal byte), so the
+    // phase declares NOTHING (options EXACTLY { instructions, min, max } -
+    // attach abstention) and settles with nothing produced. Pre-phase sweeps
+    // clear BOTH targets (idempotent cross-run hygiene - the legal sweep
+    // defends against legacy artifacts of older vehicle shapes). One settled
+    // run.
     await rm(absoluteDenyArtifact, { force: true }).catch(() => {});
     await rm(absoluteDenyStray, { force: true }).catch(() => {});
     await this.execute_phase("deny", {
-      instructions: denyInstructions(absoluteDenyArtifact, absoluteDenyStray),
+      instructions: denyInstructions(absoluteDenyStray),
       min: 1,
       max: 1,
-      write: [absoluteDenyArtifact],
     });
-    // 6. Disk-truth observation for the summary (ABSENT expected; the
-    // wording degrades, never throws).
-    const strayAbsent = !(await isPresent(absoluteDenyStray));
 
-    // 7. ALLOW probe — declares its own artifact; the write lands BY
+    // 5. ALLOW probe — declares its own artifact; the write lands BY
     // ADMISSION. Pre-phase sweep heals a stale copy from a crashed run.
     await rm(absoluteAllowArtifact, { force: true }).catch(() => {});
     await this.execute_phase("allow", {
@@ -347,16 +265,15 @@ export default class GuardsDemoCapability extends PioCapability {
       max: 1,
       write: [absoluteAllowArtifact],
     });
-    const allowPresent = await isPresent(absoluteAllowArtifact);
 
-    // 8. PROJECT-FILE probe — the phase declares the project-files SCOPE
+    // 6. PROJECT-FILE probe — the phase declares the project-files SCOPE
     // ONLY (no write bag): the effective set is the cwd-scope class ALONE,
     // backed by this capability's own contract flag. No stray-attempt
     // mandate in the live template - deterministic single creation; the
     // exclusive-governance proof is the suite's mid-pass consultation.
-    // SELF-CLEANING: the probe file is removed after confirmation (no
-    // standing artifact in the repo working dir); the pre-phase sweep covers
-    // a crash-survivor copy.
+    // SELF-CLEANING: the probe file is removed after the phase (a hygiene
+    // WRITE, not a check; no standing artifact in the repo working dir); the
+    // pre-phase sweep covers a crash-survivor copy.
     await rm(absoluteCwdFile, { force: true }).catch(() => {});
     await this.execute_phase("project-file", {
       instructions: projectFileInstructions(absoluteCwdFile),
@@ -364,123 +281,52 @@ export default class GuardsDemoCapability extends PioCapability {
       max: 1,
       allowProjectWrites: true,
     });
-    const projectPresent = await isPresent(absoluteCwdFile);
     await rm(absoluteCwdFile, { force: true }).catch(() => {});
 
-    // 9. NOT-ALLOWED probe — the composed child span (CANONICAL ROW-1
-    // channels): constructed WITH the caller's session INSTANCE BY
-    // REFERENCE; its OWN base span window, span stamp, and LIFO nesting/
-    // re-governance ride the shipped machinery. Awaited UNWRAPPED with NO
-    // result inspection and NO catch-all: run() never rejects (typed faults
-    // settle as ok:false captures at this await), and the sole realistic
-    // fault source - the env-root derivation - is common-mode with this
-    // capability's own successful derivation moments earlier, hence
-    // unreachable here. A swallow/catch-all would hide the typed capture
-    // from the operator and is rejected; a manual span push through the
-    // public seam is likewise rejected (it would skip the span stamp and
-    // name a capability never visibly opened).
-    const child = new ProjectFileNotAllowedProbe({ session: this.s });
-    await child.run();
-    const notAllowedTargetAbsent = !(await isPresent(absoluteCwdFile));
+    // 7. PROJECT-FILE-NOT-ALLOWED probe - the SAME shared workspace-cwd
+    // target under a FLAG-LESS SILENT phase: the options object is EXACTLY
+    // { instructions, min, max } (option ABSENCE is the silence - no bag,
+    // no flag, so the phase slot stays EMPTY: attach abstention). DESPITE
+    // this capability's own flag-TRUE contract the SAME target the
+    // project-file probe admitted moments earlier is REFUSED on the
+    // universal no-permission byte - the exact case the ruling retired.
+    // The pre-phase sweep (error-swallowed unlink) stays PURE HYGIENE: a
+    // crash-survivor copy must not contaminate the run; it is a write, not
+    // a check.
+    await rm(absoluteCwdFile, { force: true }).catch(() => {});
+    await this.execute_phase("project-file-not-allowed", {
+      instructions: notAllowedInstructions(absoluteCwdFile),
+      min: 1,
+      max: 1,
+    });
 
-    // 10. TMP-PARITY probe — NEITHER dimension declared (attach abstention;
-    // the capability's own sources govern via fall-through). The /tmp/
-    // parity class precedes every other rule, so the scratch lands
-    // regardless. The pre-phase sweep still runs FIRST (cross-run
-    // self-healing); the residue is INTENTIONALLY left in place within the
-    // run.
+    // 8. TMP-PARITY probe - the STANDING LIVE DEMONSTRATION OF GRANTED
+    // SCRATCH: the phase DECLARES the scratch flag (single-flag doctrine -
+    // no contract-side counterpart), so the /tmp/ prefix class is ACTIVE
+    // while this phase governs - and in any window where no active phase
+    // declares it the SAME target is refused (the grant is phase-declared,
+    // not ambient). The pre-phase sweep runs FIRST (cross-run self-healing);
+    // the residue is INTENTIONALLY left in place within the run.
     await rm(absoluteTmpScratch, { force: true }).catch(() => {});
     await this.execute_phase("tmp-parity", {
       instructions: tmpParityInstructions(absoluteTmpScratch),
       min: 1,
       max: 1,
+      tmpDirAllowed: true,
     });
-    const tmpPresent = await isPresent(absoluteTmpScratch);
 
-    // 11. Summary — success-gated by control flow (a rejecting guarded
-    // phase never reaches it): ONE settled turn stating the observed
-    // trajectory THROUGH THE SESSION STREAM.
+    // 9. Summary — success-gated by control flow (a rejecting guarded
+    // phase never reaches it): ONE settled turn - the DISK-CHECK-FREE
+    // closing narration keyed ONLY on the observed iteration count, stated
+    // THROUGH THE SESSION STREAM.
     await this.execute_phase("summary", {
-      instructions: summaryInstructions(
-        absoluteArtifact,
-        result.iterations,
-        fileConfirmed,
-        strayAbsent,
-        allowPresent,
-        projectPresent,
-        notAllowedTargetAbsent,
-        tmpPresent,
-      ),
+      instructions: summaryInstructions(absoluteArtifact, result.iterations),
       min: 1,
       max: 1,
     });
 
-    // 12. Return — the RELATIVE token; the base's settle seam absolutizes it
+    // 10. Return — the RELATIVE token; the base's settle seam absolutizes it
     // exactly once at success settlement (NEVER the absolute path here).
     return { report: GUARDS_DEMO_ARTIFACT };
-  }
-}
-
-// The FIFTH probe — a MODULE-PRIVATE nested capability (NOT exported, NOT
-// loader-registered, never surfaced in any terminal record): its contract
-// stub carries the scope flag NOWHERE, so the decision-time clamp renders
-// its phase-declared scope INVISIBLE at the source. It attempts the SAME
-// shared workspace-cwd target the parent's flag-declaring project-file phase
-// admitted — identical target, OPPOSITE verdicts across the span boundary.
-class ProjectFileNotAllowedProbe extends PioCapability {
-  readonly contract: Contract = {
-    name: "project-file-not-allowed",
-    version: "0.1.0",
-    inputs: [],
-    outputs: [{ name: "report" }],
-    writes: [GUARDS_DEMO_PROJECT_FILE_NOT_ALLOWED_ARTIFACT],
-  };
-
-  constructor(params: CapabilityParams) {
-    super(params);
-  }
-
-  async call(
-    inputs: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    void inputs;
-    // Own absolute-path computation over the SAME derivation helpers (the
-    // env-root channel is verified pre-everything, common-mode with the
-    // parent's earlier successful derivation).
-    const stateRoot = deriveStateRootFromAgentDir(
-      process.env.PI_CODING_AGENT_DIR,
-    );
-    const projectKey = deriveProjectKey(process.cwd());
-    const projectSlot = join(stateRoot, "projects", projectKey);
-    const absoluteSharedCwdFile = join(
-      process.cwd(),
-      GUARDS_DEMO_PROJECT_PROBE_FILE,
-    );
-    const absoluteDeclaredDeliverable = join(
-      projectSlot,
-      GUARDS_DEMO_PROJECT_FILE_NOT_ALLOWED_ARTIFACT,
-    );
-    // Crash-survivor coverage BETWEEN the parent's self-clean and here: a
-    // residual copy must not contaminate the ABSENT observation the parent
-    // takes after this run.
-    await rm(absoluteSharedCwdFile, { force: true }).catch(() => {});
-    // The single quiet phase DECLARES THE FLAG (no write bag) — the
-    // sharpened contrast: phase flag PRESENT, contract flag ABSENT, so the
-    // clamp renders the scope class invisible at the source.
-    await this.execute_phase("project-file-not-allowed-probe", {
-      instructions: notAllowedProbeInstructions(
-        absoluteSharedCwdFile,
-        absoluteDeclaredDeliverable,
-      ),
-      min: 1,
-      max: 1,
-      allowProjectWrites: true,
-    });
-    // The report slot is a VALUE slot (never inspected, never recorded):
-    // one stable non-empty statement stands for the observed refusal.
-    return {
-      report:
-        "shared workspace target refused by the not-allowed span (refusal observed, nothing written)",
-    };
   }
 }

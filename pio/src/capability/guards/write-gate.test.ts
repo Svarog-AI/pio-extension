@@ -60,10 +60,8 @@ const replicaPhaseDenial = (
 const replicaCapabilityDenial = (
   name: string,
   writes: readonly string[],
-  workspaceCwd: string | null,
 ): string => {
   const parts: string[] = [...writes];
-  if (workspaceCwd !== null) parts.push(`project files under ${workspaceCwd}`);
   return `Writing is refused during capability '${name}'. Allowed targets: ${parts.length === 0 ? "none" : parts.join(", ")}. Scratch files under /tmp/ stay open.`;
 };
 
@@ -256,7 +254,7 @@ describe("phase-branch decision-time matrix", () => {
     expect(decideWrite(snap, "write", { path: KEPT })).toBeUndefined();
   });
 
-  it("allowProjectWrites-scope-hit admission: a declared entry under the cwd without pattern coverage is allowed", () => {
+  it("declared cwd path WITHOUT the flag: the declaration is no longer contract-covered, drops out of the effective set, the phase governs NOTHING, and the write is refused capability-named with the PATTERNS-ONLY listing (the new refusal corner, inert flavor)", () => {
     const APW: CapabilitySources = {
       name: "cap-apw",
       writes: ["artifacts/*.md"],
@@ -268,7 +266,19 @@ describe("phase-branch decision-time matrix", () => {
       phase: { id: "p", declared: [PROJECT_FILE], allowProjectWrites: false },
       paths: PATHS,
     };
-    expect(decideWrite(snap, "write", { path: PROJECT_FILE })).toBeUndefined();
+    // Post-ruling: the flagless declaration is dropped at decision time, so
+    // the phase confers NO governance and the span judgment alone decides -
+    // patterns only, no scope class.
+    const refusal = asRefusal(
+      decideWrite(snap, "write", { path: PROJECT_FILE }),
+    );
+    expect(refusal.reason).toBe(
+      replicaCapabilityDenial("cap-apw", ["artifacts/*.md"]),
+    );
+    expect(refusal.reason).not.toContain("during phase");
+    expect(refusal.reason).not.toContain(
+      `project files under ${WORKSPACE_CWD}`,
+    );
   });
 
   it("FULLY-UNCOVERED: no declared entry contract-covered ⇒ NO phase governance ⇒ refused AS IF UNDECLARED (the CAPABILITY is named - a phase-named line would be WRONG)", () => {
@@ -368,7 +378,7 @@ describe("phase-branch decision-time matrix", () => {
     ).toBe(asRefusal(decideWrite(plain, "write", { path: TARGET })).reason);
     expect(
       asRefusal(decideWrite(wiped, "write", { path: TARGET })).reason,
-    ).toBe(replicaCapabilityDenial("empty-cap", [], null));
+    ).toBe(replicaCapabilityDenial("empty-cap", []));
     // Swap in DIFFERENT placeholder anchors: identical bytes — `paths` is
     // provably never consulted for the wiped phase.
     const OTHER_PATHS: PathAnchors = {
@@ -378,7 +388,7 @@ describe("phase-branch decision-time matrix", () => {
     const moved: ExecutionSnapshot = { ...wiped, paths: OTHER_PATHS };
     expect(
       asRefusal(decideWrite(moved, "write", { path: TARGET })).reason,
-    ).toBe(replicaCapabilityDenial("empty-cap", [], null));
+    ).toBe(replicaCapabilityDenial("empty-cap", []));
   });
 
   it("null sources + active phase: the effective set is empty and the NO-SPAN line governs - never a phase-named line", () => {
@@ -492,7 +502,7 @@ describe("flag-clamp decision-time matrix - the per-phase scope declaration", ()
     );
   });
 
-  it("(c) paths + flag, both backed: the covered survivor admitted, a cwd target ADMITTED (the delta vs exclusive governance), a slot stray refused with the FULL survivors-plus-class line, and the scope element cross-pinned byte-parity against the capability line's element", () => {
+  it("(c) paths + flag, both backed: the covered survivor admitted, a cwd target ADMITTED (the delta vs exclusive governance), a slot stray refused with the FULL survivors-plus-class line", () => {
     const KEPT = `${SLOT_ROOT}/research/kept.md`;
     const snap: ExecutionSnapshot = {
       sources: BACKED,
@@ -513,15 +523,6 @@ describe("flag-clamp decision-time matrix - the per-phase scope declaration", ()
     expect(refusal.reason).toBe(
       replicaPhaseDenial("both", [KEPT], WORKSPACE_CWD),
     );
-    // Cross-pin: the scope element is BYTE-PARITY with the capability
-    // line's existing element over the same sources:
-    const capLine = asRefusal(
-      decideWrite({ sources: BACKED, phase: null, paths: PATHS }, "write", {
-        path: "/outside/scope.md",
-      }),
-    ).reason;
-    expect(capLine).toContain(`project files under ${WORKSPACE_CWD}`);
-    expect(refusal.reason).toContain(`project files under ${WORKSPACE_CWD}`);
   });
 
   it("(d) paths-only phase inside a flag-TRUE span: the scope dimension is LOST - a cwd target outside the declared paths is REFUSED with the phase named and a survivors-only listing (no implicit allowance from the span's own flag)", () => {
@@ -539,7 +540,7 @@ describe("flag-clamp decision-time matrix - the per-phase scope declaration", ()
     expect(refusal.reason).toBe(replicaPhaseDenial("paths-only", [KEPT], null));
   });
 
-  it("(e) nothing declared (no paths, no flag): NO phase governance - the cwd target is ADMITTED via the span flag and the miss-target refusal bytes are identical between the phase-present and phase-null readings (capability named)", () => {
+  it("(e) nothing declared (no paths, no flag): NO phase governance - the cwd target is now REFUSED capability-named (silent-phase pin of the new refusal corner, full-line patterns-only), and the miss-target refusal bytes stay identical between the phase-present and phase-null readings", () => {
     const bare: ExecutionSnapshot = {
       sources: BACKED,
       phase: { id: "bare", declared: [], allowProjectWrites: false },
@@ -550,10 +551,16 @@ describe("flag-clamp decision-time matrix - the per-phase scope declaration", ()
       phase: null,
       paths: PATHS,
     };
+    // Post-ruling: the silent phase confers no governance and the span
+    // admits patterns only - the cwd scope needs the phase class.
     expect(
-      decideWrite(bare, "write", { path: `${WORKSPACE_CWD}/notes.md` }),
-    ).toBeUndefined();
+      asRefusal(
+        decideWrite(bare, "write", { path: `${WORKSPACE_CWD}/notes.md` }),
+      ).reason,
+    ).toBe(replicaCapabilityDenial("research", ["research/*.md"]));
     const MISS = `${SLOT_ROOT}/else/miss.md`;
+    // Companion pin survives (now trivially true): both readings refuse
+    // identically.
     expect(asRefusal(decideWrite(bare, "write", { path: MISS })).reason).toBe(
       asRefusal(decideWrite(noPhase, "write", { path: MISS })).reason,
     );
@@ -607,8 +614,9 @@ describe("flag-clamp decision-time matrix - the per-phase scope declaration", ()
 });
 
 // ---------------------------------------------------------------------------
-// (d) Project-file admission — the allowProjectWrites disjunct (pio-
-// extension parity dimension): refused WITHOUT the flag, admitted WITH it.
+// (d) Project-file (workspace-cwd) admission - the scope dimension lives
+// ONLY in the phase branch: a flag-TRUE contract alone refuses the project
+// file at the span site (the capability line lists its patterns only).
 // ---------------------------------------------------------------------------
 
 describe("project-file admission under allowProjectWrites", () => {
@@ -623,10 +631,11 @@ describe("project-file admission under allowProjectWrites", () => {
     };
     const refusal = asRefusal(decideWrite(snap, "write", { path: target }));
     expect(refusal.reason).toContain("'research'");
-    expect(refusal.reason).not.toContain("project files under"); // no scope note
+    // The scope element is absent from EVERY capability line now:
+    expect(refusal.reason).not.toContain("project files under");
   });
 
-  it("the INVERSE row: the same target is allowed WITH allowProjectWrites true", () => {
+  it("the INVERSE row: the same target is REFUSED even WITH allowProjectWrites true - the flag-TRUE contract ALONE admits no project file (full-line patterns-only)", () => {
     const target = `${WORKSPACE_CWD}/${TARGET_RELPATH}`;
     const APW_RESEARCH: CapabilitySources = {
       name: "research",
@@ -638,10 +647,19 @@ describe("project-file admission under allowProjectWrites", () => {
       phase: null,
       paths: PATHS,
     };
-    expect(decideWrite(snap, "write", { path: target })).toBeUndefined();
+    const refusal = asRefusal(decideWrite(snap, "write", { path: target }));
+    expect(refusal.reason).toBe(
+      replicaCapabilityDenial("research", ["research/*.md"]),
+    );
+    expect(refusal.reason).not.toContain(
+      `project files under ${WORKSPACE_CWD}`,
+    );
   });
 
   it("the scope is STRICTLY under the workspace cwd (cwd itself is not admitted)", () => {
+    // Purpose note: the strictly-under prefix form is enforced ONLY at the
+    // phase-branch class site; here the span admits patterns only, so the
+    // cwd boundary shows up as the plain span refusal.
     const APW_ONLY: CapabilitySources = {
       name: "cap-apw",
       writes: [],
@@ -901,13 +919,11 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
     ).toBe(true);
   });
 
-  it("capability-named denial with patterns only (no project-scope note)", () => {
-    // SOLE OWNER: renderCapabilityDenial (apw-off form) in guards/write-gate.ts.
-    const GOLDEN_CAP_PATTERNS = replicaCapabilityDenial(
-      "research",
-      ["research/*.md"],
-      null,
-    );
+  it("capability-named denial with patterns only - the universal listing shape (the contract flag adds no element to the line)", () => {
+    // SOLE OWNER: renderCapabilityDenial in guards/write-gate.ts.
+    const GOLDEN_CAP_PATTERNS = replicaCapabilityDenial("research", [
+      "research/*.md",
+    ]);
     const snap: ExecutionSnapshot = {
       sources: RESEARCH,
       phase: null,
@@ -920,13 +936,11 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
     ).toBe(GOLDEN_CAP_PATTERNS);
   });
 
-  it("capability-named denial with patterns AND the project-scope note carrying the actual cwd", () => {
-    // SOLE OWNER: renderCapabilityDenial (apw-on form) in guards/write-gate.ts.
-    const GOLDEN_CAP_PROJECT_NOTE = replicaCapabilityDenial(
-      "research",
-      ["research/*.md"],
-      WORKSPACE_CWD,
-    );
+  it("capability-named denial over FLAG-TRUE sources: the flag is INVISIBLE on the capability line - the patterns-only bytes are IDENTICAL to the flag-off shape (refusing-what-is-listed is forbidden)", () => {
+    // SOLE OWNER: renderCapabilityDenial in guards/write-gate.ts.
+    const GOLDEN_CAP_FLAG_INVISIBLE = replicaCapabilityDenial("research", [
+      "research/*.md",
+    ]);
     const APW_RESEARCH: CapabilitySources = {
       name: "research",
       writes: ["research/*.md"],
@@ -937,19 +951,18 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
       phase: null,
       paths: PATHS,
     };
-    // A pattern-miss OUTSIDE the cwd scope reaches the denial with the note:
+    // A pattern-miss OUTSIDE every scope reaches the denial: the flag adds
+    // no element - the line matches the flag-off bytes exactly.
     expect(
       asRefusal(decideWrite(snap, "write", { path: `/outside/scope.md` }))
         .reason,
-    ).toBe(GOLDEN_CAP_PROJECT_NOTE);
-    expect(GOLDEN_CAP_PROJECT_NOTE).toContain(
-      `project files under ${WORKSPACE_CWD}`,
-    );
+    ).toBe(GOLDEN_CAP_FLAG_INVISIBLE);
+    expect(GOLDEN_CAP_FLAG_INVISIBLE).not.toContain("project files under");
   });
 
   it("capability-named 'none' - the empty-contract span refusal", () => {
     // SOLE OWNER: renderCapabilityDenial (empty-sources form) in write-gate.ts.
-    const GOLDEN_CAP_NONE = replicaCapabilityDenial("compose-demo", [], null);
+    const GOLDEN_CAP_NONE = replicaCapabilityDenial("compose-demo", []);
     const COMPOSE_DEMO: CapabilitySources = {
       name: "compose-demo",
       writes: [],
@@ -1010,7 +1023,7 @@ describe("goldens - lockstep byte-equality on every refusal shape", () => {
         ),
       ),
     );
-    // Capability-named WITH the project-scope note (target outside the scope):
+    // Capability-named over FLAG-TRUE sources (target outside every scope):
     shapes.push(
       asRefusal(
         decideWrite(

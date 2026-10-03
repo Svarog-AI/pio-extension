@@ -25,8 +25,9 @@
 //      agree (decision-time clamp; null sources coalesce onto the empty
 //      base, where the class term stays inert - one code path). An EMPTY
 //      effective set confers NO phase governance and falls through;
-//   3. span admission over the running capability's sources (null coalesces
-//      to the empty base — one code path, no special cases);
+//   3. span admission over the running capability's PATTERNS ONLY (the
+//      writes list; null coalesces to the empty base - one code path, no
+//      special cases);
 //   4. deny.
 // Every refusal RETURNS a house-style message — the ONLY feedback — naming
 // the governing source (phase id, capability name, or no-span state), the
@@ -116,15 +117,17 @@ export function decideWrite(
     reason:
       snapshot.sources === null
         ? renderNoSpanDenial()
-        : renderCapabilityDenial(snapshot.sources, snapshot.paths.workspaceCwd),
+        : renderCapabilityDenial(snapshot.sources),
   };
 }
 
-// THE single disjunction used by BOTH the span verdict and the effective-set
-// filter — one coverage definition, no drift between the two sites. Disjunct
-// (i) consults the slot-root anchor ONLY when `writes` is non-empty; (ii) the
-// cwd anchor ONLY when the flag is set; empty sources consult NOTHING. Pure
-// over plain values — no channels exist here to fault.
+// THE single coverage check serving BOTH the span verdict and the
+// effective-set filter - one definition, no drift between the two sites.
+// It consults the slot-root anchor ONLY when `writes` is non-empty; empty
+// sources consult NOTHING. The project-files (workspace-cwd) scope is NOT
+// consulted here - it exists only as the DISTINCT decision-time
+// proposition at the phase-branch class site. Pure over plain values -
+// no channels exist here to fault.
 function admittedBy(
   sources: CapabilitySources,
   target: string,
@@ -136,19 +139,19 @@ function admittedBy(
         return true;
     }
   }
-  return (
-    sources.allowProjectWrites && target.startsWith(`${anchors.workspaceCwd}/`)
-  );
+  return false;
 }
 
 const TMP_PARITY_CLAUSE = "Scratch files under /tmp/ stay open.";
 
-// SOLE DENIAL LINE SHAPES — the suite goldens mirror these byte-for-byte.
+// SOLE DENIAL LINE SHAPES - the suite goldens mirror these byte-for-byte.
 // The phase line carries the two-dimension listing: surviving paths in
 // declaration order with the scope element APPENDED LAST when the class is
-// active (byte-parity with the capability line's element); the join-or-
-// "none" constructor shape is kept for structural parity (structurally
-// unreachable here - rendering is gated on a non-empty effective set).
+// active - the element now lives on the PHASE LINE ALONE (the capability
+// line lists its patterns only - whatever is refused is never listed);
+// the join-or-"none" constructor shape is kept for structural parity
+// (structurally unreachable here - rendering is gated on a non-empty
+// effective set).
 const renderPhaseDenial = (
   phaseId: string,
   survivors: readonly string[],
@@ -162,14 +165,8 @@ const renderPhaseDenial = (
   return `Writing is refused during phase '${phaseId}'. Allowed targets: ${allowlist}. ${TMP_PARITY_CLAUSE}`;
 };
 
-const renderCapabilityDenial = (
-  sources: CapabilitySources,
-  workspaceCwd: string,
-): string => {
+const renderCapabilityDenial = (sources: CapabilitySources): string => {
   const parts: string[] = [...sources.writes];
-  if (sources.allowProjectWrites) {
-    parts.push(`project files under ${workspaceCwd}`);
-  }
   const allowlist = parts.length === 0 ? "none" : parts.join(", ");
   return `Writing is refused during capability '${sources.name}'. Allowed targets: ${allowlist}. ${TMP_PARITY_CLAUSE}`;
 };

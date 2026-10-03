@@ -208,7 +208,7 @@ describe("attach-stores-verbatim + decision-time composition", () => {
     expect(driveOf(state)("edit", TARGET_A1)).toBeUndefined();
   });
 
-  it("allowProjectWrites-scope-hit admission: a target STRICTLY under workspaceCwd, pattern-uncovered, is allowed with the flag on", () => {
+  it("declared cwd path WITHOUT the flag: the declaration is no longer contract-covered, the inert phase governs nothing, and the pattern-uncovered cwd target is REFUSED capability-named - the composition-tier pin of the new refusal corner", () => {
     const APW: CapabilitySources = {
       name: "cap-apw",
       writes: ["artifacts/*.md"],
@@ -218,7 +218,15 @@ describe("attach-stores-verbatim + decision-time composition", () => {
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(APW);
     state.attachPhase("p2", [PROJECT_FILE], false);
-    expect(driveOf(state)("write", PROJECT_FILE)).toBeUndefined();
+    // Fragment-assertion idiom (this suite carries no replica builders):
+    // names the capability, lists the raw pattern, excludes the scope
+    // element and any phase naming, keeps the standard closing clause.
+    const refusal = asRefusal(driveOf(state)("write", PROJECT_FILE));
+    expect(refusal.reason).toContain("'cap-apw'");
+    expect(refusal.reason).toContain("artifacts/*.md");
+    expect(refusal.reason).not.toContain("project files under");
+    expect(refusal.reason).not.toContain("during phase");
+    expect(refusal.reason).toContain("Scratch files under /tmp/ stay open.");
   });
 
   it("FULLY-UNCOVERED: the entry is refused AS IF UNDECLARED - verdict byte-IDENTICAL to the no-phase capability-named denial (lazy fall-through proof)", () => {

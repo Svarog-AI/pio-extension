@@ -440,14 +440,13 @@ const replicaPhaseDenial = (
 };
 
 /** Denial-line replica builder (SOLE OWNER: renderCapabilityDenial in
- * ../capability/guards/write-gate.ts). */
+ * ../capability/guards/write-gate.ts - patterns-only listing: the contract
+ * flag adds no element to the capability line). */
 const replicaCapabilityDenial = (
   name: string,
   writesRawTokens: readonly string[],
-  workspaceCwd: string | null,
 ): string => {
   const parts: string[] = [...writesRawTokens];
-  if (workspaceCwd !== null) parts.push(`project files under ${workspaceCwd}`);
   return `Writing is refused during capability '${name}'. Allowed targets: ${parts.length === 0 ? "none" : parts.join(", ")}. Scratch files under /tmp/ stay open.`;
 };
 
@@ -936,11 +935,9 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     });
     expect(childRefusal).toStrictEqual({
       block: true,
-      reason: replicaCapabilityDenial(
-        "project-file-not-allowed",
-        [GUARDS_DEMO_PROJECT_FILE_NOT_ALLOWED_ARTIFACT],
-        null,
-      ),
+      reason: replicaCapabilityDenial("project-file-not-allowed", [
+        GUARDS_DEMO_PROJECT_FILE_NOT_ALLOWED_ARTIFACT,
+      ]),
     });
     expect(tmpAbsentBeforeSeed).toBe(true);
 
@@ -1473,7 +1470,7 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
     };
   }
 
-  it("clamped: an over-layer co-declared scratch entry NEVER covered by the contract is INVISIBLE at decision time - absent from the refusal listing, refused AS IF UNDECLARED (capability named, both listing elements)", () => {
+  it("clamped: an over-layer co-declared scratch entry NEVER covered by the contract is INVISIBLE at decision time - absent from the refusal listing, refused AS IF UNDECLARED (capability named, patterns-only listing)", () => {
     const d = drivenState();
     d.state.enterCapability(DEMO_SOURCES);
     d.state.attachPhase("clamped", [d.uncovered], false);
@@ -1484,15 +1481,11 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
     d.state.exitCapability();
     expect(verdict).toStrictEqual({
       block: true,
-      reason: replicaCapabilityDenial(
-        "guards-demo",
-        ["guards-demo/*.md"],
-        d.cwd,
-      ),
+      reason: replicaCapabilityDenial("guards-demo", ["guards-demo/*.md"]),
     });
   });
 
-  it("inherited: NOTHING attached confers no phase governance - the demo's own sources govern unchanged: the pattern hit is ADMITTED, the cwd-scope target is ADMITTED, the miss-target refuses CAPABILITY-NAMED with BOTH listing elements", () => {
+  it("inherited: NOTHING attached confers no phase governance - the demo's own sources now govern through PATTERNS ONLY: the pattern hit is ADMITTED (path dimension untouched), the workspace-cwd target is REFUSED capability-named (the contract flag alone no longer admits the scope - no phase declared the backed flag), and the miss-target refuses CAPABILITY-NAMED with the element-free listing", () => {
     const d = drivenState();
     d.state.enterCapability(DEMO_SOURCES);
     const hit = decideWrite(d.state.snapshot(), "write", { path: d.covered });
@@ -1504,14 +1497,13 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
     });
     d.state.exitCapability();
     expect(hit).toBeUndefined();
-    expect(scope).toBeUndefined();
+    expect(scope).toStrictEqual({
+      block: true,
+      reason: replicaCapabilityDenial("guards-demo", ["guards-demo/*.md"]),
+    });
     expect(miss).toStrictEqual({
       block: true,
-      reason: replicaCapabilityDenial(
-        "guards-demo",
-        ["guards-demo/*.md"],
-        d.cwd,
-      ),
+      reason: replicaCapabilityDenial("guards-demo", ["guards-demo/*.md"]),
     });
   });
 
@@ -1552,11 +1544,9 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
     d.state.exitCapability();
     expect(flagged).toStrictEqual({
       block: true,
-      reason: replicaCapabilityDenial(
-        "project-file-not-allowed",
-        ["guards-demo/not-allowed-child.md"],
-        null,
-      ),
+      reason: replicaCapabilityDenial("project-file-not-allowed", [
+        "guards-demo/not-allowed-child.md",
+      ]),
     });
     // Byte-identical to the phase-null reading (the clamp at the source).
     expect(unflagged).toStrictEqual(flagged);

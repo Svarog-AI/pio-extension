@@ -1624,8 +1624,8 @@ describe("source guards (row-2 edge discipline over base.ts)", () => {
 // AFTER the B block: the sticky takeover-eval flag discipline (B1 flip,
 // B8 pin) is load-bearing.
 // ---------------------------------------------------------------------
-const NO_SPAN_DENIAL_REPLICA =
-  "Writing is refused \u2014 no capability span is active. Allowed targets: none. Scratch files under /tmp/ stay open.";
+const UNIVERSAL_NO_PERMISSION_REPLICA =
+  "Writing is refused \u2014 no write permission is declared by any active phase. Allowed targets: none.";
 
 const LITERAL_SLOT_ROOT = "/proj/slot";
 const LITERAL_WORKSPACE_CWD = "/work/slot";
@@ -1727,7 +1727,7 @@ describe("PioCapability - capability-source span window (enter/exit timing)", ()
     expect(state.snapshot().sources).toBeNull();
   });
 
-  it("FAULT: the pop PRECEDES the ok:false settlement -- a post-rejection consultation through the REAL predicate renders the NO-SPAN refusal line, and a follow-up run on the SAME state behaves as if the span never existed", async () => {
+  it("FAULT: the pop PRECEDES the ok:false settlement -- a post-rejection consultation through the REAL predicate renders the universal no-permission byte, and a follow-up run on the SAME state behaves as if the span never existed", async () => {
     const root = newBTempRoot();
     const world = buildBWorld(root, "/work/span-fault");
     const state = freshRowState();
@@ -1773,13 +1773,14 @@ describe("PioCapability - capability-source span window (enter/exit timing)", ()
       message: "body fault after a settled run",
     });
     // THE sharp byte pin: by the time the ok:false result resolves, the
-    // span is ALREADY popped -- the REAL predicate over the row-held state
-    // renders the NO-SPAN line rather than a capability-named one.
+    // span is ALREADY popped -- and even if it were not, the refusal names
+    // the STATE, not the layer: the REAL predicate over the row-held state
+    // renders the universal no-permission byte.
     expect(
       decideWrite(state.snapshot(), "write", {
         path: `${LITERAL_SLOT_ROOT}/any.md`,
       }),
-    ).toStrictEqual({ block: true, reason: NO_SPAN_DENIAL_REPLICA });
+    ).toStrictEqual({ block: true, reason: UNIVERSAL_NO_PERMISSION_REPLICA });
     // A follow-up action on the SAME state behaves as if the span never
     // existed: a fresh balanced run enters and settles cleanly.
     const again = await cap.run();
@@ -1878,7 +1879,7 @@ describe("PioCapability - capability-source span window (hop-body regression)", 
 });
 
 describe("PioCapability - capability-source span window (composed-in-process nesting)", () => {
-  it("NESTED: the REAL predicate refuses the caller's stray naming the CALLER pre-child AND post-child (property (c)), admits the callee's own artifact under the callee's span, and post-run BOTH spans settle to null/null", async () => {
+  it("NESTED: the REAL predicate refuses ALL THREE consultations with the IDENTICAL universal byte (the span site is non-admitting - no phase confirms any target), the retained top-layer source-name capture pins the [caller, callee, caller] suspend/restore ordering, and post-run BOTH spans settle to null/null", async () => {
     const root = newBTempRoot();
     const world = buildBWorld(root, "/work/span-nested");
     const state = freshRowState();
@@ -1887,9 +1888,8 @@ describe("PioCapability - capability-source span window (composed-in-process nes
     // Shared-handle lookup: caller AND callee discover the SAME state by
     // identity (the row-1 composed shape).
     const stray = `${LITERAL_SLOT_ROOT}/notes/a.md`;
-    const CALLER_DENIAL_REPLICA =
-      "Writing is refused during capability 'caller-cap'. Allowed targets: demo/*.md. Scratch files under /tmp/ stay open.";
     const observed: Array<WriteGateVerdict | undefined> = [];
+    const sourceNames: string[] = [];
     class NestedCallerCap extends PioCapability {
       readonly contract: Contract = {
         name: "caller-cap",
@@ -1902,14 +1902,16 @@ describe("PioCapability - capability-source span window (composed-in-process nes
         super({ session: host });
       }
       async call(): Promise<Record<string, unknown>> {
-        // (1) Mid-caller-span, pre-child: the running capability governs
-        // exclusively.
+        // (1) Mid-caller-span, pre-child: NOTHING governs (no phase) -
+        // the refusal names the STATE; the LAYER rides the marker channel.
         observed.push(decideWrite(state.snapshot(), "write", { path: stray }));
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
         // (2) The callee composes IN-PROCESS over the SAME handle/state.
         await callee.run();
-        // (3) Back in the caller body AFTER child settlement: the
-        // CALLER's sources govern AGAIN (property (c)).
+        // (3) Back in the caller body AFTER child settlement: the CALLER's
+        // sources govern AGAIN - proven mechanically via the name capture.
         observed.push(decideWrite(state.snapshot(), "write", { path: stray }));
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
         return { nested: true };
       }
     }
@@ -1925,12 +1927,14 @@ describe("PioCapability - capability-source span window (composed-in-process nes
         super({ session: host });
       }
       async call(): Promise<Record<string, unknown>> {
-        // Inside the callee's own span: its own artifact is ADMITTED.
+        // Inside the callee's own span: its own artifact REFUSES too -
+        // the span confers nothing without a confirming phase.
         observed.push(
           decideWrite(state.snapshot(), "write", {
             path: `${LITERAL_SLOT_ROOT}/research/findings.md`,
           }),
         );
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
         return { researched: true };
       }
     }
@@ -1938,18 +1942,20 @@ describe("PioCapability - capability-source span window (composed-in-process nes
     const result = await new NestedCallerCap(session).run();
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
-    // (1)+(3) byte-for-byte: the CALLER names both refusals.
+    // THE THREE-WAY byte identity: every consultation resolves to the
+    // universal no-permission byte (property (c) reinterpretation of
+    // record: the refusal names the STATE; the layer rides the marker
+    // channel).
     expect(observed).toHaveLength(3);
-    expect(observed[0]).toStrictEqual({
-      block: true,
-      reason: CALLER_DENIAL_REPLICA,
-    });
-    // (2) admission: the callee governs exclusively for ITS span.
-    expect(observed[1]).toBeUndefined();
-    expect(observed[2]).toStrictEqual({
-      block: true,
-      reason: CALLER_DENIAL_REPLICA,
-    });
+    for (const verdict of observed) {
+      expect(verdict).toStrictEqual({
+        block: true,
+        reason: UNIVERSAL_NO_PERMISSION_REPLICA,
+      });
+    }
+    // Retained mechanics proof: the TOP-LAYER SOURCE NAMES track the
+    // suspend/restore ordering through the composed hop.
+    expect(sourceNames).toEqual(["caller-cap", "callee-cap", "caller-cap"]);
     // (4) Post-run: both spans settled.
     expect(state.snapshot().sources).toBeNull();
     expect(state.snapshot().phase).toBeNull();
@@ -1957,13 +1963,14 @@ describe("PioCapability - capability-source span window (composed-in-process nes
 });
 
 describe("PioCapability - capability-source span window (empty-contract span - the compose-demo shape)", () => {
-  it("EMPTY: within the PARENT span ALONE a stray non-/tmp/ target is refused naming the parent with 'Allowed targets: none' while a /tmp/ scratch target is ADMITTED (parity class stands INSIDE an empty span); under the composing CHILD's span the child's own artifact is admitted (properties (a)+(b)); post-run the state is restored to pre-run governance", async () => {
+  it("EMPTY: the universal no-permission byte INSIDE every span IS itself the standing demonstration that a span confers nothing - the in-parent-span stray, the in-parent-span /tmp/ scratch (parity class RETIRED inside an empty span), and the child's own artifact under the child span ALL refuse identically, with the source-name capture pinning [parent, parent, child]; post-run the state is restored to pre-run governance", async () => {
     const root = newBTempRoot();
     const world = buildBWorld(root, "/work/span-empty");
     const state = freshRowState();
     stampRowState(world.parentHandle, state);
     const session = stampedHost(world);
     const observed: Array<WriteGateVerdict | undefined> = [];
+    const sourceNames: string[] = [];
     class EmptyParentCap extends PioCapability {
       readonly contract: Contract = {
         name: "parent",
@@ -1976,19 +1983,22 @@ describe("PioCapability - capability-source span window (empty-contract span - t
         super({ session: host });
       }
       async call(): Promise<Record<string, unknown>> {
-        // Within the parent span ALONE (before the child): total
-        // default-deny beyond the parity class.
+        // Within the parent span ALONE (before the child): genuinely total
+        // default-deny - the span confers nothing.
         observed.push(
           decideWrite(state.snapshot(), "write", {
             path: `${LITERAL_SLOT_ROOT}/stray/readme.md`,
           }),
         );
-        // Parity class INSIDE the empty span: exact prefix admits.
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        // The /tmp/ scratch inside the empty span: parity class RETIRED -
+        // undeclared means refused at every depth now.
         observed.push(
           decideWrite(state.snapshot(), "write", {
             path: "/tmp/scratch.txt",
           }),
         );
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
         await child.run();
         return { done: true };
       }
@@ -2010,6 +2020,7 @@ describe("PioCapability - capability-source span window (empty-contract span - t
             path: `${LITERAL_SLOT_ROOT}/notes/b.md`,
           }),
         );
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
         return { done: true };
       }
     }
@@ -2017,19 +2028,19 @@ describe("PioCapability - capability-source span window (empty-contract span - t
     const result = await new EmptyParentCap(session).run();
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
-    // Property (a): the FULL-LINE replica names the parent with nothing
-    // admitted beyond the parity class.
+    // Properties (a)+(b) reinterpreted of record: the universal byte
+    // INSIDE the spans is itself the standing demonstration that a span
+    // confers nothing - all three readings converge on ONE fixed string.
     expect(observed).toHaveLength(3);
-    expect(observed[0]).toStrictEqual({
-      block: true,
-      reason:
-        "Writing is refused during capability 'parent'. Allowed targets: none. Scratch files under /tmp/ stay open.",
-    });
-    // Parity admission INSIDE the empty span.
-    expect(observed[1]).toBeUndefined();
-    // Property (b): the composing child's own artifact is admitted under
-    // its own span.
-    expect(observed[2]).toBeUndefined();
+    for (const verdict of observed) {
+      expect(verdict).toStrictEqual({
+        block: true,
+        reason: UNIVERSAL_NO_PERMISSION_REPLICA,
+      });
+    }
+    // Retained mechanics proof: the TOP-LAYER SOURCE NAMES track the
+    // suspend/restore ordering ([parent, parent, child]).
+    expect(sourceNames).toEqual(["parent", "parent", "child"]);
     // Post-run: state restored to pre-run governance.
     expect(state.snapshot().sources).toBeNull();
     expect(state.snapshot().phase).toBeNull();

@@ -4,8 +4,8 @@
 // fixtures, zero env manipulation, zero async - the sole sanctioned read is
 // repo source for the mechanical guard rows (house idiom). All path fixtures
 // are FIXED LITERAL strings over disjoint roots: tmpdir-derived roots sit
-// under /tmp/ on POSIX and the parity class would silently ALLOW every
-// refusal row, so the literal roots never touch /tmp/.
+// under /tmp/ on POSIX, where the scratch-class doctrine admits ONLY what a
+// phase declares - so the literal roots stay neutral and never touch /tmp/.
 
 import { readFileSync } from "node:fs";
 import type {
@@ -130,7 +130,7 @@ describe("bookkeeping - LIFO span layers and the scalar phase slot", () => {
   it("exitCapability with an OUTSTANDING PHASE faults (message carries the attached id) and leaves the stack intact", () => {
     const staged = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     staged.enterCapability(SOURCES_A);
-    staged.attachPhase("phase-x", [TARGET_A1], false);
+    staged.attachPhase("phase-x", [TARGET_A1], false, false);
     const err = captureError(() => staged.exitCapability());
     expect(err.name).toBe(FAULT_NAME);
     expect(err.message).toBe(
@@ -144,7 +144,7 @@ describe("bookkeeping - LIFO span layers and the scalar phase slot", () => {
   it("attachPhase at DEPTH 0 faults (message carries the id)", () => {
     const cold = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     const err = captureError(() =>
-      cold.attachPhase("phase-y", [TARGET_A1], false),
+      cold.attachPhase("phase-y", [TARGET_A1], false, false),
     );
     expect(err.name).toBe(FAULT_NAME);
     expect(err.message).toBe(
@@ -162,7 +162,7 @@ describe("bookkeeping - LIFO span layers and the scalar phase slot", () => {
     // the SAME single form fires at positive depth with an empty slot:
     const emptied = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     emptied.enterCapability(SOURCES_A);
-    emptied.attachPhase("phase-z", [TARGET_A1], false);
+    emptied.attachPhase("phase-z", [TARGET_A1], false, false);
     emptied.detachPhase();
     const emptiedErr = captureError(() => emptied.detachPhase());
     expect(emptiedErr.name).toBe(FAULT_NAME);
@@ -174,9 +174,9 @@ describe("bookkeeping - LIFO span layers and the scalar phase slot", () => {
   it("reset() drains regardless of outstanding entries (spans with attached phases) and is idempotent - post-drain re-enter behaves fresh", () => {
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(SOURCES_A);
-    state.attachPhase("phase-a", [TARGET_A1], false);
+    state.attachPhase("phase-a", [TARGET_A1], false, false);
     state.enterCapability(SOURCES_B);
-    state.attachPhase("phase-b", [TARGET_B1], false);
+    state.attachPhase("phase-b", [TARGET_B1], false, false);
     state.reset();
     const drained = state.snapshot();
     expect(drained.sources).toBeNull();
@@ -195,20 +195,21 @@ describe("bookkeeping - LIFO span layers and the scalar phase slot", () => {
 // ---------------------------------------------------------------------------
 // (c) ATTACH-STORES-VERBATIM + DECISION-TIME COMPOSITION - real state ->
 // snapshot() -> real decideWrite; the five coverage outcomes plus snapshot-
-// read semantics. Fresh scenario objects per row. Both declared dimensions
-// (the paths and the scope flag) ride the same raw verbatim storage.
+// read semantics. Fresh scenario objects per row. All declared dimensions
+// (the paths, the scope flag, the scratch flag) ride the same raw verbatim
+// storage.
 // ---------------------------------------------------------------------------
 
 describe("attach-stores-verbatim + decision-time composition", () => {
   it("pattern-hit admission: a declared path covered by a writes pattern anchored at the object's slot root is allowed", () => {
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(SOURCES_A);
-    state.attachPhase("p1", [TARGET_A1], false);
+    state.attachPhase("p1", [TARGET_A1], false, false);
     expect(driveOf(state)("write", TARGET_A1)).toBeUndefined();
     expect(driveOf(state)("edit", TARGET_A1)).toBeUndefined();
   });
 
-  it("declared cwd path WITHOUT the flag: the declaration is no longer contract-covered, the inert phase governs nothing, and the pattern-uncovered cwd target is REFUSED capability-named - the composition-tier pin of the new refusal corner", () => {
+  it("declared cwd path WITHOUT the flag: the declaration is no longer contract-covered, the inert phase governs nothing, and the pattern-uncovered cwd target is REFUSED on the universal byte - the composition-tier pin of the non-governing window", () => {
     const APW: CapabilitySources = {
       name: "cap-apw",
       writes: ["artifacts/*.md"],
@@ -217,34 +218,40 @@ describe("attach-stores-verbatim + decision-time composition", () => {
     const PROJECT_FILE = `${CWD_A}/notes.md`;
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(APW);
-    state.attachPhase("p2", [PROJECT_FILE], false);
+    state.attachPhase("p2", [PROJECT_FILE], false, false);
     // Fragment-assertion idiom (this suite carries no replica builders):
-    // names the capability, lists the raw pattern, excludes the scope
-    // element and any phase naming, keeps the standard closing clause.
+    // the universal no-permission byte names NOTHING - the capability,
+    // the pattern, and any phase are all absent from the fixed string.
     const refusal = asRefusal(driveOf(state)("write", PROJECT_FILE));
-    expect(refusal.reason).toContain("'cap-apw'");
-    expect(refusal.reason).toContain("artifacts/*.md");
+    expect(refusal.reason).toContain(
+      "no write permission is declared by any active phase",
+    );
+    expect(refusal.reason).toContain("Allowed targets: none.");
+    expect(refusal.reason).not.toContain("'cap-apw'");
+    expect(refusal.reason).not.toContain("artifacts/*.md");
     expect(refusal.reason).not.toContain("project files under");
     expect(refusal.reason).not.toContain("during phase");
-    expect(refusal.reason).toContain("Scratch files under /tmp/ stay open.");
   });
 
-  it("FULLY-UNCOVERED: the entry is refused AS IF UNDECLARED - verdict byte-IDENTICAL to the no-phase capability-named denial (lazy fall-through proof)", () => {
+  it("FULLY-UNCOVERED: the entry is refused on the UNIVERSAL BYTE AS IF UNDECLARED - verdict byte-IDENTICAL to the no-phase reading (lazy fall-through proof; nothing is named)", () => {
     const FOREIGN = "/elsewhere/declared.md";
     const withPhase = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     withPhase.enterCapability(SOURCES_A);
-    withPhase.attachPhase("clamp", [FOREIGN], false);
+    withPhase.attachPhase("clamp", [FOREIGN], false, false);
     const withoutPhase = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     withoutPhase.enterCapability(SOURCES_A);
     const rWith = asRefusal(driveOf(withPhase)("write", FOREIGN));
     const rWithout = asRefusal(driveOf(withoutPhase)("write", FOREIGN));
     // byte-identical: the wiped phase confers NO governance
     expect(rWith.reason).toBe(rWithout.reason);
-    // capability named (a phase-named line would be WRONG), full effective set
-    // listed, uncovered entry ABSENT:
-    expect(rWith.reason).toContain("'cap-a'");
+    // Universal byte (a capability-named OR phase-named line would be
+    // WRONG), nothing listed, uncovered entry ABSENT:
+    expect(rWith.reason).toContain(
+      "no write permission is declared by any active phase",
+    );
+    expect(rWith.reason).toContain("Allowed targets: none.");
+    expect(rWith.reason).not.toContain("'cap-a'");
     expect(rWith.reason).not.toContain("during phase");
-    expect(rWith.reason).toContain("artifacts/*.md");
     expect(rWith.reason).not.toContain(FOREIGN);
   });
 
@@ -252,7 +259,7 @@ describe("attach-stores-verbatim + decision-time composition", () => {
     const FOREIGN = "/elsewhere/partial.md";
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(SOURCES_A);
-    state.attachPhase("mixed", [TARGET_A1, FOREIGN], false);
+    state.attachPhase("mixed", [TARGET_A1, FOREIGN], false, false);
     expect(driveOf(state)("write", TARGET_A1)).toBeUndefined();
     const refusal = asRefusal(driveOf(state)("write", FOREIGN));
     expect(refusal.reason).toContain("'mixed'");
@@ -260,7 +267,7 @@ describe("attach-stores-verbatim + decision-time composition", () => {
     expect(refusal.reason).not.toContain(FOREIGN);
   });
 
-  it("EMPTY-CONTRACT + null-sources fall-through: non-empty declared yet no phase governance - verdict byte-identical across SENTINEL-VARYED anchors (paths provably never consulted), the 'none' line renders", () => {
+  it("EMPTY-CONTRACT + null-sources fall-through: non-empty declared yet no phase governance - verdict byte-identical across SENTINEL-VARYED anchors (paths provably never consulted), the universal no-permission byte renders", () => {
     const WIPED: CapabilitySources = {
       name: "cap-wiped",
       writes: [],
@@ -279,33 +286,35 @@ describe("attach-stores-verbatim + decision-time composition", () => {
       channelsFor(SENTINEL_A.projectSlotRoot, SENTINEL_A.workspaceCwd),
     );
     stateA.enterCapability(WIPED);
-    stateA.attachPhase("wiped", [TARGET], false);
+    stateA.attachPhase("wiped", [TARGET], false, false);
     const stateB = new SessionExecutionState(
       channelsFor(SENTINEL_B.projectSlotRoot, SENTINEL_B.workspaceCwd),
     );
     stateB.enterCapability(WIPED);
-    stateB.attachPhase("wiped", [TARGET], false);
+    stateB.attachPhase("wiped", [TARGET], false, false);
     const rA = asRefusal(driveOf(stateA)("write", TARGET));
     const rB = asRefusal(driveOf(stateB)("write", TARGET));
     // byte-identical across distinct placeholder anchors:
     expect(rA.reason).toBe(rB.reason);
-    // the 'none' line renders, capability named, sentinels uninterpolated:
-    expect(rA.reason).toContain("'cap-wiped'");
+    // The universal byte renders - nothing named, sentinels uninterpolated:
+    expect(rA.reason).toContain(
+      "no write permission is declared by any active phase",
+    );
     expect(rA.reason).toContain("Allowed targets: none.");
+    expect(rA.reason).not.toContain("'cap-wiped'");
     expect(rA.reason).not.toContain("MKR-slot-w1");
     expect(rA.reason).not.toContain("MKR-cwd-w1");
-    expect(rA.reason.endsWith("Scratch files under /tmp/ stay open.")).toBe(
-      true,
-    );
     // the null-sources half of the same shape (hand-built snapshot - a real
     // span always carries real sources): identical bytes across sentinels,
-    // and the no-span line governs:
+    // and the SAME universal byte governs (span presence makes no
+    // difference):
     const nullSnapA: ExecutionSnapshot = {
       sources: null,
       phase: {
         id: "wiped-null",
         declared: [TARGET],
         allowProjectWrites: false,
+        tmpDirAllowed: false,
       },
       paths: SENTINEL_A,
     };
@@ -316,7 +325,9 @@ describe("attach-stores-verbatim + decision-time composition", () => {
     const rNullA = asRefusal(decideWrite(nullSnapA, "write", { path: TARGET }));
     const rNullB = asRefusal(decideWrite(nullSnapB, "write", { path: TARGET }));
     expect(rNullA.reason).toBe(rNullB.reason);
-    expect(rNullA.reason).toContain("no capability span is active");
+    expect(rNullA.reason).toContain(
+      "no write permission is declared by any active phase",
+    );
     expect(rNullA.reason).not.toContain("MKR-slot-w2");
   });
 
@@ -326,24 +337,25 @@ describe("attach-stores-verbatim + decision-time composition", () => {
     const sources = SOURCES_A;
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(sources);
-    state.attachPhase("verbatim", declaredArg, false);
+    state.attachPhase("verbatim", declaredArg, false, false);
     const snap = state.snapshot();
     // zero-copy pin: identity, not just content equality
     expect(snap.phase?.declared).toBe(declaredArg);
     expect(snap.sources).toBe(sources);
   });
 
-  it("two-dimension verbatim storage: the RAW scope flag stored UNFILTERED next to the paths - snapshot() reads the FULL RECORD back VERBATIM (deep equality over the whole record including the flag) and the declared array keeps its identity passthrough", () => {
+  it("full-record verbatim storage: the RAW flags stored UNFILTERED next to the paths - snapshot() reads the FULL RECORD back VERBATIM (deep equality over the whole record including BOTH raw flags - the fourth dimension lands) and the declared array keeps its identity passthrough", () => {
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(SOURCES_A);
     const declaredArg: readonly string[] = [TARGET_A1];
-    state.attachPhase("flagged", declaredArg, true);
+    state.attachPhase("flagged", declaredArg, true, false);
     const snap = state.snapshot();
-    // the flag is stored RAW - asserted through the full record:
+    // Both flags are stored RAW - asserted through the full record:
     expect(snap.phase).toEqual({
       id: "flagged",
       declared: declaredArg,
       allowProjectWrites: true,
+      tmpDirAllowed: false,
     });
     // zero-copy pin on the paths dimension survives alongside the flag:
     expect(snap.phase?.declared).toBe(declaredArg);
@@ -414,7 +426,9 @@ describe("attach-stores-verbatim + decision-time composition", () => {
     const state = new SessionExecutionState(channels);
     state.enterCapability(SOURCES_A);
     const arg: readonly string[] = [TARGET_A1];
-    expect(() => state.attachPhase("committed", arg, false)).not.toThrow();
+    expect(() =>
+      state.attachPhase("committed", arg, false, false),
+    ).not.toThrow();
     // while the holder faults, snapshot escapes the held instance verbatim:
     expect(captureError(() => state.snapshot())).toBe(fault);
     fault = null;
@@ -427,6 +441,7 @@ describe("attach-stores-verbatim + decision-time composition", () => {
       id: "committed",
       declared: arg,
       allowProjectWrites: false,
+      tmpDirAllowed: false,
     });
   });
 
@@ -462,7 +477,7 @@ describe("scalar-slot symmetry - no phase save/restore", () => {
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(SOURCES_A);
     const pre = state.snapshot();
-    state.attachPhase("p", [TARGET_A1], false);
+    state.attachPhase("p", [TARGET_A1], false, false);
     state.detachPhase();
     const post = state.snapshot();
     expect(post).toEqual(pre);
@@ -473,14 +488,15 @@ describe("scalar-slot symmetry - no phase save/restore", () => {
     const OTHER = `${SLOT_A}/artifacts/other.md`;
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(SOURCES_A);
-    state.attachPhase("first", [TARGET_A1], false);
+    state.attachPhase("first", [TARGET_A1], false, false);
     state.detachPhase();
-    state.attachPhase("second", [OTHER], false);
+    state.attachPhase("second", [OTHER], false, false);
     const snap = state.snapshot();
     expect(snap.phase).toEqual({
       id: "second",
       declared: [OTHER],
       allowProjectWrites: false,
+      tmpDirAllowed: false,
     });
     expect(snap.phase?.id).not.toBe("first");
     expect(snap.phase?.declared).not.toContain(TARGET_A1);
@@ -490,12 +506,13 @@ describe("scalar-slot symmetry - no phase save/restore", () => {
     const TWO = `${SLOT_A}/artifacts/two.md`;
     const state = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     state.enterCapability(SOURCES_A);
-    state.attachPhase("p1", [TARGET_A1], false);
-    state.attachPhase("p2", [TWO], false);
+    state.attachPhase("p1", [TARGET_A1], false, false);
+    state.attachPhase("p2", [TWO], false, false);
     expect(state.snapshot().phase).toEqual({
       id: "p2",
       declared: [TWO],
       allowProjectWrites: false,
+      tmpDirAllowed: false,
     });
     state.detachPhase();
     expect(state.snapshot().phase).toBeNull();
@@ -525,18 +542,20 @@ describe("leg-2 hermetic concurrency - adversarial interleave over two independe
     expect(B.snapshot().sources).not.toBe(SOURCES_A);
   });
 
-  it("stage 2 - both attach their phases (verbatim declarations stored per object)", () => {
-    A.attachPhase("phase-a", [TARGET_A1], false);
-    B.attachPhase("phase-b", [TARGET_B1], false);
+  it("stage 2 - both attach their phases (verbatim declarations stored per object - full record including the scratch flag)", () => {
+    A.attachPhase("phase-a", [TARGET_A1], false, false);
+    B.attachPhase("phase-b", [TARGET_B1], false, false);
     expect(A.snapshot().phase).toEqual({
       id: "phase-a",
       declared: [TARGET_A1],
       allowProjectWrites: false,
+      tmpDirAllowed: false,
     });
     expect(B.snapshot().phase).toEqual({
       id: "phase-b",
       declared: [TARGET_B1],
       allowProjectWrites: false,
+      tmpDirAllowed: false,
     });
   });
 
@@ -563,26 +582,29 @@ describe("leg-2 hermetic concurrency - adversarial interleave over two independe
     // behavioral equality to the solo-object expectations:
     const soloA = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
     soloA.enterCapability(SOURCES_A);
-    soloA.attachPhase("phase-a", [TARGET_A1], false);
+    soloA.attachPhase("phase-a", [TARGET_A1], false, false);
     expect(crossA.reason).toBe(
       asRefusal(driveOf(soloA)("write", TARGET_B1)).reason,
     );
     const soloB = new SessionExecutionState(channelsFor(SLOT_B, CWD_B));
     soloB.enterCapability(SOURCES_B);
-    soloB.attachPhase("phase-b", [TARGET_B1], false);
+    soloB.attachPhase("phase-b", [TARGET_B1], false, false);
     expect(crossB.reason).toBe(
       asRefusal(driveOf(soloB)("write", TARGET_A1)).reason,
     );
   });
 
-  it("stage 4 - clamped mid-flight: A's slot OVERWRITTEN with a contract-uncovered entry - driveA refuses it AS IF UNDECLARED while driveB remains undisturbed under its phase", () => {
+  it("stage 4 - clamped mid-flight: A's slot OVERWRITTEN with a contract-uncovered entry - driveA refuses it on the UNIVERSAL BYTE AS IF UNDECLARED (nothing is named) while driveB remains undisturbed under its phase", () => {
     const FOREIGN_A = `${SLOT_A}/foreign/x.md`; // artifacts/*.md does not cover it
-    A.attachPhase("phase-a2", [FOREIGN_A], false); // overwrite - last-wins
+    A.attachPhase("phase-a2", [FOREIGN_A], false, false); // overwrite - last-wins
     const clampA = asRefusal(driveA("write", FOREIGN_A));
-    expect(clampA.reason).toContain("'cap-a'"); // capability-named line
-    expect(clampA.reason).toContain("artifacts/*.md"); // effective set listed
+    expect(clampA.reason).toContain(
+      "no write permission is declared by any active phase",
+    );
+    expect(clampA.reason).toContain("Allowed targets: none.");
     expect(clampA.reason).not.toContain(FOREIGN_A); // uncovered entry ABSENT
     expect(clampA.reason).not.toContain("phase-a2");
+    expect(clampA.reason).not.toContain("'cap-a'"); // the state names nothing
     // B remains undisturbed under phase-b:
     expect(driveB("write", TARGET_B1)).toBeUndefined();
     const crossB2 = asRefusal(driveB("write", FOREIGN_A));
@@ -591,26 +613,39 @@ describe("leg-2 hermetic concurrency - adversarial interleave over two independe
     expect(crossB2.reason).not.toContain(FOREIGN_A);
   });
 
-  it("stage 5 - inherited: both detach - pattern-hit admission runs through span admission alone on each drive", () => {
+  it("stage 5 - strict confirmation: both detach - NOTHING attached confers no phase governance and the SPAN SITE ADMITS NOTHING, so the universal no-permission byte fires on each drive (byte-identical across drives and span shapes)", () => {
     A.detachPhase();
     B.detachPhase();
     expect(A.snapshot().phase).toBeNull();
     expect(B.snapshot().phase).toBeNull();
-    expect(driveA("write", TARGET_A1)).toBeUndefined();
-    expect(driveB("write", TARGET_B1)).toBeUndefined();
-    // span denials still name the OWN capability:
-    expect(asRefusal(driveA("write", TARGET_B1)).reason).toContain("'cap-a'");
-    expect(asRefusal(driveB("write", TARGET_A1)).reason).toContain("'cap-b'");
+    // Pattern hits are REFUSED now (no confirming phase anywhere) - and
+    // BOTH drives render the SAME fixed byte (zero cross-talk framing via
+    // drive-vs-drive identity):
+    const ownA = asRefusal(driveA("write", TARGET_A1));
+    const ownB = asRefusal(driveB("write", TARGET_B1));
+    expect(ownA.reason).toBe(ownB.reason);
+    expect(ownA.reason).toContain(
+      "no write permission is declared by any active phase",
+    );
+    expect(ownA.reason).toContain("Allowed targets: none.");
+    expect(ownA.reason).not.toContain("'cap-a'");
+    expect(ownA.reason).not.toContain("'cap-b'");
+    expect(ownA.reason).not.toContain("during phase");
   });
 
-  it("stage 6 - no-span: both exitCapability - the empty-set refusal fires on both drives", () => {
+  it("stage 6 - no-span: both exitCapability - the universal no-permission byte fires on both drives (identical fixed string regardless of span presence)", () => {
     A.exitCapability();
     B.exitCapability();
     const emptyA = asRefusal(driveA("write", TARGET_A1));
     const emptyB = asRefusal(driveB("write", TARGET_B1));
-    expect(emptyA.reason).toContain("no capability span is active");
+    expect(emptyA.reason).toBe(emptyB.reason);
+    expect(emptyA.reason).toContain(
+      "no write permission is declared by any active phase",
+    );
     expect(emptyA.reason).toContain("Allowed targets: none.");
-    expect(emptyB.reason).toContain("no capability span is active");
+    expect(emptyB.reason).toContain(
+      "no write permission is declared by any active phase",
+    );
     expect(emptyB.reason).toContain("Allowed targets: none.");
   });
 
@@ -629,6 +664,58 @@ describe("leg-2 hermetic concurrency - adversarial interleave over two independe
       phase: null,
       paths: { projectSlotRoot: SLOT_B, workspaceCwd: CWD_B },
     });
+  });
+
+  it("stage 8 - scratch dimension: both re-enter and attach TMP-FLAG-ONLY phases (the fourth dimension stored verbatim per object) - own /tmp/ targets ADMITTED, stray cwd targets refused naming the OWN phase with the scratch element as the ONLY listing element, byte-equal to the solo-object expectation", () => {
+    A.enterCapability(SOURCES_A);
+    B.enterCapability(SOURCES_B);
+    A.attachPhase("phase-a3", [], false, true); // the tmp flag ONLY
+    B.attachPhase("phase-b3", [], false, true); // the tmp flag ONLY
+    // Fourth-dimension verbatim storage (full-record deep equality):
+    expect(A.snapshot().phase).toEqual({
+      id: "phase-a3",
+      declared: [],
+      allowProjectWrites: false,
+      tmpDirAllowed: true,
+    });
+    expect(B.snapshot().phase).toEqual({
+      id: "phase-b3",
+      declared: [],
+      allowProjectWrites: false,
+      tmpDirAllowed: true,
+    });
+    // Own /tmp/ targets admit under each object's own flag:
+    const SCRATCH_A = "/tmp/s8-a-scratch.txt";
+    const SCRATCH_B = "/tmp/s8-b-scratch.txt";
+    expect(driveA("write", SCRATCH_A)).toBeUndefined();
+    expect(driveB("write", SCRATCH_B)).toBeUndefined();
+    // Zero cross-talk framing: strays refuse naming the OWN phase and the
+    // scratch element ALONE (no scope element - the flag is off)...
+    const strayA = asRefusal(driveA("write", `${CWD_A}/stray.md`));
+    const strayB = asRefusal(driveB("write", `${CWD_B}/stray.md`));
+    expect(strayA.reason).toContain("'phase-a3'");
+    expect(strayA.reason).toContain("scratch files under /tmp/");
+    expect(strayA.reason).not.toContain(CWD_A); // scratch element ALONE
+    expect(strayA.reason).not.toContain("phase-b3");
+    expect(strayA.reason).not.toContain(CWD_B);
+    expect(strayB.reason).toContain("'phase-b3'");
+    expect(strayB.reason).toContain("scratch files under /tmp/");
+    expect(strayB.reason).not.toContain(CWD_B); // scratch element ALONE
+    expect(strayB.reason).not.toContain("phase-a3");
+    expect(strayB.reason).not.toContain(CWD_A);
+    // ...and behavioral equality to the solo-object expectations:
+    const soloA = new SessionExecutionState(channelsFor(SLOT_A, CWD_A));
+    soloA.enterCapability(SOURCES_A);
+    soloA.attachPhase("phase-a3", [], false, true);
+    expect(strayA.reason).toBe(
+      asRefusal(driveOf(soloA)("write", `${CWD_A}/stray.md`)).reason,
+    );
+    const soloB = new SessionExecutionState(channelsFor(SLOT_B, CWD_B));
+    soloB.enterCapability(SOURCES_B);
+    soloB.attachPhase("phase-b3", [], false, true);
+    expect(strayB.reason).toBe(
+      asRefusal(driveOf(soloB)("write", `${CWD_B}/stray.md`)).reason,
+    );
   });
 });
 

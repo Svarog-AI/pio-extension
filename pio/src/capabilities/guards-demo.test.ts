@@ -34,10 +34,10 @@
 // capture and mask itself); the asserted bytes ARE the ToolCallEventResult
 // reason the real interceptor would return — never faked. Denial-SHAPED
 // consult targets ride LITERAL ABSOLUTE POSIX ROOTS that escape the OS
-// /tmp/ prefix (the row-scoped tmp trees sit under it, and the gate's
-// /tmp/ parity class would admit any such target before any span/phase
-// judgment — resolve() is identity on literals, so they round-trip
-// byte-exactly); the SURVIVOR listings in the asserted lines still carry
+// /tmp/ prefix (the row-scoped tmp trees sit under it; in the strict-
+// confirmation world /tmp/ targets are admitted ONLY by a phase that
+// declares the scratch class, so the fixtures keep their roots neutral -
+// resolve() is identity on literals, so they round-trip byte-exactly); the SURVIVOR listings in the asserted lines still carry
 // the REAL TREE's declared paths (the live attachment), and admission-
 // shaped consults may ride real-tree targets. The standing
 // real-/tmp exception: the pinned scratch name is unique, the capability's
@@ -405,8 +405,9 @@ const CUSTOM_TYPE_REPLICA = "pio-capability";
 
 // ─── Denial-shape fixture roots (hermetic fixture doctrine) ────────────
 // Literal absolute POSIX roots for VERDICT-shaped consult targets: they
-// escape the OS /tmp/ prefix by construction (any /tmp/-derived target
-// would be parity-admitted before span/phase judgment), and resolve()
+// escape the OS /tmp/ prefix by construction (in the strict-confirmation
+// world /tmp/ targets are admitted ONLY by a phase that declares the
+// scratch class, so the fixture roots stay neutral), and resolve()
 // normalizes them to themselves (byte-exact round-trip). Row-local
 // literals - no module-owned token duplicates them.
 
@@ -419,13 +420,15 @@ const FIXTURE_SLOT_STRAY_TARGET =
 const FIXTURE_SHARED_CWD_TARGET = "/workspace/guards-demo/shared-target.txt";
 
 // ─── Born golden replica builders (first home of the denial-line goldens) ─
-// Each mirrors its named renderer in ../capability/guards/write-gate.ts
-// BYTE-FOR-BYTE over the grown phase line (survivors in declaration order,
-// the scope element appended LAST iff non-null, join-or-"none", the closing
-// /tmp/ parity clause). The renderer is untouched by this suite's step —
-// the byte-parity claim is exercised against the REAL decideWrite verdict
-// bytes, never against hand-typed strings alone. \u2014 arrives escaped
-// identically on both sides.
+// Each mirrors its named owner in ../capability/guards/write-gate.ts
+// BYTE-FOR-BYTE: the grown phase line (survivors in declaration order, the
+// scope element appended iff the class is active, the scratch element LAST
+// iff the phase's flag is active, join-or-"none") and the SOLE tail shape -
+// the universal no-permission byte (the capability-named and no-span tail
+// renderers retired with the strict-confirmation ruling; no /tmp/ clause
+// anywhere). The byte-parity claim is exercised against the REAL decideWrite
+// verdict bytes, never against hand-typed strings alone. \u2014 arrives
+// escaped identically on both sides.
 
 /** Denial-line replica builder (SOLE OWNER: renderPhaseDenial in
  * ../capability/guards/write-gate.ts). */
@@ -433,29 +436,22 @@ const replicaPhaseDenial = (
   phaseId: string,
   survivors: readonly string[],
   workspaceCwd: string | null,
+  scratchActive: boolean,
 ): string => {
   const parts: string[] = [...survivors];
   if (workspaceCwd !== null) parts.push(`project files under ${workspaceCwd}`);
-  return `Writing is refused during phase '${phaseId}'. Allowed targets: ${parts.length === 0 ? "none" : parts.join(", ")}. Scratch files under /tmp/ stay open.`;
+  if (scratchActive) parts.push("scratch files under /tmp/");
+  return `Writing is refused during phase '${phaseId}'. Allowed targets: ${parts.length === 0 ? "none" : parts.join(", ")}.`;
 };
 
-/** Denial-line replica builder (SOLE OWNER: renderCapabilityDenial in
- * ../capability/guards/write-gate.ts - patterns-only listing: the contract
- * flag adds no element to the capability line). */
-const replicaCapabilityDenial = (
-  name: string,
-  writesRawTokens: readonly string[],
-): string => {
-  const parts: string[] = [...writesRawTokens];
-  return `Writing is refused during capability '${name}'. Allowed targets: ${parts.length === 0 ? "none" : parts.join(", ")}. Scratch files under /tmp/ stay open.`;
-};
-
-/** Denial-line replica builder (SOLE OWNER: renderNoSpanDenial in
- * ../capability/guards/write-gate.ts — the U+2014 em dash arrives escaped
- * in the module literal; compared UNESCAPED here, the established
- * comparison idiom). */
-const replicaNoSpanDenial = (): string =>
-  `Writing is refused \u2014 no capability span is active. Allowed targets: none. Scratch files under /tmp/ stay open.`;
+/** Sole TAIL replica (SOLE OWNER: the module-private universal no-permission
+ * constant in ../capability/guards/write-gate.ts - the owner-pinned verbatim
+ * byte emitted for EVERY non-governing window regardless of span presence;
+ * it supersedes BOTH the retired capability renderer and the retired no-span
+ * renderer. The U+2014 em dash arrives escaped in the module literal;
+ * compared UNESCAPED here, the established comparison idiom). */
+const replicaUniversalDenial = (): string =>
+  `Writing is refused \u2014 no write permission is declared by any active phase. Allowed targets: none.`;
 
 /** Engine-composed prompt texts (marker line + instructions, verbatim the
  * phase engine's composition; corrective notes sit strictly AFTER the
@@ -720,7 +716,7 @@ async function seedArtifact(
 // ─── C rows: the expectation-guard demonstration flow ───────────────────
 
 describe("expectation-guard demonstration flow (C rows)", () => {
-  it("C1 full happy chain (BINDING leg): pass one skips the write => the engine denies settlement and the pass-two prompt carries the IDENTICAL baseline PLUS the pinned DELIMITED corrective block (delimiter line above the unchanged body; run count 1, naming the tmpdir-ABSOLUTE path) => pass two commits the REAL fs write and settles at iterations === 2, then the FIVE gate probes run in pinned order (deny, allow, project-file, the composed not-allowed child, tmp-parity LAST) with their MID-PASS real-predicate consults (stray refused FULL-LINE as undeclared-while-covered, admission undefined, exclusive scope-element-only listing, the capability-named child refusal with the scope element ABSENT, /tmp/ healing vantage) => ok:true with the ABSOLUTE settled outputs.report, the terminal record carries version 0.2.0 and exit 0 — EXACTLY 9 prompts + EXACTLY TWO span stamps (child marker strictly between the project-file and child-phase prompts) = 11 unified-timeline entries", async () => {
+  it("C1 full happy chain (BINDING leg): pass one skips the write => the engine denies settlement and the pass-two prompt carries the IDENTICAL baseline PLUS the pinned DELIMITED corrective block (delimiter line above the unchanged body; run count 1, naming the tmpdir-ABSOLUTE path) => pass two commits the REAL fs write and settles at iterations === 2, then the FIVE gate probes run in pinned order (deny, allow, project-file, the composed not-allowed child, tmp-parity LAST) with their MID-PASS real-predicate consults (stray refused FULL-LINE as undeclared-while-covered, admission undefined, exclusive scope-element-only listing, the universal-byte child refusal with NOTHING named, /tmp/ healing vantage) => ok:true with the ABSOLUTE settled outputs.report, the terminal record carries version 0.2.0 and exit 0 — EXACTLY 9 prompts + EXACTLY TWO span stamps (child marker strictly between the project-file and child-phase prompts) = 11 unified-timeline entries", async () => {
     const placement = artifactPlacement();
     const probes = probePlacements();
     const { instance, round, state } = await host();
@@ -755,7 +751,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       // the contract-covered stray is UNDECLARED during the deny phase -
       // the FULL-LINE refusal is the pinned leg-4 narrowing LIVE. The
       // consult target is a LITERAL NON-/TMP root (the row tree itself sits
-      // under the OS /tmp/ prefix, which the parity class would admit);
+      // under the OS /tmp/ prefix, where only a declaring phase admits);
       // the SURVIVOR in the asserted line still carries the REAL TREE's
       // declared artifact.
       strayVerdict = decideWrite(state.snapshot(), "write", {
@@ -766,7 +762,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       await seedArtifact(probes.absAllowArtifact, "# Allow\n");
       emit(round, ...writeSettle(probes.absAllowArtifact, "w-allow"));
       // The declared artifact is ADMITTED (no verdict) - the row-tree path
-      // admits by coverage and by the /tmp/ parity alike; the pinned
+      // admits by SURVIVOR membership (the phase confirmed it); the pinned
       // observable is the admission itself.
       allowAdmission = decideWrite(state.snapshot(), "write", {
         path: probes.absAllowArtifact,
@@ -926,18 +922,16 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     // interceptor would return).
     expect(strayVerdict).toStrictEqual({
       block: true,
-      reason: replicaPhaseDenial("deny", [probes.absDenyArtifact], null),
+      reason: replicaPhaseDenial("deny", [probes.absDenyArtifact], null, false),
     });
     expect(allowAdmission).toBeUndefined();
     expect(exclusiveVerdict).toStrictEqual({
       block: true,
-      reason: replicaPhaseDenial("project-file", [], probes.cwd),
+      reason: replicaPhaseDenial("project-file", [], probes.cwd, false),
     });
     expect(childRefusal).toStrictEqual({
       block: true,
-      reason: replicaCapabilityDenial("project-file-not-allowed", [
-        GUARDS_DEMO_PROJECT_FILE_NOT_ALLOWED_ARTIFACT,
-      ]),
+      reason: replicaUniversalDenial(),
     });
     expect(tmpAbsentBeforeSeed).toBe(true);
 
@@ -1437,10 +1431,11 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
   };
 
   /** One fresh per-row execution state over LITERAL NON-/TMP ANCHORS
-   * (hermetic fixture doctrine — the OS /tmp/ parity class would admit
-   * any row-tree target before judgment). snapshot() still resolves the
-   * closures FRESH per call: the freshness property holds structurally,
-   * with the literals standing in for the row-scoped channels. */
+   * (hermetic fixture doctrine - in the strict-confirmation world /tmp/
+   * targets are admitted ONLY by a declaring phase, so the anchors stay
+   * neutral). snapshot() still resolves the closures FRESH per call: the
+   * freshness property holds structurally, with the literals standing in
+   * for the row-scoped channels. */
   function drivenState(): {
     state: SessionExecutionState;
     slotRoot: string;
@@ -1470,10 +1465,10 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
     };
   }
 
-  it("clamped: an over-layer co-declared scratch entry NEVER covered by the contract is INVISIBLE at decision time - absent from the refusal listing, refused AS IF UNDECLARED (capability named, patterns-only listing)", () => {
+  it("clamped: an over-layer co-declared scratch entry NEVER covered by the contract is INVISIBLE at decision time - refused AS IF UNDECLARED on the universal no-permission byte (the pure plain-data clamp-at-source CORNER stands: uncovered entries invisible, nothing named)", () => {
     const d = drivenState();
     d.state.enterCapability(DEMO_SOURCES);
-    d.state.attachPhase("clamped", [d.uncovered], false);
+    d.state.attachPhase("clamped", [d.uncovered], false, false);
     const verdict = decideWrite(d.state.snapshot(), "write", {
       path: d.uncovered,
     });
@@ -1481,13 +1476,15 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
     d.state.exitCapability();
     expect(verdict).toStrictEqual({
       block: true,
-      reason: replicaCapabilityDenial("guards-demo", ["guards-demo/*.md"]),
+      reason: replicaUniversalDenial(),
     });
   });
 
-  it("inherited: NOTHING attached confers no phase governance - the demo's own sources now govern through PATTERNS ONLY: the pattern hit is ADMITTED (path dimension untouched), the workspace-cwd target is REFUSED capability-named (the contract flag alone no longer admits the scope - no phase declared the backed flag), and the miss-target refuses CAPABILITY-NAMED with the element-free listing", () => {
+  it("inverted inherited: NOTHING attached confers NO phase governance and the SPAN SITE ADMITS NOTHING - the pattern hit is now REFUSED (the universal no-permission byte over the demo's own flag-TRUE sources), and the cwd and miss readings converge on the SAME fixed string", () => {
     const d = drivenState();
     d.state.enterCapability(DEMO_SOURCES);
+    // Strict confirmation: even the demo's OWN pattern-covered artifact is
+    // refused while no phase confirms it:
     const hit = decideWrite(d.state.snapshot(), "write", { path: d.covered });
     const scope = decideWrite(d.state.snapshot(), "edit", {
       path: d.cwdFile,
@@ -1496,18 +1493,17 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
       path: d.uncovered,
     });
     d.state.exitCapability();
-    expect(hit).toBeUndefined();
-    expect(scope).toStrictEqual({
+    // The three readings CONVERGE on the same fixed byte over the demo's
+    // own flag-TRUE sources:
+    expect(hit).toStrictEqual({
       block: true,
-      reason: replicaCapabilityDenial("guards-demo", ["guards-demo/*.md"]),
+      reason: replicaUniversalDenial(),
     });
-    expect(miss).toStrictEqual({
-      block: true,
-      reason: replicaCapabilityDenial("guards-demo", ["guards-demo/*.md"]),
-    });
+    expect(scope).toStrictEqual(hit);
+    expect(miss).toStrictEqual(hit);
   });
 
-  it("no-span: drained to depth 0 via the frozen reset() FIRST (deliberate TEST choice on the documented handle-reset-hygiene path - NOT a production precedent) yields the empty-set NO-SPAN refusal line (full-line golden with the escaped U+2014 compare)", () => {
+  it("no-span: drained to depth 0 via the frozen reset() FIRST (deliberate TEST choice on the documented handle-reset-hygiene path - NOT a production precedent) yields the UNIVERSAL no-permission byte (full-line golden with the escaped U+2014 compare - identical to every non-governing span-present reading)", () => {
     const d = drivenState();
     d.state.enterCapability(DEMO_SOURCES);
     // Drain to depth 0 BEFORE the consultation (uniform setup, deliberate
@@ -1518,11 +1514,11 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
     });
     expect(verdict).toStrictEqual({
       block: true,
-      reason: replicaNoSpanDenial(),
+      reason: replicaUniversalDenial(),
     });
   });
 
-  it("unbacked flag is INVISIBLE: child-shaped sources (contract flag ABSENT) with a flag-PRESENT phase refuse the cwd target CAPABILITY-NAMED, byte-identical to the phase-null reading, with the scope element ABSENT from the listing", () => {
+  it("unbacked flag is INVISIBLE: child-shaped sources (contract flag ABSENT) with a flag-PRESENT phase refuse the cwd target on the UNIVERSAL BYTE, byte-identical to the phase-null reading (strongest form trivially holds), with the scope element ABSENT from the listing", () => {
     const d = drivenState();
     // Child-shaped sources - plain data mirroring the composed child's
     // contract stub (the concrete wildcard-free token; the scope flag
@@ -1533,7 +1529,7 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
       allowProjectWrites: false,
     };
     d.state.enterCapability(childShaped);
-    d.state.attachPhase("not-allowed-probe", [], true);
+    d.state.attachPhase("not-allowed-probe", [], true, false);
     const flagged = decideWrite(d.state.snapshot(), "write", {
       path: d.cwdFile,
     });
@@ -1544,9 +1540,7 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
     d.state.exitCapability();
     expect(flagged).toStrictEqual({
       block: true,
-      reason: replicaCapabilityDenial("project-file-not-allowed", [
-        "guards-demo/not-allowed-child.md",
-      ]),
+      reason: replicaUniversalDenial(),
     });
     // Byte-identical to the phase-null reading (the clamp at the source).
     expect(unflagged).toStrictEqual(flagged);
@@ -1556,7 +1550,7 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
   it("backed flag admits the class ALONE: demo sources plus a flag-declaring phase (NO paths) admit the workspace-cwd target", () => {
     const d = drivenState();
     d.state.enterCapability(DEMO_SOURCES);
-    d.state.attachPhase("scope-only", [], true);
+    d.state.attachPhase("scope-only", [], true, false);
     const verdict = decideWrite(d.state.snapshot(), "write", {
       path: d.cwdFile,
     });
@@ -1568,7 +1562,7 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
   it("flag-only attach confers EXCLUSIVE class governance: the slot-pattern target is REFUSED with the phase named and the scope element as the ONLY listing element", () => {
     const d = drivenState();
     d.state.enterCapability(DEMO_SOURCES);
-    d.state.attachPhase("scope-only", [], true);
+    d.state.attachPhase("scope-only", [], true, false);
     const verdict = decideWrite(d.state.snapshot(), "write", {
       path: d.covered,
     });
@@ -1576,7 +1570,37 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
     d.state.exitCapability();
     expect(verdict).toStrictEqual({
       block: true,
-      reason: replicaPhaseDenial("scope-only", [], d.cwd),
+      reason: replicaPhaseDenial("scope-only", [], d.cwd, false),
+    });
+  });
+
+  it("scratch-class plain data: DEMO_SOURCES plus a tmp-flag-only phase confers EXCLUSIVE scratch governance - the /tmp/ target ADMITTED, the slot-pattern target REFUSED with the phase named and the scratch element as the ONLY listing element; a survivor-carrying phase WITHOUT the flag refuses the SAME /tmp/ target phase-named with the survivor-only listing", () => {
+    const d = drivenState();
+    d.state.enterCapability(DEMO_SOURCES);
+    d.state.attachPhase("scratch-only", [], false, true);
+    const scratchAdmitted = decideWrite(d.state.snapshot(), "write", {
+      path: "/tmp/gd-scratch.txt",
+    });
+    const slotRefusal = decideWrite(d.state.snapshot(), "write", {
+      path: d.covered,
+    });
+    d.state.detachPhase();
+    // The twin: a survivor-carrying phase WITHOUT the flag keeps /tmp/
+    // closed.
+    d.state.attachPhase("survivor-tmp-off", [d.covered], false, false);
+    const scratchRefused = decideWrite(d.state.snapshot(), "write", {
+      path: "/tmp/gd-scratch.txt",
+    });
+    d.state.detachPhase();
+    d.state.exitCapability();
+    expect(scratchAdmitted).toBeUndefined();
+    expect(slotRefusal).toStrictEqual({
+      block: true,
+      reason: replicaPhaseDenial("scratch-only", [], null, true),
+    });
+    expect(scratchRefused).toStrictEqual({
+      block: true,
+      reason: replicaPhaseDenial("survivor-tmp-off", [d.covered], null, false),
     });
   });
 });

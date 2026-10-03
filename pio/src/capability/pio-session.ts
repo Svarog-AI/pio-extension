@@ -191,10 +191,17 @@ export interface PhaseOptions {
   /** The phase's project-files (workspace-cwd) SCOPE declaration:
    * CLAMPED at decision time against the running capability's contract
    * flag - an unbacked flag is INVISIBLE (never granted, never listed).
-   * With the `write` bag it forms the phase's TWO declared permission
-   * dimensions (both feed the session's execution state verbatim);
-   * absent means false. */
+   * With the `write` bag and the scratch flag it forms the phase's THREE
+   * declared permission dimensions (all feed the session's execution state
+   * verbatim); absent means false. */
   readonly allowProjectWrites?: boolean;
+  /** The phase's SCRATCH (/tmp/) declaration: a SINGLE phase flag with NO
+   * contract-side counterpart - judged only at decision time (there is no
+   * clamp to speak of - single-flag doctrine). With the `write` bag and
+   * the scope flag it forms the phase's THREE declared permission
+   * dimensions (all feed the session's execution state verbatim); absent
+   * means false. */
+  readonly tmpDirAllowed?: boolean;
 }
 
 /** Decision window handed to the between-runs hook. */
@@ -623,26 +630,35 @@ export class PioSession {
       entry,
       resolved: resolve(entry),
     }));
-    // Normalized primitive (absent implies false) fed VERBATIM beside the
-    // retained list: the phase's project-files scope declaration, judged
-    // only at decision time (clamped there against the contract flag).
+    // Normalized primitives (absent implies false) fed VERBATIM beside the
+    // retained list: the phase's project-files scope declaration (judged
+    // only at decision time - clamped there against the contract flag) and
+    // its scratch declaration (judged only at decision time, never clamped
+    // - no contract-side counterpart exists).
     const allowProjectWrites = Boolean(opts?.allowProjectWrites);
-    // The retained resolved entries AND the normalized scope flag feed the
-    // execution state VERBATIM when EITHER dimension is declared: attach
-    // STRICTLY AT PHASE START (outside the try block, so a loud
-    // bookkeeping fault escapes with no finally-side bookkeeping to
-    // untangle); the attached flag keeps the closeout detach symmetric over
-    // every exit cause. Neither dimension declared attaches NOTHING - the
-    // capability's sources govern unchanged.
+    const tmpDirAllowed = Boolean(opts?.tmpDirAllowed);
+    // The retained resolved entries AND both normalized class flags feed the
+    // execution state VERBATIM when ANY dimension is declared (paths, the
+    // scope flag, or the scratch flag): attach STRICTLY AT PHASE START
+    // (outside the try block, so a loud bookkeeping fault escapes with no
+    // finally-side bookkeeping to untangle); the attached flags keep the
+    // closeout detach symmetric over every exit cause. No dimension
+    // declared attaches NOTHING - the span sources supply the clamp ceiling
+    // unchanged (they admit nothing on their own).
     const declaredPaths = declarations.map(
       (declaration) => declaration.resolved,
     );
     let attached = false;
     if (
       this.#executionState !== undefined &&
-      (declaredPaths.length > 0 || allowProjectWrites)
+      (declaredPaths.length > 0 || allowProjectWrites || tmpDirAllowed)
     ) {
-      this.#executionState.attachPhase(id, declaredPaths, allowProjectWrites);
+      this.#executionState.attachPhase(
+        id,
+        declaredPaths,
+        allowProjectWrites,
+        tmpDirAllowed,
+      );
       attached = true;
     }
     let iterations = 0;

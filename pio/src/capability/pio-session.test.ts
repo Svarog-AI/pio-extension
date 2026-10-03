@@ -2335,7 +2335,8 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
 // ---------------------------------------------------------------------
 
 /** Literal absolute agent dir for env-controlled rows (never a /tmp/ root
- * - the parity class would silently admit refusal-shaped targets). */
+ * - a /tmp/-anchored fixture would ride the scratch-class doctrine and
+ * muddle the refusal-shape targets). */
 const AGENT_DIR_LITERAL = "/lit/state/.pi/agent";
 
 /** Env-unset message replica (SOLE OWNER: deriveStateRootFromAgentDir in
@@ -2434,8 +2435,8 @@ describe("PioSession \u2014 gate mint + threading (producer side)", () => {
   it("the registered tool_call handler COMPOSES snapshot() + decideWrite - identity with the REAL predicate over deny and allow shapes, and PER-CALL FRESHNESS across a mutated state between two invocations", async () => {
     await withAgentDir(AGENT_DIR_LITERAL, async () => {
       const { gate } = await host();
-      // Deny shape: the empty-contract fixture span admits nothing beyond
-      // the /tmp/ parity class.
+      // Deny shape: strict confirmation - the empty-contract fixture span
+      // admits NOTHING (the span site is non-admitting).
       const deniedTarget = "/outside/a.md";
       const deniedInput = { path: deniedTarget };
       expect(
@@ -2444,12 +2445,22 @@ describe("PioSession \u2014 gate mint + threading (producer side)", () => {
       expect(
         gate.toolCallHandler(toolCall("write", deniedInput)),
       ).toBeDefined();
-      // Allow shape: the /tmp/ parity class, both sides agreeing.
+      // Refusal shape over the SAME window: the /tmp/ scratch class NO
+      // LONGER admits unconditionally - with no phase attached the target
+      // refuses on the non-governing reading, identity over the REAL
+      // predicate.
       const tmpInput = { path: "/tmp/scratch.md" };
-      expect(decideWrite(gate.state.snapshot(), "write", tmpInput)).toBe(
-        undefined,
+      expect(gate.toolCallHandler(toolCall("write", tmpInput))).toStrictEqual(
+        decideWrite(gate.state.snapshot(), "write", tmpInput),
       );
-      expect(gate.toolCallHandler(toolCall("write", tmpInput))).toBeUndefined();
+      expect(gate.toolCallHandler(toolCall("write", tmpInput))).toBeDefined();
+      // PER-CALL FRESHNESS leg 1: attaching a tmp-flag phase flips the
+      // SAME /tmp/ target from refused to allowed - scratch rides the
+      // phase declaration at decision time end-to-end through the real
+      // registered handler.
+      gate.state.attachPhase("freshness-scratch", [], false, true);
+      expect(gate.toolCallHandler(toolCall("write", tmpInput))).toBe(undefined);
+      gate.state.detachPhase();
 
       // PER-CALL FRESHNESS: mutate the state BETWEEN two invocations - a
       // covering span plus a phase declaration flips the SAME target from
@@ -2466,7 +2477,7 @@ describe("PioSession \u2014 gate mint + threading (producer side)", () => {
         writes: ["research/*.md"],
         allowProjectWrites: false,
       });
-      gate.state.attachPhase("freshness", [coveredTarget], false);
+      gate.state.attachPhase("freshness", [coveredTarget], false, false);
       expect(gate.toolCallHandler(toolCall("write", coveredInput))).toBe(
         undefined,
       );
@@ -2661,11 +2672,13 @@ describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () =>
     id: string;
     declared: readonly string[];
     allowProjectWrites: boolean;
+    tmpDirAllowed: boolean;
   };
   const recordOf = (phase: PhaseRecord): PhaseRecord => ({
     id: phase.id,
     declared: phase.declared,
     allowProjectWrites: phase.allowProjectWrites,
+    tmpDirAllowed: phase.tmpDirAllowed,
   });
 
   it("ATTACH stores the RAW declared VERBATIM: a double declaration (BOTH files seeded so the expectation gate passes) is stored WHOLE at the mid-run reading - declaration order pinned, the contract-uncovered ghost entry present, proving NO filtering at attach - the phase id pinned, and the post-detach reading STRUCTURALLY IDENTICAL to the pre-attach reading", async () => {
@@ -2845,8 +2858,35 @@ describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () =>
         id: "flag-only-leg",
         declared: [],
         allowProjectWrites: true,
+        tmpDirAllowed: false,
       });
       // Normal-break detach over the widened attach:
+      expect(gate.state.snapshot().phase).toBeNull();
+    });
+  });
+
+  it("TMP-ONLY ATTACHES: a bare tmpDirAllowed declaration WITHOUT the write bag and WITHOUT the scope flag ATTACHES (the hook-observed mid-run record deep-equals { id, declared: [], allowProjectWrites: false, tmpDirAllowed: true }) and detaches after the normal break - the widened attach condition's third disjunct, end-to-end", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { instance, round, gate } = await host();
+      scriptRuns(round, quietRun());
+      const records: PhaseRecord[] = [];
+      const result = await instance.execute_phase("tmp-only-leg", {
+        tmpDirAllowed: true,
+        shouldStopLoop: async () => {
+          const phase = gate.state.snapshot().phase;
+          if (phase !== null) records.push(recordOf(phase));
+          return true;
+        },
+      });
+      expect(result.done).toBe(true);
+      expect(result.iterations).toBe(1);
+      expect(records).toHaveLength(1);
+      expect(records[0]).toStrictEqual({
+        id: "tmp-only-leg",
+        declared: [],
+        allowProjectWrites: false,
+        tmpDirAllowed: true,
+      });
       expect(gate.state.snapshot().phase).toBeNull();
     });
   });
@@ -2876,6 +2916,7 @@ describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () =>
           id: "both-leg",
           declared: [path.resolve(seeded)],
           allowProjectWrites: true,
+          tmpDirAllowed: false,
         });
         expect(gate.state.snapshot().phase).toBeNull();
       } finally {
@@ -2903,6 +2944,7 @@ describe("PioSession \u2014 gate phase feeding (attach/detach lifecycle)", () =>
       expect(records).toHaveLength(1);
       expect(records[0].id).toBe("flag-budget-leg");
       expect(records[0].allowProjectWrites).toBe(true);
+      expect(records[0].tmpDirAllowed).toBe(false);
       expect(gate.state.snapshot().phase).toBeNull();
     });
   });
@@ -2942,7 +2984,12 @@ describe("PioSession \u2014 gate rebind span survival (a successful swap leaves 
         allowProjectWrites: false,
       };
       gate.state.enterCapability(extraSpan);
-      gate.state.attachPhase("open-window", ["/window/declared.md"], false);
+      gate.state.attachPhase(
+        "open-window",
+        ["/window/declared.md"],
+        false,
+        false,
+      );
       expect(gate.state.snapshot().phase?.id).toBe("open-window");
 
       const h1 = harness.mintFakeHandle(harness.sessionId);
@@ -2957,16 +3004,17 @@ describe("PioSession \u2014 gate rebind span survival (a successful swap leaves 
       // A follow-up enter/attach round-trips UNDER the surviving layers
       // cleanly (the LIFO stack composes after the swap).
       gate.state.enterCapability(FIXTURE_SPAN);
-      gate.state.attachPhase("post-switch", ["/post/x.md"], false);
+      gate.state.attachPhase("post-switch", ["/post/x.md"], false, false);
       expect(gate.state.snapshot().phase?.id).toBe("post-switch");
       gate.state.detachPhase();
       gate.state.exitCapability();
       expect(gate.state.snapshot().sources).toBe(extraSpan);
 
-      // The extracted handler consults the SURVIVING shared state: denied
-      // by identity under the surviving empty-contract span, then a
-      // covering span entered AFTER the swap flips the SAME target (late
-      // binding rides the live state across the swap).
+      // The extracted handler consults the SURVIVING shared state: refused
+      // by identity under the surviving layers, and a covering span entered
+      // AFTER the swap STILL confers no admission - strict confirmation:
+      // without a confirming phase the SAME covered target stays refused
+      // (late binding rides the live state across the swap).
       const slotRoot = gate.state.snapshot().paths.projectSlotRoot;
       const coveredInput = {
         path: path.join(slotRoot, "research", "note.md"),
@@ -2984,9 +3032,16 @@ describe("PioSession \u2014 gate rebind span survival (a successful swap leaves 
         writes: ["research/*.md"],
         allowProjectWrites: false,
       });
-      expect(gate.toolCallHandler(toolCall("write", coveredInput))).toBe(
-        undefined,
+      // The pattern-covered target REFUSES even under the covering span:
+      // the span site admits nothing (no phase confirms the target).
+      expect(
+        gate.toolCallHandler(toolCall("write", coveredInput)),
+      ).toStrictEqual(
+        decideWrite(gate.state.snapshot(), "write", coveredInput),
       );
+      expect(
+        gate.toolCallHandler(toolCall("write", coveredInput)),
+      ).toBeDefined();
       // Balanced unwind of every added layer: the fixture span keeps
       // governing once the window and the covering span pop.
       gate.state.exitCapability();

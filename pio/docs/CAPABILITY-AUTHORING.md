@@ -1340,7 +1340,21 @@ literal thunk; session-present executions never evaluate the takeover module
           ): Promise<Record<string, unknown>> => {
             // Unstamped on purpose: the child's own status record names it.
             this.s = childFrame;
-            return settle(await this.call(values));
+            // The capability-source window over the ADOPTED host: opened
+            // strictly post-adoption, before the body can issue any phase
+            // prompt; closed at settlement on success AND the catch-all
+            // (no-op-safe over stateless instances; a platform-minted
+            // handle carries no execution state).
+            childFrame.enterCapability({
+              name: this.contract.name,
+              writes: this.contract.writes,
+              allowProjectWrites: Boolean(this.contract.allowProjectWrites),
+            });
+            try {
+              return settle(await this.call(values));
+            } finally {
+              childFrame.exitCapability();
+            }
           },
         });
       }
@@ -2561,9 +2575,11 @@ dimensions, fed verbatim at phase start and detached on every exit cause) ·
 closure threaded through the construction seam, consulting a FRESH snapshot
 per call and returning the structural `{ block: true, reason }` shape the
 SDK's `ToolCallEventResult` accepts) · `pio/src/capability/base.ts` (the
-span window in the session-present `run()` branch - enter strictly
-post-validation at the stamp site, exit at settlement on success AND the
-catch-all; `CapabilityEnvError`, the loud env-root failure) ·
+span window in BOTH `run()` branches - session-present: enter strictly
+post-validation at the stamp site; row-2: enter strictly
+post-adoption/pre-body in the hop body over the adopted host; exit at
+settlement on success AND the catch-all in both; `CapabilityEnvError`, the
+loud env-root failure) ·
 `pio/src/capabilities/guards-demo.ts` (the standing LIVE demonstration -
 six PLAIN-PHASE gate probes under ONE span: the same-target contrasts -
 workspace pair and scratch pair - plus the declared-scratch probe and its
@@ -2690,11 +2706,16 @@ policy, not an accident.
 
 Capability SPANS stack LIFO with SUSPEND/RESTORE semantics: the outer layer
 suspends (never destroys) and GOVERNS AGAIN once the inner pops - mandatory
-for row-1 nesting (§11), where the RUNNING CALLEE governs EXCLUSIVELY for its
-span and the parent resumes governing after the callee settles (the COMPOSE
-DEMOS remain the standing living proof of the nesting story, §11; the
-guards-demo transcript shows EXACTLY ONE span marker - the vehicle composes
-no nested span).
+for row-1 nesting (§11) AND carried by the row-2 composed frames (§8), whose
+hop body BRACKETS the callee's span over the shared stack discovered by the
+adopted host (`base.ts` `run()` row-2 branch - enter strictly
+post-adoption/pre-body through the adopted host's `enterCapability`, exit at
+settlement on success AND the catch-all through `exitCapability`; no-op-safe
+over stateless instances). On EITHER placement the RUNNING CALLEE governs
+EXCLUSIVELY for its span and the parent suspends behind it, resuming
+governing when the callee's span pops (the COMPOSE DEMOS remain the standing
+living proof of the nesting story, §11; the guards-demo transcript shows
+EXACTLY ONE span marker - the vehicle composes no nested span).
 The PHASE is a SCALAR SLOT holding the RAW declaration - the FULL RECORD
 stored VERBATIM (paths plus the scope and scratch flags), judged ONLY at
 decision time; attaching while a phase is already attached OVERWRITES

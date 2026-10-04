@@ -2565,8 +2565,9 @@ span window in the session-present `run()` branch - enter strictly
 post-validation at the stamp site, exit at settlement on success AND the
 catch-all; `CapabilityEnvError`, the loud env-root failure) ·
 `pio/src/capabilities/guards-demo.ts` (the standing LIVE demonstration -
-five PLAIN-PHASE gate probes under ONE span: the same-target contrast and
-the declared-scratch probe included) +
+six PLAIN-PHASE gate probes under ONE span: the same-target contrasts -
+workspace pair and scratch pair - plus the declared-scratch probe and its
+silent-window refusal twin included) +
 its colocated suite (the first home of the denial-line goldens, the mid-pass
 real-predicate consults, and the module-driven shape rows).
 
@@ -2728,15 +2729,17 @@ no-span, and flag-less silent/inert windows REFUSE scratch (total
 default-deny, genuinely total). On the phase line the SCRATCH ELEMENT is
 APPENDED LAST - after the scope element, whenever the flag is active (same
 sentence shape as the scope element: `scratch files under /tmp/`). The
-VEHICLE'S STANDING LIVE DEMONSTRATION is the redefined `tmp-parity` probe:
-GRANTED scratch from the declared flag, with the undeclared-window contrast
-pinned suite-side (a refusal consult over the SAME real pinned path in a
-non-declaring window beside the admission consult in the declared-flag
-window). SCRATCH-RESIDUE DOCTRINE survives: `guards-demo`'s `tmp-parity`
-probe LEAVES ITS RESIDUE WITHIN THE RUN (asserted post-run, SUITE-SIDE - the
-standing real-`/tmp` exception: unique pinned basename, error-swallowed
-pre-phase SWEEP self-heals across runs, and within the run the residue stays
-put; the capability performs NO disk checks).
+VEHICLE'S STANDING LIVE DEMONSTRATION is the same-target scratch PAIR:
+`tmp-parity` (scratch ADMITTED by the phase-declared flag) AND
+`tmp-negative` (the SAME target REFUSED on the universal byte by the silent
+window that declares NOTHING - the SCRATCH-FLAG INVERSION demonstrated LIVE
+in BOTH directions; previously the refused direction existed only
+hermetically and as wording inside `tmp-parity`'s template). The hermetic
+twins remain cited at their tiers. SCRATCH-RESIDUE DOCTRINE: the end-of-run
+scratch state is ABSENT BY DESIGN (the `tmp-negative` probe's pre-phase
+sweep removes the admitted residue WITHIN the run; unique pinned basename,
+error-swallowed pre-phase SWEEPS self-heal across runs; the capability
+performs NO disk checks; suite-side post-run readings land ABSENT).
 
 ### 12.8 Structural denial facts
 
@@ -2790,11 +2793,12 @@ their declarations: the silent `project-file-not-allowed` probe and the
 REFUSAL-ONLY `deny` probe DEMAND nothing of their own (both declare NOTHING -
 the former attempts one workspace write it expects to be rejected; the latter
 performs ONLY the refused attempt on the stray, containing no write of any
-kind, so its single settled run ends exactly as instructed), while the
-EXPECTATION-GATE corrective re-run (which demands EXACTLY the declared file)
-converges. The gate is a SYNCHRONOUS PER-CALL INTERCEPT, NOT A LOOP: the
+kind, so its single settled run ends exactly as instructed; the silent
+`tmp-negative` probe declares NOTHING likewise and its single settled run
+ends as instructed), while the EXPECTATION-GATE corrective re-run (which
+demands EXACTLY the declared file) converges. The gate is a SYNCHRONOUS PER-CALL INTERCEPT, NOT A LOOP: the
 denial line is the ONLY feedback, and denials converge on INFORMATION within
 the model's OWN turn (the model reads the reason, adapts the plan, finishes
 the turn). From this step forward, ANY live `pio run guards-demo`
 engagement IS the standing end-to-end demonstration: expectation guard plus
-all five PLAIN-PHASE gate probes in one run.
+all six PLAIN-PHASE gate probes in one run.

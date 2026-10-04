@@ -10,7 +10,7 @@
 // loop end to end: first-pass miss -> engine-denied settlement -> corrective
 // note naming the exact path -> compliant second run -> settle.
 //
-// What it ALSO exhibits: the standing live write-gate demonstration - five
+// What it ALSO exhibits: the standing live write-gate demonstration - six
 // PLAIN-PHASE gate probes after the guarded phase, under ONE span, in fixed
 // order: deny (REFUSAL-ONLY - a phase that declares NOTHING attempts the
 // contract-covered stray and nothing is written), allow (the declared path
@@ -18,9 +18,12 @@
 // workspace scope and NOTHING else), project-file-not-allowed (the SAME
 // workspace target REFUSED by a flag-less SILENT phase despite this
 // capability's own flag-TRUE contract - the universal no-permission byte
-// inside its own span), and tmp-parity (scratch ADMITTED because the phase
-// declares the scratch flag). The closing summary is a disk-check-free
-// narration keyed only on the observed iteration count.
+// inside its own span), tmp-parity (scratch ADMITTED because the phase
+// declares the scratch flag), and tmp-negative (the SAME scratch target
+// REFUSED on the universal byte by the SILENT window that declares NOTHING -
+// the scratch-flag inversion demonstrated live in both directions). The
+// closing summary is a disk-check-free narration keyed only on the observed
+// iteration count.
 //
 // Outcome model: NO raw terminal writes — the phase prompts ARE the
 // in-stream statements, and the machine ledger (the terminal record's
@@ -31,9 +34,10 @@
 // artifacts are unlink-swallowed - repeatability HYGIENE (the sweeps are
 // writes, not checks): a surviving stale copy would let a prior run's
 // residue contaminate this run's readings, and swallowing is deliberate so
-// a stale artifact never aborts the demonstration. The tmp-parity residue
-// is INTENTIONALLY left in place within the run (the pre-phase sweep
-// self-heals across runs).
+// a stale artifact never aborts the demonstration. The end-of-run scratch
+// state is ABSENT BY DESIGN: the sixth probe's pre-phase sweep removes the
+// tmp-parity admitted residue WITHIN the run (cross-run self-healing stands;
+// the sweeps remain writes, not checks).
 //
 // The guarded phase is DECLARATION-ONLY (a write declaration plus the floor;
 // no stopping hook, no budget ceiling): with the floor consumed, the
@@ -77,8 +81,9 @@ export const GUARDS_DEMO_PROJECT_PROBE_FILE =
   "pio-guards-demo-project-file-probe.txt";
 
 /** The TMP-PARITY probe's unique pinned /tmp/ basename (the standing
- * real-/tmp exception: pre-phase sweep self-heals across runs; the residue
- * is intentionally left WITHIN the run). */
+ * real-/tmp exception: the pre-phase sweep self-heals across runs; the
+ * end-of-run scratch state is ABSENT BY DESIGN - the sixth probe's
+ * pre-phase sweep removes the admitted residue WITHIN the run). */
 export const GUARDS_DEMO_TMP_PARITY_FILE =
   "pio-guards-demo-tmp-parity-scratch.txt";
 
@@ -156,6 +161,21 @@ function tmpParityInstructions(absoluteScratchFile: string): string {
   return `Write a file ${absoluteScratchFile}. The expectation is that the scratch write is ADMITTED because this phase declares the scratch flag \u2014 the same scratch target is REFUSED in any window where no active phase declares it (the grant is phase-declared, not ambient). Describe in one sentence if it's satisfied.`;
 }
 
+/** The pinned tmp-negative instruction template (SOLE OWNER of these PINNED
+ * bytes; the suite replica names this owner). ONE settled turn for the
+ * SILENT scratch-refusal window over the SAME pinned scratch target the
+ * tmp-parity probe admitted moments earlier: expect the refusal (this phase
+ * declares NOTHING - no paths, no scope flag, no scratch flag - and the
+ * running capability's own flag-TRUE contract changes nothing, while the
+ * SAME target was admitted moments earlier by the adjacent probe's OWN
+ * declared scratch flag: the grant is phase-declared, not ambient); the
+ * universal byte attributes to NO layer, so there is NO
+ * capability-attribution mandate. Three beats: attempt-imperative /
+ * expectation / one-sentence verdict. Em dashes are U+2014 (escaped). */
+function tmpNegativeInstructions(absoluteScratchFile: string): string {
+  return `Attempt to write a file ${absoluteScratchFile}. The expectation is that the write comes back REFUSED \u2014 this phase declares NOTHING (no paths, no scope flag, no scratch flag), and the running capability's own contract flag being TRUE changes nothing, while the SAME target was admitted moments earlier by the adjacent probe's OWN declared scratch flag (the grant is phase-declared, not ambient); do not retry the target. Describe in one sentence if it's satisfied.`;
+}
+
 /** The pinned summary template (PINNED bytes; the suite replica names this
  * owner). Variant selection keys ONLY on the observed iteration count (A:
  * >= 2 — the guard denied first-pass settlement and forced the corrective
@@ -164,7 +184,7 @@ function tmpParityInstructions(absoluteScratchFile: string): string {
  * FIXED (naming the ABSOLUTE artifact path) and no per-probe disk booleans
  * exist — the module performs no disk observation feeding any wording. It
  * ends with the standard closing order (state what was demonstrated, naming
- * the five gate probes, then end the turn right after). Em dashes are
+ * the six gate probes, then end the turn right after). Em dashes are
  * U+2014 (escaped). */
 function summaryInstructions(
   absoluteArtifact: string,
@@ -177,14 +197,14 @@ function summaryInstructions(
   return `${outcome}
 The deliverable is placed at (absolute path):
 ${absoluteArtifact}
-1. State in one short sentence what was demonstrated, naming the five gate probes: deny, allow, project-file, project-file-not-allowed, tmp-parity.
+1. State in one short sentence what was demonstrated, naming the six gate probes: deny, allow, project-file, project-file-not-allowed, tmp-parity, tmp-negative.
 2. Do nothing else \u2014 no further tools, no questions, no writes. End your turn right after that statement.`;
 }
 
 export default class GuardsDemoCapability extends PioCapability {
   readonly contract: Contract = {
     name: "guards-demo",
-    version: "0.3.0",
+    version: "0.4.0",
     inputs: [],
     outputs: [{ name: "report", paramKey: "report" }],
     writes: ["guards-demo/*.md"],
@@ -306,7 +326,8 @@ export default class GuardsDemoCapability extends PioCapability {
     // while this phase governs - and in any window where no active phase
     // declares it the SAME target is refused (the grant is phase-declared,
     // not ambient). The pre-phase sweep runs FIRST (cross-run self-healing);
-    // the residue is INTENTIONALLY left in place within the run.
+    // the admitted residue is removed again by the next probe's pre-phase
+    // sweep (end-of-run state ABSENT BY DESIGN).
     await rm(absoluteTmpScratch, { force: true }).catch(() => {});
     await this.execute_phase("tmp-parity", {
       instructions: tmpParityInstructions(absoluteTmpScratch),
@@ -315,7 +336,27 @@ export default class GuardsDemoCapability extends PioCapability {
       tmpDirAllowed: true,
     });
 
-    // 9. Summary — success-gated by control flow (a rejecting guarded
+    // 9. TMP-NEGATIVE probe - the NEGATIVE-SCRATCH direction (the house
+    // ADMIT-then-REFUSE same-target pair precedent over the scratch pole):
+    // the SAME pinned scratch target that tmp-parity admitted moments
+    // earlier is now REFUSED on the universal no-permission byte by the
+    // SILENT window that declares NOTHING (options EXACTLY { instructions,
+    // min, max } - attach abstention, so the phase slot stays EMPTY: the
+    // grant is phase-declared, not ambient, and nothing is demanded, so
+    // the settlement gate is armed for nothing - the scratch-flag
+    // inversion demonstrated live in both directions). The pre-phase sweep
+    // runs FIRST (identical hygiene idiom - a WRITE, not a check): it
+    // self-heals cross-run residue AND removes the admitted tmp-parity
+    // residue WITHIN the run (end-of-run state ABSENT BY DESIGN). One
+    // settled run.
+    await rm(absoluteTmpScratch, { force: true }).catch(() => {});
+    await this.execute_phase("tmp-negative", {
+      instructions: tmpNegativeInstructions(absoluteTmpScratch),
+      min: 1,
+      max: 1,
+    });
+
+    // 10. Summary — success-gated by control flow (a rejecting guarded
     // phase never reaches it): ONE settled turn - the DISK-CHECK-FREE
     // closing narration keyed ONLY on the observed iteration count, stated
     // THROUGH THE SESSION STREAM.
@@ -325,7 +366,7 @@ export default class GuardsDemoCapability extends PioCapability {
       max: 1,
     });
 
-    // 10. Return — the RELATIVE token; the base's settle seam absolutizes it
+    // 11. Return — the RELATIVE token; the base's settle seam absolutizes it
     // exactly once at success settlement (NEVER the absolute path here).
     return { report: GUARDS_DEMO_ARTIFACT };
   }

@@ -41,9 +41,12 @@
 // the REAL TREE's declared paths (the live attachment), and admission-
 // shaped consults may ride real-tree targets. The standing
 // real-/tmp exception: the pinned scratch name is unique, the capability's
-// error-swallowed pre-phase sweep self-heals across runs, and every
-// full-trajectory row carries its OWN hygiene sweep at row end (the
-// post-run residue assertion lands WITHIN the row, before any sweep).
+// error-swallowed pre-phase sweep self-heals across runs, and the
+// end-of-run scratch state is ABSENT BY DESIGN (the sixth probe's
+// pre-phase sweep removes the admitted residue WITHIN the run); every
+// full-trajectory row still carries its OWN hygiene sweep at row end as
+// IDEMPOTENT LEGACY HYGIENE (writes, not checks - nothing asserts against
+// them).
 // NOTE the host() helper also drives the stored runtime-factory closure
 // ONCE per construction: the real seam stamps the minted execution state
 // onto the additive from-services carrier handle, the helper recovers that
@@ -290,6 +293,14 @@ const notAllowedReplica = (absoluteSharedCwdFile: string): string =>
 const tmpParityReplica = (absoluteScratchFile: string): string =>
   `Write a file ${absoluteScratchFile}. The expectation is that the scratch write is ADMITTED because this phase declares the scratch flag \u2014 the same scratch target is REFUSED in any window where no active phase declares it (the grant is phase-declared, not ambient). Describe in one sentence if it's satisfied.`;
 
+/** Pinned tmp-negative instruction template replica (SOLE OWNER: the
+ * tmpNegativeInstructions owner in ./guards-demo.ts - the SILENT
+ * scratch-refusal window over the SAME pinned scratch target the
+ * tmp-parity probe admitted moments earlier). Three beats: imperative /
+ * expectation / one-sentence verdict. Em dashes are U+2014 (escaped). */
+const tmpNegativeReplica = (absoluteScratchFile: string): string =>
+  `Attempt to write a file ${absoluteScratchFile}. The expectation is that the write comes back REFUSED \u2014 this phase declares NOTHING (no paths, no scope flag, no scratch flag), and the running capability's own contract flag being TRUE changes nothing, while the SAME target was admitted moments earlier by the adjacent probe's OWN declared scratch flag (the grant is phase-declared, not ambient); do not retry the target. Describe in one sentence if it's satisfied.`;
+
 /** Pinned summary template replica (SOLE OWNER: the summaryInstructions
  * owner in ./guards-demo.ts): variant A (iterations >= 2) names the observed
  * run count; variant B (=== 1) is the armed-but-not-triggered wording. No
@@ -307,7 +318,7 @@ const summaryReplica = (
   return `${outcome}
 The deliverable is placed at (absolute path):
 ${absoluteArtifact}
-1. State in one short sentence what was demonstrated, naming the five gate probes: deny, allow, project-file, project-file-not-allowed, tmp-parity.
+1. State in one short sentence what was demonstrated, naming the six gate probes: deny, allow, project-file, project-file-not-allowed, tmp-parity, tmp-negative.
 2. Do nothing else \u2014 no further tools, no questions, no writes. End your turn right after that statement.`;
 };
 
@@ -409,6 +420,8 @@ const notAllowedPromptText = (absoluteSharedCwdFile: string): string =>
   `${renderPhaseMarker("project-file-not-allowed")}\n${notAllowedReplica(absoluteSharedCwdFile)}`;
 const tmpParityPromptText = (absoluteScratchFile: string): string =>
   `${renderPhaseMarker("tmp-parity")}\n${tmpParityReplica(absoluteScratchFile)}`;
+const tmpNegativePromptText = (absoluteScratchFile: string): string =>
+  `${renderPhaseMarker("tmp-negative")}\n${tmpNegativeReplica(absoluteScratchFile)}`;
 const summaryPromptText = (
   absoluteArtifact: string,
   iterations: number,
@@ -583,7 +596,7 @@ function artifactPlacement(): {
   };
 }
 
-/** Self-consistent placement derivation for the FIVE live gate probes, via
+/** Self-consistent placement derivation for the SIX live gate probes, via
  * the SAME public channels (slot-relative tokens resolved under the
  * project slot; the cwd basename and the pinned /tmp/ basename resolved
  * against their own anchors). Computed after the row-scoped chdir — the
@@ -626,7 +639,7 @@ async function seedArtifact(
 // ─── C rows: the expectation-guard demonstration flow ───────────────────
 
 describe("expectation-guard demonstration flow (C rows)", () => {
-  it("C1 full happy chain (BINDING leg): pass one skips the write => the engine denies settlement and the pass-two prompt carries the IDENTICAL baseline PLUS the pinned DELIMITED corrective block (delimiter line above the unchanged body; run count 1, naming the tmpdir-ABSOLUTE path) => pass two commits the REAL fs write and settles at iterations === 2, then the FIVE PLAIN-PHASE gate probes run in pinned order under ONE span (deny REFUSAL-ONLY, allow, project-file, the SILENT flag-less project-file-not-allowed phase, declared-scratch tmp-parity LAST) with their MID-PASS real-predicate consults (stray + scratch REFUSED on the UNIVERSAL byte in the declare-nothing deny window, admission undefined, exclusive scope-element-only listing, the silent-phase FULL-LINE refusal on the UNIVERSAL byte with the phase observed NULL, scratch ADMITTED in the declared-flag window, /tmp/ healing vantage) => ok:true with the ABSOLUTE settled outputs.report, the terminal record carries version 0.3.0 and exit 0, EXACTLY 9 prompts + EXACTLY ONE span stamp strictly before the first prompt = 10 unified-timeline entries", async () => {
+  it("C1 full happy chain (BINDING leg): pass one skips the write => the engine denies settlement and the pass-two prompt carries the IDENTICAL baseline PLUS the pinned DELIMITED corrective block (delimiter line above the unchanged body; run count 1, naming the tmpdir-ABSOLUTE path) => pass two commits the REAL fs write and settles at iterations === 2, then the SIX PLAIN-PHASE gate probes run in pinned order under ONE span (deny REFUSAL-ONLY, allow, project-file, the SILENT flag-less project-file-not-allowed phase, declared-scratch tmp-parity, the SILENT scratch-refusal tmp-negative LAST) with their MID-PASS real-predicate consults (stray + scratch REFUSED on the UNIVERSAL byte in the declare-nothing deny window, admission undefined, exclusive scope-element-only listing, the silent-phase FULL-LINE refusal on the UNIVERSAL byte with the phase observed NULL, scratch ADMITTED in the declared-flag window, the SAME scratch target REFUSED on the UNIVERSAL byte in the silent tmp-negative window with the phase observed NULL, /tmp/ healing vantage) => ok:true with the ABSOLUTE settled outputs.report, the end-of-run scratch state ABSENT BY DESIGN, the terminal record carries version 0.4.0 and exit 0, EXACTLY 10 prompts + EXACTLY ONE span stamp strictly before the first prompt = 11 unified-timeline entries", async () => {
     const placement = artifactPlacement();
     const probes = probePlacements();
     const { instance, round, state } = await host();
@@ -642,14 +655,17 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     let silentPhaseObservedNull = false;
     let tmpParityAdmission: WriteGateVerdict | undefined;
     let tmpAbsentBeforeSeed = false;
+    let tmpNegativeRefusal: WriteGateVerdict | undefined;
+    let tmpNegativePhaseObservedNull = false;
     // Trajectory: greeting quiet; probe pass ONE quiet (no events, no fs);
     // probe pass TWO commits the REAL fs write + the synthetic settle pair;
     // the deny pass goes QUIET (REFUSAL-ONLY: neither target is seeded -
     // both deny-window consults land during it); allow and project-file
     // commit their REAL fs writes + settle pairs; the SILENT not-allowed
     // pass writes NOTHING (the refusal held - disk-truth duty); tmp-parity
-    // commits the REAL fs seed under its DECLARED scratch flag; summary
-    // quiet.
+    // commits the REAL fs seed under its DECLARED scratch flag; the SILENT
+    // tmp-negative pass writes NOTHING (the refusal held - disk-truth
+    // duty; its consult lands during it); summary quiet.
     scriptRuns(round, quietSettle());
     scriptRuns(round, quietSettle());
     round.passes.push(async (): Promise<void> => {
@@ -731,14 +747,30 @@ describe("expectation-guard demonstration flow (C rows)", () => {
         path: probes.absTmpScratch,
       });
     });
+    round.passes.push(async (): Promise<void> => {
+      // The model honored the refusal: NO disk write in this pass (the
+      // SAME target the tmp-parity probe admitted moments earlier is
+      // refused again - disk-truth duty).
+      emit(round, ...quietSettle());
+      // SILENT-window scratch consultation: a FRESH snapshot shows the
+      // phase slot EMPTY (attach abstention - the bare options object
+      // declares nothing), and the SAME real pinned scratch path refuses
+      // on the UNIVERSAL no-permission byte INSIDE the demo's own
+      // flag-TRUE span (honest same-target idiom).
+      const tmpNegativeSnapshot = state.snapshot();
+      tmpNegativePhaseObservedNull = tmpNegativeSnapshot.phase === null;
+      tmpNegativeRefusal = decideWrite(tmpNegativeSnapshot, "write", {
+        path: probes.absTmpScratch,
+      });
+    });
     scriptRuns(round, quietSettle());
     const cap = new GuardsDemoCapability({ session: instance });
     const result = await cap.run();
 
-    // Prompt-total arithmetic: 1 + 2 + 5 + 1 = 9 - a wrong total
+    // Prompt-total arithmetic: 1 + 2 + 6 + 1 = 10 - a wrong total
     // reveals a corrective block attributed to the wrong phase or a stray
     // prompt.
-    expect(round.session.prompt).toHaveBeenCalledTimes(9);
+    expect(round.session.prompt).toHaveBeenCalledTimes(10);
     expect(sentAt(round, 0)).toBe(greetingPromptText());
     expect(sentAt(round, 1)).toBe(
       guardProbePromptText(placement.absoluteArtifact),
@@ -756,7 +788,8 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(sentAt(round, 5)).toBe(projectFilePromptText(probes.absCwdFile));
     expect(sentAt(round, 6)).toBe(notAllowedPromptText(probes.absCwdFile));
     expect(sentAt(round, 7)).toBe(tmpParityPromptText(probes.absTmpScratch));
-    expect(sentAt(round, 8)).toBe(
+    expect(sentAt(round, 8)).toBe(tmpNegativePromptText(probes.absTmpScratch));
+    expect(sentAt(round, 9)).toBe(
       summaryPromptText(placement.absoluteArtifact, 2),
     );
 
@@ -772,7 +805,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       round.session.sendCustomMessage.mock.invocationCallOrder[0],
     ).toBeLessThan(round.session.prompt.mock.invocationCallOrder[0]);
     // The unified timeline confirms the same ordering end to end:
-    // EXACTLY 10 entries.
+    // EXACTLY 11 entries.
     expect(round.timeline).toEqual([
       { kind: "custom", payload: markerPayload("guards-demo") },
       { kind: "prompt", text: greetingPromptText() },
@@ -795,6 +828,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
         text: notAllowedPromptText(probes.absCwdFile),
       },
       { kind: "prompt", text: tmpParityPromptText(probes.absTmpScratch) },
+      { kind: "prompt", text: tmpNegativePromptText(probes.absTmpScratch) },
       {
         kind: "prompt",
         text: summaryPromptText(placement.absoluteArtifact, 2),
@@ -841,6 +875,17 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     // Scratch-contrast admission half: the declared flag governs.
     expect(tmpParityAdmission).toBeUndefined();
     expect(tmpAbsentBeforeSeed).toBe(true);
+    // Attach-abstention witness over the scratch-refusal window: the bare
+    // options object keeps the phase slot EMPTY during tmp-negative's
+    // pass.
+    expect(tmpNegativePhaseObservedNull).toBe(true);
+    // The SAME real pinned scratch path refuses on the single fixed
+    // universal byte (no capability name, no clause) - the refused half
+    // of the scratch-flag inversion, live in the silent window.
+    expect(tmpNegativeRefusal).toStrictEqual({
+      block: true,
+      reason: replicaUniversalDenial(),
+    });
 
     // Real emitter chain: terminal record + exit map (no unit stubs).
     const sessionsRoot = join(tmp, ".sessions");
@@ -865,7 +910,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(record.ok).toBe(true);
     expect(record.capability).toEqual({
       name: "guards-demo",
-      version: "0.3.0",
+      version: "0.4.0",
       source: "builtin",
     });
     expect(record.outputs).toEqual({
@@ -876,22 +921,22 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     // stray ABSENT (refused - nothing written; neither deny target is
     // seeded); the allow artifact PRESENT; the project-file probe file
     // GONE (self-clean removed it and the silent phase's refusal held);
-    // the /tmp/ scratch RESIDUE intentionally left within the run (landed
-    // under the DECLARED scratch flag).
+    // the /tmp/ scratch ABSENT BY DESIGN (the tmp-negative probe's
+    // pre-phase sweep removed the admitted residue WITHIN the run).
     expect(readFileSync(placement.absoluteArtifact, "utf8")).toBe(
       "# Guard Demo\n\nThis run was forced by the expectation guard.\n",
     );
     expect(existsSync(probes.absDenyStray)).toBe(false);
     expect(existsSync(probes.absAllowArtifact)).toBe(true);
     expect(existsSync(probes.absCwdFile)).toBe(false);
-    expect(existsSync(probes.absTmpScratch)).toBe(true);
-    // Row-local hygiene sweep of the standing real-/tmp exception (the
-    // residue assertion above already landed).
+    expect(existsSync(probes.absTmpScratch)).toBe(false);
+    // Row-end hygiene sweep stands as IDEMPOTENT LEGACY HYGIENE (a write,
+    // not a check - the in-run sweep already cleared the residue).
     await rm(probes.absTmpScratch, { force: true }).catch(() => {});
     expect(stderrText()).toBe("");
   });
 
-  it("C2 disobedient-compliance: the model commits the file on PASS ONE (real fs write inside the scripted pass) => the gate passes on the FIRST break, all-baseline prompt texts, ZERO corrective blocks, iterations === 1, the five PLAIN-PHASE gate probes ride along all-baseline under ONE span, and the SUMMARY observes the graceful ARMED-BUT-NOT-TRIGGERED variant (variant B) over the shrunk signature - ok:true, EXACTLY 8 prompts + 1 stamp (1 + 1 + 5 + 1)", async () => {
+  it("C2 disobedient-compliance: the model commits the file on PASS ONE (real fs write inside the scripted pass) => the gate passes on the FIRST break, all-baseline prompt texts, ZERO corrective blocks, iterations === 1, the SIX PLAIN-PHASE gate probes ride along all-baseline under ONE span (the SILENT tmp-negative pass writes NOTHING - the refusal held), and the SUMMARY observes the graceful ARMED-BUT-NOT-TRIGGERED variant (variant B) over the shrunk signature - ok:true, EXACTLY 9 prompts + 1 stamp (1 + 1 + 6 + 1)", async () => {
     const placement = artifactPlacement();
     const probes = probePlacements();
     const { instance, round } = await host();
@@ -923,13 +968,15 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       await writeFile(probes.absTmpScratch, "# Tmp parity\n");
       emit(round, ...writeSettle(probes.absTmpScratch, "w-tmp"));
     });
+    // The SILENT tmp-negative pass writes NOTHING (the refusal held -
+    // disk-truth duty: the model honored the refusal).
     scriptRuns(round, quietSettle());
     const cap = new GuardsDemoCapability({ session: instance });
     const result = await cap.run();
 
-    // 1 + 1 + 5 + 1 = 8 - a wrong total reveals a corrective block or a
-    // stray prompt anywhere in the five-probe shape.
-    expect(round.session.prompt).toHaveBeenCalledTimes(8);
+    // 1 + 1 + 6 + 1 = 9 - a wrong total reveals a corrective block or a
+    // stray prompt anywhere in the six-probe shape.
+    expect(round.session.prompt).toHaveBeenCalledTimes(9);
     expect(sentAt(round, 0)).toBe(greetingPromptText());
     // All-baseline: strict equality PROVES zero corrective blocks.
     expect(sentAt(round, 1)).toBe(
@@ -940,9 +987,10 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(sentAt(round, 4)).toBe(projectFilePromptText(probes.absCwdFile));
     expect(sentAt(round, 5)).toBe(notAllowedPromptText(probes.absCwdFile));
     expect(sentAt(round, 6)).toBe(tmpParityPromptText(probes.absTmpScratch));
+    expect(sentAt(round, 7)).toBe(tmpNegativePromptText(probes.absTmpScratch));
     // Graceful-path assertion: the variant-B statement (armed but not
     // triggered), concrete count 1, over the SHRUNK signature.
-    expect(sentAt(round, 7)).toBe(
+    expect(sentAt(round, 8)).toBe(
       summaryPromptText(placement.absoluteArtifact, 1),
     );
 
@@ -1069,7 +1117,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(stderrText()).toBe("");
   });
 
-  it("C4 repeatability: a pre-existing artifact (REAL fs seed BEFORE call()) is REMOVED by the repeatable reset before the guarded phase — observable: during the first guard-probe run a sync fs read reports ABSENT — and the first-pass gate fires IDENTICALLY (same corrective block, same trajectory as the unseeded happy chain over the full five-probe shape), ok:true, EXACTLY 9 prompts", async () => {
+  it("C4 repeatability: a pre-existing artifact (REAL fs seed BEFORE call()) is REMOVED by the repeatable reset before the guarded phase — observable: during the first guard-probe run a sync fs read reports ABSENT — and the first-pass gate fires IDENTICALLY (same corrective block, same trajectory as the unseeded happy chain over the full six-probe shape), ok:true, EXACTLY 10 prompts", async () => {
     const placement = artifactPlacement();
     const probes = probePlacements();
     await seedArtifact(placement.absoluteArtifact, "stale artifact\n");
@@ -1105,12 +1153,14 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       await writeFile(probes.absTmpScratch, "# Tmp parity\n");
       emit(round, ...writeSettle(probes.absTmpScratch, "w-tmp"));
     });
+    // The SILENT tmp-negative pass writes NOTHING (the refusal held -
+    // disk-truth duty: the model honored the refusal).
     scriptRuns(round, quietSettle());
     const cap = new GuardsDemoCapability({ session: instance });
     const result = await cap.run();
 
     expect(observedAbsentDuringPassOne).toBe(true);
-    expect(round.session.prompt).toHaveBeenCalledTimes(9);
+    expect(round.session.prompt).toHaveBeenCalledTimes(10);
     // Identical trajectory to the unseeded happy chain: the same
     // baseline/corrective framing over the same absolute path, the five
     // probes riding along all-baseline.
@@ -1132,8 +1182,11 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(readFileSync(placement.absoluteArtifact, "utf8")).toBe(
       "# Guard Demo\n\nThis run was forced by the expectation guard.\n",
     );
-    expect(existsSync(probes.absTmpScratch)).toBe(true);
-    // Row-local hygiene sweep of the standing real-/tmp exception.
+    // End-of-run scratch ABSENT BY DESIGN (the tmp-negative probe's
+    // pre-phase sweep removed the admitted residue WITHIN the run).
+    expect(existsSync(probes.absTmpScratch)).toBe(false);
+    // Row-end hygiene sweep stands as IDEMPOTENT LEGACY HYGIENE (a write,
+    // not a check - the in-run sweep already cleared the residue).
     await rm(probes.absTmpScratch, { force: true }).catch(() => {});
     expect(stderrText()).toBe("");
   });
@@ -1142,7 +1195,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
 // ─── F rows: instruction framing (byte replicas) ──────────────────────
 
 describe("instruction framing (F rows)", () => {
-  it("F1 pinned BYTE REPLICA of the first-pass guard-probe instructions (marker-leading baseline = renderPhaseMarker('guard-probe') + '\\n' + template), the FIVE new probe templates pinned against their replicas, and the MARKER-LEADING INVARIANT holds for EVERY run's text in ALL NINE runs (happy-chain trajectory)", async () => {
+  it("F1 pinned BYTE REPLICA of the first-pass guard-probe instructions (marker-leading baseline = renderPhaseMarker('guard-probe') + '\\n' + template), the SIX new probe templates pinned against their replicas, and the MARKER-LEADING INVARIANT holds for EVERY run's text in ALL TEN runs (happy-chain trajectory)", async () => {
     const placement = artifactPlacement();
     const probes = probePlacements();
     const { instance, round } = await host();
@@ -1170,6 +1223,8 @@ describe("instruction framing (F rows)", () => {
       await writeFile(probes.absTmpScratch, "# Tmp parity\n");
       emit(round, ...writeSettle(probes.absTmpScratch, "w-tmp"));
     });
+    // The SILENT tmp-negative pass writes NOTHING (the refusal held -
+    // disk-truth duty: the model honored the refusal).
     scriptRuns(round, quietSettle());
     const cap = new GuardsDemoCapability({ session: instance });
     const result = await cap.run();
@@ -1182,14 +1237,15 @@ describe("instruction framing (F rows)", () => {
     expect(sentAt(round, 1)).toBe(
       `${renderPhaseMarker("guard-probe")}\n${guardProbeReplica(placement.absoluteArtifact)}`,
     );
-    // The five new probe templates pinned against their replicas (byte
+    // The six new probe templates pinned against their replicas (byte
     // parity; \u2014 escaped identically on both sides).
     expect(sentAt(round, 3)).toBe(denyPromptText(probes.absDenyStray));
     expect(sentAt(round, 4)).toBe(allowPromptText(probes.absAllowArtifact));
     expect(sentAt(round, 5)).toBe(projectFilePromptText(probes.absCwdFile));
     expect(sentAt(round, 6)).toBe(notAllowedPromptText(probes.absCwdFile));
     expect(sentAt(round, 7)).toBe(tmpParityPromptText(probes.absTmpScratch));
-    // Marker-leading invariant over EVERY run's text in all nine runs:
+    expect(sentAt(round, 8)).toBe(tmpNegativePromptText(probes.absTmpScratch));
+    // Marker-leading invariant over EVERY run's text in all ten runs:
     // first physical line === renderPhaseMarker(<phase id>).
     const phaseIds = [
       "greeting",
@@ -1200,9 +1256,10 @@ describe("instruction framing (F rows)", () => {
       "project-file",
       "project-file-not-allowed",
       "tmp-parity",
+      "tmp-negative",
       "summary",
     ];
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 10; i++) {
       const text = sentAt(round, i);
       const firstLine = text.split("\n", 1)[0] ?? "";
       expect(firstLine).toBe(renderPhaseMarker(phaseIds[i] ?? ""));
@@ -1241,11 +1298,13 @@ describe("instruction framing (F rows)", () => {
       await writeFile(probes.absTmpScratch, "# Tmp parity\n");
       emit(round, ...writeSettle(probes.absTmpScratch, "w-tmp"));
     });
+    // The SILENT tmp-negative pass writes NOTHING (the refusal held -
+    // disk-truth duty: the model honored the refusal).
     scriptRuns(round, quietSettle());
     const cap = new GuardsDemoCapability({ session: instance });
     const result = await cap.run();
     expect(result.ok).toBe(true);
-    expect(sentAt(round, 8)).toBe(
+    expect(sentAt(round, 9)).toBe(
       `${renderPhaseMarker("summary")}\n${summaryReplica(placement.absoluteArtifact, 2)}`,
     );
 
@@ -1280,16 +1339,18 @@ describe("instruction framing (F rows)", () => {
       await writeFile(secondProbes.absTmpScratch, "# Tmp parity\n");
       emit(second.round, ...writeSettle(secondProbes.absTmpScratch, "w-tmp"));
     });
+    // The SILENT tmp-negative pass writes NOTHING (the refusal held -
+    // disk-truth duty: the model honored the refusal).
     scriptRuns(second.round, quietSettle());
     const secondCap = new GuardsDemoCapability({ session: second.instance });
     const secondResult = await secondCap.run();
     expect(secondResult.ok).toBe(true);
     if (!secondResult.ok) throw new Error("unreachable");
-    expect(sentAt(second.round, 7)).toBe(
+    expect(sentAt(second.round, 8)).toBe(
       `${renderPhaseMarker("summary")}\n${summaryReplica(placement.absoluteArtifact, 1)}`,
     );
     // The graceful wording IS present (variant-B signature phrase).
-    expect(sentAt(second.round, 7)).toContain("ARMED but NOT triggered");
+    expect(sentAt(second.round, 8)).toContain("ARMED but NOT triggered");
     expect(sdkKit.state.rounds).toHaveLength(2);
     // Row-local hygiene sweep of the standing real-/tmp exception (both
     // legs seeded the same pinned scratch name).
@@ -1483,6 +1544,28 @@ describe("module-driven write-gate rows (real execution state + decideWrite comp
       reason: replicaPhaseDenial("survivor-tmp-off", [d.covered], null, false),
     });
   });
+
+  it("negative-scratch CORNER over the demo's own flag-TRUE sources: NOTHING attached with the span present refuses a ROW-LOCAL /tmp/ literal on the UNIVERSAL no-permission byte, byte-identical to the uncovered-slot miss reading over the SAME span (convergence idiom)", () => {
+    const d = drivenState();
+    d.state.enterCapability(DEMO_SOURCES);
+    // NOTHING attached (no phase): the scratch target consulted row-locally
+    // (house idiom - a literal /tmp/ token, cf. the scratch-class row)
+    // rides the non-admitting tail alike.
+    const scratch = decideWrite(d.state.snapshot(), "write", {
+      path: "/tmp/gd-negative-scratch.txt",
+    });
+    const miss = decideWrite(d.state.snapshot(), "write", {
+      path: d.uncovered,
+    });
+    d.state.exitCapability();
+    expect(scratch).toStrictEqual({
+      block: true,
+      reason: replicaUniversalDenial(),
+    });
+    // Byte-identical companion reading over the same span: every
+    // non-governing window lands on the one fixed byte.
+    expect(miss).toStrictEqual(scratch);
+  });
 });
 
 // ─── Module surface and mechanical source guards ──────────────────────
@@ -1529,7 +1612,7 @@ describe("module surface and mechanical guards", () => {
     // pin meaningful.
     expect(instance.contract).toStrictEqual({
       name: "guards-demo",
-      version: "0.3.0",
+      version: "0.4.0",
       inputs: [],
       outputs: [{ name: "report", paramKey: "report" }],
       writes: ["guards-demo/*.md"],

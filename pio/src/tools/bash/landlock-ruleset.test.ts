@@ -28,15 +28,15 @@ import * as landlockRulesetModule from "./landlock-ruleset.ts";
 import {
   buildHelperArgv,
   checkLandlockHelper,
-  classifyFenceExit,
   classifyHelper,
+  classifyLandlockExit,
   composeKernelWritableSet,
   LANDLOCK_FAULT_BAND,
   LANDLOCK_FAULT_CODES,
   landlockArchToken,
   PERMISSION_DENIED_MARKER,
   parseProbeReport,
-  renderCommandFenceDenial,
+  renderCommandLandlockDenial,
   renderMechanismRefusal,
   resolveLandlockHelperPath,
 } from "./landlock-ruleset.ts";
@@ -356,7 +356,7 @@ describe("A. kernel writable-set composition (exact ordered vectors)", () => {
 describe("B. lockstep byte-equality against the real gate", () => {
   it("the fence denial line STRICT-EQUALS the real gate's refusal reason over the FULL window table (both pinned shapes; lazy fall-through included)", () => {
     for (const row of WINDOWS) {
-      expect(renderCommandFenceDenial(row.snapshot), row.name).toBe(
+      expect(renderCommandLandlockDenial(row.snapshot), row.name).toBe(
         gateReason(row.snapshot),
       );
     }
@@ -373,7 +373,7 @@ describe("B. lockstep byte-equality against the real gate", () => {
       },
       paths: PATHS,
     };
-    expect(renderCommandFenceDenial(scopeAlone)).toBe(
+    expect(renderCommandLandlockDenial(scopeAlone)).toBe(
       renderPhaseDenial("sh-a", [], WORKSPACE_CWD, false),
     );
     const survivorOnly: ExecutionSnapshot = {
@@ -386,7 +386,7 @@ describe("B. lockstep byte-equality against the real gate", () => {
       },
       paths: PATHS,
     };
-    expect(renderCommandFenceDenial(survivorOnly)).toBe(
+    expect(renderCommandLandlockDenial(survivorOnly)).toBe(
       renderPhaseDenial("sh-b", [KEPT_A], null, false),
     );
     const plusScratch: ExecutionSnapshot = {
@@ -399,7 +399,7 @@ describe("B. lockstep byte-equality against the real gate", () => {
       },
       paths: PATHS,
     };
-    expect(renderCommandFenceDenial(plusScratch)).toBe(
+    expect(renderCommandLandlockDenial(plusScratch)).toBe(
       renderPhaseDenial("sh-c", [KEPT_A], null, true),
     );
     const plusBoth: ExecutionSnapshot = {
@@ -412,7 +412,7 @@ describe("B. lockstep byte-equality against the real gate", () => {
       },
       paths: PATHS,
     };
-    expect(renderCommandFenceDenial(plusBoth)).toBe(
+    expect(renderCommandLandlockDenial(plusBoth)).toBe(
       renderPhaseDenial("sh-d", [KEPT_A], WORKSPACE_CWD, true),
     );
   });
@@ -437,7 +437,7 @@ describe("B. lockstep byte-equality against the real gate", () => {
       },
     ];
     for (const snapshot of universalWindows) {
-      expect(renderCommandFenceDenial(snapshot)).toBe(
+      expect(renderCommandLandlockDenial(snapshot)).toBe(
         UNIVERSAL_NO_PERMISSION_DENIAL,
       );
     }
@@ -639,7 +639,7 @@ describe("D. fault-code vocabulary + eleven-line refusal family", () => {
     expect(LANDLOCK_FAULT_BAND).toEqual([100, 199]);
   });
 
-  it("classifyFenceExit totalness matrix: named classes on 100-104, band-reserved on 105-199, command-exit everywhere else (out-of-band, negative, NaN, fractional - total over number)", () => {
+  it("classifyLandlockExit totalness matrix: named classes on 100-104, band-reserved on 105-199, command-exit everywhere else (out-of-band, negative, NaN, fractional - total over number)", () => {
     const named: Array<[number, string]> = [
       [100, "malformed-spec"],
       [101, "abi-missing-or-blocked"],
@@ -648,14 +648,14 @@ describe("D. fault-code vocabulary + eleven-line refusal family", () => {
       [104, "execve-failure"],
     ];
     for (const [code, fault] of named) {
-      expect(classifyFenceExit(code)).toEqual({
+      expect(classifyLandlockExit(code)).toEqual({
         kind: "mechanism-fault",
         code,
         fault,
       });
     }
     for (const code of [105, 150, 199]) {
-      expect(classifyFenceExit(code)).toEqual({
+      expect(classifyLandlockExit(code)).toEqual({
         kind: "mechanism-fault",
         code,
         fault: "band-reserved",
@@ -674,7 +674,10 @@ describe("D. fault-code vocabulary + eleven-line refusal family", () => {
       100.5,
       199.9,
     ]) {
-      expect(classifyFenceExit(code)).toEqual({ kind: "command-exit", code });
+      expect(classifyLandlockExit(code)).toEqual({
+        kind: "command-exit",
+        code,
+      });
     }
   });
 
@@ -1121,12 +1124,12 @@ const VALUE_EXPORT_NAMES = [
   "PERMISSION_DENIED_MARKER",
   "buildHelperArgv",
   "checkLandlockHelper",
-  "classifyFenceExit",
   "classifyHelper",
+  "classifyLandlockExit",
   "composeKernelWritableSet",
   "landlockArchToken",
   "parseProbeReport",
-  "renderCommandFenceDenial",
+  "renderCommandLandlockDenial",
   "renderMechanismRefusal",
   "resolveLandlockHelperPath",
 ];
@@ -1134,11 +1137,11 @@ const VALUE_EXPORT_NAMES = [
 const TYPE_EXPORT_NAMES = [
   "AssignedFaultClass",
   "ArgvInvalidReason",
-  "FenceExitVerdict",
   "HelperArgvVerdict",
   "HelperCheck",
   "HelperObservations",
   "HelperStatSeams",
+  "LandlockExitVerdict",
   "MechanismFault",
   "ProbeFaultKind",
   "ProbeReport",

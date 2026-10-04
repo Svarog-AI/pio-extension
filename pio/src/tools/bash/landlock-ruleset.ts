@@ -236,7 +236,7 @@ export type AssignedFaultClass =
   | "execve-failure"
   | "band-reserved";
 
-export type FenceExitVerdict =
+export type LandlockExitVerdict =
   | { readonly kind: "command-exit"; readonly code: number }
   | {
       readonly kind: "mechanism-fault";
@@ -253,7 +253,7 @@ export type FenceExitVerdict =
  * killed/spawn-abnormal case where the exit code is absent is the
  * spawner's domain and never reaches this classifier). Per-spawn authority
  * doctrine: no memoization, every consult is fresh. */
-export function classifyFenceExit(code: number): FenceExitVerdict {
+export function classifyLandlockExit(code: number): LandlockExitVerdict {
   if (
     !Number.isInteger(code) ||
     code < LANDLOCK_FAULT_BAND[0] ||
@@ -585,7 +585,9 @@ export function parseProbeReport(line: string): ProbeReport | null {
  * set drops are still listed here - listed-but-not-granted is a known,
  * owned semantic divergence between the model-facing VOICE and the
  * machinery). */
-export function renderCommandFenceDenial(snapshot: ExecutionSnapshot): string {
+export function renderCommandLandlockDenial(
+  snapshot: ExecutionSnapshot,
+): string {
   const phase = snapshot.phase;
   if (
     phase !== null &&

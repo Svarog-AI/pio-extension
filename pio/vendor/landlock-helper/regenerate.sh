@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # regenerate.sh - developer-only static-link regeneration of landlock-helper.
 #
-# Rebuilds the vendored prebuilt binary from the checked-in source (zero-
-# build doctrine holds: the committed prebuild is what runs; a compiler is a
-# dev-time artifact-regeneration tool only). Idempotent in-place rebuild; no
+# Rebuilds the vendored prebuilt binary from the checked-in source - the
+# committed prebuild is what runs; a compiler is a dev-time artifact-
+# regeneration tool only. Idempotent in-place rebuild; no
 # network, no fetches, no timestamp-dependent inputs. BYTE-reproducibility
 # across rebuilds is NOT claimed - behavioral parity via the --probe line is
 # the bar.
@@ -29,7 +29,7 @@ aarch64)
   exit 1
   ;;
 *)
-  echo "regenerate.sh: REFUSAL (named): unsupported architecture '${ARCH}' - fail-closed house posture, no partial artifacts. Supported: x86_64 (aarch64 deferred pending measurement)." >&2
+  echo "regenerate.sh: REFUSAL (named): unsupported architecture '${ARCH}' - fail-closed, no partial artifacts. Supported: x86_64 (aarch64 deferred pending measurement)." >&2
   exit 1
   ;;
 esac

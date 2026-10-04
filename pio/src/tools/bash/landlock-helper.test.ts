@@ -27,14 +27,14 @@ import { fileURLToPath } from "node:url";
  */
 
 /** Pio package root - one level above src/ (mirrors the constants.ts
- * construction; the suite-local derivation is intentional - Step 3 owns the
- * production resolver, whose parity rows bind it to this replica). */
+ * construction; the suite-local derivation is intentional - the production
+ * resolver in the TS layer binds to this replica through parity rows). */
 const PKG_ROOT = path.resolve(
   fileURLToPath(new URL("../../..", import.meta.url)),
 );
 
-/** Suite-local replica const block (lockstep home - Step 3 adds parity rows
- * asserting the production constants match these replicas). EVERY exit-code
+/** Suite-local replica const block (lockstep home - the production resolver's
+ * parity rows assert its constants match these replicas). EVERY exit-code
  * assertion in this file references this block; raw band literals occur
  * nowhere else in the file (mechanical audit). */
 const FAULT_CODES = {
@@ -46,7 +46,7 @@ const FAULT_CODES = {
 };
 
 /** Reserved fault band - codes are issued only pre-execve, by construction.
- * v1 assigns the low half; the rest stays reserved. */
+ * The current assignment uses the low half; the rest stays reserved. */
 const FAULT_BAND: readonly [number, number] = [100, 199];
 
 /** Probe report line - exact form, ASCII, LF-terminated, exactly one line in
@@ -174,7 +174,7 @@ function probeCapability(): CapabilityReport {
       discoveredAbi: 0,
       pinnedAbi: 0,
       usable: false,
-      reason: `prebuild absent at ${HELPER} (Step 3 fail-closed classifier owns the absent-binary case - never a silent fallback)`,
+      reason: `prebuild absent at ${HELPER} (the TS-side fail-closed classifier owns the absent-binary case - never a silent fallback)`,
     };
   }
   const r = recordSpawn(HELPER, ["--probe"], HELPER_TIMEOUT_MS);
@@ -217,12 +217,12 @@ if (CAP.usable) {
 const skipNote = (reason: string): string =>
   reason === "none" ? "" : ` [skipped: ${reason}]`;
 
-/** Measured host ABI (kickoff remeasurement 2026-10-04: kernel
+/** Measured host ABI (remeasurement 2026-10-04: kernel
  * 7.0.0-34-generic, x86_64, Ubuntu 24.04 HWE - version discovery returned 8).
- * The ABI-report row pins the MEASURED value: if the kickoff host differs,
- * re-measure, update this constant, and record the measurement in the step
- * TEST record; a further divergence from the v2 pins is a BLOCKED-with-
- * evidence event, NOT a silent adaptation (owner ruling). */
+ * The ABI-report row pins the MEASURED value: if the host's kernel differs,
+ * re-measure, update this constant, and record the measurement alongside it;
+ * divergence from the pinned values surfaces with evidence, never a silent
+ * adaptation. */
 const MEASURED_HOST_ABI = 8;
 
 /* ------------------------------ scratch layout --------------------------- */
@@ -234,7 +234,7 @@ mkdirSync(frame);
 mkdirSync(outside);
 // Grant-scope hygiene: the frames grant mkdtemp dirs ONLY - no /dev targets
 // anywhere in fenced commands (measured: /dev writes deny unless granted;
-// the materializer-owned /dev allowance lands in Step 3).
+// the /dev allowance is owned by the TS-side materializer).
 symlinkSync(outside, path.join(frame, "xlink")); // link-crossing shape (pre-spawn)
 writeFileSync(path.join(outside, "data.txt"), "datum\n"); // reads-unaffected target
 writeFileSync(path.join(outside, "victim"), "x\n"); // out-of-frame rm target
@@ -248,12 +248,12 @@ function runFenced(args: readonly string[]): SpawnRecord {
   return recordSpawn(HELPER, args, HELPER_TIMEOUT_MS);
 }
 
-/** Soundness watch item: any signal-death or timeout on a row stops with
- * evidence owed (strace/core) - asserted here so the failure is loud. */
+/** Any signal-death or timeout on a row demands captured evidence
+ * (strace/core) before goldens are trusted - asserted so the failure is loud. */
 function assertSound(res: SpawnRecord): void {
   expect(
     res.abnormal,
-    "signal-death/timeout: capture evidence (strace/core) and surface - soundness watch item",
+    "signal-death/timeout: capture evidence (strace/core) before pinning goldens - do not tune the golden to hide it",
   ).toBe(false);
 }
 
@@ -350,7 +350,7 @@ describe("landlock-helper enforcement goldens (B)", () => {
       assertSound(res);
       expect(res.status).toBe(2);
       // Dash prefixes its diagnostic with its argv[0] - under the helper's
-      // absoluteness contract that is the absolute program path (the v1-pinned
+      // absoluteness contract that is the absolute program path (the plain
       // bare-"sh" form appears verbatim in the nested-lineage row below, where
       // the inner shell is spawned through PATH). The denial-CLASS bytes
       // (cannot create <path>: Permission denied) are identical in both forms.
@@ -446,7 +446,7 @@ describe("landlock-helper enforcement goldens (B)", () => {
       ]);
       assertSound(res);
       expect(res.status).toBe(2);
-      // Inner shell spawned through PATH carries argv[0]="sh": the v1-pinned
+      // Inner shell spawned through PATH carries argv[0]="sh", so the plain
       // marker form appears VERBATIM here.
       expect(res.stderr).toBe(
         `sh: 1: cannot create ${target}: Permission denied\n`,
@@ -585,8 +585,7 @@ describe("landlock-helper degradation & remaining fault classes (C)", () => {
   // F_RESTRICT has NO induced row: restrict_self failure is not inducible
   // hermetically on a healthy kernel. Its presence/distinctness rides the
   // A-group band-integrity row (pairwise-distinct over all five codes); its
-  // defensiveness is documented in the vendor README (honesty note carried
-  // into the step TEST record).
+  // defensiveness is documented in the vendor README.
 });
 
 /* ----------------------------- D. Probe protocol ----------------------------- */

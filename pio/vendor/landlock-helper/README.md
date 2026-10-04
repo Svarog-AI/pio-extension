@@ -4,14 +4,15 @@ The self-authored Landlock helper that every phase-invoked `bash` tool call
 spawns around its command process tree: it builds a fresh per-spawn Landlock
 ruleset from a directory allowlist, applies it to itself, then `execve`s the
 command. Off-permission writes die at attempt time (kernel-side EACCES,
-nothing lands); on-permission writes complete plainly. Steps 3/4 of the
-`command-write-fence` goal consume this artifact verbatim.
+nothing lands); on-permission writes complete plainly. The ruleset
+materializer and the fenced bash tooling under `src/tools/bash/` consume this
+artifact verbatim.
 
 ## Provenance
 
-- Self-authored by goal `command-write-fence`, Step 1 (2026-10-04), MIT-aligned
-  with the repository. Vendored here as source + developer-only regeneration
-  tooling + committed static prebuilds.
+- Self-authored (2026-10-04), MIT-aligned with the repository. Vendored here
+  as source + developer-only regeneration tooling + committed static
+  prebuilds.
 - WHY VENDORED + STATIC + SELF-AUTHORED CONSTANTS: the helper sits on the
   security boundary. Behavioral proof governs - every ABI fact below was
   MEASURED behaviorally on the provisioned host (side-effect-confirmed
@@ -32,7 +33,7 @@ Two modes. Every FAULT exits with a distinct classified code BEFORE any
 `execve`; a successful apply hands the exit code to the COMMAND (`execve`
 replaces the process). Apply mode is SILENT on all fault paths: stdout AND
 stderr carry EXACTLY ZERO bytes - the classified exit code is the entire
-channel. Typed refusal rendering lives in the TS side (Steps 3/4).
+channel. Typed refusal rendering lives in the TS layer (`src/tools/bash/`).
 
 ### Probe mode (exact form)
 
@@ -72,7 +73,7 @@ Grammar:
   left without a value just before `--` (or at end) => 100.
 - The `--` separator is REQUIRED. At least ONE argument follows it (the
   program). The helper performs NO path resolution or PATH lookup - PROGRAM
-  ABSOLUTENESS IS THE TS ASSEMBLER'S CONTRACT (Step 4).
+  ABSOLUTENESS IS THE TS ASSEMBLER'S CONTRACT.
 - Duplicate `--write` paths deduplicate silently (first occurrence kept, order
   preserved). Everything after the FIRST `--` passes through VERBATIM
   (terminator discipline - `--write`-looking tokens after it belong to the
@@ -88,15 +89,15 @@ call is issued with exactly six arguments, unused trailing slots explicitly
 zeroed (measured false-failure hazard - see ABI & pin policy).
 
 Inherited verbatim: cwd, environment, signals (DEFAULT dispositions - the
-helper installs no handlers; group-kill semantics are Step 4's spawner
+helper installs no handlers; group-kill semantics are the spawner's
 concern). The helper chdirs nowhere and mutates no env. Stream purity: on
 success the command's stdout/stderr are PRISTINE (the helper emitted nothing
 beforehand); the exit code is the command's.
 
 ## Fault-code table
 
-Reserved band 100-199; v1 assigns the low half. Every fault exits with a
-DISTINCT code before any execve.
+Reserved band 100-199; the current assignment uses the low half. Every fault
+exits with a DISTINCT code before any execve.
 
 | code | class | trigger |
 |------|-------|---------|
@@ -113,8 +114,8 @@ user command that completes (fully fenced) with an exit code inside the band
 is interpreted by the TS consumer conservatively as a machinery fault
 (enforcement was active throughout; only the refusal text could mislabel the
 cause). Interpretive authority over the band resides in the TS consumer (the
-Step 3 vocabulary module); TOCTOU/spawn-site authority is Step 4's - the
-probe is a fast-path gate and doctrine mirror, never a standing permission.
+fault-vocabulary module); TOCTOU/spawn-site authority sits at the spawn site -
+the probe is a fast-path gate, never a standing permission.
 
 ## ABI & pin policy
 
@@ -132,11 +133,11 @@ block, asserted against the descriptor's `*_bytes` fields) is the documented
 escape valve for a future class needing different field arrangements -
 documented capability, not present code.
 
-### Admitted class (support contract ratified by the owner, 2026-10-04)
+### Admitted class (support contract, pinned 2026-10-04)
 
 Admitted kernel class = {x86_64, ABI 8}. Every OTHER class receives the
 universal typed-refusal path (the 101 family); growth to a new class happens
-ONLY via an explicit measure-and-pin slot on real hardware. Distro userspace
+ONLY via an explicit measure-and-pin pass on real hardware. Distro userspace
 rendering variance is annotation-only: the guarantee rests on kernel
 hook-time denial + exit semantics, not on shell error-message text.
 
@@ -150,12 +151,12 @@ EXACT-IDENTITY lock: the probe's verdict is strict - `status=ok` <=>
 discovered == pin. BOTH directions refuse (fault 101, typed refusal):
 discovered < pin (older kernel, capability gap) AND discovered > pin (a newer
 series whose struct/vocabulary drift this artifact family has NOT measured).
-Rationale (house doctrine): admitting above-pin hosts would rest on UNMEASURED
+Rationale: admitting above-pin hosts would rest on UNMEASURED
 forward-compatibility claims - inferences do not cross the security boundary.
-Whitelist = {8}; growing it in EITHER direction is a SPEC-level
-measure-and-pin act, never a runtime branch (below-pin: kickoff lowers and
-records; above-pin: a dedicated slot measures the new series on real hardware
-- never raised at kickoff). No runtime downgrade; no runtime upgrade. Since
+Whitelist = {8}; growing it in EITHER direction is a deliberate measure-and-
+pin act, never a runtime branch (below-pin: lower and record when measuring;
+above-pin: a dedicated measurement pass on real hardware first - the pin is
+never raised ad hoc). No runtime downgrade; no runtime upgrade. Since
 the shipped spawn path forks the probe per invocation BEFORE the real spawn,
 every fenced spawn pays for a live identity proof against the RUNNING kernel.
 DOCUMENTED RESIDUAL: a DIRECT apply-mode invocation on an above-pin kernel
@@ -167,14 +168,14 @@ includes the probe gate.
 
 Syscall numbers: create_ruleset = 444, add_rule = 445, restrict_self = 446.
 The installed glibc unistd table agrees; in this world's table 460 is
-`lsm_set_self_attr` - a categorically different facility, which is why the
-v1 pin was wrong rather than merely stale. Behavioral proofs: 444 performs the version query and creates
+`lsm_set_self_attr` - a categorically different facility. Behavioral proofs:
+444 performs the version query and creates
 ruleset fds; 446 `(rs, 0)` applied live enforcement (subsequent off-list
 write EACCES, nothing lands). Add_rule convention:
 `add_rule(ruleset_fd, RULE_TYPE, attr_ptr)` - the type is an EXPLICIT second
 argument (`PATH_BENEATH = 1`, matching the live header enum) and there is NO
-size argument (the kernel derives the size from the type). The exhaustive
-kickoff rejection battery (classic layouts x sizes x flags x fd kinds x dirty
+size argument (the kernel derives the size from the type). An exhaustive
+rejection battery (classic layouts x sizes x flags x fd kinds x dirty
 registers) returned EINVAL for every classic shape; only the typed packed
 form returned 0. Restrict takes a FLAGS argument in this series (audit
 `LOG_*` + `TSYNC` family); the helper passes 0 (default audit behavior).
@@ -210,8 +211,8 @@ unused trailing register slots produced MEASURED false failures (create with
 dirty registers flipped to EBUSY; success with zeros).
 
 prctl ordering: `PR_SET_NO_NEW_PRIVS` FIRST, always - measured note: create
-succeeds WITHOUT prior NO_NEW_PRIVS on this kernel; the prctl-first protocol
-is kept anyway (portability + doctrine).
+succeeds WITHOUT prior NO_NEW_PRIVS on this kernel; the prctl-first ordering
+is kept anyway (portability is cheap; keep the strict order).
 
 ### aarch64 guard + measure-and-pin procedure
 
@@ -219,9 +220,9 @@ aarch64 is UNMEASURABLE on the x86_64 provisioned host. Non-x86_64 builds are
 a LOUD COMPILE-TIME `#error` in the source (message points at this procedure),
 backed by a pre-CC NAMED REFUSAL in `regenerate.sh` (no partial artifacts).
 Best-known unverified constants were EVALUATED AND DECLINED: committing
-unmeasured security-boundary constants is precisely the failure mode that
-blocked v1; aarch64 ABSENCE is already fail-closed-covered by Step 3's
-classifier, so the guard costs nothing at runtime now. To admit aarch64 (or
+unmeasured security-boundary constants is precisely the failure mode this
+guard prevents; aarch64 ABSENCE is already fail-closed-covered by the
+TS-side classifier, so the guard costs nothing at runtime now. To admit aarch64 (or
 any new class): (1) build and run the canonical probes on REAL target hardware
 (discovery, syscall identities, attr shapes/sizes, add_rule convention,
 register hygiene, denial class + markers, ENODATA traps); (2) record the
@@ -231,9 +232,10 @@ evidence here, in the Measured ABI/pin record section; (3) add the class row
 absent prebuild is a NORMATIVE condition the classifier owns - never a silent
 fallback.
 
-Re-pin flow for another host class: kickoff measures, lowers or documents per
-the exact-identity lock (lower and record at kickoff; above-pin requires a
-dedicated slot), regenerates, and re-probes until the probe line reads
+Re-pin flow for another host class: measure on the target host, then lower or
+document per the exact-identity lock (below-pin: lower and record while
+measuring; above-pin: a dedicated measurement pass on real hardware first),
+regenerate, and re-probe until the probe line reads
 `status=ok` with `abi=discovered pin=final`.
 
 ## Arch convention
@@ -242,16 +244,16 @@ Prebuilds live at `vendor/landlock-helper/bin/<arch>-linux/landlock-helper`
 under the package root. `<arch>` uses the uname -m tokens: `x86_64`,
 `aarch64`. Node's `process.arch` names differ (`x64`, `arm64`) and are mapped
 onto the uname -m tokens before resolution (suite-local replica today; the
-production resolver + parity rows land in Step 3). Committed: `x86_64-linux`
-only. `aarch64` absence is DEFERRED by ruling and is covered fail-closed by
-Step 3's classifier (loud typed refusal, never an unsandboxed run); building/
-committing the aarch64 prebuild is the future fleet-widening slot described
-above. Dual compile/script guard: the `#error` (source) + the named refusal
+production resolver + parity rows live in the TS layer). Committed:
+`x86_64-linux` only. `aarch64` absence is deferred and is covered fail-closed
+by the TS-side classifier (loud typed refusal, never an unsandboxed run);
+building/committing the aarch64 prebuild is the future fleet-widening pass
+described above. Dual compile/script guard: the `#error` (source) + the named refusal
 (script) make no unmeasured-constant path exist.
 
 ## Measured ABI/pin record
 
-FILLED AT KICKOFF (two-stage build per plan; v2 re-specification confirmed):
+FILLED AT BUILD TIME:
 
 - Date: 2026-10-04 (UTC)
 - Kernel: `7.0.0-34-generic` (x86_64), Ubuntu 24.04 HWE
@@ -261,15 +263,14 @@ FILLED AT KICKOFF (two-stage build per plan; v2 re-specification confirmed):
   (no lowering; raising was never a candidate - discovery did not exceed the
   compiled ceiling)
 - Probe line at delivery: `landlock-helper probe abi=8 pin=8 status=ok` (exit 0)
-- Kickoff duty note: this step RE-RAN after the v1 block (deviation ledger
-  D1-D9 preserved in the goal workspace record). The kickoff
-  re-measurement/confirmation pass reproduced EVERY v2 pin (syscall
+- Confirmation note: before any code was written, a re-measurement pass
+  against this host reproduced every constant in this record (syscall
   identities, typed add_rule shape, layout sizes, ENODATA traps, denial class
   EACCES with marker goldens, nested-lineage and symlink-crossing denials
-  clean with NOTHING landed, reads/executes unmediated) before any code was
-  written - per owner ruling, any divergence would have STOPPED and surfaced;
-  none occurred. Per-bit positions were cross-checked against the running
-  kernel's own published userspace API header (agrees; naming only).
+  clean with NOTHING landed, reads/executes unmediated). Any divergence from a
+  recorded constant stops the build here until the record is amended. Per-bit
+  positions were cross-checked against the running kernel's own published
+  userspace API header (agrees; naming only).
 
 ## Regeneration procedure
 
@@ -304,7 +305,7 @@ rebuilt binary's `--probe` line must equal the pinned-format line with
 - MUTATION-ONLY ENFORCEMENT SCOPE: reads and executes are unmediated by design
   (the guarantee covers writes; the measured suite pins this). Writes to
   `/dev` (incl. `>/dev/null` redirects) ARE denied under the fence unless
-  `/dev` is granted - the Step 3 materializer mandates the `/dev` allowance;
+  `/dev` is granted - the TS-side materializer mandates the `/dev` allowance;
   this suite's frames grant mkdtemp dirs only.
 - PROBE AS THROWAWAY FORK: the probe restricts ITS OWN disposable process over
   a trivial zero-rule ruleset and exits; it is never applied to anything

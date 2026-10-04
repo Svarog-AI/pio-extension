@@ -1,12 +1,12 @@
 /* landlock-helper - vendored fence carrier for the pio command-write fence.
  *
- * Provenance: self-authored by goal command-write-fence, Step 1
- * (2026-10-04). The protocol home is README.md in this directory (argv
- * grammar, fault-code table, ABI pin policy, measured record). Regenerate
- * via regenerate.sh (static link, -O2 -Wall -Wextra -Werror). No third-party
+ * Provenance: self-authored (2026-10-04), MIT-aligned with the repository.
+ * The protocol home is README.md in this directory (argv grammar,
+ * fault-code table, ABI pin policy, measured record). Regenerate via
+ * regenerate.sh (static link, -O2 -Wall -Wextra -Werror). No third-party
  * bytes, no kernel headers, no network at build time.
  *
- * Silent doctrine: APPLY mode emits ZERO bytes on stdout AND stderr on every
+ * Silence: APPLY mode emits ZERO bytes on stdout AND stderr on every fault
  * fault path - the classified exit code is the entire channel; typed refusal
  * rendering lives in the TS side. PROBE mode emits exactly ONE stdout line
  * (pinned format) in both outcomes, plus a short stderr diagnostic on
@@ -94,7 +94,7 @@ struct ll_abi_class {
   size_t path_beneath_bytes; /* packed path-beneath attr size            */
 };
 
-/* x86_64 class - every value kickoff-confirmed 2026-10-04 on kernel
+/* x86_64 class - every value measured 2026-10-04 on kernel
  * 7.0.0-34-generic; the full measurement evidence (behavioral proofs,
  * rejection batteries, the neighboring-table attribution note) lives in
  * the README "Measured ABI/pin record". Roles: the three Landlock syscall
@@ -153,8 +153,8 @@ _Static_assert(sizeof(struct ll_path_beneath) == 12,
 
 /*
  * Protocol fault codes - HOST-INVARIANT (outside the descriptor); mirrored
- * lockstep by the suite const block. Band 100-199 reserved; v1 assigns the
- * low half (105-199 stay reserved). Every apply-mode fault exits BEFORE any
+ * lockstep by the suite const block. Band 100-199 reserved; the current
+ * assignment uses the low half (105-199 stay reserved). Every apply-mode fault exits BEFORE any
  * execve; once execve succeeds the helper is gone, so band codes can only
  * be machinery faults. Documented residual corner: a fully fenced command
  * that completes with an exit code inside the band is interpreted by the TS

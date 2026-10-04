@@ -27,6 +27,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -35,6 +36,8 @@ import type {
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
 import { deriveProjectKey } from "../sandbox/layout.ts";
+import { EXECUTION_STATE_STAMP } from "../session.ts";
+import { SessionExecutionState } from "../session-execution-state.ts";
 import type { CapabilityParams } from "./base.ts";
 import {
   CapabilityEnvError,
@@ -44,6 +47,8 @@ import {
 } from "./base.ts";
 import type { Contract } from "./contract.ts";
 import { ContractViolationError } from "./errors.ts";
+import type { WriteGateVerdict } from "./guards/write-gate.ts";
+import { decideWrite } from "./guards/write-gate.ts";
 import { PioSession, renderCapabilityMarker } from "./pio-session.ts";
 import type { CapabilityResult } from "./status.ts";
 
@@ -1601,5 +1606,1196 @@ describe("source guards (row-2 edge discipline over base.ts)", () => {
     expect(src.slice(phaseDecl, phaseEnd).includes("markCapability")).toBe(
       false,
     );
+  });
+});
+
+// ---------------------------------------------------------------------
+// Capability-source SPAN WINDOW (run()'s session-present branch): the
+// session's execution state records WHAT IS EXECUTING RIGHT NOW -- a LIFO
+// capability span layer opened strictly after input validation and closed
+// at settlement on success AND the catch-all. Observation idiom (this
+// suite only): ROW-SIDE REAL states over healthy LITERAL channel closures
+// stamped onto the B-world parent handle (a plain non-enumerable value
+// write) BEFORE any host is built, then discovered through the CAST-FREE
+// fromRuntime path per row (zero harness surgery); consults go through the
+// REAL predicate. Denial bytes below replicate write-gate.ts byte-for-byte
+// (SOLE OWNER: its module-private renderers); em dashes are U+2014
+// (escaped). Literal-root doctrine: no /tmp/-anchored channel fixture
+// anywhere; the rows are env-independent by construction. Every row sits
+// AFTER the B block: the sticky takeover-eval flag discipline (B1 flip,
+// B8 pin) is load-bearing.
+// ---------------------------------------------------------------------
+const UNIVERSAL_NO_PERMISSION_REPLICA =
+  "Writing is refused \u2014 no write permission is declared by any active phase. Allowed targets: none.";
+
+/** Replica of write-gate.ts's module-private PHASE-LINE renderer (SOLE
+ * OWNER: its renderers) - survivors in declaration order, then the scope
+ * element iff the class is active, then the scratch element LAST iff the
+ * flag is active (the join-or-"none" listing rule included; the phase line
+ * is pure ASCII, no dash glyphs). */
+const PHASE_LINE_REPLICA = (
+  phaseId: string,
+  survivors: readonly string[],
+  workspaceCwd: string | null = null,
+  scratchActive = false,
+): WriteGateVerdict => {
+  const parts: string[] = [...survivors];
+  if (workspaceCwd !== null) {
+    parts.push(`project files under ${workspaceCwd}`);
+  }
+  if (scratchActive) {
+    parts.push("scratch files under /tmp/");
+  }
+  const allowlist = parts.length === 0 ? "none" : parts.join(", ");
+  return {
+    block: true,
+    reason: `Writing is refused during phase '${phaseId}'. Allowed targets: ${allowlist}.`,
+  };
+};
+
+const LITERAL_SLOT_ROOT = "/proj/slot";
+const LITERAL_WORKSPACE_CWD = "/work/slot";
+
+/** One healthy row-side state: literal constant channels (never /tmp/-
+ * anchored -- env-independent, no PI_CODING_AGENT_DIR manipulation). The
+ * optional overrides take ROW-OWNED real roots (the admit rows need REAL
+ * disk-truth channels over their own mkdtemp dirs). */
+function freshRowState(
+  projectSlotRoot: string = LITERAL_SLOT_ROOT,
+  workspaceCwd: string = LITERAL_WORKSPACE_CWD,
+): SessionExecutionState {
+  return new SessionExecutionState({
+    projectSlotRoot: () => projectSlotRoot,
+    workspaceCwd: () => workspaceCwd,
+  });
+}
+
+/** Stamp the row-held state onto a B-world parent handle (mirrors the
+ * create() stamp shape: non-enumerable own data property). */
+function stampRowState(handle: BHandle, state: SessionExecutionState): void {
+  Object.defineProperty(handle, EXECUTION_STATE_STAMP, {
+    value: state,
+    enumerable: false,
+    configurable: true,
+  });
+}
+
+/** One queued quiet resolution per expected prompt over the shared handle
+ * (the scriptRuns pass idiom in direct form). */
+function scriptQuietPrompts(handle: BHandle, count: number): void {
+  for (let index = 0; index < count; index += 1) {
+    handle.prompt.mockImplementationOnce(async (): Promise<void> => {});
+  }
+}
+
+/** Host over the stamped B-world runtime: the REAL cast-free discovery
+ * path runs per row (stamped handle implies finding the row-held object
+ * by identity). */
+function stampedHost(world: BWorld): PioSession {
+  return PioSession.fromRuntime(asRuntime(world.runtime));
+}
+
+describe("PioCapability - capability-source span window (enter/exit timing)", () => {
+  it("SUCCESS: the span is ENTERED before the body's first phase prompt and EXITED before the ok:true result reaches the caller; a second run() on the SAME instance re-enters cleanly and settles", async () => {
+    const root = newBTempRoot();
+    const world = buildBWorld(root, "/work/span-success");
+    const state = freshRowState();
+    stampRowState(world.parentHandle, state);
+    const session = stampedHost(world);
+    const enterSpy = vi.spyOn(state, "enterCapability");
+    const exitSpy = vi.spyOn(state, "exitCapability");
+    expect(state.snapshot().sources).toBeNull(); // pre-run governance
+    let midBodyName: string | null = null;
+    scriptQuietPrompts(world.parentHandle, 2);
+    class SuccessSpanCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "span-cap",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: [],
+      };
+      constructor(host: PioSession) {
+        super({ session: host });
+      }
+      async call(): Promise<Record<string, unknown>> {
+        // BEFORE the body's first phase prompt: the span must already read.
+        const snapshot = state.snapshot();
+        midBodyName = snapshot.sources === null ? null : snapshot.sources.name;
+        await this.execute_phase("quiet", { shouldStopLoop: async () => true });
+        return { settled: true };
+      }
+    }
+    const cap = new SuccessSpanCap(session);
+    const result = await cap.run();
+    expect(result.ok).toBe(true);
+    // (a) enter preceded the body's first prompt: the mid-body snapshot
+    // reads the span, and the enter evidence orders before the prompt.
+    expect(midBodyName).toBe("span-cap");
+    expect(enterSpy).toHaveBeenCalledTimes(1);
+    expect(enterSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      world.parentHandle.prompt.mock.invocationCallOrder[0],
+    );
+    // (b) the pop completed before the result reached the caller: the
+    // reading restores pre-run governance (depth-0 start implies popped).
+    expect(exitSpy).toHaveBeenCalledTimes(1);
+    expect(state.snapshot()).toStrictEqual({
+      sources: null,
+      phase: null,
+      paths: {
+        projectSlotRoot: LITERAL_SLOT_ROOT,
+        workspaceCwd: LITERAL_WORKSPACE_CWD,
+      },
+    });
+    // (c) a second run on the SAME instance re-enters cleanly and settles
+    // (balanced pair per run -- a fresh span, mirroring the span-stamp
+    // fresh-span row).
+    const again = await cap.run();
+    expect(again.ok).toBe(true);
+    expect(midBodyName).toBe("span-cap");
+    expect(enterSpy).toHaveBeenCalledTimes(2);
+    expect(exitSpy).toHaveBeenCalledTimes(2);
+    expect(state.snapshot().sources).toBeNull();
+  });
+
+  it("FAULT: the pop PRECEDES the ok:false settlement -- a post-rejection consultation through the REAL predicate renders the universal no-permission byte, and a follow-up run on the SAME state behaves as if the span never existed", async () => {
+    const root = newBTempRoot();
+    const world = buildBWorld(root, "/work/span-fault");
+    const state = freshRowState();
+    stampRowState(world.parentHandle, state);
+    const session = stampedHost(world);
+    const enterSpy = vi.spyOn(state, "enterCapability");
+    scriptQuietPrompts(world.parentHandle, 2);
+    class FaultOnceSpanCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "fault-cap",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: [],
+      };
+      #firstFault = true;
+      constructor(host: PioSession) {
+        super({ session: host });
+      }
+      async call(): Promise<Record<string, unknown>> {
+        await this.execute_phase("fault-after-settle", {
+          shouldStopLoop: async () => true,
+        });
+        // The author-level fault lands AFTER a settled run (mirror of the
+        // FaultAfterSettleStampCap idiom).
+        if (this.#firstFault) {
+          this.#firstFault = false;
+          throw new Error("body fault after a settled run");
+        }
+        return { recovered: true };
+      }
+    }
+    const cap = new FaultOnceSpanCap(session);
+    const result = await cap.run();
+    // Enter evidence: the span was entered before the settled prompt.
+    expect(enterSpy).toHaveBeenCalledTimes(1);
+    expect(enterSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      world.parentHandle.prompt.mock.invocationCallOrder[0],
+    );
+    // Never-rejects preserved: the author fault settles as the capture.
+    expectSingleFailure(result, {
+      type: "Error",
+      message: "body fault after a settled run",
+    });
+    // THE sharp byte pin: by the time the ok:false result resolves, the
+    // span is ALREADY popped -- and even if it were not, the refusal names
+    // the STATE, not the layer: the REAL predicate over the row-held state
+    // renders the universal no-permission byte.
+    expect(
+      decideWrite(state.snapshot(), "write", {
+        path: `${LITERAL_SLOT_ROOT}/any.md`,
+      }),
+    ).toStrictEqual({ block: true, reason: UNIVERSAL_NO_PERMISSION_REPLICA });
+    // A follow-up action on the SAME state behaves as if the span never
+    // existed: a fresh balanced run enters and settles cleanly.
+    const again = await cap.run();
+    expect(again.ok).toBe(true);
+    if (!again.ok) throw new Error("unreachable");
+    expect(again.outputs).toStrictEqual({ recovered: true });
+    expect(state.snapshot().sources).toBeNull();
+  });
+
+  it("CONTRACT-VIOLATION: an invalid-input run enters NOTHING (strictly after validateInputs -- zero enter-side effect, the state reading untouched)", async () => {
+    const root = newBTempRoot();
+    const world = buildBWorld(root, "/work/span-violation");
+    const state = freshRowState();
+    stampRowState(world.parentHandle, state);
+    const session = stampedHost(world);
+    const enterSpy = vi.spyOn(state, "enterCapability");
+    const exitSpy = vi.spyOn(state, "exitCapability");
+    // Reuse of the ViolatingStampCap fixture shape: required value input.
+    class ViolatingSpanCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "span-cap",
+        version: "1.0.0",
+        inputs: [{ name: "doc" }],
+        outputs: [],
+        writes: [],
+      };
+      constructor(host: PioSession) {
+        super({ session: host });
+      }
+      async call(): Promise<Record<string, unknown>> {
+        return {};
+      }
+    }
+    const result = await new ViolatingSpanCap(session).run({});
+    expectSingleFailure(result, {
+      type: "ContractViolationError",
+      cause: "contract",
+      message:
+        "Contract violation: input 'doc' expects a non-empty string value",
+      violations: ["input 'doc' expects a non-empty string value"],
+    });
+    expect(enterSpy).toHaveBeenCalledTimes(0);
+    expect(exitSpy).toHaveBeenCalledTimes(0);
+    expect(state.snapshot().sources).toBeNull();
+  });
+});
+
+describe("PioCapability - capability-source span window (hop-body regression)", () => {
+  it("HOP: the row-2 window over a STATELESS adopted host NO-OPS CLEANLY -- every gate operation no-ops over the platform-minted handle (the documented foreign boundary), so the full callee body (phase included) leaves the STAMPED shared parent state untouched at depth 0, with zero sendCustomMessage on both handles and the phase prompt on the adopted child handle", async () => {
+    const root = newBTempRoot();
+    const world = buildBWorld(root, "/work/span-hop");
+    const state = freshRowState();
+    // Stamp BEFORE any frame is built over the world: the top frame
+    // discovers the row-held state by identity at holder install.
+    stampRowState(world.parentHandle, state);
+    await installBHolder(world, root);
+    let child: BHandle | undefined;
+    scriptBSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-span-child",
+        observe: (incoming: BHandle) => {
+          child = incoming;
+        },
+      },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+    );
+    class HopSpanCap extends PioCapability {
+      readonly contract: Contract = FIXTURE_CONTRACT;
+      constructor() {
+        super({});
+      }
+      async call(): Promise<Record<string, unknown>> {
+        const a = await this.execute_phase("hop-phase", {
+          instructions: "do it",
+        });
+        return { iterations: a.iterations };
+      }
+    }
+    const result = await new HopSpanCap().run();
+    expect(result.ok).toBe(true);
+    // THE shared state survived the FULL hop untouched: the bracket over
+    // the ADOPTED host no-ops cleanly (the platform-minted, unstamped
+    // handle carries no execution state -- the documented foreign
+    // boundary) -- depth 0 throughout.
+    expect(state.snapshot().sources).toBeNull();
+    expect(state.snapshot().phase).toBeNull();
+    // Absence pins (mirror of the span-stamp row-2 row): neither handle
+    // received a custom message; the phase prompt rode the adopted child.
+    const c = child as BHandle;
+    expect(c.prompt).toHaveBeenCalledTimes(1);
+    expect(c.sendCustomMessage).not.toHaveBeenCalled();
+    expect(world.parentHandle.sendCustomMessage).not.toHaveBeenCalled();
+    expect(world.parentHandle.prompt).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------
+// Capability-source SPAN WINDOW over the STAMPED-SHARED-STATE row-2
+// physical: the hop body BRACKETS the callee's span over the shared stack
+// discovered by the adopted host (enter strictly post-adoption/pre-body,
+// exit at settlement on success AND the catch-all alike). The fixture
+// mirrors the dist-verified physics with ZERO harness surgery: the real
+// fromRuntime discovery path runs end-to-end, and the scripted switch
+// stamps every freshly-minted INCOMING handle via its observe callback
+// (the stored factory re-run stamps every created handle - the measured
+// switchSession physics). Row-owned REAL anchor channels plus pre-created
+// deliverables carry the disk-truth duty for the admit rows (the
+// settlement gate consults real existsSync for write-bag declarations);
+// refusal-only consultations freely use non-existent literal roots.
+// Prompts settle over the adopted CHILD handle during the hop; restored
+// swaps reuse the source sessionId strings so the rebind identity gates
+// hold (reopen-retains-sessionId physics). Consults ride the REAL
+// decideWrite(state.snapshot(), ...) predicate captured at key vantages
+// and asserted after cap.run() (fault-masking avoidance idiom: verdicts
+// never fire hermetically; the script never invokes the interceptor).
+// Every row sits AFTER the B block (sticky takeover-eval flag discipline).
+// ---------------------------------------------------------------------
+describe("PioCapability - capability-source span window (hop-body bracket over the stamped-shared-state physical)", () => {
+  it("SNAPSHOT: mid-body the CALLEE'S sources read INNERMOST with the parent's span SUSPENDED behind it (retained [parent, callee]), the enter evidence orders strictly BEFORE the adopted child handle's first prompt, and the full settle restores pre-hop governance (null/null, balanced enter/exit counts)", async () => {
+    const root = newBTempRoot();
+    const world = buildBWorld(root, "/work/hop-snapshot");
+    const state = freshRowState();
+    // Stamp BEFORE any frame is built over the world: the top frame
+    // discovers the row-held state by identity at holder install.
+    stampRowState(world.parentHandle, state);
+    await installBHolder(world, root);
+    // Observe-time stamping: the incoming handle already carries the SAME
+    // shared state when the adoption discovers it (measured factory-re-
+    // run physics).
+    const children: BHandle[] = [];
+    scriptBSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-snap-child",
+        observe: (incoming: BHandle): void => {
+          children.push(incoming);
+          stampRowState(incoming, state);
+          scriptQuietPrompts(incoming, 1);
+        },
+      },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+    );
+    const session = stampedHost(world);
+    const enterSpy = vi.spyOn(state, "enterCapability");
+    const exitSpy = vi.spyOn(state, "exitCapability");
+    const sourceNames: string[] = [];
+    class SnapParentCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "snap-parent",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: [],
+      };
+      constructor(host: PioSession) {
+        super({ session: host });
+      }
+      async call(): Promise<Record<string, unknown>> {
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        await snapChild.run();
+        return { nested: true };
+      }
+    }
+    class SnapChildCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "snap-callee",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: [],
+      };
+      constructor() {
+        super({});
+      }
+      async call(): Promise<Record<string, unknown>> {
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        const a = await this.execute_phase("quiet-hopped", {
+          shouldStopLoop: async () => true,
+        });
+        return { settled: a.done };
+      }
+    }
+    const snapChild = new SnapChildCap();
+    const result = await new SnapParentCap(session).run();
+    expect(result.ok).toBe(true);
+    // THE retained reading [parent, callee]: the parent's span suspends
+    // BEHIND the callee's while the hopped body executes.
+    expect(sourceNames).toEqual(["snap-parent", "snap-callee"]);
+    // Enter evidence orders STRICTLY BEFORE the adopted child handle's
+    // first prompt (the second enter is the bracket's post-adoption push
+    // on the SHARED state).
+    expect(enterSpy).toHaveBeenCalledTimes(2);
+    expect(children[0].prompt.mock.invocationCallOrder[0]).toBeGreaterThan(
+      enterSpy.mock.invocationCallOrder[1],
+    );
+    // Full settle: pre-hop governance restored (depth 0), one balanced
+    // pair per placement branch (two spans opened, two popped).
+    expect(exitSpy).toHaveBeenCalledTimes(2);
+    expect(state.snapshot()).toStrictEqual({
+      sources: null,
+      phase: null,
+      paths: {
+        projectSlotRoot: LITERAL_SLOT_ROOT,
+        workspaceCwd: LITERAL_WORKSPACE_CWD,
+      },
+    });
+  });
+
+  it("ADMIT PAIR: the callee's phase-DECLARED deliverable ADMITS through the REAL predicate under the callee's OWN contract patterns mid-pass (verdict undefined -- THE discriminator against the pre-fix universal byte), while the SAME target over the pre-hop parent window renders the universal no-permission byte replica identically, with the source-name capture pinning [parent, callee, parent]", async () => {
+    const root = newBTempRoot();
+    const slotRoot = join(root, "slot");
+    mkdirSync(join(slotRoot, "research"), { recursive: true });
+    const artifact = join(slotRoot, "research", "report.md");
+    // Pre-created disk truth: the settlement gate consults REAL existence
+    // for the declared deliverable (disk-truth duty stays suite-side).
+    writeFileSync(artifact, "pre-created disk truth\n", "utf8");
+    const world = buildBWorld(root, "/work/hop-admit");
+    // REAL row-owned anchor channels (never /tmp/-anchored literals).
+    const state = freshRowState(slotRoot, join(root, "cwd"));
+    stampRowState(world.parentHandle, state);
+    await installBHolder(world, root);
+    const children: BHandle[] = [];
+    scriptBSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-admit-child",
+        observe: (incoming: BHandle): void => {
+          children.push(incoming);
+          stampRowState(incoming, state);
+          scriptQuietPrompts(incoming, 1);
+        },
+      },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+    );
+    const session = stampedHost(world);
+    const sourceNames: string[] = [];
+    const verdicts: Array<WriteGateVerdict | undefined> = [];
+    class AdmitParentCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "admit-parent",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: [],
+      };
+      constructor(host: PioSession) {
+        super({ session: host });
+      }
+      async call(): Promise<Record<string, unknown>> {
+        // Pre-hop vantage: the parent's empty-contract SILENT window over
+        // the SAME target renders the universal byte (the contrasting
+        // non-governing side of the discriminating pair).
+        verdicts.push(
+          decideWrite(state.snapshot(), "write", { path: artifact }),
+        );
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        await admitChild.run();
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        return { done: true };
+      }
+    }
+    class AdmitChildCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "admit-callee",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: ["research/*.md"],
+      };
+      constructor() {
+        super({});
+      }
+      async call(): Promise<Record<string, unknown>> {
+        await this.execute_phase("probe-write", {
+          write: [artifact],
+          instructions: "produce the report",
+          shouldStopLoop: async (): Promise<boolean> => {
+            // MID-PASS (the attached phase still governs at this break
+            // point): the declared deliverable is consulted through the
+            // REAL predicate.
+            verdicts.push(
+              decideWrite(state.snapshot(), "write", { path: artifact }),
+            );
+            sourceNames.push(state.snapshot().sources?.name ?? "none");
+            return true;
+          },
+        });
+        return { admitted: true };
+      }
+    }
+    const admitChild = new AdmitChildCap();
+    const result = await new AdmitParentCap(session).run();
+    expect(result.ok).toBe(true);
+    // THE retained reading [parent, callee, parent]: admission happened
+    // under the callee's OWN layer, and the suspended parent governs
+    // again once the callee settles.
+    expect(sourceNames).toEqual([
+      "admit-parent",
+      "admit-callee",
+      "admit-parent",
+    ]);
+    // THE discriminating pair: the pre-hop silent window refuses the SAME
+    // target on the universal byte, while the mid-pass reading under the
+    // running callee's own contract patterns is ADMISSION (undefined).
+    expect(verdicts).toHaveLength(2);
+    expect(verdicts[0]).toStrictEqual({
+      block: true,
+      reason: UNIVERSAL_NO_PERMISSION_REPLICA,
+    });
+    expect(verdicts[1]).toBeUndefined();
+    expect(state.snapshot().phase).toBeNull();
+  });
+
+  it("STRAY REFUSAL: a STRAY target outside the callee's layer consulted mid-pass (the active phase GOVERNS exclusively - moment-set listing) refuses with the PHASE-LINE shape enumerating the surviving declared deliverable (replica mirroring write-gate.ts byte-for-byte), while the pre-hop vantage over the SAME stray renders the universal byte", async () => {
+    const root = newBTempRoot();
+    const slotRoot = join(root, "slot");
+    mkdirSync(join(slotRoot, "research"), { recursive: true });
+    const artifact = join(slotRoot, "research", "report.md");
+    writeFileSync(artifact, "pre-created disk truth\n", "utf8");
+    // Refusal-only consultation: the stray root need not exist (the
+    // predicate is channel-free and never touches disk).
+    const stray = join(slotRoot, "stray", "notes.txt");
+    const world = buildBWorld(root, "/work/hop-stray");
+    const state = freshRowState(slotRoot, join(root, "cwd"));
+    stampRowState(world.parentHandle, state);
+    await installBHolder(world, root);
+    const children: BHandle[] = [];
+    scriptBSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-stray-child",
+        observe: (incoming: BHandle): void => {
+          children.push(incoming);
+          stampRowState(incoming, state);
+          scriptQuietPrompts(incoming, 1);
+        },
+      },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+    );
+    const session = stampedHost(world);
+    const sourceNames: string[] = [];
+    const verdicts: Array<WriteGateVerdict | undefined> = [];
+    class StrayParentCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "stray-parent",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: [],
+      };
+      constructor(host: PioSession) {
+        super({ session: host });
+      }
+      async call(): Promise<Record<string, unknown>> {
+        verdicts.push(decideWrite(state.snapshot(), "write", { path: stray }));
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        await strayChild.run();
+        return { done: true };
+      }
+    }
+    class StrayChildCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "stray-callee",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: ["research/*.md"],
+      };
+      constructor() {
+        super({});
+      }
+      async call(): Promise<Record<string, unknown>> {
+        await this.execute_phase("probe-stray", {
+          write: [artifact],
+          instructions: "produce the report",
+          shouldStopLoop: async (): Promise<boolean> => {
+            // MID-PASS: the phase's effective construction holds EXACTLY
+            // the surviving deliverable - the stray sits OUTSIDE the
+            // layer, so the phase line lists the moment's set alone.
+            verdicts.push(
+              decideWrite(state.snapshot(), "write", { path: stray }),
+            );
+            sourceNames.push(state.snapshot().sources?.name ?? "none");
+            return true;
+          },
+        });
+        return { refused: true };
+      }
+    }
+    const strayChild = new StrayChildCap();
+    const result = await new StrayParentCap(session).run();
+    expect(result.ok).toBe(true);
+    expect(sourceNames).toEqual(["stray-parent", "stray-callee"]);
+    // Pre-hop: the parent's silent window renders the universal byte.
+    expect(verdicts).toHaveLength(2);
+    expect(verdicts[0]).toStrictEqual({
+      block: true,
+      reason: UNIVERSAL_NO_PERMISSION_REPLICA,
+    });
+    // Mid-pass: the GOVERNING-WINDOW vantage (chosen as the
+    // discriminating shape) renders the PHASE LINE naming the active
+    // phase and listing ONLY the surviving deliverable (no scope or
+    // scratch elements - none are declared).
+    expect(verdicts[1]).toStrictEqual(
+      PHASE_LINE_REPLICA("probe-stray", [artifact]),
+    );
+    expect(state.snapshot().phase).toBeNull();
+  });
+
+  it("FAULT PATH: a callee fault AFTER a settled pass settles the ok:false typed capture at the AWAIT (never-rejects preserved), the pop PRECEDES the settlement (post-fault the shared state reads the RESUMED parent layer with the faulting callee's pop already recorded, and the REAL-predicate consult renders the universal byte), and a FOLLOW-UP balanced second hop settles ok:true as if the callee span never existed (3/3 balanced, depth restored to pre-hop governance)", async () => {
+    const root = newBTempRoot();
+    const world = buildBWorld(root, "/work/hop-fault");
+    const state = freshRowState();
+    stampRowState(world.parentHandle, state);
+    await installBHolder(world, root);
+    const children: BHandle[] = [];
+    // Two hops: the faulting hop + the balanced follow-up (each attaches
+    // and restores; both incoming handles stamped at observe time).
+    scriptBSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-fault-child",
+        observe: (incoming: BHandle): void => {
+          children.push(incoming);
+          stampRowState(incoming, state);
+          scriptQuietPrompts(incoming, 1);
+        },
+      },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+      {
+        kind: "swap",
+        sessionId: "sess-fault-second",
+        observe: (incoming: BHandle): void => {
+          children.push(incoming);
+          stampRowState(incoming, state);
+        },
+      },
+      { kind: "swap", sessionId: "sess-fake-0001" },
+    );
+    const session = stampedHost(world);
+    const enterSpy = vi.spyOn(state, "enterCapability");
+    const exitSpy = vi.spyOn(state, "exitCapability");
+    const sourceNames: string[] = [];
+    const verdicts: Array<WriteGateVerdict | undefined> = [];
+    const hopResults: CapabilityResult[] = [];
+    let midEnters = -1;
+    let midExits = -1;
+    class FaultHopCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "fault-callee",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: [],
+      };
+      constructor() {
+        super({});
+      }
+      async call(): Promise<Record<string, unknown>> {
+        await this.execute_phase("fault-after-settle", {
+          shouldStopLoop: async () => true,
+        });
+        // The author-level fault lands AFTER a settled pass.
+        throw new Error("body fault after a settled run");
+      }
+    }
+    class QuietHopCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "quiet-callee",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: [],
+      };
+      constructor() {
+        super({});
+      }
+      async call(): Promise<Record<string, unknown>> {
+        return { recovered: true };
+      }
+    }
+    class FaultParentCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "fault-parent",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: [],
+      };
+      constructor(host: PioSession) {
+        super({ session: host });
+      }
+      async call(): Promise<Record<string, unknown>> {
+        hopResults.push(await new FaultHopCap().run());
+        // Post-rejection vantage (still inside the parent body): the
+        // callee layer is GONE - the parent layer resumed governing and
+        // its silent window refuses on the universal byte.
+        verdicts.push(
+          decideWrite(state.snapshot(), "write", {
+            path: `${LITERAL_SLOT_ROOT}/any.md`,
+          }),
+        );
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        // Balance witness at the capture's AWAIT: two enters have landed
+        // (parent + the faulting callee), and the callee's OWN pop is
+        // already recorded while the parent span stays open (it settles
+        // with the parent's own finally) -- the pop strictly preceded the
+        // ok:false capture reaching this await.
+        midEnters = enterSpy.mock.calls.length;
+        midExits = exitSpy.mock.calls.length;
+        hopResults.push(await new QuietHopCap().run());
+        return { settled: true };
+      }
+    }
+    const result = await new FaultParentCap(session).run();
+    expect(result.ok).toBe(true);
+    // Never-rejects preserved: the ok:false TYPED CAPTURE reached the
+    // await (settled identically into the child record by the hop's own
+    // containment).
+    expect(hopResults).toHaveLength(2);
+    expectSingleFailure(hopResults[0], {
+      type: "Error",
+      message: "body fault after a settled run",
+    });
+    expect(hopResults[1].ok).toBe(true);
+    if (!hopResults[1].ok) throw new Error("unreachable");
+    expect(hopResults[1].outputs).toStrictEqual({ recovered: true });
+    // THE pop preceded the settlement: the post-rejection consultation
+    // through the REAL predicate renders the universal byte, and the
+    // retained witness shows the PARENT layer resuming.
+    expect(verdicts).toHaveLength(1);
+    expect(verdicts[0]).toStrictEqual({
+      block: true,
+      reason: UNIVERSAL_NO_PERMISSION_REPLICA,
+    });
+    expect(sourceNames).toEqual(["fault-parent"]);
+    // Balanced bookkeeping at the capture's await: the faulting callee's
+    // span is CLOSED (its pop recorded) while the parent span is still
+    // open -- and after the follow-up hop everything balances (3/3).
+    expect(midEnters).toBe(2);
+    expect(midExits).toBe(1);
+    expect(enterSpy).toHaveBeenCalledTimes(3);
+    expect(exitSpy).toHaveBeenCalledTimes(3);
+    expect(state.snapshot().sources).toBeNull();
+    expect(state.snapshot().phase).toBeNull();
+  });
+
+  it("NESTED HOP BALANCE: a row-2 hop INSIDE a row-2 hop retains [parent, outer, inner] with the INNERMOST governing (the inner-delivered mid-pass consult ADMITS under the inner layer's patterns), the outer resumes behind the popped inner, and the full settle returns the shared state to pre-hop governance with 3/3 balanced enter/exit counts", async () => {
+    const root = newBTempRoot();
+    const slotRoot = join(root, "slot");
+    mkdirSync(join(slotRoot, "deep"), { recursive: true });
+    const deepArtifact = join(slotRoot, "deep", "note.md");
+    writeFileSync(deepArtifact, "pre-created disk truth\n", "utf8");
+    const world = buildBWorld(root, "/work/hop-nested");
+    const state = freshRowState(slotRoot, join(root, "cwd"));
+    stampRowState(world.parentHandle, state);
+    await installBHolder(world, root);
+    const handles: BHandle[] = [];
+    // FOUR scripted swaps (attach outer, attach inner, restore inner,
+    // restore outer); every INCOMING handle stamped at observe time (the
+    // measured factory-re-run physics); restored sessionIds REUSED so the
+    // rebind identity gates hold.
+    scriptBSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "nest-outer-child",
+        observe: (incoming: BHandle): void => {
+          handles.push(incoming);
+          stampRowState(incoming, state);
+        },
+      },
+      {
+        kind: "swap",
+        sessionId: "nest-inner-child",
+        observe: (incoming: BHandle): void => {
+          handles.push(incoming);
+          stampRowState(incoming, state);
+          scriptQuietPrompts(incoming, 1);
+        },
+      },
+      {
+        kind: "swap",
+        sessionId: "nest-outer-child",
+        observe: (incoming: BHandle): void => {
+          handles.push(incoming);
+          stampRowState(incoming, state);
+        },
+      },
+      {
+        kind: "swap",
+        sessionId: "sess-fake-0001",
+        observe: (incoming: BHandle): void => {
+          handles.push(incoming);
+          stampRowState(incoming, state);
+        },
+      },
+    );
+    const session = stampedHost(world);
+    const enterSpy = vi.spyOn(state, "enterCapability");
+    const exitSpy = vi.spyOn(state, "exitCapability");
+    const sourceNames: string[] = [];
+    const verdicts: Array<WriteGateVerdict | undefined> = [];
+    class NestParentCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "nest-parent",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: [],
+      };
+      constructor(host: PioSession) {
+        super({ session: host });
+      }
+      async call(): Promise<Record<string, unknown>> {
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        await nestOuter.run();
+        return { nested: true };
+      }
+    }
+    class NestOuterCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "nest-outer",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: [],
+      };
+      constructor() {
+        super({});
+      }
+      async call(): Promise<Record<string, unknown>> {
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        await nestInner.run();
+        // Outer resume: the inner span popped, the OUTER layer governs
+        // again before the outer body settles.
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        return { nested: true };
+      }
+    }
+    class NestInnerCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "nest-inner",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: ["deep/*.md"],
+      };
+      constructor() {
+        super({});
+      }
+      async call(): Promise<Record<string, unknown>> {
+        await this.execute_phase("nested-probe", {
+          write: [deepArtifact],
+          instructions: "write the note",
+          shouldStopLoop: async (): Promise<boolean> => {
+            // MID-PASS at depth 2: the INNERMOST layer governs - the
+            // inner-delivered artifact admits under the inner layer's
+            // patterns (outer's empty contract would clamp it away).
+            verdicts.push(
+              decideWrite(state.snapshot(), "write", {
+                path: deepArtifact,
+              }),
+            );
+            sourceNames.push(state.snapshot().sources?.name ?? "none");
+            return true;
+          },
+        });
+        return { deep: true };
+      }
+    }
+    const nestInner = new NestInnerCap();
+    const nestOuter = new NestOuterCap();
+    const result = await new NestParentCap(session).run();
+    expect(result.ok).toBe(true);
+    // THE retained sequence: [parent, outer, inner] with the outer RESUME
+    // as the closing reading (the inner pops behind the outer's back).
+    expect(sourceNames).toEqual([
+      "nest-parent",
+      "nest-outer",
+      "nest-inner",
+      "nest-outer",
+    ]);
+    // Innermost governing: the inner-delivered artifact ADMITS through
+    // the REAL predicate under the inner layer's own patterns.
+    expect(verdicts).toHaveLength(1);
+    expect(verdicts[0]).toBeUndefined();
+    // Balanced settle on the SHARED state: three spans opened (one per
+    // placement branch), three popped - pre-hop governance restored.
+    expect(enterSpy).toHaveBeenCalledTimes(3);
+    expect(exitSpy).toHaveBeenCalledTimes(3);
+    expect(world.runtime.switchSession).toHaveBeenCalledTimes(4);
+    expect(state.snapshot()).toStrictEqual({
+      sources: null,
+      phase: null,
+      paths: {
+        projectSlotRoot: slotRoot,
+        workspaceCwd: join(root, "cwd"),
+      },
+    });
+  });
+
+  it("POST-HOP PARENT RESUME: after the child settles AND the switch-back runs, the PARENT's span GOVERNS AGAIN (retained [parent, callee, parent]) and its SILENT windows STILL refuse on the universal byte (nothing attached) -- the restore path's content invariant across the switch-back + rebind restore", async () => {
+    const root = newBTempRoot();
+    const world = buildBWorld(root, "/work/hop-resume");
+    const state = freshRowState();
+    stampRowState(world.parentHandle, state);
+    await installBHolder(world, root);
+    const handles: BHandle[] = [];
+    scriptBSwitches(
+      world,
+      {
+        kind: "swap",
+        sessionId: "sess-resume-child",
+        observe: (incoming: BHandle): void => {
+          handles.push(incoming);
+          stampRowState(incoming, state);
+          scriptQuietPrompts(incoming, 1);
+        },
+      },
+      {
+        kind: "swap",
+        sessionId: "sess-fake-0001",
+        observe: (incoming: BHandle): void => {
+          handles.push(incoming);
+          stampRowState(incoming, state);
+        },
+      },
+    );
+    const session = stampedHost(world);
+    const sourceNames: string[] = [];
+    const verdicts: Array<WriteGateVerdict | undefined> = [];
+    const target = `${LITERAL_SLOT_ROOT}/resume/readme.md`;
+    class ResumeParentCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "resume-parent",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: [],
+      };
+      constructor(host: PioSession) {
+        super({ session: host });
+      }
+      async call(): Promise<Record<string, unknown>> {
+        // Vantage 1: the parent's OWN silent window pre-hop.
+        verdicts.push(decideWrite(state.snapshot(), "write", { path: target }));
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        await resumeChild.run();
+        // Vantage 3: AFTER the child settle AND the switch-back (the latch
+        // resolves only once the restore ran) -- the parent's span governs
+        // AGAIN over the RESTORED handle.
+        verdicts.push(decideWrite(state.snapshot(), "write", { path: target }));
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        return { resumed: true };
+      }
+    }
+    class ResumeChildCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "resume-callee",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: [],
+      };
+      constructor() {
+        super({});
+      }
+      async call(): Promise<Record<string, unknown>> {
+        const a = await this.execute_phase("silent-hopped", {
+          instructions: "stay quiet",
+        });
+        // Vantage 2: mid-callee-body - the callee's OWN silent window
+        // (span present, nothing attached) over the same target.
+        verdicts.push(decideWrite(state.snapshot(), "write", { path: target }));
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        return { quiet: a.done };
+      }
+    }
+    const resumeChild = new ResumeChildCap();
+    const result = await new ResumeParentCap(session).run();
+    expect(result.ok).toBe(true);
+    // THE content invariant across the switch-back + rebind restore: the
+    // RETAINED SEQUENCE reads [parent, callee, parent] - the parent's
+    // span survived the handle replacement (rebind leaves the execution
+    // state intact; spans belong to the balanced enter/exit lifecycle).
+    expect(sourceNames).toEqual([
+      "resume-parent",
+      "resume-callee",
+      "resume-parent",
+    ]);
+    // Every SILENT window (parent pre-hop, callee mid-body, parent
+    // post-switch-back) STILL refuses on the universal byte.
+    expect(verdicts).toHaveLength(3);
+    for (const verdict of verdicts) {
+      expect(verdict).toStrictEqual({
+        block: true,
+        reason: UNIVERSAL_NO_PERMISSION_REPLICA,
+      });
+    }
+    // Physics pins: switch args [childFile, parentFile] with the cwd
+    // override, and the CURRENT handle IS the restored parent mint.
+    expect(world.runtime.switchSession).toHaveBeenCalledTimes(2);
+    expect(world.runtime.switchSession).toHaveBeenNthCalledWith(
+      2,
+      world.parentFile,
+      { cwdOverride: world.cwd },
+    );
+    expect(world.runtime.session).toBe(handles[1]);
+    expect(state.snapshot().phase).toBeNull();
+  });
+});
+
+describe("PioCapability - capability-source span window (composed-in-process nesting)", () => {
+  it("NESTED: the REAL predicate refuses ALL THREE consultations with the IDENTICAL universal byte (the span site is non-admitting - no phase confirms any target), the retained top-layer source-name capture pins the [caller, callee, caller] suspend/restore ordering, and post-run BOTH spans settle to null/null", async () => {
+    const root = newBTempRoot();
+    const world = buildBWorld(root, "/work/span-nested");
+    const state = freshRowState();
+    stampRowState(world.parentHandle, state);
+    const session = stampedHost(world);
+    // Shared-handle lookup: caller AND callee discover the SAME state by
+    // identity (the row-1 composed shape).
+    const stray = `${LITERAL_SLOT_ROOT}/notes/a.md`;
+    const observed: Array<WriteGateVerdict | undefined> = [];
+    const sourceNames: string[] = [];
+    class NestedCallerCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "caller-cap",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: ["demo/*.md"],
+      };
+      constructor(host: PioSession) {
+        super({ session: host });
+      }
+      async call(): Promise<Record<string, unknown>> {
+        // (1) Mid-caller-span, pre-child: NOTHING governs (no phase) -
+        // the refusal names the STATE; the LAYER rides the marker channel.
+        observed.push(decideWrite(state.snapshot(), "write", { path: stray }));
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        // (2) The callee composes IN-PROCESS over the SAME handle/state.
+        await callee.run();
+        // (3) Back in the caller body AFTER child settlement: the CALLER's
+        // sources govern AGAIN - proven mechanically via the name capture.
+        observed.push(decideWrite(state.snapshot(), "write", { path: stray }));
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        return { nested: true };
+      }
+    }
+    class NestedCalleeCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "callee-cap",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: ["research/*.md"],
+      };
+      constructor(host: PioSession) {
+        super({ session: host });
+      }
+      async call(): Promise<Record<string, unknown>> {
+        // Inside the callee's own span: its own artifact REFUSES too -
+        // the span confers nothing without a confirming phase.
+        observed.push(
+          decideWrite(state.snapshot(), "write", {
+            path: `${LITERAL_SLOT_ROOT}/research/findings.md`,
+          }),
+        );
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        return { researched: true };
+      }
+    }
+    const callee = new NestedCalleeCap(session);
+    const result = await new NestedCallerCap(session).run();
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    // THE THREE-WAY byte identity: every consultation resolves to the
+    // universal no-permission byte (property (c) reinterpretation of
+    // record: the refusal names the STATE; the layer rides the marker
+    // channel).
+    expect(observed).toHaveLength(3);
+    for (const verdict of observed) {
+      expect(verdict).toStrictEqual({
+        block: true,
+        reason: UNIVERSAL_NO_PERMISSION_REPLICA,
+      });
+    }
+    // Retained mechanics proof: the TOP-LAYER SOURCE NAMES track the
+    // suspend/restore ordering through the composed hop.
+    expect(sourceNames).toEqual(["caller-cap", "callee-cap", "caller-cap"]);
+    // (4) Post-run: both spans settled.
+    expect(state.snapshot().sources).toBeNull();
+    expect(state.snapshot().phase).toBeNull();
+  });
+});
+
+describe("PioCapability - capability-source span window (empty-contract span - the compose-demo shape)", () => {
+  it("EMPTY: the universal no-permission byte INSIDE every span IS itself the standing demonstration that a span confers nothing - the in-parent-span stray, the in-parent-span /tmp/ scratch (parity class RETIRED inside an empty span), and the child's own artifact under the child span ALL refuse identically, with the source-name capture pinning [parent, parent, child]; post-run the state is restored to pre-run governance", async () => {
+    const root = newBTempRoot();
+    const world = buildBWorld(root, "/work/span-empty");
+    const state = freshRowState();
+    stampRowState(world.parentHandle, state);
+    const session = stampedHost(world);
+    const observed: Array<WriteGateVerdict | undefined> = [];
+    const sourceNames: string[] = [];
+    class EmptyParentCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "parent",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: [],
+      };
+      constructor(host: PioSession) {
+        super({ session: host });
+      }
+      async call(): Promise<Record<string, unknown>> {
+        // Within the parent span ALONE (before the child): genuinely total
+        // default-deny - the span confers nothing.
+        observed.push(
+          decideWrite(state.snapshot(), "write", {
+            path: `${LITERAL_SLOT_ROOT}/stray/readme.md`,
+          }),
+        );
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        // The /tmp/ scratch inside the empty span: parity class RETIRED -
+        // undeclared means refused at every depth now.
+        observed.push(
+          decideWrite(state.snapshot(), "write", {
+            path: "/tmp/scratch.txt",
+          }),
+        );
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        await child.run();
+        return { done: true };
+      }
+    }
+    class ComposingChildCap extends PioCapability {
+      readonly contract: Contract = {
+        name: "child",
+        version: "1.0.0",
+        inputs: [],
+        outputs: [],
+        writes: ["notes/*.md"],
+      };
+      constructor(host: PioSession) {
+        super({ session: host });
+      }
+      async call(): Promise<Record<string, unknown>> {
+        observed.push(
+          decideWrite(state.snapshot(), "write", {
+            path: `${LITERAL_SLOT_ROOT}/notes/b.md`,
+          }),
+        );
+        sourceNames.push(state.snapshot().sources?.name ?? "none");
+        return { done: true };
+      }
+    }
+    const child = new ComposingChildCap(session);
+    const result = await new EmptyParentCap(session).run();
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    // Properties (a)+(b) reinterpreted of record: the universal byte
+    // INSIDE the spans is itself the standing demonstration that a span
+    // confers nothing - all three readings converge on ONE fixed string.
+    expect(observed).toHaveLength(3);
+    for (const verdict of observed) {
+      expect(verdict).toStrictEqual({
+        block: true,
+        reason: UNIVERSAL_NO_PERMISSION_REPLICA,
+      });
+    }
+    // Retained mechanics proof: the TOP-LAYER SOURCE NAMES track the
+    // suspend/restore ordering ([parent, parent, child]).
+    expect(sourceNames).toEqual(["parent", "parent", "child"]);
+    // Post-run: state restored to pre-run governance.
+    expect(state.snapshot().sources).toBeNull();
+    expect(state.snapshot().phase).toBeNull();
   });
 });

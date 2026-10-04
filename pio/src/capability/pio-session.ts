@@ -55,11 +55,15 @@
 // the phase re-enters the loop body; iterations counts all settled runs,
 // retries included.
 //
-// Durable-declaration retention owed to slot 9: entries resolve ONCE at
-// phase start (absolute normalized; relative under process.cwd()) into a
-// list retained for the whole phase duration — never consumed transiently.
-// Slot 9 (per-session-write-gate) consumes this same declaration as its
-// write-permission frame; enforcement itself is slot 9's scope.
+// Durable-declaration retention: entries resolve ONCE at phase start
+// (absolute normalized; relative under process.cwd()) into a list retained
+// for the whole phase duration — never consumed transiently. The retained
+// resolved entries arm BOTH the settlement gate (consulted at break points)
+// and the execution-state feed (attached verbatim at phase start alongside
+// the phase's normalized project-files scope flag, detached on every exit
+// cause): the session's per-phase write permission frame rides this single
+// retained list plus the flag - the phase's TWO declared permission
+// dimensions.
 //
 // Corrective-note channel: gate-triggered retries alone append ONE fresh
 // deterministic MARKED BLOCK (a flanked em-dash delimiter line labeled
@@ -73,17 +77,43 @@
 // home's ContractViolationError (collect-all, one line per missing path) —
 // unwrapped through the finally closeout into the standard containment
 // channels on both placements.
+//
+// Per-session write-gate producer wiring: create mints EXACTLY ONE
+// SessionExecutionState over its two owned anchor channels (the
+// project-slot root recovered through the base's loud state-root channel
+// plus the launch cwd; the workspace cwd itself) and threads it into the
+// construction seam's guard install alongside the write tool-call handler
+// closure. That closure consults a FRESH snapshot through the stateless
+// predicate per call, eager for every tool name: a faulty channel faults
+// every call verbatim (fail-safe tail), and no containment hides it.
+// fromRuntime
+// discovers the state from the settled handle's symbol stamp via cast-free
+// instanceof narrowing; an unstamped foreign handle carries NO state and
+// every gate operation no-ops cleanly. execute_phase feeds its retained
+// resolved declarations AND its normalized project-files scope flag into
+// the top span strictly at phase start (a phase attaches when EITHER
+// dimension is declared; neither declared attaches nothing) and detaches on
+// every exit cause. rebind leaves the execution state UNTOUCHED on every
+// path - span integrity belongs to the balanced enter/exit lifecycle, not
+// to the swap. The enterCapability / exitCapability pair is the
+// instance-level span-producer surface; no public verdict surface exists,
+// verdicts firing exclusively inside the interceptor closure.
 
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import type {
   AgentSession,
   AgentSessionEvent,
   AgentSessionEventListener,
   AgentSessionRuntime,
 } from "@earendil-works/pi-coding-agent";
-import { createPioSession } from "../session.ts";
+import { slugify } from "../sandbox/layout.ts";
+import { createPioSession, EXECUTION_STATE_STAMP } from "../session.ts";
+import { SessionExecutionState } from "../session-execution-state.ts";
+import { deriveStateRootFromAgentDir } from "./base.ts";
 import { ContractViolationError } from "./errors.ts";
+import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
+import { decideWrite } from "./guards/write-gate.ts";
 
 /** Tool names whose successful executions commit a file path. */
 const FILE_TOOL_NAMES: ReadonlySet<string> = new Set(["write", "edit"]);
@@ -154,10 +184,24 @@ export interface PhaseOptions {
    * settle (absent or empty = no expectations; presence turns enforcement
    * ON — mandatory, always on, no opt-out). Entries are paths: absolute
    * entries pass through normalized; relative entries resolve under
-   * process.cwd(). Permission-neutral in THIS module — slot 9
-   * (per-session-write-gate) consumes this same declaration as its
-   * write-permission frame. */
+   * process.cwd(). Non-empty retained entries additionally feed the
+   * session's execution state (attached verbatim at phase start), arming
+   * the per-phase write permission frame. */
   readonly write?: readonly string[];
+  /** The phase's project-files (workspace-cwd) SCOPE declaration:
+   * CLAMPED at decision time against the running capability's contract
+   * flag - an unbacked flag is INVISIBLE (never granted, never listed).
+   * With the `write` bag and the scratch flag it forms the phase's THREE
+   * declared permission dimensions (all feed the session's execution state
+   * verbatim); absent means false. */
+  readonly allowProjectWrites?: boolean;
+  /** The phase's SCRATCH (/tmp/) declaration: a SINGLE phase flag with NO
+   * contract-side counterpart - judged only at decision time (there is no
+   * clamp to speak of - single-flag doctrine). With the `write` bag and
+   * the scope flag it forms the phase's THREE declared permission
+   * dimensions (all feed the session's execution state verbatim); absent
+   * means false. */
+  readonly tmpDirAllowed?: boolean;
 }
 
 /** Decision window handed to the between-runs hook. */
@@ -391,40 +435,71 @@ export class PioSession {
   #observer: SessionObserver;
   /** Last-bound handle MARKER — rebind's same-handle comparison only. */
   #lastBound: AgentSession;
+  /** Execution state minted by create or discovered through the settled
+   * handle's symbol stamp (fromRuntime); ABSENT means no state — every
+   * gate operation on such an instance no-ops cleanly. */
+  #executionState: SessionExecutionState | undefined;
 
-  private constructor(runtime: AgentSessionRuntime, observer: SessionObserver) {
+  private constructor(
+    runtime: AgentSessionRuntime,
+    observer: SessionObserver,
+    executionState: SessionExecutionState | undefined = undefined,
+  ) {
     this.id = runtime.session.sessionId;
     this.#lastBound = runtime.session;
     this.runtime = runtime;
     this.vars = new SessionVariableStore();
     this.#observer = observer;
+    this.#executionState = executionState;
   }
 
   /**
    * The only standalone construction path: mints the observer and its
-   * single instance-scoped listener, threads the listener through the
-   * construction seam (exactly one live subscription at any instant), and
-   * returns the ready instance. The composed-frame sibling (fromRuntime)
-   * hosts an already-settled runtime instead.
+   * single instance-scoped listener PLUS the one per-session execution
+   * state over the owned anchor channels, threads the listener and the
+   * UNCONDITIONAL guard install (state + write tool-call handler closure)
+   * through the construction seam (exactly one live subscription at any
+   * instant), and returns the ready instance. The composed-frame sibling
+   * (fromRuntime) hosts an already-settled runtime instead.
    */
   static async create(cwd: string, sessionsRoot?: string): Promise<PioSession> {
     const observer = new SessionObserver();
     const listener: AgentSessionEventListener = (event) => {
       observer.handle(event);
     };
+    // THE one per-session execution state: minted over the two owned anchor
+    // channels (storage ONLY — resolution defers to snapshot(), zero env/
+    // fs at construction).
+    const executionState = new SessionExecutionState({
+      projectSlotRoot: () =>
+        join(
+          deriveStateRootFromAgentDir(process.env.PI_CODING_AGENT_DIR),
+          "projects",
+          slugify(cwd),
+        ),
+      workspaceCwd: () => resolve(cwd),
+    });
+    // THE write tool-call handler closure: every tool-call verdict consults
+    // a FRESH snapshot through the stateless predicate — late binding
+    // survives rebind swaps and span churn; no containment anywhere.
+    const writeToolCallHandler = (toolName: string, input: unknown) =>
+      decideWrite(executionState.snapshot(), toolName, input);
     const runtime = await createPioSession(cwd, sessionsRoot, {
       sessionListener: listener,
+      guardInstall: { executionState, handlers: [writeToolCallHandler] },
     });
-    return new PioSession(runtime, observer);
+    return new PioSession(runtime, observer, executionState);
   }
 
   /**
    * Synchronous factory over an ALREADY-SETTLED runtime — the composed-
    * frame sibling of create (cf. dist SessionManager.create/open/inMemory).
    * Mints a fresh observer and listener routed to it, subscribes EXACTLY
-   * ONCE on the runtime's CURRENT handle, and constructs through the same
-   * private constructor. Zero SDK-construction reach; no defensive input
-   * validation — the type contract carries the guarantee.
+   * ONCE on the runtime's CURRENT handle, DISCOVERS the execution state
+   * from that handle's symbol stamp (cast-free narrowing; absent for a
+   * foreign handle), and constructs through the same private constructor.
+   * Zero SDK-construction reach; no defensive input validation — the type
+   * contract carries the guarantee.
    */
   static fromRuntime(runtime: AgentSessionRuntime): PioSession {
     const observer = new SessionObserver();
@@ -432,7 +507,19 @@ export class PioSession {
       observer.handle(event);
     };
     runtime.session.subscribe(listener);
-    return new PioSession(runtime, observer);
+    // Cast-free discovery over the settled handle's symbol stamp: the
+    // Reflect.get read lands in an unknown local, narrowed by instanceof.
+    // A pio-constructed shared handle FINDS THE EXACT object minted at
+    // create (composed frames share it by handle identity); an unstamped
+    // foreign handle resolves undefined — no execution state, every gate
+    // operation below no-ops.
+    const stamped: unknown = Reflect.get(
+      runtime.session,
+      EXECUTION_STATE_STAMP,
+    );
+    const executionState =
+      stamped instanceof SessionExecutionState ? stamped : undefined;
+    return new PioSession(runtime, observer, executionState);
   }
 
   /**
@@ -445,8 +532,10 @@ export class PioSession {
    * last-bound marker moves. Accepted edge: rearms assume the previously
    * bound handle died via platform dispose (switchSession tears down
    * first). The returned unsubscribe is deliberately dropped
-   * (construction-seam doctrine). Never reads this.runtime.session — the
-   * explicit argument is the seam.
+   * (construction-seam doctrine). The execution state is left INTACT
+   * across the swap on purpose: span layers belong to the balanced
+   * enter/exit lifecycle and survive a handle replacement. Never reads
+   * this.runtime.session — the explicit argument is the seam.
    */
   rebind(session: AgentSession): void {
     if (session.sessionId !== this.id) {
@@ -462,6 +551,18 @@ export class PioSession {
     };
     session.subscribe(listener);
     this.#lastBound = session;
+  }
+
+  /** Push the running capability's sources as a span layer on the session's
+   * execution state. No-op when the instance carries no execution state. */
+  enterCapability(sources: CapabilitySources): void {
+    this.#executionState?.enterCapability(sources);
+  }
+
+  /** Pop the session's execution-state span layer (span settlement).
+   * No-op when the instance carries no execution state. */
+  exitCapability(): void {
+    this.#executionState?.exitCapability();
   }
 
   /** Session-cumulative snapshot (fresh object per call). */
@@ -522,12 +623,44 @@ export class PioSession {
     const text =
       renderPhaseMarker(id) +
       (opts?.instructions ? `\n${opts.instructions}` : "");
-    // Resolved once at phase start and retained for the whole duration
-    // (slot-9 storage property): the gate and the ceiling both consult it.
+    // Resolved once at phase start and retained for the whole duration:
+    // the settlement gate, the ceiling failure, and the execution-state
+    // feed all consult this same retained list.
     const declarations = (opts?.write ?? []).map((entry) => ({
       entry,
       resolved: resolve(entry),
     }));
+    // Normalized primitives (absent implies false) fed VERBATIM beside the
+    // retained list: the phase's project-files scope declaration (judged
+    // only at decision time - clamped there against the contract flag) and
+    // its scratch declaration (judged only at decision time, never clamped
+    // - no contract-side counterpart exists).
+    const allowProjectWrites = Boolean(opts?.allowProjectWrites);
+    const tmpDirAllowed = Boolean(opts?.tmpDirAllowed);
+    // The retained resolved entries AND both normalized class flags feed the
+    // execution state VERBATIM when ANY dimension is declared (paths, the
+    // scope flag, or the scratch flag): attach STRICTLY AT PHASE START
+    // (outside the try block, so a loud bookkeeping fault escapes with no
+    // finally-side bookkeeping to untangle); the attached flags keep the
+    // closeout detach symmetric over every exit cause. No dimension
+    // declared attaches NOTHING - the span sources supply the clamp ceiling
+    // unchanged (they admit nothing on their own).
+    const declaredPaths = declarations.map(
+      (declaration) => declaration.resolved,
+    );
+    let attached = false;
+    if (
+      this.#executionState !== undefined &&
+      (declaredPaths.length > 0 || allowProjectWrites || tmpDirAllowed)
+    ) {
+      this.#executionState.attachPhase(
+        id,
+        declaredPaths,
+        allowProjectWrites,
+        tmpDirAllowed,
+      );
+      attached = true;
+    }
     let iterations = 0;
     // Independent of budget and stop rule; never surfaced on PhaseResult.
     let expectationRetries = 0;
@@ -599,6 +732,7 @@ export class PioSession {
       // Windows never leak into the next phase regardless of the exit cause.
       this.resetFilesWrittenDelta();
       this.resetRunMessages();
+      if (attached) this.#executionState?.detachPhase();
     }
   }
 }

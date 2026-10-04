@@ -28,7 +28,14 @@
 // the span's first phase line. A violating run stamps nothing; span return
 // is implicit (section-header scoping); no stamp state exists. The row-2
 // hop body is unstamped: the child engagement's own status record already
-// names the callee.
+// names the callee. The same run() also brackets the capability's sources
+// as a SPAN LAYER on the session's execution state: enter lands at the
+// stamp site strictly after input validation, exit at settlement on
+// success AND the catch-all (no-op-safe over stateless instances); the
+// row-2 hop body brackets the callee's span over the ADOPTED host (enter
+// strictly post-adoption/pre-body, exit at settlement on BOTH settlements,
+// no-op-safe over stateless instances) and REMAINS UNSTAMPED BY DESIGN
+// (the child's own status record names the callee).
 
 import { isAbsolute, join, resolve } from "node:path";
 import { deriveProjectKey } from "../sandbox/layout.ts";
@@ -121,14 +128,40 @@ export abstract class PioCapability {
           ): Promise<Record<string, unknown>> => {
             // Unstamped on purpose: the child's own status record names it.
             this.s = childFrame;
-            return settle(await this.call(values));
+            // The capability-source window over the ADOPTED host: opened
+            // strictly post-adoption, before the body can issue any phase
+            // prompt; closed at settlement on success AND the catch-all
+            // (no-op-safe over stateless instances; a platform-minted
+            // handle carries no execution state).
+            childFrame.enterCapability({
+              name: this.contract.name,
+              writes: this.contract.writes,
+              allowProjectWrites: Boolean(this.contract.allowProjectWrites),
+            });
+            try {
+              return settle(await this.call(values));
+            } finally {
+              childFrame.exitCapability();
+            }
           },
         });
       }
-      // Span stamp: settled before the body can issue any phase prompt.
-      await this.s.markCapability(this.contract.name);
-      const outputs = await this.call(values);
-      return { ok: true, outputs: settle(outputs) };
+      // The capability-source window: opened strictly post-validation so a
+      // violating run enters nothing; closed at settlement on success AND
+      // the catch-all (no-op-safe over stateless instances).
+      this.s.enterCapability({
+        name: this.contract.name,
+        writes: this.contract.writes,
+        allowProjectWrites: Boolean(this.contract.allowProjectWrites),
+      });
+      try {
+        // Span stamp: settled before the body can issue any phase prompt.
+        await this.s.markCapability(this.contract.name);
+        const outputs = await this.call(values);
+        return { ok: true, outputs: settle(outputs) };
+      } finally {
+        this.s.exitCapability();
+      }
     } catch (error) {
       return { ok: false, errors: [captureError(error)] };
     }

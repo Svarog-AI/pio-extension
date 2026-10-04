@@ -146,7 +146,7 @@ export function reportFingerprint(topic: string): string {
 export default class ResearchCapability extends PioCapability {
   readonly contract: Contract = {
     name: "research",
-    version: "0.1.0",
+    version: "0.2.0",
     inputs: [{ name: "topic" }],
     outputs: [{ name: "report", paramKey: "report" }],
     writes: ["research/*.md"],
@@ -205,6 +205,12 @@ export default class ResearchCapability extends PioCapability {
         // path; the first settled run without a report write ends the
         // phase. Shell-redirect appends never appear in that observable.
         Promise.resolve(!ctx.filesWritten.includes(absolutePath)),
+      // Double-duty declaration over the ALREADY-DERIVED absolute report
+      // path: declaring IS granting (the strict per-phase confirmation the
+      // write gate demands for the report) AND arms the engine's settlement
+      // file-appearance gate for this phase. Absolute entries pass the
+      // resolve-once-and-retain step through unchanged.
+      write: [absolutePath],
     });
 
     // Phase ended AT the cap: append the PINNED truncation note so the
@@ -212,8 +218,13 @@ export default class ResearchCapability extends PioCapability {
     // below — the post-phase sanity stat passes by construction (the note
     // guarantees non-empty content).
     if (result.iterations === RESEARCH_MAX_RUNS) {
-      // appendFile CREATES the file when the model never wrote it — the
-      // note-only degenerate partial is accepted (coherent beats elaborate).
+      // Gate-guaranteed presence: settling here PASSED the phase's armed
+      // settlement gate over the declared report path, so the note always
+      // ANNOTATES an existing report. The fileless corner is structurally
+      // unreachable: it escapes as the typed ceiling failure before any
+      // append, and a report recovered through a corrective retry settles
+      // PAST the cap, so this exact-equality guard stays silent and makes
+      // no truncation claim there.
       await appendFile(absolutePath, truncationNote(result.iterations));
     }
 

@@ -26,11 +26,6 @@ export interface FsView {
   glob(pattern: string): string[];
 }
 
-/** Predicate deciding which candidates reach `glob()`: any of `* ? [` in the text. Adapters must handle this class (see module contract). */
-export function hasWildcard(text: string): boolean {
-  return text.includes("*") || text.includes("?") || text.includes("[");
-}
-
 /** Production FsView worker over the live filesystem — sync node:fs ops
  * ONLY. The pattern passes VERBATIM to the built-in glob surface; the one
  * Set + sort post-process holds the deterministic-mount-order pin

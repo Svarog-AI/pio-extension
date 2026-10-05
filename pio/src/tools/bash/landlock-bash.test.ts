@@ -12,11 +12,15 @@
  * (the factory-level ExtensionContext wall makes execute() driving untypeable
  * cast-free) and settles post-delegation behavior over an INJECTED scripted
  * local-ops stand-in (the `localOps` seam) - no real shell ever spawns in
- * hermetic rows. Sanctioned cross-MODULE value dependencies: the
- * ./landlock-ruleset.ts producers (frozen Step 3 single owners of the
- * refusal/denial bytes) and ../../denial-vocabulary.ts (universal shape) -
- * confined to integration-edge rows, named per group. Disk access: `new URL`
- * source reads of the module's own source ONLY. No fake timers.
+ * hermetic rows. Settlement appends ONE content-INDEPENDENT standing note on
+ * resolved NON-ZERO out-of-band exits (trigger = exit code ALONE; the note
+ * names the concrete kernel writable set the spawn rode, rendered from the
+ * frozen composer - no output-content consult anywhere). Sanctioned
+ * cross-MODULE value dependencies: the ./landlock-ruleset.ts producers
+ * (frozen single owners of the refusal bytes and of the kernel-set composer
+ * the listing goldens bind against) - confined to integration-edge rows,
+ * named per group. Disk access: `new URL` source reads of the module's own
+ * source ONLY. No fake timers.
  */
 import { EventEmitter } from "node:events";
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -24,7 +28,6 @@ import os from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { BashOperations } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
-import { UNIVERSAL_NO_PERMISSION_DENIAL } from "../../denial-vocabulary.ts";
 import {
   type AnchorChannels,
   SessionExecutionState,
@@ -37,9 +40,7 @@ import {
 } from "./landlock-bash.ts";
 import {
   composeKernelWritableSet,
-  PERMISSION_DENIED_MARKER,
   parseProbeReport,
-  renderCommandLandlockDenial,
   renderMechanismRefusal,
   resolveLandlockHelperPath,
 } from "./landlock-ruleset.ts";
@@ -290,6 +291,20 @@ function recorderOps(): { ops: BashOperations; calls: ScriptBox[] } {
 }
 
 // ===========================================================================
+// DATA CHANNEL RECORDER (the observation surface for append/framing rows)
+// ===========================================================================
+
+function dataRecorder() {
+  const chunks: Buffer[] = [];
+  return {
+    chunks,
+    onData: (chunk: Buffer) => {
+      chunks.push(chunk);
+    },
+  };
+}
+
+// ===========================================================================
 // SETTLE + REFUSAL READERS (cast-free structural narrowing)
 // ===========================================================================
 
@@ -398,6 +413,18 @@ describe("A. factory-identity pins over createLandlockBash", () => {
     const one = createLandlockBash(WORKSPACE_CWD, state);
     const two = createLandlockBash(WORKSPACE_CWD, state);
     expect(one).not.toBe(two);
+  });
+
+  it("the definition's description is byte-STABLE across instantiations over the same inputs (identity-by-construction preserved: the standing note is a runtime data-channel append - NEVER a definition-level mutation)", () => {
+    const state = fixtureState();
+    const one = createLandlockBash(WORKSPACE_CWD, state) as {
+      description?: string;
+    };
+    const two = createLandlockBash(WORKSPACE_CWD, state) as {
+      description?: string;
+    };
+    expect(one.description).toBe(two.description);
+    expect(one.description?.startsWith("Execute a bash command")).toBe(true);
   });
 });
 
@@ -743,7 +770,7 @@ describe("B. pre-spawn fault truth table", () => {
         );
       },
       workspaceCwd: () => WORKSPACE_CWD,
-    } as unknown as AnchorChannels);
+    });
     const h = makeHarness(faultyState, [], { localOps: rec.ops });
     const outcome = await settle(
       h.ops.exec("echo hi", EXEC_CWD, { onData: () => undefined }),
@@ -862,7 +889,7 @@ describe("C. post-delegation settlement over the uniform band rule", () => {
     expect(fake.calls[0]?.cmd).toContain(CARRIER);
   });
 
-  it("exit 1 without marker resolves { exitCode: 1 } plainly (markerless mute corner - the kernel denial is the guarantee; the line is annotation)", async () => {
+  it("exit 1 (out-of-band non-zero) resolves { exitCode: 1 } at the op boundary (the standing note rides the data channel - group D owns its bytes, trigger, and framing; the op-boundary resolution is unchanged)", async () => {
     const { outcome } = await settleRow(1);
     expect(outcome.ok).toBe(true);
     if (outcome.ok) expect(outcome.value).toEqual({ exitCode: 1 });
@@ -921,28 +948,59 @@ describe("C. post-delegation settlement over the uniform band rule", () => {
 });
 
 // ===========================================================================
-// GROUP D - attribution fire/mute matrix (the wrapped-onData tap retains a
-// bounded tail; content binds against the frozen producers)
+// GROUP D - the standing-note matrix (content-INDEPENDENT settlement:
+// trigger = delegated exit CODE alone; listing = the concrete kernel set the
+// spawn rode, bound against the frozen composer for the SAME window)
 // ===========================================================================
 
-describe("D. attribution fire/mute matrix", () => {
-  function dataRecorder() {
-    const chunks: Buffer[] = [];
-    return {
-      chunks,
-      onData: (chunk: Buffer) => {
-        chunks.push(chunk);
-      },
-    };
+describe("D. the standing-note matrix", () => {
+  /** The re-typed template head (the module's own pinned constant is the
+   * single owner; the house measured-golden pattern binds the BEHAVIOR -
+   * trigger, listing source, framing, channel order - against locally
+   * composed expectations). */
+  const NOTE_TEMPLATE =
+    "Note: a per-phase Landlock write restriction is in effect and denied writes surface as permission errors in the command's own output. Landlock may be blocking changes to certain files due to lack of permissions in the current phase. Allowed targets: ";
+  const UNIVERSAL_NOTE = `${NOTE_TEMPLATE}none.`;
+
+  /** Locally re-typed projection of the CONCRETE kernel writable set onto
+   * model-facing listing elements (documented mapping contract): the
+   * always-present /dev machinery allowance is absent from the grant; the
+   * class additions name like the house shapes; strictly-concrete survivors
+   * ride raw; COMPOSITION order preserved; the empty remainder degrades to
+   * the "none" form. */
+  function expectedListing(
+    writable: readonly string[],
+    workspaceCwd: string,
+  ): string {
+    const parts: string[] = [];
+    for (const entry of writable) {
+      if (entry === "/dev") continue;
+      if (entry === "/tmp") {
+        parts.push("scratch files under /tmp/");
+        continue;
+      }
+      if (entry === workspaceCwd) {
+        parts.push(`project files under ${entry}`);
+        continue;
+      }
+      parts.push(entry);
+    }
+    return parts.length === 0 ? "none" : parts.join(", ");
   }
 
-  const DENY_SNIPPET = PERMISSION_DENIED_MARKER;
+  /** The note for one window: template + the frozen composer's vector for
+   * the SAME snapshot (non-circular - the golden derives from the sibling
+   * materializer, the binding target is this module's append). */
+  function noteForWindow(state: SessionExecutionState): string {
+    const snapshot = state.snapshot();
+    return `${NOTE_TEMPLATE}${expectedListing(composeKernelWritableSet(snapshot), snapshot.paths.workspaceCwd)}.`;
+  }
 
-  it("FIRE (universal shape over an untouched depth-0 state): ONE appended onData call carrying lead + universal line + trailing LF STRICTLY AFTER all raw chunks (channel-order receipt)", async () => {
+  it("FIRE (universal 'none' listing over an untouched depth-0 state): the exit-code trigger ALONE fires ONE appended note STRICTLY AFTER all raw chunks (channel-order receipt) and the listing degrades to the universal 'none' form", async () => {
     const rec = dataRecorder();
     const fake = scriptedOps((box) => {
       box.push(Buffer.from("working...\n"));
-      box.push(Buffer.from(`${DENY_SNIPPET}\n`));
+      box.push(Buffer.from("boom\n"));
       return { exitCode: 3 };
     });
     const h = makeHarness(
@@ -953,28 +1011,26 @@ describe("D. attribution fire/mute matrix", () => {
       },
     );
     const outcome = await settle(
-      h.ops.exec("fails-with-denial", EXEC_CWD, { onData: rec.onData }),
+      h.ops.exec("fails-without-denial", EXEC_CWD, { onData: rec.onData }),
     );
     expect(outcome.ok).toBe(true);
-    expect(rec.chunks.length).toBeGreaterThanOrEqual(3);
-    const payload = rec.chunks[rec.chunks.length - 1]!.toString("utf8");
-    expect(payload).toBe(`${UNIVERSAL_NO_PERMISSION_DENIAL}\n`);
+    if (outcome.ok) expect(outcome.value).toEqual({ exitCode: 3 });
+    // Channel-order receipt: raw chunks verbatim FIRST, then EXACTLY ONE
+    // append (no leading LF - the immediately-preceding output byte was LF).
+    expect(rec.chunks).toHaveLength(3);
+    expect(rec.chunks[0]!.toString("utf8")).toBe("working...\n");
+    expect(rec.chunks[1]!.toString("utf8")).toBe("boom\n");
+    expect(rec.chunks[2]!.toString("utf8")).toBe(`${UNIVERSAL_NOTE}\n`);
     expect(fake.calls).toHaveLength(1);
   });
 
-  it("FIRE (phase shape - governing phase with covered concrete declarations): the appended line names the governing layer + writable-set listing exactly as the frozen renderer computes for the SAME window", async () => {
+  it("FIRE (phase-shaped listing - span + attached governing phase): the note names the CONCRETE kernel set the spawn rode, bound against the FROZEN composer output for the SAME window (integration edge, non-circular)", async () => {
     const rec = dataRecorder();
     const state = fixtureState();
     state.enterCapability(RESEARCH);
     state.attachPhase("impl", [KEPT_A], true, false);
-    const snapshot = state.snapshot();
     const fake = scriptedOps((box) => {
       box.push(Buffer.from("attempting write...\n"));
-      box.push(
-        Buffer.from(
-          `${DENY_SNIPPET}: '/state/projects/proj-x/research/b.md'\n`,
-        ),
-      );
       return { exitCode: 1 };
     });
     const h = makeHarness(
@@ -988,135 +1044,20 @@ describe("D. attribution fire/mute matrix", () => {
       h.ops.exec("writes-outside-phase", EXEC_CWD, { onData: rec.onData }),
     );
     expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect(outcome.value).toEqual({ exitCode: 1 });
     const payload = rec.chunks[rec.chunks.length - 1]!.toString("utf8");
-    const expectedLine = renderCommandLandlockDenial(snapshot);
-    expect(payload).toBe(`${expectedLine}\n`);
-    expect(expectedLine).toContain("during phase 'impl'");
+    // The phase window must NOT degrade onto the depth-0 form (guards the
+    // projection against silently dropping every element).
+    expect(noteForWindow(state)).not.toBe(UNIVERSAL_NOTE);
+    expect(payload).toBe(`${noteForWindow(state)}\n`);
   });
 
-  it("framing variant (tail ends in LF): NO leading LF - payload is the bare line + trailing LF", async () => {
-    const rec = dataRecorder();
-    const fake = scriptedOps((box) => {
-      box.push(Buffer.from(`${DENY_SNIPPET}\n`));
-      return { exitCode: 5 };
-    });
-    const h = makeHarness(
-      fixtureState(),
-      [{ stdin: false, actions: probePassActions() }],
-      {
-        localOps: fake.ops,
-      },
-    );
-    const outcome = await settle(
-      h.ops.exec("denied-then-newline", EXEC_CWD, { onData: rec.onData }),
-    );
-    expect(outcome.ok).toBe(true);
-    const payload = rec.chunks[rec.chunks.length - 1]!.toString("utf8");
-    expect(payload).toBe(`${UNIVERSAL_NO_PERMISSION_DENIAL}\n`);
-    expect(payload.startsWith("\n")).toBe(false);
-  });
-
-  it("framing variant (tail's last line PARTIAL): a LEADING LF terminates the partial line before the denial line", async () => {
-    const rec = dataRecorder();
-    const fake = scriptedOps((box) => {
-      box.push(Buffer.from(DENY_SNIPPET));
-      return { exitCode: 5 };
-    });
-    const h = makeHarness(
-      fixtureState(),
-      [{ stdin: false, actions: probePassActions() }],
-      {
-        localOps: fake.ops,
-      },
-    );
-    const outcome = await settle(
-      h.ops.exec("denied-partial-line", EXEC_CWD, { onData: rec.onData }),
-    );
-    expect(outcome.ok).toBe(true);
-    const payload = rec.chunks[rec.chunks.length - 1]!.toString("utf8");
-    expect(payload).toBe(`\n${UNIVERSAL_NO_PERMISSION_DENIAL}\n`);
-  });
-
-  it("masked-exit-0 MUTE (exit 0 with a marker in the tail): zero onData additions and resolves 0 - the documented v1 silence corner (the kernel denial still holds; the annotation does not fire)", async () => {
-    const rec = dataRecorder();
-    const fake = scriptedOps((box) => {
-      box.push(Buffer.from(`${DENY_SNIPPET}\n`));
-      return { exitCode: 0 };
-    });
-    const h = makeHarness(
-      fixtureState(),
-      [{ stdin: false, actions: probePassActions() }],
-      {
-        localOps: fake.ops,
-      },
-    );
-    const outcome = await settle(
-      h.ops.exec("masked-write", EXEC_CWD, { onData: rec.onData }),
-    );
-    expect(outcome.ok).toBe(true);
-    if (outcome.ok) expect(outcome.value).toEqual({ exitCode: 0 });
-    expect(rec.chunks).toHaveLength(1);
-  });
-
-  it("EVICTED-marker MUTE (marker-bearing chunk emitted deeper than the mirror-tail cap): the ring evicts it and attribution stays silent - the advisory false-negative corner", async () => {
-    const rec = dataRecorder();
-    const filler = Buffer.alloc(70_000, 0x20);
-    const fake = scriptedOps((box) => {
-      box.push(Buffer.from(`${DENY_SNIPPET}\n`));
-      box.push(filler);
-      return { exitCode: 2 };
-    });
-    const h = makeHarness(
-      fixtureState(),
-      [{ stdin: false, actions: probePassActions() }],
-      {
-        localOps: fake.ops,
-      },
-    );
-    const outcome = await settle(
-      h.ops.exec("deep-denial", EXEC_CWD, { onData: rec.onData }),
-    );
-    expect(outcome.ok).toBe(true);
-    if (outcome.ok) expect(outcome.value).toEqual({ exitCode: 2 });
-    // The raw channel saw BOTH chunks; the retention ring lost the marker.
-    expect(rec.chunks).toHaveLength(2);
-  });
-
-  it("RETAINED-marker FIRE (large multi-chunk output with the marker line within the last cap): the cap-adjacent retention proof fires the append", async () => {
-    const rec = dataRecorder();
-    const filler = Buffer.alloc(70_000, 0x20);
-    const fake = scriptedOps((box) => {
-      box.push(filler);
-      box.push(Buffer.from(`${DENY_SNIPPET}\n`));
-      return { exitCode: 2 };
-    });
-    const h = makeHarness(
-      fixtureState(),
-      [{ stdin: false, actions: probePassActions() }],
-      {
-        localOps: fake.ops,
-      },
-    );
-    const outcome = await settle(
-      h.ops.exec("near-cap-denial", EXEC_CWD, { onData: rec.onData }),
-    );
-    expect(outcome.ok).toBe(true);
-    const payload = rec.chunks[rec.chunks.length - 1]!.toString("utf8");
-    expect(payload).toBe(`${UNIVERSAL_NO_PERMISSION_DENIAL}\n`);
-  });
-
-  it("LATE-BINDING freshness (invocation 1 settles universal-shaped; enterCapability + attachPhase land BETWEEN invocations over the SAME state + SAME ops instance family; invocation 2 settles phase-shaped - the per-invocation fresh consult over the shared record)", async () => {
+  it("LATE-BINDING freshness (invocation 1 settles the universal note; enterCapability + attachPhase land BETWEEN invocations over the SAME shared state record; invocation 2 settles the phase-shaped note - the per-invocation fresh consult survives span/phase churn)", async () => {
     const rec1 = dataRecorder();
     const rec2 = dataRecorder();
     const state = fixtureState();
-    const fake1 = scriptedOps((box) => {
-      box.push(Buffer.from(`${DENY_SNIPPET}\n`));
-      return { exitCode: 3 };
-    });
-    const fake2 = scriptedOps((box) => {
-      box.push(Buffer.from(`${DENY_SNIPPET}\n`));
-      return { exitCode: 3 };
-    });
+    const fake1 = scriptedOps(() => ({ exitCode: 3 }));
+    const fake2 = scriptedOps(() => ({ exitCode: 3 }));
     const ops1 = createLandlockBashOperations(WORKSPACE_CWD, state, {
       localOps: fake1.ops,
     });
@@ -1125,7 +1066,7 @@ describe("D. attribution fire/mute matrix", () => {
     );
     expect(o1.ok).toBe(true);
     expect(rec1.chunks[rec1.chunks.length - 1]!.toString("utf8")).toBe(
-      `${UNIVERSAL_NO_PERMISSION_DENIAL}\n`,
+      `${UNIVERSAL_NOTE}\n`,
     );
     state.enterCapability(RESEARCH);
     state.attachPhase("impl", [KEPT_A], true, false);
@@ -1136,11 +1077,101 @@ describe("D. attribution fire/mute matrix", () => {
       ops2.exec("second", EXEC_CWD, { onData: rec2.onData }),
     );
     expect(o2.ok).toBe(true);
-    const phaseLine = renderCommandLandlockDenial(state.snapshot());
     expect(rec2.chunks[rec2.chunks.length - 1]!.toString("utf8")).toBe(
-      `${phaseLine}\n`,
+      `${noteForWindow(state)}\n`,
     );
-    expect(phaseLine).toContain("during phase 'impl'");
+    expect(noteForWindow(state)).not.toBe(UNIVERSAL_NOTE);
+  });
+
+  it("framing (NO output flowed): the note OPENS the stream - no leading LF, trailing LF always (the tap's last-byte bit stays unset over zero chunks)", async () => {
+    const rec = dataRecorder();
+    const fake = scriptedOps(() => ({ exitCode: 4 }));
+    const h = makeHarness(
+      fixtureState(),
+      [{ stdin: false, actions: probePassActions() }],
+      {
+        localOps: fake.ops,
+      },
+    );
+    const outcome = await settle(
+      h.ops.exec("silent-failure", EXEC_CWD, { onData: rec.onData }),
+    );
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect(outcome.value).toEqual({ exitCode: 4 });
+    expect(rec.chunks).toHaveLength(1);
+    const payload = rec.chunks[0]!.toString("utf8");
+    expect(payload).toBe(`${UNIVERSAL_NOTE}\n`);
+    expect(payload.startsWith("\n")).toBe(false);
+  });
+
+  it("framing (immediately-preceding output byte NOT LF - partial last line): a LEADING LF terminates the partial line before the note", async () => {
+    const rec = dataRecorder();
+    const fake = scriptedOps((box) => {
+      box.push(Buffer.from("partial-last-line"));
+      return { exitCode: 5 };
+    });
+    const h = makeHarness(
+      fixtureState(),
+      [{ stdin: false, actions: probePassActions() }],
+      {
+        localOps: fake.ops,
+      },
+    );
+    const outcome = await settle(
+      h.ops.exec("trailing-partial", EXEC_CWD, { onData: rec.onData }),
+    );
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect(outcome.value).toEqual({ exitCode: 5 });
+    expect(rec.chunks).toHaveLength(2);
+    expect(rec.chunks[0]!.toString("utf8")).toBe("partial-last-line");
+    const payload = rec.chunks[1]!.toString("utf8");
+    expect(payload).toBe(`\n${UNIVERSAL_NOTE}\n`);
+  });
+
+  it("framing (output ends in LF): NO leading LF - payload is the bare note + trailing LF (the factory status suffix appends its own separator after)", async () => {
+    const rec = dataRecorder();
+    const fake = scriptedOps((box) => {
+      box.push(Buffer.from("line-one\n"));
+      box.push(Buffer.from("line-two\n"));
+      return { exitCode: 5 };
+    });
+    const h = makeHarness(
+      fixtureState(),
+      [{ stdin: false, actions: probePassActions() }],
+      {
+        localOps: fake.ops,
+      },
+    );
+    const outcome = await settle(
+      h.ops.exec("clean-lines", EXEC_CWD, { onData: rec.onData }),
+    );
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect(outcome.value).toEqual({ exitCode: 5 });
+    const payload = rec.chunks[rec.chunks.length - 1]!.toString("utf8");
+    expect(payload).toBe(`${UNIVERSAL_NOTE}\n`);
+    expect(payload.startsWith("\n")).toBe(false);
+  });
+
+  it("MUTE (delegated exit 0): the exit-code trigger does not fire - zero note appended, raw chunks untouched, resolves { exitCode: 0 } (FACTUAL silence; enforcement is the guarantee - the note is advisory framing only)", async () => {
+    const rec = dataRecorder();
+    const fake = scriptedOps((box) => {
+      box.push(Buffer.from("anything\n"));
+      return { exitCode: 0 };
+    });
+    const h = makeHarness(
+      fixtureState(),
+      [{ stdin: false, actions: probePassActions() }],
+      {
+        localOps: fake.ops,
+      },
+    );
+    const outcome = await settle(
+      h.ops.exec("succeeds", EXEC_CWD, { onData: rec.onData }),
+    );
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect(outcome.value).toEqual({ exitCode: 0 });
+    expect(rec.chunks).toHaveLength(1);
+    expect(rec.chunks[0]!.toString("utf8")).toBe("anything\n");
   });
 });
 
@@ -1150,12 +1181,10 @@ describe("D. attribution fire/mute matrix", () => {
 // ===========================================================================
 
 describe("E. delegation error contracts", () => {
-  const DENY_SNIPPET = PERMISSION_DENIED_MARKER;
-
-  it("the delegate rejecting with the aborted bytes: the op rejects with the SAME bytes VERBATIM; a marker-bearing tail adds NOTHING (kill-path mute)", async () => {
+  it("the delegate rejecting with the aborted bytes: the op rejects with the SAME bytes VERBATIM; raw chunks arrive untouched and NOTHING is appended (kill-path silence - the standing note rides resolved non-zero exits ONLY)", async () => {
     const rec = dataRecorder();
     const fake = scriptedOps((box) => {
-      box.push(Buffer.from(`${DENY_SNIPPET}\n`));
+      box.push(Buffer.from("aborted-soon\n"));
       return { reject: new Error("aborted") };
     });
     const h = makeHarness(
@@ -1173,15 +1202,10 @@ describe("E. delegation error contracts", () => {
     expect(rec.chunks).toHaveLength(1);
   });
 
-  it("the delegate rejecting with the timeout bytes (original-se token): the op rejects with the SAME bytes VERBATIM; a marker-bearing tail adds NOTHING", async () => {
+  it("the delegate rejecting with the timeout bytes (original-secs token): the op rejects with the SAME bytes VERBATIM; raw chunks arrive untouched and NOTHING is appended", async () => {
     const rec = dataRecorder();
     const fake = scriptedOps((box) => {
-      box.push(
-        Buffer.concat([
-          Buffer.from("output-so-far\n"),
-          Buffer.from(DENY_SNIPPET),
-        ]),
-      );
+      box.push(Buffer.from("output-so-far\npartial"));
       return { reject: new Error("timeout:0.05") };
     });
     const h = makeHarness(
@@ -1216,10 +1240,10 @@ describe("E. delegation error contracts", () => {
     expect(refusalErrorOf(outcome)).toBe(boom);
   });
 
-  it("NON-INTERACTION (an in-band band refusal over a marker-bearing tail): the refusal REPLACES the exit report entirely - the denial-append interaction is absent by construction (attribution consults happen ONLY for command-exit verdicts)", async () => {
+  it("NON-INTERACTION (an in-band band refusal over raw streamed output): the refusal REPLACES the exit report entirely - the standing-note interaction is ABSENT by construction (notes ride resolved NON-ZERO out-of-band exits ONLY)", async () => {
     const rec = dataRecorder();
     const fake = scriptedOps((box) => {
-      box.push(Buffer.from(`${DENY_SNIPPET}\n`));
+      box.push(Buffer.from("raw-output\n"));
       return { exitCode: 104 };
     });
     const h = makeHarness(
@@ -1236,20 +1260,10 @@ describe("E. delegation error contracts", () => {
     expect(errorMessage(refusalErrorOf(outcome))).toBe(
       renderMechanismRefusal("execve-failure", { exitCode: 104 }),
     );
-    // Raw marker chunk forwarded; NO appended denial payload.
+    // Raw chunk forwarded verbatim; NO standing-note append.
     expect(rec.chunks).toHaveLength(1);
-    expect(rec.chunks[0]!.toString("utf8")).toBe(`${DENY_SNIPPET}\n`);
+    expect(rec.chunks[0]!.toString("utf8")).toBe("raw-output\n");
   });
-
-  function dataRecorder() {
-    const chunks: Buffer[] = [];
-    return {
-      chunks,
-      onData: (chunk: Buffer) => {
-        chunks.push(chunk);
-      },
-    };
-  }
 });
 
 // ===========================================================================
@@ -1459,6 +1473,7 @@ describe("G. mechanical source-guard charter over landlock-bash.ts", () => {
   const CAST_TOKEN = ["a", "s"].join("");
   const GATE_EDGE_FRAGMENT = "write-gate";
   const REFUSAL_PREFIX = ["Command", "execution", "refused"].join(" ");
+  const NOTE_PREFIX = "Note: ";
 
   const DEV_PROCESS_MARKERS: string[] = [
     "\\bstep" + "\\s+\\d",
@@ -1535,8 +1550,15 @@ describe("G. mechanical source-guard charter over landlock-bash.ts", () => {
     }
   });
 
-  it("glyph + no-new-voice-bytes discipline: zero raw U+2014 glyph ANYWHERE in the file (prose ASCII-hyphens; the product-facing line bytes belong to the sibling's renderers) and zero LOCAL string literals opening the mechanism-refusal prefix or defining a denial shape (single-owner claim adapted from the sibling's inventory)", () => {
+  it("glyph + voice discipline: zero raw U+2014 glyph ANYWHERE in the file (prose ASCII-hyphens; the product-facing refusal/denial bytes belong to the sibling's renderers); EXACTLY ONE local string literal opens the sanctioned standing-note prefix (the module's SOLE new voice artifact - single-owner pin); and ZERO other literals open the mechanism-refusal prefix or define a denial shape (single-owner claim adapted from the sibling's inventory)", () => {
     expect(RAW_MODULE_SOURCE.includes("\u2014")).toBe(false);
+    const noteOpeners = MODULE_LITERALS.filter(
+      (literal) =>
+        literal.startsWith(`"${NOTE_PREFIX}`) ||
+        literal.startsWith(`'${NOTE_PREFIX}`) ||
+        literal.startsWith(`\`${NOTE_PREFIX}`),
+    );
+    expect(noteOpeners).toHaveLength(1);
     for (const literal of MODULE_LITERALS) {
       expect(literal.startsWith(`"${REFUSAL_PREFIX}`)).toBe(false);
       expect(literal.startsWith(`'${REFUSAL_PREFIX}`)).toBe(false);
@@ -1599,12 +1621,10 @@ describe("G. mechanical source-guard charter over landlock-bash.ts", () => {
       "SessionExecutionState",
     ]);
     expect(namesOf("./landlock-ruleset.ts", false)).toEqual([
-      "PERMISSION_DENIED_MARKER",
       "checkLandlockHelper",
       "classifyLandlockExit",
       "composeKernelWritableSet",
       "parseProbeReport",
-      "renderCommandLandlockDenial",
       "renderMechanismRefusal",
     ]);
   });

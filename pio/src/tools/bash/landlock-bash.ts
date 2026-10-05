@@ -12,10 +12,9 @@
 //
 // WHY BESIDE THE MATERIALIZER: tight coupling - the sibling materializer
 // produces (kernel writable set, fault-code vocabulary, probe-line parse,
-// refusal renderer, post-exec denial renderer, helper classify); this
-// module ESTABLISHES + EXECUTES at the spawn site. It consumes the shared
-// cores through the sibling only - no guard predicate is imported anywhere
-// in this package edge.
+// refusal renderer, helper classify); this module ESTABLISHES + EXECUTES at
+// the spawn site. It consumes the shared cores through the sibling only -
+// no guard predicate is imported anywhere in this package edge.
 //
 // WRAP POSTURE: the ops adapter does NOT re-implement the builtin's process
 // machinery. It runs the fail-closed fence block, serializes the carrier
@@ -26,8 +25,10 @@
 // this interception posture). Grace-idle wait, lineage kill (including the
 // win32 arm), post-wait priority order, and stream hygiene are therefore
 // the UNMODIFIED SDK code by delegation - zero drift surface, and the
-// delegate's rejections propagate VERBATIM (kill paths carry no denial
-// noise; attribution settles ONLY on resolved out-of-band exits).
+// delegate's rejections propagate VERBATIM (kill paths carry NOTHING beyond
+// their own bytes; the standing restriction note rides resolved NON-ZERO
+// out-of-band exits ONLY - triggered by the exit code alone, never by
+// output content).
 //
 // FAIL-CLOSED DOCTRINE: every machinery fault class maps to a typed refusal
 // thrown PRE-CHILD - never an unfenced execution. The throwaway --probe
@@ -37,8 +38,12 @@
 // settlement - the soundness predicate and the interpretive authority over
 // band readings sit AT THE SPAWN SITE, not with the probe verdict. Refusals
 // render through the sibling's eleven-line family (sole voice owner): this
-// module introduces NO new refusal or denial bytes; stream framing adds
-// newlines only.
+// module introduces NO new refusal bytes. Its SOLE new voice artifact is
+// the CONTENT-INDEPENDENT standing restriction note appended on non-zero
+// out-of-band exits (module-local pinned constant): it states that a
+// per-phase Landlock write restriction is in effect and names the CONCRETE
+// kernel writable set the spawn rode, rendered from the pre-spawn consult.
+// No command output content participates in its trigger or content.
 //
 // PARITY SCOPE: behavior-preservation obligations bind ONLY the exec
 // primitive's contract - error-message shapes (invalid-timeout x2, aborted,
@@ -50,8 +55,9 @@
 // through the shadow.
 //
 // GLYPH DISCIPLINE: prose is ASCII-hyphen only; no raw em-dash glyph occurs
-// anywhere in this file - the product-facing line bytes are owned by the
-// sibling's renderers and consumed escaped.
+// anywhere in this file - the product-facing refusal/denial bytes belong to
+// the sibling's renderers; the standing note ships pure ASCII from its own
+// pinned constant.
 // ============================================================================
 
 import { spawn } from "node:child_process";
@@ -72,9 +78,7 @@ import {
   checkLandlockHelper,
   classifyLandlockExit,
   composeKernelWritableSet,
-  PERMISSION_DENIED_MARKER,
   parseProbeReport,
-  renderCommandLandlockDenial,
   renderMechanismRefusal,
 } from "./landlock-ruleset.ts";
 
@@ -151,13 +155,26 @@ const MAX_TIMEOUT_MS = 2_147_483_647;
  * Pinned as a literal so this module carries no division operator anywhere
  * (the colocated zero-slash-in-residue scan stays sound by construction). */
 const MAX_TIMEOUT_SECONDS = 2147483.647;
-/** Mirror-tail retention cap: advisory attribution must stay O(cap) over
- * untrusted command output regardless of total volume. */
-const MIRROR_TAIL_CAP_BYTES = 65_536;
 /** The protocol's throwaway applicability-probe invocation (one token). */
 const PROBE_ARGV: readonly ["--probe"] = ["--probe"];
 /** The tool being shadowed (interpolates the cwd-error parity bytes). */
 const TOOL_LABEL = "bash";
+/** THE pinned standing-restriction-note template (this module's SOLE new
+ * voice artifact - content-INDEPENDENT by construction: the trigger is the
+ * delegated exit CODE alone and the allowed-targets clause renders the
+ * CONCRETE kernel writable set the spawn rode from the pre-spawn consult;
+ * no command output content participates). One physical line, pure ASCII;
+ * the listing joins the trailing period at the render site. */
+const STANDING_NOTE_TEMPLATE =
+  "Note: a per-phase Landlock write restriction is in effect and denied writes surface as permission errors in the command's own output. Landlock may be blocking changes to certain files due to lack of permissions in the current phase. Allowed targets: ";
+/** The composer's ALWAYS-PRESENT machinery allowance (ubiquitous writes
+ * under the bubble's fresh device mount) - absent from the model-facing
+ * listing by design: it rides EVERY window including the depth-0 minimum,
+ * so the empty remainder degrades onto the universal "none" form. */
+const DEV_ALLOWANCE = "/dev";
+/** The scratch-class allowance (present iff the effective scratch
+ * proposition) - named model-facing like the house shape. */
+const TMP_ALLOWANCE = "/tmp";
 
 // ===========================================================================
 // PROBE FORK (the fast-path gate - throwaway, no timeout, no memoization)
@@ -217,31 +234,37 @@ async function runProbe(
 }
 
 // ===========================================================================
-// MIRROR TAIL (bounded retention for post-exec attribution)
+// STANDING RESTRICTION NOTE (content-INDEPENDENT settlement framing)
 // ===========================================================================
 
-interface MirrorTail {
-  buffer: Buffer;
-}
-
-function createMirrorTail(): MirrorTail {
-  return { buffer: Buffer.alloc(0) };
-}
-
-/** Copy-discipline ring: retain the last cap bytes (copy-on-truncate) so
- * marker consultation stays O(cap) regardless of total streamed volume. */
-function advanceMirrorTail(tail: MirrorTail, chunk: Buffer): void {
-  let combined = Buffer.concat([tail.buffer, chunk]);
-  if (combined.length > MIRROR_TAIL_CAP_BYTES) {
-    combined = Buffer.from(
-      combined.subarray(combined.length - MIRROR_TAIL_CAP_BYTES),
-    );
+/** Project the CONCRETE kernel writable set onto model-facing listing
+ * elements in COMPOSITION order: strictly-concrete survivors ride raw (the
+ * composer already dropped wildcard-pattern entries - the listing stays
+ * conservative and truthful: it names what the kernel grants); the class
+ * additions name like the house shapes ("project files under <cwd>",
+ * "scratch files under /tmp/"); the always-present /dev machinery allowance
+ * is absent from the model-facing grant (identity classification: an entry
+ * equal to a class token takes that element's naming - still a truthful
+ * member of the granted set). Bare clause - stream framing (leading/trailing
+ * LFs) belongs to the call site. */
+function renderAllowedTargetsClause(
+  writableSet: readonly string[],
+  workspaceCwd: string,
+): string {
+  const parts: string[] = [];
+  for (const entry of writableSet) {
+    if (entry === DEV_ALLOWANCE) continue;
+    if (entry === TMP_ALLOWANCE) {
+      parts.push("scratch files under /tmp/");
+      continue;
+    }
+    if (entry === workspaceCwd) {
+      parts.push(`project files under ${entry}`);
+      continue;
+    }
+    parts.push(entry);
   }
-  tail.buffer = combined;
-}
-
-function mirrorTailEndsInLf(tail: MirrorTail): boolean {
-  return tail.buffer.length > 0 && tail.buffer[tail.buffer.length - 1] === 0x0a;
+  return parts.length === 0 ? "none" : parts.join(", ");
 }
 
 // ===========================================================================
@@ -440,22 +463,29 @@ export function createLandlockBashOperations(
       }
 
       // ---- DELEGATION (the parity machinery runs UNMODIFIED) ----
-      // The tap retains a bounded tail for post-exec attribution while
-      // forwarding EVERY chunk verbatim to the provided data channel (same
-      // Buffer reference - pristine bytes).
-      const tail = createMirrorTail();
-      const tappedOnData = (chunk: Buffer): void => {
-        advanceMirrorTail(tail, chunk);
+      // The tap forwards EVERY chunk verbatim to the provided data channel
+      // (same Buffer reference - pristine bytes) while retaining the SINGLE
+      // immediately-preceding-output-byte bit needed for the standing note's
+      // FRAMING decision only (content-independent: the bit decides newline
+      // placement, never the note's presence or content).
+      let streamedAnyByte = false;
+      let streamedLastLf = false;
+      const tapChunk = (chunk: Buffer): void => {
+        if (chunk.length > 0) {
+          streamedAnyByte = true;
+          streamedLastLf = chunk[chunk.length - 1] === 0x0a;
+        }
         options.onData(chunk);
       };
       const result = await localOps.exec(serialized.script, cwd, {
         ...options,
-        onData: tappedOnData,
+        onData: tapChunk,
       });
 
       // ---- SETTLEMENT (post-filter over the delegated resolution) ----
       // Kill/abort/timeout rejections already propagated VERBATIM above -
-      // kill paths carry NO denial noise by construction.
+      // those paths carry NOTHING beyond the delegate's own bytes (the
+      // standing note rides resolved NON-ZERO out-of-band exits ONLY).
       if (result.exitCode === null) {
         return { exitCode: null };
       }
@@ -470,18 +500,21 @@ export function createLandlockBashOperations(
           renderMechanismRefusal(verdict.fault, { exitCode: result.exitCode }),
         );
       }
-      // Attribution matrix (fires ONLY on out-of-band NON-ZERO exits):
-      // one framed payload through the SAME data channel before resolving.
-      // Muted corners: masked-exit-0 stays silent; markerless non-zero
-      // passes through plainly; evicted markers (deeper than the cap) are
-      // an acceptable advisory false negative.
-      if (
-        result.exitCode !== 0 &&
-        tail.buffer.includes(PERMISSION_DENIED_MARKER)
-      ) {
-        const lead = mirrorTailEndsInLf(tail) ? "" : "\n";
+      // Standing restriction note (CONTENT-INDEPENDENT): the trigger is the
+      // exit CODE alone (a kernel fact) - no output-content consult
+      // anywhere. ONE framed append through the SAME data channel, strictly
+      // AFTER all raw chunks: leading LF iff the immediately-preceding
+      // forwarded byte EXISTS and was not LF (partial-line termination),
+      // trailing LF always (the factory status suffix appends its own
+      // separator after). The clause renders the CONCRETE kernel set THIS
+      // spawn rode (the pre-spawn consult - the frame that rode the spawn;
+      // late binding survives span/phase churn by construction).
+      if (result.exitCode !== 0) {
+        const lead = streamedAnyByte && !streamedLastLf ? "\n" : "";
         options.onData(
-          Buffer.from(`${lead}${renderCommandLandlockDenial(snapshot)}\n`),
+          Buffer.from(
+            `${lead}${STANDING_NOTE_TEMPLATE}${renderAllowedTargetsClause(writableSet, snapshot.paths.workspaceCwd)}.\n`,
+          ),
         );
       }
       return result;

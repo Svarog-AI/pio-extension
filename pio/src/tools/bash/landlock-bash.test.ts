@@ -1665,3 +1665,144 @@ describe("G. mechanical source-guard charter over landlock-bash.ts", () => {
     }
   });
 });
+
+// ===========================================================================
+// GROUP H - PROBE-ONCE CACHING over a REUSED ops instance (one harness,
+// multiple invocations: the first pays the fork; a PASSED verdict latches;
+// FAILED verdicts do NOT latch and retry pre-child on the next invocation)
+// ===========================================================================
+
+describe("H. probe-once caching over a reused ops instance", () => {
+  /** Re-typed universal depth-0 note payload (the SAME documented mapping
+   * as group D: the composer's /dev-only minimum degrades onto the "none"
+   * listing; framing UNCONDITIONAL - leading LF + trailing LF). */
+  const DEPTH0_NOTE_PAYLOAD =
+    "\nNote: a per-phase Landlock write restriction is in effect and denied writes surface as permission errors in the command's own output. Landlock may be blocking changes to certain files due to lack of permissions in the current phase. Allowed targets: none.\n";
+
+  it("CACHE-HIT (single ops instance, two invocations): the first pays the probe fork (ONE spawner receipt, delegate consulted); the second settles normally with EXACTLY ZERO additional spawner receipts while the wrapped script still reaches the delegate and the note settlement is unchanged", async () => {
+    const rec = dataRecorder();
+    const fake = scriptedOps((box) => {
+      box.push(Buffer.from("raw\n"));
+      return { exitCode: 3 };
+    });
+    const h = makeHarness(
+      fixtureState(),
+      [{ stdin: false, actions: probePassActions() }],
+      { localOps: fake.ops },
+    );
+    const first = await settle(
+      h.ops.exec("first", EXEC_CWD, { onData: rec.onData }),
+    );
+    expect(first.ok).toBe(true);
+    if (first.ok) expect(first.value).toEqual({ exitCode: 3 });
+    expect(h.receipts).toHaveLength(1);
+    expect(fake.calls).toHaveLength(1);
+    const second = await settle(
+      h.ops.exec("second", EXEC_CWD, { onData: rec.onData }),
+    );
+    expect(second.ok).toBe(true);
+    if (second.ok) expect(second.value).toEqual({ exitCode: 3 });
+    // Cache hit: NO second fork over the SAME instance (a re-fork would
+    // push the receipt total to two).
+    expect(h.receipts).toHaveLength(1);
+    // The delegate is still consulted and receives the wrapped script.
+    expect(fake.calls).toHaveLength(2);
+    expect(fake.calls[1]?.cmd).toContain(CARRIER);
+    // Settlement unchanged per invocation: raw chunk verbatim FIRST, then
+    // the universal note (channel-order receipt over both invocations).
+    expect(rec.chunks).toHaveLength(4);
+    expect(rec.chunks[0]!.toString("utf8")).toBe("raw\n");
+    expect(rec.chunks[1]!.toString("utf8")).toBe(DEPTH0_NOTE_PAYLOAD);
+    expect(rec.chunks[2]!.toString("utf8")).toBe("raw\n");
+    expect(rec.chunks[3]!.toString("utf8")).toBe(DEPTH0_NOTE_PAYLOAD);
+  });
+
+  it("FAILURE-RETRY (probe-abnormal family, single ops instance): the first invocation refuses probe-abnormal PRE-CHILD (ONE spawner receipt, delegate NOT consulted) and the failed verdict does NOT latch - the second invocation RE-RUNS the probe over the SAME instance (receipt total TWO), passes, and settles through the wrapped-script delegate consult", async () => {
+    const fake = scriptedOps(() => ({ exitCode: 0 }));
+    const h = makeHarness(
+      fixtureState(),
+      [
+        {
+          stdin: false,
+          actions: [
+            {
+              kind: "data",
+              stream: "stdout",
+              chunk: Buffer.from("garbage-not-a-report\n"),
+            },
+            { kind: "exit", code: 1 },
+          ],
+        },
+        { stdin: false, actions: probePassActions() },
+      ],
+      { localOps: fake.ops },
+    );
+    const first = await settle(
+      h.ops.exec("first", EXEC_CWD, { onData: () => undefined }),
+    );
+    expectRefusal(
+      first,
+      renderMechanismRefusal("probe-abnormal", {
+        probeExit: 1,
+        probeOutput: "garbage-not-a-report",
+      }),
+    );
+    expect(h.receipts).toHaveLength(1);
+    expect(fake.calls).toHaveLength(0);
+    const second = await settle(
+      h.ops.exec("second", EXEC_CWD, { onData: () => undefined }),
+    );
+    expect(second.ok).toBe(true);
+    if (second.ok) expect(second.value).toEqual({ exitCode: 0 });
+    // Explicit receipt arithmetic for the non-cached failure: the probe
+    // RE-RAN (total TWO receipts - the second consumes the passing seam)
+    // and the delegate was consulted exactly once with the wrapped script.
+    expect(h.receipts).toHaveLength(2);
+    expect(fake.calls).toHaveLength(1);
+    expect(fake.calls[0]?.cmd).toContain(CARRIER);
+  });
+
+  it("FAILURE-NOT-CACHED explicit (probe-refused family, single ops instance): the abi-mismatch refusal (status=fail exiting 101) leaves the latch open too - the second invocation retries the probe over the SAME instance (receipt total TWO) and settles once the passing seam answers", async () => {
+    const fake = scriptedOps(() => ({ exitCode: 0 }));
+    const h = makeHarness(
+      fixtureState(),
+      [
+        {
+          stdin: false,
+          actions: [
+            {
+              kind: "data",
+              stream: "stdout",
+              chunk: Buffer.from(
+                "landlock-helper probe abi=7 pin=8 status=fail\n",
+              ),
+            },
+            { kind: "exit", code: 101 },
+          ],
+        },
+        { stdin: false, actions: probePassActions() },
+      ],
+      { localOps: fake.ops },
+    );
+    const first = await settle(
+      h.ops.exec("first", EXEC_CWD, { onData: () => undefined }),
+    );
+    expectRefusal(
+      first,
+      renderMechanismRefusal("probe-refused", {
+        discoveredAbi: 7,
+        pinnedAbi: 8,
+      }),
+    );
+    expect(h.receipts).toHaveLength(1);
+    expect(fake.calls).toHaveLength(0);
+    const second = await settle(
+      h.ops.exec("second", EXEC_CWD, { onData: () => undefined }),
+    );
+    expect(second.ok).toBe(true);
+    if (second.ok) expect(second.value).toEqual({ exitCode: 0 });
+    expect(h.receipts).toHaveLength(2);
+    expect(fake.calls).toHaveLength(1);
+    expect(fake.calls[0]?.cmd).toContain(CARRIER);
+  });
+});

@@ -36,7 +36,26 @@
 // state can shift between probe and real spawn (paths, kernel, permissions),
 // so the real invocation's in-band fault codes refuse IDENTICALLY at
 // settlement - the soundness predicate and the interpretive authority over
-// band readings sit AT THE SPAWN SITE, not with the probe verdict. Refusals
+// band readings sit AT THE SPAWN SITE, not with the probe verdict.
+// PROBE-ONCE CACHING: the applicability verdict is pinned over the life of
+// ONE fenced instance (same kernel for the frame, frozen process privilege
+// state inherited identically by every fork, statically-linked read-only
+// vendor binary, spawned children dead between commands), so the throwaway
+// fork runs LAZILY once: the FIRST fenced invocation pays it at its current
+// position (after the mirrored pre-checks and classify/compose); a PASSED
+// verdict latches onto the instance and every later invocation skips the
+// fork entirely (zero extra spawns); a FAILED verdict does NOT latch - each
+// subsequent invocation retries the probe and refuses pre-child until it
+// passes (no unfenced escape ever; a recovered environment self-heals on
+// the next call). The UNIFORM BAND RULE over delegated out-of-band exits
+// REMAINS the standing settlement authority either way: in-band 100-199
+// still throws the typed refusal post-spawn, so enforcement completeness
+// is unchanged by the cache - a hypothetical mid-frame machinery fault
+// simply surfaces at settlement instead of pre-child. No invalidation hooks
+// are owed: the proven property (kernel Landlock usable and ABI exact-
+// identity) is independent of execution state; the state-dependent parts
+// (paths, writable set) keep flowing through the composer per spawn.
+// Refusals
 // render through the sibling's eleven-line family (sole voice owner): this
 // module introduces NO new refusal bytes. Its SOLE new voice artifact is
 // the CONTENT-INDEPENDENT standing restriction note appended on non-zero
@@ -181,7 +200,9 @@ const DEV_ALLOWANCE = "/dev";
 const TMP_ALLOWANCE = "/tmp";
 
 // ===========================================================================
-// PROBE FORK (the fast-path gate - throwaway, no timeout, no memoization)
+// PROBE FORK (the fast-path gate - throwaway, no timeout; the PASS VERDICT
+// CACHE lives on the CALLER INSTANCE, never here - see the header's
+// PROBE-ONCE CACHING clause)
 // ===========================================================================
 
 interface ProbeReading {
@@ -377,6 +398,11 @@ export function createLandlockBashOperations(
   const resolveShellConfig =
     seams?.resolveShellConfig ?? (() => getShellConfig());
   const localOps = seams?.localOps ?? createLocalBashOperations();
+  // PROBE-ONCE CACHE STATE (closure-scoped deliberately - per-instance keeps
+  // ZERO cross-session shared mutable state): latches ONLY after a passed
+  // verdict; failed verdicts leave it false so every subsequent invocation
+  // retries the probe pre-child (see the header's PROBE-ONCE CACHING clause).
+  let probePassed = false;
 
   return {
     async exec(command, cwd, options) {
@@ -428,28 +454,40 @@ export function createLandlockBashOperations(
       const carrierPath = check.path;
       // 3. Compose the concrete kernel writable set (pure, total).
       const writableSet = composeKernelWritableSet(snapshot);
-      // 4. Throwaway --probe fork (fast-path gate; NEVER a standing
-      // permission - settlement consults the band identically below).
-      const probe = await runProbe(spawner, carrierPath, cwd, options.env);
-      const probeLine = probe.output.endsWith("\n")
-        ? probe.output.slice(0, probe.output.length - 1)
-        : probe.output;
-      const report = parseProbeReport(probeLine);
-      if (!(report !== null && probe.exit === 0 && report.status === "ok")) {
-        if (report !== null && report.status === "fail" && probe.exit === 101) {
+      // 4. Applicability proof (PROBE-ONCE - lazy, cached per fenced
+      // instance): the FIRST invocation runs the throwaway --probe fork at
+      // this position; a PASSED verdict latches onto the instance and every
+      // later invocation skips the fork entirely (zero extra spawns). A
+      // FAILED verdict does NOT latch - the next invocation retries pre-
+      // child; NEVER a standing permission (settlement consults the band
+      // identically below).
+      if (!probePassed) {
+        const probe = await runProbe(spawner, carrierPath, cwd, options.env);
+        const probeLine = probe.output.endsWith("\n")
+          ? probe.output.slice(0, probe.output.length - 1)
+          : probe.output;
+        const report = parseProbeReport(probeLine);
+        if (!(report !== null && probe.exit === 0 && report.status === "ok")) {
+          if (
+            report !== null &&
+            report.status === "fail" &&
+            probe.exit === 101
+          ) {
+            throw new Error(
+              renderMechanismRefusal("probe-refused", {
+                discoveredAbi: report.abi,
+                pinnedAbi: report.pin,
+              }),
+            );
+          }
           throw new Error(
-            renderMechanismRefusal("probe-refused", {
-              discoveredAbi: report.abi,
-              pinnedAbi: report.pin,
+            renderMechanismRefusal("probe-abnormal", {
+              probeExit: probe.exit,
+              probeOutput: probeLine,
             }),
           );
         }
-        throw new Error(
-          renderMechanismRefusal("probe-abnormal", {
-            probeExit: probe.exit,
-            probeOutput: probeLine,
-          }),
-        );
+        probePassed = true;
       }
       // 5. Shell-config resolution (per-spawn fresh; the SAME call the
       // builtin uses - identical transport by construction). A throwing

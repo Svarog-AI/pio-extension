@@ -950,7 +950,8 @@ describe("C. post-delegation settlement over the uniform band rule", () => {
 // ===========================================================================
 // GROUP D - the standing-note matrix (content-INDEPENDENT settlement:
 // trigger = delegated exit CODE alone; listing = the concrete kernel set the
-// spawn rode, bound against the frozen composer for the SAME window)
+// spawn rode, bound against the frozen composer for the SAME window;
+// framing = unconditional leading + trailing LFs)
 // ===========================================================================
 
 describe("D. the standing-note matrix", () => {
@@ -996,7 +997,7 @@ describe("D. the standing-note matrix", () => {
     return `${NOTE_TEMPLATE}${expectedListing(composeKernelWritableSet(snapshot), snapshot.paths.workspaceCwd)}.`;
   }
 
-  it("FIRE (universal 'none' listing over an untouched depth-0 state): the exit-code trigger ALONE fires ONE appended note STRICTLY AFTER all raw chunks (channel-order receipt) and the listing degrades to the universal 'none' form", async () => {
+  it("FIRE (universal 'none' listing over an untouched depth-0 state): the exit-code trigger ALONE fires ONE appended note STRICTLY AFTER all raw chunks (channel-order receipt), the listing degrades to the universal 'none' form, and the leading LF is UNCONDITIONAL (accepted blank line after cleanly-ended output)", async () => {
     const rec = dataRecorder();
     const fake = scriptedOps((box) => {
       box.push(Buffer.from("working...\n"));
@@ -1016,11 +1017,11 @@ describe("D. the standing-note matrix", () => {
     expect(outcome.ok).toBe(true);
     if (outcome.ok) expect(outcome.value).toEqual({ exitCode: 3 });
     // Channel-order receipt: raw chunks verbatim FIRST, then EXACTLY ONE
-    // append (no leading LF - the immediately-preceding output byte was LF).
+    // append (unconditional leading LF; trailing LF always).
     expect(rec.chunks).toHaveLength(3);
     expect(rec.chunks[0]!.toString("utf8")).toBe("working...\n");
     expect(rec.chunks[1]!.toString("utf8")).toBe("boom\n");
-    expect(rec.chunks[2]!.toString("utf8")).toBe(`${UNIVERSAL_NOTE}\n`);
+    expect(rec.chunks[2]!.toString("utf8")).toBe(`\n${UNIVERSAL_NOTE}\n`);
     expect(fake.calls).toHaveLength(1);
   });
 
@@ -1049,7 +1050,7 @@ describe("D. the standing-note matrix", () => {
     // The phase window must NOT degrade onto the depth-0 form (guards the
     // projection against silently dropping every element).
     expect(noteForWindow(state)).not.toBe(UNIVERSAL_NOTE);
-    expect(payload).toBe(`${noteForWindow(state)}\n`);
+    expect(payload).toBe(`\n${noteForWindow(state)}\n`);
   });
 
   it("LATE-BINDING freshness (invocation 1 settles the universal note; enterCapability + attachPhase land BETWEEN invocations over the SAME shared state record; invocation 2 settles the phase-shaped note - the per-invocation fresh consult survives span/phase churn)", async () => {
@@ -1066,7 +1067,7 @@ describe("D. the standing-note matrix", () => {
     );
     expect(o1.ok).toBe(true);
     expect(rec1.chunks[rec1.chunks.length - 1]!.toString("utf8")).toBe(
-      `${UNIVERSAL_NOTE}\n`,
+      `\n${UNIVERSAL_NOTE}\n`,
     );
     state.enterCapability(RESEARCH);
     state.attachPhase("impl", [KEPT_A], true, false);
@@ -1078,12 +1079,12 @@ describe("D. the standing-note matrix", () => {
     );
     expect(o2.ok).toBe(true);
     expect(rec2.chunks[rec2.chunks.length - 1]!.toString("utf8")).toBe(
-      `${noteForWindow(state)}\n`,
+      `\n${noteForWindow(state)}\n`,
     );
     expect(noteForWindow(state)).not.toBe(UNIVERSAL_NOTE);
   });
 
-  it("framing (NO output flowed): the note OPENS the stream - no leading LF, trailing LF always (the tap's last-byte bit stays unset over zero chunks)", async () => {
+  it("framing (NO output flowed): the note OPENS the stream with its unconditional leading LF + trailing LF (accepted phantom-first-line artifact on silent failures)", async () => {
     const rec = dataRecorder();
     const fake = scriptedOps(() => ({ exitCode: 4 }));
     const h = makeHarness(
@@ -1100,8 +1101,8 @@ describe("D. the standing-note matrix", () => {
     if (outcome.ok) expect(outcome.value).toEqual({ exitCode: 4 });
     expect(rec.chunks).toHaveLength(1);
     const payload = rec.chunks[0]!.toString("utf8");
-    expect(payload).toBe(`${UNIVERSAL_NOTE}\n`);
-    expect(payload.startsWith("\n")).toBe(false);
+    expect(payload).toBe(`\n${UNIVERSAL_NOTE}\n`);
+    expect(payload.startsWith("\n")).toBe(true);
   });
 
   it("framing (immediately-preceding output byte NOT LF - partial last line): a LEADING LF terminates the partial line before the note", async () => {
@@ -1128,7 +1129,7 @@ describe("D. the standing-note matrix", () => {
     expect(payload).toBe(`\n${UNIVERSAL_NOTE}\n`);
   });
 
-  it("framing (output ends in LF): NO leading LF - payload is the bare note + trailing LF (the factory status suffix appends its own separator after)", async () => {
+  it("framing (output ends in LF): LEADING LF still prepended (unconditional policy - accepted stray blank line after cleanly-ended output); trailing LF always (the factory status suffix appends its own separator after)", async () => {
     const rec = dataRecorder();
     const fake = scriptedOps((box) => {
       box.push(Buffer.from("line-one\n"));
@@ -1148,8 +1149,8 @@ describe("D. the standing-note matrix", () => {
     expect(outcome.ok).toBe(true);
     if (outcome.ok) expect(outcome.value).toEqual({ exitCode: 5 });
     const payload = rec.chunks[rec.chunks.length - 1]!.toString("utf8");
-    expect(payload).toBe(`${UNIVERSAL_NOTE}\n`);
-    expect(payload.startsWith("\n")).toBe(false);
+    expect(payload).toBe(`\n${UNIVERSAL_NOTE}\n`);
+    expect(payload.startsWith("\n")).toBe(true);
   });
 
   it("MUTE (delegated exit 0): the exit-code trigger does not fire - zero note appended, raw chunks untouched, resolves { exitCode: 0 } (FACTUAL silence; enforcement is the guarantee - the note is advisory framing only)", async () => {

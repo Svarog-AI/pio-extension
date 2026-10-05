@@ -57,7 +57,11 @@
 // GLYPH DISCIPLINE: prose is ASCII-hyphen only; no raw em-dash glyph occurs
 // anywhere in this file - the product-facing refusal/denial bytes belong to
 // the sibling's renderers; the standing note ships pure ASCII from its own
-// pinned constant.
+// pinned constant. FRAMING SCOPE: the note's leading/trailing LFs are
+// UNCONDITIONAL - zero observation over the streamed output exists anywhere
+// in this module (no retention, no consult; the accepted artifacts are the
+// stray blank line after cleanly-ended output and the phantom first line on
+// zero-output failures).
 // ============================================================================
 
 import { spawn } from "node:child_process";
@@ -463,24 +467,11 @@ export function createLandlockBashOperations(
       }
 
       // ---- DELEGATION (the parity machinery runs UNMODIFIED) ----
-      // The tap forwards EVERY chunk verbatim to the provided data channel
-      // (same Buffer reference - pristine bytes) while retaining the SINGLE
-      // immediately-preceding-output-byte bit needed for the standing note's
-      // FRAMING decision only (content-independent: the bit decides newline
-      // placement, never the note's presence or content).
-      let streamedAnyByte = false;
-      let streamedLastLf = false;
-      const tapChunk = (chunk: Buffer): void => {
-        if (chunk.length > 0) {
-          streamedAnyByte = true;
-          streamedLastLf = chunk[chunk.length - 1] === 0x0a;
-        }
-        options.onData(chunk);
-      };
-      const result = await localOps.exec(serialized.script, cwd, {
-        ...options,
-        onData: tapChunk,
-      });
+      // The provided options bag passes to the delegate UNTRANSFORMED - data
+      // channel, signal, timeout, and env all reach it BY REFERENCE; no
+      // interception anywhere over the stream. Pristine-byte forwarding is
+      // identity by delegation.
+      const result = await localOps.exec(serialized.script, cwd, options);
 
       // ---- SETTLEMENT (post-filter over the delegated resolution) ----
       // Kill/abort/timeout rejections already propagated VERBATIM above -
@@ -503,17 +494,17 @@ export function createLandlockBashOperations(
       // Standing restriction note (CONTENT-INDEPENDENT): the trigger is the
       // exit CODE alone (a kernel fact) - no output-content consult
       // anywhere. ONE framed append through the SAME data channel, strictly
-      // AFTER all raw chunks: leading LF iff the immediately-preceding
-      // forwarded byte EXISTS and was not LF (partial-line termination),
-      // trailing LF always (the factory status suffix appends its own
-      // separator after). The clause renders the CONCRETE kernel set THIS
-      // spawn rode (the pre-spawn consult - the frame that rode the spawn;
-      // late binding survives span/phase churn by construction).
+      // AFTER all raw chunks (delegation sequencing makes this airtight):
+      // leading LF ALWAYS (terminates a partial last line where one exists;
+      // the resulting blank line after cleanly-ended output is an accepted
+      // artifact), trailing LF always (the factory status suffix appends its
+      // own separator after). The clause renders the CONCRETE kernel set
+      // THIS spawn rode (the pre-spawn consult - the frame that rode the
+      // spawn; late binding survives span/phase churn by construction).
       if (result.exitCode !== 0) {
-        const lead = streamedAnyByte && !streamedLastLf ? "\n" : "";
         options.onData(
           Buffer.from(
-            `${lead}${STANDING_NOTE_TEMPLATE}${renderAllowedTargetsClause(writableSet, snapshot.paths.workspaceCwd)}.\n`,
+            `\n${STANDING_NOTE_TEMPLATE}${renderAllowedTargetsClause(writableSet, snapshot.paths.workspaceCwd)}.\n`,
           ),
         );
       }

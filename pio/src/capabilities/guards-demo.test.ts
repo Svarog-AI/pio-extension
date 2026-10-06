@@ -330,13 +330,17 @@ const tmpNegativeReplica = (absoluteScratchFile: string): string =>
   `Attempt to write a file ${absoluteScratchFile}. The expectation is that the write comes back REFUSED \u2014 this phase declares NOTHING (no paths, no scope flag, no scratch flag), and the running capability's own contract flag being TRUE changes nothing, while the SAME target was admitted moments earlier by the adjacent probe's OWN declared scratch flag (the grant is phase-declared, not ambient); do not retry the target. Describe in one sentence if it's satisfied.`;
 
 /** Pinned bash-deny instruction template replica (SOLE OWNER: the
- * bashDenyInstructions owner in ./guards-demo.ts - the SILENT fenced-command
- * refusal window over the SHARED stray target the write-tool deny probe
- * refused earlier; ONE parameter - the stray absolute path). Three beats:
- * attempt-imperative / expectation / one-sentence verdict; no em dash occurs
- * in the body. */
+ * bashDenyInstructions owner in ./guards-demo.ts - the DUAL-SHAPE SILENT
+ * fenced-command refusal over the SHARED stray target the write-tool deny
+ * probe refused earlier; ONE parameter - the stray absolute path - SHAPE 1
+ * the BARE redirection AS THE WHOLE COMMAND (FULL VOICE: non-zero exit, the
+ * diagnostic, the trailing note listing NONE) and SHAPE 2 the SAME
+ * redirection SEMICOLON-JOINED with a trailing successful statement (the
+ * exit-0 compound: diagnostic visible, note correctly silent by the shipped
+ * corner, the file NEVER LANDS)). Three beats: attempt-imperative /
+ * expectation / one-sentence verdict; no em dash occurs in the body. */
 const bashDenyReplica = (absoluteStrayArtifact: string): string =>
-  `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteStrayArtifact} - a plain shell redirection is enough. The expectation is that the command comes back REFUSED - the kernel fence denies the write at attempt time, the command exits non-zero with a permission error in its own output, and the output ends with a standing restriction note whose allowed-targets listing is NONE (this phase declares NOTHING). Do not retry the target. Describe in one sentence if it's satisfied.`;
+  `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteStrayArtifact} in TWO shapes, each attempted exactly once: first the redirection AS THE WHOLE COMMAND (a bare invocation such as echo x > ${absoluteStrayArtifact}), then the SAME redirection followed by a semicolon and a trailing successful statement (such as echo x > ${absoluteStrayArtifact}; echo ok - the failed redirection fails only its own statement, so the compound exits zero). The expectation is that BOTH commands come back REFUSED - the phase-permissions context of this run names NO writable targets (this phase declares NOTHING), and the kernel fence denies the write at attempt time: the first exits non-zero with a permission error in its own output and ends with a standing restriction note whose allowed-targets listing is NONE, while the second shows the same permission error but exits zero with no trailing restriction note, and the file never exists after either attempt. Do not attempt the target beyond these two shapes. Describe in one sentence if it's satisfied.`;
 
 /** Pinned bash-allow instruction template replica (SOLE OWNER: the
  * bashAllowInstructions owner in ./guards-demo.ts - the SOLE multi-parameter
@@ -359,11 +363,13 @@ const bashProjectFileReplica = (absoluteCwdFile: string): string =>
 /** Pinned bash-project-file-not-allowed instruction template replica (SOLE
  * OWNER: the bashProjectFileNotAllowedInstructions owner in ./guards-demo.ts -
  * the SILENT window over the SAME shared cwd target; the do-not-retry mandate
- * rides the template). No em dash occurs in the body. */
+ * rides the template, and the ADDED bare-invocation prescription clause
+ * between the imperative and the expectation GUARANTEES the note-bearing
+ * tail). No em dash occurs in the body. */
 const bashProjectFileNotAllowedReplica = (
   absoluteSharedCwdFile: string,
 ): string =>
-  `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteSharedCwdFile}. The expectation is that the command comes back REFUSED - this phase declares NOTHING (no paths, no scope flag), so the kernel fence grants nothing beyond the machine allowance and the output ends with a standing restriction note whose allowed-targets listing is NONE, while the SAME target was admitted earlier by the adjacent probe's OWN declared scope. Do not retry the target. Describe in one sentence if it's satisfied.`;
+  `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteSharedCwdFile}. Issue the redirection AS THE WHOLE COMMAND (a bare invocation). The expectation is that the command comes back REFUSED - this phase declares NOTHING (no paths, no scope flag), so the kernel fence grants nothing beyond the machine allowance and the output ends with a standing restriction note whose allowed-targets listing is NONE, while the SAME target was admitted earlier by the adjacent probe's OWN declared scope. Do not retry the target. Describe in one sentence if it's satisfied.`;
 
 /** Pinned bash-tmp-parity instruction template replica (SOLE OWNER: the
  * bashTmpParityInstructions owner in ./guards-demo.ts - the DECLARED-scratch
@@ -375,9 +381,11 @@ const bashTmpParityReplica = (absoluteScratchFile: string): string =>
 /** Pinned bash-tmp-negative instruction template replica (SOLE OWNER: the
  * bashTmpNegativeInstructions owner in ./guards-demo.ts - the SILENT
  * scratch-refusal window over the SAME pinned scratch target the adjacent
- * probe admitted moments earlier). No em dash occurs in the body. */
+ * probe admitted moments earlier; the ADDED bare-invocation prescription
+ * clause between the imperative and the expectation GUARANTEES the
+ * note-bearing tail). No em dash occurs in the body. */
 const bashTmpNegativeReplica = (absoluteSharedScratchFile: string): string =>
-  `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteSharedScratchFile}. The expectation is that the command comes back REFUSED - this phase declares NOTHING (no paths, no scope flag, no scratch flag), so the kernel fence grants nothing beyond the machine allowance and the output ends with a standing restriction note whose allowed-targets listing is NONE, while the SAME target was admitted moments earlier by the adjacent probe's OWN declared scratch flag. Do not retry the target. Describe in one sentence if it's satisfied.`;
+  `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteSharedScratchFile}. Issue the redirection AS THE WHOLE COMMAND (a bare invocation). The expectation is that the command comes back REFUSED - this phase declares NOTHING (no paths, no scope flag, no scratch flag), so the kernel fence grants nothing beyond the machine allowance and the output ends with a standing restriction note whose allowed-targets listing is NONE, while the SAME target was admitted moments earlier by the adjacent probe's OWN declared scratch flag. Do not retry the target. Describe in one sentence if it's satisfied.`;
 
 /** Pinned summary template replica (SOLE OWNER: the summaryInstructions
  * owner in ./guards-demo.ts): variant A (iterations >= 2) names the observed
@@ -793,9 +801,11 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     // commits the REAL fs seed under its DECLARED scratch flag; the SILENT
     // tmp-negative pass writes NOTHING (the refusal held - disk-truth
     // duty; its consult lands during it); the six BASH passes follow the
-    // same discipline - bash-deny and the two SILENT windows write NOTHING
-    // (their refusals held; the kernel-vector consults land during them)
-    // while bash-allow, bash-project-file, and bash-tmp-parity commit
+    // same discipline - bash-deny performs its TWO prescribed refused
+    // attempts (the bare full-voice leg and the exit-0 compound - nothing
+    // lands) and the two SILENT windows write NOTHING (their refusals held;
+    // the kernel-vector consults land during them) while bash-allow,
+    // bash-project-file, and bash-tmp-parity commit
     // their REAL fs writes to the declared/shared targets; summary quiet.
     scriptRuns(round, quietSettle());
     scriptRuns(round, quietSettle());
@@ -895,9 +905,9 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       });
     });
     round.passes.push(async (): Promise<void> => {
-      // BASH-DENY pass goes QUIET (the kernel fence denied the write at
-      // attempt time - the model's sole act is the refused attempt,
-      // nothing lands - disk-truth duty).
+      // BASH-DENY pass goes QUIET (the kernel fence denied BOTH prescribed
+      // attempts at attempt time - the model's acts are the bare refusal
+      // and the exit-0 compound; nothing lands - disk-truth duty).
       emit(round, ...quietSettle());
       // MID-PASS KERNEL-VECTOR consult (fresh snapshot over the SAME
       // stamped state): the SILENT window attaches NOTHING, so the fence
@@ -1214,8 +1224,8 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     // The SILENT tmp-negative pass writes NOTHING (the refusal held -
     // disk-truth duty: the model honored the refusal).
     scriptRuns(round, quietSettle());
-    // BASH-DENY: QUIET (the kernel denied the refused attempt - the
-    // model's sole act, nothing lands).
+    // BASH-DENY: QUIET (the kernel denied BOTH prescribed attempts - the
+    // model's acts are the bare and the exit-0 compound; nothing lands).
     round.passes.push(async (): Promise<void> => {
       emit(round, ...quietSettle());
     });
@@ -1450,8 +1460,8 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     // The SILENT tmp-negative pass writes NOTHING (the refusal held -
     // disk-truth duty: the model honored the refusal).
     scriptRuns(round, quietSettle());
-    // BASH-DENY: QUIET (the kernel denied the refused attempt - the
-    // model's sole act, nothing lands).
+    // BASH-DENY: QUIET (the kernel denied BOTH prescribed attempts - the
+    // model's acts are the bare and the exit-0 compound; nothing lands).
     round.passes.push(async (): Promise<void> => {
       emit(round, ...quietSettle());
     });
@@ -1555,8 +1565,8 @@ describe("instruction framing (F rows)", () => {
     // The SILENT tmp-negative pass writes NOTHING (the refusal held -
     // disk-truth duty: the model honored the refusal).
     scriptRuns(round, quietSettle());
-    // BASH-DENY: QUIET (the kernel denied the refused attempt - the
-    // model's sole act, nothing lands).
+    // BASH-DENY: QUIET (the kernel denied BOTH prescribed attempts - the
+    // model's acts are the bare and the exit-0 compound; nothing lands).
     round.passes.push(async (): Promise<void> => {
       emit(round, ...quietSettle());
     });
@@ -1720,8 +1730,8 @@ describe("instruction framing (F rows)", () => {
     // The SILENT tmp-negative pass writes NOTHING (the refusal held -
     // disk-truth duty: the model honored the refusal).
     scriptRuns(round, quietSettle());
-    // BASH-DENY: QUIET (the kernel denied the refused attempt - the
-    // model's sole act, nothing lands).
+    // BASH-DENY: QUIET (the kernel denied BOTH prescribed attempts - the
+    // model's acts are the bare and the exit-0 compound; nothing lands).
     round.passes.push(async (): Promise<void> => {
       emit(round, ...quietSettle());
     });
@@ -1796,8 +1806,8 @@ describe("instruction framing (F rows)", () => {
     // The SILENT tmp-negative pass writes NOTHING (the refusal held -
     // disk-truth duty: the model honored the refusal).
     scriptRuns(second.round, quietSettle());
-    // BASH-DENY: QUIET (the kernel denied the refused attempt - the
-    // model's sole act, nothing lands).
+    // BASH-DENY: QUIET (the kernel denied BOTH prescribed attempts - the
+    // model's acts are the bare and the exit-0 compound; nothing lands).
     second.round.passes.push(async (): Promise<void> => {
       emit(second.round, ...quietSettle());
     });
@@ -2191,6 +2201,31 @@ describe("module surface and mechanical guards", () => {
     for (const token of roster) {
       expect(src.split(`"${token}"`).length - 1).toBe(1);
     }
+  });
+
+  it("shape-prescription fragment pins over the repinned negative bash bytes (quoted-fragment split-count idiom over each extracted owner region): the bare-invocation clause occurs EXACTLY ONCE inside each of the two simple-negative owners, and the semicolon-compound example occurs EXACTLY ONCE inside the bash-deny owner", () => {
+    const ownerRegion = (ownerName: string): string => {
+      const start = src.indexOf(`function ${ownerName}(`);
+      if (start === -1) throw new Error(`expected owner function ${ownerName}`);
+      const rest = src.slice(start);
+      const nextDoc = rest.search(/\n\/\*\*/);
+      return nextDoc === -1 ? rest : rest.slice(0, nextDoc);
+    };
+    const BARE_INVOCATION_CLAUSE =
+      "Issue the redirection AS THE WHOLE COMMAND (a bare invocation).";
+    for (const ownerName of [
+      "bashProjectFileNotAllowedInstructions",
+      "bashTmpNegativeInstructions",
+    ]) {
+      expect(
+        ownerRegion(ownerName).split(BARE_INVOCATION_CLAUSE).length - 1,
+      ).toBe(1);
+    }
+    // The load-bearing separator check: the SEMICOLON compound form (never
+    // the short-circuiting && join) appears exactly once in the owner.
+    expect(
+      ownerRegion("bashDenyInstructions").split("; echo ok").length - 1,
+    ).toBe(1);
   });
 
   it("zero hop/terminal-takeover machinery tokens (no terminal, lineage, or hop machinery in this module) and the header marks PERMANENT with the temporary-sibling CONTRAST STATEMENT (names the temporary sibling module + its cutover removal) while carrying ZERO uppercase TEMPORARY substrings (deletion-sweep safety), plus the module-scoped retirement sweep (the retired identifiers AND the substring 'child' at zero occurrences)", () => {

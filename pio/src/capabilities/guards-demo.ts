@@ -29,8 +29,15 @@
 // - six further PLAIN-PHASE probes after the write-tool family, under the
 // SAME single span, in fixed order, each driving ONLY a bash tool call
 // (no write or edit usage): bash-deny (the SHARED stray target REFUSED by
-// the kernel fence over the SAME path the write gate refused earlier - the
-// off-list leg with the standing note's listing rendered NONE), bash-allow
+// the kernel fence over the SAME path the write gate refused earlier in TWO
+// PRESCRIBED shapes, each attempted exactly once in the SAME settled run -
+// the BARE invocation carries the FULL VOICE: non-zero exit, the command's
+// own permission diagnostic, the trailing standing note whose listing is
+// NONE, while the SEMICOLON-JOINED EXIT-0 COMPOUND proves ENFORCEMENT-
+// LIVENESS over the exact shape that left the quality gate's negative
+// probes note-silent: the diagnostic stays visible, the note stays
+// CORRECTLY SILENT by the shipped corner, and the file NEVER LANDS in
+// either shape), bash-allow
 // (the .md-directory device: the phase declares the artifact's CONTAINING
 // DIRECTORY - a directory whose basename satisfies this capability's own
 // coverage pattern - so the declaration survives into the kernel writable
@@ -40,12 +47,19 @@
 // workspace directory the SHARED cwd target sits in; SELF-CLEANING post-rm
 // after the phase), bash-project-file-not-allowed (the SAME cwd target
 // REFUSED by the SILENT window despite this capability's own flag-TRUE
-// contract), bash-tmp-parity (the SHARED scratch target ADMITTED by the
-// phase's OWN scratch flag), and bash-tmp-negative (the SAME scratch target
-// REFUSED by the SILENT window; its pre-phase sweep removes the parity
-// residue WITHIN the run - end-of-run scratch state ABSENT BY DESIGN).
+// contract; the template PRESCRIBES the BARE invocation so the note-bearing
+// tail is guaranteed), bash-tmp-parity (the SHARED scratch target ADMITTED
+// by the phase's OWN scratch flag), and bash-tmp-negative (the SAME scratch
+// target REFUSED by the SILENT window; the template PRESCRIBES the BARE
+// invocation so the note-bearing tail is guaranteed; its pre-phase sweep
+// removes the parity residue WITHIN the run - end-of-run scratch state
+// ABSENT BY DESIGN).
 // Adjacent frames flip the verdict over the SAME targets across the
-// tool/kernel boundary with no restart between frames.
+// tool/kernel boundary with no restart between frames - and the flip is
+// ALSO visible in-transcript at every phase start: the trailing
+// phase-permissions disclosure block makes the per-frame writable set
+// readable (admitting windows name their class; silent windows carry no
+// writable-target lines), beside the note-bearing refused attempts.
 //
 // Outcome model: NO raw terminal writes — the phase prompts ARE the
 // in-stream statements, and the machine ledger (the terminal record's
@@ -222,13 +236,22 @@ function tmpNegativeInstructions(absoluteScratchFile: string): string {
  * bytes; the suite replica names this owner). ONE parameter (the stray
  * absolute path - REUSED verbatim from the write-tool deny probe): the
  * fenced command attempts the SAME off-list target the write gate refused
- * earlier; the kernel fence denies the write at attempt time (non-zero
- * exit with the command's own permission diagnostic plus the standing
- * restriction note, whose model-facing listing degrades to NONE because
- * this phase declares NOTHING). Three beats: attempt-imperative /
- * expectation / one-sentence verdict. No em dash occurs in the body. */
+ * earlier in TWO PRESCRIBED shapes, each exactly once within the SAME
+ * settled run - SHAPE 1 the BARE redirection AS THE WHOLE COMMAND (the FULL
+ * VOICE: non-zero exit, the command's own permission diagnostic, the
+ * trailing standing note whose model-facing listing degrades to NONE
+ * because this phase declares NOTHING) and SHAPE 2 the SAME redirection
+ * joined by a SEMICOLON with a trailing successful statement (the POSIX
+ * last-statement liveness leg over the exact shape that left the quality
+ * gate's negative probes note-silent: the diagnostic stays visible, the
+ * compound exits zero, the note stays CORRECTLY SILENT by the shipped
+ * corner, the file NEVER LANDS); the expectation references the
+ * phase-permissions context CONCEPTUALLY (names NO writable targets) and
+ * POSITION-NEUTRALLY (shipped placement is trailing; no direction is
+ * asserted). Three beats: attempt-imperative / expectation / one-sentence
+ * verdict. No em dash occurs in the body. */
 function bashDenyInstructions(absoluteStrayArtifact: string): string {
-  return `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteStrayArtifact} - a plain shell redirection is enough. The expectation is that the command comes back REFUSED - the kernel fence denies the write at attempt time, the command exits non-zero with a permission error in its own output, and the output ends with a standing restriction note whose allowed-targets listing is NONE (this phase declares NOTHING). Do not retry the target. Describe in one sentence if it's satisfied.`;
+  return `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteStrayArtifact} in TWO shapes, each attempted exactly once: first the redirection AS THE WHOLE COMMAND (a bare invocation such as echo x > ${absoluteStrayArtifact}), then the SAME redirection followed by a semicolon and a trailing successful statement (such as echo x > ${absoluteStrayArtifact}; echo ok - the failed redirection fails only its own statement, so the compound exits zero). The expectation is that BOTH commands come back REFUSED - the phase-permissions context of this run names NO writable targets (this phase declares NOTHING), and the kernel fence denies the write at attempt time: the first exits non-zero with a permission error in its own output and ends with a standing restriction note whose allowed-targets listing is NONE, while the second shows the same permission error but exits zero with no trailing restriction note, and the file never exists after either attempt. Do not attempt the target beyond these two shapes. Describe in one sentence if it's satisfied.`;
 }
 
 /** The pinned bash-allow instruction template (SOLE OWNER of these PINNED
@@ -264,12 +287,15 @@ function bashProjectFileInstructions(absoluteCwdFile: string): string {
  * moments earlier): the SILENT window (no paths, no scope flag) leaves the
  * kernel set at the machine allowance, so the attempt comes back REFUSED
  * with the standing note's listing rendering NONE - the do-not-retry
- * mandate rides the template. Three beats: attempt-imperative /
+ * mandate rides the template, and the template records ONE additive
+ * shape-prescription clause (the BARE invocation, inserted between the
+ * imperative and the expectation) so the note-bearing tail is GUARANTEED
+ * rather than dependent on agent whim. Three beats: attempt-imperative /
  * expectation / one-sentence verdict. No em dash occurs in the body. */
 function bashProjectFileNotAllowedInstructions(
   absoluteSharedCwdFile: string,
 ): string {
-  return `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteSharedCwdFile}. The expectation is that the command comes back REFUSED - this phase declares NOTHING (no paths, no scope flag), so the kernel fence grants nothing beyond the machine allowance and the output ends with a standing restriction note whose allowed-targets listing is NONE, while the SAME target was admitted earlier by the adjacent probe's OWN declared scope. Do not retry the target. Describe in one sentence if it's satisfied.`;
+  return `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteSharedCwdFile}. Issue the redirection AS THE WHOLE COMMAND (a bare invocation). The expectation is that the command comes back REFUSED - this phase declares NOTHING (no paths, no scope flag), so the kernel fence grants nothing beyond the machine allowance and the output ends with a standing restriction note whose allowed-targets listing is NONE, while the SAME target was admitted earlier by the adjacent probe's OWN declared scope. Do not retry the target. Describe in one sentence if it's satisfied.`;
 }
 
 /** The pinned bash-tmp-parity instruction template (SOLE OWNER of these
@@ -289,12 +315,16 @@ function bashTmpParityInstructions(absoluteScratchFile: string): string {
  * earlier): the SILENT window (no paths, no scope flag, no scratch flag)
  * leaves the kernel set at the machine allowance, so the attempt comes
  * back REFUSED with the standing note's listing rendering NONE - the
- * do-not-retry mandate rides the template. Three beats: attempt-imperative
- * / expectation / one-sentence verdict. No em dash occurs in the body. */
+ * do-not-retry mandate rides the template, and the template records ONE
+ * additive shape-prescription clause (the BARE invocation, inserted
+ * between the imperative and the expectation) so the note-bearing tail is
+ * GUARANTEED rather than dependent on agent whim. Three beats:
+ * attempt-imperative / expectation / one-sentence verdict. No em dash
+ * occurs in the body. */
 function bashTmpNegativeInstructions(
   absoluteSharedScratchFile: string,
 ): string {
-  return `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteSharedScratchFile}. The expectation is that the command comes back REFUSED - this phase declares NOTHING (no paths, no scope flag, no scratch flag), so the kernel fence grants nothing beyond the machine allowance and the output ends with a standing restriction note whose allowed-targets listing is NONE, while the SAME target was admitted moments earlier by the adjacent probe's OWN declared scratch flag. Do not retry the target. Describe in one sentence if it's satisfied.`;
+  return `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteSharedScratchFile}. Issue the redirection AS THE WHOLE COMMAND (a bare invocation). The expectation is that the command comes back REFUSED - this phase declares NOTHING (no paths, no scope flag, no scratch flag), so the kernel fence grants nothing beyond the machine allowance and the output ends with a standing restriction note whose allowed-targets listing is NONE, while the SAME target was admitted moments earlier by the adjacent probe's OWN declared scratch flag. Do not retry the target. Describe in one sentence if it's satisfied.`;
 }
 
 /** The pinned summary template (PINNED bytes; the suite replica names this

@@ -212,7 +212,7 @@ function renderMissingOutputLine(
  * elements; the exported renderer below is the block's SOLE BYTE OWNER).
  * Element wording carries NO sentence terminator (minimal message). */
 const PHASE_DISCLOSURE_STATIC = {
-  label: "phase permissions",
+  label: "Phase Permissions",
   filesJoin: ", ",
   projectElementLeadIn: "project files at ",
   scratchElementLiteral: "scratch files at /tmp",
@@ -238,7 +238,7 @@ export function renderPhasePermissionDisclosure(
 ): string {
   const { label, filesJoin, projectElementLeadIn, scratchElementLiteral } =
     PHASE_DISCLOSURE_STATIC;
-  const lines: string[] = [`\u2014\u2014 ${label} \u2014\u2014`];
+  const lines: string[] = [`${label}:`];
   if (snapshot !== undefined && snapshot.phase !== null) {
     // One consult, one code path: the shared core owns the survivor filter
     // and the clamped class propositions alike.
@@ -256,6 +256,10 @@ export function renderPhasePermissionDisclosure(
     if (effective.scratchActive) {
       lines.push(scratchElementLiteral);
     }
+  }
+
+  if (lines.length === 1) {
+    lines.push("None");
   }
   return lines.join("\n");
 }
@@ -770,7 +774,7 @@ export class PioSession {
     const text =
       renderPhaseMarker(id) +
       (opts?.instructions ? `\n${opts.instructions}` : "") +
-      "\n" +
+      "\n\n" +
       disclosure;
     let iterations = 0;
     // Independent of budget and stop rule; never surfaced on PhaseResult.

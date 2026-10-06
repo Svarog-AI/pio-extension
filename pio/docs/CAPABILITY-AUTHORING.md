@@ -3162,7 +3162,6 @@ Full verbatim chain: the goal-workspace decision logs
 (`.pio/goals/command-write-fence/` — PLAN.md settled-voice-channel entry;
 `S05/DECISIONS.md` P-A / P-B / P-C; `S08/SUMMARY.md` "Records annotations").
 
-
 ### 13.7 Both placement modes: composition tracks mechanically
 
 Composition tracks AUTOMATICALLY: the fence bag is minted ONCE per
@@ -3258,7 +3257,7 @@ source order):
   class; SELF-CLEANING post-rm) and REFUSED by the flag-less SILENT phase
   INSIDE the demo's own flag-TRUE contract (the same silence the write-tool
   twin proves with the gate's universal byte, now proven with the kernel's
-  denial — the standing note's listing reads `none`). shape prescription (Step 9 repin): the negative template now carries
+  denial — the standing note's listing reads `none`). Shape prescription (Step 9 repin): the negative template now carries
   EXACTLY ONE inserted sentence between imperative and expectation —
   `Issue the redirection AS THE WHOLE COMMAND (a bare invocation).` —
   guaranteeing the note-bearing tail rather than leaving it to the agent's
@@ -3280,8 +3279,6 @@ source order):
   allowance — hence the `none` listing; the do-not-retry mandate; the
   adjacent-probe admission contrast). Disclosure fact: at phase start the
   scratch-flag window's block NAMES the grant on its `scratch files at /tmp` class line.
-
-How to READ the transcripts:
 
 How to READ the transcripts: the fence's feedback channel is NOW the
 three-layer trio (§13.6) — the up-front disclosure block at EVERY phase start

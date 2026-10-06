@@ -962,16 +962,16 @@ describe("PioCapability — prompt framing passes through untouched", () => {
     const result = await cap.run();
     expect(result.ok).toBe(true);
     expect(round.session.prompt).toHaveBeenCalledTimes(2);
-    // The wrapper forwards the option bag verbatim: the disclosure
-    // delimiter line, then the engine-composed phase marker plus the
-    // authored instructions reach the prompt channel.
+    // The wrapper forwards the option bag verbatim: the engine-composed
+    // phase marker plus the authored instructions reach the prompt channel,
+    // with the disclosure delimiter line TRAILING.
     expect(round.session.prompt).toHaveBeenNthCalledWith(
       1,
-      `${DISCLOSURE_DELIMITER_REPLICA}\n${PHASE_A_MARKER}\ndo A`,
+      `${PHASE_A_MARKER}\ndo A\n${DISCLOSURE_DELIMITER_REPLICA}`,
     );
     expect(round.session.prompt).toHaveBeenNthCalledWith(
       2,
-      `${DISCLOSURE_DELIMITER_REPLICA}\n${PHASE_B_MARKER}\ndo B`,
+      `${PHASE_B_MARKER}\ndo B\n${DISCLOSURE_DELIMITER_REPLICA}`,
     );
   });
 
@@ -996,7 +996,7 @@ describe("PioCapability — prompt framing passes through untouched", () => {
     const result = await cap.run();
     expect(result.ok).toBe(true);
     expect(round.session.prompt).toHaveBeenCalledTimes(2);
-    const framed = `${DISCLOSURE_DELIMITER_REPLICA}\n${PHASE_A_MARKER}\ndo A`;
+    const framed = `${PHASE_A_MARKER}\ndo A\n${DISCLOSURE_DELIMITER_REPLICA}`;
     expect(round.session.prompt).toHaveBeenNthCalledWith(1, framed);
     expect(round.session.prompt).toHaveBeenNthCalledWith(2, framed);
   });
@@ -1020,7 +1020,7 @@ describe("PioCapability — prompt framing passes through untouched", () => {
     expect(result.ok).toBe(true);
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      `${DISCLOSURE_DELIMITER_REPLICA}\n${PHASE_A_MARKER}`,
+      `${PHASE_A_MARKER}\n${DISCLOSURE_DELIMITER_REPLICA}`,
     );
     const sent = round.session.prompt.mock.calls[0][0];
     expect(sent.endsWith("\n")).toBe(false);
@@ -1375,10 +1375,10 @@ describe("PioCapability — engine integration through the base", () => {
     scriptRuns(round, quietRun());
     const result = await cap.run();
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
-    // The wrapper forwards options verbatim: the disclosure delimiter
-    // leads, then the bare marker line stands alone.
+    // The wrapper forwards options verbatim: the bare marker line stands
+    // alone, the disclosure delimiter line trails.
     expect(round.session.prompt).toHaveBeenCalledWith(
-      `\u2014\u2014 phase permissions \u2014\u2014\n\u2014\u2014 hooked \u2014\u2014`,
+      `\u2014\u2014 hooked \u2014\u2014\n\u2014\u2014 phase permissions \u2014\u2014`,
     );
     expect(result.ok).toBe(true);
     expect(result.outputs).toEqual({

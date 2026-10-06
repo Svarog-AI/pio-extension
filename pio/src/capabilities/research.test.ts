@@ -586,13 +586,11 @@ describe("research capability", () => {
       for (let n = 10; n <= 12; n++) {
         const sent: unknown = round.session.prompt.mock.calls[n]?.[0];
         const text = typeof sent === "string" ? sent : "";
+        expect(text.startsWith(PHASE_MARKER)).toBe(true);
         expect(
-          text.startsWith(
-            `${disclosureBlockFor(placement.absolutePath)}\n${PHASE_MARKER}`,
+          text.endsWith(
+            `${disclosureBlockFor(placement.absolutePath)}\n${expectationRetryBlock(n, [placement.absolutePath])}`,
           ),
-        ).toBe(true);
-        expect(
-          text.endsWith(expectationRetryBlock(n, [placement.absolutePath])),
         ).toBe(true);
       }
       expect(stderrText()).toBe("");
@@ -634,13 +632,11 @@ describe("research capability", () => {
       // The output-guard block rides RUN 2's prompt (calls[1]).
       const sent: unknown = round.session.prompt.mock.calls[1]?.[0];
       const text = typeof sent === "string" ? sent : "";
+      expect(text.startsWith(PHASE_MARKER)).toBe(true);
       expect(
-        text.startsWith(
-          `${disclosureBlockFor(placement.absolutePath)}\n${PHASE_MARKER}`,
+        text.endsWith(
+          `${disclosureBlockFor(placement.absolutePath)}\n${expectationRetryBlock(1, [placement.absolutePath])}`,
         ),
-      ).toBe(true);
-      expect(
-        text.endsWith(expectationRetryBlock(1, [placement.absolutePath])),
       ).toBe(true);
       const { readFile } = await import("node:fs/promises");
       expect(await readFile(placement.absolutePath, "utf8")).toBe(seed);
@@ -674,14 +670,10 @@ describe("research capability", () => {
       // 'after 10 run(s)'.
       const sent: unknown = round.session.prompt.mock.calls[10]?.[0];
       const text = typeof sent === "string" ? sent : "";
-      expect(
-        text.startsWith(
-          `${disclosureBlockFor(placement.absolutePath)}\n${PHASE_MARKER}`,
-        ),
-      ).toBe(true);
+      expect(text.startsWith(PHASE_MARKER)).toBe(true);
       expect(
         text.endsWith(
-          expectationRetryBlock(RESEARCH_MAX_RUNS, [placement.absolutePath]),
+          `${disclosureBlockFor(placement.absolutePath)}\n${expectationRetryBlock(RESEARCH_MAX_RUNS, [placement.absolutePath])}`,
         ),
       ).toBe(true);
       // Byte-for-byte seed: the note claims only cap-EXACT settles that
@@ -770,11 +762,10 @@ describe("research capability", () => {
       await cap.run({ topic: TOPIC });
       const sent: unknown = round.session.prompt.mock.calls[0]?.[0];
       const text = typeof sent === "string" ? sent : "";
-      expect(
-        text.startsWith(
-          `${disclosureBlockFor(placement.absolutePath)}\n${PHASE_MARKER}`,
-        ),
-      ).toBe(true);
+      expect(text.startsWith(PHASE_MARKER)).toBe(true);
+      expect(text.endsWith(disclosureBlockFor(placement.absolutePath))).toBe(
+        true,
+      );
       expect(text).toContain(
         `Report file (absolute path): ${placement.absolutePath}`,
       );
@@ -814,11 +805,10 @@ describe("research capability", () => {
       expect(result.ok).toBe(true);
       const sent: unknown = round.session.prompt.mock.calls[0]?.[0];
       const text = typeof sent === "string" ? sent : "";
-      expect(
-        text.startsWith(
-          `${disclosureBlockFor(placement.absolutePath)}\n${PHASE_MARKER}`,
-        ),
-      ).toBe(true);
+      expect(text.startsWith(PHASE_MARKER)).toBe(true);
+      expect(text.endsWith(disclosureBlockFor(placement.absolutePath))).toBe(
+        true,
+      );
       expect(text).toContain(
         `Report file (absolute path): ${placement.absolutePath}`,
       );

@@ -117,10 +117,10 @@
 // execute_phase consults the execution state FRESH - ONCE, strictly AFTER
 // its own attach completes (late binding, never pre-attach), OUTSIDE the
 // try (a channel fault escapes verbatim through the standard containment
-// channels; the channel adds no try/catch) - and folds the rendered block
-// AHEAD OF the marker-led composition into the SAME text payload, so the
-// listing rides EVERY observed run of the phase, corrective retries
-// included. UNCONDITIONAL: a stateless or governing-empty window renders
+// channels; the channel adds no try/catch) - and appends the rendered
+// block AT THE END of the marker-led composition into the SAME text
+// payload, so the listing trails EVERY observed run of the phase,
+// corrective retries included. UNCONDITIONAL: a stateless or governing-empty window renders
 // the delimiter line alone (silence is not fault). The block answers WHICH
 // FILES THE PHASE MAY WRITE from the user's perspective: the shared core's
 // surviving declared paths VERBATIM (one materializeEffectiveSet consult -
@@ -759,18 +759,19 @@ export class PioSession {
     // AFTER the attach completes (late binding - the block reflects the
     // window this very phase just armed, never a pre-attach reading) and
     // OUTSIDE the try (a channel fault escapes verbatim - no containment).
-    // Folded AHEAD OF the marker-led composition into the SAME text payload
-    // so the block rides every observed run incl. corrective retries.
+    // Appended AT THE END of the marker-led composition into the SAME text
+    // payload so the block trails every observed run incl. corrective
+    // retries (corrective notes ride strictly after it).
     const disclosure = renderPhasePermissionDisclosure(
       this.#executionState?.snapshot(),
     );
-    // Composed once per phase: the disclosure block leads, then the marker
-    // line and the instructions; re-runs re-send the identical bytes.
+    // Composed once per phase: the marker line and the instructions, then
+    // the trailing disclosure block; re-runs re-send the identical bytes.
     const text =
-      disclosure +
-      "\n" +
       renderPhaseMarker(id) +
-      (opts?.instructions ? `\n${opts.instructions}` : "");
+      (opts?.instructions ? `\n${opts.instructions}` : "") +
+      "\n" +
+      disclosure;
     let iterations = 0;
     // Independent of budget and stop rule; never surfaced on PhaseResult.
     let expectationRetries = 0;

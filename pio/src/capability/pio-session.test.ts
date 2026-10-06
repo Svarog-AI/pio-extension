@@ -1056,13 +1056,13 @@ describe("PioSession — phase markers", () => {
     expect(rendered.endsWith("\n")).toBe(false);
   });
 
-  it("stamps the marker ahead of the instructions, BEHIND the disclosure-led head", async () => {
+  it("stamps the marker ahead of the instructions, AHEAD of the disclosure tail", async () => {
     const { instance, round } = await host();
     scriptRuns(round, quietRun());
     await instance.execute_phase("build", { instructions: "Write the thing" });
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      `${expectedDisclosure()}\n\u2014\u2014 build \u2014\u2014\nWrite the thing`,
+      `\u2014\u2014 build \u2014\u2014\nWrite the thing\n${expectedDisclosure()}`,
     );
   });
 
@@ -1072,7 +1072,7 @@ describe("PioSession — phase markers", () => {
     await instance.execute_phase("solo");
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      `${expectedDisclosure()}\n\u2014\u2014 solo \u2014\u2014`,
+      `\u2014\u2014 solo \u2014\u2014\n${expectedDisclosure()}`,
     );
   });
 
@@ -1096,7 +1096,7 @@ describe("PioSession — phase markers", () => {
     });
     expect(sent).toHaveLength(2);
     expect(sent[0]).toBe(
-      `${expectedDisclosure()}\n\u2014\u2014 again \u2014\u2014`,
+      `\u2014\u2014 again \u2014\u2014\n${expectedDisclosure()}`,
     );
     expect(sent[1]).toBe(sent[0]);
   });
@@ -1104,8 +1104,8 @@ describe("PioSession — phase markers", () => {
 
 // ---------------------------------------------------------------------
 // Phase-permission DISCLOSURE channel: the in-transcript writable-targets
-// listing folded AHEAD OF the marker-led composition into the SAME text
-// payload of every execute_phase run. Identity-over-replicas doctrine -
+// listing folded AT THE END of the marker-led composition into the SAME
+// text payload of every execute_phase run. Identity-over-replicas doctrine -
 // the EXPECTED BLOCK BYTES are assembled IN-TEST by the suite-local helper
 // below (the fixed constants re-typed locally; the SOLE BYTE OWNER stays
 // the module-private static + exported renderer in ./pio-session.ts); all
@@ -1165,13 +1165,13 @@ describe("PioSession — phase-permission disclosure", () => {
     }
   }
 
-  it("SILENT window (attached span, zero declarations, no flags): the block is the DELIMITER LINE ALONE and the phase settles with NO fault raised (done:true, iterations:1, the prompt leads with the delimiter)", async () => {
+  it("SILENT window (attached span, zero declarations, no flags): the block is the DELIMITER LINE ALONE and the phase settles with NO fault raised (done:true, iterations:1, the prompt ends with the delimiter)", async () => {
     const { instance, round } = await host();
     scriptRuns(round, quietRun());
     const result = await instance.execute_phase("disc-silent");
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      `${DISCLOSURE_DELIMITER_REPLICA}\n\u2014\u2014 disc-silent \u2014\u2014`,
+      `\u2014\u2014 disc-silent \u2014\u2014\n${DISCLOSURE_DELIMITER_REPLICA}`,
     );
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
@@ -1212,7 +1212,7 @@ describe("PioSession — phase-permission disclosure", () => {
     scriptRuns(round, quietRun());
     await instance.execute_phase("disc-single", { write: [target] });
     expect(round.session.prompt).toHaveBeenCalledWith(
-      `${expectedDisclosure([target])}\n\u2014\u2014 disc-single \u2014\u2014`,
+      `\u2014\u2014 disc-single \u2014\u2014\n${expectedDisclosure([target])}`,
     );
   });
 
@@ -1231,7 +1231,7 @@ describe("PioSession — phase-permission disclosure", () => {
     scriptRuns(round, quietRun());
     await instance.execute_phase("disc-multi", { write: [a, b, a, c] });
     expect(round.session.prompt).toHaveBeenCalledWith(
-      `${expectedDisclosure([a, b, c])}\n\u2014\u2014 disc-multi \u2014\u2014`,
+      `\u2014\u2014 disc-multi \u2014\u2014\n${expectedDisclosure([a, b, c])}`,
     );
   });
 
@@ -1248,7 +1248,7 @@ describe("PioSession — phase-permission disclosure", () => {
     scriptRuns(round, quietRun());
     await instance.execute_phase("disc-token", { write: [token] });
     expect(round.session.prompt).toHaveBeenCalledWith(
-      `${expectedDisclosure([token])}\n\u2014\u2014 disc-token \u2014\u2014`,
+      `\u2014\u2014 disc-token \u2014\u2014\n${expectedDisclosure([token])}`,
     );
   });
 
@@ -1265,7 +1265,7 @@ describe("PioSession — phase-permission disclosure", () => {
       allowProjectWrites: true,
     });
     expect(round.session.prompt).toHaveBeenCalledWith(
-      `${expectedDisclosure(undefined, cwd)}\n\u2014\u2014 disc-scope \u2014\u2014`,
+      `\u2014\u2014 disc-scope \u2014\u2014\n${expectedDisclosure(undefined, cwd)}`,
     );
   });
 
@@ -1274,7 +1274,7 @@ describe("PioSession — phase-permission disclosure", () => {
     scriptRuns(round, quietRun());
     await instance.execute_phase("disc-scratch", { tmpDirAllowed: true });
     expect(round.session.prompt).toHaveBeenCalledWith(
-      `${expectedDisclosure(undefined, undefined, true)}\n\u2014\u2014 disc-scratch \u2014\u2014`,
+      `\u2014\u2014 disc-scratch \u2014\u2014\n${expectedDisclosure(undefined, undefined, true)}`,
     );
   });
 
@@ -1300,9 +1300,11 @@ describe("PioSession — phase-permission disclosure", () => {
       tmpDirAllowed: true,
     });
     expect(sent).toHaveLength(1);
-    const block = sent[0]?.split("\n").slice(0, 4) ?? [];
+    const block = sent[0]?.split("\n").slice(-4) ?? [];
     expect(block).toEqual(expectedDisclosure([note], cwd, true).split("\n"));
-    expect(sent[0]).toContain(`\n\u2014\u2014 disc-combined \u2014\u2014`);
+    expect(sent[0].split("\n", 1)[0] ?? "").toBe(
+      "\u2014\u2014 disc-combined \u2014\u2014",
+    );
   });
 
   it("FILES-ABSENT-WITH-CLASSES window: the block is THREE lines - delimiter plus the two class lines (the files line is ABSENT, no placeholder)", async () => {
@@ -1324,12 +1326,12 @@ describe("PioSession — phase-permission disclosure", () => {
     });
     expect(sent).toHaveLength(1);
     const lines = (sent[0] ?? "").split("\n");
-    expect(lines.slice(0, 3)).toEqual([
+    expect(lines[0]).toBe("\u2014\u2014 disc-classes-only \u2014\u2014");
+    expect(lines.slice(-3)).toEqual([
       DISCLOSURE_DELIMITER_REPLICA,
       `project files at ${cwd}`,
       "scratch files at /tmp",
     ]);
-    expect(lines[3]).toBe("\u2014\u2014 disc-classes-only \u2014\u2014");
   });
 
   it("STRUCTURAL pins over EVERY rendered form: LF-split = 1 + present body lines, the delimiter line is byte-exact (flanked label, U+2014 escapes on both flanks), ZERO trailing-period terminators, no trailing newline (MINIMAL MESSAGE)", () => {
@@ -1425,10 +1427,10 @@ describe("PioSession — phase-permission disclosure", () => {
     // difference rides the next prompt.
     await instance.execute_phase("disc-late-2", { write: [lateTarget] });
     expect(sent[0]).toBe(
-      `${expectedDisclosure(undefined, undefined, true)}\n\u2014\u2014 disc-late-1 \u2014\u2014`,
+      `\u2014\u2014 disc-late-1 \u2014\u2014\n${expectedDisclosure(undefined, undefined, true)}`,
     );
     expect(sent[1]).toBe(
-      `${expectedDisclosure([lateTarget])}\n\u2014\u2014 disc-late-2 \u2014\u2014`,
+      `\u2014\u2014 disc-late-2 \u2014\u2014\n${expectedDisclosure([lateTarget])}`,
     );
   });
 
@@ -1444,7 +1446,7 @@ describe("PioSession — phase-permission disclosure", () => {
     await instance.execute_phase("disc-bare", { allowProjectWrites: true });
     expect(sent).toHaveLength(1);
     expect(sent[0]).toBe(
-      `${DISCLOSURE_DELIMITER_REPLICA}\n\u2014\u2014 disc-bare \u2014\u2014`,
+      `\u2014\u2014 disc-bare \u2014\u2014\n${DISCLOSURE_DELIMITER_REPLICA}`,
     );
   });
 });
@@ -2138,7 +2140,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     // (placement-blind framing).
     expect(h0.prompt).toHaveBeenCalledTimes(1);
     expect(h0.prompt).toHaveBeenCalledWith(
-      `${expectedDisclosure()}\n\u2014\u2014 p5 \u2014\u2014\nWrite the thing`,
+      `\u2014\u2014 p5 \u2014\u2014\nWrite the thing\n${expectedDisclosure()}`,
     );
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
@@ -2175,7 +2177,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     const after = await H.execute_phase("p5-after", { instructions: "Again" });
     expect(h1.prompt).toHaveBeenCalledTimes(1);
     expect(h1.prompt).toHaveBeenCalledWith(
-      `${expectedDisclosure()}\n\u2014\u2014 p5-after \u2014\u2014\nAgain`,
+      `\u2014\u2014 p5-after \u2014\u2014\nAgain\n${expectedDisclosure()}`,
     );
     expect(h0.prompt.mock.calls.length).toBe(h0PromptsBefore);
     expect(after.done).toBe(true);
@@ -2273,11 +2275,11 @@ class FixtureCapability extends PioCapability {
   }
 }
 
-/** Replica of the fixture phase's prompt baseline text: the disclosure
- * delimiter line LEADING (governing-empty fixture span confers no body
- * lines), then the marker line, then the instructions (U+2014 x2, single
+/** Replica of the fixture phase's prompt baseline text: the marker line,
+ * then the instructions, then the disclosure delimiter line TRAILING
+ * (governing-empty fixture span confers no body lines) (U+2014 x2, single
  * spaces - the existing prompt-text golden discipline). */
-const GUARDED_BASELINE = `${expectedDisclosure()}\n\u2014\u2014 guarded \u2014\u2014\nWrite the thing`;
+const GUARDED_BASELINE = `\u2014\u2014 guarded \u2014\u2014\nWrite the thing\n${expectedDisclosure()}`;
 
 /** Pinned corrective-note replica (SOLE OWNER: the module-private template
  * in ./pio-session.ts): the flanked em-dash delimiter line labeled output
@@ -2446,7 +2448,7 @@ describe("PioSession — expectation gate (write:)", () => {
     });
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      `${expectedDisclosure()}\n\u2014\u2014 preexisting \u2014\u2014`,
+      `\u2014\u2014 preexisting \u2014\u2014\n${expectedDisclosure()}`,
     );
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
@@ -2455,7 +2457,7 @@ describe("PioSession — expectation gate (write:)", () => {
   it("corrective-note freshness (property v): two declared paths, the first lands during retry one — the retry-two block lists ONLY the still-missing path (landed path dropped; declaration-order comma-space join preserved on the earlier block) and the ceiling throw carries one line per STILL-MISSING path only", async () => {
     const first = path.join(tmp, "first.md");
     const second = path.join(tmp, "second.md");
-    const baseline = `${expectedDisclosure()}\n\u2014\u2014 multi \u2014\u2014`;
+    const baseline = `\u2014\u2014 multi \u2014\u2014\n${expectedDisclosure()}`;
     const { instance, round } = await host();
     // Pass two writes ONLY the first declared path; the others stay quiet.
     round.session.prompt.mockImplementationOnce(async () => {
@@ -2498,8 +2500,8 @@ describe("PioSession — expectation gate (write:)", () => {
       },
     });
     expect(sentTexts(round)).toEqual([
-      `${expectedDisclosure()}\n\u2014\u2014 plain-rerun \u2014\u2014`,
-      `${expectedDisclosure()}\n\u2014\u2014 plain-rerun \u2014\u2014`,
+      `\u2014\u2014 plain-rerun \u2014\u2014\n${expectedDisclosure()}`,
+      `\u2014\u2014 plain-rerun \u2014\u2014\n${expectedDisclosure()}`,
     ]);
     expect(calls).toBe(2);
     expect(result.done).toBe(true);
@@ -2508,7 +2510,7 @@ describe("PioSession — expectation gate (write:)", () => {
 
   it("independence and accounting: a declared phase whose hook ALWAYS demands continuation past max: 3 keeps passing the gate beyond the budget — EXACTLY 6 prompts (budget runs 3 + corrective 3) then the typed throw, with iterations counted as 6 settled runs", async () => {
     const target = path.join(tmp, "never-lands.md");
-    const baseline = `${expectedDisclosure()}\n\u2014\u2014 coexist \u2014\u2014`;
+    const baseline = `\u2014\u2014 coexist \u2014\u2014\n${expectedDisclosure()}`;
     const { instance, round } = await host();
     scriptRuns(
       round,
@@ -2589,7 +2591,7 @@ describe("PioSession — expectation gate (write:)", () => {
     });
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      `${expectedDisclosure()}\n\u2014\u2014 dir-expects \u2014\u2014`,
+      `\u2014\u2014 dir-expects \u2014\u2014\n${expectedDisclosure()}`,
     );
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
@@ -2597,7 +2599,7 @@ describe("PioSession — expectation gate (write:)", () => {
 
   it("mechanical semantics (ii): a RELATIVE entry resolves under process.cwd() with NO chdir (the expectation is computed at assertion time via node:path resolve) and the never-write ceiling names the cwd-resolved path in every corrective block AND the violation line", async () => {
     const entry = `pio-expectation-relative-${randomUUID()}.md`;
-    const baseline = `${expectedDisclosure()}\n\u2014\u2014 relative-write \u2014\u2014`;
+    const baseline = `\u2014\u2014 relative-write \u2014\u2014\n${expectedDisclosure()}`;
     const { instance, round } = await host();
     scriptRuns(round, quietRun(), quietRun(), quietRun(), quietRun());
     let thrown: unknown;
@@ -2627,7 +2629,7 @@ describe("PioSession — expectation gate (write:)", () => {
 
   it("accounting (c): the min floor is consumed BEFORE any gate consult — with min: 2 and a never-landing file the first two prompts are BOTH pure baseline (the floor-driven continuation sees no gate) and the first denial carries run count 2 (5 prompts: floor+break runs 2 + corrective 3)", async () => {
     const target = path.join(tmp, "floored-ghost.md");
-    const baseline = `${expectedDisclosure()}\n\u2014\u2014 floored-write \u2014\u2014`;
+    const baseline = `\u2014\u2014 floored-write \u2014\u2014\n${expectedDisclosure()}`;
     const { instance, round } = await host();
     scriptRuns(
       round,
@@ -2669,19 +2671,19 @@ describe("PioSession — expectation gate (write:)", () => {
     });
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      `${expectedDisclosure()}\n\u2014\u2014 budget-gate \u2014\u2014`,
+      `\u2014\u2014 budget-gate \u2014\u2014\n${expectedDisclosure()}`,
     );
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
   });
 
-  it("degenerate declarations: an UNDECLARED phase and an EMPTY write: [] phase each settle with the DISCLOSURE-LEADING baseline (delimiter line alone over the governing-empty fixture span) — one prompt each, exact text, done: true (the disclosure-folded goldens are the primary regression proof)", async () => {
+  it("degenerate declarations: an UNDECLARED phase and an EMPTY write: [] phase each settle with the DISCLOSURE-TRAILING baseline (delimiter line alone over the governing-empty fixture span) — one prompt each, exact text, done: true (the disclosure-folded goldens are the primary regression proof)", async () => {
     const { instance, round } = await host();
     scriptRuns(round, quietRun());
     const a = await instance.execute_phase("unguarded-baseline");
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt.mock.calls[0]?.[0]).toBe(
-      `${expectedDisclosure()}\n\u2014\u2014 unguarded-baseline \u2014\u2014`,
+      `\u2014\u2014 unguarded-baseline \u2014\u2014\n${expectedDisclosure()}`,
     );
     expect(a.done).toBe(true);
     expect(a.iterations).toBe(1);
@@ -2690,7 +2692,7 @@ describe("PioSession — expectation gate (write:)", () => {
     const b = await instance.execute_phase("empty-decl", { write: [] });
     expect(round.session.prompt).toHaveBeenCalledTimes(2);
     expect(round.session.prompt.mock.calls[1]?.[0]).toBe(
-      `${expectedDisclosure()}\n\u2014\u2014 empty-decl \u2014\u2014`,
+      `\u2014\u2014 empty-decl \u2014\u2014\n${expectedDisclosure()}`,
     );
     expect(b.done).toBe(true);
     expect(b.iterations).toBe(1);

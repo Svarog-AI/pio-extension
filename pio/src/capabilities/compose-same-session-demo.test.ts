@@ -428,19 +428,19 @@ const researchMarkerPayload = (): unknown => ({
   details: undefined,
 });
 
-/** Engine-composed prompt texts (disclosure block + marker line +
- * instructions, verbatim the phase engine's composition). The worlds here
- * ride the DELIMITER-ONLY form (the demo span and the stub's
- * dimension-less callee phase declare nothing and arm no flags - re-typed
- * locally per the suite's established pattern). */
+/** Engine-composed prompt texts (marker line + instructions, then the
+ * trailing disclosure block - verbatim the phase engine's composition).
+ * The worlds here ride the DELIMITER-ONLY form (the demo span and the
+ * stub's dimension-less callee phase declare nothing and arm no flags -
+ * re-typed locally per the suite's established pattern). */
 const DISCLOSURE_DELIMITER_REPLICA =
   "\u2014\u2014 phase permissions \u2014\u2014";
 const greetingPromptText = (): string =>
-  `${DISCLOSURE_DELIMITER_REPLICA}\n${renderPhaseMarker("greeting")}\n${GREETING_REPLICA}`;
+  `${renderPhaseMarker("greeting")}\n${GREETING_REPLICA}\n${DISCLOSURE_DELIMITER_REPLICA}`;
 const researchPhasePromptText = (): string =>
-  `${DISCLOSURE_DELIMITER_REPLICA}\n${renderPhaseMarker("research")}\n${stubKit.STUB_RESEARCH_INSTRUCTIONS}`;
+  `${renderPhaseMarker("research")}\n${stubKit.STUB_RESEARCH_INSTRUCTIONS}\n${DISCLOSURE_DELIMITER_REPLICA}`;
 const summaryPromptText = (absolutePath: string): string =>
-  `${DISCLOSURE_DELIMITER_REPLICA}\n${renderPhaseMarker("summary")}\n${summaryReplica(absolutePath)}`;
+  `${renderPhaseMarker("summary")}\n${summaryReplica(absolutePath)}\n${DISCLOSURE_DELIMITER_REPLICA}`;
 
 /** Self-consistent absolute-path derivation via the SAME public channels the
  * BASE SETTLE SEAM derives (expected settled value of the stub's

@@ -25,6 +25,28 @@
 // closing summary is a disk-check-free narration keyed only on the observed
 // iteration count.
 //
+// What it ALSO exhibits on the COMMAND side: the fenced-bash demonstration
+// - six further PLAIN-PHASE probes after the write-tool family, under the
+// SAME single span, in fixed order, each driving ONLY a bash tool call
+// (no write or edit usage): bash-deny (the SHARED stray target REFUSED by
+// the kernel fence over the SAME path the write gate refused earlier - the
+// off-list leg with the standing note's listing rendered NONE), bash-allow
+// (the .md-directory device: the phase declares the artifact's CONTAINING
+// DIRECTORY - a directory whose basename satisfies this capability's own
+// coverage pattern - so the declaration survives into the kernel writable
+// vector as a whole-subtree grant, while the UNCOVERED inner artifact arms
+// the phase's settlement expectation over the exact path the command must
+// land), bash-project-file (the project-files SCOPE class admits the
+// workspace directory the SHARED cwd target sits in; SELF-CLEANING post-rm
+// after the phase), bash-project-file-not-allowed (the SAME cwd target
+// REFUSED by the SILENT window despite this capability's own flag-TRUE
+// contract), bash-tmp-parity (the SHARED scratch target ADMITTED by the
+// phase's OWN scratch flag), and bash-tmp-negative (the SAME scratch target
+// REFUSED by the SILENT window; its pre-phase sweep removes the parity
+// residue WITHIN the run - end-of-run scratch state ABSENT BY DESIGN).
+// Adjacent frames flip the verdict over the SAME targets across the
+// tool/kernel boundary with no restart between frames.
+//
 // Outcome model: NO raw terminal writes — the phase prompts ARE the
 // in-stream statements, and the machine ledger (the terminal record's
 // `outputs`) carries the settled ABSOLUTE placement once the base's settle
@@ -47,7 +69,7 @@
 // or downgraded; the base catch-all captures them into the typed ok:false
 // settlement. Em dashes are U+2014 (escaped) in every pinned byte below.
 
-import { rm } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type CapabilityParams,
@@ -86,6 +108,26 @@ export const GUARDS_DEMO_PROJECT_PROBE_FILE =
  * pre-phase sweep removes the admitted residue WITHIN the run). */
 export const GUARDS_DEMO_TMP_PARITY_FILE =
   "pio-guards-demo-tmp-parity-scratch.txt";
+
+/** The BASH-ALLOW probe's DECLARED DIRECTORY (slot-relative). The
+ * .md-directory device: its basename ends in .md, so the declaration
+ * survives the capability's own guards-demo/*.md coverage filter and rides
+ * the kernel writable vector as a whole-subtree grant. A file-leaf entry
+ * cannot ride the vector this way - the carrier opens every granted path
+ * with O_PATH, O_CLOEXEC, and O_DIRECTORY, which faults on a regular file
+ * before the command starts - so commands that CREATE artifacts declare
+ * the containing directory instead. */
+export const GUARDS_DEMO_BASH_ALLOW_DIR = "guards-demo/bash-allow.md";
+
+/** The BASH-ALLOW probe's INNER artifact (slot-relative, below the declared
+ * directory). Deliberately matching NO contract pattern - it never survives
+ * coverage into the kernel vector (kernel-invisible), yet it arms the
+ * phase's settlement expectation over the exact path the command must land.
+ * The two-entry bag is the unique satisfying shape: a directory-only bag
+ * would arm a degenerate always-present check, and an artifact-only bag
+ * would grant NOTHING. */
+export const GUARDS_DEMO_BASH_ALLOW_ARTIFACT =
+  "guards-demo/bash-allow.md/bash-allow-artifact.txt";
 
 /** The pinned greeting template (PINNED bytes; the suite replica names this
  * owner). One settled turn: greet the operator and briefly name what the
@@ -176,6 +218,85 @@ function tmpNegativeInstructions(absoluteScratchFile: string): string {
   return `Attempt to write a file ${absoluteScratchFile}. The expectation is that the write comes back REFUSED \u2014 this phase declares NOTHING (no paths, no scope flag, no scratch flag), and the running capability's own contract flag being TRUE changes nothing, while the SAME target was admitted moments earlier by the adjacent probe's OWN declared scratch flag (the grant is phase-declared, not ambient); do not retry the target. Describe in one sentence if it's satisfied.`;
 }
 
+/** The pinned bash-deny instruction template (SOLE OWNER of these PINNED
+ * bytes; the suite replica names this owner). ONE parameter (the stray
+ * absolute path - REUSED verbatim from the write-tool deny probe): the
+ * fenced command attempts the SAME off-list target the write gate refused
+ * earlier; the kernel fence denies the write at attempt time (non-zero
+ * exit with the command's own permission diagnostic plus the standing
+ * restriction note, whose model-facing listing degrades to NONE because
+ * this phase declares NOTHING). Three beats: attempt-imperative /
+ * expectation / one-sentence verdict. No em dash occurs in the body. */
+function bashDenyInstructions(absoluteStrayArtifact: string): string {
+  return `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteStrayArtifact} - a plain shell redirection is enough. The expectation is that the command comes back REFUSED - the kernel fence denies the write at attempt time, the command exits non-zero with a permission error in its own output, and the output ends with a standing restriction note whose allowed-targets listing is NONE (this phase declares NOTHING). Do not retry the target. Describe in one sentence if it's satisfied.`;
+}
+
+/** The pinned bash-allow instruction template (SOLE OWNER of these PINNED
+ * bytes; the suite replica names this owner). THE SOLE multi-parameter
+ * probe template (directory FIRST, artifact second - the .md-directory
+ * device): the fenced command creates the inner artifact under the DECLARED
+ * containing directory in TWO shapes (a plain shell redirection, then a
+ * program opening the path for write - coreutils-steered, interpreter-
+ * avoided); the kernel fence grants the whole declared directory, so
+ * NEITHER command produces a standing restriction note. Three beats:
+ * imperative / expectation / one-sentence verdict. No em dash occurs in
+ * the body. */
+function bashAllowInstructions(
+  absoluteDirectory: string,
+  absoluteArtifact: string,
+): string {
+  return `Use the bash tool ONLY (never the write or edit tools) to create a file ${absoluteArtifact} under the directory ${absoluteDirectory}, in TWO shapes: first a plain shell redirection, then a program that opens the path for write (a standard utility such as touch, cp, or dd - avoid scripting-language interpreters). The expectation is that BOTH writes are ADMITTED - the phase declared the very directory the artifact lives in, so the kernel fence grants that directory and neither command produces a standing restriction note. Describe in one sentence if it's satisfied.`;
+}
+
+/** The pinned bash-project-file instruction template (SOLE OWNER of these
+ * PINNED bytes; the suite replica names this owner). ONE parameter (the
+ * SHARED workspace-cwd absolute path - REUSED verbatim from the write-tool
+ * twin): the phase declares the project-files SCOPE, so the kernel fence
+ * admits the workspace directory the file sits in. Three beats: imperative
+ * / expectation / one-sentence verdict. No em dash occurs in the body. */
+function bashProjectFileInstructions(absoluteCwdFile: string): string {
+  return `Use the bash tool ONLY (never the write or edit tools) to write a file ${absoluteCwdFile} with a shell command. The expectation is that it LANDS - the phase declares the project-files SCOPE, so the kernel fence admits the workspace directory the file sits in. Describe in one sentence if it's satisfied.`;
+}
+
+/** The pinned bash-project-file-not-allowed instruction template (SOLE
+ * OWNER of these PINNED bytes; the suite replica names this owner). ONE
+ * parameter (the SAME shared cwd absolute path the adjacent probe admitted
+ * moments earlier): the SILENT window (no paths, no scope flag) leaves the
+ * kernel set at the machine allowance, so the attempt comes back REFUSED
+ * with the standing note's listing rendering NONE - the do-not-retry
+ * mandate rides the template. Three beats: attempt-imperative /
+ * expectation / one-sentence verdict. No em dash occurs in the body. */
+function bashProjectFileNotAllowedInstructions(
+  absoluteSharedCwdFile: string,
+): string {
+  return `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteSharedCwdFile}. The expectation is that the command comes back REFUSED - this phase declares NOTHING (no paths, no scope flag), so the kernel fence grants nothing beyond the machine allowance and the output ends with a standing restriction note whose allowed-targets listing is NONE, while the SAME target was admitted earlier by the adjacent probe's OWN declared scope. Do not retry the target. Describe in one sentence if it's satisfied.`;
+}
+
+/** The pinned bash-tmp-parity instruction template (SOLE OWNER of these
+ * PINNED bytes; the suite replica names this owner). ONE parameter (the
+ * SHARED scratch absolute path - REUSED verbatim from the write-tool
+ * twin): the grant rides the phase's OWN scratch flag (phase-declared, not
+ * ambient), so the kernel fence grants the /tmp/ prefix class. Three beats:
+ * imperative / expectation / one-sentence verdict. No em dash occurs in
+ * the body. */
+function bashTmpParityInstructions(absoluteScratchFile: string): string {
+  return `Use the bash tool ONLY (never the write or edit tools) to write a file ${absoluteScratchFile} with a shell command. The expectation is that the scratch write is ADMITTED - the phase declares the scratch flag, so the kernel fence grants the /tmp/ prefix class (the grant is phase-declared, not ambient). Describe in one sentence if it's satisfied.`;
+}
+
+/** The pinned bash-tmp-negative instruction template (SOLE OWNER of these
+ * PINNED bytes; the suite replica names this owner). ONE parameter (the
+ * SAME pinned scratch absolute path the adjacent probe admitted moments
+ * earlier): the SILENT window (no paths, no scope flag, no scratch flag)
+ * leaves the kernel set at the machine allowance, so the attempt comes
+ * back REFUSED with the standing note's listing rendering NONE - the
+ * do-not-retry mandate rides the template. Three beats: attempt-imperative
+ * / expectation / one-sentence verdict. No em dash occurs in the body. */
+function bashTmpNegativeInstructions(
+  absoluteSharedScratchFile: string,
+): string {
+  return `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteSharedScratchFile}. The expectation is that the command comes back REFUSED - this phase declares NOTHING (no paths, no scope flag, no scratch flag), so the kernel fence grants nothing beyond the machine allowance and the output ends with a standing restriction note whose allowed-targets listing is NONE, while the SAME target was admitted moments earlier by the adjacent probe's OWN declared scratch flag. Do not retry the target. Describe in one sentence if it's satisfied.`;
+}
+
 /** The pinned summary template (PINNED bytes; the suite replica names this
  * owner). Variant selection keys ONLY on the observed iteration count (A:
  * >= 2 — the guard denied first-pass settlement and forced the corrective
@@ -184,7 +305,7 @@ function tmpNegativeInstructions(absoluteScratchFile: string): string {
  * FIXED (naming the ABSOLUTE artifact path) and no per-probe disk booleans
  * exist — the module performs no disk observation feeding any wording. It
  * ends with the standard closing order (state what was demonstrated, naming
- * the six gate probes, then end the turn right after). Em dashes are
+ * the twelve gate probes, then end the turn right after). Em dashes are
  * U+2014 (escaped). */
 function summaryInstructions(
   absoluteArtifact: string,
@@ -197,14 +318,14 @@ function summaryInstructions(
   return `${outcome}
 The deliverable is placed at (absolute path):
 ${absoluteArtifact}
-1. State in one short sentence what was demonstrated, naming the six gate probes: deny, allow, project-file, project-file-not-allowed, tmp-parity, tmp-negative.
+1. State in one short sentence what was demonstrated, naming the twelve gate probes: deny, allow, project-file, project-file-not-allowed, tmp-parity, tmp-negative, and the six bash-command probes: bash-deny, bash-allow, bash-project-file, bash-project-file-not-allowed, bash-tmp-parity, bash-tmp-negative.
 2. Do nothing else \u2014 no further tools, no questions, no writes. End your turn right after that statement.`;
 }
 
 export default class GuardsDemoCapability extends PioCapability {
   readonly contract: Contract = {
     name: "guards-demo",
-    version: "0.4.0",
+    version: "0.5.0",
     inputs: [],
     outputs: [{ name: "report", paramKey: "report" }],
     writes: ["guards-demo/*.md"],
@@ -235,6 +356,11 @@ export default class GuardsDemoCapability extends PioCapability {
     const absoluteAllowArtifact = join(projectSlot, GUARDS_DEMO_ALLOW_ARTIFACT);
     const absoluteCwdFile = join(process.cwd(), GUARDS_DEMO_PROJECT_PROBE_FILE);
     const absoluteTmpScratch = join("/tmp", GUARDS_DEMO_TMP_PARITY_FILE);
+    const absoluteBashAllowDir = join(projectSlot, GUARDS_DEMO_BASH_ALLOW_DIR);
+    const absoluteBashAllowArtifact = join(
+      projectSlot,
+      GUARDS_DEMO_BASH_ALLOW_ARTIFACT,
+    );
 
     // 1. Greeting — exactly ONE settled turn through the session stream.
     await this.execute_phase("greeting", {
@@ -356,7 +482,112 @@ export default class GuardsDemoCapability extends PioCapability {
       max: 1,
     });
 
-    // 10. Summary — success-gated by control flow (a rejecting guarded
+    // 10. BASH-DENY probe - the fenced-command OFF-LIST leg over the SHARED
+    // stray target the write-tool deny probe refused earlier: the kernel
+    // fence denies the write at attempt time over the SAME path (cross-
+    // mechanism same-target refusal), the command exits non-zero with its
+    // own permission diagnostic plus the standing restriction note whose
+    // model-facing listing renders NONE (this phase declares NOTHING - the
+    // minimum fence). Pre-sweep (error-swallowed unlink - a WRITE, not a
+    // check) clears a crash-survivor copy. Options EXACTLY { instructions,
+    // min, max } - attach abstention. One settled run.
+    await rm(absoluteDenyStray, { force: true }).catch(() => {});
+    await this.execute_phase("bash-deny", {
+      instructions: bashDenyInstructions(absoluteDenyStray),
+      min: 1,
+      max: 1,
+    });
+
+    // 11. BASH-ALLOW probe - the fenced-command ON-LIST leg over the
+    // .md-directory device: the phase declares the artifact's CONTAINING
+    // DIRECTORY (the surviving, vector-visible whole-subtree grant) plus
+    // the UNCOVERED inner artifact (kernel-invisible - it cannot fault a
+    // spawn - yet armed RAW over the phase's settlement expectation). Reset
+    // sweep (recursive unlink, error-swallowed) THEN the capability-owned
+    // mkdir (error-swallowed): the inner file's absence follows from the
+    // recursive reset; a stale survivor degrades to an overwrite - the
+    // sweeps remain WRITES, not checks. Bag ORDER: directory first,
+    // artifact second. The inner artifact is LEFT BEHIND at end of run (the
+    // admission showcase; the recursive reset self-heals across runs).
+    await rm(absoluteBashAllowDir, { recursive: true, force: true }).catch(
+      () => {},
+    );
+    await mkdir(absoluteBashAllowDir, { recursive: true }).catch(() => {});
+    await this.execute_phase("bash-allow", {
+      instructions: bashAllowInstructions(
+        absoluteBashAllowDir,
+        absoluteBashAllowArtifact,
+      ),
+      min: 1,
+      max: 1,
+      write: [absoluteBashAllowDir, absoluteBashAllowArtifact],
+    });
+
+    // 12. BASH-PROJECT-FILE probe - the SAME shared workspace-cwd target the
+    // write-tool twin admitted moments earlier, now over the SCOPE class:
+    // the phase declares the project-files flag (NO write bag), so the
+    // kernel set gains the workspace-cwd class and the command's write
+    // LANDS. SELF-CLEANING: the probe file is removed after the phase (a
+    // hygiene WRITE, not a check - no standing artifact in the repo working
+    // dir); the pre-phase sweep covers a crash-survivor copy.
+    await rm(absoluteCwdFile, { force: true }).catch(() => {});
+    await this.execute_phase("bash-project-file", {
+      instructions: bashProjectFileInstructions(absoluteCwdFile),
+      min: 1,
+      max: 1,
+      allowProjectWrites: true,
+    });
+    await rm(absoluteCwdFile, { force: true }).catch(() => {});
+
+    // 13. BASH-PROJECT-FILE-NOT-ALLOWED probe - the SAME shared cwd target
+    // under the FLAG-LESS SILENT window: options EXACTLY { instructions,
+    // min, max } (option ABSENCE is the silence - no bag, no flag, so the
+    // phase slot stays EMPTY: attach abstention), so the kernel set is the
+    // minimum machinery allowance and the command's attempt comes back
+    // REFUSED with the standing note's listing rendering NONE - DESPITE
+    // this capability's own flag-TRUE contract, mirroring the write-tool
+    // twin. Pre-sweep only (crash-survivor hygiene - a WRITE, not a check;
+    // no post-rm, mirroring the write-tool twin).
+    await rm(absoluteCwdFile, { force: true }).catch(() => {});
+    await this.execute_phase("bash-project-file-not-allowed", {
+      instructions: bashProjectFileNotAllowedInstructions(absoluteCwdFile),
+      min: 1,
+      max: 1,
+    });
+
+    // 14. BASH-TMP-PARITY probe - the SHARED scratch target the write-tool
+    // tmp-parity probe admitted moments earlier, now over the phase's OWN
+    // scratch flag (single-flag doctrine - no contract-side counterpart):
+    // the /tmp/ prefix class is ACTIVE while this phase governs (the grant
+    // is phase-declared, not ambient), so the command's write LANDS.
+    // Pre-sweep runs FIRST (cross-run self-healing); the admitted residue
+    // is removed again by the next probe's pre-phase sweep (end-of-run
+    // state ABSENT BY DESIGN).
+    await rm(absoluteTmpScratch, { force: true }).catch(() => {});
+    await this.execute_phase("bash-tmp-parity", {
+      instructions: bashTmpParityInstructions(absoluteTmpScratch),
+      min: 1,
+      max: 1,
+      tmpDirAllowed: true,
+    });
+
+    // 15. BASH-TMP-NEGATIVE probe - the NEGATIVE direction over the SAME
+    // pinned scratch target the previous probe admitted moments earlier:
+    // the SILENT window (options EXACTLY { instructions, min, max } -
+    // attach abstention) confers no grant beyond the machine allowance, so
+    // the command's attempt comes back REFUSED with the standing note's
+    // listing rendering NONE. The pre-phase sweep runs FIRST (identical
+    // hygiene idiom - a WRITE, not a check): it self-heals cross-run
+    // residue AND removes the admitted parity residue WITHIN the run
+    // (end-of-run state ABSENT BY DESIGN). One settled run.
+    await rm(absoluteTmpScratch, { force: true }).catch(() => {});
+    await this.execute_phase("bash-tmp-negative", {
+      instructions: bashTmpNegativeInstructions(absoluteTmpScratch),
+      min: 1,
+      max: 1,
+    });
+
+    // 16. Summary — success-gated by control flow (a rejecting guarded
     // phase never reaches it): ONE settled turn - the DISK-CHECK-FREE
     // closing narration keyed ONLY on the observed iteration count, stated
     // THROUGH THE SESSION STREAM.
@@ -366,7 +597,7 @@ export default class GuardsDemoCapability extends PioCapability {
       max: 1,
     });
 
-    // 11. Return — the RELATIVE token; the base's settle seam absolutizes it
+    // 17. Return — the RELATIVE token; the base's settle seam absolutizes it
     // exactly once at success settlement (NEVER the absolute path here).
     return { report: GUARDS_DEMO_ARTIFACT };
   }

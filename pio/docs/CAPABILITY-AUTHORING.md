@@ -32,6 +32,11 @@ Orientation (where things live):
   derivation helpers (`layout.ts`), profile renderer (`render.ts`), owned
   extension provisioning (`owned-extensions.ts`), and the gated host pipeline
   (`run.ts`).
+- `pio/src/tools/bash/` — the command-write fence family over phase-invoked
+  `bash`: the pure snapshot-to-ruleset materializer (`landlock-ruleset.ts`),
+  the fail-closed fenced bash instance (`landlock-bash.ts`), and the vendored
+  Landlock carrier's hermetic syscall suite (`landlock-helper.test.ts`); the
+  carrier artifact itself ships at `pio/vendor/landlock-helper/` (§13).
 - `pio/src/session.ts` — the session construction seam; `pio/src/run-session.ts`
   — the single-path in-namespace entry; `pio/src/constants.ts` — the package
   root constant; `pio/package.json` — the owned exact dependencies.
@@ -2823,3 +2828,441 @@ the model's OWN turn (the model reads the reason, adapts the plan, finishes
 the turn). From this step forward, ANY live `pio run guards-demo`
 engagement IS the standing end-to-end demonstration: expectation guard plus
 all six PLAIN-PHASE gate probes in one run.
+
+## 13. Command-write fence: Landlock over phase-invoked bash
+
+Material: `pio/src/tools/bash/landlock-bash.ts` (the fenced bash instance —
+`createLandlockBash` + `createLandlockBashOperations`, the PROBE-ONCE latch,
+the uniform-band settlement, and the module-pinned `STANDING_NOTE_TEMPLATE`
+— the family's SOLE new voice artifact) · `pio/src/tools/bash/landlock-ruleset.ts`
+(the pure snapshot-to-ruleset materializer — `composeKernelWritableSet`, the
+`LANDLOCK_FAULT_CODES` / `LANDLOCK_FAULT_BAND` vocabulary, `classifyLandlockExit`,
+the `renderMechanismRefusal` refusal family, `parseProbeReport`, and the
+`checkLandlockHelper` resolver/classify) · `pio/vendor/landlock-helper/` (the
+self-authored statically-linked C carrier — argv protocol, fault-code table,
+ABI-8 exact-identity pin, committed x86_64 static prebuild) ·
+`pio/src/capability/pio-session.ts` (the UNCONDITIONAL single-entry
+`customTools` threading at the `create` seam, beside the `guardInstall` stamp)
+· `pio/src/capabilities/guards-demo.ts` (the standing quality-gate LIVE
+vehicle — the bash probe family under the same single span) + its colocated
+suite · cross-referenced homes: `pio/src/session-execution-state.ts` (the
+shared per-session execution state and its fresh `snapshot()` channel) and the
+§12 layer-vocabulary homes (`write-gate.ts`, `session.ts`, and the
+`guards-demo.ts` write-tool probe family).
+
+This section documents ALREADY-SHIPPED machinery: every mechanism below is
+live in the source at HEAD, and **NO NEW CAPABILITY IS REGISTERED** — the
+loader table (`pio/src/capability/loader.ts` `CAPABILITY_TABLE`) and the CLI
+`--help` listing are UNCHANGED by the fence, so registry sweeps find nothing
+to register. It corrects the guide for the shipped command-write surface: §12
+chartered the agent-hook write gate over `write`/`edit` (the interceptor path,
+§12.4); the command fence is its SIBLING mechanism by doctrine — the kernel
+adjudicates phase-invoked `bash` at hook time, and the tool renders only
+(single refusal site, §13.6). The two mechanisms share the write gate's layer
+vocabulary term-for-term — declaration IS permission, the innermost ACTIVE
+layer governs exclusively, phases narrow, never widen (§12.1, §12.3) — and the
+fence composes from the SAME effective construction the live gate judges,
+recomputed FRESH at every spawn over the shared execution state's
+`materializeEffectiveSet` core (`pio/src/permission-mechanics.ts`; no
+cached set, no second judgment site, §12.3).
+
+### 13.1 Enforcement model: one fresh kernel frame per spawn
+
+Per INVOCATION, not per session: each fenced `bash` invocation builds a NEW
+kernel ruleset from the live execution state and applies it over its WHOLE
+PROCESS TREE before the command starts. The pre-spawn sequence in
+`landlock-bash.ts` is: fresh `executionState.snapshot()` consult over the
+shared state held BY REFERENCE (the very same `ExecutionSnapshot` record the
+write gate consumes — `pio/src/session-execution-state.ts`; no per-guard fork,
+nothing cached) → static `checkLandlockHelper` classify →
+`composeKernelWritableSet(snapshot)` → the PROBE-ONCE applicability proof →
+shell-config resolution and serialized carrier invocation → delegated spawn
+(§13.5). Declaration IS the permission carried into the frame: the composer's
+input is the MOMENT'S effective allowlist — the innermost active layer's
+declaration clamped by the running capability's contract — so the fence rides
+the gate's unified doctrine unchanged (§12.1): phases narrow, never widen, and
+a flag-less SILENT window degrades to the minimum fence. The WHOLE PROCESS
+TREE inherits enforcement: the carrier restricts self BEFORE `execve`
+(`prctl(PR_SET_NO_NEW_PRIVS, 1)` → `landlock_restrict_self` → `execve`,
+`landlock-helper.c`), so shell → interpreter → make children all ride the same
+frame; the complete mutation-right vocabulary INCLUDING `REFER` (the
+rename/move/link/symlink escape hatch) ships pinned as mask `0x7FF2` (vendor
+README mutation-word record, asserted in the C and mirrored lockstep by the
+suite). The AGENT/SESSION PROCESS STAYS UNRESTRICTED: the ratchet is ONE-WAY
+AND SELF-SCOPING (README safety note — rights can only shrink, once, for the
+restricted process and its descendants), restricted lineages are short leaves
+born inside one stable frame, and the long-lived host keeps serving later
+frames and transcripts unrestricted — fences never STACK on it. Scope is
+PREEMPTIVE-ONLY with respect to the real environment: off-list writes die
+EPERM at ATTEMPT TIME against the bubble environment, and no post-hoc/
+detective regime forms part of the guarantee (recorded constraint,
+`.pio/issues/bash-command-write-gating.md` owner constraints).
+
+### 13.2 Concrete-only allowlists: what the kernel sees, and the two documented divergences
+
+Open patterns (`research/*.md`) are NOT expressible as kernel rules.
+`composeKernelWritableSet` applies a STRICTLY-CONCRETE filter — absolute, free
+of ALL SIX matcher-dialect metacharacters `* ? [ ] { }` — over the
+COVERAGE-FILTERED SURVIVORS of the moment's effective construction: uncovered
+declarations are KERNEL-INVISIBLE, INCLUDING DIRECTORIES (a directory
+declaration rides the kernel vector only if it matches a contract write
+pattern), and wildcard entries contribute NOTHING to the kernel set while still
+appearing in the write gate's listings — DIVERGENCE 1, listed-but-not-granted
+(the gate's moment-set listings name what the model sees, §12.6; the kernel
+set names what the kernel grants). Assembly order is pinned: declared concrete
+survivors → `/dev` (the ALWAYS-present machinery allowance — ubiquitous
+`/dev/null` writes under the bubble's fresh `--dev` mount) → `/tmp` (iff the
+effective scratch proposition holds) → `workspaceCwd` (iff the dual project
+flags agree), with global first-occurrence dedupe; the MINIMUM fence over ANY
+window is exactly `["/dev"]` — never an empty vector. DIVERGENCE 2: a
+declared DIRECTORY grants its WHOLE SUBTREE under the carrier's PATH_BENEATH
+rule (vendor README x86_64 record: `PATH_BENEATH = 1`) while the write gate
+admits the EXACT declared path only — the anchored-glob dialect matches the
+declared token, not the descent below it (§12.4). Authoring guidance for the
+dominant case (the corrected truth, not any earlier plan text): declare the
+CONTAINING DIRECTORY when commands create artifacts. A FILE-LEAF declaration
+is refused PRE-CHILD with the add-rule-failure machinery fault (code 102):
+the carrier opens every `--write` entry `O_PATH | O_CLOEXEC | O_DIRECTORY`
+(`landlock-helper.c`), and a regular file faults there before any child exists
+— this corrects any earlier reading that a concrete artifact FILE leaf is the
+normal declaration shape. The mkdir corner follows from the strict grants:
+there is NO implicit ancestor promotion, so when a command must CREATE an
+artifact whose enclosing directories do not yet exist, declare the nearest
+existing ancestor (or the topmost created directory) in the phase `write` bag
+as well. The demo-local `.md`-directory device is deliberately kept OUT of
+this general guidance — its disclosure lives in §13.8, where it is named for
+what it is: an artifact of the demo's own coverage-pattern intersection, not
+practice.
+
+### 13.3 The scratch class: /tmp exact-prefix only
+
+The fence's scratch class is EXACT-PREFIX ONLY: `/tmp` enters the kernel
+writable set iff the active phase's scratch proposition is effective — the
+same single-flag doctrine with NO contract-side counterpart the gate enforces
+(§12.7). This is coherent with the write gate's NEGATIVE-SCRATCH direction:
+stray tmp-scratch writes in SILENT out-of-span windows are refused by BOTH
+mechanisms — the gate renders its universal no-permission byte over
+`write`/`edit`, and the kernel denies the command's attempt at hook time with
+the standing note appended (§13.6). The bubble's `/tmp` is a FRESH tmpfs mount
+(the profile renderer's base flags carry `--tmpfs /tmp` beside `--dev /dev`,
+`pio/src/sandbox/render.ts`), so end-of-run scratch state is ABSENT BY
+DESIGN: whatever a scratch-admitting phase wrote there dies with the bubble,
+and the standing demonstration's sweeps additionally remove admitted residue
+WITHIN the run and self-heal cross-run leftovers (§13.8 hygiene).
+
+### 13.4 Long-lived writers: accept-and-document
+
+Stance: ACCEPT AND DOCUMENT. A background writer spawned under a fence
+FREEZES at its spawn-frame until death — a RUNNING lineage CANNOT be
+re-restricted (the ratchet is one-way: restriction only ever shrinks rights,
+once, for the process and its descendants — README safety note), and there is
+NO kill-on-frame-pop: when the governing frame pops, the writer keeps its
+frozen spawn-frame rights until it exits on its own. Exposure is capped by
+BUBBLE TEARDOWN — the namespace's lifetime bounds how long any frozen writer
+can act. Authoring guidance: capabilities do NOT spawn persistent writers via
+`bash`; a genuine need for a background writer is a design conversation, not a
+fence tuning — the v1 fence ships no knob to extend a frozen frame.
+
+### 13.5 Fail-closed posture: machinery faults, PROBE-ONCE, and unsupported hosts
+
+Fail-closed is the SOUNDNESS NON-NEGOTIABLE: every machinery fault class maps
+to a TYPED COMMAND REFUSAL thrown BEFORE any child exists — NEVER an unfenced
+execution (`landlock-bash.ts` header doctrine: every machinery fault maps to a
+typed refusal thrown pre-child, never an unfenced run). The single-source
+fault-code vocabulary (`landlock-ruleset.ts`) pins the five machinery codes,
+quoted verbatim from `LANDLOCK_FAULT_CODES`:
+
+`malformedSpec: 100`, `abiMissingOrBlocked: 101`, `addRuleFailure: 102`,
+`restrictSelfFailure: 103`, `execveFailure: 104`
+
+over the reserved band `LANDLOCK_FAULT_BAND` = `[100, 199]` (codes 105..199
+stay reserved and classify as the explicit `band-reserved` conservative
+reading). Every code is issued strictly PRE-EXECEVE by construction, so an
+in-band completed exit interprets CONSERVATIVELY as a machinery fault —
+enforcement was active throughout; only the refusal text could mislabel the
+cause. The ABI pin is **8** with an EXACT-IDENTITY lock: the probe verdict is
+strict (`status=ok` ⇔ discovered == pin) and BOTH directions refuse as fault
+101 — below-pin (capability gap) and above-pin alike (unmeasured
+forward-compatibility claims do not cross the security boundary; README
+discovery policy). Settlement semantics (shipped): IN-BAND completed exits
+(post-spawn 100–199) THROW the rendered mechanism refusal under the uniform
+conservative band rule; OUT-OF-BAND exits RESOLVE normally; a NULL exit
+resolves `{ exitCode: null }` and formats SUCCESS-SHAPED (builtin parity),
+with timeout/abort/cwd error shapes preserved byte-for-byte.
+
+Why a probe exists at all: Landlock exposes NO simulation/dry-run mode —
+enforcement surfaces only as hook-time denials — so "will THIS spawn stay
+enforceable?" is unanswerable without running; the throwaway `--probe`
+applicability check is the ONLY non-committing dynamic evaluation available.
+It applies the restriction sequence over a trivial zero-rule ruleset WITHOUT
+execve, and it is NEVER applied to the long-lived agent process — the ratchet
+is one-way (README probe-mode record). Applicability probing is PROBE-ONCE
+(the shipped ruling, supersedes the older per-spawn text): the proof is LAZY
+and CACHED PER FENCED INSTANCE — a PASS latches closure-scoped on the ops
+instance (the `probePassed` latch inside `createLandlockBashOperations`; later
+invocations skip the fork entirely, zero extra spawns), and a FAILED verdict
+is NEVER latched — each subsequent invocation retries the probe pre-child and
+refuses until it passes (self-heals on environment recovery; no invalidation
+hooks owed, because the proven property — kernel Landlock usable ∧ ABI
+exact-identity — is independent of execution state). Per probe the carrier
+prints exactly one pinned report line, quoted verbatim (vendor README /
+`emit_probe_line` in `landlock-helper.c`):
+
+`landlock-helper probe abi=<DISCOVERED_MAX|0> pin=<PINNED_ABI> status=<ok|fail>`
+
+TOCTOU note (shrunk form): the soundness predicate is authoritative AT THE
+SPAWN SITE — state can shift between probe and spawn; the state-dependent
+parts (paths, writable set) flow per spawn through the composer, and the
+uniform in-band rule absorbs hypothetical mid-frame machinery faults at
+settlement (they surface as the typed refusal instead of pre-child).
+Unsupported hosts: the Landlock kernel floor (ABI support since 5.13; the
+pinned ABI-8 mutation vocabulary requires a newer host) is an EXPLICIT HOST
+REQUIREMENT, not an incidental property. On an unprovisioned host the
+observable shapes are: the fault-101 typed refusal lines on every fenced
+invocation (nothing runs unfenced — the `probe-refused` /
+`abi-missing-or-blocked` family, §13.6); the positive-enforcement suite rows
+SKIPPING WITH SURFACED REASON while the classification and fault-class rows
+STILL HOLD (the carrier's hermetic syscall suite degrades honestly,
+`pio/src/tools/bash/landlock-helper.test.ts`); and the failed-probe
+self-healing retry keeping the door open — a recovered environment passes its
+next probe and the fence resumes. Never a silent unfenced fallback.
+
+### 13.6 Single-refusal-site doctrine and the standing restriction note
+
+Bash adds NO `GuardHandler` member: the handler list threaded at the
+construction seam remains EXACTLY `[writeToolCallHandler]` (`pio/src/capability/pio-session.ts`
+— `guardInstall: { executionState, handlers: [writeToolCallHandler] }`; the
+`GuardHandler` type and the interceptor runner live in `pio/src/session.ts`).
+Adjudication of command writes is the KERNEL'S — the fence applies and the
+kernel denies at hook time — and the optional CONSULT-TIME MIRROR (a second
+judgment site over the command's predicted writes) was evaluated and DECLINED,
+so the single refusal site stands. Voice: denials render from the SHARED byte
+family. The `renderMechanismRefusal` ELEVEN-LINE FAMILY (`landlock-ruleset.ts`)
+is the SOLE machinery-refusal voice — one owner of all its bytes, one escaped
+em dash per line, one physical line, a trailing period, measured details in
+parentheses; every line carries the fixed head `Command execution refused —`
+and ten of the eleven close on the shared `refusing to run unfenced` clause
+(the conservative in-band reading closes with the enforcement-was-active-
+throughout clause instead). The fence family's SOLE new voice artifact is the
+pinned standing-note template, quoted verbatim from `STANDING_NOTE_TEMPLATE`
+(`landlock-bash.ts`) — the pinned constant ends in a trailing space after
+`Allowed targets:` (one extra space sits before the closing backtick below so
+the rendered span keeps exactly one; the listing joins the trailing period at
+the render site):
+
+`Note: a per-phase Landlock write restriction is in effect and denied writes surface as permission errors in the command's own output. Landlock may be blocking changes to certain files due to lack of permissions in the current phase. Allowed targets:  `
+
+Standing-note mechanics (shipped, including the unconditional-framing
+amendment): fires ONLY on resolved NON-ZERO out-of-band exits — exit 0 and
+kill/abort/timeout paths carry NOTHING (those propagate the delegate's bare
+contract bytes verbatim). The trigger is the delegated EXIT CODE ALONE — the
+annotation is CONTENT-INDEPENDENT: no output-content consult anywhere in the
+module. One framed append rides the SAME data channel strictly AFTER all raw
+chunks (delegation sequencing makes this airtight): payload = unconditional
+leading LF + the pinned template + the model-facing listing + `.` +
+unconditional trailing LF. The UNCONDITIONAL framing buys two product-facing
+corners, both accepted and pinned: a blank line between cleanly-ended output
+and the note (the dominant failing-command case), and a phantom first line
+when a printing-nothing command fails. Listing projection (the reading key
+for transcripts): strictly-concrete survivors ride RAW; the ALWAYS-present
+`/dev` machinery allowance is ABSENT from the model-facing listing by identity
+classification (`renderAllowedTargetsClause` skips the class tokens), so a
+SILENT window's empty remainder degrades to the universal `none` form —
+byte-consistent with the no-permission shape: a silent window reads
+`Allowed targets: none.`; `/tmp` names as `scratch files under /tmp/`; the
+workspace cwd names as `project files under <cwd>`; elements join with `, `.
+Fire/miss vocabulary (measured; replaces the retired marker-sniffing
+attribution design): guaranteed-fire shapes under bash/sh (dash), python3
+(`PermissionError: [Errno 13] Permission denied`), perl ($! strerror), and
+coreutils cp/rm; measured MISS classes: node/bun/deno lowercase `EACCES:
+permission denied`, java (`java.nio.file.AccessDeniedException`),
+go/localized/custom-phrasing (open set). JS runtimes are the stack's dominant
+programmatic-write surface, so text-sniffing attribution was systematically
+blind exactly where it mattered most — which is why the shipped surface is
+the content-independent note, not a sniffed attribution. Doctrine:
+ENFORCEMENT-VS-ADVISORY — the kernel denial is COMPLETE and attempt-time (it
+holds regardless of what the output says); any output-text channel is
+ADVISORY-ONLY. Two documented mute corners stay SILENT in v1: the
+masked-exit-0 case (a command that hides a failed write behind exit 0 carries
+no note — the trigger is the exit code alone) and the pre-child window
+(SIGNAL-BLIND before the spawn — no stream exists yet to annotate).
+
+### 13.7 Both placement modes: composition tracks mechanically
+
+Composition tracks AUTOMATICALLY: the fence bag is minted ONCE per
+`PioSession` INSTANCE and held BY REFERENCE (`pio/src/capability/pio-session.ts`
+builds the single `createLandlockBash(cwd, executionState)` instance over the
+SAME execution state the guard install stamps), and the per-invocation FRESH
+snapshot consult gives late binding across spans/phases/rebind — span or phase
+churn between two consults flips the consulted snapshot over the SAME threaded
+instance (the instance may persist while the frames it consults churn). A
+CHILD'S fence tracks the CHILD'S frame, and the PARENT's own writes are
+unaffected by a child's fence — each consult reads the state's innermost
+active layer at its own moment. Row-1 (same-session composition, §11):
+composed frames share the registry AND the shared state mechanically — the
+stored-factory closure re-spreads `customTools` AND re-stamps the shared state
+on EVERY handle re-creation, so a composed callee's phases consult the same
+stamped state through the same threaded instance. Row-2 (terminal-takeover,
+separate process, §8): the composed frame runs its OWN `create` ⇒ its own
+frame AND its own fence. Every SHIPPED session carries the fence by
+CONSTRUCTION — the threading is UNCONDITIONAL at the `create` seam (mirroring
+the `guardInstall` threading; no placement adds wiring). Boundary, stated for
+completeness: a FOREIGN un-stamped handle (the §12.9 case) carries neither
+fence nor state and no-op gates — compositions mounted outside the
+construction seam run ungated BY CONSTRUCTION.
+
+### 13.8 guards-demo bash probe family: the standing quality-gate live vehicle
+
+The LIVE demonstration rides the permanent `guards-demo` home
+(`pio/src/capabilities/guards-demo.ts`, contract 0.5.0 — the SOLE
+contract-literal difference vs the pre-family 0.4.0). The canonical
+QUALITY-GATE SCENARIO ROW, quoted verbatim, is:
+
+*"Guards-demo bash chain — `pio run guards-demo`: the six write probes PLUS the bash probe family — off-list command refusal with the standing note + kernel-set listing, on-list artifact landed, the scope/scratch pairs flip — ok:true, exit 0."*
+
+Six phase ids in FIXED ORDER after the existing six write-tool probes and
+before `summary`, under the SAME single span, each driving ONLY a `bash` tool
+call (no write/edit usage; the ids above are the module's phase calls in
+source order):
+
+- `bash-deny` — the SILENT window (options exactly `{ instructions, min,
+  max }`) over the SHARED stray target the write gate already REFUSED on the
+  same path (the module reuses the write-tool deny probe's absolute stray
+  verbatim): a plain shell-redirection attempt dies on the kernel denial with
+  a non-zero exit and the command's own permission diagnostic; the transcript
+  carries the standing restriction note whose listing reads `none` (minimum
+  fence — this phase declares NOTHING); the artifact never lands (live
+  OFF-LIST-REFUSAL leg — the cross-mechanism same-target refusal: the gate and
+  the kernel over one path).
+- `bash-allow` — declares the artifact's CONTAINING DIRECTORY (options
+  `{ instructions, min, max, write: [absDir, absArtifact] }`); the fenced
+  command writes in TWO shapes (a plain shell redirection, then a program
+  opening the path for write — coreutils-steered, interpreter-avoided); exit
+  ok, file present, transcript CLEAN — no standing note, since neither
+  command hits a denial (live ON-LIST-COMPLETION leg). DISCLOSED DEVICE: the
+  directory token `guards-demo/bash-allow.md` is a DIRECTORY whose basename
+  satisfies the demo's OWN `guards-demo/*.md` coverage pattern — a DEMO-LOCAL
+  pattern-intersection artifact, NOT general authoring guidance (the general
+  truth lives in §13.2). The UNCOVERED inner artifact
+  (`guards-demo/bash-allow.md/bash-allow-artifact.txt`) matches no contract
+  pattern: it is KERNEL-INVISIBLE (it never survives coverage into the vector,
+  so it can never fault a spawn — unlike a file-leaf survivor, which would die
+  pre-child at the carrier's `O_DIRECTORY` open, §13.2) yet ARMS the engine
+  settlement gate raw over the exact path the command must land. Break mode
+  is FAIL-LOUD: a coverage-pattern edit that admitted the inner file leaf into
+  the kernel vector would surface as the add-rule-failure machinery fault
+  (code 102) as a typed pre-child refusal — never a silent misgrant (verified
+  against `composeKernelWritableSet` + the carrier: the only route in is
+  coverage-survivor + strictly-concrete, and the carrier's `O_DIRECTORY` open
+  kills the file leaf).
+- `bash-project-file` / `bash-project-file-not-allowed` — the PROJECT-FILES
+  SCOPE pair over the SAME shared workspace-cwd target: ADMITTED under the
+  flag-declaring phase (`allowProjectWrites: true` — the `workspaceCwd`
+  class; SELF-CLEANING post-rm) and REFUSED by the flag-less SILENT phase
+  INSIDE the demo's own flag-TRUE contract (the same silence the write-tool
+  twin proves with the gate's universal byte, now proven with the kernel's
+  denial — the standing note's listing reads `none`).
+- `bash-tmp-parity` / `bash-tmp-negative` — the SCRATCH pair over the SAME
+  shared `/tmp` target: ADMITTED under the scratch-flag phase
+  (`tmpDirAllowed: true`) and REFUSED by the SILENT window (the
+  negative-scratch direction, live both ways; the `bash-tmp-negative`
+  pre-phase sweep removes the admitted residue WITHIN the run).
+
+How to READ the transcripts: the standing note + the concrete-kernel-set
+listing IS the fence's feedback channel (§13.6) — on-list completion produces
+no note, off-list failure produces the command's own diagnostic plus the note.
+The DOCUMENTED-DIVERGENCE readings appear live here: WILDCARD ENTRIES
+LISTED-BUT-NOT-GRANTED (the demo's `guards-demo/*.md` pattern admits the
+model-facing voice while contributing NOTHING to the kernel set — §13.2
+divergence 1), and a DECLARED DIRECTORY GRANTING ITS WHOLE SUBTREE while the
+gate admits the exact declared path only (§13.2 divergence 2 — a
+`write`/`edit` demand beneath the declared directory would meet the gate's
+token-only admission; the kernel grants the descent). LAYER TRACKING falls
+out of the FIXED-ORDER alternating sequence: adjacent frames flip the verdict
+over SAME-KIND targets with no session restart between frames, crossing the
+TOOL/KERNEL boundary — the shared stray is refused by the GATE and by the
+KERNEL over the same path, and the cwd and /tmp targets each play
+admit/refuse quadruples (write-tool twin, then bash twin). Hygiene facts:
+the module's own pre-phase unlink-reset sweeps are error-swallowed WRITES
+executing in the SESSION PROCESS — unfenced, since the ratchet is one-way and
+the module's own unlink/mkdir never consult the kernel fence; end-of-run state
+is /tmp scratch ABSENT BY DESIGN, the cwd target SELF-CLEANED (post-rm), and
+the project slot KEEPS the `bash-allow` directory + inner artifact (the
+admission showcase — the recursive reset self-heals across runs). Additive-
+only bar: the existing six write probes stay BYTE-STABLE beside the new
+family (the summary's probe-naming line extends lockstep to name the TWELVE
+gate probes; the loader table, CLI `--help`, and `pio/src/session.ts` stay
+byte-diff empty — §13.10).
+
+### 13.9 Designated upgrade rung: overlay preview (recorded, not designed)
+
+The OVERLAY-PREVIEW family is recorded as the DESIGNATED UPGRADE RUNG for a
+later goal. The issue ticket (`.pio/issues/bash-command-write-gating.md`,
+"Designated upgrade rung" section) records it thus:
+
+Run the command on a throwaway fs (overlay upperdir / CoW replica) → observed change set is judged AGAINST THE FULL FRAME (patterns included — lifts the concrete-only limitation) → commit-if-allowed / discard.
+
+Costs carried from day one: double execution & non-fs side effects (network/daemons run twice), output divergence (time/random-dependent names), merge-down tail (overlay loses rename metadata — mv ≈ create+delete), noise filtering (caches/locks), TOCTOU between verdict and commit, per-call mount/userns plumbing + launcher anti-nesting doctrine.
+
+Prior art: `m-bartlett/sandboxfs`, Arcturn dry-run/diff/apply-discard UX, ephemeral-overlay multi-agent workspace projects. Optional hybrid: Landlock denies normally; ONLY on denial run a bounded best-effort preview pass to reconstruct "what you actually tried" for a richer message.
+
+Boundary, per this guide's cut/deferred convention: NOT DESIGNED HERE — no
+overlay mechanism, mount plumbing, or userns interaction exists in the shipped
+surface; the rung is a record, not a commitment.
+
+### 13.10 Records and boundaries: no new capability, superseded spec surfaces, carrier visibility
+
+No-new-capability boundary (restated beside the first-paragraph statement so
+both stay greppable): NO NEW CAPABILITY IS REGISTERED — the loader table
+(`loader.ts` `CAPABILITY_TABLE`) and the CLI `--help` lines are UNCHANGED by
+the fence, and registry sweeps find nothing to register; the guards-demo
+accumulation rides the EXISTING registration byte-stably (§13.8 additive-only
+bar).
+
+Carrier visibility (no delivery mechanism) — recorded so future readers do
+not re-introduce a perceived gap: section A of the profile renderer ALWAYS
+binds the running node's own prefix ro (`pio/src/sandbox/render.ts` —
+`defaultRuntimeDir()` = `dirname(dirname(process.execPath))`, the always-ro
+system set entry over `runtimeDir`), and npm installs global packages UNDER
+the running node's prefix — so the ENTIRE pio package tree (the target
+executable, the SDK `node_modules`, AND `vendor/landlock-helper/`) sits inside
+the namespace BY CONSTRUCTION in every launchable topology. Safety is
+UNAFFECTED by absence: the fence machinery consults the carrier path PER SPAWN
+(`checkLandlockHelper` stat classify over the resolver path) and refuses
+CLOSED with a readable typed line on any absence — an in-bubble absence never
+yields an unfenced execution (§13.5). OUT-OF-SCOPE POINTER: prefixes decoupled
+from the node binary (custom npm `--prefix`, relocated node trees) break TARGET
+EXECUTABLE resolution too — a pre-existing, launch-level availability gap
+belonging to mount-inventory evolution, not a fence defect; do not patch it ad
+hoc here.
+
+Superseded spec surfaces (records note for readers cross-referencing older
+specification artifacts of this mechanism): five corrections where spec-time
+text no longer matches the shipped bytes — (i) WRAP-DESIGN SUPERSEDURE: the
+exec DELEGATES the spawn to the SDK's exported `createLocalBashOperations`
+rather than a mirrored ~70-LOC supervision body (grace-idle wait, group-kill,
+pid ledger — unmodified SDK code by delegation; the spec-time two-symbol
+construction pin is stale — the shipped consumption is FOUR SDK value
+symbols: `createBashToolDefinition`, `createLocalBashOperations`, `defineTool`,
+`getShellConfig`); (ii) ANNOTATION-SURFACE SUPERSEDURE: the
+content-independent standing note REPLACED marker-sniffing attribution
+(including the unconditional-LF framing amendment, §13.6) — the
+marker-sniffed refusal lines were never the shipped surface; (iii)
+PROBE-FREQUENCY SUPERSEDURE: PROBE-ONCE replaced per-spawn probing (lazy,
+cached per fenced instance; failures retry pre-child — §13.5); (iv) THE
+REGISTRATION-LANDING CONTAINMENT WIDENING: five sibling test suites gained
+PURELY-ADDITIVE construction-time mock extensions (test-mock hygiene only —
+registration mechanics unchanged); (v) THE SIBLING-SUITE SYMBOL FLOOR: THREE
+symbols — `createBashToolDefinition` + `defineTool` +
+`createLocalBashOperations` — for any future suite co-importing the
+Landlock-bash modules under an SDK-mocked context (missing symbols fail LOUD
+and deterministic at construction — never a silent degradation). Frame as
+HISTORY OF RECORD: the shipped code at HEAD is the authority, and where this
+guide and any older artifact disagree, the quotes extracted from HEAD win.
+
+Open-assumption verification: the referenced ninth knowledge entry
+(`KNOWLEDGE.md`) was NOT FOUND on disk at planning; the issue ticket and the
+goal input were verified at planning to carry the surviving closed-envelope
+decisions and cost lists VERBATIM (every correction above and the §13.9 cost
+list trace to the ticket and to the shipped sources) — no extra constraint was
+lost.

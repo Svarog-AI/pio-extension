@@ -481,50 +481,70 @@ const replicaPhaseDenial = (
 const replicaUniversalDenial = (): string =>
   `Writing is refused \u2014 no write permission is declared by any active phase. Allowed targets: none.`;
 
-/** Engine-composed prompt texts (marker line + instructions, verbatim the
- * phase engine's composition; corrective notes sit strictly AFTER the
- * baseline). */
+/** Replica of the phase-permission disclosure block (SOLE OWNER: the
+ * renderPhasePermissionDisclosure export in ../capability/pio-session.ts;
+ * re-typed locally per the suite's established pattern - fixed label,
+ * comma joiner, and the owner-worded class elements).
+ *
+ * Shape args mirror the shared-core consult outcome for the window each
+ * phase arms: surviving declared paths (verbatim), the clamped
+ * project-class proposition (workspace cwd), the single scratch flag. */
+function disclosureReplica(
+  files?: readonly string[],
+  projectCwd?: string,
+  scratch?: boolean,
+): string {
+  const parts: string[] = ["\u2014\u2014 phase permissions \u2014\u2014"];
+  if (files !== undefined && files.length > 0) parts.push(files.join(", "));
+  if (projectCwd !== undefined) parts.push(`project files at ${projectCwd}`);
+  if (scratch === true) parts.push("scratch files at /tmp");
+  return parts.join("\n");
+}
+
+/** Engine-composed prompt texts (disclosure block + marker line +
+ * instructions, verbatim the phase engine's composition; corrective notes
+ * sit strictly AFTER the baseline). */
 const greetingPromptText = (): string =>
-  `${renderPhaseMarker("greeting")}\n${GREETING_REPLICA}`;
+  `${disclosureReplica()}\n${renderPhaseMarker("greeting")}\n${GREETING_REPLICA}`;
 const guardProbePromptText = (absoluteArtifact: string): string =>
-  `${renderPhaseMarker("guard-probe")}\n${guardProbeReplica(absoluteArtifact)}`;
+  `${disclosureReplica([absoluteArtifact])}\n${renderPhaseMarker("guard-probe")}\n${guardProbeReplica(absoluteArtifact)}`;
 const denyPromptText = (absoluteStrayArtifact: string): string =>
-  `${renderPhaseMarker("deny")}\n${denyReplica(absoluteStrayArtifact)}`;
+  `${disclosureReplica()}\n${renderPhaseMarker("deny")}\n${denyReplica(absoluteStrayArtifact)}`;
 const allowPromptText = (absoluteArtifact: string): string =>
-  `${renderPhaseMarker("allow")}\n${allowReplica(absoluteArtifact)}`;
+  `${disclosureReplica([absoluteArtifact])}\n${renderPhaseMarker("allow")}\n${allowReplica(absoluteArtifact)}`;
 const projectFilePromptText = (absoluteCwdFile: string): string =>
-  `${renderPhaseMarker("project-file")}\n${projectFileReplica(absoluteCwdFile)}`;
+  `${disclosureReplica(undefined, process.cwd())}\n${renderPhaseMarker("project-file")}\n${projectFileReplica(absoluteCwdFile)}`;
 const notAllowedPromptText = (absoluteSharedCwdFile: string): string =>
-  `${renderPhaseMarker("project-file-not-allowed")}\n${notAllowedReplica(absoluteSharedCwdFile)}`;
+  `${disclosureReplica()}\n${renderPhaseMarker("project-file-not-allowed")}\n${notAllowedReplica(absoluteSharedCwdFile)}`;
 const tmpParityPromptText = (absoluteScratchFile: string): string =>
-  `${renderPhaseMarker("tmp-parity")}\n${tmpParityReplica(absoluteScratchFile)}`;
+  `${disclosureReplica(undefined, undefined, true)}\n${renderPhaseMarker("tmp-parity")}\n${tmpParityReplica(absoluteScratchFile)}`;
 const tmpNegativePromptText = (absoluteScratchFile: string): string =>
-  `${renderPhaseMarker("tmp-negative")}\n${tmpNegativeReplica(absoluteScratchFile)}`;
+  `${disclosureReplica()}\n${renderPhaseMarker("tmp-negative")}\n${tmpNegativeReplica(absoluteScratchFile)}`;
 const bashDenyPromptText = (absoluteStrayArtifact: string): string =>
-  `${renderPhaseMarker("bash-deny")}\n${bashDenyReplica(absoluteStrayArtifact)}`;
+  `${disclosureReplica()}\n${renderPhaseMarker("bash-deny")}\n${bashDenyReplica(absoluteStrayArtifact)}`;
 const bashAllowPromptText = (
   absoluteDirectory: string,
   absoluteArtifact: string,
 ): string =>
-  `${renderPhaseMarker("bash-allow")}\n${bashAllowReplica(
+  `${disclosureReplica([absoluteDirectory])}\n${renderPhaseMarker("bash-allow")}\n${bashAllowReplica(
     absoluteDirectory,
     absoluteArtifact,
   )}`;
 const bashProjectFilePromptText = (absoluteCwdFile: string): string =>
-  `${renderPhaseMarker("bash-project-file")}\n${bashProjectFileReplica(absoluteCwdFile)}`;
+  `${disclosureReplica(undefined, process.cwd())}\n${renderPhaseMarker("bash-project-file")}\n${bashProjectFileReplica(absoluteCwdFile)}`;
 const bashProjectFileNotAllowedPromptText = (
   absoluteSharedCwdFile: string,
 ): string =>
-  `${renderPhaseMarker("bash-project-file-not-allowed")}\n${bashProjectFileNotAllowedReplica(absoluteSharedCwdFile)}`;
+  `${disclosureReplica()}\n${renderPhaseMarker("bash-project-file-not-allowed")}\n${bashProjectFileNotAllowedReplica(absoluteSharedCwdFile)}`;
 const bashTmpParityPromptText = (absoluteScratchFile: string): string =>
-  `${renderPhaseMarker("bash-tmp-parity")}\n${bashTmpParityReplica(absoluteScratchFile)}`;
+  `${disclosureReplica(undefined, undefined, true)}\n${renderPhaseMarker("bash-tmp-parity")}\n${bashTmpParityReplica(absoluteScratchFile)}`;
 const bashTmpNegativePromptText = (absoluteScratchFile: string): string =>
-  `${renderPhaseMarker("bash-tmp-negative")}\n${bashTmpNegativeReplica(absoluteScratchFile)}`;
+  `${disclosureReplica()}\n${renderPhaseMarker("bash-tmp-negative")}\n${bashTmpNegativeReplica(absoluteScratchFile)}`;
 const summaryPromptText = (
   absoluteArtifact: string,
   iterations: number,
 ): string =>
-  `${renderPhaseMarker("summary")}\n${summaryReplica(
+  `${disclosureReplica()}\n${renderPhaseMarker("summary")}\n${summaryReplica(
     absoluteArtifact,
     iterations,
   )}`;
@@ -1504,7 +1524,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
 // ─── F rows: instruction framing (byte replicas) ──────────────────────
 
 describe("instruction framing (F rows)", () => {
-  it("F1 pinned BYTE REPLICA of the first-pass guard-probe instructions (marker-leading baseline = renderPhaseMarker('guard-probe') + '\\n' + template), the SIX write-probe and the SIX bash-command probe templates pinned against their replicas, and the MARKER-LEADING INVARIANT holds for EVERY run's text in ALL SIXTEEN runs (happy-chain trajectory)", async () => {
+  it("F1 pinned BYTE REPLICA of the first-pass guard-probe instructions (disclosure-leading baseline = disclosure block + '\\n' + marker line + '\\n' + template), the SIX write-probe and the SIX bash-command probe templates pinned against their replicas, and the DISCLOSURE-LEADING INVARIANT holds for EVERY run's text in ALL SIXTEEN runs (happy-chain trajectory)", async () => {
     const placement = artifactPlacement();
     const probes = probePlacements();
     const { instance, round } = await host();
@@ -1574,12 +1594,12 @@ describe("instruction framing (F rows)", () => {
     const result = await cap.run();
     expect(result.ok).toBe(true);
 
-    // Byte replica of the FIRST-PASS guard-probe prompt: the marker-leading
-    // baseline is exactly renderer + "\\n" + the pinned template (no
-    // corrective block yet on run one).
+    // Byte replica of the FIRST-PASS guard-probe prompt: the
+    // disclosure-leading baseline is exactly the block + marker + the
+    // pinned template (no corrective block yet on run one).
     expect(sentAt(round, 0)).toBe(greetingPromptText());
     expect(sentAt(round, 1)).toBe(
-      `${renderPhaseMarker("guard-probe")}\n${guardProbeReplica(placement.absoluteArtifact)}`,
+      guardProbePromptText(placement.absoluteArtifact),
     );
     // The twelve probe templates pinned against their replicas (byte
     // parity; the six bash templates are EM-DASH-FREE by design; the
@@ -1606,8 +1626,31 @@ describe("instruction framing (F rows)", () => {
     expect(sentAt(round, 14)).toBe(
       bashTmpNegativePromptText(probes.absTmpScratch),
     );
-    // Marker-leading invariant over EVERY run's text in all sixteen runs:
-    // first physical line === renderPhaseMarker(<phase id>).
+    // Disclosure-leading invariant over EVERY run's text in all sixteen
+    // runs: the shape-true block leads, then the marker line follows.
+    type RunShape = {
+      files?: readonly string[];
+      projectCwd?: string;
+      scratch?: boolean;
+    };
+    const runShapes: RunShape[] = [
+      {},
+      { files: [placement.absoluteArtifact] },
+      { files: [placement.absoluteArtifact] },
+      {},
+      { files: [probes.absAllowArtifact] },
+      { projectCwd: process.cwd() },
+      {},
+      { scratch: true },
+      {},
+      {},
+      { files: [probes.absBashAllowDir] },
+      { projectCwd: process.cwd() },
+      {},
+      { scratch: true },
+      {},
+      {},
+    ];
     const phaseIds = [
       "greeting",
       "guard-probe",
@@ -1628,8 +1671,12 @@ describe("instruction framing (F rows)", () => {
     ];
     for (let i = 0; i < 16; i++) {
       const text = sentAt(round, i);
-      const firstLine = text.split("\n", 1)[0] ?? "";
-      expect(firstLine).toBe(renderPhaseMarker(phaseIds[i] ?? ""));
+      const shape = runShapes[i] ?? {};
+      expect(
+        text.startsWith(
+          `${disclosureReplica(shape.files, shape.projectCwd, shape.scratch)}\n${renderPhaseMarker(phaseIds[i] ?? "")}`,
+        ),
+      ).toBe(true);
     }
     // Row-local hygiene sweep of the standing real-/tmp exception.
     await rm(probes.absTmpScratch, { force: true }).catch(() => {});
@@ -1707,7 +1754,7 @@ describe("instruction framing (F rows)", () => {
     const result = await cap.run();
     expect(result.ok).toBe(true);
     expect(sentAt(round, 15)).toBe(
-      `${renderPhaseMarker("summary")}\n${summaryReplica(placement.absoluteArtifact, 2)}`,
+      `${disclosureReplica()}\n${renderPhaseMarker("summary")}\n${summaryReplica(placement.absoluteArtifact, 2)}`,
     );
 
     // Variant B (iterations === 1): the disobedient-compliant chain on a
@@ -1793,7 +1840,7 @@ describe("instruction framing (F rows)", () => {
     expect(secondResult.ok).toBe(true);
     if (!secondResult.ok) throw new Error("unreachable");
     expect(sentAt(second.round, 14)).toBe(
-      `${renderPhaseMarker("summary")}\n${summaryReplica(placement.absoluteArtifact, 1)}`,
+      `${disclosureReplica()}\n${renderPhaseMarker("summary")}\n${summaryReplica(placement.absoluteArtifact, 1)}`,
     );
     // The graceful wording IS present (variant-B signature phrase).
     expect(sentAt(second.round, 14)).toContain("ARMED but NOT triggered");

@@ -37,11 +37,13 @@
 // (descriptor read plus instanceof - no second cast seam) and the pinned
 // empty-contract fixture span enters before any phase runs. Verdict
 // assertions ride identity over the REAL predicate (the refusal bytes stay
-// owned by ./guards/write-gate.ts); every PI_CODING_AGENT_DIR touch is
-// row-scoped save/restore.
+// owned by ./guards/write-gate.ts); the per-run disclosure consult resolves
+// the owned anchor channels FRESH on every execute_phase, so a file-level
+// agent-dir baseline covers phase-driving rows and every remaining
+// PI_CODING_AGENT_DIR touch stays a row-scoped save/restore nested over it.
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type {
@@ -51,6 +53,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { deriveProjectKey } from "../sandbox/layout.ts";
 import { EXECUTION_STATE_STAMP } from "../session.ts";
+import type { ExecutionSnapshot } from "../session-execution-state.ts";
 import { SessionExecutionState } from "../session-execution-state.ts";
 import type { CapabilityParams } from "./base.ts";
 import {
@@ -67,6 +70,7 @@ import {
   PioSession,
   renderCapabilityMarker,
   renderPhaseMarker,
+  renderPhasePermissionDisclosure,
   SessionHandleRefusalError,
 } from "./pio-session.ts";
 import {
@@ -357,7 +361,24 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 
 beforeEach(() => {
   harness.reset();
+  // THE file-level agent-dir baseline (save/set): phase-running rows resolve
+  // the owned anchor channels through the fresh per-run snapshot consult, so
+  // they run under a resolvable agent dir deterministically; row-scoped
+  // switches (withAgentDir) save and restore back onto this baseline.
+  savedAgentDir = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = AGENT_DIR_LITERAL;
 });
+
+afterEach(() => {
+  if (savedAgentDir === undefined) {
+    delete process.env.PI_CODING_AGENT_DIR;
+  } else {
+    process.env.PI_CODING_AGENT_DIR = savedAgentDir;
+  }
+});
+
+/** Save slot for the file-level agent-dir baseline (restored in afterEach). */
+let savedAgentDir: string | undefined;
 
 function lastRound(): Round {
   const round = harness.state.rounds[harness.state.rounds.length - 1];
@@ -1035,13 +1056,13 @@ describe("PioSession — phase markers", () => {
     expect(rendered.endsWith("\n")).toBe(false);
   });
 
-  it("stamps the marker as the leading line ahead of the instructions", async () => {
+  it("stamps the marker ahead of the instructions, BEHIND the disclosure-led head", async () => {
     const { instance, round } = await host();
     scriptRuns(round, quietRun());
     await instance.execute_phase("build", { instructions: "Write the thing" });
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      "\u2014\u2014 build \u2014\u2014\nWrite the thing",
+      `${expectedDisclosure()}\n\u2014\u2014 build \u2014\u2014\nWrite the thing`,
     );
   });
 
@@ -1051,7 +1072,7 @@ describe("PioSession — phase markers", () => {
     await instance.execute_phase("solo");
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      "\u2014\u2014 solo \u2014\u2014",
+      `${expectedDisclosure()}\n\u2014\u2014 solo \u2014\u2014`,
     );
   });
 
@@ -1074,8 +1095,357 @@ describe("PioSession — phase markers", () => {
       },
     });
     expect(sent).toHaveLength(2);
-    expect(sent[0]).toBe("\u2014\u2014 again \u2014\u2014");
+    expect(sent[0]).toBe(
+      `${expectedDisclosure()}\n\u2014\u2014 again \u2014\u2014`,
+    );
     expect(sent[1]).toBe(sent[0]);
+  });
+});
+
+// ---------------------------------------------------------------------
+// Phase-permission DISCLOSURE channel: the in-transcript writable-targets
+// listing folded AHEAD OF the marker-led composition into the SAME text
+// payload of every execute_phase run. Identity-over-replicas doctrine -
+// the EXPECTED BLOCK BYTES are assembled IN-TEST by the suite-local helper
+// below (the fixed constants re-typed locally; the SOLE BYTE OWNER stays
+// the module-private static + exported renderer in ./pio-session.ts); all
+// prompts ride the SAME mocked SDK seam every other row uses.
+// ---------------------------------------------------------------------
+
+/** LOCAL replica of the block's fixed label (SOLE OWNER: the module-private
+ * disclosure static in ./pio-session.ts). */
+const DISCLOSURE_LABEL_REPLICA = "phase permissions";
+
+/** LOCAL replica of the block's delimiter line: the flanked label with
+ * U+2014 x2 and single spaces (the house transcript-marker layout family;
+ * escapes identically on both sides, never a raw glyph). */
+const DISCLOSURE_DELIMITER_REPLICA = `\u2014\u2014 ${DISCLOSURE_LABEL_REPLICA} \u2014\u2014`;
+
+/** Assemble an expected disclosure block in-test: the delimiter line plus
+ * whichever body lines qualify, LF-joined, owner order (files, project
+ * class, scratch class), NO trailing period or newline anywhere. */
+function expectedDisclosure(
+  files?: readonly string[],
+  projectCwd?: string,
+  scratch?: boolean,
+): string {
+  const lines: string[] = [DISCLOSURE_DELIMITER_REPLICA];
+  if (files !== undefined && files.length > 0) {
+    lines.push(files.join(", "));
+  }
+  if (projectCwd !== undefined) {
+    lines.push(`project files at ${projectCwd}`);
+  }
+  if (scratch) {
+    lines.push("scratch files at /tmp");
+  }
+  return lines.join("\n");
+}
+
+describe("PioSession — phase-permission disclosure", () => {
+  // Row-seeded deliverables live under the LITERAL project slot (the
+  // baseline env resolves it deterministically); the settlement gate is row
+  // DUTY here (these rows exercise prompt bytes, not the gate), so every row
+  // seeds its declared artifacts before driving the phase. The state root is
+  // wiped after every row so no residue rides into siblings.
+  afterEach(async () => {
+    await rm(deriveStateRootFromAgentDir(AGENT_DIR_LITERAL), {
+      recursive: true,
+      force: true,
+    });
+  });
+
+  /** Seed the declared artifact(s) so the settlement gate passes on the
+   * first break (disk seeding is row duty, mirroring the expectation-gate
+   * rows' convention). */
+  async function seedArtifacts(...targets: string[]): Promise<void> {
+    for (const target of targets) {
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, "seeded for the disclosure window\n");
+    }
+  }
+
+  it("SILENT window (attached span, zero declarations, no flags): the block is the DELIMITER LINE ALONE and the phase settles with NO fault raised (done:true, iterations:1, the prompt leads with the delimiter)", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    const result = await instance.execute_phase("disc-silent");
+    expect(round.session.prompt).toHaveBeenCalledTimes(1);
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      `${DISCLOSURE_DELIMITER_REPLICA}\n\u2014\u2014 disc-silent \u2014\u2014`,
+    );
+    expect(result.done).toBe(true);
+    expect(result.iterations).toBe(1);
+  });
+
+  it("STATELESS feed: the renderer called with NO ARGUMENT, with EXPLICIT undefined, or with a depth-0 record (sources/phase null over RESOLVED anchors) yields the DELIMITER LINE ALONE - both short-circuit arms skip the shared core, no fault", () => {
+    // The depth-0 record mirrors what snapshot() actually freezes when no
+    // span layer is retained: null sources/phase with resolved anchor paths.
+    const depthZero: ExecutionSnapshot = {
+      sources: null,
+      phase: null,
+      paths: {
+        projectSlotRoot: "/lit/state/projects/key",
+        workspaceCwd: "/work",
+      },
+    };
+    expect(renderPhasePermissionDisclosure()).toBe(
+      DISCLOSURE_DELIMITER_REPLICA,
+    );
+    expect(renderPhasePermissionDisclosure(undefined)).toBe(
+      DISCLOSURE_DELIMITER_REPLICA,
+    );
+    expect(renderPhasePermissionDisclosure(depthZero)).toBe(
+      DISCLOSURE_DELIMITER_REPLICA,
+    );
+  });
+
+  it("SINGLE-FILE window: a span declaring a contract pattern that admits the phase's ONE declared artifact renders THAT EXACT PATH as the files line (verbatim, comma-space joiner trivially one entry)", async () => {
+    const { instance, round, gate } = await host();
+    const slotRoot = gate.state.snapshot().paths.projectSlotRoot;
+    gate.state.enterCapability({
+      name: "disc-cover",
+      writes: ["research/*.md"],
+      allowProjectWrites: false,
+    });
+    const target = path.join(slotRoot, "research", "report.md");
+    await seedArtifacts(target);
+    scriptRuns(round, quietRun());
+    await instance.execute_phase("disc-single", { write: [target] });
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      `${expectedDisclosure([target])}\n\u2014\u2014 disc-single \u2014\u2014`,
+    );
+  });
+
+  it("MULTI-FILE window: declaration ORDER with FIRST-OCCURRENCE DEDUPE - duplicate declared entries render ONCE, in first-seen order, joined by the comma-space joiner", async () => {
+    const { instance, round, gate } = await host();
+    const slotRoot = gate.state.snapshot().paths.projectSlotRoot;
+    gate.state.enterCapability({
+      name: "disc-cover-work",
+      writes: ["work/*.md"],
+      allowProjectWrites: false,
+    });
+    const a = path.join(slotRoot, "work", "a.md");
+    const b = path.join(slotRoot, "work", "b.md");
+    const c = path.join(slotRoot, "work", "c.md");
+    await seedArtifacts(a, b, c);
+    scriptRuns(round, quietRun());
+    await instance.execute_phase("disc-multi", { write: [a, b, a, c] });
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      `${expectedDisclosure([a, b, c])}\n\u2014\u2014 disc-multi \u2014\u2014`,
+    );
+  });
+
+  it("PATTERN-PASSTHROUGH: a declaration CARRYING a wildcard that IS coverage-admitted renders RAW in the files line - the block mirrors the shared core unfiltered (no concreteness filter consumed)", async () => {
+    const { instance, round, gate } = await host();
+    const slotRoot = gate.state.snapshot().paths.projectSlotRoot;
+    gate.state.enterCapability({
+      name: "disc-pattern",
+      writes: ["research/*.md"],
+      allowProjectWrites: false,
+    });
+    const token = path.join(slotRoot, "research", "r*port.md");
+    await seedArtifacts(token);
+    scriptRuns(round, quietRun());
+    await instance.execute_phase("disc-token", { write: [token] });
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      `${expectedDisclosure([token])}\n\u2014\u2014 disc-token \u2014\u2014`,
+    );
+  });
+
+  it("SCOPE-ONLY window: the CLAMPED-active project-files class (dual-flag agreement over the coalesced sources) renders EXACTLY the project-class line naming the absolute workspace cwd", async () => {
+    const { instance, round, gate } = await host();
+    gate.state.enterCapability({
+      name: "disc-scoped",
+      writes: [],
+      allowProjectWrites: true,
+    });
+    const cwd = gate.state.snapshot().paths.workspaceCwd;
+    scriptRuns(round, quietRun());
+    await instance.execute_phase("disc-scope", {
+      allowProjectWrites: true,
+    });
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      `${expectedDisclosure(undefined, cwd)}\n\u2014\u2014 disc-scope \u2014\u2014`,
+    );
+  });
+
+  it("SCRATCH-ONLY window: the phase's OWN single scratch flag (never clamped - single-flag doctrine) renders EXACTLY the scratch-class line with the bare /tmp literal", async () => {
+    const { instance, round } = await host();
+    scriptRuns(round, quietRun());
+    await instance.execute_phase("disc-scratch", { tmpDirAllowed: true });
+    expect(round.session.prompt).toHaveBeenCalledWith(
+      `${expectedDisclosure(undefined, undefined, true)}\n\u2014\u2014 disc-scratch \u2014\u2014`,
+    );
+  });
+
+  it("COMBINED window: files PLUS BOTH class lines render FOUR LF-separated lines TOTAL - delimiter, files, project, scratch - in owner order", async () => {
+    const { instance, round, gate } = await host();
+    const slotRoot = gate.state.snapshot().paths.projectSlotRoot;
+    gate.state.enterCapability({
+      name: "disc-rich",
+      writes: ["notes/*.md"],
+      allowProjectWrites: true,
+    });
+    const note = path.join(slotRoot, "notes", "n.md");
+    const cwd = gate.state.snapshot().paths.workspaceCwd;
+    await seedArtifacts(note);
+    const sent: string[] = [];
+    round.session.prompt.mockImplementationOnce(async (text: string) => {
+      sent.push(text);
+      emit(round, ...quietRun());
+    });
+    await instance.execute_phase("disc-combined", {
+      write: [note],
+      allowProjectWrites: true,
+      tmpDirAllowed: true,
+    });
+    expect(sent).toHaveLength(1);
+    const block = sent[0]?.split("\n").slice(0, 4) ?? [];
+    expect(block).toEqual(expectedDisclosure([note], cwd, true).split("\n"));
+    expect(sent[0]).toContain(`\n\u2014\u2014 disc-combined \u2014\u2014`);
+  });
+
+  it("FILES-ABSENT-WITH-CLASSES window: the block is THREE lines - delimiter plus the two class lines (the files line is ABSENT, no placeholder)", async () => {
+    const { instance, round, gate } = await host();
+    gate.state.enterCapability({
+      name: "disc-classes",
+      writes: [],
+      allowProjectWrites: true,
+    });
+    const cwd = gate.state.snapshot().paths.workspaceCwd;
+    const sent: string[] = [];
+    round.session.prompt.mockImplementationOnce(async (text: string) => {
+      sent.push(text);
+      emit(round, ...quietRun());
+    });
+    await instance.execute_phase("disc-classes-only", {
+      allowProjectWrites: true,
+      tmpDirAllowed: true,
+    });
+    expect(sent).toHaveLength(1);
+    const lines = (sent[0] ?? "").split("\n");
+    expect(lines.slice(0, 3)).toEqual([
+      DISCLOSURE_DELIMITER_REPLICA,
+      `project files at ${cwd}`,
+      "scratch files at /tmp",
+    ]);
+    expect(lines[3]).toBe("\u2014\u2014 disc-classes-only \u2014\u2014");
+  });
+
+  it("STRUCTURAL pins over EVERY rendered form: LF-split = 1 + present body lines, the delimiter line is byte-exact (flanked label, U+2014 escapes on both flanks), ZERO trailing-period terminators, no trailing newline (MINIMAL MESSAGE)", () => {
+    const fileOnly: ExecutionSnapshot = {
+      sources: { name: "", writes: ["*.md"], allowProjectWrites: false },
+      phase: {
+        id: "struct-f",
+        declared: ["/slot/root/a.md"],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: { projectSlotRoot: "/slot/root", workspaceCwd: "/ws" },
+    };
+    const classesOnly: ExecutionSnapshot = {
+      sources: { name: "", writes: [], allowProjectWrites: true },
+      phase: {
+        id: "struct-c",
+        declared: [],
+        allowProjectWrites: true,
+        tmpDirAllowed: true,
+      },
+      paths: { projectSlotRoot: "/slot/root", workspaceCwd: "/ws" },
+    };
+    const combined: ExecutionSnapshot = {
+      sources: { name: "", writes: ["*.md"], allowProjectWrites: true },
+      phase: {
+        id: "struct-x",
+        declared: ["/slot/root/a.md", "/slot/root/b.md"],
+        allowProjectWrites: true,
+        tmpDirAllowed: true,
+      },
+      paths: { projectSlotRoot: "/slot/root", workspaceCwd: "/ws" },
+    };
+    const forms: Array<[string, number]> = [
+      [renderPhasePermissionDisclosure(), 1],
+      [
+        renderPhasePermissionDisclosure({
+          sources: null,
+          phase: null,
+          paths: { projectSlotRoot: "", workspaceCwd: "" },
+        }),
+        1,
+      ],
+      [renderPhasePermissionDisclosure(fileOnly), 2],
+      [renderPhasePermissionDisclosure(classesOnly), 3],
+      [renderPhasePermissionDisclosure(combined), 4],
+    ];
+    for (const [form, lineCount] of forms) {
+      const lines = form.split("\n");
+      // Line-count identity: 1 (delimiter) + present body lines.
+      expect(lines).toHaveLength(lineCount);
+      // Delimiter line byte-exact: the flanked label, U+2014 escapes on
+      // both flanks (codepoint checks replicate the escape discipline).
+      expect(lines[0]).toBe(DISCLOSURE_DELIMITER_REPLICA);
+      expect(lines[0].charCodeAt(0)).toBe(0x2014);
+      expect(lines[0].charCodeAt(1)).toBe(0x2014);
+      expect(lines[0].charCodeAt(2)).toBe(0x20);
+      // MINIMAL MESSAGE: zero sentence terminators, no trailing newline.
+      for (const line of lines) {
+        expect(line.endsWith(".")).toBe(false);
+      }
+      expect(form.endsWith("\n")).toBe(false);
+    }
+  });
+
+  it("LATE-BINDING: the injected block reflects the consulted window AFTER THIS CALL's attach completes - swapping the governing span BETWEEN two phase starts flips the disclosed listing onto the NEXT prompt (and the first prompt already carries its own attached dimensions)", async () => {
+    const { instance, round, gate } = await host();
+    const slotRoot = gate.state.snapshot().paths.projectSlotRoot;
+    const lateTarget = path.join(slotRoot, "late", "l.md");
+    await seedArtifacts(lateTarget);
+    const sent: string[] = [];
+    round.session.prompt.mockImplementationOnce(async (text: string) => {
+      sent.push(text);
+      emit(round, ...quietRun());
+    });
+    round.session.prompt.mockImplementationOnce(async (text: string) => {
+      sent.push(text);
+      emit(round, ...quietRun());
+    });
+    // Call one: fixture span governs (its empty writes admit nothing) -
+    // yet the phase's OWN attached scratch flag shows: the consult runs
+    // strictly AFTER the attach completes.
+    await instance.execute_phase("disc-late-1", { tmpDirAllowed: true });
+    // Swap the consulted window BETWEEN the two calls (after phase one has
+    // settled AND detached): the next phase start governs under the
+    // entering covering span.
+    gate.state.enterCapability({
+      name: "disc-later",
+      writes: ["late/*.md"],
+      allowProjectWrites: false,
+    });
+    // Call two: the covering span admits the declared artifact - the
+    // difference rides the next prompt.
+    await instance.execute_phase("disc-late-2", { write: [lateTarget] });
+    expect(sent[0]).toBe(
+      `${expectedDisclosure(undefined, undefined, true)}\n\u2014\u2014 disc-late-1 \u2014\u2014`,
+    );
+    expect(sent[1]).toBe(
+      `${expectedDisclosure([lateTarget])}\n\u2014\u2014 disc-late-2 \u2014\u2014`,
+    );
+  });
+
+  it("UNCONDITIONAL ride: an attached GOVERNING-EMPTY window (a dimension declared that the clamped span rules invisible) STILL receives the delimiter line - silence is not fault", async () => {
+    const { instance, round } = await host();
+    const sent: string[] = [];
+    round.session.prompt.mockImplementationOnce(async (text: string) => {
+      sent.push(text);
+      emit(round, ...quietRun());
+    });
+    // Fixture span: allowProjectWrites false - the phase's own true flag is
+    // CLAMPED off at decision time (dual-flag disagreement).
+    await instance.execute_phase("disc-bare", { allowProjectWrites: true });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toBe(
+      `${DISCLOSURE_DELIMITER_REPLICA}\n\u2014\u2014 disc-bare \u2014\u2014`,
+    );
   });
 });
 
@@ -1768,7 +2138,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     // (placement-blind framing).
     expect(h0.prompt).toHaveBeenCalledTimes(1);
     expect(h0.prompt).toHaveBeenCalledWith(
-      "\u2014\u2014 p5 \u2014\u2014\nWrite the thing",
+      `${expectedDisclosure()}\n\u2014\u2014 p5 \u2014\u2014\nWrite the thing`,
     );
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
@@ -1805,7 +2175,7 @@ describe("PioSession — composed-host surface (P-rows)", () => {
     const after = await H.execute_phase("p5-after", { instructions: "Again" });
     expect(h1.prompt).toHaveBeenCalledTimes(1);
     expect(h1.prompt).toHaveBeenCalledWith(
-      "\u2014\u2014 p5-after \u2014\u2014\nAgain",
+      `${expectedDisclosure()}\n\u2014\u2014 p5-after \u2014\u2014\nAgain`,
     );
     expect(h0.prompt.mock.calls.length).toBe(h0PromptsBefore);
     expect(after.done).toBe(true);
@@ -1903,9 +2273,11 @@ class FixtureCapability extends PioCapability {
   }
 }
 
-/** Replica of the fixture phase's marker-leading baseline text (U+2014 x2,
- * single spaces — the existing prompt-text golden discipline). */
-const GUARDED_BASELINE = "\u2014\u2014 guarded \u2014\u2014\nWrite the thing";
+/** Replica of the fixture phase's prompt baseline text: the disclosure
+ * delimiter line LEADING (governing-empty fixture span confers no body
+ * lines), then the marker line, then the instructions (U+2014 x2, single
+ * spaces - the existing prompt-text golden discipline). */
+const GUARDED_BASELINE = `${expectedDisclosure()}\n\u2014\u2014 guarded \u2014\u2014\nWrite the thing`;
 
 /** Pinned corrective-note replica (SOLE OWNER: the module-private template
  * in ./pio-session.ts): the flanked em-dash delimiter line labeled output
@@ -2074,7 +2446,7 @@ describe("PioSession — expectation gate (write:)", () => {
     });
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      "\u2014\u2014 preexisting \u2014\u2014",
+      `${expectedDisclosure()}\n\u2014\u2014 preexisting \u2014\u2014`,
     );
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
@@ -2083,7 +2455,7 @@ describe("PioSession — expectation gate (write:)", () => {
   it("corrective-note freshness (property v): two declared paths, the first lands during retry one — the retry-two block lists ONLY the still-missing path (landed path dropped; declaration-order comma-space join preserved on the earlier block) and the ceiling throw carries one line per STILL-MISSING path only", async () => {
     const first = path.join(tmp, "first.md");
     const second = path.join(tmp, "second.md");
-    const baseline = "\u2014\u2014 multi \u2014\u2014";
+    const baseline = `${expectedDisclosure()}\n\u2014\u2014 multi \u2014\u2014`;
     const { instance, round } = await host();
     // Pass two writes ONLY the first declared path; the others stay quiet.
     round.session.prompt.mockImplementationOnce(async () => {
@@ -2126,8 +2498,8 @@ describe("PioSession — expectation gate (write:)", () => {
       },
     });
     expect(sentTexts(round)).toEqual([
-      "\u2014\u2014 plain-rerun \u2014\u2014",
-      "\u2014\u2014 plain-rerun \u2014\u2014",
+      `${expectedDisclosure()}\n\u2014\u2014 plain-rerun \u2014\u2014`,
+      `${expectedDisclosure()}\n\u2014\u2014 plain-rerun \u2014\u2014`,
     ]);
     expect(calls).toBe(2);
     expect(result.done).toBe(true);
@@ -2136,7 +2508,7 @@ describe("PioSession — expectation gate (write:)", () => {
 
   it("independence and accounting: a declared phase whose hook ALWAYS demands continuation past max: 3 keeps passing the gate beyond the budget — EXACTLY 6 prompts (budget runs 3 + corrective 3) then the typed throw, with iterations counted as 6 settled runs", async () => {
     const target = path.join(tmp, "never-lands.md");
-    const baseline = "\u2014\u2014 coexist \u2014\u2014";
+    const baseline = `${expectedDisclosure()}\n\u2014\u2014 coexist \u2014\u2014`;
     const { instance, round } = await host();
     scriptRuns(
       round,
@@ -2217,7 +2589,7 @@ describe("PioSession — expectation gate (write:)", () => {
     });
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      "\u2014\u2014 dir-expects \u2014\u2014",
+      `${expectedDisclosure()}\n\u2014\u2014 dir-expects \u2014\u2014`,
     );
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
@@ -2225,7 +2597,7 @@ describe("PioSession — expectation gate (write:)", () => {
 
   it("mechanical semantics (ii): a RELATIVE entry resolves under process.cwd() with NO chdir (the expectation is computed at assertion time via node:path resolve) and the never-write ceiling names the cwd-resolved path in every corrective block AND the violation line", async () => {
     const entry = `pio-expectation-relative-${randomUUID()}.md`;
-    const baseline = "\u2014\u2014 relative-write \u2014\u2014";
+    const baseline = `${expectedDisclosure()}\n\u2014\u2014 relative-write \u2014\u2014`;
     const { instance, round } = await host();
     scriptRuns(round, quietRun(), quietRun(), quietRun(), quietRun());
     let thrown: unknown;
@@ -2255,7 +2627,7 @@ describe("PioSession — expectation gate (write:)", () => {
 
   it("accounting (c): the min floor is consumed BEFORE any gate consult — with min: 2 and a never-landing file the first two prompts are BOTH pure baseline (the floor-driven continuation sees no gate) and the first denial carries run count 2 (5 prompts: floor+break runs 2 + corrective 3)", async () => {
     const target = path.join(tmp, "floored-ghost.md");
-    const baseline = "\u2014\u2014 floored-write \u2014\u2014";
+    const baseline = `${expectedDisclosure()}\n\u2014\u2014 floored-write \u2014\u2014`;
     const { instance, round } = await host();
     scriptRuns(
       round,
@@ -2297,19 +2669,19 @@ describe("PioSession — expectation gate (write:)", () => {
     });
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      "\u2014\u2014 budget-gate \u2014\u2014",
+      `${expectedDisclosure()}\n\u2014\u2014 budget-gate \u2014\u2014`,
     );
     expect(result.done).toBe(true);
     expect(result.iterations).toBe(1);
   });
 
-  it("degenerate declarations: an UNDECLARED phase and an EMPTY write: [] phase each reproduce today's bytes — one prompt, exact baseline text, done: true (the existing goldens hold untouched as the primary regression proof)", async () => {
+  it("degenerate declarations: an UNDECLARED phase and an EMPTY write: [] phase each settle with the DISCLOSURE-LEADING baseline (delimiter line alone over the governing-empty fixture span) — one prompt each, exact text, done: true (the disclosure-folded goldens are the primary regression proof)", async () => {
     const { instance, round } = await host();
     scriptRuns(round, quietRun());
     const a = await instance.execute_phase("unguarded-baseline");
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt.mock.calls[0]?.[0]).toBe(
-      "\u2014\u2014 unguarded-baseline \u2014\u2014",
+      `${expectedDisclosure()}\n\u2014\u2014 unguarded-baseline \u2014\u2014`,
     );
     expect(a.done).toBe(true);
     expect(a.iterations).toBe(1);
@@ -2318,7 +2690,7 @@ describe("PioSession — expectation gate (write:)", () => {
     const b = await instance.execute_phase("empty-decl", { write: [] });
     expect(round.session.prompt).toHaveBeenCalledTimes(2);
     expect(round.session.prompt.mock.calls[1]?.[0]).toBe(
-      "\u2014\u2014 empty-decl \u2014\u2014",
+      `${expectedDisclosure()}\n\u2014\u2014 empty-decl \u2014\u2014`,
     );
     expect(b.done).toBe(true);
     expect(b.iterations).toBe(1);
@@ -2326,7 +2698,7 @@ describe("PioSession — expectation gate (write:)", () => {
 });
 
 describe("export surface", () => {
-  it("runtime export surface is EXACTLY ['PioSession', 'SessionHandleRefusalError', 'SessionVariableStore', 'renderCapabilityMarker', 'renderPhaseMarker'] sorted (types erase under erasable syntax)", async () => {
+  it("runtime export surface is EXACTLY ['PioSession', 'SessionHandleRefusalError', 'SessionVariableStore', 'renderCapabilityMarker', 'renderPhaseMarker', 'renderPhasePermissionDisclosure'] sorted (types erase under erasable syntax)", async () => {
     expect(Object.keys(await import("./pio-session.ts")).sort()).toEqual(
       [
         "PioSession",
@@ -2334,6 +2706,7 @@ describe("export surface", () => {
         "SessionVariableStore",
         "renderCapabilityMarker",
         "renderPhaseMarker",
+        "renderPhasePermissionDisclosure",
       ].sort(),
     );
   });
@@ -2353,7 +2726,7 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     expect(src.includes("isComposed")).toBe(false);
   });
 
-  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly the pinned nine-specifier gate-wiring set behind it", () => {
+  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly the pinned ten-specifier gate-wiring set behind it", () => {
     // EXACTLY ONE clause references the SDK root, and it is the TYPE
     // clause.
     expect(src.match(/from "@earendil-works\/pi-coding-agent"/g)?.length).toBe(
@@ -2381,6 +2754,7 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     expect(valueClauses).toEqual([
       "node:fs",
       "node:path",
+      "../permission-mechanics.ts",
       "../sandbox/layout.ts",
       "../session.ts",
       "../session-execution-state.ts",
@@ -2393,6 +2767,12 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     expect(src.indexOf('from "@earendil-works/pi-coding-agent"')).toBeLessThan(
       src.indexOf('from "../session.ts"'),
     );
+  });
+
+  it("fragment occurrences over the disclosure channel: the module-private disclosure static appears EXACTLY TWICE (declaration + the renderer's single destructure read) and the renderer itself is declared EXACTLY ONCE beside its SINGLE invocation — the injection site consults one optional-chained snapshot reading, never more", () => {
+    expect(src.match(/PHASE_DISCLOSURE_STATIC/g)?.length).toBe(2);
+    expect(src.match(/renderPhasePermissionDisclosure\(/g)?.length).toBe(2);
+    expect(src.match(/#executionState\?\.snapshot\(\)/g)?.length).toBe(1);
   });
 
   it("zero dynamic import( occurrences in the module", () => {
@@ -2410,9 +2790,10 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
 // workers share the process; a leaked deletion poisons sibling rows).
 // ---------------------------------------------------------------------
 
-/** Literal absolute agent dir for env-controlled rows (never a /tmp/ root
- * - a /tmp/-anchored fixture would ride the scratch-class doctrine and
- * muddle the refusal-shape targets). */
+/** Literal absolute agent dir for env-controlled rows AND the file-level
+ * phase-driving baseline (never a /tmp/ root - a /tmp/-anchored fixture
+ * would ride the scratch-class doctrine and muddle the refusal-shape
+ * targets). */
 const AGENT_DIR_LITERAL = "/lit/state/.pi/agent";
 
 /** Env-unset message replica (SOLE OWNER: deriveStateRootFromAgentDir in

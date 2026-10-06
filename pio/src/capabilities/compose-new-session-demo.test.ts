@@ -564,12 +564,17 @@ const ENV_UNSET_REPLICA =
 const envMalformedReplica = (value: string): string =>
   `capability: PI_CODING_AGENT_DIR is malformed ('${value}') \u2014 cannot derive the state root`;
 
-/** Engine-composed prompt texts (marker line + instructions, verbatim the
- * phase engine's composition). */
+/** Engine-composed prompt texts (disclosure block + marker line +
+ * instructions, verbatim the phase engine's composition). The demo-side
+ * worlds ride the DELIMITER-ONLY form (the demo span declares nothing and
+ * arms no flags - re-typed locally per the suite's established pattern).
+ */
+const DISCLOSURE_DELIMITER_REPLICA =
+  "\u2014\u2014 phase permissions \u2014\u2014";
 const greetingPromptText = (): string =>
-  `${renderPhaseMarker("greeting")}\n${GREETING_REPLICA}`;
+  `${DISCLOSURE_DELIMITER_REPLICA}\n${renderPhaseMarker("greeting")}\n${GREETING_REPLICA}`;
 const summaryPromptText = (absolutePath: string): string =>
-  `${renderPhaseMarker("summary")}\n${summaryReplica(absolutePath)}`;
+  `${DISCLOSURE_DELIMITER_REPLICA}\n${renderPhaseMarker("summary")}\n${summaryReplica(absolutePath)}`;
 
 /** Self-consistent absolute-path derivation via the SAME public channels the
  * BASE SETTLE SEAM derives (expected settled value of the stub's
@@ -770,11 +775,15 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     it(`C3 child-fault (${variant.label}): the demo's run RESOLVES (never rejects) ok:false with the child's FIRST capture FORWARDED VERBATIM ({type, message} equal to the child's own entry — no types minted, no cause refinement re-branded) — and EXACTLY ONE prompt occurred (the greeting — the summary turn NEVER STARTS)`, async () => {
       const tmp = newTempRoot();
       enterWorkTree(tmp);
-      delete process.env.PI_CODING_AGENT_DIR; // row-chosen UNSET: failure results settle untransformed — no conversion may even run behind the gate
       stubKit.state.mode = variant.mode;
       const { instance, round } = await host();
       stubKit.state.anchor = instance;
-      scriptRuns(round, quietSettle());
+      round.session.prompt.mockImplementationOnce(async (): Promise<void> => {
+        emit(round, ...quietSettle());
+        // Row-chosen UNSET AFTER the turn settles: failure results settle
+        // untransformed - no conversion may even run behind the gate.
+        delete process.env.PI_CODING_AGENT_DIR;
+      });
       const demo = new ComposeNewSessionDemoCapability({ session: instance });
       const result = await demo.run();
       expect(result.ok).toBe(false);
@@ -801,11 +810,15 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     it(`C4 malformed-success (${variant.label}): the demo's run RESOLVES ok:false with the PLAIN-Error fixed sentence (the one self-detected anomaly — no class minted, nothing to forward) — and EXACTLY ONE prompt (greeting only; the summary skips)`, async () => {
       const tmp = newTempRoot();
       enterWorkTree(tmp);
-      delete process.env.PI_CODING_AGENT_DIR;
       stubKit.state.mode = variant.mode;
       const { instance, round } = await host();
       stubKit.state.anchor = instance;
-      scriptRuns(round, quietSettle());
+      round.session.prompt.mockImplementationOnce(async (): Promise<void> => {
+        emit(round, ...quietSettle());
+        // Row-chosen UNSET AFTER the turn settles: the settlement seam
+        // reads the channel at await time, never at prompt-compose time.
+        delete process.env.PI_CODING_AGENT_DIR;
+      });
       const demo = new ComposeNewSessionDemoCapability({ session: instance });
       const result = await demo.run();
       expect(result.ok).toBe(false);
@@ -845,10 +858,15 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     it(`C5 settle-time conversion fault (${variant.label}): the BASE's seam faults while settling the child's file-mode output (pinned CapabilityEnvError bytes) and the demo FORWARDS the child's capture VERBATIM — EXACTLY ONE prompt (greeting only), the child ran to completion, NO summary turn`, async () => {
       const tmp = newTempRoot();
       enterWorkTree(tmp);
-      variant.prepare();
       const { instance, round } = await host();
       stubKit.state.anchor = instance;
-      scriptRuns(round, quietSettle());
+      round.session.prompt.mockImplementationOnce(async (): Promise<void> => {
+        emit(round, ...quietSettle());
+        // Row-chosen DEFECT after the turn settles: the settle-time
+        // conversion consults the channel at await time, never at
+        // prompt-compose time.
+        variant.prepare();
+      });
       const demo = new ComposeNewSessionDemoCapability({ session: instance });
       const result = await demo.run();
       expect(result.ok).toBe(false);

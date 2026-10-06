@@ -428,14 +428,19 @@ const researchMarkerPayload = (): unknown => ({
   details: undefined,
 });
 
-/** Engine-composed prompt texts (marker line + instructions, verbatim the
- * phase engine's composition). */
+/** Engine-composed prompt texts (disclosure block + marker line +
+ * instructions, verbatim the phase engine's composition). The worlds here
+ * ride the DELIMITER-ONLY form (the demo span and the stub's
+ * dimension-less callee phase declare nothing and arm no flags - re-typed
+ * locally per the suite's established pattern). */
+const DISCLOSURE_DELIMITER_REPLICA =
+  "\u2014\u2014 phase permissions \u2014\u2014";
 const greetingPromptText = (): string =>
-  `${renderPhaseMarker("greeting")}\n${GREETING_REPLICA}`;
+  `${DISCLOSURE_DELIMITER_REPLICA}\n${renderPhaseMarker("greeting")}\n${GREETING_REPLICA}`;
 const researchPhasePromptText = (): string =>
-  `${renderPhaseMarker("research")}\n${stubKit.STUB_RESEARCH_INSTRUCTIONS}`;
+  `${DISCLOSURE_DELIMITER_REPLICA}\n${renderPhaseMarker("research")}\n${stubKit.STUB_RESEARCH_INSTRUCTIONS}`;
 const summaryPromptText = (absolutePath: string): string =>
-  `${renderPhaseMarker("summary")}\n${summaryReplica(absolutePath)}`;
+  `${DISCLOSURE_DELIMITER_REPLICA}\n${renderPhaseMarker("summary")}\n${summaryReplica(absolutePath)}`;
 
 /** Self-consistent absolute-path derivation via the SAME public channels the
  * BASE SETTLE SEAM derives (expected settled value of the stub's
@@ -674,10 +679,14 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     it(`C3 child-fault (${variant.label}): the demo's run RESOLVES (never rejects) ok:false with the child's FIRST capture FORWARDED VERBATIM ({type, message} equal to the child's own entry — no types minted, no cause refinement re-branded) — stopping exactly where the stub's scripted pre-fault activity stops (EXACTLY ONE prompt: the greeting; the callee STAMPED its span once and ran no phase; the summary NEVER STARTS)`, async () => {
       const tmp = newTempRoot();
       enterWorkTree(tmp);
-      delete process.env.PI_CODING_AGENT_DIR; // row-chosen UNSET: failure results settle untransformed — no conversion may even run behind the gate
       stubKit.state.mode = variant.mode;
       const { instance, round } = await host();
-      scriptRuns(round, quietSettle());
+      round.passes.push(async (): Promise<void> => {
+        emit(round, ...quietSettle());
+        // Row-chosen UNSET AFTER the turn settles: failure results settle
+        // untransformed - no conversion may even run behind the gate.
+        delete process.env.PI_CODING_AGENT_DIR;
+      });
       const demo = new ComposeSameSessionDemoCapability({ session: instance });
       const result = await demo.run();
       expect(result.ok).toBe(false);
@@ -713,10 +722,14 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     it(`C4 malformed-success (${variant.label}): the demo's run RESOLVES ok:false with the PLAIN-Error fixed sentence (the one self-detected anomaly — no class minted, nothing to forward) — EXACTLY ONE prompt (greeting only; the summary skips), the callee stamped its span once and its settlement passed through UNTRANSFORMED`, async () => {
       const tmp = newTempRoot();
       enterWorkTree(tmp);
-      delete process.env.PI_CODING_AGENT_DIR;
       stubKit.state.mode = variant.mode;
       const { instance, round } = await host();
-      scriptRuns(round, quietSettle());
+      round.passes.push(async (): Promise<void> => {
+        emit(round, ...quietSettle());
+        // Row-chosen UNSET AFTER the turn settles: the settlement seam
+        // reads the channel at await time, never at prompt-compose time.
+        delete process.env.PI_CODING_AGENT_DIR;
+      });
       const demo = new ComposeSameSessionDemoCapability({ session: instance });
       const result = await demo.run();
       expect(result.ok).toBe(false);
@@ -762,9 +775,17 @@ describe("admission, composition, summary, settlement (C rows)", () => {
     it(`C5 settle-time conversion fault (${variant.label}): the BASE's seam faults while settling the child's file-mode output (pinned CapabilityEnvError bytes) and the demo FORWARDS the child's capture VERBATIM — the child completed its span (stamp + ONE phase prompt), EXACTLY TWO prompts total (greeting + callee phase), NO summary turn`, async () => {
       const tmp = newTempRoot();
       enterWorkTree(tmp);
-      variant.prepare();
       const { instance, round } = await host();
-      scriptRuns(round, quietSettle(), quietSettle());
+      round.passes.push(async (): Promise<void> => {
+        emit(round, ...quietSettle());
+      });
+      round.passes.push(async (): Promise<void> => {
+        emit(round, ...quietSettle());
+        // Row-chosen DEFECT after the turn settles: the settle-time
+        // conversion consults the channel at await time, never at
+        // prompt-compose time.
+        variant.prepare();
+      });
       const demo = new ComposeSameSessionDemoCapability({ session: instance });
       const result = await demo.run();
       expect(result.ok).toBe(false);

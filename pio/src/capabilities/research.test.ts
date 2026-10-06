@@ -193,9 +193,24 @@ const truncationNote = (runs: number): string =>
  * report path. */
 const sanityViolationLine = (target: string): string =>
   `output 'report' is missing or empty at ${target} \u2014 the research phase ended without producing the report`;
-/** Engine-composed marker line leading every run's text (U+2014 x2, single
- * spaces — the base.test.ts codepoint discipline). */
+/** Engine-composed marker line leading every run's text AFTER the
+ * unconditional disclosure block (U+2014 x2, single spaces — the
+ * base.test.ts codepoint discipline). */
 const PHASE_MARKER = "\u2014\u2014 research \u2014\u2014";
+
+/** LOCAL replica of the phase-permission DISCLOSURE delimiter line (SOLE
+ * BYTE OWNER: the module-private disclosure static + exported renderer in
+ * ../capability/pio-session.ts): the flanked label, U+2014 x2 escapes,
+ * single spaces. */
+const DISCLOSURE_DELIMITER_REPLICA =
+  "\u2014\u2014 phase permissions \u2014\u2014";
+
+/** THE expected disclosure block over the research phase's window: the
+ * base seam enters the capability's OWN span (writes: ["research/*.md"]),
+ * so the shared core ADMITS the declared report path - the files line
+ * alone (no class flags are declared by the phase). */
+const disclosureBlockFor = (absolutePath: string): string =>
+  `${DISCLOSURE_DELIMITER_REPLICA}\n${absolutePath}`;
 
 /** Replica of the module-private customType namespace (SOLE OWNER: the
  * PIO_CAPABILITY_CUSTOM_TYPE constant in ../capability/pio-session.ts). */
@@ -571,7 +586,11 @@ describe("research capability", () => {
       for (let n = 10; n <= 12; n++) {
         const sent: unknown = round.session.prompt.mock.calls[n]?.[0];
         const text = typeof sent === "string" ? sent : "";
-        expect(text.startsWith(PHASE_MARKER)).toBe(true);
+        expect(
+          text.startsWith(
+            `${disclosureBlockFor(placement.absolutePath)}\n${PHASE_MARKER}`,
+          ),
+        ).toBe(true);
         expect(
           text.endsWith(expectationRetryBlock(n, [placement.absolutePath])),
         ).toBe(true);
@@ -615,7 +634,11 @@ describe("research capability", () => {
       // The output-guard block rides RUN 2's prompt (calls[1]).
       const sent: unknown = round.session.prompt.mock.calls[1]?.[0];
       const text = typeof sent === "string" ? sent : "";
-      expect(text.startsWith(PHASE_MARKER)).toBe(true);
+      expect(
+        text.startsWith(
+          `${disclosureBlockFor(placement.absolutePath)}\n${PHASE_MARKER}`,
+        ),
+      ).toBe(true);
       expect(
         text.endsWith(expectationRetryBlock(1, [placement.absolutePath])),
       ).toBe(true);
@@ -651,7 +674,11 @@ describe("research capability", () => {
       // 'after 10 run(s)'.
       const sent: unknown = round.session.prompt.mock.calls[10]?.[0];
       const text = typeof sent === "string" ? sent : "";
-      expect(text.startsWith(PHASE_MARKER)).toBe(true);
+      expect(
+        text.startsWith(
+          `${disclosureBlockFor(placement.absolutePath)}\n${PHASE_MARKER}`,
+        ),
+      ).toBe(true);
       expect(
         text.endsWith(
           expectationRetryBlock(RESEARCH_MAX_RUNS, [placement.absolutePath]),
@@ -743,7 +770,11 @@ describe("research capability", () => {
       await cap.run({ topic: TOPIC });
       const sent: unknown = round.session.prompt.mock.calls[0]?.[0];
       const text = typeof sent === "string" ? sent : "";
-      expect(text.startsWith(PHASE_MARKER)).toBe(true);
+      expect(
+        text.startsWith(
+          `${disclosureBlockFor(placement.absolutePath)}\n${PHASE_MARKER}`,
+        ),
+      ).toBe(true);
       expect(text).toContain(
         `Report file (absolute path): ${placement.absolutePath}`,
       );
@@ -783,7 +814,11 @@ describe("research capability", () => {
       expect(result.ok).toBe(true);
       const sent: unknown = round.session.prompt.mock.calls[0]?.[0];
       const text = typeof sent === "string" ? sent : "";
-      expect(text.startsWith(PHASE_MARKER)).toBe(true);
+      expect(
+        text.startsWith(
+          `${disclosureBlockFor(placement.absolutePath)}\n${PHASE_MARKER}`,
+        ),
+      ).toBe(true);
       expect(text).toContain(
         `Report file (absolute path): ${placement.absolutePath}`,
       );

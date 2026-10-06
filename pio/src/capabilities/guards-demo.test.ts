@@ -4,7 +4,7 @@
 // world in this file.
 //
 // SCRIPTED-EVENT TOP WORLD (research/compose-suite idiom): a fake SDK root
-// mocking EXACTLY the five faked value symbols drives PioSession.create(cwd)
+// mocking EXACTLY the eight faked value symbols drives PioSession.create(cwd)
 // — fake manager/services/runtime/session with subscribe/prompt/
 // sendCustomMessage/sessionId/dispose plus the RECORDING sendCustomMessage
 // mock (the session-present span stamps land on it); scripted prompt
@@ -204,6 +204,22 @@ const sdkKit = vi.hoisted(() => {
     state.rounds.push(round);
     return round.runtime;
   });
+  // Construction floor for the unconditional customTools threading: the
+  // real PioSession.create builds the Landlock-bash instance eagerly at the
+  // construction seam; these fakes absorb the construction-time SDK value
+  // reaches (this island's rows never inspect the threaded entry - the bare
+  // static shape suffices; the full four-symbol floor lives solely in
+  // pio-session.test.ts where observation resides).
+  const createBashToolDefinition = vi.fn(
+    (_cwd: string, options: { operations: unknown }) => ({
+      name: "bash",
+      operations: options.operations,
+    }),
+  );
+  const defineTool = vi.fn((tool: unknown) => tool);
+  // Eager at construction (seams.localOps ?? createLocalBashOperations()):
+  // structural stub - the island never drives the delegate bag.
+  const createLocalBashOperations = vi.fn(() => ({}));
   const reset = (): void => {
     state.rounds = [];
     state.storedFactories = [];
@@ -213,6 +229,9 @@ const sdkKit = vi.hoisted(() => {
     createAgentSessionServices.mockClear();
     createAgentSessionFromServices.mockClear();
     createAgentSessionRuntime.mockClear();
+    createBashToolDefinition.mockClear();
+    defineTool.mockClear();
+    createLocalBashOperations.mockClear();
   };
   return {
     state,
@@ -221,6 +240,9 @@ const sdkKit = vi.hoisted(() => {
     createAgentSessionServices,
     createAgentSessionFromServices,
     createAgentSessionRuntime,
+    createBashToolDefinition,
+    defineTool,
+    createLocalBashOperations,
     reset,
   };
 });
@@ -231,6 +253,9 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSessionServices: sdkKit.createAgentSessionServices,
   createAgentSessionFromServices: sdkKit.createAgentSessionFromServices,
   createAgentSessionRuntime: sdkKit.createAgentSessionRuntime,
+  createBashToolDefinition: sdkKit.createBashToolDefinition,
+  defineTool: sdkKit.defineTool,
+  createLocalBashOperations: sdkKit.createLocalBashOperations,
 }));
 
 // ─── Sole-owner replicas (byte-pinned; \u2014 escaped identically) ─────
@@ -1723,7 +1748,7 @@ describe("module surface and mechanical guards", () => {
 // ─── Suite source guards (self-containment proof) ─────────────────────
 
 describe("suite source guards", () => {
-  it("the fake SDK root fakes EXACTLY the five valued symbols (session-construction seams only — a sixth fake symbol would be foreign wiring intruding into the island)", () => {
+  it("the fake SDK root fakes EXACTLY the eight valued symbols (session-construction seams plus the Landlock-bash construction floor - any further fake symbol would be foreign wiring intruding into the island)", () => {
     const suiteSrc = readFileSync(
       new URL("./guards-demo.test.ts", import.meta.url),
       "utf8",
@@ -1740,6 +1765,9 @@ describe("suite source guards", () => {
         "createAgentSessionFromServices",
         "createAgentSessionRuntime",
         "createAgentSessionServices",
+        "createBashToolDefinition",
+        "createLocalBashOperations",
+        "defineTool",
         "getAgentDir",
         "SessionManager",
       ].sort(),

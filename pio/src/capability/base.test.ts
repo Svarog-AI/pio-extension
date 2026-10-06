@@ -124,6 +124,23 @@ const harness = vi.hoisted(() => {
     return round.runtime;
   });
 
+  // Construction floor for the unconditional customTools threading: the
+  // real PioSession.create builds the Landlock-bash instance eagerly at the
+  // construction seam; these fakes absorb the construction-time SDK value
+  // reaches (this island's rows never inspect the threaded entry - the bare
+  // static shape suffices; the full four-symbol floor lives solely in
+  // pio-session.test.ts where observation resides).
+  const createBashToolDefinition = vi.fn(
+    (_cwd: string, options: { operations: unknown }) => ({
+      name: "bash",
+      operations: options.operations,
+    }),
+  );
+  const defineTool = vi.fn((tool: unknown) => tool);
+  // Eager at construction (seams.localOps ?? createLocalBashOperations()):
+  // structural stub - the island never drives the delegate bag.
+  const createLocalBashOperations = vi.fn(() => ({}));
+
   const reset = () => {
     state.rounds = [];
     state.mints = 0;
@@ -132,6 +149,9 @@ const harness = vi.hoisted(() => {
     createAgentSessionServices.mockClear();
     createAgentSessionFromServices.mockClear();
     createAgentSessionRuntime.mockClear();
+    createBashToolDefinition.mockClear();
+    defineTool.mockClear();
+    createLocalBashOperations.mockClear();
   };
 
   return {
@@ -141,6 +161,9 @@ const harness = vi.hoisted(() => {
     createAgentSessionServices,
     createAgentSessionFromServices,
     createAgentSessionRuntime,
+    createBashToolDefinition,
+    defineTool,
+    createLocalBashOperations,
     reset,
   };
 });
@@ -151,6 +174,9 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSessionServices: harness.createAgentSessionServices,
   createAgentSessionFromServices: harness.createAgentSessionFromServices,
   createAgentSessionRuntime: harness.createAgentSessionRuntime,
+  createBashToolDefinition: harness.createBashToolDefinition,
+  defineTool: harness.defineTool,
+  createLocalBashOperations: harness.createLocalBashOperations,
 }));
 
 // Row-2 dispatch probe (see header note): delegation keeps the REAL

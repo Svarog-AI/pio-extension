@@ -98,6 +98,20 @@
 // to the swap. The enterCapability / exitCapability pair is the
 // instance-level span-producer surface; no public verdict surface exists,
 // verdicts firing exclusively inside the interceptor closure.
+//
+// Command-write fencing threads the SAME way: create builds EXACTLY ONE
+// Landlock-bash instance over the SAME execution state the guard install
+// stamps - BY REFERENCE, so the instance's per-invocation fresh snapshot
+// consult tracks span and phase churn identically to the write-handler
+// closure and late binding survives handle swaps. The entry rides the
+// UNCONDITIONAL customTools slot: the stored-factory closure re-spreads
+// the very same instance on every session re-creation (composed frames
+// share it within one runtime; a separate process mints its own through
+// its own create), so no placement adds wiring. session.ts stays the
+// generic channel and is unchanged; the guard-handler list gains NO
+// member, because the kernel adjudicates command writes and the tool
+// renders only: a single refusal site, rendered from the pre-spawn
+// consult.
 
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -110,6 +124,7 @@ import type {
 import { slugify } from "../sandbox/layout.ts";
 import { createPioSession, EXECUTION_STATE_STAMP } from "../session.ts";
 import { SessionExecutionState } from "../session-execution-state.ts";
+import { createLandlockBash } from "../tools/bash/landlock-bash.ts";
 import { deriveStateRootFromAgentDir } from "./base.ts";
 import { ContractViolationError } from "./errors.ts";
 import type { CapabilitySources } from "./guards/guard-vocabulary.ts";
@@ -484,8 +499,15 @@ export class PioSession {
     // survives rebind swaps and span churn; no containment anywhere.
     const writeToolCallHandler = (toolName: string, input: unknown) =>
       decideWrite(executionState.snapshot(), toolName, input);
+    // THE one fenced bash instance: built over the SAME execution state the
+    // guard install stamps BY REFERENCE - the per-invocation fresh snapshot
+    // consult makes late binding sufficient (identical doctrine to the
+    // closure above); the instance may persist while the frames it consults
+    // churn.
+    const landlockBash = createLandlockBash(cwd, executionState);
     const runtime = await createPioSession(cwd, sessionsRoot, {
       sessionListener: listener,
+      customTools: [landlockBash],
       guardInstall: { executionState, handlers: [writeToolCallHandler] },
     });
     return new PioSession(runtime, observer, executionState);

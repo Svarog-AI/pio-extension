@@ -3,7 +3,7 @@
 // harness imports): two cooperating worlds in one file.
 //
 // 1. SCRIPTED-EVENT TOP WORLD (research-suite idiom): a fake SDK root mocking
-// exactly the five faked value symbols drives PioSession.create(cwd) — fake
+// exactly the eight faked value symbols drives PioSession.create(cwd) — fake
 // manager/services/runtime/session with subscribe/prompt/getToolDefinition/
 // sessionId/dispose; scripted prompt resolutions emit SYNTHETIC EVENTS ONLY
 // (they observe, write NOTHING to disk); a single-turn settle pass =
@@ -158,6 +158,22 @@ const sdkKit = vi.hoisted(() => {
     state.rounds.push(round);
     return round.runtime;
   });
+  // Construction floor for the unconditional customTools threading: the
+  // real PioSession.create builds the Landlock-bash instance eagerly at the
+  // construction seam; these fakes absorb the construction-time SDK value
+  // reaches (this island's rows never inspect the threaded entry - the bare
+  // static shape suffices; the full four-symbol floor lives solely in
+  // pio-session.test.ts where observation resides).
+  const createBashToolDefinition = vi.fn(
+    (_cwd: string, options: { operations: unknown }) => ({
+      name: "bash",
+      operations: options.operations,
+    }),
+  );
+  const defineTool = vi.fn((tool: unknown) => tool);
+  // Eager at construction (seams.localOps ?? createLocalBashOperations()):
+  // structural stub - the island never drives the delegate bag.
+  const createLocalBashOperations = vi.fn(() => ({}));
   const reset = (): void => {
     mints = 0;
     state.rounds = [];
@@ -166,6 +182,9 @@ const sdkKit = vi.hoisted(() => {
     createAgentSessionServices.mockClear();
     createAgentSessionFromServices.mockClear();
     createAgentSessionRuntime.mockClear();
+    createBashToolDefinition.mockClear();
+    defineTool.mockClear();
+    createLocalBashOperations.mockClear();
   };
   return {
     state,
@@ -174,6 +193,9 @@ const sdkKit = vi.hoisted(() => {
     createAgentSessionServices,
     createAgentSessionFromServices,
     createAgentSessionRuntime,
+    createBashToolDefinition,
+    defineTool,
+    createLocalBashOperations,
     reset,
   };
 });
@@ -184,6 +206,9 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSessionServices: sdkKit.createAgentSessionServices,
   createAgentSessionFromServices: sdkKit.createAgentSessionFromServices,
   createAgentSessionRuntime: sdkKit.createAgentSessionRuntime,
+  createBashToolDefinition: sdkKit.createBashToolDefinition,
+  defineTool: sdkKit.defineTool,
+  createLocalBashOperations: sdkKit.createLocalBashOperations,
 }));
 
 // ─── The stubbed research sibling (file-local mock) ─────────────────────

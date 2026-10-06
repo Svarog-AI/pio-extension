@@ -164,6 +164,25 @@ interface ServicesOpts {
   };
 }
 
+/** Structural fake of a threaded custom-tool entry (wider than the SDK
+ * ToolDefinition surface the descriptor rows consult): name, the ops bag,
+ * and the receipt-recording execute the rows drive. */
+interface FakeThreadedTool {
+  name: string;
+  operations: unknown;
+  execute: (args: unknown) => Promise<unknown>;
+}
+
+/** Suite-local structural view of the from-services options arg (wider-than-
+ * SDK convention, established in this file): rows read the threaded
+ * custom-tools entry CAST-FREE off the recorded factory call. */
+interface FromServicesArg {
+  services: unknown;
+  sessionManager: ManagerFake;
+  sessionStartEvent: unknown;
+  customTools?: ReadonlyArray<FakeThreadedTool>;
+}
+
 const harness = vi.hoisted(() => {
   const managerCwd = "/managed/cwd";
   const agentDir = "/agent/dir";
@@ -174,11 +193,17 @@ const harness = vi.hoisted(() => {
     storedFactories: ((input: FactoryInput) => Promise<unknown>)[];
     servicesArgs: ServicesOpts[];
     stampCarriers: FakeSession[];
+    fromServicesArgs: FromServicesArg[];
+    bashFactoryCalls: { cwd: string; operations: unknown }[];
+    bashExecReceipts: { args: unknown; bag: unknown }[];
   } = {
     rounds: [],
     storedFactories: [],
     servicesArgs: [],
     stampCarriers: [],
+    fromServicesArgs: [],
+    bashFactoryCalls: [],
+    bashExecReceipts: [],
   };
 
   const fakeManager = { getCwd: () => managerCwd };
@@ -228,13 +253,18 @@ const harness = vi.hoisted(() => {
     state.servicesArgs.push(options);
     return fakeServices;
   });
-  const createAgentSessionFromServices = vi.fn(async () => {
-    // Additive stamp carrier: the real seam stamps the guard install onto
-    // the created handle; rows read back that descriptor cast-free.
-    const carrier = mintFakeHandle();
-    state.stampCarriers.push(carrier);
-    return { extensionsResult: {}, session: carrier };
-  });
+  const createAgentSessionFromServices = vi.fn(
+    async (options: FromServicesArg) => {
+      // Additive from-services arg record: rows read the threaded
+      // custom-tools entry cast-free off the real seam's spread. The stamp
+      // carrier stays additive - the real seam stamps the guard install
+      // onto the created handle; rows read back that descriptor cast-free.
+      state.fromServicesArgs.push(options);
+      const carrier = mintFakeHandle();
+      state.stampCarriers.push(carrier);
+      return { extensionsResult: {}, session: carrier };
+    },
+  );
   const createAgentSessionRuntime = vi.fn(
     async (
       factory?: (input: FactoryInput) => Promise<unknown>,
@@ -254,16 +284,44 @@ const harness = vi.hoisted(() => {
     },
   );
 
+  // THE Landlock-bash construction floor: import-binding completeness over
+  // ../tools/bash/landlock-bash.ts's FOUR SDK value reaches. The factory is
+  // a RECORDING structural fake - it logs the cwd plus the ops bag it
+  // received and returns the structural definition rows drive; defineTool
+  // mirrors the real inference-preserving wrap as the identity passthrough;
+  // getShellConfig + createLocalBashOperations stay UNEXERCISED here (the
+  // island never drives the real per-spawn machinery).
+  const createBashToolDefinition = vi.fn(
+    (cwd: string, options: { operations: unknown }) => {
+      state.bashFactoryCalls.push({ cwd, operations: options.operations });
+      const execute = vi.fn(async (args: unknown) => {
+        state.bashExecReceipts.push({ args, bag: options.operations });
+        return { content: [], details: { exitCode: 0 } };
+      });
+      return { name: "bash", operations: options.operations, execute };
+    },
+  );
+  const defineTool = vi.fn((tool: unknown) => tool);
+  const getShellConfig = vi.fn(() => ({ shell: "/bin/bash", args: ["-c"] }));
+  const createLocalBashOperations = vi.fn(() => ({}));
+
   const reset = () => {
     state.rounds = [];
     state.storedFactories = [];
     state.servicesArgs = [];
     state.stampCarriers = [];
+    state.fromServicesArgs = [];
+    state.bashFactoryCalls = [];
+    state.bashExecReceipts = [];
     getAgentDir.mockClear();
     SessionManager.create.mockClear();
     createAgentSessionServices.mockClear();
     createAgentSessionFromServices.mockClear();
     createAgentSessionRuntime.mockClear();
+    createBashToolDefinition.mockClear();
+    defineTool.mockClear();
+    getShellConfig.mockClear();
+    createLocalBashOperations.mockClear();
   };
 
   return {
@@ -274,6 +332,10 @@ const harness = vi.hoisted(() => {
     createAgentSessionServices,
     createAgentSessionFromServices,
     createAgentSessionRuntime,
+    createBashToolDefinition,
+    defineTool,
+    getShellConfig,
+    createLocalBashOperations,
     reset,
     managerCwd,
     agentDir,
@@ -287,6 +349,10 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSessionServices: harness.createAgentSessionServices,
   createAgentSessionFromServices: harness.createAgentSessionFromServices,
   createAgentSessionRuntime: harness.createAgentSessionRuntime,
+  createBashToolDefinition: harness.createBashToolDefinition,
+  defineTool: harness.defineTool,
+  getShellConfig: harness.getShellConfig,
+  createLocalBashOperations: harness.createLocalBashOperations,
 }));
 
 beforeEach(() => {
@@ -324,6 +390,15 @@ function assertMintedState(stamped: unknown): SessionExecutionState {
 function lastServicesArg(): ServicesOpts {
   const o = harness.state.servicesArgs[harness.state.servicesArgs.length - 1];
   if (!o) throw new Error("expected recorded services options");
+  return o;
+}
+
+/** The LAST recorded from-services arg (throw-guard recovery, house idiom -
+ * zero additional casts). */
+function lastFromServicesArg(): FromServicesArg {
+  const o =
+    harness.state.fromServicesArgs[harness.state.fromServicesArgs.length - 1];
+  if (!o) throw new Error("expected a recorded from-services arg");
   return o;
 }
 
@@ -2278,7 +2353,7 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
     expect(src.includes("isComposed")).toBe(false);
   });
 
-  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly the pinned eight-specifier gate-wiring set behind it", () => {
+  it("the SDK root sits in EXACTLY ONE clause — the TYPE clause, normalized byte form pinned with AgentSession LEADING — and the VALUE clause set is exactly the pinned nine-specifier gate-wiring set behind it", () => {
     // EXACTLY ONE clause references the SDK root, and it is the TYPE
     // clause.
     expect(src.match(/from "@earendil-works\/pi-coding-agent"/g)?.length).toBe(
@@ -2309,6 +2384,7 @@ describe("source guards (composed-host edge discipline over pio-session.ts)", ()
       "../sandbox/layout.ts",
       "../session.ts",
       "../session-execution-state.ts",
+      "../tools/bash/landlock-bash.ts",
       "./base.ts",
       "./errors.ts",
       "./guards/write-gate.ts",
@@ -3172,5 +3248,185 @@ describe("mechanical discipline over the gate-wiring bytes", () => {
         ).toBeNull();
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------
+// Landlock-bash customTools threading: the unconditional single-entry
+// registration over the construction seam. The grown SDK mock carries the
+// FOUR construction/per-spawn value reaches of ../tools/bash/landlock-bash.ts
+// (recording factory + identity wrap + two inert per-spawn seams); the rows
+// below drive the REAL PioSession.create and observe the threaded entry
+// cast-free off the recorded from-services arg. NO row drives the real ops
+// exec (island doctrine): routed-execution and late-binding claims decompose
+// into measured seam-level mechanics plus cited physics, never real spawns.
+// Rows that consult snapshot() ride the standing row-scoped env switch
+// (withAgentDir); every other row stays env-free (construction is
+// storage-only and the mocks absorb session building).
+// ---------------------------------------------------------------------
+
+/** Measured constant: the installed 0.85.1 dist default active tool roster
+ * (core/agent-session.js ~L2210 - the _refreshToolRegistry branch taken when
+ * no base-tools override exists). Byte-stable golden (house lockstep idiom):
+ * a future pin bump surfaces here as a deliberate update, not silent drift. */
+const DEFAULT_ACTIVE_TOOL_NAMES = ["read", "bash", "edit", "write"];
+
+describe("PioSession \u2014 Landlock-bash customTools threading", () => {
+  it("unconditional single-entry identity (both construction forms): the from-services arg carries EXACTLY ONE customTools entry naming bash, the factory ledger shows ONE instantiation at the launched cwd, the entry's ops bag is REFERENCE-IDENTICAL to the ledger bag, and the guard wiring stays undisturbed", async () => {
+    for (const sessionsRoot of [undefined, SESSIONS_ROOT]) {
+      harness.reset();
+      await PioSession.create(CWD, sessionsRoot);
+      const { servicesArg } = await driveStoredClosure();
+      const tools = lastFromServicesArg().customTools;
+      expect(tools).toBeDefined();
+      expect(tools?.length).toBe(1);
+      if (!tools) throw new Error("expected the threaded entry set");
+      const entry = tools[0];
+      expect(entry.name).toBe("bash");
+      // Single-source chain: the factory ledger holds EXACTLY ONE
+      // instantiation at the launched cwd, and the entry's bag IS the
+      // ledger's bag (no copy or wrap anywhere on the seam: session.ts
+      // spreads the array verbatim and the identity defineTool preserves
+      // the bag reference).
+      const calls = harness.state.bashFactoryCalls;
+      expect(calls).toHaveLength(1);
+      const call = calls[0];
+      if (!call) throw new Error("expected a factory-ledger entry");
+      expect(call.cwd).toBe(CWD);
+      expect(entry.operations).toBe(call.operations);
+      // Guard wiring undisturbed: the single threaded extension factory.
+      const factories =
+        servicesArg.resourceLoaderOptions?.extensionFactories ?? [];
+      expect(factories).toHaveLength(1);
+    }
+  });
+
+  it("registry-replacement harmlessness: under the measured default active-tool roster, the SINGLE bash entry shadows EXACTLY ONE base definition and STAYS ACTIVE (override-by-name physics: the custom set lands over the builtin map)", async () => {
+    await PioSession.create(CWD);
+    await driveStoredClosure();
+    const tools = lastFromServicesArg().customTools;
+    if (tools?.length !== 1) {
+      throw new Error("expected the single threaded bash entry");
+    }
+    const entry = tools[0];
+    // The roster line binds the MEASURED constant; it does not re-prove the
+    // registry internals - the physics rides the dist's override-by-name
+    // path (custom definitions set over the builtin map AFTER it), so one
+    // bash entry replaces the base entry and stays in the active roster.
+    expect(DEFAULT_ACTIVE_TOOL_NAMES).toContain(entry.name);
+    expect(entry.name).toBe("bash");
+    expect(tools.length).toBe(1);
+  });
+
+  it("routed execution: awaiting the threaded entry's execute settles through EXACTLY ONE receipt whose bound bag is REFERENCE-IDENTICAL to the entry's ops bag AND the factory-ledger bag (the wiring chain is single-source at every hop), resolving the neutral settlement", async () => {
+    await PioSession.create(CWD);
+    await driveStoredClosure();
+    const tools = lastFromServicesArg().customTools;
+    if (tools?.length !== 1) {
+      throw new Error("expected the single threaded bash entry");
+    }
+    const entry = tools[0];
+    // RIDES (measured elsewhere, cited): the real factory's execute routes
+    // a scripted execution to the PROVIDED ops bag per the dist fallback
+    // contract (options?.operations ?? createLocalBashOperations(...) -
+    // core/tools/bash.js), and the landed bash-instance kickoff live probe
+    // observed the single-entry roster plus routed execution reaching the
+    // custom ops. MEASURED HERE: the seam-level reference chain - registry
+    // entry, threaded definition, and ops bag stay ONE object at every hop.
+    const scripted = { command: "echo routed" };
+    const settlement = await entry.execute(scripted);
+    const receipts = harness.state.bashExecReceipts;
+    expect(receipts).toHaveLength(1);
+    const receipt = receipts[0];
+    if (!receipt) throw new Error("expected a receipt record");
+    expect(receipt.args).toBe(scripted);
+    expect(receipt.bag).toBe(entry.operations);
+    const call = harness.state.bashFactoryCalls[0];
+    if (!call) throw new Error("expected a factory-ledger entry");
+    expect(receipt.bag).toBe(call.operations);
+    expect(settlement).toStrictEqual({ content: [], details: { exitCode: 0 } });
+  });
+
+  it("late-binding consult: the SAME threaded instance persists across handle re-creation while span/phase churn flips the consulted snapshot over the shared state (three-part mechanic)", async () => {
+    // (i) Instance persistence across handle recreation: two stored-closure
+    // re-runs (the /new-flow mirror) yield fresh stamp-carrier handles whose
+    // re-spread customTools arrays are THE SAME array carrying the SAME
+    // single entry - the ops bag survives by reference at every hop, the
+    // factory ledger stays at ONE instantiation (the probe-once latch rides
+    // this identity; no re-mint across handle swaps), and both handles
+    // carry the SAME stamped execution state object.
+    await PioSession.create(CWD);
+    const firstDrive = await driveStoredClosure();
+    const toolsFirst = lastFromServicesArg().customTools;
+    if (toolsFirst?.length !== 1) {
+      throw new Error("expected the single threaded bash entry");
+    }
+    const secondDrive = await driveStoredClosure();
+    const toolsSecond = lastFromServicesArg().customTools;
+    if (toolsSecond?.length !== 1) {
+      throw new Error("expected the single threaded bash entry");
+    }
+    expect(toolsSecond).toBe(toolsFirst);
+    expect(toolsSecond[0].operations).toBe(toolsFirst[0].operations);
+    expect(harness.state.bashFactoryCalls).toHaveLength(1);
+    const stateA = assertMintedState(stampValue(firstDrive.createdHandle));
+    const stateB = assertMintedState(stampValue(secondDrive.createdHandle));
+    expect(stateB).toBe(stateA);
+    // (ii) Flip over the shared state: window A is the depth-0 world
+    // (sources null, phase null); entering the fixture span plus attaching
+    // the phase record flips window B's projection onto EXACTLY those
+    // dimensions while the paths stay resolvable and equal (the channels
+    // resolve FRESH per reading - stability across the flip is what makes
+    // the attribution hold).
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const windowA = stateA.snapshot();
+      expect(windowA.sources).toBeNull();
+      expect(windowA.phase).toBeNull();
+      stateA.enterCapability(FIXTURE_SPAN);
+      const literalTarget = "/lit/guard/target.md";
+      stateA.attachPhase("landlock-late-binding", [literalTarget], true, true);
+      const windowB = stateA.snapshot();
+      expect(windowB.sources).toEqual(FIXTURE_SPAN);
+      expect(windowB.phase).toStrictEqual({
+        id: "landlock-late-binding",
+        declared: [literalTarget],
+        allowProjectWrites: true,
+        tmpDirAllowed: true,
+      });
+      expect(windowB.paths).toEqual(windowA.paths);
+      // (iii) Single-expression linkage (design-type glue, flagged): the
+      // mutated state IS the stamp-discovered state (identity above); the
+      // fence-creation call site and the guard-install site bind the SAME
+      // executionState local inside create - line-level glue, NOT
+      // mechanically observable without driving the real exec, which the
+      // island doctrine bars. Attribution isolation closes the argument:
+      // the SAME bag persisted across both windows, so any consult
+      // difference is attributable to the SHARED STATE alone - the fence
+      // tracks the frame.
+    });
+  });
+
+  it("guard-handler-list invariant: the services arg carries EXACTLY ONE extension factory, the captured tool_call handler PASSES a bash-named event (verdict undefined - the write gate self-filters by tool name; no second member intercepts commands) AND blocks a write event over a denied input with a verdict deep-equal to the REAL predicate over the same state reading", async () => {
+    await withAgentDir(AGENT_DIR_LITERAL, async () => {
+      const { gate } = await host();
+      const factories =
+        lastServicesArg().resourceLoaderOptions?.extensionFactories ?? [];
+      expect(factories).toHaveLength(1);
+      // Bash-named event: PASS - silence means allowed, and nothing besides
+      // the single write-gate member sits in the consulted list.
+      expect(gate.toolCallHandler(toolCall("bash", { command: "ls" }))).toBe(
+        undefined,
+      );
+      // Denied write: refusal with identity over the REAL predicate (the
+      // empty-contract fixture span admits NOTHING - the span site is
+      // non-admitting).
+      const deniedInput = { path: "/outside/a.md" };
+      expect(
+        gate.toolCallHandler(toolCall("write", deniedInput)),
+      ).toStrictEqual(decideWrite(gate.state.snapshot(), "write", deniedInput));
+      expect(
+        gate.toolCallHandler(toolCall("write", deniedInput)),
+      ).toBeDefined();
+    });
   });
 });

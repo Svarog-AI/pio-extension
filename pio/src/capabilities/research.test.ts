@@ -1,5 +1,5 @@
 // Hermetic unit suite for the research capability (capabilities/research.ts).
-// Harness per the base.test.ts doctrine: the SAME five faked SDK value
+// Harness per the base.test.ts doctrine: the SAME eight faked SDK value
 // symbols (the fake session GAINS getToolDefinition — defined-by-default
 // stub; miss rows override a round's lookup to undefined, the shipped
 // total-absence signature), mkdtemp tmpdirs per row with PI_CODING_AGENT_DIR
@@ -117,6 +117,23 @@ const harness = vi.hoisted(() => {
     return round.runtime;
   });
 
+  // Construction floor for the unconditional customTools threading: the
+  // real PioSession.create builds the Landlock-bash instance eagerly at the
+  // construction seam; these fakes absorb the construction-time SDK value
+  // reaches (this island's rows never inspect the threaded entry - the bare
+  // static shape suffices; the full four-symbol floor lives solely in
+  // pio-session.test.ts where observation resides).
+  const createBashToolDefinition = vi.fn(
+    (_cwd: string, options: { operations: unknown }) => ({
+      name: "bash",
+      operations: options.operations,
+    }),
+  );
+  const defineTool = vi.fn((tool: unknown) => tool);
+  // Eager at construction (seams.localOps ?? createLocalBashOperations()):
+  // structural stub - the island never drives the delegate bag.
+  const createLocalBashOperations = vi.fn(() => ({}));
+
   const reset = () => {
     state.rounds = [];
     getAgentDir.mockClear();
@@ -124,6 +141,9 @@ const harness = vi.hoisted(() => {
     createAgentSessionServices.mockClear();
     createAgentSessionFromServices.mockClear();
     createAgentSessionRuntime.mockClear();
+    createBashToolDefinition.mockClear();
+    defineTool.mockClear();
+    createLocalBashOperations.mockClear();
   };
 
   return {
@@ -133,6 +153,9 @@ const harness = vi.hoisted(() => {
     createAgentSessionServices,
     createAgentSessionFromServices,
     createAgentSessionRuntime,
+    createBashToolDefinition,
+    defineTool,
+    createLocalBashOperations,
     reset,
   };
 });
@@ -143,6 +166,9 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSessionServices: harness.createAgentSessionServices,
   createAgentSessionFromServices: harness.createAgentSessionFromServices,
   createAgentSessionRuntime: harness.createAgentSessionRuntime,
+  createBashToolDefinition: harness.createBashToolDefinition,
+  defineTool: harness.defineTool,
+  createLocalBashOperations: harness.createLocalBashOperations,
 }));
 
 /** Pinned product-line replicas — the SOLE OWNER of every byte below is

@@ -3029,6 +3029,95 @@ next probe and the fence resumes. Never a silent unfenced fallback.
 
 ### 13.6 Single-refusal-site doctrine and the standing restriction note
 
+This section documents the SETTLED VOICE CHANNEL for command-write denials —
+owner-committed 2026-10-08 after the quality-gate rejection, owner rulings
+across three planning rounds. Its organizing doctrine is the
+three-layer voice channel, layer names fixed: LAYER 1 — kernel
+enforcement (unchanged, complete, attempt-time); LAYER 2 — the proleptic
+phase-permission disclosure (a fresh late-bound execution-state consult
+folded unconditionally into every `execute_phase` prompt); LAYER 3 — the
+retained standing note (the content-independent, exit-code-triggered note
+appended on resolved non-zero exits). The single-refusal-site doctrine STANDS
+beside it: adjudication is the KERNEL's (§13.1 model), the
+`renderMechanismRefusal` ELEVEN-LINE FAMILY remains the SOLE
+machinery-refusal voice, and the write/edit gate's decision-time refusal is
+EXPLICITLY PRESERVED — owner confirmation recorded:
+"better to leave the write tool message, as it's working well".
+
+LAYER 1 POINTER. Kernel enforcement is UNCHANGED, COMPLETE, ATTEMPT-TIME: the
+§13.1 model — one fresh kernel frame per spawn over the whole process tree,
+off-list attempts dying EPERM at attempt time — holds in EVERY scenario the
+settlement introduced. The settlement changes WHERE the readable permission
+context appears, never WHETHER the kernel holds.
+
+LAYER 2 — THE PROLEPTIC PHASE-PERMISSION DISCLOSURE (the new mechanics block
+— the transcript-visible carrier of the up-front context). SEAM: EVERY
+`execute_phase` call appends the block UNCONDITIONALLY — silent windows
+included (they render the delimiter line ALONE; silence is not a fault). The
+block sits STRICTLY AT THE END of the marker-led composition — marker line →
+optional instructions → LF → the block — folded into the SAME text payload
+(`renderPhaseMarker(id) + (instructions ? "\n" + instructions : "") + "\n" +
+disclosure`), so it trails EVERY observed run of the phase, corrective
+expectation-guard re-runs included (the corrective notes ride strictly AFTER
+it).
+
+PINNED BYTES. The delimiter line is `—— phase permissions ——` (two U+2014 em
+dashes flanking the label, single spaces — the house transcript-marker
+layout, the same quoting convention §11.3 applies to its markers). The fixed
+wording lives in the module-private static (quoted field-for-field — the
+exported renderer below is the block's SOLE BYTE OWNER):
+
+```ts
+// pio/src/capability/pio-session.ts
+const PHASE_DISCLOSURE_STATIC = {
+  label: "phase permissions",
+  filesJoin: ", ",
+  projectElementLeadIn: "project files at ",
+  scratchElementLiteral: "scratch files at /tmp",
+};
+```
+
+BLOCK SHAPE: ONE curated writable-targets listing — the owner-committed
+MINIMAL-MESSAGE form (recorded ruling chain: `S05/DECISIONS.md` port P-C,
+applied at finalize-goal close-out; the verbatim draft stands today in
+`S08/SUMMARY.md` "Records annotations"). The body is ONE line PER PRESENT
+ENTRY: (a) the FILES line — the phase's surviving declared paths rendered
+VERBATIM, comma-joined (the shared-core survivor semantics: declaration
+order, first-occurrence dedupe; unsupported declaration shapes ride along RAW,
+unfiltered — the block mirrors the shared core AND the gate's own refusal
+voice), present iff at least one path survives; (b) `project files at
+<absolute workspace cwd>` iff the scope class is decision-time active (the
+clamped dual-flag proposition); (c) `scratch files at /tmp` iff the scratch
+flag is active. ZERO sentence terminators anywhere; lines join with LF; no
+trailing newline. Derivation is ONE `materializeEffectiveSet` consult over
+the fresh snapshot — never re-judged.
+
+DEGENERATE CORNERS. A stateless reading — the snapshot arriving as
+`undefined`, or a NULL phase record (the depth-0/no-attach window) —
+short-circuits BEFORE the shared-core consult to the DELIMITER LINE ALONE (no
+fault, no `none` placeholder). A channel FAULT escapes VERBATIM through the
+standard containment channels — the consult sits OUTSIDE the try, and the
+channel adds no try/catch.
+
+OWNERSHIP. `renderPhasePermissionDisclosure(snapshot?: ExecutionSnapshot)` —
+EXPORTED, the block's SOLE BYTE OWNER, pure over plain values,
+honestly-optional parameter — is the revision's sole new export branch-wide;
+the block's bytes are SELF-OWNED in `pio-session.ts`, deliberately DISTINCT
+from the note's `under`-worded listing (layer 3, below). `denial-vocabulary.ts`,
+`landlock-bash.ts`, and `landlock-ruleset.ts` were NOT consumed or modified by
+the disclosure — zero new exports there; their byte surfaces stay untouched.
+
+LATE BINDING AND COMPOSED-FRAME TRACKING. The consult is FRESH per
+`execute_phase`, taken strictly AFTER the phase's attach completes (late
+binding — the block reflects the window THIS VERY PHASE just armed, never a
+pre-attach reading). A CHILD's disclosure tracks the CHILD'S frame and the
+PARENT's own writes are unaffected: row-1 shares the stamped state, row-2
+carries its own (§13.7 mechanics unchanged — the disclosure rides them).
+MOMENT DISTINCTION (the reading key BETWEEN the layers): the disclosure
+describes the PHASE-START consult — what the phase MAY write; the note names
+the CONCRETE frame that ROde the SPAWN — per-spawn authority governs
+enforcement.
+
 Bash adds NO `GuardHandler` member: the handler list threaded at the
 construction seam remains EXACTLY `[writeToolCallHandler]` (`pio/src/capability/pio-session.ts`
 — `guardInstall: { executionState, handlers: [writeToolCallHandler] }`; the
@@ -3043,7 +3132,12 @@ em dash per line, one physical line, a trailing period, measured details in
 parentheses; every line carries the fixed head `Command execution refused —`
 and ten of the eleven close on the shared `refusing to run unfenced` clause
 (the conservative in-band reading closes with the enforcement-was-active-
-throughout clause instead). The fence family's SOLE new voice artifact is the
+throughout clause instead).
+
+RETAINED NOTE LAYER. The surviving standing-note material below documents
+LAYER 3 exactly as shipped — retained byte-stable through the settlement:
+
+The fence family's SOLE new voice artifact is the
 pinned standing-note template, quoted verbatim from `STANDING_NOTE_TEMPLATE`
 (`landlock-bash.ts`) — the pinned constant ends in a trailing space after
 `Allowed targets:` (one extra space sits before the closing backtick below so
@@ -3087,6 +3181,69 @@ masked-exit-0 case (a command that hides a failed write behind exit 0 carries
 no note — the trigger is the exit code alone) and the pre-child window
 (SIGNAL-BLIND before the spawn — no stream exists yet to annotate).
 
+EXIT-0 CORNER — PARTIALLY REMEDIATED. On masked-exit-0 invocations the note
+stays SILENT by shipped doctrine (the non-zero-exit trigger stands
+untouched; owner:
+"we could also leave the exit 1 message"). The readable context for such
+invocations is the raw `Permission denied` diagnostic in the command's OWN
+output PLUS the up-front disclosure — the owner's words:
+"The exit 0 will be partly remediated by Permission denied + the phase instruction permissions note"
+(the settlement records this as partially remediated). The pre-child window
+mute corner is UNCHANGED by the settlement. The exit-0 compound therefore
+remains an ENFORCEMENT-LIVENESS probe shape — enforcement provable by
+diagnostic + file-absence without any note.
+
+THE TWO LISTINGS. A negative-phase transcript can show the two listings of
+the channel side by side — the disclosure's DECLARED-set listing up front and
+the note's CONCRETE-KERNEL-set listing on failure — different PROJECTIONS of
+the same snapshot. The disclosure's listing is the phase's SURVIVING DECLARED
+PATHS raw (pattern tokens ride along — patterns are what tools see) plus
+`at`-worded class elements (`project files at <cwd>`, `scratch files at
+/tmp`) and NO `none` fallback — a silent window's block is the delimiter line
+alone. The note's listing is the CONCRETE kernel set the spawn actually rode:
+wildcard-pattern entries contribute NOTHING (strictly-concrete survivors only
+— §13.2 divergence 1), the ALWAYS-present `/dev` machinery allowance is
+ABSENT by identity classification, the class elements are `under`-worded
+(`project files under <cwd>`, `scratch files under /tmp/`), and the empty
+remainder degrades to the universal `none` form. Consequence readers need: a
+silent window's note reads `Allowed targets: none.` while its disclosure block
+carries NO writable-target lines; and a declared directory grants its WHOLE
+SUBTREE to commands while the gate admits the exact path only (§13.2
+divergence 2). Inline divergence ANNOTATIONS stay OUT OF THE TRANSCRIPT
+(docs-only — the minimal-message ruling's boundary).
+
+THE DEVIATED-ATTEMPT CORNER. The model MAY deviate despite the disclosure —
+it is advisory context, not coercion. The attempt still dies at ATTEMPT TIME
+(the kernel layer is authoritative); the transcript then shows the raw
+diagnostic, the trailing note IF the exit is non-zero (and correctly NONE of
+it on exit 0 — the shipped corner above), and the up-front disclosure.
+Enforcement is UNAFFECTED in every case of the deviated-attempt corner.
+
+SUPERSEDURE HISTORY (the full chain of record). The S05 P-A ruling (the
+content-independent standing note) STANDS — SUPPLEMENTED, NOT SUPERSEDED: its
+forward pointer names this settlement (port entry P-C, applied at
+finalize-goal close-out). The planning-round-1 UNION TRIGGER (the exit-code
+arm PLUS advisory marker evidence via a forward-only stream tee over the exec
+data channel) was committed in round 1 but never shipped — recorded with its
+closed channel inventory (within the goal's envelope the settlement point
+observes ONLY the exit code and the command's own output bytes: Landlock
+exposes no notification interface; AUDIT_LANDLOCK_ACCESS needs elevated
+privileges incompatible with the bubble; fanotify/eBPF/auditd are
+detective/out-of-scope; seccomp-notify is redesign-class;
+LD_PRELOAD/wrapper-shell transforms break transport identity; both stdout and
+stderr flow through the same `onData` callback — pinned-dist measurement) and
+its declined routes (the marker-only variant, the capture-and-wrap revisit,
+out-of-envelope regimes) — preserved so a future reader knows the options
+were weighed. Under the additive-to-goal reading, deliverable 1(c)
+(post-execution refusal-voice rendering) survives INTACT and shipping; the
+disclosure is additive preventive context — `GOAL.md` remains the read-only
+contract, no amendment. Future readers should pull the full verbatim record
+from the goal-workspace decision logs (`.pio/goals/command-write-fence/` —
+`S05/DECISIONS.md` ports P-A / P-B / P-C with P-C applied at finalize-goal
+close-out, `S08/SUMMARY.md` "Records annotations") and the goal's `PLAN.md`
+"settled voice channel" decision record — the same record-citation convention
+§13 already uses for the issue ticket.
+
 ### 13.7 Both placement modes: composition tracks mechanically
 
 Composition tracks AUTOMATICALLY: the fence bag is minted ONCE per
@@ -3116,7 +3273,21 @@ construction seam run ungated BY CONSTRUCTION.
 The LIVE demonstration rides the permanent `guards-demo` home
 (`pio/src/capabilities/guards-demo.ts`, contract 0.5.0 — the SOLE
 contract-literal difference vs the pre-family 0.4.0). The canonical
-QUALITY-GATE SCENARIO ROW, quoted verbatim, is:
+QUALITY-GATE SCENARIO ROW — replaced by the 2026-10-08 voice-channel
+settlement (Step 9 acceptance criterion #5; the goal's `S09/DECISIONS.md`
+entry 5) and quoted verbatim below — is:
+
+"Guards-demo bash chain — `pio run guards-demo`: the six write probes PLUS the bash probe family — each phase's disclosure block lists the correct per-frame writable set (none in silent windows; the granted directory in the allow window; scope/scratch classes flip between adjacent windows); the three negative probes' prescribed bare-invocation attempts die non-zero with the diagnostic + the trailing note (NONE listing); bash-deny additionally runs the exit-0 compound shape (diagnostic visible, note correctly silent, file NEVER LANDS in either shape); on-list artifacts land plainly — ok:true, exit 0"
+
+Read the row's "(none in silent windows …)" phrasing PER THE SHIPPED FORM: a
+silent window's disclosure block carries NO writable-target lines (the
+delimiter line alone — the literal `none` belongs to the RETAINED NOTE's
+listing exclusively, §13.6). Hermetic nets stand unchanged in character (the
+guards-demo suite, the slot 8–9 suites byte-comparable, the syscall suite);
+the live evidence is captured by the gate under the standard provisioned-host
+posture — proof-layer ruling, NOT a plan-step obligation. SUPERSEDED HISTORY:
+the pre-repin canonical row (note-based readings — kept readable here as the
+pre-repin vehicle) was:
 
 *"Guards-demo bash chain — `pio run guards-demo`: the six write probes PLUS the bash probe family — off-list command refusal with the standing note + kernel-set listing, on-list artifact landed, the scope/scratch pairs flip — ok:true, exit 0."*
 
@@ -3128,18 +3299,32 @@ source order):
 - `bash-deny` — the SILENT window (options exactly `{ instructions, min,
   max }`) over the SHARED stray target the write gate already REFUSED on the
   same path (the module reuses the write-tool deny probe's absolute stray
-  verbatim): a plain shell-redirection attempt dies on the kernel denial with
-  a non-zero exit and the command's own permission diagnostic; the transcript
-  carries the standing restriction note whose listing reads `none` (minimum
-  fence — this phase declares NOTHING); the artifact never lands (live
-  OFF-LIST-REFUSAL leg — the cross-mechanism same-target refusal: the gate and
-  the kernel over one path).
+  verbatim): the agent attempts the target in TWO PRESCRIBED shapes, each
+  exactly once within the SAME settled run. SHAPE 1: the bare off-list
+  redirect AS THE WHOLE COMMAND (a bare invocation such as `echo x >
+  <target>`) — exits non-zero with the command's own permission diagnostic in
+  its own output and the trailing standing note whose listing degrades to
+  `none` (FULL VOICE — the gate's canonical bare-redirect leg, byte-exact as
+  shipped). SHAPE 2: the SAME redirect joined by a SEMICOLON with a trailing
+  successful statement (such as `echo x > <target>; echo ok` — the failed
+  redirection fails only its own statement, so the compound exits zero; `&&`
+  would short-circuit on the refusal and defeat the liveness proof) — the
+  diagnostic stays VISIBLE, the compound exits 0, the note CORRECTLY SILENT
+  (the shipped corner), and the file NEVER LANDS in EITHER shape. The
+  expectation references the phase-permissions context CONCEPTUALLY ("names
+  NO writable targets") and POSITION-NEUTRALLY (shipped placement is
+  trailing; no direction asserted). This IS the live OFF-LIST-REFUSAL leg
+  (the cross-mechanism same-target refusal: the gate and the kernel over one
+  path) AND the ENFORCEMENT-LIVENESS sub-case proving the original gate shape
+  is closed enforcement-side.
 - `bash-allow` — declares the artifact's CONTAINING DIRECTORY (options
   `{ instructions, min, max, write: [absDir, absArtifact] }`); the fenced
   command writes in TWO shapes (a plain shell redirection, then a program
   opening the path for write — coreutils-steered, interpreter-avoided); exit
   ok, file present, transcript CLEAN — no standing note, since neither
-  command hits a denial (live ON-LIST-COMPLETION leg). DISCLOSED DEVICE: the
+  command hits a denial (live ON-LIST-COMPLETION leg). At phase start, the
+  admitting window's disclosure block NAMES the grant: its files line carries
+  the very directory the artifact lands in. DISCLOSED DEVICE: the
   directory token `guards-demo/bash-allow.md` is a DIRECTORY whose basename
   satisfies the demo's OWN `guards-demo/*.md` coverage pattern — a DEMO-LOCAL
   pattern-intersection artifact, NOT general authoring guidance (the general
@@ -3161,16 +3346,45 @@ source order):
   class; SELF-CLEANING post-rm) and REFUSED by the flag-less SILENT phase
   INSIDE the demo's own flag-TRUE contract (the same silence the write-tool
   twin proves with the gate's universal byte, now proven with the kernel's
-  denial — the standing note's listing reads `none`).
+  denial — the standing note's listing reads `none`). Shape prescription
+  (Step 9 repin): the negative template now carries EXACTLY ONE inserted
+  sentence — `Issue the redirection AS THE WHOLE COMMAND (a bare invocation).`
+  — between imperative and expectation, so the note-bearing tail is
+  SHAPE-GUARANTEED rather than dependent on agent whim — the rejected gate
+  proved the live agent's trailing-statement habit (all four negative probes
+  reached exit-0 compounds), and unprescribed the stale note-tail promise
+  meets the habit again at the next gate. The rest of that pinned expectation
+  stands: the SILENT window leaves the kernel set at the machine allowance
+  (hence the `none` listing), the do-not-retry mandate, the
+  admitted-earlier-by-the-adjacent-probe contrast. Disclosure fact for the
+  admitting half: at phase start the flag-declaring window's block NAMES the
+  grant on its `project files at <workspace cwd>` class line.
 - `bash-tmp-parity` / `bash-tmp-negative` — the SCRATCH pair over the SAME
   shared `/tmp` target: ADMITTED under the scratch-flag phase
   (`tmpDirAllowed: true`) and REFUSED by the SILENT window (the
   negative-scratch direction, live both ways; the `bash-tmp-negative`
-  pre-phase sweep removes the admitted residue WITHIN the run).
+  pre-phase sweep removes the admitted residue WITHIN the run). Shape
+  prescription (Step 9 repin): the `bash-tmp-negative` template gains the
+  same EXACTLY ONE inserted sentence between imperative and expectation —
+  `Issue the redirection AS THE WHOLE COMMAND (a bare invocation).` — making
+  its note-bearing tail SHAPE-GUARANTEED for the same reason (the rejected
+  gate proved the live agent's trailing-statement habit — unprescribed, the
+  stale note-tail promise meets the habit again at the next gate); the rest of
+  its pinned expectation stands (the SILENT window leaves the kernel set at
+  the machine allowance — hence the `none` listing; the do-not-retry mandate;
+  the adjacent-probe admission contrast). Disclosure fact for the admitting
+  half: at phase start the scratch-flag window's block NAMES the grant on its
+  `scratch files at /tmp` class line.
 
-How to READ the transcripts: the standing note + the concrete-kernel-set
-listing IS the fence's feedback channel (§13.6) — on-list completion produces
-no note, off-list failure produces the command's own diagnostic plus the note.
+How to READ the transcripts: the fence's feedback channel is NOW the
+three-layer trio (§13.6) — the up-front disclosure block at EVERY phase start
+(both positive and negative windows), the command's own diagnostic on any
+denial, and the trailing standing note on NON-ZERO exits only; on-list
+completion produces NEITHER note NOR diagnostic. HOW TO READ A DISCLOSURE
+BLOCK: the delimiter line ALONE is a silent window (nothing writable beyond
+the invisible machine allowance); the files line lists the phase's surviving
+declared paths; the `project files at …` / `scratch files at …` lines name
+the active CLASSES.
 The DOCUMENTED-DIVERGENCE readings appear live here: WILDCARD ENTRIES
 LISTED-BUT-NOT-GRANTED (the demo's `guards-demo/*.md` pattern admits the
 model-facing voice while contributing NOTHING to the kernel set — §13.2
@@ -3182,7 +3396,11 @@ out of the FIXED-ORDER alternating sequence: adjacent frames flip the verdict
 over SAME-KIND targets with no session restart between frames, crossing the
 TOOL/KERNEL boundary — the shared stray is refused by the GATE and by the
 KERNEL over the same path, and the cwd and /tmp targets each play
-admit/refuse quadruples (write-tool twin, then bash twin). Hygiene facts:
+admit/refuse quadruples (write-tool twin, then bash twin) — and the
+SCOPE/SCRATCH flip readings now ALSO come from the ADJACENT DISCLOSURE BLOCKS
+at phase starts: the admitting window's block NAMES the class, the silent
+window's lists nothing, beside the note-bearing refused attempts, with no
+session restart between frames. Hygiene facts:
 the module's own pre-phase unlink-reset sweeps are error-swallowed WRITES
 executing in the SESSION PROCESS — unfenced, since the ratchet is one-way and
 the module's own unlink/mkdir never consult the kernel fence; end-of-run state
@@ -3193,6 +3411,16 @@ only bar: the existing six write probes stay BYTE-STABLE beside the new
 family (the summary's probe-naming line extends lockstep to name the TWELVE
 gate probes; the loader table, CLI `--help`, and `pio/src/session.ts` stay
 byte-diff empty — §13.10).
+
+ROSTER-STABILITY. Why the in-place repin (Step 9) kept the TWELVE-probe
+roster and names stable: the shape prescriptions are byte-level template
+edits confined to the THREE NEGATIVE owners — bash-deny reshaped DUAL-SHAPE,
+bash-project-file-not-allowed and bash-tmp-negative each gaining their one
+inserted sentence — with no phase id, span structure, or summary wording
+moved: the summary's probe-naming line is UNCHANGED at the repin. The
+additive-only bar facts stand: the six write probes stay BYTE-STABLE beside
+the bash family, and the loader table, CLI `--help`, and `pio/src/session.ts`
+stay byte-diff empty (§13.10).
 
 ### 13.9 Designated upgrade rung: overlay preview (recorded, not designed)
 
@@ -3259,6 +3487,25 @@ Landlock-bash modules under an SDK-mocked context (missing symbols fail LOUD
 and deterministic at construction — never a silent degradation). Frame as
 HISTORY OF RECORD: the shipped code at HEAD is the authority, and where this
 guide and any older artifact disagree, the quotes extracted from HEAD win.
+
+VOICE-CHANNEL SUPERSEDE HISTORY (this revision's addition). The
+planning-round-1 UNION TRIGGER (the exit-code arm PLUS advisory marker
+evidence via a forward-only stream tee over the exec data channel) was
+committed in round 1 and never shipped — SUPERSEDED UNSHIPPED by the final
+settlement, which landed the PROLEPTIC DISCLOSURE instead: it attacks the
+problem upstream of action and dissolves the entire trigger-timing problem
+class — no exit-code/marker/timing machinery added, no stream tee, no
+vocabulary table, no truncation blind spots, no false-positive class — and no
+shipped trigger machinery existed to reconcile; the only shipped-module change
+in the revision is the disclosure itself, self-owned in `pio-session.ts`. The
+PROLEPTIC DISCLOSURE LANDED (Step 8); the STANDING NOTE was RETAINED
+exactly as shipped (zero machinery change); the WRITE/EDIT gate's
+decision-time refusal was PRESERVED untouched (owner directive); and under
+the additive-to-goal reading deliverable 1(c) (post-execution
+refusal-voice rendering) is INTACT and shipping, with `GOAL.md` unamended.
+HISTORY-OF-RECORD framing carried forward: the shipped code at HEAD is the
+authority; where this guide disagrees with older artifacts, the quotes
+extracted from HEAD win.
 
 Open-assumption verification: the referenced ninth knowledge entry
 (`KNOWLEDGE.md`) was NOT FOUND on disk at planning; the issue ticket and the

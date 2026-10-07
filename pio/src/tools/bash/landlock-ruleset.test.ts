@@ -23,7 +23,13 @@ import {
 } from "../../denial-vocabulary.ts";
 import type { ExecutionSnapshot } from "../../session-execution-state.ts";
 import { SessionExecutionState } from "../../session-execution-state.ts";
-import type { HelperCheck, ShellSpec } from "./landlock-ruleset.ts";
+import type {
+  HelperCheck,
+  PathClassifySeams,
+  PathKind,
+  ShellSpec,
+  SpawnPlanVerdict,
+} from "./landlock-ruleset.ts";
 import * as landlockRulesetModule from "./landlock-ruleset.ts";
 import {
   buildHelperArgv,
@@ -31,6 +37,7 @@ import {
   classifyHelper,
   classifyLandlockExit,
   composeKernelWritableSet,
+  composeSpawnPlan,
   LANDLOCK_FAULT_BAND,
   LANDLOCK_FAULT_CODES,
   landlockArchToken,
@@ -1127,6 +1134,7 @@ const VALUE_EXPORT_NAMES = [
   "classifyHelper",
   "classifyLandlockExit",
   "composeKernelWritableSet",
+  "composeSpawnPlan",
   "landlockArchToken",
   "parseProbeReport",
   "renderCommandLandlockDenial",
@@ -1143,10 +1151,13 @@ const TYPE_EXPORT_NAMES = [
   "HelperStatSeams",
   "LandlockExitVerdict",
   "MechanismFault",
+  "PathClassifySeams",
+  "PathKind",
   "ProbeFaultKind",
   "ProbeReport",
   "RefusalContext",
   "ShellSpec",
+  "SpawnPlanVerdict",
   "StaticFaultKind",
 ];
 
@@ -1159,19 +1170,19 @@ describe("H. mechanical source-guard charter over landlock-ruleset.ts", () => {
     expect(MODULE_SOURCE.includes(SDK_SPECIFIER)).toBe(false);
   });
 
-  it("runtime namespace surface pin: Object.keys sorted equals EXACTLY the THIRTEEN value exports (alphabetized)", () => {
+  it("runtime namespace surface pin: Object.keys sorted equals EXACTLY the FOURTEEN value exports (alphabetized)", () => {
     expect(Object.keys(landlockRulesetModule).sort()).toEqual(
       VALUE_EXPORT_NAMES,
     );
   });
 
-  it("declarative export names pin: the thirteen values PLUS the thirteen pinned type/interface names (twenty-six declarative exports)", () => {
+  it("declarative export names pin: the fourteen values PLUS the sixteen pinned type/interface names (thirty declarative exports)", () => {
     const declared = [
       ...MODULE_SOURCE.matchAll(
         /^export\s+(?:interface|type|const|function)\s+([A-Za-z_$][\w$]*)/gm,
       ),
     ].map((match) => match[1]);
-    expect(declared.length).toBe(26);
+    expect(declared.length).toBe(30);
     expect([...VALUE_EXPORT_NAMES, ...TYPE_EXPORT_NAMES].sort()).toEqual(
       declared.sort(),
     );
@@ -1247,5 +1258,703 @@ describe("H. mechanical source-guard charter over landlock-ruleset.ts", () => {
         `marker slipped through: ${pattern}`,
       ).toBeNull();
     }
+  });
+});
+
+// ===========================================================================
+// I. Per-spawn spawn-plan materializer
+// ===========================================================================
+
+const ENV_RESEARCH = `${SLOT_ROOT}/research`; // the shared leaf envelope dir
+const LEAF_A_MD = `${ENV_RESEARCH}/leaf-a.md`; // absent-on-host fixture literal
+const LEAF_B_MD = `${ENV_RESEARCH}/leaf-b.md`;
+const NESTED_ENV = `${ENV_RESEARCH}/sub`; // the nested envelope (deep-leaf home)
+const NESTED_LEAF = `${NESTED_ENV}/leaf-deep.md`;
+const DIR_DECL = `${SLOT_ROOT}/else/plain-dir`; // dir-read survivor fixture
+const TREE_A = `${SLOT_ROOT}/tree`;
+const TREE_AB = `${TREE_A}/b`;
+const TREE_ABC = `${TREE_AB}/c`;
+const DEV_LEAF = "/dev/carrier-note"; // contrived absolute (defensive row)
+const TMP_LEAF = "/tmp/planner-scratch.dat";
+const CWD_LEAF = `${WORKSPACE_CWD}/ws-leaf.md`;
+const ROOT_LEAF = "/topfile.dat"; // contrived direct-under-root leaf
+const ABSENT_SENTINEL = "/definitely/not/a/pio-planner/sentinel.dat";
+
+/** Scripted reader: an UNSCRIPTED consult throws loudly (a confinement
+ * violation instead of a silent host-flaky reading) - the hermetic-
+ * determinism pin for every table-driven row below. */
+function keyedReadings(entries: Record<string, PathKind>): PathClassifySeams {
+  return {
+    classifyPath: (path: string): PathKind => {
+      if (!(path in entries)) {
+        throw new Error(`unscripted classification consult: ${path}`);
+      }
+      return entries[path];
+    },
+  };
+}
+
+const READ_ALL_DIR: PathClassifySeams = {
+  classifyPath: (): PathKind => "dir",
+};
+const READ_ALL_UNKNOWN: PathClassifySeams = {
+  classifyPath: (): PathKind => "unknown",
+};
+
+describe("I. per-spawn spawn-plan materializer (pure planner beside the composer)", () => {
+  it("pattern-only frame (every survivor is wildcard-pattern text): ready, NOT engaged, empty mounts, vector IDENTICAL to the shipped composer (with and without class tokens active)", () => {
+    const snapshot: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: {
+        id: "patt",
+        declared: [WILD_ENTRY],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: PATHS,
+    };
+    expect(composeSpawnPlan(snapshot, READ_ALL_DIR)).toEqual({
+      kind: "ready",
+      engaged: false,
+      mirrorMounts: [],
+      kernelVector: ["/dev"],
+    });
+    const classActive: ExecutionSnapshot = {
+      sources: RESEARCH,
+      phase: {
+        id: "patt-classes",
+        declared: [WILD_ENTRY],
+        allowProjectWrites: true,
+        tmpDirAllowed: true,
+      },
+      paths: PATHS,
+    };
+    expect(composeSpawnPlan(classActive, READ_ALL_DIR)).toEqual({
+      kind: "ready",
+      engaged: false,
+      mirrorMounts: [],
+      kernelVector: ["/dev", "/tmp", WORKSPACE_CWD],
+    });
+  });
+
+  it("single leaf: engaged, the leaf ABSENT from the vector, its containing dir PRESENT at the survivor position", () => {
+    const snapshot: ExecutionSnapshot = {
+      sources: {
+        name: "planfix",
+        writes: ["research/leaf-a.md"],
+        allowProjectWrites: false,
+      },
+      phase: {
+        id: "one",
+        declared: [LEAF_A_MD],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: PATHS,
+    };
+    const verdict = composeSpawnPlan(
+      snapshot,
+      keyedReadings({ [LEAF_A_MD]: "file" }),
+    );
+    expect(verdict).toEqual({
+      kind: "ready",
+      engaged: true,
+      mirrorMounts: [ENV_RESEARCH],
+      kernelVector: [ENV_RESEARCH, "/dev"],
+    });
+    if (verdict.kind !== "ready") throw new Error("expected the ready form");
+    expect(verdict.kernelVector).not.toContain(LEAF_A_MD);
+  });
+
+  it("multiple leaves sharing one directory: ONE deduped mount, ONE deduped envelope (first-occurrence mirroring the composer)", () => {
+    const snapshot: ExecutionSnapshot = {
+      sources: {
+        name: "planfix",
+        writes: ["research/leaf-a.md", "research/leaf-b.md"],
+        allowProjectWrites: false,
+      },
+      phase: {
+        id: "two",
+        declared: [LEAF_A_MD, LEAF_B_MD],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: PATHS,
+    };
+    expect(
+      composeSpawnPlan(
+        snapshot,
+        keyedReadings({ [LEAF_A_MD]: "file", [LEAF_B_MD]: "file" }),
+      ),
+    ).toEqual({
+      kind: "ready",
+      engaged: true,
+      mirrorMounts: [ENV_RESEARCH],
+      kernelVector: [ENV_RESEARCH, "/dev"],
+    });
+  });
+
+  it("directory declaration (reading dir) is NOT a leaf: ready-not-engaged, vector UNCHANGED vs the shipped composer", () => {
+    const snapshot: ExecutionSnapshot = {
+      sources: {
+        name: "planfix",
+        writes: ["else/plain-dir"],
+        allowProjectWrites: false,
+      },
+      phase: {
+        id: "dirdecl",
+        declared: [DIR_DECL],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: PATHS,
+    };
+    const verdict = composeSpawnPlan(
+      snapshot,
+      keyedReadings({ [DIR_DECL]: "dir" }),
+    );
+    expect(verdict).toEqual({
+      kind: "ready",
+      engaged: false,
+      mirrorMounts: [],
+      kernelVector: [DIR_DECL, "/dev"],
+    });
+    if (verdict.kind !== "ready") throw new Error("expected the ready form");
+    expect(verdict.kernelVector).toEqual(composeKernelWritableSet(snapshot));
+  });
+
+  it("absent leaf (reading unknown) ENGAGES under the unknown-implies-leaf create-intent reading (binding ruling: the absent state must engage)", () => {
+    const snapshot: ExecutionSnapshot = {
+      sources: {
+        name: "planfix",
+        writes: ["research/leaf-a.md"],
+        allowProjectWrites: false,
+      },
+      phase: {
+        id: "absent",
+        declared: [LEAF_A_MD],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: PATHS,
+    };
+    expect(
+      composeSpawnPlan(snapshot, keyedReadings({ [LEAF_A_MD]: "unknown" })),
+    ).toEqual({
+      kind: "ready",
+      engaged: true,
+      mirrorMounts: [ENV_RESEARCH],
+      kernelVector: [ENV_RESEARCH, "/dev"],
+    });
+  });
+
+  it("mixed leaf + dir + pattern window composes to the exact pinned vector (order-sensitive golden - the envelope sits IN PLACE at the survivor slot, before the class tokens)", () => {
+    const mixSources = {
+      name: "planfix-mix",
+      writes: ["research/leaf-a.md", "else/plain-dir", "research/*.md"],
+      allowProjectWrites: false,
+    };
+    const snapshot: ExecutionSnapshot = {
+      sources: mixSources,
+      phase: {
+        id: "mix",
+        declared: [LEAF_A_MD, DIR_DECL, WILD_ENTRY],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: PATHS,
+    };
+    expect(
+      composeSpawnPlan(
+        snapshot,
+        keyedReadings({ [LEAF_A_MD]: "file", [DIR_DECL]: "dir" }),
+      ),
+    ).toEqual({
+      kind: "ready",
+      engaged: true,
+      mirrorMounts: [ENV_RESEARCH],
+      kernelVector: [ENV_RESEARCH, DIR_DECL, "/dev"],
+    });
+    const classActive: ExecutionSnapshot = {
+      sources: { ...mixSources, allowProjectWrites: true },
+      phase: {
+        id: "mix-classes",
+        declared: [LEAF_A_MD, DIR_DECL, WILD_ENTRY],
+        allowProjectWrites: true,
+        tmpDirAllowed: true,
+      },
+      paths: PATHS,
+    };
+    expect(
+      composeSpawnPlan(
+        classActive,
+        keyedReadings({ [LEAF_A_MD]: "file", [DIR_DECL]: "dir" }),
+      ),
+    ).toEqual({
+      kind: "ready",
+      engaged: true,
+      mirrorMounts: [ENV_RESEARCH],
+      kernelVector: [ENV_RESEARCH, DIR_DECL, "/dev", "/tmp", WORKSPACE_CWD],
+    });
+  });
+
+  it("envelope FOLLOWING the dir declaration keeps survivor-order placement (dir before envelope, envelope before the class additions)", () => {
+    const snapshot: ExecutionSnapshot = {
+      sources: {
+        name: "planfix-order",
+        writes: ["else/plain-dir", "research/leaf-a.md"],
+        allowProjectWrites: true,
+      },
+      phase: {
+        id: "order",
+        declared: [DIR_DECL, LEAF_A_MD],
+        allowProjectWrites: true,
+        tmpDirAllowed: true,
+      },
+      paths: PATHS,
+    };
+    expect(
+      composeSpawnPlan(
+        snapshot,
+        keyedReadings({ [DIR_DECL]: "dir", [LEAF_A_MD]: "file" }),
+      ),
+    ).toEqual({
+      kind: "ready",
+      engaged: true,
+      mirrorMounts: [ENV_RESEARCH],
+      kernelVector: [DIR_DECL, ENV_RESEARCH, "/dev", "/tmp", WORKSPACE_CWD],
+    });
+  });
+
+  it("LOCKSTEP IDENTITY over the FULL WINDOWS table under the all-'dir' seam: every row resolves ready AND NOT engaged with the vector element-for-equal to composeKernelWritableSet (the interim-posture receipt at suite level - the all-dir reader MUST ride this row: the default seam would stat the absent fixtures and read them as assumed leaves, host-flaky)", () => {
+    for (const row of WINDOWS) {
+      const verdict = composeSpawnPlan(row.snapshot, READ_ALL_DIR);
+      expect(verdict.kind, row.name).toBe("ready");
+      if (verdict.kind !== "ready") throw new Error("unreachable");
+      expect(verdict.engaged, row.name).toBe(false);
+      expect(verdict.mirrorMounts, row.name).toEqual([]);
+      expect(verdict.kernelVector, row.name).toEqual(
+        composeKernelWritableSet(row.snapshot),
+      );
+    }
+  });
+
+  it("nested mounts refuse TYPED with the DETERMINISTIC first-hit pair (inner = the deeper mount point, outer = its covering planned ancestor)", () => {
+    const snapshot: ExecutionSnapshot = {
+      sources: {
+        name: "planfix-nest",
+        writes: ["research/leaf-a.md", "research/sub/leaf-deep.md"],
+        allowProjectWrites: false,
+      },
+      phase: {
+        id: "nest",
+        declared: [LEAF_A_MD, NESTED_LEAF],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: PATHS,
+    };
+    expect(
+      composeSpawnPlan(
+        snapshot,
+        keyedReadings({ [LEAF_A_MD]: "file", [NESTED_LEAF]: "file" }),
+      ),
+    ).toEqual({
+      kind: "nested-mirror",
+      inner: NESTED_ENV,
+      outer: ENV_RESEARCH,
+    });
+  });
+
+  it("multi-candidate matrix: the FIRST scanning hit wins (a deep chain reports its shallowest enclosing pair first; the candidate order follows the declaration order)", () => {
+    const treeSources = {
+      name: "planfix-tree",
+      writes: ["tree/x.md", "tree/b/y.md", "tree/b/c/z.md"],
+      allowProjectWrites: false,
+    };
+    const forward: ExecutionSnapshot = {
+      sources: treeSources,
+      phase: {
+        id: "chain-f",
+        declared: [`${TREE_A}/x.md`, `${TREE_AB}/y.md`, `${TREE_ABC}/z.md`],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: PATHS,
+    };
+    expect(composeSpawnPlan(forward, READ_ALL_UNKNOWN)).toEqual({
+      kind: "nested-mirror",
+      inner: TREE_AB,
+      outer: TREE_A,
+    });
+    const reversed: ExecutionSnapshot = {
+      sources: treeSources,
+      phase: {
+        id: "chain-r",
+        declared: [`${TREE_ABC}/z.md`, `${TREE_AB}/y.md`, `${TREE_A}/x.md`],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: PATHS,
+    };
+    expect(composeSpawnPlan(reversed, READ_ALL_UNKNOWN)).toEqual({
+      kind: "nested-mirror",
+      inner: TREE_ABC,
+      outer: TREE_AB,
+    });
+  });
+
+  it("sibling-prefix pair (/a/b vs /ab) is NOT nested: the boundary prefix demands the separator (defensive plain-literal row)", () => {
+    const snapshot: ExecutionSnapshot = {
+      sources: {
+        name: "rootfix",
+        writes: ["a/b/probe.md", "ab/probe.md"],
+        allowProjectWrites: false,
+      },
+      phase: {
+        id: "sib",
+        declared: ["/a/b/probe.md", "/ab/probe.md"],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: { projectSlotRoot: "", workspaceCwd: WORKSPACE_CWD },
+    };
+    expect(
+      composeSpawnPlan(
+        snapshot,
+        keyedReadings({
+          "/a/b/probe.md": "file",
+          "/ab/probe.md": "file",
+        }),
+      ),
+    ).toEqual({
+      kind: "ready",
+      engaged: true,
+      mirrorMounts: ["/a/b", "/ab"],
+      kernelVector: ["/a/b", "/ab", "/dev"],
+    });
+  });
+
+  it("direct-under-root leaf: the root-mount REFUSAL ARM (defensive plain-literal row - unreachable through the resolved-absolute contract; refuses TYPED rather than planning an overlay over the real root; both readings agree)", () => {
+    const snapshot: ExecutionSnapshot = {
+      sources: {
+        name: "rootfix",
+        writes: ["topfile.dat"],
+        allowProjectWrites: false,
+      },
+      phase: {
+        id: "rooty",
+        declared: [ROOT_LEAF],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: { projectSlotRoot: "", workspaceCwd: WORKSPACE_CWD },
+    };
+    expect(
+      composeSpawnPlan(snapshot, keyedReadings({ [ROOT_LEAF]: "file" })),
+    ).toEqual({ kind: "root-mount" });
+    expect(
+      composeSpawnPlan(snapshot, keyedReadings({ [ROOT_LEAF]: "unknown" })),
+    ).toEqual({ kind: "root-mount" });
+  });
+
+  it("root check BEATS the nested scan: a mount set holding / plus a nested pair resolves root-mount, never the spurious nested pair (fixed cheap-first order)", () => {
+    const snapshot: ExecutionSnapshot = {
+      sources: {
+        name: "rootfix",
+        writes: ["solo.md", "r1/a.md", "r1/r2/b.md"],
+        allowProjectWrites: false,
+      },
+      phase: {
+        id: "root-beats-nested",
+        declared: ["/solo.md", "/r1/a.md", "/r1/r2/b.md"],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: { projectSlotRoot: "", workspaceCwd: WORKSPACE_CWD },
+    };
+    expect(composeSpawnPlan(snapshot, READ_ALL_UNKNOWN)).toEqual({
+      kind: "root-mount",
+    });
+  });
+
+  it("the /dev floor holds on EVERY ready plan and engaged === the non-emptyness of the mirror mounts (asserted across the whole WINDOWS table under BOTH uniform seam flavors, engaged shapes included; the depth-0/span-only windows degrade to ready-not-engaged [/dev] with NO seam argument at all)", () => {
+    const readyVerdicts: Array<{
+      readonly label: string;
+      readonly verdict: SpawnPlanVerdict;
+    }> = [];
+    for (const row of WINDOWS) {
+      readyVerdicts.push({
+        label: `${row.name} (all-dir)`,
+        verdict: composeSpawnPlan(row.snapshot, READ_ALL_DIR),
+      });
+      readyVerdicts.push({
+        label: `${row.name} (all-unknown)`,
+        verdict: composeSpawnPlan(row.snapshot, READ_ALL_UNKNOWN),
+      });
+    }
+    for (const entry of readyVerdicts) {
+      if (entry.verdict.kind !== "ready") continue;
+      expect(entry.verdict.kernelVector, entry.label).toContain("/dev");
+      expect(entry.verdict.engaged, entry.label).toBe(
+        entry.verdict.mirrorMounts.length > 0,
+      );
+    }
+    for (const index of [0, 1, 2]) {
+      expect(composeSpawnPlan(WINDOWS[index].snapshot)).toEqual({
+        kind: "ready",
+        engaged: false,
+        mirrorMounts: [],
+        kernelVector: ["/dev"],
+      });
+    }
+  });
+
+  it("envelope-vs-class dedupe collisions: a SINGLE occurrence, and the envelope position WINS when earlier (three contrived corners: /dev, /tmp under scratch, workspaceCwd under agreed flags)", () => {
+    const devLeaf: ExecutionSnapshot = {
+      sources: {
+        name: "rootfix",
+        writes: ["dev/carrier-note"],
+        allowProjectWrites: false,
+      },
+      phase: {
+        id: "coll-dev",
+        declared: [DEV_LEAF],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: { projectSlotRoot: "", workspaceCwd: WORKSPACE_CWD },
+    };
+    expect(
+      composeSpawnPlan(devLeaf, keyedReadings({ [DEV_LEAF]: "file" })),
+    ).toEqual({
+      kind: "ready",
+      engaged: true,
+      mirrorMounts: ["/dev"],
+      kernelVector: ["/dev"],
+    });
+    const tmpLeaf: ExecutionSnapshot = {
+      sources: {
+        name: "rootfix",
+        writes: ["tmp/planner-scratch.dat"],
+        allowProjectWrites: false,
+      },
+      phase: {
+        id: "coll-tmp",
+        declared: [TMP_LEAF],
+        allowProjectWrites: false,
+        tmpDirAllowed: true,
+      },
+      paths: { projectSlotRoot: "", workspaceCwd: WORKSPACE_CWD },
+    };
+    expect(
+      composeSpawnPlan(tmpLeaf, keyedReadings({ [TMP_LEAF]: "file" })),
+    ).toEqual({
+      kind: "ready",
+      engaged: true,
+      mirrorMounts: ["/tmp"],
+      kernelVector: ["/tmp", "/dev"],
+    });
+    const cwdLeaf: ExecutionSnapshot = {
+      sources: {
+        name: "rootfix",
+        writes: ["workspace/proj-x/ws-leaf.md"],
+        allowProjectWrites: true,
+      },
+      phase: {
+        id: "coll-cwd",
+        declared: [CWD_LEAF],
+        allowProjectWrites: true,
+        tmpDirAllowed: false,
+      },
+      paths: { projectSlotRoot: "", workspaceCwd: WORKSPACE_CWD },
+    };
+    expect(
+      composeSpawnPlan(cwdLeaf, keyedReadings({ [CWD_LEAF]: "file" })),
+    ).toEqual({
+      kind: "ready",
+      engaged: true,
+      mirrorMounts: [WORKSPACE_CWD],
+      kernelVector: [WORKSPACE_CWD, "/dev"],
+    });
+  });
+
+  it("freshness: two calls return DISTINCT instances with equal contents AND re-run the classification consult (per-spawn fresh consult doctrine - no memoization anywhere; the consultation log proves per-call freshness)", () => {
+    const consulted: string[] = [];
+    const loggingSeam: PathClassifySeams = {
+      classifyPath: (path: string): PathKind => {
+        consulted.push(path);
+        if (path === LEAF_A_MD) return "file";
+        if (path === DIR_DECL) return "dir";
+        throw new Error(`unscripted classification consult: ${path}`);
+      },
+    };
+    const snapshot: ExecutionSnapshot = {
+      sources: {
+        name: "planfix-fresh",
+        writes: ["research/leaf-a.md", "else/plain-dir"],
+        allowProjectWrites: false,
+      },
+      phase: {
+        id: "fresh",
+        declared: [LEAF_A_MD, DIR_DECL],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: PATHS,
+    };
+    const first = composeSpawnPlan(snapshot, loggingSeam);
+    const second = composeSpawnPlan(snapshot, loggingSeam);
+    expect(second).toEqual(first);
+    if (first.kind !== "ready" || second.kind !== "ready") {
+      throw new Error("expected the ready form");
+    }
+    expect(second).not.toBe(first);
+    expect(second.kernelVector).not.toBe(first.kernelVector);
+    expect(second.mirrorMounts).not.toBe(first.mirrorMounts);
+    expect(consulted).toEqual([LEAF_A_MD, DIR_DECL, LEAF_A_MD, DIR_DECL]);
+  });
+
+  it("hostile inputs RESOLVE to result forms (degenerate anchors, relative survivors, empty declarations, null-source-with-phase, phase-null, degenerate workspaceCwd): no row observes a throw, over ALL THREE seam flavors including the default statSync-backed one", () => {
+    const hostile: readonly ExecutionSnapshot[] = [
+      {
+        sources: RESEARCH,
+        phase: {
+          id: "hostile-degen",
+          declared: [KEPT_A],
+          allowProjectWrites: true,
+          tmpDirAllowed: true,
+        },
+        paths: { projectSlotRoot: "", workspaceCwd: "" },
+      },
+      WINDOWS[13].snapshot, // relative survivor (defensive plain-literal row)
+      {
+        sources: RESEARCH,
+        phase: {
+          id: "hostile-empty",
+          declared: [],
+          allowProjectWrites: true,
+          tmpDirAllowed: true,
+        },
+        paths: PATHS,
+      },
+      WINDOWS[10].snapshot, // null sources + declaring phase
+      WINDOWS[0].snapshot, // phase null (depth 0)
+      WINDOWS[12].snapshot, // degenerate workspaceCwd = /dev
+    ];
+    const seamFlavors: ReadonlyArray<PathClassifySeams | undefined> = [
+      READ_ALL_DIR,
+      READ_ALL_UNKNOWN,
+      undefined,
+    ];
+    for (const snapshot of hostile) {
+      for (const flavor of seamFlavors) {
+        let verdict: SpawnPlanVerdict | undefined;
+        expect(() => {
+          verdict = composeSpawnPlan(snapshot, flavor);
+        }).not.toThrow();
+        if (verdict === undefined) throw new Error("consult never ran");
+        expect(["ready", "nested-mirror", "root-mount"]).toContain(
+          verdict.kind,
+        );
+      }
+    }
+  });
+
+  it("seam confinement: the consult log is EXACTLY the strictly-concrete survivor set in declaration order (patterns drop pre-consult, uncovered declarations never reach the seam, class tokens are NEVER consulted, each survivor ONCE)", () => {
+    const consulted: string[] = [];
+    const loggingSeam: PathClassifySeams = {
+      classifyPath: (path: string): PathKind => {
+        consulted.push(path);
+        if (path === LEAF_A_MD) return "file";
+        if (path === DIR_DECL) return "dir";
+        throw new Error(`unscripted classification consult: ${path}`);
+      },
+    };
+    const snapshot: ExecutionSnapshot = {
+      sources: {
+        name: "planfix-confine",
+        writes: ["research/*.md", "else/plain-dir"],
+        allowProjectWrites: true,
+      },
+      phase: {
+        id: "confine",
+        declared: [WILD_ENTRY, UNCOVERED, LEAF_A_MD, DIR_DECL],
+        allowProjectWrites: true,
+        tmpDirAllowed: true,
+      },
+      paths: PATHS,
+    };
+    const verdict = composeSpawnPlan(snapshot, loggingSeam);
+    expect(consulted).toEqual([LEAF_A_MD, DIR_DECL]);
+    expect(verdict).toEqual({
+      kind: "ready",
+      engaged: true,
+      mirrorMounts: [ENV_RESEARCH],
+      kernelVector: [ENV_RESEARCH, DIR_DECL, "/dev", "/tmp", WORKSPACE_CWD],
+    });
+  });
+
+  it("DEFAULT-seam battery over HOST-STABLE system entries only (fixed-literal defensive exceptions documented; provisioned host + CI are Linux - the real-stat precedent): / reads dir, process.execPath reads file, /dev/null reads unknown (non-regular), the guaranteed-absent literal reads unknown", () => {
+    const underRoot = (
+      pattern: string,
+      declared: string,
+      label: string,
+    ): ExecutionSnapshot => ({
+      sources: {
+        name: "hostfix",
+        writes: [pattern],
+        allowProjectWrites: false,
+      },
+      phase: {
+        id: label,
+        declared: [declared],
+        allowProjectWrites: false,
+        tmpDirAllowed: false,
+      },
+      paths: { projectSlotRoot: "", workspaceCwd: WORKSPACE_CWD },
+    });
+    // (a) the real root is a readable directory on every host: the dir reading keeps it OUTSIDE the leaf set.
+    expect(composeSpawnPlan(underRoot("*", "/", "host-root"))).toEqual({
+      kind: "ready",
+      engaged: false,
+      mirrorMounts: [],
+      kernelVector: ["/", "/dev"],
+    });
+    // (b) the running executable is a readable regular binary: the file reading ENGAGES, the leaf stays out of the vector, its containing dir takes the survivor slot.
+    const execPath = process.execPath;
+    const execEnvelope = execPath.slice(0, execPath.lastIndexOf("/"));
+    expect(
+      composeSpawnPlan(underRoot(execPath.slice(1), execPath, "host-exec")),
+    ).toEqual({
+      kind: "ready",
+      engaged: true,
+      mirrorMounts: [execEnvelope],
+      kernelVector: [execEnvelope, "/dev"],
+    });
+    // (c) /dev/null is a NON-REGULAR char device: the unknown catch-all ENGAGES and the envelope collides into the /dev class token (single occurrence).
+    expect(
+      composeSpawnPlan(underRoot("dev/null", "/dev/null", "host-null")),
+    ).toEqual({
+      kind: "ready",
+      engaged: true,
+      mirrorMounts: ["/dev"],
+      kernelVector: ["/dev"],
+    });
+    // (d) the guaranteed-absent contrived literal: absence resolves to the unknown catch-all (ENGAGED; the fail-closed pairing with the downstream attach refusal keeps the assumption safe end-to-end).
+    const absentEnvelope = ABSENT_SENTINEL.slice(
+      0,
+      ABSENT_SENTINEL.lastIndexOf("/"),
+    );
+    expect(
+      composeSpawnPlan(
+        underRoot(ABSENT_SENTINEL.slice(1), ABSENT_SENTINEL, "host-absent"),
+      ),
+    ).toEqual({
+      kind: "ready",
+      engaged: true,
+      mirrorMounts: [absentEnvelope],
+      kernelVector: [absentEnvelope, "/dev"],
+    });
   });
 });

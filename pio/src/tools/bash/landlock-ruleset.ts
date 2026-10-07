@@ -4,8 +4,10 @@
 // CONCRETE kernel writable allowlist for one spawn, (ii) the helper argv
 // spec, (iii) the single-source fault-code vocabulary bridging the carrier
 // exit codes onto TS refusal classification, (iv) the helper-path resolver
-// plus static classify, (v) the probe ABI-report line parse, and (vi) the
-// post-exec denial-line renderer consuming the shared byte family.
+// plus static classify, (v) the probe ABI-report line parse, (vi) the
+// post-exec denial-line renderer consuming the shared byte family, and
+// (vii) the per-spawn spawn-plan materializer (engaged flag, mirror mounts,
+// the plan-level kernel vector, and the typed plan-refusal forms).
 //
 // WHY HERE: the fence machinery is tightly coupled to the fenced bash tool
 // that lands beside it in this subpackage, so the materializer ships in the
@@ -17,9 +19,12 @@
 // table.
 //
 // PURITY: plain values in, plain values out. The node: surface is confined
-// to statSync (the DEFAULT STAT SEAM of the synchronous helper consult;
-// injected seams replace it entirely) and path.join (the resolver). No env
-// reads, no spawns, no network, no SDK; process.arch and the package-root
+// to statSync (the TWO DEFAULT SEAMS: the synchronous helper-mode consult
+// and the spawn-plan leaf-classification consult; injected seams replace
+// them entirely, and the classification reach stays confined to the
+// strictly-concrete survivor paths - no other node: surface appears) and
+// path.join (the resolver). No env reads, no spawns, no network, no SDK;
+// process.arch and the package-root
 // constant are plain reads, not channels. Every public function is TOTAL
 // over its value domain - invalid readings resolve to RESULT forms (loud
 // typed refusals), nothing throws.
@@ -29,7 +34,8 @@
 // the argv assembly, the eleven-line mechanism refusal renderer, the manual
 // probe-line parse (zero regex by construction - the colocated source-guard
 // scanner stays sound via its zero-slash-in-residue pin), the post-exec
-// denial renderer, and the permission-denied attribution marker.
+// denial renderer, the permission-denied attribution marker, and the
+// spawn-plan materializer with its verdict and refusal forms.
 //
 // BAND DISCIPLINE: every fault code is issued strictly pre-execve by
 // construction - a completed fenced command exiting inside the band can
@@ -614,4 +620,212 @@ export function renderCommandLandlockDenial(
     }
   }
   return UNIVERSAL_NO_PERMISSION_DENIAL;
+}
+
+// ===========================================================================
+// (vii) PER-SPAWN SPAWN-PLAN MATERIALIZER
+// ===========================================================================
+
+/** THE leaf-classification reading: regular file / directory / the
+ * catch-all unknown (absent, unreadable, non-regular). */
+export type PathKind = "file" | "dir" | "unknown";
+
+/** Classification seam bag (the HelperStatSeams precedent): an injected
+ * classifyPath REPLACES the statSync-backed default ENTIRELY - there is no
+ * partial override, and the planner consults ONLY strictly-concrete
+ * survivors, ONCE each, in declaration order. */
+export interface PathClassifySeams {
+  readonly classifyPath?: (p: string) => PathKind;
+}
+
+/** THE per-spawn SPAWN-PLAN VERDICT - total over the snapshot's value
+ * domain (result forms, never throws). Ready carries the engagement
+ * decision, the deduped mirror mount points (declaration order,
+ * first-occurrence; EMPTY iff not engaged - the engaged flag holds IFF the
+ * list is non-empty by construction), and the plan-level kernel vector
+ * (leaves swapped for their envelopes IN PLACE at the survivor's own
+ * assembly position; the class channel exactly as the composer builds it;
+ * one global first-occurrence dedupe over the FULL assembled vector).
+ * The refusal arms are the two degenerate corners, checked AFTER mount
+ * collection in FIXED cheap-first order: any planned mount point of "/"
+ * refuses TYPED rather than planning an overlay over the real root (the
+ * mirror-channel analogue of the retained structural fact "never grant /");
+ * one planned mount point beneath ANOTHER refuses TYPED rather than
+ * composing nested overlays, reported DETERMINISTIC FIRST-HIT (inner
+ * candidates in mirrorMounts order, the first proper-ancestor hit wins; the
+ * pair names the measured detail the downstream renderer consumes). Both
+ * arms leave the ready-form fields ABSENT entirely (discriminated arms -
+ * degraded-detail rendering belongs to the spawn site's voice layer). */
+export type SpawnPlanVerdict =
+  | {
+      readonly kind: "ready";
+      readonly engaged: boolean;
+      readonly mirrorMounts: readonly string[];
+      readonly kernelVector: readonly string[];
+    }
+  | {
+      readonly kind: "nested-mirror";
+      readonly inner: string;
+      readonly outer: string;
+    }
+  | { readonly kind: "root-mount" };
+
+/** The CONTAINING DIRECTORY of a strictly-concrete absolute path: the
+ * prefix up to (EXCLUDING) the last path separator - string methods only
+ * (lastIndexOf over the separator literal, which sits inside a string
+ * literal and keeps the residue slash-free - no regex, no dirname import).
+ * An EMPTY result (a direct-under-root leaf) normalizes to "/" BEFORE
+ * validation. Input domain is the strictly-concrete survivors (always begin
+ * with the separator), so the index is never negative. */
+function containingDir(leaf: string): string {
+  const prefix = leaf.slice(0, leaf.lastIndexOf("/"));
+  return prefix === "" ? "/" : prefix;
+}
+
+/** The DEFAULT classification seam: ONE statSync consult wrapped in
+ * try-catch, built EXACTLY like the sibling defaultStatMode (the same
+ * single node:fs reach already imported - no new node: surface appears).
+ * Readable REGULAR FILE => "file"; readable DIRECTORY => "dir"; EVERYTHING
+ * ELSE - absent, unreadable, or non-regular (char devices, fifos,
+ * sockets) - falls into the "unknown" catch-all. Unknown reads as the
+ * CREATE-INTENT leaf downstream: the absent state must engage the gate,
+ * and the fail-closed pairing with the downstream attach-fault refusal
+ * keeps a wrongly assumed leaf safe end-to-end (it dies later as the typed
+ * pre-child refusal - never an ungoverned write). SYNCHRONOUS by design
+ * (same posture as the helper consult: no exec happens here; authority at
+ * the spawn site). */
+function defaultClassifyPath(candidate: string): PathKind {
+  try {
+    const info = statSync(candidate);
+    if (info.isFile()) return "file";
+    if (info.isDirectory()) return "dir";
+  } catch {
+    // Absent, unreadable, or non-regular alike fall to the catch-all.
+  }
+  return "unknown";
+}
+
+/** THE pure snapshot-to-spawn-plan materializer: given the moment's
+ * ExecutionSnapshot it decides WHETHER THE MIRROR MECHANIC ENGAGES and
+ * assembles the three facts a ready verdict carries. Pinned algorithmic
+ * order (deterministic, golden-stable):
+ * (1) effective construction - ONE fresh materializeEffectiveSet consult
+ * over the phase/sources/paths triple; a NULL phase degrades to no
+ * survivors and both class propositions false (mirrors the composer's exact
+ * structure - one code path; the core coalesces null sources internally);
+ * (2) the strictly-concrete filter over the survivors (declaration order
+ * preserved; wildcard-pattern text drops HERE, before any consult);
+ * (3) the classification of each filtered survivor, ONCE each, in
+ * declaration order (injected seam or the statSync-backed default);
+ * (4) the leaf set - readings "file" OR "unknown" (the create-intent
+ * reading), and the mirror mounts: the containing dirs of the leaves in
+ * declaration order, first-occurrence dedupe mirroring the composer, the
+ * empty-residue form normalized to "/" before validation;
+ * (5) the kernel vector rebuilt by the SAME single global first-occurrence
+ * dedupe pass over the FULL assembled vector: each DIRECTORY-shaped
+ * survivor emits ITSELF (shipped behavior), each LEAF-shaped survivor
+ * emits its ENVELOPE IN PLACE AT ITS OWN ASSEMBLY POSITION (minimal
+ * perturbation - every unengaged vector element-for-element equals the
+ * composer's output, by construction), then the class additions trail in
+ * the shipped order (/dev ALWAYS, /tmp iff scratch active, the workspace
+ * cwd iff the dual project flags agree);
+ * (6) validation AFTER mount collection, fixed cheap-first order: the
+ * root-mount corner BEFORE the deterministic nested first-hit scan;
+ * (7) the ready form. No early return before (6) except via the result
+ * arms; no second dedupe dialect.
+ *
+ * ENVELOPE-AS-PLUMBING DOCTRINE: LSM-hook semantics require writes through
+ * the overlay to still fire the path hooks, so the mirrored dirs carry a
+ * covering kernel grant or legal writes die EPERM before the copy-on-write
+ * layer; the precision lives in the spawn-site verdict, never here - the
+ * envelope is plumbing, not policy. FRESHNESS: every call re-materializes
+ * AND re-classifies (per-spawn fresh consult doctrine, no memoization
+ * anywhere). NO NEW ABSOLUTENESS DIALECT: the planner adds no extra
+ * absoluteness checks on any input - it honors the state-channel
+ * resolved-absolute contract and re-validates NOTHING; a non-absolute
+ * channel value degrades exactly as today (the assembler-side pre-child
+ * refusal remains the latest pure-layer guard - defense in depth unchanged).
+ * TOTAL, never throws: hostile inputs (degenerate anchors, relative
+ * survivors, empty declarations, null-source-with-phase shapes) RESOLVE to
+ * result forms. */
+export function composeSpawnPlan(
+  snapshot: ExecutionSnapshot,
+  seams?: PathClassifySeams,
+): SpawnPlanVerdict {
+  const classify = seams?.classifyPath ?? defaultClassifyPath;
+  const concrete: string[] = [];
+  const kinds = new Map<string, PathKind>();
+  let scratchActive = false;
+  let projectWritesActive = false;
+  if (snapshot.phase !== null) {
+    const effective = materializeEffectiveSet(
+      snapshot.phase,
+      snapshot.sources,
+      snapshot.paths,
+    );
+    scratchActive = effective.scratchActive;
+    projectWritesActive = effective.projectWritesActive;
+    for (const survivor of effective.survivors) {
+      if (!strictlyConcrete(survivor)) continue;
+      concrete.push(survivor);
+      kinds.set(survivor, classify(survivor));
+    }
+  }
+  // THE MIRROR MOUNTS: the deduped containing dirs of the LEAF-shaped
+  // survivors ONLY (declaration order, first-occurrence). Dir-shaped
+  // survivors and the class tokens NEVER land here - a mount exists because
+  // of a declared leaf, never because a class flag is active.
+  const mirrorMounts: string[] = [];
+  const mountSeen = new Set<string>();
+  let engaged = false;
+  for (const survivor of concrete) {
+    const kind = kinds.get(survivor);
+    if (kind === "dir") continue;
+    engaged = true;
+    const envelope = containingDir(survivor);
+    if (!mountSeen.has(envelope)) {
+      mountSeen.add(envelope);
+      mirrorMounts.push(envelope);
+    }
+  }
+  // THE KERNEL VECTOR: the Landlock grant list - NOT the mount table. Same
+  // single global first-occurrence dedupe as the mounts: each dir-shaped
+  // survivor emits ITSELF, each leaf its envelope IN PLACE, then the class
+  // channel exactly as the shipped composer builds it (/dev ALWAYS, /tmp iff
+  // scratch active, workspace cwd iff the dual project flags agree). Coarse
+  // by design: the grants are plumbing for the LSM path hooks, not precision
+  // - file-exactness settles in the spawn-site verdict over the captured
+  // upperdir.
+  const kernelVector: string[] = [];
+  const vectorSeen = new Set<string>();
+  const pushOnce = (entry: string): void => {
+    if (!vectorSeen.has(entry)) {
+      vectorSeen.add(entry);
+      kernelVector.push(entry);
+    }
+  };
+  for (const survivor of concrete) {
+    const kind = kinds.get(survivor);
+    pushOnce(kind === "dir" ? survivor : containingDir(survivor));
+  }
+  pushOnce("/dev");
+  if (scratchActive) pushOnce("/tmp");
+  if (projectWritesActive) pushOnce(snapshot.paths.workspaceCwd);
+  for (const mount of mirrorMounts) {
+    if (mount === "/") return { kind: "root-mount" };
+  }
+  for (let innerIndex = 0; innerIndex < mirrorMounts.length; innerIndex += 1) {
+    const inner = mirrorMounts[innerIndex];
+    for (
+      let outerIndex = 0;
+      outerIndex < mirrorMounts.length;
+      outerIndex += 1
+    ) {
+      const outer = mirrorMounts[outerIndex];
+      if (inner !== outer && inner.startsWith(`${outer}/`)) {
+        return { kind: "nested-mirror", inner, outer };
+      }
+    }
+  }
+  return { kind: "ready", engaged, mirrorMounts, kernelVector };
 }

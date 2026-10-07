@@ -937,11 +937,11 @@ describe("PioCapability — prompt framing passes through untouched", () => {
   const PHASE_A_MARKER = "\u2014\u2014 phase-a \u2014\u2014";
   const PHASE_B_MARKER = "\u2014\u2014 phase-b \u2014\u2014";
   const CAP_MARKER = "\u2014\u2014 fixture-cap \u2014\u2014";
-  // The unattached fixture phases ride the DELIMITER-ONLY disclosure
-  // form (stateless window: no attached phase, so the shared core is
-  // never consulted - re-typed locally per the suite's pattern).
-  const DISCLOSURE_DELIMITER_REPLICA =
-    "\u2014\u2014 phase permissions \u2014\u2014";
+  // The unattached fixture phases ride the EMPTY-FORM disclosure block
+  // (stateless window: no attached phase, so the shared core is never
+  // consulted - the plain header line plus the capital-N None line,
+  // re-typed locally per the suite's pattern).
+  const DISCLOSURE_EMPTY_FORM_REPLICA = "Phase Permissions:\nNone";
 
   class TwoPhaseCap extends PioCapability {
     readonly contract: Contract = FIXTURE_CONTRACT;
@@ -964,14 +964,14 @@ describe("PioCapability — prompt framing passes through untouched", () => {
     expect(round.session.prompt).toHaveBeenCalledTimes(2);
     // The wrapper forwards the option bag verbatim: the engine-composed
     // phase marker plus the authored instructions reach the prompt channel,
-    // with the disclosure delimiter line TRAILING.
+    // with the disclosure empty-form block TRAILING.
     expect(round.session.prompt).toHaveBeenNthCalledWith(
       1,
-      `${PHASE_A_MARKER}\ndo A\n${DISCLOSURE_DELIMITER_REPLICA}`,
+      `${PHASE_A_MARKER}\ndo A\n\n${DISCLOSURE_EMPTY_FORM_REPLICA}`,
     );
     expect(round.session.prompt).toHaveBeenNthCalledWith(
       2,
-      `${PHASE_B_MARKER}\ndo B\n${DISCLOSURE_DELIMITER_REPLICA}`,
+      `${PHASE_B_MARKER}\ndo B\n\n${DISCLOSURE_EMPTY_FORM_REPLICA}`,
     );
   });
 
@@ -996,7 +996,7 @@ describe("PioCapability — prompt framing passes through untouched", () => {
     const result = await cap.run();
     expect(result.ok).toBe(true);
     expect(round.session.prompt).toHaveBeenCalledTimes(2);
-    const framed = `${PHASE_A_MARKER}\ndo A\n${DISCLOSURE_DELIMITER_REPLICA}`;
+    const framed = `${PHASE_A_MARKER}\ndo A\n\n${DISCLOSURE_EMPTY_FORM_REPLICA}`;
     expect(round.session.prompt).toHaveBeenNthCalledWith(1, framed);
     expect(round.session.prompt).toHaveBeenNthCalledWith(2, framed);
   });
@@ -1020,7 +1020,7 @@ describe("PioCapability — prompt framing passes through untouched", () => {
     expect(result.ok).toBe(true);
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     expect(round.session.prompt).toHaveBeenCalledWith(
-      `${PHASE_A_MARKER}\n${DISCLOSURE_DELIMITER_REPLICA}`,
+      `${PHASE_A_MARKER}\n\n${DISCLOSURE_EMPTY_FORM_REPLICA}`,
     );
     const sent = round.session.prompt.mock.calls[0][0];
     expect(sent.endsWith("\n")).toBe(false);
@@ -1376,9 +1376,9 @@ describe("PioCapability — engine integration through the base", () => {
     const result = await cap.run();
     expect(round.session.prompt).toHaveBeenCalledTimes(1);
     // The wrapper forwards options verbatim: the bare marker line stands
-    // alone, the disclosure delimiter line trails.
+    // alone, the disclosure empty-form block trails.
     expect(round.session.prompt).toHaveBeenCalledWith(
-      `\u2014\u2014 hooked \u2014\u2014\n\u2014\u2014 phase permissions \u2014\u2014`,
+      `\u2014\u2014 hooked \u2014\u2014\n\nPhase Permissions:\nNone`,
     );
     expect(result.ok).toBe(true);
     expect(result.outputs).toEqual({

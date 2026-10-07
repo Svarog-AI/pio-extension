@@ -3048,14 +3048,15 @@ expectation-guard re-runs included. ONE line per present entry, minimal message,
 zero terminators, no trailing newline:
 
 ```
-—— phase permissions ——
+Phase Permissions:
 /abs/path/declared-a.md, /abs/path/declared-b.md
 project files at /abs/workspace/cwd
 scratch files at /tmp
 ```
 
-- The delimiter line — ALWAYS present; a phase declaring NOTHING renders this line
-  ALONE (no `none` placeholder; silence is not a fault).
+- The HEADER LINE — the plain `Phase Permissions:` header (pinned label plus
+  colon); ALWAYS present, and a phase declaring NOTHING adds a `None` line
+  (capital-N; the empty form names itself; silence is not a fault).
 - The FILES line — the phase's surviving declared paths VERBATIM, comma-joined
   (declaration order, first-occurrence dedupe; unsupported shapes ride along raw,
   unfiltered), present iff at least one path qualifies. Pattern tokens ride along:
@@ -3198,9 +3199,11 @@ verbatim:
 "Guards-demo bash chain — `pio run guards-demo`: the six write probes PLUS the bash probe family — each phase's disclosure block lists the correct per-frame writable set (none in silent windows; the granted directory in the allow window; scope/scratch classes flip between adjacent windows); the three negative probes' prescribed bare-invocation attempts die non-zero with the diagnostic + the trailing note (NONE listing); bash-deny additionally runs the exit-0 compound shape (diagnostic visible, note correctly silent, file NEVER LANDS in either shape); on-list artifacts land plainly — ok:true, exit 0"
 
 Read the row's "(none in silent windows …)" phrasing PER THE SHIPPED FORM: a
-silent window's disclosure block carries NO writable-target lines (the delimiter
-line alone — the literal `none` belongs to the RETAINED NOTE's listing
-exclusively). Hermetic nets stand unchanged in character; the live evidence is
+silent window's disclosure block carries the `Phase Permissions:` header plus
+the capital-N `None` empty-form line and NO writable-target lines — the two
+channels remain DIFFERENT FORMS (the disclosure's empty form is capitalized
+`None`; the RETAINED NOTE's universal listing stays lowercase `none`).
+Hermetic nets stand unchanged in character; the live evidence is
 the gate's standard provisioned-host leg (proof-layer ruling, not a plan-step
 obligation). SUPERSEDED HISTORY — the pre-repin row, kept readable as the
 pre-repin vehicle:
@@ -3285,8 +3288,9 @@ three-layer trio (§13.6) — the up-front disclosure block at EVERY phase start
 (both positive and negative windows), the command's own diagnostic on any
 denial, and the trailing standing note on NON-ZERO exits only; on-list
 completion produces NEITHER note NOR diagnostic. HOW TO READ A DISCLOSURE
-BLOCK: the delimiter line ALONE is a silent window (nothing writable beyond
-the invisible machine allowance); the files line lists the phase's surviving
+BLOCK: a block carrying ONLY the `Phase Permissions:` header plus the `None`
+line is the silent-window form (nothing writable beyond the invisible machine
+allowance); the files line lists the phase's surviving
 declared paths; the `project files at …` / `scratch files at …` lines name
 the active CLASSES.
 The DOCUMENTED-DIVERGENCE readings appear live here: WILDCARD ENTRIES

@@ -198,19 +198,18 @@ const sanityViolationLine = (target: string): string =>
  * base.test.ts codepoint discipline). */
 const PHASE_MARKER = "\u2014\u2014 research \u2014\u2014";
 
-/** LOCAL replica of the phase-permission DISCLOSURE delimiter line (SOLE
+/** LOCAL replica of the phase-permission DISCLOSURE header line (SOLE
  * BYTE OWNER: the module-private disclosure static + exported renderer in
- * ../capability/pio-session.ts): the flanked label, U+2014 x2 escapes,
- * single spaces. */
-const DISCLOSURE_DELIMITER_REPLICA =
-  "\u2014\u2014 phase permissions \u2014\u2014";
+ * ../capability/pio-session.ts): the plain pinned label plus the terminal
+ * colon. */
+const DISCLOSURE_HEADER_REPLICA = "Phase Permissions:";
 
 /** THE expected disclosure block over the research phase's window: the
  * base seam enters the capability's OWN span (writes: ["research/*.md"]),
  * so the shared core ADMITS the declared report path - the files line
  * alone (no class flags are declared by the phase). */
 const disclosureBlockFor = (absolutePath: string): string =>
-  `${DISCLOSURE_DELIMITER_REPLICA}\n${absolutePath}`;
+  `${DISCLOSURE_HEADER_REPLICA}\n${absolutePath}`;
 
 /** Replica of the module-private customType namespace (SOLE OWNER: the
  * PIO_CAPABILITY_CUSTOM_TYPE constant in ../capability/pio-session.ts). */

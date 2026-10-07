@@ -82,7 +82,7 @@ import {
 import { deriveProjectKey } from "../sandbox/layout.ts";
 import { EXECUTION_STATE_STAMP } from "../session.ts";
 import { SessionExecutionState } from "../session-execution-state.ts";
-import { composeKernelWritableSet } from "../tools/bash/landlock-ruleset.ts";
+import { composeSpawnPlan } from "../tools/bash/landlock-ruleset.ts";
 import GuardsDemoCapability, {
   GUARDS_DEMO_ALLOW_ARTIFACT,
   GUARDS_DEMO_ARTIFACT,
@@ -104,6 +104,19 @@ interface FakeSession {
   sendCustomMessage: ReturnType<typeof vi.fn>;
   sessionId: string;
   dispose: ReturnType<typeof vi.fn>;
+}
+
+/** THE plan-based kernel-vector projection - the SAME expression the
+ * flipped bash spawn site evaluates: composeSpawnPlan's ready-arm
+ * kernelVector (the ready-guard mirrors the spawn-site branch; the default
+ * classification seam applies because these fixtures are REAL disk state).
+ * All five consulted windows below are NON-ENGAGED (the bash-allow window's
+ * inner artifact is coverage-filtered and therefore kernel-invisible; the
+ * directory reads never engage), so the projection equals the composer's
+ * output BY CONSTRUCTION - a fidelity change, not a value change. */
+function planBasedProjection(state: SessionExecutionState): string[] {
+  const plan = composeSpawnPlan(state.snapshot());
+  return plan.kind === "ready" ? [...plan.kernelVector] : [];
 }
 
 /** One observed event on the shared handle, in ISSUE ORDER: a prompt send
@@ -915,7 +928,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       // MID-PASS KERNEL-VECTOR consult (fresh snapshot over the SAME
       // stamped state): the SILENT window attaches NOTHING, so the fence
       // settles on its MINIMUM form - the machine allowance alone.
-      bashDenyVector = composeKernelWritableSet(state.snapshot());
+      bashDenyVector = planBasedProjection(state);
     });
     round.passes.push(async (): Promise<void> => {
       // Disk-truth duty: the production mkdir already created the DECLARED
@@ -928,7 +941,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       // rides the vector FIRST (assembly order - survivors before the
       // class additions); the uncovered inner artifact contributes NOTHING
       // (kernel-invisible).
-      bashAllowVector = composeKernelWritableSet(state.snapshot());
+      bashAllowVector = planBasedProjection(state);
     });
     round.passes.push(async (): Promise<void> => {
       // Disk-truth duty: the SHARED workspace-cwd target LANDS over the
@@ -937,7 +950,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       emit(round, ...writeSettle(probes.absCwdFile, "w-bash-project"));
       // MID-PASS KERNEL-VECTOR consult: the dual project flags agree, so
       // the workspace-cwd class joins AFTER the machine allowance.
-      bashProjectFileVector = composeKernelWritableSet(state.snapshot());
+      bashProjectFileVector = planBasedProjection(state);
     });
     round.passes.push(async (): Promise<void> => {
       // The model honored the refusal: NO disk write in this pass (the
@@ -948,7 +961,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       // snapshot flips with the active phase - the SILENT window (attach
       // abstention despite the contract's own flag-TRUE) degenerates to
       // the MINIMUM fence again.
-      bashSilentVector = composeKernelWritableSet(state.snapshot());
+      bashSilentVector = planBasedProjection(state);
     });
     round.passes.push(async (): Promise<void> => {
       // Disk-truth duty: the SHARED scratch target LANDS over the phase's
@@ -957,7 +970,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       emit(round, ...writeSettle(probes.absTmpScratch, "w-bash-tmp"));
       // MID-PASS KERNEL-VECTOR consult: the effective scratch proposition
       // admits the /tmp/ prefix class AFTER the machine allowance.
-      bashTmpParityVector = composeKernelWritableSet(state.snapshot());
+      bashTmpParityVector = planBasedProjection(state);
     });
     round.passes.push(async (): Promise<void> => {
       // The model honored the refusal: NO disk write in this pass (the

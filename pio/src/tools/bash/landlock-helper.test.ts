@@ -1464,9 +1464,18 @@ describe("landlock-helper supervisor real-syscall goldens (H)", () => {
       mkdirSync(U);
       mkdirSync(W);
       try {
-        const res = runFenced(["--mount", L, U, W, "--", SH, "-c", "exit 101"]);
+        const res = runFenced([
+          "--mount",
+          L,
+          U,
+          W,
+          "--",
+          SH,
+          "-c",
+          `exit ${FAULT_CODES.abiMissingOrBlocked}`,
+        ]);
         assertSound(res);
-        expect(res.status).toBe(101);
+        expect(res.status).toBe(FAULT_CODES.abiMissingOrBlocked);
         expect(res.stdout).toBe("");
         expect(res.stderr).toBe("");
       } finally {

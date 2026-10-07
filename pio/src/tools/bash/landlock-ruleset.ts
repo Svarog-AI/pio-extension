@@ -29,18 +29,22 @@
 // over its value domain - invalid readings resolve to RESULT forms (loud
 // typed refusals), nothing throws.
 //
-// SOLE OWNER of: the fault-code vocabulary (five machinery codes, reserved
-// band, C-exit to TS-classification bridge), the kernel-set composition,
-// the argv assembly, the eleven-line mechanism refusal renderer, the manual
-// probe-line parse (zero regex by construction - the colocated source-guard
-// scanner stays sound via its zero-slash-in-residue pin), the post-exec
-// denial renderer, the permission-denied attribution marker, and the
-// spawn-plan materializer with its verdict and refusal forms.
+// SOLE OWNER of: the fault-code vocabulary (twelve machinery codes over
+// 100-111, the reserved band 112-199, C-exit to TS-classification bridge),
+// the kernel-set composition, the argv assembly, the twenty-four-line
+// mechanism refusal renderer, the manual probe-report line parses (the
+// Landlock ABI report AND the combined vehicle-and-mount report; zero regex
+// by construction - the colocated source-guard scanner stays sound via its
+// zero-slash-in-residue pin), the post-exec denial renderer, the
+// permission-denied attribution marker, and the spawn-plan materializer
+// with its verdict and refusal forms.
 //
 // BAND DISCIPLINE: every fault code is issued strictly pre-execve by
 // construction - a completed fenced command exiting inside the band can
-// ONLY mean machinery fault; 105..199 stay reserved, and in-band exits are
-// classified conservatively (enforcement was active throughout - only the
+// ONLY mean machinery fault; 100..111 carry the twelve assigned classes
+// and 112..199 stay reserved, so in-band exits are classified CONSERVATIVE:
+// each named class absorbs its own code, and unassigned band exits ride the
+// band-reserved reading (enforcement was active throughout - only the
 // refusal text could mislabel the cause). Interpretive authority, timing
 // nuance included, sits with the TS consumer at the spawn site.
 //
@@ -210,28 +214,55 @@ export function buildHelperArgv(
 // (iii) SINGLE-SOURCE FAULT-CODE VOCABULARY
 // ===========================================================================
 
-/** THE production home of the five machinery fault codes (the sibling
+/** THE production home of the twelve machinery fault codes (the sibling
  * helper suite's local replicas bind to these through parity rows). Values
- * are the vendor README table verbatim. Band discipline: codes are issued
- * only pre-execve BY CONSTRUCTION, so a completed fenced command exiting
- * in-band can ONLY mean machinery fault; 105..199 stay reserved (their
- * disambiguation exists by construction, not by luck). */
+ * are the vendor README table verbatim. The seven SUPERVISOR-FAMILY codes
+ * (105-111) reuse the sibling suite const-block key names byte-exact
+ * (single-source continuity, no renaming at the bridge); their committed
+ * class meanings ride from the vehicle protocol's fault table: supervisor-
+ * table-malformed = supervisor-family argv violation incl. the combined-arm
+ * arity/path corner; realm-clone-failure = the vehicle clone failed; realm-
+ * map-write-failure = parent-side map open/write failure, NON-ENOENT; child-
+ * early-death = the ENOENT signature at the map targets OR the continue-
+ * verdict write failed; realm-unshare-failure = the in-realm private mount
+ * namespace unshare failed; overlay-mount-failure = the setup / attach /
+ * in-flight verification umbrella; overlay-umount-failure = the throwaway
+ * arm only. Band discipline: codes are issued only pre-execve BY
+ * CONSTRUCTION (the disambiguation invariant holds over 100-111 - every new
+ * code issues strictly before the command execve), so a completed
+ * restriction-carried command exiting in-band can ONLY mean machinery
+ * fault; 112..199 stay
+ * reserved (their disambiguation exists by construction, not by luck). */
 export const LANDLOCK_FAULT_CODES: Readonly<{
   malformedSpec: number;
   abiMissingOrBlocked: number;
   addRuleFailure: number;
   restrictSelfFailure: number;
   execveFailure: number;
+  supervisorTableMalformed: number;
+  realmCloneFailure: number;
+  realmMapWriteFailure: number;
+  childEarlyDeath: number;
+  realmUnshareFailure: number;
+  overlayMountFailure: number;
+  overlayUmountFailure: number;
 }> = {
   malformedSpec: 100,
   abiMissingOrBlocked: 101,
   addRuleFailure: 102,
   restrictSelfFailure: 103,
   execveFailure: 104,
+  supervisorTableMalformed: 105,
+  realmCloneFailure: 106,
+  realmMapWriteFailure: 107,
+  childEarlyDeath: 108,
+  realmUnshareFailure: 109,
+  overlayMountFailure: 110,
+  overlayUmountFailure: 111,
 };
 
-/** THE reserved fault band - the low end carries the five assigned
- * machinery codes, the rest stays reserved. */
+/** THE reserved fault band - the low end carries the twelve assigned
+ * machinery codes (100-111), the rest stays reserved. */
 export const LANDLOCK_FAULT_BAND: readonly [number, number] = [100, 199];
 
 export type AssignedFaultClass =
@@ -240,6 +271,13 @@ export type AssignedFaultClass =
   | "add-rule-failure"
   | "restrict-self-failure"
   | "execve-failure"
+  | "supervisor-table-malformed"
+  | "realm-clone-failure"
+  | "realm-map-write-failure"
+  | "child-early-death"
+  | "realm-unshare-failure"
+  | "overlay-mount-failure"
+  | "overlay-umount-failure"
   | "band-reserved";
 
 export type LandlockExitVerdict =
@@ -252,9 +290,9 @@ export type LandlockExitVerdict =
 
 /** THE C-exit to TS-classification BRIDGE. Total and pure over number: any
  * integral code inside the band maps to mechanism-fault with the assigned
- * class (the five named codes, or band-reserved for the unassigned 105..199
- * - the conservative reading made EXPLICIT rather than invented ad hoc);
- * anything else passes through as a command exit (kernel exit codes are
+ * class (the twelve named codes, or band-reserved for the unassigned
+ * 112..199 - the conservative reading made EXPLICIT rather than invented ad
+ * hoc); anything else passes through as a command exit (kernel exit codes are
  * integral - fractional/NaN readings are spawn-domain artifacts; the
  * killed/spawn-abnormal case where the exit code is absent is the
  * spawner's domain and never reaches this classifier). Per-spawn authority
@@ -278,13 +316,47 @@ export function classifyLandlockExit(code: number): LandlockExitVerdict {
       return { kind: "mechanism-fault", code, fault: "restrict-self-failure" };
     case LANDLOCK_FAULT_CODES.execveFailure:
       return { kind: "mechanism-fault", code, fault: "execve-failure" };
+    case LANDLOCK_FAULT_CODES.supervisorTableMalformed:
+      return {
+        kind: "mechanism-fault",
+        code,
+        fault: "supervisor-table-malformed",
+      };
+    case LANDLOCK_FAULT_CODES.realmCloneFailure:
+      return { kind: "mechanism-fault", code, fault: "realm-clone-failure" };
+    case LANDLOCK_FAULT_CODES.realmMapWriteFailure:
+      return {
+        kind: "mechanism-fault",
+        code,
+        fault: "realm-map-write-failure",
+      };
+    case LANDLOCK_FAULT_CODES.childEarlyDeath:
+      return { kind: "mechanism-fault", code, fault: "child-early-death" };
+    case LANDLOCK_FAULT_CODES.realmUnshareFailure:
+      return {
+        kind: "mechanism-fault",
+        code,
+        fault: "realm-unshare-failure",
+      };
+    case LANDLOCK_FAULT_CODES.overlayMountFailure:
+      return {
+        kind: "mechanism-fault",
+        code,
+        fault: "overlay-mount-failure",
+      };
+    case LANDLOCK_FAULT_CODES.overlayUmountFailure:
+      return {
+        kind: "mechanism-fault",
+        code,
+        fault: "overlay-umount-failure",
+      };
     default:
       return { kind: "mechanism-fault", code, fault: "band-reserved" };
   }
 }
 
 // ===========================================================================
-// THE ELEVEN-LINE MECHANISM REFUSAL FAMILY
+// THE TWENTY-FOUR-LINE MECHANISM REFUSAL FAMILY
 // ===========================================================================
 
 export type StaticFaultKind =
@@ -294,9 +366,27 @@ export type StaticFaultKind =
 
 export type ProbeFaultKind = "probe-refused" | "probe-abnormal";
 
+/** The planner-refusal arms (pre-child typed refusals over degenerate
+ * mirror geometry - the spawn plan's own refusal result forms rendered
+ * into the same house voice). */
+type PlannerRefusalKind = "nested-mirror" | "root-mount";
+
+/** The engaged-probe pair (parallel to the Landlock-probe siblings over
+ * the combined vehicle-and-mount applicability arm). */
+type CombinedProbeFaultKind =
+  | "overlay-probe-refused"
+  | "overlay-probe-abnormal";
+
+/** The engaged pre-child machinery classes (scratch-area collision guard
+ * and scratch-mint faults - typed BEFORE any state change). */
+type ScratchMachineryKind = "scratch-area-collision" | "scratch-mint-failure";
+
 export type MechanismFault =
   | StaticFaultKind
   | ProbeFaultKind
+  | PlannerRefusalKind
+  | CombinedProbeFaultKind
+  | ScratchMachineryKind
   | AssignedFaultClass;
 
 export interface RefusalContext {
@@ -306,6 +396,15 @@ export interface RefusalContext {
   readonly pinnedAbi?: number; // probe-refused form
   readonly probeExit?: number | null; // probe-abnormal form (null = abnormal death)
   readonly probeOutput?: string; // probe-abnormal form (collapsed at render time)
+  readonly mirrorInner?: string; // nested-mirror form (inner mount detail)
+  readonly mirrorOuter?: string; // nested-mirror form (outer mount detail)
+  readonly combinedRealm?: "ok" | "fail"; // overlay-probe-refused form (realm cell)
+  readonly combinedStatus?: "ok" | "fail"; // overlay-probe-refused form (status cell)
+  readonly combinedStage?: string; // overlay-probe-refused form (stderr stage diagnostic, collapsed at render time)
+  readonly combinedProbeExit?: number | null; // overlay-probe-abnormal form (null = abnormal death)
+  readonly combinedProbeOutput?: string; // overlay-probe-abnormal form (collapsed at render time)
+  readonly scratchCollisionDetail?: string; // scratch-area-collision form
+  readonly scratchRoot?: string; // scratch-mint-failure form
   readonly exitCode?: number; // band-reserved form
 }
 
@@ -341,9 +440,15 @@ function collapseDetail(raw: string): string {
   return folded.length > 0 ? folded : "(no message)";
 }
 
-/** THE TEN Kinds + the conservative in-band reading, rendered as the house
- * voice: one escaped em dash per line, one physical line, trailing period,
- * measured details in parentheses. Single owner of all eleven bytes. */
+/** THE TWENTY-FOUR mechanism-refusal lines, rendered in the ONE house
+ * voice: fixed head, one escaped em dash, one physical line, trailing
+ * period, measured details in parentheses. Single owner of all twenty-four
+ * byte sequences - the seven supervisor-family C-exit lines cite the const-
+ * block codes exactly like the five apply-mode siblings (ONE template per
+ * class, used both pre-child AND at settlement); the planner-refusal,
+ * combined-probe, and scratch-machinery families ride their measured detail
+ * slots (degraded-detail placeholders stand for absent fields exactly like
+ * the existing slots). */
 export function renderMechanismRefusal(
   fault: MechanismFault,
   ctx?: RefusalContext,
@@ -369,6 +474,32 @@ export function renderMechanismRefusal(
       return `Command execution refused \u2014 the Landlock fence could not be applied to the spawn (fault class 'restrict-self-failure', exit ${LANDLOCK_FAULT_CODES.restrictSelfFailure}); refusing to run unfenced.`;
     case "execve-failure":
       return `Command execution refused \u2014 the fenced command shell failed to start after restriction (fault class 'execve-failure', exit ${LANDLOCK_FAULT_CODES.execveFailure}); refusing to run unfenced.`;
+    case "supervisor-table-malformed":
+      return `Command execution refused \u2014 the supervisor mirror table was rejected before any state change (fault class 'supervisor-table-malformed', exit ${LANDLOCK_FAULT_CODES.supervisorTableMalformed}); refusing to run unfenced.`;
+    case "realm-clone-failure":
+      return `Command execution refused \u2014 the private user realm could not be cloned (fault class 'realm-clone-failure', exit ${LANDLOCK_FAULT_CODES.realmCloneFailure}); refusing to run unfenced.`;
+    case "realm-map-write-failure":
+      return `Command execution refused \u2014 the realm identity maps could not be written on the parent side (fault class 'realm-map-write-failure', exit ${LANDLOCK_FAULT_CODES.realmMapWriteFailure}); refusing to run unfenced.`;
+    case "child-early-death":
+      return `Command execution refused \u2014 the vehicle child died before the realm identity maps completed (fault class 'child-early-death', exit ${LANDLOCK_FAULT_CODES.childEarlyDeath}); refusing to run unfenced.`;
+    case "realm-unshare-failure":
+      return `Command execution refused \u2014 the private mount namespace could not be unshared inside the realm (fault class 'realm-unshare-failure', exit ${LANDLOCK_FAULT_CODES.realmUnshareFailure}); refusing to run unfenced.`;
+    case "overlay-mount-failure":
+      return `Command execution refused \u2014 the mirror overlay could not be mounted or verified through the merged view (fault class 'overlay-mount-failure', exit ${LANDLOCK_FAULT_CODES.overlayMountFailure}); refusing to run unfenced.`;
+    case "overlay-umount-failure":
+      return `Command execution refused \u2014 the throwaway probe tree could not be detached after verification (fault class 'overlay-umount-failure', exit ${LANDLOCK_FAULT_CODES.overlayUmountFailure}); refusing to run unfenced.`;
+    case "nested-mirror":
+      return `Command execution refused \u2014 the planned mirror mounts nest (${contextSlot(ctx?.mirrorInner)} beneath ${contextSlot(ctx?.mirrorOuter)}); refusing to run unfenced.`;
+    case "root-mount":
+      return `Command execution refused \u2014 the spawn plan refuses a mirror mount at the filesystem root; refusing to run unfenced.`;
+    case "overlay-probe-refused":
+      return `Command execution refused \u2014 the combined applicability probe reported realm=${contextSlot(ctx?.combinedRealm)} status=${contextSlot(ctx?.combinedStatus)} (stage=${collapseDetail(ctx?.combinedStage ?? "")}); refusing to run unfenced.`;
+    case "overlay-probe-abnormal":
+      return `Command execution refused \u2014 the combined applicability probe reported no usable verdict (exit=${contextSlot(ctx?.combinedProbeExit)}, output=${collapseDetail(ctx?.combinedProbeOutput ?? "")}); refusing to run unfenced.`;
+    case "scratch-area-collision":
+      return `Command execution refused \u2014 the scratch area intersects a planned mirror mount (${contextSlot(ctx?.scratchCollisionDetail)}); refusing to run unfenced.`;
+    case "scratch-mint-failure":
+      return `Command execution refused \u2014 the scratch triples could not be created under ${contextSlot(ctx?.scratchRoot)}; refusing to run unfenced.`;
     case "band-reserved":
       return `Command execution refused \u2014 the fenced command exited with code ${contextSlot(ctx?.exitCode)} inside the reserved fault band ${LANDLOCK_FAULT_BAND[0]}-${LANDLOCK_FAULT_BAND[1]} (interpreted conservatively as a fence machinery fault; enforcement was active throughout).`;
   }
@@ -503,7 +634,7 @@ export function checkLandlockHelper(seams?: HelperStatSeams): HelperCheck {
 }
 
 // ===========================================================================
-// (v) PROBE ABI-REPORT LINE PARSE
+// (v) PROBE-REPORT LINE PARSING (both arms - zero regex by construction)
 // ===========================================================================
 
 export interface ProbeReport {
@@ -568,6 +699,50 @@ export function parseProbeReport(line: string): ProbeReport | null {
   if (tokens[4] === "status=ok") return { abi, pin, status: "ok" };
   if (tokens[4] === "status=fail") return { abi, pin, status: "fail" };
   return null;
+}
+
+/** THE discriminated result of the combined-arm report-line parse. All
+ * FOUR syntactic cells are ACCEPTED (incl. the documented-unreachable
+ * (status=ok, realm=fail) cell - the parser stays TOTAL over syntax;
+ * reachability is the consumer's concern, never the parser's). */
+export interface OverlayProbeReport {
+  readonly realm: "ok" | "fail";
+  readonly status: "ok" | "fail";
+}
+
+/** TOTAL MANUAL parse of the pinned single-line combined-arm report (the
+ * line WITHOUT its trailing newline - the caller strips exactly one
+ * terminator; any embedded LF or CR refuses structurally): exactly four
+ * single-space-separated tokens; the program word and the verb word by
+ * EXACT equality; the realm and status fields by exact membership in the
+ * two measured literals each (the same two-literal style as the adjacent
+ * parseProbeReport status field). Any deviation (off-form, truncated,
+ * extra tokens, double spaces, wrong program, wrong word order, unknown
+ * cell) refuses with null. Never throws; zero regex (the module's
+ * zero-slash-in-residue charter holds). Semantics encoded (measured): the
+ * ONLY ok cell is (status=ok, realm=ok) with exit 0 - the full vehicle
+ * plus mount sequence completed; (status=fail, realm=fail) localizes the
+ * FIRST failing stage to a VEHICLE stage; (status=fail, realm=ok)
+ * localizes later-stage failures to the non-vehicle legs; (status=ok,
+ * realm=fail) is UNREACHABLE - accepted here, unreachable at the arm.
+ * EXIT CODE IS AUTHORITATIVE IN ALL CASES - this parser is the verbatim
+ * consumption point of the spawn-site second latch and decides NOTHING
+ * itself: authority sits at the spawn site. */
+export function parseOverlayProbeReport(
+  line: string,
+): OverlayProbeReport | null {
+  const tokens = line.split(" ");
+  if (tokens.length !== 4) return null;
+  if (tokens[0] !== "landlock-helper") return null;
+  if (tokens[1] !== "overlay") return null;
+  const realmCell = tokens[2];
+  const statusCell = tokens[3];
+  if (realmCell !== "realm=ok" && realmCell !== "realm=fail") return null;
+  if (statusCell !== "status=ok" && statusCell !== "status=fail") return null;
+  return {
+    realm: realmCell === "realm=ok" ? "ok" : "fail",
+    status: statusCell === "status=ok" ? "ok" : "fail",
+  };
 }
 
 // ===========================================================================

@@ -42,6 +42,7 @@ import {
   LANDLOCK_FAULT_CODES,
   landlockArchToken,
   PERMISSION_DENIED_MARKER,
+  parseOverlayProbeReport,
   parseProbeReport,
   renderCommandLandlockDenial,
   renderMechanismRefusal,
@@ -631,10 +632,10 @@ const X86_PATH =
 const AARCH_PATH =
   "/root/vendor/landlock-helper/bin/aarch64-linux/landlock-helper";
 
-describe("D. fault-code vocabulary + eleven-line refusal family", () => {
-  it("table integrity mirrors the sibling suite group A: five pairwise-distinct nonzero codes, all inside the reserved band", () => {
+describe("D. fault-code vocabulary + twenty-four-line refusal family", () => {
+  it("table integrity mirrors the sibling suite group A: twelve pairwise-distinct nonzero codes, all inside the reserved band", () => {
     const codes = Object.values(LANDLOCK_FAULT_CODES);
-    expect(new Set(codes).size).toBe(5);
+    expect(new Set(codes).size).toBe(12);
     for (const code of codes) {
       expect(code).toBeGreaterThanOrEqual(LANDLOCK_FAULT_BAND[0]);
       expect(code).toBeLessThanOrEqual(LANDLOCK_FAULT_BAND[1]);
@@ -646,13 +647,20 @@ describe("D. fault-code vocabulary + eleven-line refusal family", () => {
     expect(LANDLOCK_FAULT_BAND).toEqual([100, 199]);
   });
 
-  it("classifyLandlockExit totalness matrix: named classes on 100-104, band-reserved on 105-199, command-exit everywhere else (out-of-band, negative, NaN, fractional - total over number)", () => {
+  it("classifyLandlockExit totalness matrix: named classes on 100-111 (all twelve assigned), band-reserved on 112-199, command-exit everywhere else (out-of-band, negative, NaN, fractional - total over number)", () => {
     const named: Array<[number, string]> = [
       [100, "malformed-spec"],
       [101, "abi-missing-or-blocked"],
       [102, "add-rule-failure"],
       [103, "restrict-self-failure"],
       [104, "execve-failure"],
+      [105, "supervisor-table-malformed"],
+      [106, "realm-clone-failure"],
+      [107, "realm-map-write-failure"],
+      [108, "child-early-death"],
+      [109, "realm-unshare-failure"],
+      [110, "overlay-mount-failure"],
+      [111, "overlay-umount-failure"],
     ];
     for (const [code, fault] of named) {
       expect(classifyLandlockExit(code)).toEqual({
@@ -661,7 +669,7 @@ describe("D. fault-code vocabulary + eleven-line refusal family", () => {
         fault,
       });
     }
-    for (const code of [105, 150, 199]) {
+    for (const code of [112, 150, 199]) {
       expect(classifyLandlockExit(code)).toEqual({
         kind: "mechanism-fault",
         code,
@@ -766,6 +774,88 @@ describe("D. fault-code vocabulary + eleven-line refusal family", () => {
     );
   });
 
+  it("supervisor-family C-exit class refusal lines (rows 11-17): the seven committed 105-111 assignments pinned verbatim with their const-block codes (single template per class, pre-child AND settlement alike)", () => {
+    expect(renderMechanismRefusal("supervisor-table-malformed")).toBe(
+      `Command execution refused ${EM} the supervisor mirror table was rejected before any state change (fault class 'supervisor-table-malformed', exit ${LANDLOCK_FAULT_CODES.supervisorTableMalformed}); refusing to run unfenced.`,
+    );
+    expect(renderMechanismRefusal("realm-clone-failure")).toBe(
+      `Command execution refused ${EM} the private user realm could not be cloned (fault class 'realm-clone-failure', exit ${LANDLOCK_FAULT_CODES.realmCloneFailure}); refusing to run unfenced.`,
+    );
+    expect(renderMechanismRefusal("realm-map-write-failure")).toBe(
+      `Command execution refused ${EM} the realm identity maps could not be written on the parent side (fault class 'realm-map-write-failure', exit ${LANDLOCK_FAULT_CODES.realmMapWriteFailure}); refusing to run unfenced.`,
+    );
+    expect(renderMechanismRefusal("child-early-death")).toBe(
+      `Command execution refused ${EM} the vehicle child died before the realm identity maps completed (fault class 'child-early-death', exit ${LANDLOCK_FAULT_CODES.childEarlyDeath}); refusing to run unfenced.`,
+    );
+    expect(renderMechanismRefusal("realm-unshare-failure")).toBe(
+      `Command execution refused ${EM} the private mount namespace could not be unshared inside the realm (fault class 'realm-unshare-failure', exit ${LANDLOCK_FAULT_CODES.realmUnshareFailure}); refusing to run unfenced.`,
+    );
+    expect(renderMechanismRefusal("overlay-mount-failure")).toBe(
+      `Command execution refused ${EM} the mirror overlay could not be mounted or verified through the merged view (fault class 'overlay-mount-failure', exit ${LANDLOCK_FAULT_CODES.overlayMountFailure}); refusing to run unfenced.`,
+    );
+    expect(renderMechanismRefusal("overlay-umount-failure")).toBe(
+      `Command execution refused ${EM} the throwaway probe tree could not be detached after verification (fault class 'overlay-umount-failure', exit ${LANDLOCK_FAULT_CODES.overlayUmountFailure}); refusing to run unfenced.`,
+    );
+  });
+
+  it("pre-child machinery refusal lines (rows 18-24 minus band-reserved): planner-refusal, combined-probe, and scratch-machinery forms ride their measured detail slots - full-detail AND degraded-detail byte goldens", () => {
+    expect(
+      renderMechanismRefusal("nested-mirror", {
+        mirrorInner: "/slot/a",
+        mirrorOuter: "/slot",
+      }),
+    ).toBe(
+      `Command execution refused ${EM} the planned mirror mounts nest (/slot/a beneath /slot); refusing to run unfenced.`,
+    );
+    expect(renderMechanismRefusal("nested-mirror")).toBe(
+      `Command execution refused ${EM} the planned mirror mounts nest (n/a beneath n/a); refusing to run unfenced.`,
+    );
+    expect(renderMechanismRefusal("root-mount")).toBe(
+      `Command execution refused ${EM} the spawn plan refuses a mirror mount at the filesystem root; refusing to run unfenced.`,
+    );
+    expect(
+      renderMechanismRefusal("overlay-probe-refused", {
+        combinedRealm: "fail",
+        combinedStatus: "fail",
+        combinedStage: "landlock-helper overlay: failed at setup (errno=1)\n",
+      }),
+    ).toBe(
+      `Command execution refused ${EM} the combined applicability probe reported realm=fail status=fail (stage=landlock-helper overlay: failed at setup (errno=1)); refusing to run unfenced.`,
+    );
+    expect(renderMechanismRefusal("overlay-probe-refused")).toBe(
+      `Command execution refused ${EM} the combined applicability probe reported realm=n/a status=n/a (stage=(no message)); refusing to run unfenced.`,
+    );
+    expect(
+      renderMechanismRefusal("overlay-probe-abnormal", {
+        combinedProbeExit: null,
+        combinedProbeOutput: "garbage\nline two",
+      }),
+    ).toBe(
+      `Command execution refused ${EM} the combined applicability probe reported no usable verdict (exit=n/a, output=garbage line two); refusing to run unfenced.`,
+    );
+    expect(renderMechanismRefusal("overlay-probe-abnormal")).toBe(
+      `Command execution refused ${EM} the combined applicability probe reported no usable verdict (exit=n/a, output=(no message)); refusing to run unfenced.`,
+    );
+    expect(
+      renderMechanismRefusal("scratch-area-collision", {
+        scratchCollisionDetail:
+          "/slot/.fence-scratch/n-0 intersects /slot/leaf",
+      }),
+    ).toBe(
+      `Command execution refused ${EM} the scratch area intersects a planned mirror mount (/slot/.fence-scratch/n-0 intersects /slot/leaf); refusing to run unfenced.`,
+    );
+    expect(
+      renderMechanismRefusal("scratch-mint-failure", {
+        scratchRoot: "/slot/.fence-scratch/n-1",
+      }),
+    ).toBe(
+      `Command execution refused ${EM} the scratch triples could not be created under /slot/.fence-scratch/n-1; refusing to run unfenced.`,
+    );
+    expect(renderMechanismRefusal("scratch-mint-failure")).toBe(
+      `Command execution refused ${EM} the scratch triples could not be created under n/a; refusing to run unfenced.`,
+    );
+  });
+
   it("band-reserved refusal line (row 11): conservative in-band reading with the pinned enforcement clause; degraded context degrades to n/a", () => {
     const full = renderMechanismRefusal("band-reserved", { exitCode: 150 });
     expect(full).toBe(
@@ -844,6 +934,64 @@ describe("E. manual probe-line parse (accept/reject, zero regex)", () => {
     expect(
       parseProbeReport("landlock-helper probe abi=1234567890 pin=8 status=ok"),
     ).toBeNull();
+  });
+});
+
+// ===========================================================================
+// E2. Combined-arm report-line parse (total manual, zero regex)
+// ===========================================================================
+
+describe("E2. combined-arm report-line parse (total manual, zero regex)", () => {
+  it("accepts ALL FOUR syntactic cells with exact field extraction (incl. the documented-unreachable (status=ok, realm=fail) cell - the parser stays TOTAL over syntax; reachability is the consumer's concern)", () => {
+    expect(
+      parseOverlayProbeReport("landlock-helper overlay realm=ok status=ok"),
+    ).toEqual({ realm: "ok", status: "ok" });
+    const vehicleFail = parseOverlayProbeReport(
+      "landlock-helper overlay realm=fail status=fail",
+    );
+    expect(vehicleFail).toEqual({ realm: "fail", status: "fail" });
+    if (vehicleFail !== null) {
+      // The returned discriminant narrows: member access compiles only
+      // because the parser builds the literal, it never widens/casts.
+      expect(vehicleFail.realm).toBe("fail");
+      expect(vehicleFail.status).toBe("fail");
+    }
+    const laterStage = parseOverlayProbeReport(
+      "landlock-helper overlay realm=ok status=fail",
+    );
+    expect(laterStage).toEqual({ realm: "ok", status: "fail" });
+    expect(
+      parseOverlayProbeReport("landlock-helper overlay realm=fail status=ok"),
+    ).toEqual({ realm: "fail", status: "ok" });
+  });
+
+  it("rejects every off-form sample (embedded LF, CRLF, 3-token truncation, 5-token surplus, wrong program, wrong verb, unknown realm cell, unknown status cell, swapped field order, double space, leading/trailing space)", () => {
+    const rejectSamples: readonly string[] = [
+      "landlock-helper overlay realm=ok status=ok\n", // unstripped trailing terminator
+      "landlock-helper overlay realm=ok status=ok\r\n", // CRLF
+      "landlock-helper overlay realm=ok", // 3 tokens
+      "landlock-helper overlay realm=ok status=ok extra", // 5 tokens
+      "fence-helper overlay realm=ok status=ok", // wrong program
+      "landlock-helper probe realm=ok status=ok", // wrong verb
+      "landlock-helper overlay realm=maybe status=ok", // unknown realm cell
+      "landlock-helper overlay realm=ok status=maybe", // unknown status cell
+      "landlock-helper overlay status=ok realm=ok", // swapped field order
+      "landlock-helper overlay realm=ok  status=ok", // double space
+      " landlock-helper overlay realm=ok status=ok", // leading space
+      "landlock-helper overlay realm=ok status=ok ", // trailing space
+      "landlock-helper overlay REalm=ok status=ok", // case-sensitive refusal
+    ];
+    for (const sample of rejectSamples) {
+      expect(parseOverlayProbeReport(sample), sample).toBeNull();
+    }
+  });
+
+  it("the ok-cell judgment is NOT the parser's job: a realm=fail/status=fail line parses to its fields untouched (the latch reads exit + line and decides nothing here)", () => {
+    expect(
+      parseOverlayProbeReport(
+        "landlock-helper overlay realm=fail status=fail",
+      ) !== null,
+    ).toBe(true);
   });
 });
 
@@ -994,6 +1142,13 @@ const FAULT_KEY_ORDER = [
   "addRuleFailure",
   "restrictSelfFailure",
   "execveFailure",
+  "supervisorTableMalformed",
+  "realmCloneFailure",
+  "realmMapWriteFailure",
+  "childEarlyDeath",
+  "realmUnshareFailure",
+  "overlayMountFailure",
+  "overlayUmountFailure",
 ] as const;
 
 describe("G. parity binding to the sibling suite-local const block", () => {
@@ -1136,6 +1291,7 @@ const VALUE_EXPORT_NAMES = [
   "composeKernelWritableSet",
   "composeSpawnPlan",
   "landlockArchToken",
+  "parseOverlayProbeReport",
   "parseProbeReport",
   "renderCommandLandlockDenial",
   "renderMechanismRefusal",
@@ -1151,6 +1307,7 @@ const TYPE_EXPORT_NAMES = [
   "HelperStatSeams",
   "LandlockExitVerdict",
   "MechanismFault",
+  "OverlayProbeReport",
   "PathClassifySeams",
   "PathKind",
   "ProbeFaultKind",
@@ -1170,19 +1327,19 @@ describe("H. mechanical source-guard charter over landlock-ruleset.ts", () => {
     expect(MODULE_SOURCE.includes(SDK_SPECIFIER)).toBe(false);
   });
 
-  it("runtime namespace surface pin: Object.keys sorted equals EXACTLY the FOURTEEN value exports (alphabetized)", () => {
+  it("runtime namespace surface pin: Object.keys sorted equals EXACTLY the FIFTEEN value exports (alphabetized)", () => {
     expect(Object.keys(landlockRulesetModule).sort()).toEqual(
       VALUE_EXPORT_NAMES,
     );
   });
 
-  it("declarative export names pin: the fourteen values PLUS the sixteen pinned type/interface names (thirty declarative exports)", () => {
+  it("declarative export names pin: the fifteen values PLUS the seventeen pinned type/interface names (thirty-two declarative exports)", () => {
     const declared = [
       ...MODULE_SOURCE.matchAll(
         /^export\s+(?:interface|type|const|function)\s+([A-Za-z_$][\w$]*)/gm,
       ),
     ].map((match) => match[1]);
-    expect(declared.length).toBe(30);
+    expect(declared.length).toBe(32);
     expect([...VALUE_EXPORT_NAMES, ...TYPE_EXPORT_NAMES].sort()).toEqual(
       declared.sort(),
     );

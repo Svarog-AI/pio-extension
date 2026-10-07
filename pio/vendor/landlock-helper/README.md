@@ -153,12 +153,46 @@ refinement (below) -> HARDENED MAP WRITES (below) -> CONTINUE-VERDICT write
 (=> 108) -> `waitpid` propagation (below). The in-realm legs (unshare /
 mount / execve) run in the cloned vehicle behind the verdict gate. Inherited
 verbatim, as in apply mode: cwd, environment, signals (DEFAULT dispositions
-- the carrier installs no handlers ANYWHERE; group-kill semantics stay the
-spawner's concern - killing the top process terminates the whole realm,
-kernel-side, with the private mount namespace released at the last process in
-it). On success the command's streams are PRISTINE (the carrier emitted
-nothing beforehand) and its exit code propagates UNTRANSFORMED (step h
-below).
+- the carrier installs no handlers AND calls no setpgid ANYWHERE); the
+group-kill lineage now SPANS supervisor -> realm child -> carrier -> shell
+-> command with process-group LEADERSHIP PERSISTING across the whole
+fork/exec chain (fork preserves pgid) - killing the top process terminates
+the whole realm kernel-side, with the private mount namespace released at
+the last process in it. On success the command's streams are PRISTINE (the
+carrier emitted nothing beforehand) and its exit code propagates
+UNTRANSFORMED (step h below): normal exits VERBATIM, signal deaths
+forwarded as the SAME signal. TRANSPARENCY DOCTRINE continues through the
+full chain - band pass-through is UNCHANGED: a coincidental in-band exit
+(carrier-classed or command-origin) behind the FULL CHAIN is OPAQUE to the
+carrier and reads conservatively as a machinery fault at the TS settlement
+(worst case a mislabeled cause; enforcement was active throughout) -
+documented continuation, not new doctrine.
+
+NO SELF-TEARDOWN in production: the dying realm releases its mounts
+automatically (the dying namespace sits inside the dying realm, which dies
+with the lineage); session-side scratch removal is the finally-walk owned
+by the Step 15 spawn site.
+
+COMPOSED CHAIN (production shape): the production tail IS the EXISTING
+apply-mode carrier invocation (`--write ... -- <program>`), so Landlock
+applies INSIDE the realm over the OVERLAID WORLD - realm -> private mount
+namespace -> mirror mounts -> Landlock -> shell. WHOLE-TREE INHERITANCE NOW
+INCLUDES the private user+mount namespace property alongside the ratchet and
+the mutation-only restriction: every descendant (shell, children,
+grandchildren) rides the same restricted view.
+
+PARALLEL-MINT ISOLATION (normative): every spawn composes its OWN scratch
+triple under a UNIQUE nonce subdirectory, so two concurrent tool calls get
+TWO DISTINCT `<nonce>/{upper,work}` DIRS EVEN WHEN BOTH TARGET THE IDENTICAL
+declaring-dir set. The ONLY shared components are the persistent hidden
+parent and the real LOWER ITSELF, referenced by both realms' mirror mounts
+(same-lower double mounting is legal for concurrent spawns over one
+declaring dir: mount tables are PRIVATE per lineage, workdir content locks
+per instance). Everything else - nonce root, upper, work, realm, ruleset,
+pgid, walk/judge/commit, discard line, and finally-walk cleanup - is FULLY
+DISJOINT with ZERO inter-frame coordination. Concurrent bash tool calls
+within one turn are NORMAL production behavior (owner-confirmed), not a
+corner case.
 
 ## Realm-establishment mechanics (shared by both arms)
 
@@ -252,13 +286,52 @@ landlock-helper overlay: failed at <stage> (errno=N)
 
 `<stage>` in {setup, realm-clone, realm-map, child-early-death, unshare,
 mount, verify, umount}; `(errno=N)` carries the errno observed at the
-failing operation. Truth table: VEHICLE stages (realm-clone / realm-map /
-child-early-death / unshare) report `realm=fail`; the NON-VEHICLE legs
-(setup / mount / verify / umount) report `realm=ok`; `status=ok` iff exit
-0. AT MOST ONE report line plus at most one diagnostic per execution
+failing operation. Truth table over the FOUR SYNTACTIC CELLS:
+`(status=ok, realm=ok)` - the full sequence completed (exit 0; the ONLY ok
+cell); `(status=fail, realm=fail)` - the FIRST failing stage is a VEHICLE
+stage (realm-clone / realm-map / child-early-death / unshare);
+`(status=fail, realm=ok)` - the first failing stage is a NON-VEHICLE leg
+(setup / mount / verify / umount); `(status=ok, realm=fail)` - UNREACHABLE
+by construction, DOCUMENTED and NOT parser-rejected (the parser stays TOTAL
+over the syntactic cells; reachability is the TS consumer's concern). AT
+MOST ONE report line plus at most one diagnostic per execution
 (continue-verdict partition: setup faults emit at the top level, vehicle
 faults in the parent, unshare/mount/verify/umount and the ok cell in the
 child). `exit 0` <=> `realm=ok status=ok`.
+
+## Threat-model cross-reference (named claims -> constraining implementation lines)
+
+This subsection records how the threat-model claims of record (the Step 13
+vehicle evidence ledger) constrain the carrier's implementation lines; a
+change to a constraining line reopens the claim and requires the Step 13
+gate re-run.
+
+- **LC#1 - UNRESTRICTED-WINDOW BOUND.** Enforced by the ESTABLISHMENT
+  SEQUENCE ORDERING (mechanics section above): EVERY PRIVILEGED SYSCALL
+  (`clone`, the three map writes, `unshare`, `mount`) PRECEDES the child
+  `execve`, and the window contains ONLY trusted carrier code over
+  GRAMMAR-VALIDATED argv (supervisor-family grammar faults issue strictly
+  before any system state change). The command is BORN RESTRICTED: the
+  inner apply-mode carrier performs `prctl(NO_NEW_PRIVS)` + Landlock INSIDE
+  the realm strictly BEFORE the shell `execve`. A sequence REORDER breaks
+  the constraint and fails review.
+- **LC#2 - MAPPING-POLICY SURFACE.** Constrains the MAP-CONTENT LINES
+  EXACTLY: single-identity caller-uid/gid, RUNTIME-DERIVED from the
+  step-(a) identity capture (no hardcoded literals), SINGLE-LINE maps,
+  SETGROUPS DENIED FIRST, INNER-ROOT DECLINED (policy basis: root-owned CoW
+  residue in the outer world + ownership confusion). Inner full capabilities
+  govern ONLY realm-owned objects - the sole gained authority is mounting
+  inside the private mount namespace, with writable access confined to the
+  CoW upper over the declaring folders. ANY mapping-shape deviation
+  (multi-line maps, group maps, root maps) reopens the class and requires
+  the Step 13 gate re-run.
+- **BLAST RADIUS / LIFETIME.** The CoW upper is the ONLY writable real-world
+  surface the realm reaches; the realm DIES WITH the spawn lineage (nothing
+  persists; there is no cleanup channel after death - session-side removal
+  is the Step 15 finally-walk).
+- **SUPPLY CHAIN UNCHANGED.** Same source file, same regeneration script,
+  same bin layout, same ro-bind delivery - no third-party bytes, no new
+  required host binary.
 
 ## Fault-code table
 
@@ -459,6 +532,20 @@ AMENDED AT SUPERVISOR-FAMILY LAND (2026-10-07, UTC):
 - Date: 2026-10-07 (UTC). Kernel: `7.0.0-34-generic` (x86_64), Ubuntu 24.04
   HWE. Toolchain: gcc/cc 13.3.0, `-O2 -Wall -Wextra -Werror -static` (flags
   UNCHANGED).
+- Basis of record (rulings and supersede): the QUALITY-GATE RULINGS that
+  pulled the overlay-preview rung forward as the enforcement family for
+  declaration-channel file writes (file-leaf declarations work in BOTH
+  existence states; FILE-EXACTNESS - sibling exposure DECLINED); the OWNER
+  RULING of 2026-10-07 kickoff (DIRECTION 1 - the carrier establishes its
+  OWN per-spawn private user+mount realm, self-created vehicle; NO LAUNCHER
+  CHANGE); the FORMAL SUPERSEDE of the round-4 plain-`CLONE_NEWNS`-
+  without-escalation form, which is thereby superseded (evidence base: the
+  embedded Vehicle Evidence Ledger, the owner ruling, and the fresh pass -
+  readable as HISTORY only, never as a live statement); and the S13
+  fresh-pass GO RESULTS (GREEN END-TO-END in BOTH production contexts -
+  bare stripped tree AND launched topology - under the hardened map order;
+  every ledger data point nominal; deciding evidence in the Step 13
+  measurement ledger).
 - Pre-amendment baseline re-proof: the committed prebuild's `--probe` line
   stayed BYTE-STABLE (`landlock-helper probe abi=8 pin=8 status=ok`, exit
   0) and the apply-mode parity rows held before the amendment landed.
@@ -565,3 +652,36 @@ claimed, per the standing bar).
   clean umount (the arm path) leaves NO such residue. Session-side cleanup
   owes the same tolerance (make it owner-readable, retry, rmdir-first when
   unreadable-but-empty - best effort, receipts asserted BEFORE teardown).
+- ANTI-NESTING (DOCUMENTED, NOT ENFORCED): the helper is a RESTRICTION
+  CARRIER, not a launch path - it adds restrictions and spawns nothing
+  beyond its own supervisor/vehicle pair, so there is no `pio` recursion in
+  the chain. When the vehicle runs IN-BUBBLE it nests a user namespace
+  INSIDE the bubble's own namespaces - containment, not recursion (the
+  bubble's measured physics stand unaffected). Its interaction with the
+  launcher's anti-nesting doctrine is documented, not enforced.
+- HOST VARIANCE (OTHER HOSTS MAY DENY THE VEHICLE PHYSICS): the provisioned
+  host permits the self-created-userns vehicle (measured baseline:
+  `kernel.unprivileged_userns_clone=1`, `user.max_user_namespaces`
+  unexhausted, `kernel.apparmor_restrict_unprivileged_userns=0`); other
+  hosts may deny it through that sysctl, userns limits/exhaustion, LSM
+  interplay, or an unmapped payload uid (=> `clone` EPERM). Every such
+  deficiency surfaces TYPED through the COMBINED APPLICABILITY ARM - failed
+  verdicts degrade honestly and retry per invocation; there is NEVER a
+  silent ungoverned fallback. A deficient host degrades to the pre-goal
+  status quo - i.e. TODAY's typed refusal (the mechanism refuses instead
+  of engaging; the interim posture holds).
+- UNINDUCIBLE SUPERVISOR-FAMILY CODES (the 103 precedent, restated for the
+  extended band): 106 (clone), 109 (unshare), 111 (umount - arm-only by
+  construction) and the 108 MAP-WINDOW signature are NOT HERMETICALLY
+  INDUCIBLE on a healthy kernel - no healthy-kernel induction path exists
+  (while the parent lives it is the only reaper: a windowed zombie faults
+  EPERM and classifies 107; the verdict-write EPIPE corner is
+  nanosecond-scale and externally untargetable). Presence and pairwise
+  distinctness ride the BAND-INTEGRITY ASSERTIONS in the suite (TWELVE
+  pairwise-distinct codes); the classes stay loud rather than silent if a
+  future kernel/hardware combination ever exercises them. HOST-VARIANCE
+  CAVEAT: hosts whose ZOMBIE /proc map targets fault ENOENT (spec-session
+  measurement 2026-10-07: killed-but-unreaped => EPERM at open; post-reap
+  => ENOENT) classify map-window kills as 108 DIRECTLY - the errno-driven
+  classification ladder composes MECHANICALLY with that variance; no code
+  change.

@@ -93,13 +93,13 @@
 // serializes absolute paths, forks the applicability probes, and consumes
 // classified exit codes. The private user-and-mount realm's load-bearing
 // constraints (establishment sequence, identity mapping policy,
-// silence-law fault band) live in the vendored carrier and the Step-13
-// threat-model record (cross-referenced by name); nothing vehicle-shaped is
-// re-implemented or mirrored here.
+// silence-law fault band) live in the vendored carrier itself - its pinned
+// report-line grammar, its established fault-code table, and its source;
+// nothing vehicle-shaped is re-implemented or mirrored here.
 // FAIL-CLOSED DOCTRINE EXTENSION (engaged branch): every engaged-branch
 // machinery fault refuses TYPED. PRE-CHILD faults (planner-refusal arms,
 // scratch-area collision, scratch-mint faults, serializer corners, and the
-// vehicle-establishment surfacing via the committed combined-probe verdicts)
+// vehicle-establishment surfacing via the combined-probe verdict cells)
 // reject BEFORE ANY SPAWN - the command NEVER runs. A POST-ESTABLISHMENT
 // supervision fault (a resolved in-band exit, or a settlement/commit fault
 // mid-walk) discards EVERY unsettled write and resolves as a typed refusal
@@ -110,12 +110,12 @@
 // command DID run; its file outcomes were simply not settled.
 // WORST-CASE TAMPER ARGUMENT (scratch placement): the scratch triples sit
 // beside the mirror mounts under the project-slot root, OUTSIDE every
-// grant by default denial. A pattern-admitting frame whose own wildcard
-// covers scratch paths COULD observe or tamper with its own trap mid-run;
-// the settlement walk judges EVERY captured entry against the frozen
-// frame, so tampering can only surface ON-FRAME writes (which the frame
-// admits anyway) - it cannot smuggle an off-frame write into the real
-// environment. The docs expand the argument at the records step.
+// grant by default denial. A frame whose own declared tokens reach into the
+// scratch area is refused TYPED pre-child by the collision guard; the
+// settlement walk judges EVERY captured entry against the frozen frame
+// regardless, so mid-run tampering with the trap can only surface ON-FRAME
+// writes (which the frame admits anyway) - it cannot smuggle an off-frame
+// write into the real environment.
 // ============================================================================
 
 import { spawn } from "node:child_process";
@@ -144,9 +144,7 @@ import {
   getShellConfig,
 } from "@earendil-works/pi-coding-agent";
 import { materializeEffectiveSet } from "../../permission-mechanics.ts";
-import { matchesAnchoredGlob } from "../../sandbox/string-match-helpers.ts";
 import type { SessionExecutionState } from "../../session-execution-state.ts";
-import type { PathKind } from "./landlock-ruleset.ts";
 import {
   checkLandlockHelper,
   classifyLandlockExit,
@@ -215,11 +213,6 @@ export interface LandlockBashSeams {
    * Hermetic rows inject a scripted stand-in to settle post-delegation
    * behavior without a real shell. */
   readonly localOps?: BashOperations;
-  /** Forwarded VERBATIM into composeSpawnPlan's own seam slot (leaf
-   * classification over strictly-concrete survivors). Default: the
-   * sibling's statSync-backed classification - injected seams give hermetic
-   * rows deterministic readings without touching production behavior. */
-  readonly classifyPath?: (p: string) => PathKind;
   /** Per-spawn NONCE SOURCE (default: a fresh 16-hex-char random salt + "-"
    * + a per-process monotonic counter starting at 0 - unique across
    * CONCURRENT spawns; never time/cwd-derived alone). Hermetic rows pin
@@ -240,7 +233,7 @@ const MAX_TIMEOUT_MS = 2_147_483_647;
  * Pinned as a literal so this module carries no division operator anywhere
  * (the colocated zero-slash-in-residue scan stays sound by construction). */
 const MAX_TIMEOUT_SECONDS = 2147483.647;
-/** The protocol's throwaway applicability-probe invocation (one token). */
+/** THE carrier's pinned throwaway applicability-probe argv (one token). */
 const PROBE_ARGV: readonly ["--probe"] = ["--probe"];
 /** The tool being shadowed (interpolates the cwd-error parity bytes). */
 const TOOL_LABEL = "bash";
@@ -260,10 +253,10 @@ const DEV_ALLOWANCE = "/dev";
 /** The scratch-class allowance (present iff the effective scratch
  * proposition) - named model-facing like the house shape. */
 const TMP_ALLOWANCE = "/tmp";
-/** THE fixed scratch-area name under the project-slot root (the settled
- * plan-prescribed constant - the sole exempt fixed artifact name; the
- * persistent hidden PARENT survives between spawns, each spawn mints its
- * unique <nonce> child). */
+/** THE fixed scratch-area artifact name under the project-slot root (the
+ * sole exempt fixed name under the word-use scan; the persistent hidden
+ * PARENT survives between spawns, each spawn mints its unique <nonce>
+ * child). */
 const SCRATCH_AREA_NAME = ".fence-scratch";
 /** The combined applicability arm's argv verb (one token; the value is the
  * per-invocation probe root appended at the fork site). */
@@ -310,10 +303,10 @@ function stripOneTrailingLf(value: string): string {
 }
 
 /** ONE throwaway probe fork over a pinned argv shape (probe #1 passes the
- * --probe token with stderr UNCAPTURED - the protocol's single-line stdout
- * channel stands byte-stable; the combined arm passes its verb + the
- * per-invocation root WITH stderr CAPTURED - deliberate contrast, justified
- * by the arm's dual-channel emission). Honored neither by timeouts nor
+ * --probe token with stderr UNCAPTURED - the carrier's pinned single-line
+ * stdout report channel stands byte-stable; the combined arm passes its
+ * verb + the per-invocation root WITH stderr CAPTURED - deliberate
+ * contrast, justified by the arm's dual-channel emission). Honored neither by timeouts nor
  * abort signals (a wedged probe is host pathology outside the machinery's
  * scope; the fail-closed posture means no ungoverned escape). Settles on
  * normal termination OR spawned-fault alike - anomalies RESOLVE (never
@@ -543,19 +536,6 @@ function isWithin(candidate: string, ancestor: string): boolean {
   return candidate === ancestor || candidate.startsWith(`${ancestor}/`);
 }
 
-/** THE matcher-dialect metacharacter set (mirrors the shared core's
- * six-metacharacter reading verbatim - the verdict splits the frozen frame
- * record into concrete survivors and wildcard-pattern survivors with the
- * SAME definition the composer applies; no second dialect). */
-const PATTERN_METACHARACTERS = ["*", "?", "[", "]", "{", "}"];
-
-function containsPatternMetacharacter(entry: string): boolean {
-  for (const meta of PATTERN_METACHARACTERS) {
-    if (entry.includes(meta)) return true;
-  }
-  return false;
-}
-
 /** The APPLY-LAYER corner reasons (the EXISTING serializer's dialect,
  * untouched - one shared refusal line renders them all at the call site).
  */
@@ -662,8 +642,8 @@ function buildComposedScript(
 
 // ===========================================================================
 // SETTLEMENT MACHINERY (manifest walk -> verdict -> selective commit; the
-// frozen-frame record is judged per entry - patterns included - and the
-// tolerant teardown purger rides every outcome)
+// frozen-frame record is judged per entry over the surviving declarations
+// - files-only - and the tolerant teardown purger rides every outcome)
 // ===========================================================================
 
 /** One manifest entry read conservatively from an upper tree (the upper
@@ -787,8 +767,8 @@ function faultErrorReason(fault: unknown): string {
 /** THE SETTLEMENT COMMIT PHASE over one walked manifest (engaged branch,
  * out-of-band resolved exits ONLY): every entry judged AGAINST THE FULL
  * FRAME by the caller-supplied verdict predicate (frozen-frame record -
- * patterns included; class propositions verbatim the gate's prefix forms).
- * Deterministic walk order = top-down sorted DFS per upper in mirror order.
+ * the surviving declarations under the files-only invariant; class
+ * propositions verbatim the gate's prefix forms). Deterministic walk order = top-down sorted DFS per upper in mirror order.
  * Materialized kinds v1 (conservative policy): REGULAR FILES stage BESIDE
  * THE TARGET (same directory => same filesystem by construction; the
  * staging basename EMBEDS THE PER-SPAWN NONCE so two walks committing the
@@ -1144,12 +1124,7 @@ export function createLandlockBashOperations(
       // (cheapest-first, zero state change - defense in depth beside the
       // carrier's own root-component rejection + the kernel overlap
       // refusals).
-      const plan = composeSpawnPlan(
-        snapshot,
-        seams?.classifyPath !== undefined
-          ? { classifyPath: seams.classifyPath }
-          : undefined,
-      );
+      const plan = composeSpawnPlan(snapshot);
       if (plan.kind === "nested-mirror") {
         throw new Error(
           renderMechanismRefusal("nested-mirror", {
@@ -1164,7 +1139,8 @@ export function createLandlockBashOperations(
 
       // ================= PURE PATH (plan not engaged) =================
       // TODAY'S SEQUENCE EXACTLY - zero perturbation (the common case:
-      // silent windows, class-only frames, directory-only declarations):
+      // silent windows, class-only frames, coverage-filtered or
+      // pattern-only declarations):
       // compose via the retained composer (byte-identical at this call
       // site; element-for-element equal to plan.kernelVector by
       // construction over non-engaged windows - pinned in the suite),
@@ -1420,43 +1396,16 @@ export function createLandlockBashOperations(
           snapshot.sources,
           snapshot.paths,
         );
-        const concreteSurvivors: string[] = [];
-        const patternSurvivors: string[] = [];
-        for (const survivor of effective.survivors) {
-          if (containsPatternMetacharacter(survivor)) {
-            patternSurvivors.push(survivor);
-          } else {
-            concreteSurvivors.push(survivor);
-          }
-        }
         const workspaceCwd = snapshot.paths.workspaceCwd;
-        // THE VERDICT predicate (FULL FRAME, PATTERNS INCLUDED - lifts the
-        // concrete-only limitation for commands exactly as promised):
-        // (i)/(ii) strict-concrete survivors (identity + subtree parity
-        // with the shipped directory-grant form), (iii) anchored-glob over
-        // wildcard-pattern survivors, (iv)/(v) the gate's standing prefix
-        // forms VERBATIM over the one fresh effective-set consult above.
+        // THE VERDICT predicate (FILES-ONLY ADMISSION): identity or
+        // subtree-prefix over the surviving declarations - every surviving
+        // declaration is a file token (the subtree form beneath a leaf is
+        // vacuously safe: the kernel refuses paths beneath a regular file
+        // at attempt time) - plus the gate's standing class prefix forms
+        // VERBATIM over the one fresh effective-set consult above.
         const isAdmitted = (target: string): boolean => {
-          for (const survivor of concreteSurvivors) {
+          for (const survivor of effective.survivors) {
             if (target === survivor || target.startsWith(`${survivor}/`)) {
-              return true;
-            }
-          }
-          for (const pattern of patternSurvivors) {
-            // THE matcher's dialect is SLOT-RELATIVE pattern vs absolute
-            // target under the anchor: relativize the absolute survivor
-            // against the captured slot root; a pattern OUTSIDE the anchor
-            // domain is undecidable here and refuses admission (fail-
-            // closed - never admit what cannot be judged).
-            const anchorPrefix = `${slotRoot}/`;
-            if (!pattern.startsWith(anchorPrefix)) continue;
-            if (
-              matchesAnchoredGlob(
-                pattern.slice(anchorPrefix.length),
-                slotRoot,
-                target,
-              )
-            ) {
               return true;
             }
           }

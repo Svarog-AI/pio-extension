@@ -6,8 +6,9 @@
 // exit codes onto TS refusal classification, (iv) the helper-path resolver
 // plus static classify, (v) the probe ABI-report line parse, (vi) the
 // post-exec denial-line renderer consuming the shared byte family, and
-// (vii) the per-spawn spawn-plan materializer (engaged flag, mirror mounts,
-// the plan-level kernel vector, and the typed plan-refusal forms).
+// (vii) the per-spawn spawn-plan materializer (pure over the snapshot -
+// the files-only invariant: engaged flag, mirror mounts, the plan-level
+// kernel vector, and the typed plan-refusal forms).
 //
 // WHY HERE: the fence machinery is tightly coupled to the fenced bash tool
 // that lands beside it in this subpackage, so the materializer ships in the
@@ -19,11 +20,10 @@
 // table.
 //
 // PURITY: plain values in, plain values out. The node: surface is confined
-// to statSync (the TWO DEFAULT SEAMS: the synchronous helper-mode consult
-// and the spawn-plan leaf-classification consult; injected seams replace
-// them entirely, and the classification reach stays confined to the
-// strictly-concrete survivor paths - no other node: surface appears) and
-// path.join (the resolver). No env reads, no spawns, no network, no SDK;
+// to statSync (ONE DEFAULT SEAM: the synchronous helper-mode consult;
+// injected seams replace it entirely - the spawn-plan materializer is PURE
+// over the snapshot and consults no filesystem at all) and path.join (the
+// resolver). No env reads, no spawns, no network, no SDK;
 // process.arch and the package-root
 // constant are plain reads, not channels. Every public function is TOTAL
 // over its value domain - invalid readings resolve to RESULT forms (loud
@@ -218,8 +218,8 @@ export function buildHelperArgv(
  * helper suite's local replicas bind to these through parity rows). Values
  * are the vendor README table verbatim. The seven SUPERVISOR-FAMILY codes
  * (105-111) reuse the sibling suite const-block key names byte-exact
- * (single-source continuity, no renaming at the bridge); their committed
- * class meanings ride from the vehicle protocol's fault table: supervisor-
+ * (single-source continuity, no renaming at the bridge); their class
+ * meanings mirror the vendored carrier's established fault-code table: supervisor-
  * table-malformed = supervisor-family argv violation incl. the combined-arm
  * arity/path corner; realm-clone-failure = the vehicle clone failed; realm-
  * map-write-failure = parent-side map open/write failure, NON-ENOENT; child-
@@ -801,18 +801,6 @@ export function renderCommandLandlockDenial(
 // (vii) PER-SPAWN SPAWN-PLAN MATERIALIZER
 // ===========================================================================
 
-/** THE leaf-classification reading: regular file / directory / the
- * catch-all unknown (absent, unreadable, non-regular). */
-export type PathKind = "file" | "dir" | "unknown";
-
-/** Classification seam bag (the HelperStatSeams precedent): an injected
- * classifyPath REPLACES the statSync-backed default ENTIRELY - there is no
- * partial override, and the planner consults ONLY strictly-concrete
- * survivors, ONCE each, in declaration order. */
-export interface PathClassifySeams {
-  readonly classifyPath?: (p: string) => PathKind;
-}
-
 /** THE per-spawn SPAWN-PLAN VERDICT - total over the snapshot's value
  * domain (result forms, never throws). Ready carries the engagement
  * decision, the deduped mirror mount points (declaration order,
@@ -857,56 +845,36 @@ function containingDir(leaf: string): string {
   return prefix === "" ? "/" : prefix;
 }
 
-/** The DEFAULT classification seam: ONE statSync consult wrapped in
- * try-catch, built EXACTLY like the sibling defaultStatMode (the same
- * single node:fs reach already imported - no new node: surface appears).
- * Readable REGULAR FILE => "file"; readable DIRECTORY => "dir"; EVERYTHING
- * ELSE - absent, unreadable, or non-regular (char devices, fifos,
- * sockets) - falls into the "unknown" catch-all. Unknown reads as the
- * CREATE-INTENT leaf downstream: the absent state must engage the gate,
- * and the fail-closed pairing with the downstream attach-fault refusal
- * keeps a wrongly assumed leaf safe end-to-end (it dies later as the typed
- * pre-child refusal - never an ungoverned write). SYNCHRONOUS by design
- * (same posture as the helper consult: no exec happens here; authority at
- * the spawn site). */
-function defaultClassifyPath(candidate: string): PathKind {
-  try {
-    const info = statSync(candidate);
-    if (info.isFile()) return "file";
-    if (info.isDirectory()) return "dir";
-  } catch {
-    // Absent, unreadable, or non-regular alike fall to the catch-all.
-  }
-  return "unknown";
-}
-
 /** THE pure snapshot-to-spawn-plan materializer: given the moment's
  * ExecutionSnapshot it decides WHETHER THE MIRROR MECHANIC ENGAGES and
- * assembles the three facts a ready verdict carries. Pinned algorithmic
- * order (deterministic, golden-stable):
+ * assembles the three facts a ready verdict carries. FILES-ONLY INVARIANT
+ * (stated explicitly): the phase write bags carry FILE TOKENS ONLY - every
+ * surviving strictly-concrete declaration is treated as a file LEAF,
+ * whatever its on-disk state; the planner consults NO filesystem (no stat,
+ * no seams). Pinned algorithmic order (deterministic, golden-stable):
  * (1) effective construction - ONE fresh materializeEffectiveSet consult
  * over the phase/sources/paths triple; a NULL phase degrades to no
  * survivors and both class propositions false (mirrors the composer's exact
  * structure - one code path; the core coalesces null sources internally);
  * (2) the strictly-concrete filter over the survivors (declaration order
- * preserved; wildcard-pattern text drops HERE, before any consult);
- * (3) the classification of each filtered survivor, ONCE each, in
- * declaration order (injected seam or the statSync-backed default);
- * (4) the leaf set - readings "file" OR "unknown" (the create-intent
- * reading), and the mirror mounts: the containing dirs of the leaves in
+ * preserved; wildcard-pattern text drops HERE, before any mount or vector
+ * step);
+ * (3) the mirror mounts: the containing dirs of EVERY filtered survivor in
  * declaration order, first-occurrence dedupe mirroring the composer, the
  * empty-residue form normalized to "/" before validation;
- * (5) the kernel vector rebuilt by the SAME single global first-occurrence
- * dedupe pass over the FULL assembled vector: each DIRECTORY-shaped
- * survivor emits ITSELF (shipped behavior), each LEAF-shaped survivor
- * emits its ENVELOPE IN PLACE AT ITS OWN ASSEMBLY POSITION (minimal
- * perturbation - every unengaged vector element-for-element equals the
- * composer's output, by construction), then the class additions trail in
- * the shipped order (/dev ALWAYS, /tmp iff scratch active, the workspace
- * cwd iff the dual project flags agree);
- * (6) validation AFTER mount collection, fixed cheap-first order: the
- * root-mount corner BEFORE the deterministic nested first-hit scan;
- * (7) the ready form. No early return before (6) except via the result
+ * (4) the kernel vector rebuilt by the SAME single global first-occurrence
+ * dedupe pass over the FULL assembled vector: each survivor emits its
+ * ENVELOPE IN PLACE AT ITS OWN ASSEMBLY POSITION (leaves never emit
+ * themselves - minimal perturbation: every non-engaged window's vector
+ * element-for-element equals the composer's output, by construction), then
+ * the class additions trail in the shipped order (/dev ALWAYS, /tmp iff
+ * scratch active, the workspace cwd iff the dual project flags agree);
+ * (5) validation AFTER mount collection, fixed cheap-first order: the
+ * root-mount corner BEFORE the deterministic nested first-hit scan - BOTH
+ * refusal arms remain reachable under the files-only invariant (a leaf
+ * directly under "/"; two leaves in nested directories => nested
+ * envelopes);
+ * (6) the ready form. No early return before (5) except via the result
  * arms; no second dedupe dialect.
  *
  * ENVELOPE-AS-PLUMBING DOCTRINE: LSM-hook semantics require writes through
@@ -914,8 +882,8 @@ function defaultClassifyPath(candidate: string): PathKind {
  * covering kernel grant or legal writes die EPERM before the copy-on-write
  * layer; the precision lives in the spawn-site verdict, never here - the
  * envelope is plumbing, not policy. FRESHNESS: every call re-materializes
- * AND re-classifies (per-spawn fresh consult doctrine, no memoization
- * anywhere). NO NEW ABSOLUTENESS DIALECT: the planner adds no extra
+ * the effective set (per-spawn fresh consult doctrine, no memoization
+ * anywhere - and no filesystem read at all). NO NEW ABSOLUTENESS DIALECT: the planner adds no extra
  * absoluteness checks on any input - it honors the state-channel
  * resolved-absolute contract and re-validates NOTHING; a non-absolute
  * channel value degrades exactly as today (the assembler-side pre-child
@@ -925,11 +893,8 @@ function defaultClassifyPath(candidate: string): PathKind {
  * result forms. */
 export function composeSpawnPlan(
   snapshot: ExecutionSnapshot,
-  seams?: PathClassifySeams,
 ): SpawnPlanVerdict {
-  const classify = seams?.classifyPath ?? defaultClassifyPath;
   const concrete: string[] = [];
-  const kinds = new Map<string, PathKind>();
   let scratchActive = false;
   let projectWritesActive = false;
   if (snapshot.phase !== null) {
@@ -943,19 +908,17 @@ export function composeSpawnPlan(
     for (const survivor of effective.survivors) {
       if (!strictlyConcrete(survivor)) continue;
       concrete.push(survivor);
-      kinds.set(survivor, classify(survivor));
     }
   }
-  // THE MIRROR MOUNTS: the deduped containing dirs of the LEAF-shaped
-  // survivors ONLY (declaration order, first-occurrence). Dir-shaped
-  // survivors and the class tokens NEVER land here - a mount exists because
-  // of a declared leaf, never because a class flag is active.
+  // THE MIRROR MOUNTS: the deduped containing dirs of EVERY surviving
+  // strictly-concrete declaration (files-only invariant: every survivor is
+  // a leaf; declaration order, first-occurrence). Class tokens NEVER land
+  // here - a mount exists because of a declared file token, never because a
+  // class flag is active.
   const mirrorMounts: string[] = [];
   const mountSeen = new Set<string>();
   let engaged = false;
   for (const survivor of concrete) {
-    const kind = kinds.get(survivor);
-    if (kind === "dir") continue;
     engaged = true;
     const envelope = containingDir(survivor);
     if (!mountSeen.has(envelope)) {
@@ -964,8 +927,8 @@ export function composeSpawnPlan(
     }
   }
   // THE KERNEL VECTOR: the Landlock grant list - NOT the mount table. Same
-  // single global first-occurrence dedupe as the mounts: each dir-shaped
-  // survivor emits ITSELF, each leaf its envelope IN PLACE, then the class
+  // single global first-occurrence dedupe as the mounts: each survivor emits
+  // its envelope IN PLACE AT ITS OWN ASSEMBLY POSITION, then the class
   // channel exactly as the shipped composer builds it (/dev ALWAYS, /tmp iff
   // scratch active, workspace cwd iff the dual project flags agree). Coarse
   // by design: the grants are plumbing for the LSM path hooks, not precision
@@ -980,8 +943,7 @@ export function composeSpawnPlan(
     }
   };
   for (const survivor of concrete) {
-    const kind = kinds.get(survivor);
-    pushOnce(kind === "dir" ? survivor : containingDir(survivor));
+    pushOnce(containingDir(survivor));
   }
   pushOnce("/dev");
   if (scratchActive) pushOnce("/tmp");

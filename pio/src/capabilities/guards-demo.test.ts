@@ -108,12 +108,13 @@ interface FakeSession {
 
 /** THE plan-based kernel-vector projection - the SAME expression the
  * flipped bash spawn site evaluates: composeSpawnPlan's ready-arm
- * kernelVector (the ready-guard mirrors the spawn-site branch; the default
- * classification seam applies because these fixtures are REAL disk state).
- * All five consulted windows below are NON-ENGAGED (the bash-allow window's
- * inner artifact is coverage-filtered and therefore kernel-invisible; the
- * directory reads never engage), so the projection equals the composer's
- * output BY CONSTRUCTION - a fidelity change, not a value change. */
+ * kernelVector (the ready-guard mirrors the spawn-site branch; the pure
+ * files-only planner reads no disk, so the projection is a function of
+ * the declared tokens ALONE). Four of the five consulted windows below
+ * are NON-ENGAGED (no strictly-concrete survivor survives coverage -
+ * silent, class-flag-only, or coverage-filtered); the bash-allow window
+ * ENGAGES over its declared token's envelope, which takes the survivor
+ * position BY CONSTRUCTION. */
 function planBasedProjection(state: SessionExecutionState): string[] {
   const plan = composeSpawnPlan(state.snapshot());
   return plan.kind === "ready" ? [...plan.kernelVector] : [];
@@ -785,7 +786,7 @@ async function seedArtifact(
 // ─── C rows: the expectation-guard demonstration flow ───────────────────
 
 describe("expectation-guard demonstration flow (C rows)", () => {
-  it("C1 full happy chain (BINDING leg): pass one skips the write => the engine denies settlement and the pass-two prompt carries the IDENTICAL baseline PLUS the pinned DELIMITED corrective block (delimiter line above the unchanged body; run count 1, naming the tmpdir-ABSOLUTE path) => pass two commits the REAL fs write and settles at iterations === 2, then the TWELVE PLAIN-PHASE gate probes run in pinned order under ONE span (write-tool family: deny REFUSAL-ONLY, allow, project-file, the SILENT flag-less project-file-not-allowed phase, declared-scratch tmp-parity, the SILENT scratch-refusal tmp-negative; bash-command family: bash-deny over the SHARED stray target, bash-allow over the .md-directory device, bash-project-file under the DECLARED scope class, the SILENT bash-project-file-not-allowed over the SAME cwd target, bash-tmp-parity under the phase's OWN scratch flag, the SILENT bash-tmp-negative LAST) with their MID-PASS consults (real-predicate verdicts: stray + scratch REFUSED on the UNIVERSAL byte in the declare-nothing deny window, admission undefined, exclusive scope-element-only listing, the silent-phase FULL-LINE refusal on the UNIVERSAL byte with the phase observed NULL, scratch ADMITTED in the declared-flag window, the SAME scratch target REFUSED on the UNIVERSAL byte in the silent tmp-negative window with the phase observed NULL, /tmp/ healing vantage; kernel-vector consults: the MINIMUM fence over the SILENT bash-deny window, the surviving declared directory FIRST beside the machine allowance over bash-allow, the workspace-cwd class appended over bash-project-file, back to the MINIMUM fence over the SILENT bash-project-file-not-allowed window - the late-binding flip over the SAME stamped state - and the /tmp/ class appended over bash-tmp-parity) => ok:true with the ABSOLUTE settled outputs.report, the end-of-run scratch state ABSENT BY DESIGN, the terminal record carries version 0.5.0 and exit 0, EXACTLY 16 prompts + EXACTLY ONE span stamp strictly before the first prompt = 17 unified-timeline entries", async () => {
+  it("C1 full happy chain (BINDING leg): pass one skips the write => the engine denies settlement and the pass-two prompt carries the IDENTICAL baseline PLUS the pinned DELIMITED corrective block (delimiter line above the unchanged body; run count 1, naming the tmpdir-ABSOLUTE path) => pass two commits the REAL fs write and settles at iterations === 2, then the TWELVE PLAIN-PHASE gate probes run in pinned order under ONE span (write-tool family: deny REFUSAL-ONLY, allow, project-file, the SILENT flag-less project-file-not-allowed phase, declared-scratch tmp-parity, the SILENT scratch-refusal tmp-negative; bash-command family: bash-deny over the SHARED stray target, bash-allow over the .md-directory device, bash-project-file under the DECLARED scope class, the SILENT bash-project-file-not-allowed over the SAME cwd target, bash-tmp-parity under the phase's OWN scratch flag, the SILENT bash-tmp-negative LAST) with their MID-PASS consults (real-predicate verdicts: stray + scratch REFUSED on the UNIVERSAL byte in the declare-nothing deny window, admission undefined, exclusive scope-element-only listing, the silent-phase FULL-LINE refusal on the UNIVERSAL byte with the phase observed NULL, scratch ADMITTED in the declared-flag window, the SAME scratch target REFUSED on the UNIVERSAL byte in the silent tmp-negative window with the phase observed NULL, /tmp/ healing vantage; kernel-vector consults: the MINIMUM fence over the SILENT bash-deny window, the declared token's ENVELOPE first beside the machine allowance over bash-allow (files-only reading), the workspace-cwd class appended over bash-project-file, back to the MINIMUM fence over the SILENT bash-project-file-not-allowed window - the late-binding flip over the SAME stamped state - and the /tmp/ class appended over bash-tmp-parity) => ok:true with the ABSOLUTE settled outputs.report, the end-of-run scratch state ABSENT BY DESIGN, the terminal record carries version 0.5.0 and exit 0, EXACTLY 16 prompts + EXACTLY ONE span stamp strictly before the first prompt = 17 unified-timeline entries", async () => {
     const placement = artifactPlacement();
     const probes = probePlacements();
     const { instance, round, state } = await host();
@@ -937,10 +938,10 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       // directory ADMITS both shapes live).
       await writeFile(probes.absBashAllowArtifact, "# Bash allow\n");
       emit(round, ...writeSettle(probes.absBashAllowArtifact, "w-bash-allow"));
-      // MID-PASS KERNEL-VECTOR consult: the surviving DECLARED DIRECTORY
-      // rides the vector FIRST (assembly order - survivors before the
-      // class additions); the uncovered inner artifact contributes NOTHING
-      // (kernel-invisible).
+      // MID-PASS KERNEL-VECTOR consult: the DECLARED TOKEN'S ENVELOPE rides
+      // the vector FIRST (files-only reading - every surviving declaration
+      // is a leaf, assembly order: envelopes before the class additions);
+      // the uncovered inner artifact contributes NOTHING (kernel-invisible).
       bashAllowVector = planBasedProjection(state);
     });
     round.passes.push(async (): Promise<void> => {
@@ -1143,10 +1144,10 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     });
     // Kernel-vector consults (captured DURING the bash passes over the
     // SAME stamped state - the fence tracks the frame, late-bound; the
-    // MINIMUM fence over ANY window is exactly ["/dev"]; assembly order
-    // keeps the surviving declarations FIRST):
+    // MINIMUM fence over ANY non-engaged window is exactly ["/dev"]; assembly
+    // order keeps the surviving envelopes FIRST):
     expect(bashDenyVector).toEqual(["/dev"]);
-    expect(bashAllowVector).toEqual([probes.absBashAllowDir, "/dev"]);
+    expect(bashAllowVector).toEqual([dirname(probes.absBashAllowDir), "/dev"]);
     expect(bashProjectFileVector).toEqual(["/dev", probes.cwd]);
     expect(bashSilentVector).toEqual(["/dev"]);
     expect(bashTmpParityVector).toEqual(["/dev", "/tmp"]);

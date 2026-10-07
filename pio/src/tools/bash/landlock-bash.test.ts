@@ -56,7 +56,6 @@ import {
 import {
   composeKernelWritableSet,
   composeSpawnPlan,
-  type PathKind,
   parseOverlayProbeReport,
   parseProbeReport,
   renderMechanismRefusal,
@@ -204,7 +203,6 @@ function makeHarness(
       typeof import("@earendil-works/pi-coding-agent").getShellConfig
     >;
     localOps?: BashOperations;
-    classifyPath?: (p: string) => PathKind;
     nonceSource?: () => string;
     spawnerThrows?: boolean;
     throwSpawnerFor?: (args: readonly string[]) => boolean;
@@ -213,13 +211,12 @@ function makeHarness(
   const receipts: SpawnReceipt[] = [];
   const counter = { next: 1000 };
   let index = 0;
-  // DETERMINISTIC HERMETIC DEFAULT: fixture paths are virtual - production
-  // wiring would consult real fs and engage the trap machinery on missing
-  // leaves; every row in this suite classifies "dir" and stays non-engaged
-  // unless a row explicitly injects its own readings.
+  // STRUCTURAL NON-ENGAGEMENT DEFAULT: the planner is pure over the snapshot
+  // (files-only invariant - no filesystem consultation anywhere), so legacy
+  // rows stay non-engaged BY CONSTRUCTION: their windows carry no strictly-
+  // concrete survivors (silent, class-flag-only, or coverage-filtered).
   const landlockSeams: LandlockBashSeams = {
     ...(seams?.statMode !== undefined ? { statMode: seams.statMode } : {}),
-    classifyPath: seams?.classifyPath ?? (() => "dir"),
     spawner: (command, args, options) => {
       if (seams?.spawnerThrows) {
         throw new Error("scripted-spawn-fault");
@@ -757,6 +754,9 @@ describe("B. pre-spawn fault truth table", () => {
     );
     // A span + attached phase make the composer carry the relative
     // workspace anchor into the writable vector (depth 0 is /dev-only).
+    // The relative declaration token is COVERAGE-FILTERED (anchored-glob
+    // matching requires absolute targets under the slot root), so the window
+    // carries no strictly-concrete survivor and stays non-engaged.
     state.enterCapability(RESEARCH);
     state.attachPhase("impl", ["research/a.md"], true, false);
     const h = makeHarness(
@@ -1077,7 +1077,9 @@ describe("D. the standing-note matrix", () => {
     const rec = dataRecorder();
     const state = fixtureState();
     state.enterCapability(RESEARCH);
-    state.attachPhase("impl", [KEPT_A], true, false);
+    // CLASS-FLAG-ONLY window (no declarations): the listing stays phase-
+    // shaped over the class channel while the window stays non-engaged.
+    state.attachPhase("impl", [], true, false);
     const fake = scriptedOps((box) => {
       box.push(Buffer.from("attempting write...\n"));
       return { exitCode: 1 };
@@ -1108,7 +1110,6 @@ describe("D. the standing-note matrix", () => {
     const fake1 = scriptedOps(() => ({ exitCode: 3 }));
     const fake2 = scriptedOps(() => ({ exitCode: 3 }));
     const ops1 = createLandlockBashOperations(WORKSPACE_CWD, state, {
-      classifyPath: () => "dir",
       localOps: fake1.ops,
     });
     const o1 = await settle(
@@ -1119,9 +1120,10 @@ describe("D. the standing-note matrix", () => {
       `\n${UNIVERSAL_NOTE}\n`,
     );
     state.enterCapability(RESEARCH);
-    state.attachPhase("impl", [KEPT_A], true, false);
+    // CLASS-FLAG-ONLY window on the landed side too: phase-shaped note
+    // without any strictly-concrete survivor (non-engaged).
+    state.attachPhase("impl", [], true, false);
     const ops2 = createLandlockBashOperations(WORKSPACE_CWD, state, {
-      classifyPath: () => "dir",
       localOps: fake2.ops,
     });
     const o2 = await settle(
@@ -1344,7 +1346,7 @@ describe("F. wrapped-script serialization + pass-through receipts", () => {
     expect(script).toContain("'--'");
     expect(script).toContain(MEASURED_SHELL.shell);
     // The --write vector equals the composed writable set over the fixture
-    // window (integration edge over the frozen Step 3 composer).
+    // window (integration edge over the sibling kernel-set composer).
     const writable = composeKernelWritableSet(fixtureState().snapshot());
     for (const entry of writable) {
       expect(script).toContain(`'${entry}'`);
@@ -1646,7 +1648,7 @@ describe("G. mechanical source-guard charter over landlock-bash.ts", () => {
     }
   });
 
-  it("import partition pins (statement-aware, whitespace-normalized - Biome-wrap hazard): value partition EXACTLY the pinned eight specifiers IN SOURCE ORDER with per-specifier name pins; type-only partition EXACTLY the pinned triple IN SOURCE ORDER with per-specifier name pins", () => {
+  it("import partition pins (statement-aware, whitespace-normalized - Biome-wrap hazard): value partition EXACTLY the pinned seven specifiers IN SOURCE ORDER with per-specifier name pins; type-only partition EXACTLY the pinned pair IN SOURCE ORDER with per-specifier name pins", () => {
     const imports = extractImportStatements(RAW_MODULE_SOURCE);
     const valueSpecifiers = imports
       .filter((statement) => !statement.typeOnly)
@@ -1658,7 +1660,6 @@ describe("G. mechanical source-guard charter over landlock-bash.ts", () => {
       "node:fs/promises",
       SDK_SPECIFIER,
       "../../permission-mechanics.ts",
-      "../../sandbox/string-match-helpers.ts",
       "./landlock-ruleset.ts",
     ]);
     const typeSpecifiers = imports
@@ -1667,7 +1668,6 @@ describe("G. mechanical source-guard charter over landlock-bash.ts", () => {
     expect(typeSpecifiers).toEqual([
       SDK_SPECIFIER,
       "../../session-execution-state.ts",
-      "./landlock-ruleset.ts",
     ]);
     expect(namesOf("node:child_process", false)).toEqual(["spawn"]);
     expect(namesOf("node:crypto", false)).toEqual(["randomBytes"]);
@@ -1700,9 +1700,6 @@ describe("G. mechanical source-guard charter over landlock-bash.ts", () => {
     expect(namesOf("../../permission-mechanics.ts", false)).toEqual([
       "materializeEffectiveSet",
     ]);
-    expect(namesOf("../../sandbox/string-match-helpers.ts", false)).toEqual([
-      "matchesAnchoredGlob",
-    ]);
     expect(namesOf("./landlock-ruleset.ts", false)).toEqual([
       "checkLandlockHelper",
       "classifyLandlockExit",
@@ -1712,7 +1709,6 @@ describe("G. mechanical source-guard charter over landlock-bash.ts", () => {
       "parseProbeReport",
       "renderMechanismRefusal",
     ]);
-    expect(namesOf("./landlock-ruleset.ts", true)).toEqual(["PathKind"]);
   });
 
   it("edge elimination + node: purity ledger: zero write-gate occurrences (the eliminated tools-to-guards edge stays eliminated) and the module's node: specifier set is EXACTLY {node:child_process, node:crypto, node:fs, node:fs/promises}", () => {
@@ -1896,9 +1892,10 @@ describe("H. probe-once caching over a reused ops instance", () => {
 // ===========================================================================
 // ENGAGED-FIXTURE AREA (shared by the appended groups): REAL mkdtemp anchor
 // roots (the session-minted scratch geometry needs real parent directories -
-// virtual fixture roots would fault the mint), deterministic classifyPath +
-// nonce seams unless a row overrides them; every row cleans up its root in a
-// finally-walk so no residue ever crosses rows.
+// virtual fixture roots would fault the mint); engagement is purely
+// declarative (the files-only planner consults no filesystem), with
+// deterministic nonce seams where a row pins scratch geometry; every row
+// cleans up its root in a finally-walk so no residue ever crosses rows.
 // ===========================================================================
 
 interface EngagedRoot {
@@ -2059,7 +2056,7 @@ function seedUpperTree(upper: string, spec: SeedSpec): void {
 }
 
 // ===========================================================================
-// GROUP I - ENGAGED-FORM SERIALIZATION (spec group G)
+// GROUP I - ENGAGED-FORM SERIALIZATION
 // ===========================================================================
 
 describe("I. engaged-form serialization (supervisor preamble over the apply-form tail)", () => {
@@ -2073,7 +2070,6 @@ describe("I. engaged-form serialization (supervisor preamble over the apply-form
       const fake = scriptedOps(() => ({ exitCode: 0 }));
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
-        classifyPath: () => "file",
         nonceSource: () => "i-nonce",
       });
       const outcome = await settle(
@@ -2123,7 +2119,6 @@ describe("I. engaged-form serialization (supervisor preamble over the apply-form
       const fake = scriptedOps(() => ({ exitCode: 0 }));
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
-        classifyPath: () => "file",
         nonceSource: () => "i-nonce",
       });
       const outcome = await settle(
@@ -2166,7 +2161,6 @@ describe("I. engaged-form serialization (supervisor preamble over the apply-form
         const h = makeHarness(fx.state, twoProbePreamble(), {
           resolveShellConfig: () => shellShape,
           localOps: rec.ops,
-          classifyPath: () => "file",
           nonceSource: () => "i-nonce",
         });
         const outcome = await settle(
@@ -2198,7 +2192,6 @@ describe("I. engaged-form serialization (supervisor preamble over the apply-form
       const fake = scriptedOps(() => ({ exitCode: 0 }));
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
-        classifyPath: () => "file",
         nonceSource: () => "i-nonce",
       });
       const outcome = await settle(
@@ -2250,7 +2243,6 @@ describe("I. engaged-form serialization (supervisor preamble over the apply-form
       });
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
-        classifyPath: () => "file",
         nonceSource: () => "i-nonce",
       });
       const outcome = await settle(
@@ -2271,7 +2263,7 @@ describe("I. engaged-form serialization (supervisor preamble over the apply-form
 });
 
 // ===========================================================================
-// GROUP J - PLANNER-REFUSAL & PRE-CHILD ENGAGED FAULTS (spec group H)
+// GROUP J - PLANNER-REFUSAL & PRE-CHILD ENGAGED FAULTS
 // ===========================================================================
 
 describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns, zero delegate consults, no scratch state change)", () => {
@@ -2294,7 +2286,6 @@ describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns,
       const rec = recorderOps();
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: rec.ops,
-        classifyPath: () => "file",
         nonceSource: () => "j-nonce",
       });
       const outcome = await settle(
@@ -2344,7 +2335,6 @@ describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns,
         const rec = recorderOps();
         const h = makeHarness(fx.state, twoProbePreamble(), {
           localOps: rec.ops,
-          classifyPath: () => "file",
           nonceSource: () => "j-nonce",
         });
         const outcome = await settle(
@@ -2383,7 +2373,6 @@ describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns,
       const rec = recorderOps();
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: rec.ops,
-        classifyPath: () => "file",
         nonceSource: () => "j-nonce",
       });
       const outcome = await settle(
@@ -2443,7 +2432,6 @@ describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns,
       const h = makeHarness(fx.state, twoProbePreamble(), {
         resolveShellConfig: () => ({ shell: "sh", args: ["-c"] }),
         localOps: rec.ops,
-        classifyPath: () => "file",
         nonceSource: () => "j-nonce",
       });
       const outcome = await settle(
@@ -2483,7 +2471,7 @@ describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns,
 
 // ===========================================================================
 // GROUP K - COMBINED-APPLICABILITY PROBE OVER THE SECOND PER-INSTANCE LATCH
-// (spec group I)
+//
 // ===========================================================================
 
 describe("K. combined-applicability probe over the second per-instance latch", () => {
@@ -2495,7 +2483,6 @@ describe("K. combined-applicability probe over the second per-instance latch", (
       const fake = scriptedOps(() => ({ exitCode: 0 }));
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
-        classifyPath: () => "file",
         nonceSource: () => "k-nonce",
       });
       const o1 = await settle(
@@ -2553,7 +2540,6 @@ describe("K. combined-applicability probe over the second per-instance latch", (
       const fake = scriptedOps(() => ({ exitCode: 0 }));
       const h = makeHarness(fx.state, probes, {
         localOps: fake.ops,
-        classifyPath: () => "file",
         nonceSource: () => "k-nonce",
       });
       const first = await settle(
@@ -2672,7 +2658,6 @@ describe("K. combined-applicability probe over the second per-instance latch", (
           ],
           {
             localOps: recorder.ops,
-            classifyPath: () => "file",
             nonceSource: () => "k-nonce",
             ...(leg.throwSpawnerFor !== undefined
               ? { throwSpawnerFor: leg.throwSpawnerFor }
@@ -2699,7 +2684,6 @@ describe("K. combined-applicability probe over the second per-instance latch", (
       const fake = scriptedOps(() => ({ exitCode: 0 }));
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
-        classifyPath: () => "file",
         nonceSource: () => "k-nonce",
       });
       const outcome = await settle(
@@ -2717,7 +2701,7 @@ describe("K. combined-applicability probe over the second per-instance latch", (
 });
 
 // ===========================================================================
-// GROUP L - MANIFEST WALK -> VERDICT -> SELECTIVE COMMIT MATRIX (spec group J)
+// GROUP L - MANIFEST WALK -> VERDICT -> SELECTIVE COMMIT MATRIX
 // ===========================================================================
 
 describe("L. manifest walk -> verdict -> selective commit (scripted local-ops stand in for the child physics; seeded uppers over real mkdtemp roots)", () => {
@@ -2738,7 +2722,6 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       });
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
-        classifyPath: (p) => (p === leaf ? "file" : "dir"),
         nonceSource: () => "l-nonce",
       });
       const outcome = await settle(
@@ -2759,15 +2742,15 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
     }
   });
 
-  it("happy chain - not-yet-existing CREATE (absent leaf at spawn, classified create-intent unknown-or-file): created-through-the-merged-view seed commits into the real environment; clean transcript; exact final bytes", async () => {
+  it("happy chain - not-yet-existing CREATE (absent leaf at spawn): created-through-the-merged-view seed commits into the real environment; clean transcript; exact final bytes", async () => {
     const fx = openEngagedRoot();
     try {
       fx.state.enterCapability(RESEARCH);
       const leaf = `${fx.slot}/research/new.md`;
       mkdirSync(`${fx.slot}/research`);
-      // Leaf ABSENT at spawn time: the default production classifier would
-      // read "unknown" (create-intent) - the seam makes the same reading
-      // explicit and deterministic.
+      // Leaf ABSENT at spawn time: engagement is declarative under the
+      // files-only invariant - the planner reads no disk, so an absent leaf
+      // engages exactly as a present one does.
       fx.state.attachPhase("impl", [leaf], true, false);
       const rec = dataRecorder();
       const fake = scriptedOps((box) => {
@@ -2777,7 +2760,6 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       });
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
-        classifyPath: (p) => (p === leaf ? "unknown" : "dir"),
         nonceSource: () => "l-nonce",
       });
       const outcome = await settle(
@@ -2813,7 +2795,6 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       });
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
-        classifyPath: (p) => (p === leaf ? "file" : "dir"),
         nonceSource: () => "l-nonce",
       });
       const outcome = await settle(
@@ -2835,43 +2816,7 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
     }
   });
 
-  it("pattern-admit commit row (wildcard-covered entry COMMITS - the lifted limitation pinned hermetically): a declared bracket-class survivor admits its covered writes even though they are NOT the strictly-concrete declared leaf; clean transcript over the all-admitted manifest", async () => {
-    const fx = openEngagedRoot();
-    try {
-      fx.state.enterCapability(RESEARCH);
-      const leaf = `${fx.slot}/research/a.md`;
-      const bracket = `${fx.slot}/research/[a-z].md`;
-      mkdirSync(`${fx.slot}/research`);
-      fx.state.attachPhase("impl", [leaf, bracket], true, false);
-      const rec = dataRecorder();
-      const fake = scriptedOps((box) => {
-        const triple = triplesOf(box.cmd)[0]!;
-        seedUpperTree(triple.upper, { files: { "q.md": "pattern-admitted" } });
-        return { exitCode: 0 };
-      });
-      const h = makeHarness(fx.state, twoProbePreamble(), {
-        localOps: fake.ops,
-        classifyPath: (p) => (p === leaf ? "file" : "dir"),
-        nonceSource: () => "l-nonce",
-      });
-      const outcome = await settle(
-        h.ops.exec("pattern", EXEC_CWD, { onData: rec.onData }),
-      );
-      expect(outcome.ok).toBe(true);
-      if (outcome.ok) expect(outcome.value).toEqual({ exitCode: 0 });
-      const qTarget = `${fx.slot}/research/q.md`;
-      expect(existsSync(qTarget)).toBe(true);
-      if (existsSync(qTarget)) {
-        expect(readFileSync(qTarget, "utf8")).toBe("pattern-admitted");
-      }
-      expect(rec.chunks).toHaveLength(0);
-      expect(existsSync(`${fx.slot}/.fence-scratch/l-nonce`)).toBe(false);
-    } finally {
-      fx.cleanup();
-    }
-  });
-
-  it("multi-entry deterministic order (sorted top-down DFS over mixed kinds: directory ensure BEFORE its children by construction; subtree admission via the dir-shaped concrete survivor's prefix form; off-list junk discarded + noted once)", async () => {
+  it("multi-entry deterministic order (sorted top-down DFS over mixed kinds: directory ensure BEFORE its children by construction; subtree admission via the declared token's prefix form; off-list junk discarded + noted once)", async () => {
     const fx = openEngagedRoot();
     try {
       fx.state.enterCapability({
@@ -2882,9 +2827,10 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       const leaf = `${fx.slot}/research/a.md`;
       const subDir = `${fx.slot}/research/sub`;
       mkdirSync(`${fx.slot}/research`);
-      // a.md engages the trap (classified file); research/sub is a DIR-
-      // SHAPED survivor (classified dir - no second mount, no nesting) -
-      // its subtree rides the concrete-prefix admission form below.
+      // Both declared tokens are file leaves sharing ONE envelope (files-
+      // only invariant, declaration-order dedupe - a single mount); the
+      // sub token's SUBTREE rides the verdict's declared-token prefix form
+      // below.
       fx.state.attachPhase("impl", [leaf, subDir], true, false);
       const rec = dataRecorder();
       const fake = scriptedOps((box) => {
@@ -2898,7 +2844,6 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       });
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
-        classifyPath: (p) => (p === leaf ? "file" : "dir"),
         nonceSource: () => "l-nonce",
       });
       const outcome = await settle(
@@ -2909,7 +2854,7 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       expect(readFileSync(`${subDir}/in.md`, "utf8")).toBe("inside");
       expect(existsSync(`${fx.slot}/research/junk.bin`)).toBe(false);
       const listing = engagedListing(
-        [`${fx.slot}/research`, `${fx.slot}/research/sub`, "/dev", fx.ws],
+        [`${fx.slot}/research`, "/dev", fx.ws],
         fx.ws,
       );
       expect(rec.chunks.map((c) => c.toString("utf8"))).toEqual([
@@ -2940,7 +2885,6 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       });
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
-        classifyPath: (p) => (p === leaf ? "file" : "dir"),
         nonceSource: () => "l-nonce",
       });
       const outcome = await settle(
@@ -2988,7 +2932,6 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       });
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
-        classifyPath: (p) => (p === leaf ? "file" : "dir"),
         nonceSource: () => "l-nonce",
       });
       const outcome = await settle(
@@ -3042,7 +2985,6 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       });
       const h1 = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake1.ops,
-        classifyPath: (p) => (p === leaf ? "file" : "dir"),
         nonceSource: () => "nonce-a",
       });
       const o1 = await settle(
@@ -3061,7 +3003,6 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
       });
       const h2 = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake2.ops,
-        classifyPath: (p) => (p === leaf ? "file" : "dir"),
         nonceSource: () => "nonce-b",
       });
       const o2 = await settle(
@@ -3086,7 +3027,7 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
 
 // ===========================================================================
 // GROUP M - KILL/TIMEOUT/ABORT DISCARD-ALL + EXTENDED BAND SETTLEMENT
-// (spec group K)
+//
 // ===========================================================================
 
 describe("M. kill/timeout/abort discard-all + extended band settlement over the composed chain", () => {
@@ -3111,7 +3052,6 @@ describe("M. kill/timeout/abort discard-all + extended band settlement over the 
         });
         const h = makeHarness(fx.state, twoProbePreamble(), {
           localOps: fake.ops,
-          classifyPath: (p) => (p === leaf ? "file" : "dir"),
           nonceSource: () => "m-nonce",
         });
         const outcome = await settle(
@@ -3150,7 +3090,6 @@ describe("M. kill/timeout/abort discard-all + extended band settlement over the 
       });
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
-        classifyPath: (p) => (p === leaf ? "file" : "dir"),
         nonceSource: () => "m-nonce",
       });
       const outcome = await settle(
@@ -3208,7 +3147,6 @@ describe("M. kill/timeout/abort discard-all + extended band settlement over the 
         });
         const h = makeHarness(fx.state, twoProbePreamble(), {
           localOps: fake.ops,
-          classifyPath: (p) => (p === leaf ? "file" : "dir"),
           nonceSource: () => "m-nonce",
         });
         const outcome = await settle(
@@ -3247,7 +3185,6 @@ describe("M. kill/timeout/abort discard-all + extended band settlement over the 
       });
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
-        classifyPath: (p) => (p === leaf ? "file" : "dir"),
         nonceSource: () => "m-nonce",
       });
       const outcome = await settle(
@@ -3274,7 +3211,7 @@ describe("M. kill/timeout/abort discard-all + extended band settlement over the 
 });
 
 // ===========================================================================
-// GROUP N - VEHICLE-ESTABLMENT FAULTS OVER THE COMPOSED CHAIN (spec group H)
+// GROUP N - VEHICLE-ESTABLMENT FAULTS OVER THE COMPOSED CHAIN
 // ===========================================================================
 
 describe("N. vehicle-establishment faults and post-delegate vehicle deaths over the composed chain", () => {
@@ -3304,7 +3241,7 @@ describe("N. vehicle-establishment faults and post-delegate vehicle deaths over 
   it("pre-child probe-one ABNORMAL (garbage reading, foreign exit): typed refusal byte-equal the shared family renderer over the exact ctx the module composes (probeExit + raw output slot); exactly ONE fork total (the combined probe never runs); ZERO delegate consults; the minted scratch torn down without residue", async () => {
     const fx = openEngagedRoot();
     try {
-      const { state, leaf } = engagedState(fx);
+      const { state } = engagedState(fx);
       const counted = countLocal();
       const h = makeHarness(
         state,
@@ -3323,7 +3260,6 @@ describe("N. vehicle-establishment faults and post-delegate vehicle deaths over 
         ],
         {
           localOps: counted.ops,
-          classifyPath: (p) => (p === leaf ? "file" : "dir"),
           nonceSource: () => "n-abn",
         },
       );
@@ -3351,7 +3287,7 @@ describe("N. vehicle-establishment faults and post-delegate vehicle deaths over 
   it("pre-child probe-one REFUSED form (parsed fail report over the contract exit 101): the ABI detail slots ride the renderer ctx verbatim (discovered vs pinned); one fork, zero delegates", async () => {
     const fx = openEngagedRoot();
     try {
-      const { state, leaf } = engagedState(fx);
+      const { state } = engagedState(fx);
       const counted = countLocal();
       const h = makeHarness(
         state,
@@ -3372,7 +3308,6 @@ describe("N. vehicle-establishment faults and post-delegate vehicle deaths over 
         ],
         {
           localOps: counted.ops,
-          classifyPath: (p) => (p === leaf ? "file" : "dir"),
           nonceSource: () => "n-ref",
         },
       );
@@ -3398,7 +3333,7 @@ describe("N. vehicle-establishment faults and post-delegate vehicle deaths over 
   it("pre-child COMBINED-probe REFUSED form (realm-fail/status-fail report + stage diagnostics on stderr): TWO forks (probe-one passed, combined refused); ZERO delegate consults; the stage string rides the ctx untouched", async () => {
     const fx = openEngagedRoot();
     try {
-      const { state, leaf } = engagedState(fx);
+      const { state } = engagedState(fx);
       const counted = countLocal();
       const diag = "landlock-helper overlay: failed at mount (errno=95)\n";
       const h = makeHarness(
@@ -3426,7 +3361,6 @@ describe("N. vehicle-establishment faults and post-delegate vehicle deaths over 
         ],
         {
           localOps: counted.ops,
-          classifyPath: (p) => (p === leaf ? "file" : "dir"),
           nonceSource: () => "n-comb",
         },
       );
@@ -3455,7 +3389,7 @@ describe("N. vehicle-establishment faults and post-delegate vehicle deaths over 
   it("pre-child COMBINED-probe ABNORMAL form (unparseable output): the two-fork shape holds; the raw exit-code slot rides the ctx; nothing delegated, scratch clean", async () => {
     const fx = openEngagedRoot();
     try {
-      const { state, leaf } = engagedState(fx);
+      const { state } = engagedState(fx);
       const counted = countLocal();
       const h = makeHarness(
         state,
@@ -3465,7 +3399,6 @@ describe("N. vehicle-establishment faults and post-delegate vehicle deaths over 
         ],
         {
           localOps: counted.ops,
-          classifyPath: (p) => (p === leaf ? "file" : "dir"),
           nonceSource: () => "n-comb-abn",
         },
       );
@@ -3514,7 +3447,6 @@ describe("N. vehicle-establishment faults and post-delegate vehicle deaths over 
         });
         const h = makeHarness(state, twoProbePreamble(), {
           localOps: fake.ops,
-          classifyPath: (p) => (p === leaf ? "file" : "dir"),
           nonceSource: () => `n-veh-${code}`,
         });
         const outcome = await settle(
@@ -3539,7 +3471,7 @@ describe("N. vehicle-establishment faults and post-delegate vehicle deaths over 
 });
 
 // ===========================================================================
-// GROUP O - VOICE ARTIFACT GOLDENS OVER THE ENGAGED CHANNEL (spec group I)
+// GROUP O - VOICE ARTIFACT GOLDENS OVER THE ENGAGED CHANNEL
 // ===========================================================================
 
 /** The shipped standing-note template (mirror copy - the single owner lives
@@ -3572,9 +3504,7 @@ describe("O. voice artifact goldens (template ownership, placement order, case-t
       const leaf = `${fx.slot}/research/a.md`;
       mkdirSync(`${fx.slot}/research`);
       fx.state.attachPhase("impl", [leaf], true, false);
-      const plan = composeSpawnPlan(fx.state.snapshot(), {
-        classifyPath: (p) => (p === leaf ? "file" : "dir"),
-      });
+      const plan = composeSpawnPlan(fx.state.snapshot());
       if (plan.kind !== "ready") {
         throw new Error(
           `unexpected plan kind over the test window: ${plan.kind}`,
@@ -3590,7 +3520,6 @@ describe("O. voice artifact goldens (template ownership, placement order, case-t
       });
       const h = makeHarness(fx.state, twoProbePreamble(), {
         localOps: fake.ops,
-        classifyPath: (p) => (p === leaf ? "file" : "dir"),
         nonceSource: () => "o-nonce",
       });
       const outcome = await settle(
@@ -3630,9 +3559,7 @@ describe("O. voice artifact goldens (template ownership, placement order, case-t
     });
     st.enterCapability(RESEARCH);
     st.attachPhase("impl", [KEPT_A], true, false);
-    const plan = composeSpawnPlan(st.snapshot(), {
-      classifyPath: () => "file",
-    });
+    const plan = composeSpawnPlan(st.snapshot());
     if (plan.kind !== "ready") {
       throw new Error(
         `unexpected plan kind over the case-trap window: ${plan.kind}`,
@@ -3690,20 +3617,6 @@ const OVERLAY_LATCH: OverlayLatch = (() => {
   }
 })();
 
-/** Real stat-backed classifier - production semantics (missing paths read
- * "unknown", which engages exactly as the production statSync seam would). */
-const realClassify = (p: string): PathKind => {
-  if (!existsSync(p)) return "unknown";
-  const st = lstatSync(p);
-  return st.isSymbolicLink()
-    ? "unknown"
-    : st.isFile()
-      ? "file"
-      : st.isDirectory()
-        ? "dir"
-        : "unknown";
-};
-
 describe.skipIf(!OVERLAY_LATCH.usable)(
   `P. real-syscall legs (host gate: ${OVERLAY_LATCH.reason})`,
   () => {
@@ -3723,9 +3636,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
       state.enterCapability(RESEARCH);
       state.attachPhase("impl", [leaf], true, false);
       const chunks: Buffer[] = [];
-      const ops = createLandlockBashOperations(ws, state, {
-        classifyPath: realClassify,
-      });
+      const ops = createLandlockBashOperations(ws, state);
       const t0 = Date.now();
       const outcome = await settle(
         ops.exec(
@@ -3774,9 +3685,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
       state.enterCapability(RESEARCH);
       state.attachPhase("impl", [leaf], true, false);
       const chunks: Buffer[] = [];
-      const ops = createLandlockBashOperations(ws, state, {
-        classifyPath: realClassify,
-      });
+      const ops = createLandlockBashOperations(ws, state);
       const outcome = await settle(
         ops.exec(`printf 'APPENDED\\n' >> '${leaf}'`, ws, {
           onData: (c: Buffer) => chunks.push(c),
@@ -3811,7 +3720,6 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
       state.attachPhase("impl", [leaf], true, false);
       const chunks: Buffer[] = [];
       const ops = createLandlockBashOperations(ws, state, {
-        classifyPath: realClassify,
         nonceSource: () => "p-whiteout",
       });
       const outcome = await settle(
@@ -3838,7 +3746,6 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
       expect(existsSync(leaf)).toBe(false);
       // Idempotent SECOND pass over the absent leaf: pure no-op settlement.
       const ops2 = createLandlockBashOperations(ws, state2, {
-        classifyPath: realClassify,
         nonceSource: () => "p-whiteout-2",
       });
       const chunks2: Buffer[] = [];
@@ -3862,7 +3769,6 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
       state3.enterCapability(RESEARCH);
       state3.attachPhase("impl", [leaf], true, false);
       const ops3 = createLandlockBashOperations(ws, state3, {
-        classifyPath: realClassify,
         nonceSource: () => "p-whiteout-3",
       });
       const upperDir = `${slot}/.fence-scratch/p-whiteout-3/0/upper`; // mirror-root: the whiteout names itself by its RELATIVE position under the mounted envelope
@@ -3907,17 +3813,13 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
       });
       state.enterCapability(RESEARCH);
       state.attachPhase("impl", [leaf], true, false);
-      const plan = composeSpawnPlan(state.snapshot(), {
-        classifyPath: realClassify,
-      });
+      const plan = composeSpawnPlan(state.snapshot());
       if (plan.kind !== "ready") {
         throw new Error(`unexpected plan kind: ${plan.kind}`);
       }
       const listing = engagedListing(plan.kernelVector, ws);
       const chunks: Buffer[] = [];
-      const ops = createLandlockBashOperations(ws, state, {
-        classifyPath: realClassify,
-      });
+      const ops = createLandlockBashOperations(ws, state);
       const outcome = await settle(
         ops.exec(`true; exit 42`, ws, {
           onData: (c: Buffer) => chunks.push(c),
@@ -3960,9 +3862,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
       state.enterCapability(RESEARCH);
       state.attachPhase("impl", [leaf], true, false);
       const signal = AbortSignal.timeout(500);
-      const ops = createLandlockBashOperations(ws, state, {
-        classifyPath: realClassify,
-      });
+      const ops = createLandlockBashOperations(ws, state);
       const t0 = Date.now();
       const outcome = await settle(
         ops.exec(`sleep 30`, ws, {
@@ -4012,7 +3912,6 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
       state.attachPhase("impl", [leaf], true, false);
       const nonce = "p-killed";
       const ops = createLandlockBashOperations(ws, state, {
-        classifyPath: realClassify,
         nonceSource: () => nonce,
       });
       const pending = ops.exec(`sleep 30`, ws, {
@@ -4096,7 +3995,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
           st.attachPhase("impl", [`${slot}/research/a.md`], true, false);
           return st;
         })(),
-        { classifyPath: realClassify, nonceSource: () => "par-a" },
+        { nonceSource: () => "par-a" },
       );
       const opsB = createLandlockBashOperations(
         ws,
@@ -4109,7 +4008,7 @@ describe.skipIf(!OVERLAY_LATCH.usable)(
           st.attachPhase("impl", [`${slot}/research/b.md`], true, false);
           return st;
         })(),
-        { classifyPath: realClassify, nonceSource: () => "par-b" },
+        { nonceSource: () => "par-b" },
       );
       const scratchParent = `${slot}/.fence-scratch`;
       const seenSnapshots: string[][] = [];
@@ -4187,7 +4086,7 @@ describe("Q. hygiene pins", () => {
     moduleSrc.indexOf("VEHICLE FACT"),
   );
 
-  it("diff-confinement proxy (legacy region untouched by the appended machinery): none of the new artifacts - fixture helpers, scratch-name literals, plan-entry-point references - appear anywhere in the pre-group-I slice; the original groups retain their zero-engagement determinism (their windows classify all-dir through the harness default)", () => {
+  it("diff-confinement proxy (appended-machinery tokens never enter the pre-group-I region): none of the new artifacts - fixture helpers, scratch-name literals, plan-entry-point references - appear anywhere in the pre-group-I slice; the original groups retain their zero-engagement determinism (every original window carries no strictly-concrete survivor, so each stays non-engaged BY CONSTRUCTION under the pure files-only planner)", () => {
     const needles = [
       "openEngagedRoot",
       "seedUpperTree",
@@ -4209,31 +4108,28 @@ describe("Q. hygiene pins", () => {
     }
   });
 
-  it("vector-equivalence over NON-ENGAGED windows (the pure path stays byte-identical to today's composer): for every non-engaged snapshot shape - silent window, pattern-only declarations dropped pre-classification, directory-shaped concrete declarations - the retained composer output deep-equals the planner's kernelVector element-for-element (zero perturbation receipt over the common case)", () => {
-    const shapes: Array<{
-      build: (st: SessionExecutionState) => void;
-      classify: (p: string) => PathKind;
-    }> = [
-      {
-        build: () => undefined, // silent window: no capability entered
-        classify: () => "dir",
-      },
-      {
-        build: (st) => {
-          st.enterCapability(RESEARCH);
-          st.attachPhase("impl", [`${SLOT_ROOT}/research/*.md`], true, false);
-        },
-        classify: () => "dir", // pattern texts never reach classification
-      },
-      {
-        build: (st) => {
-          st.enterCapability(RESEARCH);
-          st.attachPhase("impl", [`${SLOT_ROOT}/research`], true, false);
-        },
-        classify: () => "dir", // dir-shaped concrete declaration stays pure
-      },
+  it("vector-equivalence over NON-ENGAGED windows (the pure path stays byte-identical to today's composer): for every non-engaged snapshot shape - silent window, pattern-text declarations dropped by the concrete filter, coverage-filtered declarations, class-flag-only frames - the retained composer output deep-equals the planner's kernelVector element-for-element (zero perturbation receipt over the common case)", () => {
+    const shapes: Array<(st: SessionExecutionState) => void> = [
+      () => undefined, // silent window: no capability entered
+      (st) => {
+        st.enterCapability(RESEARCH);
+        st.attachPhase("impl", [`${SLOT_ROOT}/research/*.md`], true, false);
+      }, // pattern text: survives coverage, drops at the concrete filter
+      (st) => {
+        st.enterCapability(RESEARCH);
+        st.attachPhase(
+          "impl",
+          [`${WORKSPACE_CWD}/outside-slot.txt`],
+          true,
+          false,
+        );
+      }, // coverage-filtered: the contract's writes never cover the token
+      (st) => {
+        st.enterCapability(RESEARCH);
+        st.attachPhase("impl", [], true, true);
+      }, // class-flag-only frame: no declarations at all
     ];
-    for (const { build, classify } of shapes) {
+    for (const build of shapes) {
       const st = new SessionExecutionState({
         projectSlotRoot: () => SLOT_ROOT,
         workspaceCwd: () => WORKSPACE_CWD,
@@ -4241,7 +4137,7 @@ describe("Q. hygiene pins", () => {
       build(st);
       const snapshot = st.snapshot();
       const legacy = composeKernelWritableSet(snapshot);
-      const plan = composeSpawnPlan(snapshot, { classifyPath: classify });
+      const plan = composeSpawnPlan(snapshot);
       if (plan.kind !== "ready") {
         throw new Error(`expected ready plan, got ${plan.kind}`);
       }
@@ -4272,24 +4168,20 @@ describe("Q. hygiene pins", () => {
     }
   });
 
-  it("dev-marker scan (authored slices carry no internal reference artifacts): zero hits for step-letter markers, document-file pointers, section signs, or date tokens anywhere in the authored module header slice or the suite group-I-onward slice (titles cross-reference spec GROUPS only - a sanctioned, explicit form)", () => {
-    const needles = [
-      "Step 15",
-      "step 15",
-      "S15",
-      "TASK.md",
-      "PLAN.md",
-      "\u00a7",
+  it("dev-marker scan (authored slices carry no development-workflow reference artifacts): zero hits for generic marker families - step-number tokens, step-folder tokens, planning-document filenames, section-sign glyphs, ISO date tokens - anywhere in the authored module-header slice or the suite group-I-onward slice", () => {
+    const patterns: ReadonlyArray<RegExp> = [
+      /\bstep\s+\d+/i,
+      /\bS\d{2}\b/,
+      /\b(?:TASK|PLAN|GOAL|REVIEW|DECISIONS)\.md\b/,
+      /\u00a7/,
+      /\b20\d{2}-\d{2}-\d{2}\b/,
     ];
     for (const [name, slice] of [
       ["module", authoredModuleSlice],
       ["suite", authoredSuiteSlice],
     ] as const) {
-      for (const needle of needles) {
-        expect(
-          slice.includes(needle),
-          `${name}: found ${JSON.stringify(needle)}`,
-        ).toBe(false);
+      for (const pattern of patterns) {
+        expect(slice.match(pattern), `${name}: matched ${pattern}`).toBeNull();
       }
     }
   });

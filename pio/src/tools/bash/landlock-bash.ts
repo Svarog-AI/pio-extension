@@ -597,6 +597,7 @@ function buildComposedScript(
       mirrorMounts[index],
       triple[0],
       triple[1],
+      triple[2],
     ];
     for (const value of values) {
       if (value === "" || value[0] !== "/" || value === "/") {
@@ -768,7 +769,12 @@ function faultErrorReason(fault: unknown): string {
  * a SINGLE-LEVEL mkdir ONLY IF ABSENT (the mount point itself can never be
  * absent - the lower existed by the attach precondition; newly created SUB-
  * directories can; parents are ensured BEFORE their children by the walk
- * order); WHITEOUTS unlink the admitted real path with ENOENT-TOLERANT
+ * order; a RESOLVED mkdir just created the directory - verified by
+ * construction, nothing to re-check - while an EEXIST preexisting target
+ * is END-STATE VERIFIED via lstat: a declared dir-shaped token can
+ * pre-exist as a REGULAR FILE, so a non-directory end state throws the
+ * typed settlement fault instead of being trusted onto later children);
+ * WHITEOUTS unlink the admitted real path with ENOENT-TOLERANT
  * verification (absence IS the committed state - idempotent whiteout
  * commit: a concurrent frame deleting the same declared leaf first is
  * SUCCESS, never a spurious refusal). EVERY OTHER KIND discards + notes
@@ -809,26 +815,32 @@ async function commitAdmittedEntries(
         );
       }
     } else if (entry.kind === "dir") {
-      let dirMissing: boolean;
+      // SINGLE-LEVEL mkdir ONLY IF ABSENT + END-STATE VERIFICATION on the
+      // preexisting corner: a RESOLVED mkdir just created the directory
+      // (fresh - verified by construction, nothing to re-check); an EEXIST
+      // rejection means the real target PRE-EXISTS and could be ANY kind
+      // (a declared dir-shaped token can pre-exist as a REGULAR FILE), so
+      // VERIFY THE END STATE instead of trusting the errno class (same
+      // doctrine as the whiteout arm); any other rejection is an ensure-
+      // fault.
+      let needsVerification = false;
       try {
         await mkdir(entry.target);
-        dirMissing = false;
       } catch (fault) {
-        dirMissing = true;
         if (
           typeof fault === "object" &&
           fault !== null &&
           "code" in fault &&
           fault.code === "EEXIST"
         ) {
-          dirMissing = false; // present already - single-level mkdir iff absent
+          needsVerification = true; // present already - verify the end state
         } else {
           throw new Error(
             `settlement commit aborted while ensuring ${entry.target}: ${faultErrorReason(fault)}`,
           );
         }
       }
-      if (dirMissing) {
+      if (needsVerification) {
         let info: Awaited<ReturnType<typeof lstat>> | undefined;
         try {
           info = await lstat(entry.target);
@@ -1214,10 +1226,10 @@ export function createLandlockBashOperations(
       // The session-minted ABSOLUTE triples (mount = lowerdir; upper/work =
       // the capture geometry) - THE MINT STAYS SESSION-SIDE, the carrier
       // only mounts them.
-      const triples: Array<[string, string, string]> = [];
+      const mountTriples: Array<[string, string, string]> = [];
       for (let index = 0; index < plan.mirrorMounts.length; index += 1) {
         const base = `${captureRoot}/${index}`;
-        triples.push([
+        mountTriples.push([
           plan.mirrorMounts[index],
           `${base}/upper`,
           `${base}/work`,
@@ -1232,7 +1244,7 @@ export function createLandlockBashOperations(
       let mintOk = false;
       try {
         await mkdir(captureRoot, { recursive: false });
-        for (const triple of triples) {
+        for (const triple of mountTriples) {
           await mkdir(triple[1], { recursive: true });
           await mkdir(triple[2], { recursive: true });
         }
@@ -1310,7 +1322,7 @@ export function createLandlockBashOperations(
           carrierPath,
           plan.kernelVector,
           plan.mirrorMounts,
-          triples,
+          mountTriples,
           shellConfig,
           command,
         );
@@ -1415,7 +1427,7 @@ export function createLandlockBashOperations(
         let discarded: string[];
         try {
           const manifest: WalkEntry[] = [];
-          for (const triple of triples) {
+          for (const triple of mountTriples) {
             await walkUpperTree(triple[1], triple[0], manifest);
           }
           discarded = await commitAdmittedEntries(

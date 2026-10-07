@@ -2442,6 +2442,15 @@ describe("J. planner-refusal & pre-child engaged faults (all typed, zero spawns,
         renderMechanismRefusal("supervisor-table-malformed"),
       );
       expect(rec.calls).toHaveLength(0);
+      // Supervisor-preamble workdir-component coverage note: the preamble
+      // validates ALL FOUR triple components (mount / lower / upper /
+      // work) - the fourth component's absoluteness is guaranteed BY
+      // CONSTRUCTION at the mint site (absolute template literal over the
+      // absolute slot-root channel), so its corner is production-
+      // unreachable from this public seam; the carrier's committed silent-
+      // 105 total table validation stands downstream (fail-closed intact).
+      // Pinned here by construction; the apply-layer corners stay exercised
+      // through the reachable seam above.
       const bandClasses: Array<
         [number, Parameters<typeof renderMechanismRefusal>[0]]
       > = [
@@ -2960,6 +2969,56 @@ describe("L. manifest walk -> verdict -> selective commit (scripted local-ops st
         "a.md",
         "zblocked.md",
       ]);
+      // No verdict line over a rejection: channel carries nothing.
+      expect(rec.chunks).toHaveLength(0);
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it("dir-kind entry over a FILE-occupied real target (EEXIST preexisting): the ensure-mkdir end-state verification refuses with the module-owned settlement-fault head + the not-a-settled-directory form; the occupied file stays its original regular file (byte-pristine), capture torn down, no surviving staging, NO verdict line", async () => {
+    const fx = openEngagedRoot();
+    try {
+      fx.state.enterCapability({
+        name: "dirfile",
+        writes: ["research/sub"],
+        allowProjectWrites: true,
+      });
+      const subTarget = `${fx.slot}/research/sub`;
+      mkdirSync(`${fx.slot}/research`);
+      writeFileSync(subTarget, "i-am-a-file"); // real target PRE-EXISTS as a REGULAR FILE
+      fx.state.attachPhase("impl", [subTarget], true, false);
+      const rec = dataRecorder();
+      const fake = scriptedOps((box) => {
+        const triple = triplesOf(box.cmd)[0]!;
+        seedUpperTree(triple.upper, { files: {}, dirs: ["sub"] });
+        return { exitCode: 0 };
+      });
+      const h = makeHarness(fx.state, twoProbePreamble(), {
+        localOps: fake.ops,
+        nonceSource: () => "l-nonce",
+      });
+      const outcome = await settle(
+        h.ops.exec("dir-over-file", EXEC_CWD, { onData: rec.onData }),
+      );
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) {
+        const message = errorMessage(outcome.error);
+        expect(message.startsWith(SETTLE_HEAD)).toBe(true);
+        expect(message).toContain(`${subTarget} is not a settled directory`);
+        expect(message).toContain(
+          "admitted entries committed before the fault stand",
+        );
+      }
+      // The occupied real target is UNTOUCHED (still a regular file with
+      // its original bytes - no half-written replacement, no mkdir side
+      // effect past the refused ensure).
+      const info = lstatSync(subTarget);
+      expect(info.isFile()).toBe(true);
+      expect(readFileSync(subTarget, "utf8")).toBe("i-am-a-file");
+      // Capture fully torn down; no surviving staging in the real dir.
+      expect(existsSync(`${fx.slot}/.fence-capture/l-nonce`)).toBe(false);
+      expect(readdirSync(`${fx.slot}/research`).sort()).toEqual(["sub"]);
       // No verdict line over a rejection: channel carries nothing.
       expect(rec.chunks).toHaveLength(0);
     } finally {

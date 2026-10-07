@@ -26,14 +26,39 @@ artifact verbatim.
   required host binary (`cc`/`gcc` is dev-time-only, for regeneration).
 - The committed prebuilt binary is what runs. Byte-reproducibility across
   rebuilds is NOT claimed; behavioral parity via the `--probe` line is the bar.
+- Amendment (2026-10-07): the SUPERVISOR MODE (per-spawn private user+mount
+  realm over caller-declared mirror mounts) and the COMBINED APPLICABILITY
+  PROBE ARM (`--overlay-probe`) landed under the same source file, script,
+  bin layout, and build discipline; their protocol home is this document
+  (dispatch ladder, supervisor/combined-arm sections, fault rows 105-111,
+  amendment record). Apply mode and the existing probe arm stay
+  behavior-and-protocol-byte-stable; the 2026-10-04 measured entry stands as
+  HISTORY for the apply/probe surface.
 
 ## Argv protocol
 
-Two modes. Every FAULT exits with a distinct classified code BEFORE any
-`execve`; a successful apply hands the exit code to the COMMAND (`execve`
-replaces the process). Apply mode is SILENT on all fault paths: stdout AND
-stderr carry EXACTLY ZERO bytes - the classified exit code is the entire
-channel. Typed refusal rendering lives in the TS layer (`src/tools/bash/`).
+Dispatch routes on the EXACT first token (ladder below). Every FAULT exits
+with a distinct classified code BEFORE any `execve`; a successful apply hands
+the exit code to the COMMAND (`execve` replaces the process). Apply mode is
+SILENT on all fault paths: stdout AND stderr carry EXACTLY ZERO bytes - the
+classified exit code is the entire channel. Typed refusal rendering lives in
+the TS layer (`src/tools/bash/`). SUPERVISOR mode obeys the SAME silence law
+on EVERY fault path; the TWO PROBE ARMS are the documented line-emitting
+exceptions (exactly ONE pinned stdout line each in BOTH outcomes, a short
+stderr diagnostic on FAILURE only).
+
+### Dispatch ladder
+
+| first token | arm |
+|-------------|-----|
+| `--probe` | applicability probe (UNCHANGED; exactly one token total) |
+| `--overlay-probe ABS_ROOT` | combined applicability probe (realm establishment over a minted throwaway triple; see the combined-arm section below) |
+| `--mount LOWER UPPER WORK [...] -- CMD_ARGV...` | realm-established supervisor mode (see the supervisor section below) |
+| anything else | apply mode (UNCHANGED parser; its discipline stands - the zero-churn proof) |
+
+An unknown first token therefore reaches the apply-mode parser and is
+refused there by ITS grammar (100) - the ladder adds no new refusal surface
+of its own.
 
 ### Probe mode (exact form)
 
@@ -59,7 +84,7 @@ landlock-helper probe abi=<DISCOVERED_MAX|0> pin=<PINNED_ABI> status=<ok|fail>
 sequence completed); `status=fail` <=> exit 101 (includes the above-pin
 identity refusal). Zero other stdout bytes.
 
-### Apply mode (default; any invocation without `--probe`)
+### Apply mode (fallthrough; any first token outside the dispatch ladder)
 
 ```
 landlock-helper --write ABS_PATH [--write ABS_PATH ...] -- CMD_ARGV...
@@ -94,9 +119,150 @@ concern). The helper chdirs nowhere and mutates no env. Stream purity: on
 success the command's stdout/stderr are PRISTINE (the helper emitted nothing
 beforehand); the exit code is the command's.
 
+## Supervisor mode (realm-established; `--mount` lead)
+
+```
+landlock-helper --mount LOWER UPPER WORK [--mount LOWER UPPER WORK ...] -- CMD_ARGV...
+```
+
+Lead grammar (SILENT parse/validate - ANY violation exits 105 STRICTLY
+BEFORE any system state change; the silence law holds across BOTH fault-
+emitting modes):
+
+- Lead tokens before the FIRST `--`: `--mount LOWER UPPER WORK` TRIPLES ONLY.
+  Any other leading token (including `--write`) => 105. A dangling/
+incomplete triple => 105.
+- Each value must be NON-EMPTY, ABSOLUTE, and NOT exactly `/` (root-component
+  rejection at carrier level - twin of the planner's root-mount refusal).
+- At least ONE complete triple required; the `--` separator is REQUIRED with
+  at least ONE child token after it; missing separator / empty table /
+  missing child => 105.
+- IDENTICAL triples dedupe silently (first occurrence kept, order preserved -
+  the `--write` dedupe rule mirrored). DISTINCT overlapping/nested triples are
+  NOT grammar faults: the kernel refuses what it refuses at attach time
+  (typed 110 fail-closed); the PLANNER refuses true nesting earlier at the
+  spawn site (defense in depth, not grammar).
+- Everything after the FIRST `--` passes through VERBATIM as the command
+  invocation (the carrier never rewrites tail bytes).
+
+Sequence: STEP (a) identity capture (the supervisor's OWN uid/gid read NOW,
+while still holding outer-world credentials - the map CONTENT derives from
+these captured values only) -> `pipe()` + `clone(CLONE_NEWUSER | SIGCHLD)`
+over a STATIC 256 KiB stack (=> 106) -> parent-only SIGPIPE-ignore
+refinement (below) -> HARDENED MAP WRITES (below) -> CONTINUE-VERDICT write
+(=> 108) -> `waitpid` propagation (below). The in-realm legs (unshare /
+mount / execve) run in the cloned vehicle behind the verdict gate. Inherited
+verbatim, as in apply mode: cwd, environment, signals (DEFAULT dispositions
+- the carrier installs no handlers ANYWHERE; group-kill semantics stay the
+spawner's concern - killing the top process terminates the whole realm,
+kernel-side, with the private mount namespace released at the last process in
+it). On success the command's streams are PRISTINE (the carrier emitted
+nothing beforehand) and its exit code propagates UNTRANSFORMED (step h
+below).
+
+## Realm-establishment mechanics (shared by both arms)
+
+One shared establishment sequence runs ONCE per invocation; the two arms
+differ only in EMISSION (arms emit; production is silent) and in the
+POST-MOUNT continuation (production: `execve`; arm: verify / umount / remove
+/ ok line).
+
+1. **(a) Identity capture.** The supervisor's own uid/gid are read BEFORE the
+   clone (an identity read taken inside an unmapped userns reports the
+   overflow uid and violates the single-line rule).
+2. **(b) `pipe()` + `clone(CLONE_NEWUSER | SIGCHLD)`** over the static 256
+   KiB stack (no heap anywhere in the carrier); failure => 106. The
+   ONE-BYTE VERDICT CHANNEL is this pipe: the vehicle BLOCKS on the read end
+   before doing anything; `'c'` proceeds, `'d'`/EOF/error aborts WITHOUT
+   establishing (partial maps NEVER continue - fail-closed by construction;
+   the abort emits nothing - the emitter partition owes none here).
+3. **SIGPIPE-disposition refinement (PARENT ONLY).** Strictly AFTER clone and
+   BEFORE the first verdict-channel write, the parent sets SIGPIPE to
+   ignore - a DISPOSITION change. Without it a vanished child at the verdict
+   write would terminate the parent with SIGPIPE before the committed 108
+   classification could run. The vehicle was cloned BEFORE the change and
+   KEEPS DEFAULT SIGPIPE (restricted-lineage pipeline semantics
+   unperturbed). Documented residual corner (character-identical to the
+   SIGSTOP residual): a lineage dying by SIGPIPE surfaces at the parent as
+   the dead-code backstop numeric exit because the self-raised SIGPIPE is
+   ignored here. SDK kill vectors (TERM/KILL) are unaffected.
+4. **(d) HARDENED MAP WRITES**, IN ORDER, SINGLE LINE each, content derived
+   from step (a) ONLY: `setgroups` = `deny` FIRST (owner ruling - inner-root
+   declined), then `uid_map` = the single line
+   `<captured-uid> <captured-uid> 1`, then `gid_map` = the single line
+   `<captured-gid> <captured-gid> 1` (runtime-derived - NO hardcoded
+   literals). Non-ENOENT open/write failure => 107; the ENOENT signature
+   (child VANISHED) => 108; on any non-108 failure a best-effort `'d'` deny
+   verdict is written (errors deliberately ignored). ZOMBIE PHYSICS
+   (measured 2026-10-07 on the provisioned stripped host; derivation
+   artifacts were session-local and intentionally never committed): map
+   targets of a KILLED-BUT-UNREAPED (zombie) child fault EPERM (errno 13)
+   at `open()` on all three of setgroups/uid_map/gid_map - so pre-map
+   targeted kills classify 107 (the non-ENOENT rung); after reaping they
+   fault ENOENT (errno 2) - the 108 signature, which also covers the
+   verdict-write EPIPE corner.
+5. **(e) CONTINUE-VERDICT.** Write `'c'`; failure (a vanishing child between
+   the maps and the verdict) => 108; close the write end.
+6. **(f)-(g) IN-REALM (vehicle).** `unshare(CLONE_NEWNS)` (=> 109); per
+   table entry IN ORDER the overlay ATTACH with MOUNT POINT = LOWERDIR via
+   raw `mount(2)` under the six-arg register discipline (=> 110); then the
+   continuation: production `execve`s the tail VERBATIM (returning => 104
+   REUSE - same class and meaning as apply mode, now reached THROUGH the
+   chain); arm: IN-FLIGHT VERIFY while mounted (seed readable through the
+   merged view with EXACT bytes; a new file created THROUGH THE MERGED VIEW
+   present in the UPPER with EXACT bytes - CoW evidence while mounted; =>
+   110) -> `umount(2)` as raw `SYS_umount2` with flags 0 (=> 111, ARM ONLY -
+   the production supervisor NEVER tears down) -> SWALLOW-ALL removal of the
+   minted tree (never faults) -> ok report line -> `_exit(0)`.
+7. **(h) `waitpid` PROPAGATION** - untransformed in observational class:
+   normal exit => `_exit(WEXITSTATUS)` VERBATIM; signal death => self-raise
+   the SAME signal under inherited DEFAULT dispositions (no handlers
+   installed anywhere in the carrier); dead-code `_exit(255)` backstop.
+   WIFSTOPPED is invisible to a plain waitpid - NO stop-loop code; the
+   external-SIGSTOP residual is identical to the shipped apply-mode posture
+   (documented, not handled).
+
+## Combined applicability probe arm (`--overlay-probe`)
+
+Exact form:
+
+```
+landlock-helper --overlay-probe ABS_ROOT
+```
+
+Arm grammar (SILENT 105 - existence IS grammar, checked before any system
+state change): exactly ONE value; NON-EMPTY, ABSOLUTE, EXISTING DIRECTORY
+(checked by `open(O_RDONLY|O_DIRECTORY|O_CLOEXEC)`).
+
+The arm mints a tiny HIDDEN subtree `<ABS_ROOT>/.llh-overlay-probe/{lower,
+upper,work}` plus a fixed-byte SEED (`llh-overlay-probe-seed\n`, 23 bytes,
+in lower), runs the committed establishment over the seeded triple (mount
+point = lowerdir), VERIFIES IN FLIGHT, UMOUNTS, REMOVES the minted tree
+SWALLOW-ALL, and emits the report. It isolates ITS OWN disposable process
+pair only - nothing long-lived is ever mounted (the standing ratchet doctrine
+extends: the agent/session process stays unrestricted AND unmounted).
+
+Report: EXACTLY ONE stdout line in BOTH outcomes, zero other stdout bytes;
+a FAILURE adds ONE short stderr diagnostic. Protocol constants:
+
+```
+landlock-helper overlay realm=<ok|fail> status=<ok|fail>
+landlock-helper overlay: failed at <stage> (errno=N)
+```
+
+`<stage>` in {setup, realm-clone, realm-map, child-early-death, unshare,
+mount, verify, umount}; `(errno=N)` carries the errno observed at the
+failing operation. Truth table: VEHICLE stages (realm-clone / realm-map /
+child-early-death / unshare) report `realm=fail`; the NON-VEHICLE legs
+(setup / mount / verify / umount) report `realm=ok`; `status=ok` iff exit
+0. AT MOST ONE report line plus at most one diagnostic per execution
+(continue-verdict partition: setup faults emit at the top level, vehicle
+faults in the parent, unshare/mount/verify/umount and the ok cell in the
+child). `exit 0` <=> `realm=ok status=ok`.
+
 ## Fault-code table
 
-Reserved band 100-199; the current assignment uses the low half. Every fault
+Reserved band 100-199; the current assignment occupies 100-111. Every fault
 exits with a DISTINCT code before any execve.
 
 | code | class | trigger |
@@ -106,10 +272,21 @@ exits with a DISTINCT code before any execve.
 | 102 | `add-rule-failure` | spec-path open failed or `landlock_add_rule` failed (not a directory, vanished, capability gap, ...) |
 | 103 | `restrict-self-failure` | `landlock_restrict_self` failed |
 | 104 | `execve-failure` | `execve` of the passed-through argv failed after restriction |
+| 105 | `supervisor-table-malformed` | supervisor-family argv violation: mirror-table grammar (unknown leading token incl. `--write`, dangling/incomplete triple, empty/relative/root component, missing table/separator/child) OR combined-arm arity/path (absent/non-directory root) - STRICTLY pre-state-change, SILENT in both fault modes |
+| 106 | `realm-clone-failure` | vehicle `clone(CLONE_NEWUSER \| SIGCHLD)` (or the verdict pipe) failed - issued before any in-realm work |
+| 107 | `realm-map-write-failure` | parent-side map open/write failure, NON-ENOENT (EPERM on zombie-target opens rides here per the zombie-physics record) - parent-side window pre-any-in-realm-work |
+| 108 | `child-early-death` | ENOENT signature at the map targets (child vanished) OR the continue-verdict write failed - the pre-map/post-reap/EPIPE corners |
+| 109 | `realm-unshare-failure` | in-realm `unshare(CLONE_NEWNS)` failed - post-realm pre-shell |
+| 110 | `overlay-mount-failure` | setup / attach / in-flight verification umbrella - before the shell exec (carries the kernel overlap-refusal classes: absent/non-directory components, workdir nested under a declaring directory, self-overlapping components) |
+| 111 | `overlay-umount-failure` | COMBINED ARM ONLY - the production supervisor never tears down |
 
-Band discipline: codes are 100-104; 105-199 stay reserved. Once `execve`
+Band discipline: codes are 100-111; 112-199 stay reserved. Once `execve`
 succeeds the helper is gone, so a band code can ONLY mean machinery fault -
-that is the disambiguation, BY CONSTRUCTION. DOCUMENTED RESIDUAL CORNER: a
+that is the disambiguation, BY CONSTRUCTION. The seven supervisor-family
+codes (105-111) are ALL issued strictly pre-execve as well, so the
+disambiguation invariant HOLDS across the whole band; 104 is REUSED at the
+execve boundary itself, now reached THROUGH the establishment chain (same
+class, same meaning). DOCUMENTED RESIDUAL CORNER: a
 user command that completes (fully fenced) with an exit code inside the band
 is interpreted by the TS consumer conservatively as a machinery fault
 (enforcement was active throughout; only the refusal text could mislabel the
@@ -249,7 +426,12 @@ production resolver + parity rows live in the TS layer). Committed:
 by the TS-side classifier (loud typed refusal, never an unsandboxed run);
 building/committing the aarch64 prebuild is the future fleet-widening pass
 described above. Dual compile/script guard: the `#error` (source) + the named refusal
-(script) make no unmeasured-constant path exist.
+(script) make no unmeasured-constant path exist. The supervisor family adds NO
+architecture-specific surface: the raw syscall forms (`mount` / `umount2` /
+`mkdir`) and the userns/unshare mechanics ride the SAME per-arch admission
+guard - x86_64 remains the only MEASURED class; aarch64 stays loud-refused
+until the measure-and-pin pass runs the FULL arm battery (probe line +
+combined arm + supervisor fault ladder) on real target hardware.
 
 ## Measured ABI/pin record
 
@@ -272,6 +454,45 @@ FILLED AT BUILD TIME:
   positions were cross-checked against the running kernel's own published
   userspace API header (agrees; naming only).
 
+AMENDED AT SUPERVISOR-FAMILY LAND (2026-10-07, UTC):
+
+- Date: 2026-10-07 (UTC). Kernel: `7.0.0-34-generic` (x86_64), Ubuntu 24.04
+  HWE. Toolchain: gcc/cc 13.3.0, `-O2 -Wall -Wextra -Werror -static` (flags
+  UNCHANGED).
+- Pre-amendment baseline re-proof: the committed prebuild's `--probe` line
+  stayed BYTE-STABLE (`landlock-helper probe abi=8 pin=8 status=ok`, exit
+  0) and the apply-mode parity rows held before the amendment landed.
+- Establishment mechanic measured GREEN: clone/userns + hardened maps +
+  verdict channel + `unshare(CLONE_NEWNS)` + overlay attach (mount point =
+  lowerdir) + in-flight verify (seed EXACT bytes through the merged view;
+  CoW file `cow.txt` = `llh-overlay-probe-cow\n`, 22 bytes, created THROUGH
+  THE MERGED VIEW and asserted in the upper WHILE MOUNTED) + umount +
+  cleanup receipt (combined arm `realm=ok status=ok`, exit 0, minted
+  subtree removed).
+- Failure ladder measured: silent 105 grammar battery (18 malformed shapes,
+  both fault modes); 108 via the targeted early-child kill race (zombie-
+  physics corners per the citation in the mechanics section); 110 induced
+  (absent lowerdir; non-directory upperdir; workdir nested under another
+  mirror's declaring directory; the arm SETUP fault over a non-writable
+  root with the `errno=13` diagnostic golden); 106 / 109 / 111 untargetable
+  hermetically on a healthy kernel (presence/distinctness ride the band-
+  integrity assertions - the 103 treatment, verbatim precedent).
+- Overlap physics (this kernel): cross-pair containment where the
+  overlapped component is a WORKDIR located under another mirror's declaring
+  directory is REFUSED at attach (typed 110); plain lower-containment
+  STACKING and shared uppers/workdirs are LEGAL on this kernel (private
+  mount tables) - the planner's true-nesting refusal at the spawn site
+  remains the production backstop (defense in depth, not grammar).
+- Residue data point: the mode-000 kernel-managed workdir metadata dir left
+  after a realm death WITHOUT umount (owner-rmdirable, readdir-unlistable;
+  ABSENT after a clean umount) - recorded for the session-side cleanup
+  contract (see Safety notes).
+- Raw-form mechanical equivalences (host glibc x86_64): plain unmount issues
+  as `SYS_umount2` with flags 0 (plain umount == umount2 flags 0 - the libc
+  umount prototype lives outside the sanctioned header set); `mkdir(2)`
+  likewise via `SYS_mkdir` (declared include set stays portable-libc-only).
+  The six-arg trailing-zero register discipline EXTENDS to both raw forms.
+
 ## Regeneration procedure
 
 Requirements: Linux x86_64 (aarch64 refused loud until measured - see above),
@@ -291,7 +512,11 @@ CC=gcc ./regenerate.sh           # explicit compiler
 
 Idempotent; no network; no fetches; no timestamp-dependent inputs. The
 rebuilt binary's `--probe` line must equal the pinned-format line with
-`status=ok` (behavioral parity - byte parity is NOT claimed).
+`status=ok` (behavioral parity - byte parity is NOT claimed). The post-build
+smoke bar REMAINS the `--probe` line; supervisor-family functional parity of
+a tmp rebuild is asserted by the suite's tmp-rebuild row (`--probe` line
+green AND the combined arm green over a fresh mkdtemp root - byte parity NOT
+claimed, per the standing bar).
 
 ## Safety notes
 
@@ -321,3 +546,22 @@ rebuilt binary's `--probe` line must equal the pinned-format line with
   band-integrity assertions in the suite, and its existence keeps the 103
   class loud rather than silent if a future kernel/hardware combination ever
   exercises it.
+- REALM ISOLATION IS PER-SPAWN AND THROWAWAY: the user+mount realm exists
+  only for the direct vehicle process and dies with it; the supervisor and
+  the agent/session process never ENTER it. Maps are single-line same-uid/gid
+  with `setgroups` DENIED and inner-root declined (no privilege-growth path);
+  the vehicle aborts WITHOUT establishing on any non-`'c'` verdict
+  (fail-closed by construction).
+- SCRATCH-TRIPLE OWNERSHIP: the caller (session/TS layer) mints and removes
+  the lower/upper/work trees; the carrier NEITHER creates nor removes caller
+  paths in production mode (it only mounts OVER them). Arm-mode mint/removal
+  is internal to the arm (hidden subtree, swallow-all, never faults).
+- KERNEL-MANAGED WORKDIR METADATA (residue data point, measured 2026-10-07):
+  when a realm dies WITHOUT umounting (the production NO-self-teardown
+  posture), the overlayfs workdir retains a kernel-managed mode-000
+  metadata subdirectory owned by the mapped caller uid (EMPTY after a
+  nominal run on the measured host). Naive readdir-descent removal faults
+  EACCES trying to LIST it although the owner CAN `rmdir` it directly;
+  clean umount (the arm path) leaves NO such residue. Session-side cleanup
+  owes the same tolerance (make it owner-readable, retry, rmdir-first when
+  unreadable-but-empty - best effort, receipts asserted BEFORE teardown).

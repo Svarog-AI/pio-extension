@@ -1,9 +1,12 @@
-import { spawnSync } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
+  rmdirSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -36,17 +39,28 @@ const PKG_ROOT = path.resolve(
 /** Suite-local replica const block (lockstep home - the production resolver's
  * parity rows assert its constants match these replicas). EVERY exit-code
  * assertion in this file references this block; raw band literals occur
- * nowhere else in the file (mechanical audit). */
+ * nowhere else in the file (mechanical audit). The supervisor-family keys
+ * (the realm-established supervisor mode + the combined applicability probe
+ * arm) carry PINNED camelCase names matching the vendor protocol's class
+ * names - the production fault-vocabulary bridge reuses them byte-exact
+ * (single-source continuity, no renaming at the bridge). */
 const FAULT_CODES = {
   malformedSpec: 100,
   abiMissingOrBlocked: 101,
   addRuleFailure: 102,
   restrictSelfFailure: 103,
   execveFailure: 104,
+  supervisorTableMalformed: 105,
+  realmCloneFailure: 106,
+  realmMapWriteFailure: 107,
+  childEarlyDeath: 108,
+  realmUnshareFailure: 109,
+  overlayMountFailure: 110,
+  overlayUmountFailure: 111,
 };
 
 /** Reserved fault band - codes are issued only pre-execve, by construction.
- * The current assignment uses the low half; the rest stays reserved. */
+ * The current assignment uses 100-111; 112-199 stay reserved. */
 const FAULT_BAND: readonly [number, number] = [100, 199];
 
 /** Probe report line - exact form, ASCII, LF-terminated, exactly one line in
@@ -260,7 +274,7 @@ function assertSound(res: SpawnRecord): void {
 /* ---------- A. Protocol & classification - ALWAYS HOLD (kernel-independent) ---------- */
 
 describe("landlock-helper suite-local const block (A)", () => {
-  it("the five fault codes are pairwise distinct, inside the reserved band, and none zero", () => {
+  it("the twelve fault codes are pairwise distinct, inside the reserved band, and none zero", () => {
     const codes = Object.values(FAULT_CODES);
     expect(new Set(codes).size).toBe(codes.length);
     for (const code of codes) {
@@ -679,4 +693,1258 @@ describe("landlock-helper regeneration (E)", () => {
       expect(p.abi).toBe(p.pin);
     },
   );
+});
+
+/* ========================================================================
+ * F/G/H - supervisor mode & combined applicability probe arm
+ *
+ * Appended after group E (letter convention continues). Posture carried
+ * from A-E: real binary, real kernel; mkdtemp isolation; skipNote on every
+ * dependent row; exact-byte/code assertions; assertSound hang guard with
+ * the sanctioned signal-golden exception. F holds pure protocol &
+ * classification content; G is the supervisor-family malformed battery
+ * (helper-presence gated); H is the real-syscall golden set
+ * (combined-latch gated - skips WITH surfaced reason on deficient hosts).
+ * ======================================================================== */
+
+/** Overlay report line - exact form, ASCII, LF-terminated, exactly one line
+ * in BOTH outcomes (protocol constants; the vendor README quotes them).
+ * Parallel to the probe line WITHOUT abi/pin fields - the mechanic has no
+ * kernel-series identity gate; the realm field carries the
+ * realm-establishment applicability. */
+const OVERLAY_LINE_RE =
+  /^landlock-helper overlay realm=(ok|fail) status=(ok|fail)$/;
+
+interface OverlayLine {
+  readonly realm: "ok" | "fail";
+  readonly status: "ok" | "fail";
+}
+
+/** TOTAL manual parser beside parseProbeLine (discriminant-narrowed - never
+ * a raw cast). Accepts ALL four syntactic cells including the
+ * documented-unreachable one - reachability is the consumer's concern,
+ * totality here. */
+function parseOverlayLine(text: string): OverlayLine | null {
+  const m = OVERLAY_LINE_RE.exec(text);
+  if (m === null) return null;
+  const realm: "ok" | "fail" = m[1] === "fail" ? "fail" : "ok";
+  const status: "ok" | "fail" = m[2] === "fail" ? "fail" : "ok";
+  return { realm, status };
+}
+
+/** Stderr diagnostic form (COMBINED-ARM FAILURE ONLY), mirroring the
+ * probe-diagnostic shape over the eight-stage vocabulary. */
+const OVERLAY_STAGES: ReadonlyArray<string> = [
+  "setup",
+  "realm-clone",
+  "realm-map",
+  "child-early-death",
+  "unshare",
+  "mount",
+  "verify",
+  "umount",
+];
+const OVERLAY_DIAG_RE =
+  /^landlock-helper overlay: failed at (setup|realm-clone|realm-map|child-early-death|unshare|mount|verify|umount) \(errno=\d+\)\n$/;
+
+/* ----------------- combined capability latch (once, at collection) -------------
+ *
+ * MODULE-SCOPE COMBINED CAPABILITY LATCH: one --overlay-probe run over a
+ * fresh mkdtemp root at collection, shaped on probeCapability. Doubles as
+ * the first live exercise of the arm (and of parseOverlayLine). usable <=>
+ * parsed ok cell AND exit 0; the reason echoes the observed line/exit.
+ * Deficient hosts degrade honestly - every dependent row skips WITH the
+ * surfaced reason (identical doctrine to the Landlock latch). */
+const overlayRoot = mkdtempSync(path.join(os.tmpdir(), "llh-overlay-latch-"));
+
+interface OverlayCapabilityReport {
+  readonly usable: boolean;
+  /** Surfaced skip reason ("none" when usable). */
+  readonly reason: string;
+}
+
+function probeOverlayCapability(root: string): OverlayCapabilityReport {
+  if (!CAP.helperExists) {
+    return { usable: false, reason: CAP.reason };
+  }
+  const r = recordSpawn(HELPER, ["--overlay-probe", root], HELPER_TIMEOUT_MS);
+  if (r.abnormal) {
+    return {
+      usable: false,
+      reason:
+        "--overlay-probe abnormal (signal death or timeout - capture evidence before trusting it)",
+    };
+  }
+  const line = r.stdout.endsWith("\n") ? r.stdout.slice(0, -1) : r.stdout;
+  const p = parseOverlayLine(line);
+  const usable =
+    p !== null && p.realm === "ok" && p.status === "ok" && r.status === 0;
+  return {
+    usable,
+    reason: usable
+      ? "none"
+      : `--overlay-probe refused (exit=${String(r.status)}, stdout=${JSON.stringify(line)})`,
+  };
+}
+
+const OV = probeOverlayCapability(overlayRoot);
+if (OV.usable) {
+  console.log(
+    "[landlock-helper suite] overlay-realm usable: combined arm green",
+  );
+} else {
+  console.warn(
+    `[landlock-helper suite] combined-arm rows will skip - ${OV.reason}`,
+  );
+}
+
+afterAll(() => {
+  rmSync(overlayRoot, { recursive: true, force: true });
+});
+
+const ovNote = skipNote(OV.usable ? "none" : OV.reason);
+
+/* ------------------------- H-group spawn & /proc helpers -------------------- */
+
+/** Local close-outcome record with SIGNAL visibility (the H-group death-
+ * class goldens need it; the shared SpawnRecord deliberately stays
+ * untouched). */
+interface CloseOutcome {
+  readonly code: number | null;
+  readonly signal: string | null;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+/** Await the process close, collecting both streams (chunks decoded as
+ * utf8). The node-level timeout option stays distinguishable from the
+ * forwarded-signal goldens: callers pass killSignal SIGKILL so a wall-
+ * clock guard kill can never masquerade as a forwarded-SIGTERM golden. */
+function awaitClose(proc: ChildProcess): Promise<CloseOutcome> {
+  return new Promise((resolve) => {
+    let out = "";
+    let err = "";
+    proc.stdout?.on("data", (d: Buffer | string) => {
+      out += typeof d === "string" ? d : d.toString("utf8");
+    });
+    proc.stderr?.on("data", (d: Buffer | string) => {
+      err += typeof d === "string" ? d : d.toString("utf8");
+    });
+    proc.on("close", (code, sig) => {
+      resolve({ code, signal: sig, stdout: out, stderr: err });
+    });
+  });
+}
+
+/** Close await raced against a HARD CAP (H12 only). Physics of record
+ * (measured 2026-10-07 on the provisioned host, under vitest load): a
+ * rare host-side close-delivery stall has been observed where the
+ * CARRIER process tree provably exits promptly while node's 'close'
+ * event lags (socketpair teardown / scheduler jitter). One such attempt
+ * must never be allowed to burn the row's vitest wall budget, so the
+ * await is capped; on a cap trip the caller proves the NO-HANG receipt
+ * by LINEAGE FORENSICS (nudge-kill + settle) instead of promptness. */
+function awaitCloseCapped(
+  proc: ChildProcess,
+  capMs: number,
+): Promise<CloseOutcome & { readonly stalled: boolean }> {
+  return new Promise((resolve) => {
+    let out = "";
+    let err = "";
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const finish = (result: CloseOutcome & { stalled: boolean }): void => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      }
+    };
+    timer = setTimeout(() => {
+      finish({
+        code: null,
+        signal: null,
+        stdout: "",
+        stderr: "",
+        stalled: true,
+      });
+    }, capMs);
+    proc.stdout?.on("data", (d: Buffer | string) => {
+      out += typeof d === "string" ? d : d.toString("utf8");
+    });
+    proc.stderr?.on("data", (d: Buffer | string) => {
+      err += typeof d === "string" ? d : d.toString("utf8");
+    });
+    proc.on("close", (code, sig) => {
+      finish({ code, signal: sig, stdout: out, stderr: err, stalled: false });
+    });
+  });
+}
+
+const sleepMs = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+/** Numeric pids currently present under /proc (no full-parsing churn). */
+function liveProcPids(): number[] {
+  return readdirSync("/proc")
+    .filter((n) => /^\d+$/.test(n))
+    .map(Number);
+}
+
+/** Max pid currently present - bounds the fresh-pid scan range.
+ * (No full-/proc storms.) */
+function maxPidSnapshot(): number {
+  let max = 0;
+  for (const p of liveProcPids()) {
+    if (p > max) max = p;
+  }
+  return max;
+}
+
+/** state + ppid from /proc/<pid>/stat. The comm field may contain
+ * whitespace and parens - anchor on the LAST ")" and read the remainder
+ * (state = index 0, ppid = index 1). Null when the entry vanished. */
+function procTriple(pid: number): { state: string; ppid: number } | null {
+  try {
+    const line = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const anchor = line.lastIndexOf(")");
+    if (anchor < 0) return null;
+    const rest = line
+      .slice(anchor + 1)
+      .trim()
+      .split(/\s+/);
+    return { state: rest[0], ppid: Number(rest[1]) };
+  } catch {
+    return null; // vanished mid-scan - the scan loops handle churn
+  }
+}
+
+/** Direct children of helperPid still present (live OR zombie). */
+function descendantsOf(
+  helperPid: number,
+): Array<{ pid: number; state: string }> {
+  const out: Array<{ pid: number; state: string }> = [];
+  for (const p of liveProcPids()) {
+    const t = procTriple(p);
+    if (t !== null && t.ppid === helperPid) {
+      out.push({ pid: p, state: t.state });
+    }
+  }
+  return out;
+}
+
+/** Settle receipt: no residual direct children (live or zombie) within the
+ * brief settle window - orphaned realm children reparented to init are
+ * reaped, zombie-free. */
+async function settleClean(pid: number): Promise<boolean> {
+  for (let round = 0; round < 10; round++) {
+    if (descendantsOf(pid).length === 0) return true;
+    await sleepMs(150);
+  }
+  return descendantsOf(pid).length === 0;
+}
+
+/* Teardown helpers (H-group ONLY).
+ *
+ * Physics of record (measured 2026-10-07 on the provisioned host, kernel
+ * 7.0.0-34-generic): when a realm dies WITHOUT umounting (the production
+ * NO-self-teardown posture), the overlayfs workdir retains a KERNEL-
+ * MANAGED mode-000 metadata subdirectory (owner = the mapped caller uid,
+ * EMPTY after a nominal run). A plain readdir-descent (e.g. rmSync
+ * recursive) faults EACCES trying to LIST it, although the owner CAN
+ * rmdir it directly. Clean umount (the combined-arm path) leaves NO such
+ * residue. The session-side walk owes the same tolerance at Step 15.
+ * Best-effort by construction: row receipts are asserted BEFORE teardown,
+ * so a residue here can never mask a row outcome. */
+function purgeDirEntries(dir: string): void {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    // Owner-unreadable metadata dir: every entry in these trees is owned
+    // by the session uid - make it visible to the owner and retry once.
+    try {
+      chmodSync(dir, 0o700);
+      names = readdirSync(dir);
+    } catch {
+      names = []; // genuinely unreadable: leave the leaf, best-effort
+    }
+  }
+  for (const n of names) {
+    const q = path.join(dir, n);
+    try {
+      const s = statSync(q, { throwIfNoEntry: false });
+      if (s?.isDirectory()) {
+        purgeDirEntries(q);
+        try {
+          rmdirSync(q);
+        } catch {
+          try {
+            chmodSync(q, 0o700);
+            rmdirSync(q);
+          } catch {
+            // best-effort - mkdtemp residue under /tmp is tolerated
+          }
+        }
+      } else {
+        rmSync(q, { force: true });
+      }
+    } catch {
+      // swallow-all teardown (see above)
+    }
+  }
+}
+
+/** Best-effort recursive removal tolerant of the mode-000 workdir
+ * metadata dir (see the physics note above). */
+function purgeTree(p: string): void {
+  purgeDirEntries(p);
+  try {
+    rmdirSync(p);
+  } catch {
+    try {
+      chmodSync(p, 0o700);
+      rmdirSync(p);
+    } catch {
+      // best-effort - mkdtemp residue under /tmp is tolerated
+    }
+  }
+}
+
+describe("landlock-helper supervisor & combined-arm protocol (F)", () => {
+  it("the overlay-line grammar accepts the pinned cells and rejects off-form bytes", () => {
+    // All four syntactic cells accepted - the parser stays TOTAL over the
+    // cells (the documented-unreachable one included).
+    expect(
+      OVERLAY_LINE_RE.test("landlock-helper overlay realm=ok status=ok"),
+    ).toBe(true);
+    expect(
+      OVERLAY_LINE_RE.test("landlock-helper overlay realm=fail status=fail"),
+    ).toBe(true);
+    expect(
+      OVERLAY_LINE_RE.test("landlock-helper overlay realm=ok status=fail"),
+    ).toBe(true);
+    expect(
+      OVERLAY_LINE_RE.test("landlock-helper overlay realm=fail status=ok"),
+    ).toBe(true);
+    expect(
+      OVERLAY_LINE_RE.test("other-helper overlay realm=ok status=ok"),
+    ).toBe(false);
+    expect(OVERLAY_LINE_RE.test("landlock-helper overlay realm=ok")).toBe(
+      false,
+    );
+    expect(
+      OVERLAY_LINE_RE.test("landlock-helper overlay status=ok realm=ok"),
+    ).toBe(false);
+    expect(
+      OVERLAY_LINE_RE.test("landlock-helper overlay realm=maybe status=ok"),
+    ).toBe(false);
+    expect(
+      OVERLAY_LINE_RE.test("landlock-helper overlay realm=ok status=ok extra"),
+    ).toBe(false);
+    expect(
+      OVERLAY_LINE_RE.test(
+        "landlock-helper overlay realm=ok status=ok\nsecond\n",
+      ),
+    ).toBe(false);
+  });
+
+  it("the overlay-line parser narrows every cell to its typed shape and rejects the off-form set", () => {
+    expect(
+      parseOverlayLine("landlock-helper overlay realm=ok status=ok"),
+    ).toEqual({
+      realm: "ok",
+      status: "ok",
+    });
+    expect(
+      parseOverlayLine("landlock-helper overlay realm=fail status=fail"),
+    ).toEqual({ realm: "fail", status: "fail" });
+    expect(
+      parseOverlayLine("landlock-helper overlay realm=ok status=fail"),
+    ).toEqual({
+      realm: "ok",
+      status: "fail",
+    });
+    // The documented-unreachable cell parses too - totality over the
+    // syntactic cells; reachability is the consumer's concern.
+    expect(
+      parseOverlayLine("landlock-helper overlay realm=fail status=ok"),
+    ).toEqual({ realm: "fail", status: "ok" });
+    expect(
+      parseOverlayLine("other-helper overlay realm=ok status=ok"),
+    ).toBeNull();
+    expect(parseOverlayLine("landlock-helper overlay realm=ok")).toBeNull();
+    expect(
+      parseOverlayLine("landlock-helper overlay status=ok realm=ok"),
+    ).toBeNull();
+    expect(
+      parseOverlayLine("landlock-helper overlay realm=maybe status=ok"),
+    ).toBeNull();
+    expect(
+      parseOverlayLine("landlock-helper overlay realm=ok status=ok extra"),
+    ).toBeNull();
+    expect(
+      parseOverlayLine("landlock-helper overlay realm=ok status=ok\nsecond\n"),
+    ).toBeNull();
+  });
+
+  it("the stderr diagnostic form accepts every stage word and rejects the off-form set", () => {
+    for (const stage of OVERLAY_STAGES) {
+      expect(
+        OVERLAY_DIAG_RE.test(
+          `landlock-helper overlay: failed at ${stage} (errno=13)\n`,
+        ),
+        `stage ${stage} must match the diagnostic form`,
+      ).toBe(true);
+    }
+    expect(
+      OVERLAY_DIAG_RE.test(
+        "landlock-helper overlay: failed at bogus (errno=13)\n",
+      ),
+    ).toBe(false);
+    expect(
+      OVERLAY_DIAG_RE.test(
+        "landlock-helper overlay: failed at mount (errno=)\n",
+      ),
+    ).toBe(false);
+    expect(
+      OVERLAY_DIAG_RE.test(
+        "landlock-helper overlay: failed at mount (errno=13) junk\n",
+      ),
+    ).toBe(false);
+  });
+});
+
+/* ------------------- G. Supervisor-family malformed battery ------------------- */
+
+describe("landlock-helper supervisor-family malformed battery (G)", () => {
+  const gSkip = !CAP.helperExists;
+  const note = skipNote(CAP.helperExists ? "none" : CAP.reason);
+  // Absolute mkdtemp-derived path values where a value is needed - existence
+  // irrelevant: validation precedes ANY syscall.
+  const GL = path.join(frame, "glower");
+  const GU = path.join(outside, "gupper");
+  const GW = path.join(scratch, "gwork");
+
+  const shapes: ReadonlyArray<readonly [string, readonly string[]]> = [
+    ["zero triples", ["--mount", "--", SH, "-c", "true"]],
+    [
+      "dangling triple with two values before --",
+      ["--mount", GL, GU, "--", SH, "-c", "true"],
+    ],
+    ["dangling triple with one value", ["--mount", GL, "--", SH, "-c", "true"]],
+    [
+      "relative lower",
+      ["--mount", "rel/lower", GU, GW, "--", SH, "-c", "true"],
+    ],
+    [
+      "relative upper",
+      ["--mount", GL, "rel/upper", GW, "--", SH, "-c", "true"],
+    ],
+    ["relative work", ["--mount", GL, GU, "rel/work", "--", SH, "-c", "true"]],
+    [
+      "empty value inside a triple",
+      ["--mount", GL, "", GW, "--", SH, "-c", "true"],
+    ],
+    ["root lowerdir /", ["--mount", "/", GU, GW, "--", SH, "-c", "true"]],
+    ["root upperdir /", ["--mount", GL, "/", GW, "--", SH, "-c", "true"]],
+    ["root workdir /", ["--mount", GL, GU, "/", "--", SH, "-c", "true"]],
+    ["no -- separator at all", ["--mount", GL, GU, GW]],
+    [
+      "unknown leading flag inside the supervisor section",
+      ["--mount", GL, GU, GW, "--bogus", "--", SH, "-c", "true"],
+    ],
+    [
+      "--write inside the supervisor section (cross-mode isolation)",
+      ["--mount", GL, GU, GW, "--write", frame, "--", SH, "-c", "true"],
+    ],
+    ["valid table but no child token after --", ["--mount", GL, GU, GW, "--"]],
+    ["arm missing value", ["--overlay-probe"]],
+    ["arm relative path", ["--overlay-probe", "relative/path"]],
+    ["arm extra token", ["--overlay-probe", frame, "extra"]],
+    [
+      "arm non-existent absolute path (existence is grammar)",
+      ["--overlay-probe", path.join(scratch, "absent-subtree")],
+    ],
+  ];
+  for (const [shape, args] of shapes) {
+    it.skipIf(gSkip)(`${shape} => silent refusal${note}`, () => {
+      const res = runFenced(args);
+      assertSound(res);
+      expect(res.status).toBe(FAULT_CODES.supervisorTableMalformed);
+      expect(res.stdout).toBe("");
+      expect(res.stderr).toBe("");
+    });
+  }
+
+  it.skipIf(gSkip)(
+    `apply discipline intact: --mount inside an APPLY lead section stays ${FAULT_CODES.malformedSpec} (fall-through isolation proof)${note}`,
+    () => {
+      const res = runFenced([
+        "--write",
+        frame,
+        "--mount",
+        GL,
+        GU,
+        GW,
+        "--",
+        SH,
+        "-c",
+        "true",
+      ]);
+      assertSound(res);
+      expect(res.status).toBe(FAULT_CODES.malformedSpec);
+      expect(res.stdout).toBe("");
+      expect(res.stderr).toBe("");
+    },
+  );
+});
+
+/* --------------- H. Real-syscall goldens (combined-latch gated) --------------- */
+
+describe("landlock-helper supervisor real-syscall goldens (H)", () => {
+  // Combined-latch gated: skip WITH surfaced reason on deficient hosts
+  // (degrade-honestly - identical doctrine to the existing rows). Fresh
+  // mkdtemp roots per row group; absolute paths everywhere in child commands
+  // (no cwd dependence).
+  const hSkip = !OV.usable;
+
+  it.skipIf(hSkip)(
+    `H1 arm GREEN: exact ok-cell line, exit 0, minted subtree absent, caller root survives${ovNote}`,
+    () => {
+      const root = mkdtempSync(path.join(os.tmpdir(), "llh-h1-"));
+      try {
+        const res = runFenced(["--overlay-probe", root]);
+        assertSound(res);
+        expect(res.stdout).toBe("landlock-helper overlay realm=ok status=ok\n");
+        expect(res.status).toBe(0);
+        expect(res.stderr).toBe("");
+        expect(parseOverlayLine(res.stdout.slice(0, -1))).toEqual({
+          realm: "ok",
+          status: "ok",
+        });
+        // Cleanup receipt: the arm removes ONLY its minted subtree.
+        expect(existsSync(path.join(root, ".llh-overlay-probe"))).toBe(false);
+        expect(existsSync(root)).toBe(true);
+      } finally {
+        purgeTree(root);
+      }
+    },
+  );
+
+  it.skipIf(hSkip)(
+    `H2 arm setup denial (read-only caller root) => ${FAULT_CODES.overlayMountFailure} + setup diagnostic${ovNote}`,
+    () => {
+      const root = mkdtempSync(path.join(os.tmpdir(), "llh-h2-"));
+      try {
+        chmodSync(root, 0o555); // owned by the test uid => mkdir EACCES
+        const res = runFenced(["--overlay-probe", root]);
+        assertSound(res);
+        expect(res.stdout).toBe(
+          "landlock-helper overlay realm=ok status=fail\n",
+        );
+        expect(res.status).toBe(FAULT_CODES.overlayMountFailure);
+        const m = OVERLAY_DIAG_RE.exec(res.stderr);
+        expect(
+          m,
+          `diagnostic line: ${JSON.stringify(res.stderr)}`,
+        ).not.toBeNull();
+        expect(m?.[1]).toBe("setup"); // errno deliberately NOT pinned
+      } finally {
+        chmodSync(root, 0o755); // restore for teardown
+        purgeTree(root);
+      }
+    },
+  );
+
+  it.skipIf(hSkip)(
+    `H3 capture golden: writes CoW into the upper, real lower pristine (preemptive-only at carrier level)${ovNote}`,
+    () => {
+      const root = mkdtempSync(path.join(os.tmpdir(), "llh-h3-"));
+      const L = path.join(root, "lower");
+      const U = path.join(root, "upper");
+      const W = path.join(root, "work");
+      mkdirSync(L);
+      mkdirSync(U);
+      mkdirSync(W);
+      writeFileSync(path.join(L, "d.md"), "seed\n");
+      try {
+        const res = runFenced([
+          "--mount",
+          L,
+          U,
+          W,
+          "--",
+          SH,
+          "-c",
+          `printf appended > ${L}/n.md && printf s >> ${L}/d.md`,
+        ]);
+        assertSound(res);
+        expect(res.status).toBe(0);
+        expect(res.stdout).toBe("");
+        expect(res.stderr).toBe("");
+        // THE core mechanic: nothing landed in the REAL environment.
+        expect(readFileSync(path.join(L, "d.md"), "utf8")).toBe("seed\n");
+        expect(existsSync(path.join(L, "n.md"))).toBe(false);
+        // The UPPER holds the CoW evidence with EXACT bytes.
+        expect(readFileSync(path.join(U, "d.md"), "utf8")).toBe("seed\ns");
+        expect(readFileSync(path.join(U, "n.md"), "utf8")).toBe("appended");
+      } finally {
+        purgeTree(root);
+      }
+    },
+  );
+
+  it.skipIf(hSkip)(
+    `H3b dedupe control: identical duplicate triple does not double-fault${ovNote}`,
+    () => {
+      const root = mkdtempSync(path.join(os.tmpdir(), "llh-h3b-"));
+      const L = path.join(root, "lower");
+      const U = path.join(root, "upper");
+      const W = path.join(root, "work");
+      mkdirSync(L);
+      mkdirSync(U);
+      mkdirSync(W);
+      try {
+        const res = runFenced([
+          "--mount",
+          L,
+          U,
+          W,
+          "--mount",
+          L,
+          U,
+          W,
+          "--",
+          SH,
+          "-c",
+          "true",
+        ]);
+        // Identical-triple silent dedupe prevents a double-attach fault
+        // (behavioral proof of the mirrored --write dedupe rule).
+        assertSound(res);
+        expect(res.status).toBe(0);
+        expect(res.stdout).toBe("");
+        expect(res.stderr).toBe("");
+      } finally {
+        purgeTree(root);
+      }
+    },
+  );
+
+  it.skipIf(hSkip)(
+    `H4 read-through: reads served from the real lower AT the declared path${ovNote}`,
+    () => {
+      const root = mkdtempSync(path.join(os.tmpdir(), "llh-h4-"));
+      const L = path.join(root, "lower");
+      const U = path.join(root, "upper");
+      const W = path.join(root, "work");
+      mkdirSync(L);
+      mkdirSync(U);
+      mkdirSync(W);
+      writeFileSync(path.join(L, "d.md"), "seed\n");
+      try {
+        const res = runFenced([
+          "--mount",
+          L,
+          U,
+          W,
+          "--",
+          SH,
+          "-c",
+          `cat ${L}/d.md`,
+        ]);
+        assertSound(res);
+        expect(res.status).toBe(0);
+        expect(res.stdout).toBe("seed\n");
+        expect(res.stderr).toBe("");
+      } finally {
+        purgeTree(root);
+      }
+    },
+  );
+
+  it.skipIf(hSkip)(
+    `H5 composed dual-mechanic golden: on-list write commits to the upper WHILE the off-frame write dies EACCES in the same run${ovNote}`,
+    () => {
+      const root = mkdtempSync(path.join(os.tmpdir(), "llh-h5-"));
+      const L = path.join(root, "lower");
+      const U = path.join(root, "upper");
+      const W = path.join(root, "work");
+      const OFF = path.join(root, "outside");
+      mkdirSync(L);
+      mkdirSync(U);
+      mkdirSync(W);
+      mkdirSync(OFF);
+      const offTarget = path.join(OFF, "off.txt");
+      try {
+        // THE production-chain shape: supervisor -> INNER apply-mode carrier
+        // -> shell (Landlock applies INSIDE the realm over the overlaid
+        // world). EXPECTED physics (LSM-hook-through-overlays envelope
+        // semantics): the on-list write THROUGH THE MERGED VIEW commits
+        // while the off-frame write dies EACCES - every governed write
+        // passes through exactly ONE regime (the kernel polices the open
+        // real world at attempt time; the capture polices exactly the
+        // declaring folder). IF MEASURED NEGATIVE (on-list write refused):
+        // BLOCKING PHYSICS FINDING - record typed and close the step
+        // BLOCKED; NO improvised workaround grant, NO alternate geometry.
+        const res = runFenced([
+          "--mount",
+          L,
+          U,
+          W,
+          "--",
+          HELPER,
+          "--write",
+          L,
+          "--",
+          SH,
+          "-c",
+          `printf ok > ${L}/m.md && echo marked > ${offTarget}`,
+        ]);
+        assertSound(res);
+        expect(res.status).toBe(2);
+        expect(res.stderr).toBe(
+          `${SH}: 1: cannot create ${offTarget}: Permission denied\n`,
+        );
+        expect(res.stdout).toBe(""); // "marked" never printed
+        expect(readFileSync(path.join(U, "m.md"), "utf8")).toBe("ok");
+        expect(existsSync(path.join(L, "m.md"))).toBe(false); // real lower untouched
+        expect(existsSync(offTarget)).toBe(false);
+      } finally {
+        purgeTree(root);
+      }
+    },
+  );
+
+  it.skipIf(hSkip)(
+    `H6 exit propagation (out-of-band): exit 42 VERBATIM, stdout exact${ovNote}`,
+    () => {
+      const root = mkdtempSync(path.join(os.tmpdir(), "llh-h6-"));
+      const L = path.join(root, "lower");
+      const U = path.join(root, "upper");
+      const W = path.join(root, "work");
+      mkdirSync(L);
+      mkdirSync(U);
+      mkdirSync(W);
+      try {
+        const res = runFenced([
+          "--mount",
+          L,
+          U,
+          W,
+          "--",
+          SH,
+          "-c",
+          "printf p; exit 42",
+        ]);
+        assertSound(res);
+        expect(res.status).toBe(42);
+        expect(res.stdout).toBe("p");
+        expect(res.stderr).toBe("");
+      } finally {
+        purgeTree(root);
+      }
+    },
+  );
+
+  it.skipIf(hSkip)(
+    `H7 in-band passthrough: coincidental in-band exit OPAQUE through the FULL CHAIN${ovNote}`,
+    () => {
+      // The conservative in-band reading is the TS consumer's job - the
+      // carrier never interprets; band pass-through is a documented
+      // continuation under the extended chain.
+      const root = mkdtempSync(path.join(os.tmpdir(), "llh-h7-"));
+      const L = path.join(root, "lower");
+      const U = path.join(root, "upper");
+      const W = path.join(root, "work");
+      mkdirSync(L);
+      mkdirSync(U);
+      mkdirSync(W);
+      try {
+        const res = runFenced(["--mount", L, U, W, "--", SH, "-c", "exit 101"]);
+        assertSound(res);
+        expect(res.status).toBe(101);
+        expect(res.stdout).toBe("");
+        expect(res.stderr).toBe("");
+      } finally {
+        purgeTree(root);
+      }
+    },
+  );
+
+  it.skipIf(hSkip)(
+    `H8 signal forwarding: SIGTERM death-class preserved (the forwarded signal IS the golden)${ovNote}`,
+    async () => {
+      const root = mkdtempSync(path.join(os.tmpdir(), "llh-h8-"));
+      const L = path.join(root, "lower");
+      const U = path.join(root, "upper");
+      const W = path.join(root, "work");
+      mkdirSync(L);
+      mkdirSync(U);
+      mkdirSync(W);
+      try {
+        // assertSound does NOT apply to this row (sanctioned signal-golden
+        // exception): the node-level timeout kill uses SIGKILL so the
+        // wall-clock guard can never masquerade as the forwarded-SIGTERM
+        // golden; soundness rides the row's timeout guards instead.
+        const proc = spawn(
+          HELPER,
+          ["--mount", L, U, W, "--", SH, "-c", "kill -TERM $$"],
+          {
+            stdio: "pipe",
+            timeout: 10_000,
+            killSignal: "SIGKILL",
+          },
+        );
+        const res = await awaitClose(proc);
+        expect(res.signal).toBe("SIGTERM");
+        expect(res.code).toBe(null);
+        expect(res.stdout).toBe("");
+        expect(res.stderr).toBe("");
+      } finally {
+        purgeTree(root);
+      }
+    },
+    15_000,
+  );
+
+  it.skipIf(hSkip)(
+    `H9 execve failure REUSED through the chain exits ${FAULT_CODES.execveFailure} (silent)${ovNote}`,
+    () => {
+      const root = mkdtempSync(path.join(os.tmpdir(), "llh-h9-"));
+      const L = path.join(root, "lower");
+      const U = path.join(root, "upper");
+      const W = path.join(root, "work");
+      mkdirSync(L);
+      mkdirSync(U);
+      mkdirSync(W);
+      try {
+        const side = path.join(root, "side.txt");
+        const res = runFenced([
+          "--mount",
+          L,
+          U,
+          W,
+          "--",
+          "/nonexistent-shell-xyz",
+          "-c",
+          `printf x > ${side}`,
+        ]);
+        assertSound(res);
+        expect(res.status).toBe(FAULT_CODES.execveFailure);
+        expect(res.stdout).toBe("");
+        expect(res.stderr).toBe("");
+        expect(existsSync(side)).toBe(false); // child side effects ABSENT
+      } finally {
+        purgeTree(root);
+      }
+    },
+  );
+
+  const h10Shapes: ReadonlyArray<
+    readonly [string, (root: string) => { args: string[]; side: string }]
+  > = [
+    [
+      "H10a lowerdir ABSENT (guaranteed-absent literal under a fresh root)",
+      (root) => {
+        const U = path.join(root, "upper");
+        const W = path.join(root, "work");
+        mkdirSync(U);
+        mkdirSync(W);
+        const side = path.join(root, "side.txt");
+        const args = [
+          "--mount",
+          path.join(root, "absent-lower"),
+          U,
+          W,
+          "--",
+          SH,
+          "-c",
+          `printf x > ${side}`,
+        ];
+        return { args, side };
+      },
+    ],
+    [
+      "H10b upperdir pre-created as a REGULAR FILE",
+      (root) => {
+        const L = path.join(root, "lower");
+        const W = path.join(root, "work");
+        mkdirSync(L);
+        mkdirSync(W);
+        writeFileSync(path.join(root, "upper"), "x\n"); // regular FILE
+        const side = path.join(root, "side.txt");
+        const args = [
+          "--mount",
+          L,
+          path.join(root, "upper"),
+          W,
+          "--",
+          SH,
+          "-c",
+          `printf x > ${side}`,
+        ];
+        return { args, side };
+      },
+    ],
+    [
+      "H10c workdir nested UNDER the lower subtree (overlap violation)",
+      (root) => {
+        const L = path.join(root, "lower");
+        mkdirSync(L);
+        const W = path.join(L, "work"); // nested under the lower
+        mkdirSync(W);
+        const side = path.join(root, "side.txt");
+        const args = [
+          "--mount",
+          L,
+          path.join(root, "upper"),
+          W,
+          "--",
+          SH,
+          "-c",
+          `printf x > ${side}`,
+        ];
+        return { args, side };
+      },
+    ],
+    [
+      "H10d two DISTINCT OVERLAPPING triples in one table (the second workdir nests UNDER the first lower - measured kernel overlap refusal)",
+      (root) => {
+        // Physics of record (measured 2026-10-07, kernel 7.0.0-34-generic):
+        // this kernel REFUSES cross-pair containment when the overlapped
+        // component is a WORKDIR located under another mirror's declaring
+        // directory (typed 110 at attach); plain lower-containment STACKING
+        // and shared uppers/workdirs are LEGAL on this kernel (private mount
+        // tables), so the planner's true-nesting refusal at the spawn site
+        // remains the production backstop (defense in depth, not grammar).
+        const L1 = path.join(root, "l1");
+        const L2 = path.join(root, "l2");
+        const U1 = path.join(root, "u1");
+        const U2 = path.join(root, "u2");
+        const W1 = path.join(root, "w1");
+        mkdirSync(L1);
+        mkdirSync(L2);
+        mkdirSync(U1);
+        mkdirSync(U2);
+        mkdirSync(W1);
+        const side = path.join(root, "side.txt");
+        const args = [
+          "--mount",
+          L1,
+          U1,
+          W1,
+          "--mount",
+          L2,
+          U2,
+          L1, // WORKDIR nested under LOWER1 - the kernel refuses this
+          "--",
+          SH,
+          "-c",
+          `printf x > ${side}`,
+        ];
+        return { args, side };
+      },
+    ],
+  ];
+  for (const [shape, fixture] of h10Shapes) {
+    it.skipIf(hSkip)(
+      `${shape} => ${FAULT_CODES.overlayMountFailure} (silent, no side effects)${ovNote}`,
+      () => {
+        const root = mkdtempSync(path.join(os.tmpdir(), "llh-h10-"));
+        try {
+          const { args, side } = fixture(root);
+          const res = runFenced(args);
+          assertSound(res);
+          expect(res.status).toBe(FAULT_CODES.overlayMountFailure);
+          expect(res.stdout).toBe("");
+          expect(res.stderr).toBe("");
+          expect(existsSync(side)).toBe(false); // child side effects ABSENT
+        } finally {
+          purgeTree(root);
+        }
+      },
+    );
+  }
+
+  it.skipIf(hSkip)(
+    `H11 group-wide kill: top-process signal death, prompt termination, no residual descendants, lower pristine${ovNote}`,
+    async () => {
+      const root = mkdtempSync(path.join(os.tmpdir(), "llh-h11-"));
+      const L = path.join(root, "lower");
+      const U = path.join(root, "upper");
+      const W = path.join(root, "work");
+      mkdirSync(L);
+      mkdirSync(U);
+      mkdirSync(W);
+      writeFileSync(path.join(L, "h11.md"), "pristine\n");
+      try {
+        // DETERMINISTIC group-wide kill: spawn the supervisor DETACHED
+        // (own process group - pgid leadership persisting across the whole
+        // fork/exec chain is exactly what is under test; reproduces a
+        // delegate that owns the group).
+        const proc = spawn(
+          HELPER,
+          ["--mount", L, U, W, "--", SH, "-c", "sleep 30"],
+          {
+            stdio: "pipe",
+            detached: true,
+            timeout: 10_000,
+            killSignal: "SIGKILL",
+          },
+        );
+        const pid = proc.pid;
+        if (pid === undefined) {
+          throw new Error("spawn did not report a pid (POSIX invariant)");
+        }
+        // Fixed short delay - safely past the measured establishment span
+        // (~9-19 ms worst case); the lineage is established and idle.
+        await sleepMs(250);
+        const tKill = Date.now();
+        process.kill(-pid, "SIGKILL"); // GROUP-wide kill on the own group
+        const res = await awaitClose(proc);
+        const elapsed = Date.now() - tKill;
+        expect(res.signal).toBe("SIGKILL"); // TOP process's signal death
+        expect(res.code).toBe(null);
+        expect(
+          elapsed,
+          "no-hang guarantee: bounded-partner liveness settles promptly",
+        ).toBeLessThan(2_000);
+        expect(
+          await settleClean(pid),
+          "NO RESIDUAL live descendants (orphans reparented to init are reaped - zombie-free)",
+        ).toBe(true);
+        // Preemptive-only: the real lower is PRISTINE.
+        expect(readFileSync(path.join(L, "h11.md"), "utf8")).toBe("pristine\n");
+        expect(readdirSync(L)).toStrictEqual(["h11.md"]);
+      } finally {
+        purgeTree(root);
+      }
+    },
+    15_000,
+  );
+
+  it.skipIf(hSkip)(
+    `H12 targeted early-child kill race: bounded budget, receipts always-on${ovNote}`,
+    async () => {
+      // Physics citation (spec-session measurement, provisioned host,
+      // stripped tree, 2026-10-07; re-derivation pointer
+      // /tmp/s14-spec-probe.py - never committed): map targets of a
+      // killed-but-UNREAPED (zombie) child fault EPERM (errno 13) at
+      // open() on all three of setgroups/uid_map/gid_map; after reaping they
+      // fault ENOENT (errno 2). Consequence under the committed errno
+      // ladder: a pre-map targeted kill classifies 107 (the non-ENOENT rung);
+      // the ENOENT=>108 signature applies to the post-reap state and to the
+      // verdict-write EPIPE corner. The ladder stands as committed - the
+      // classification composes mechanically with host variance.
+      const MAX_ATTEMPTS = 200;
+      const deadline = Date.now() + 20_000; // self-wall-budgeted
+      const CLOSE_CAP_MS = 4_000; // hard per-attempt close-delivery bound
+      const dist: Record<string, number> = {};
+      let stalledClean = 0; // host-side close stalls forensically cleared
+      let hit: { attempt: number; code: number } | null = null;
+      let attempts = 0;
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        if (Date.now() >= deadline || hit !== null) break;
+        attempts++;
+        // Fresh scratch triple PER ATTEMPT: a reused workdir accumulates
+        // the kernel-managed mode-000 metadata dir across realm deaths,
+        // and that state can wedge later mounts on this kernel (measured
+        // 2026-10-07 - see the teardown-physics note below the helpers).
+        // Fresh mkdtemp roots remove the variable entirely and match the
+        // spec row ("per attempt, spawn a valid supervisor + trivial
+        // child"); the max-pid snapshot at spawn bounds the fresh-pid
+        // scan, per the spec.
+        const root = mkdtempSync(path.join(os.tmpdir(), "llh-h12-"));
+        const L = path.join(root, "lower");
+        const U = path.join(root, "upper");
+        const W = path.join(root, "work");
+        mkdirSync(L);
+        mkdirSync(U);
+        mkdirSync(W);
+        try {
+          const baseline = maxPidSnapshot(); // bounds the fresh-pid scan
+          const proc = spawn(
+            HELPER,
+            ["--mount", L, U, W, "--", SH, "-c", "true"],
+            {
+              stdio: "pipe",
+              timeout: 8_000,
+              killSignal: "SIGKILL",
+            },
+          );
+          const helperPid = proc.pid;
+          if (helperPid === undefined) {
+            throw new Error("spawn did not report a pid (POSIX invariant)");
+          }
+          // Tightly scan the fresh-pid range for the realm child
+          // (ppid == helper pid).
+          let victim = 0;
+          let hi = baseline;
+          const pollDeadline = Date.now() + 40;
+          outer: for (;;) {
+            await sleepMs(2);
+            if (Date.now() > pollDeadline) break;
+            for (const p of liveProcPids()) {
+              if (p > hi) hi = p;
+              if (p <= baseline) continue;
+              const t = procTriple(p);
+              if (t !== null && t.ppid === helperPid) {
+                victim = p;
+                break outer;
+              }
+            }
+          }
+          let killed = false;
+          if (victim > 0) {
+            try {
+              process.kill(victim, "SIGKILL");
+              killed = true;
+            } catch {
+              // ESRCH: the child completed between scan and kill - a lost
+              // race, not a fault.
+            }
+          }
+          const tKill = Date.now();
+          const res = await awaitCloseCapped(proc, CLOSE_CAP_MS);
+          const elapsed = Date.now() - tKill;
+          if (res.stalled) {
+            // Cap tripped (host-side close-delivery stall, not a carrier
+            // hang - measured physics above). NO-HANG receipt is re-proven
+            // by LINEAGE FORENSICS: nudge-kill the (almost certainly
+            // already-gone) process and REQUIRE the NO-RESIDUAL receipt to
+            // hold. A genuinely wedged carrier would leave a live lineage.
+            try {
+              proc.kill("SIGKILL");
+            } catch {
+              // ESRCH: already gone - exactly the forensic outcome needed.
+            }
+            const clean = await settleClean(helperPid);
+            if (clean) {
+              stalledClean += 1;
+              dist["stall:lineage-clean"] =
+                (dist["stall:lineage-clean"] ?? 0) + 1;
+            } else {
+              dist["stall:lineage-residual:receipt-broken"] =
+                (dist["stall:lineage-residual:receipt-broken"] ?? 0) + 1;
+            }
+          } else {
+            const corner =
+              res.code === FAULT_CODES.realmMapWriteFailure ||
+              res.code === FAULT_CODES.childEarlyDeath;
+            const silent = res.stdout === "" && res.stderr === "";
+            const clean = await settleClean(helperPid);
+            const baseKey = corner
+              ? killed
+                ? `hit:${res.code}`
+                : `corner-untriggered:${res.code}`
+              : res.signal !== null
+                ? `signal:${res.signal}`
+                : `exit:${res.code}`;
+            // Always-on receipts per attempt regardless of outcome:
+            // no-hang (prompt), silence on classified corners, no residual.
+            const broken = !clean || !silent || elapsed >= 2_000;
+            const finalKey = broken ? `${baseKey}:receipt-broken` : baseKey;
+            dist[finalKey] = (dist[finalKey] ?? 0) + 1;
+            if (corner && killed && silent && elapsed < 2_000 && clean) {
+              hit = { attempt, code: res.code }; // committed code for the corner reached
+            }
+          }
+        } finally {
+          purgeTree(root);
+        }
+      }
+      // Terminal states: hit => recorded via the distribution below;
+      // exhaustion => the row STAYS GREEN with the always-on receipts
+      // asserted plus the typed note recording the observed distribution
+      // + the physics citation (the deterministic acceptance core is the
+      // no-hang/no-residual/zero-unexpected-code receipt on EVERY
+      // non-stalled attempt, plus the lineage forensics receipt on every
+      // stalled one; a permanent skip would perturb the standing zero-
+      // skip-drift count bar - so the note-plus-pass terminal is the
+      // specified one either way).
+      const brokenKeys = Object.keys(dist).filter((k) =>
+        k.endsWith(":receipt-broken"),
+      );
+      expect(
+        brokenKeys.length,
+        `no-hang/no-residual/silence receipts held on every attempt (distribution: ${JSON.stringify(dist)})`,
+      ).toBe(0);
+      console.log(
+        `[landlock-helper suite] H12 targeted-kill race: ${attempts} attempts, hit=${hit === null ? "none" : `attempt-${hit.attempt} code-${hit.code}`}, distribution=${JSON.stringify(dist)}${stalledClean > 0 ? `, host-side-close-stalls(lineage-clean)=${stalledClean}` : ""} (physics basis: killed-but-unreaped map targets fault EPERM at open => pre-map kills classify 107; post-reap fault ENOENT => 108 at the verdict-write EPIPE corner; measured 2026-10-07 on the provisioned stripped host)`,
+      );
+    },
+    35_000,
+  );
+
+  const h13Reason = !ccAvailable
+    ? "no cc/gcc compiler found on this host"
+    : !CAP.usable
+      ? `Landlock unusable here - the script's own probe-smoke gate refuses: ${CAP.reason}`
+      : OV.reason;
+  const h13Skip = h13Reason !== "none";
+  const h13Note = skipNote(h13Reason);
+
+  it.skipIf(h13Skip)(
+    `H13 tmp-rebuild parity: regenerated binary passes BOTH probes green (cleanup receipts hold)${h13Note}`,
+    () => {
+      const regenRoot = mkdtempSync(path.join(os.tmpdir(), "llh-h13-"));
+      const tmpOut = path.join(regenRoot, "landlock-helper-tmp");
+      const built = recordSpawn(
+        "bash",
+        [REGEN_SCRIPT, tmpOut],
+        REGEN_TIMEOUT_MS,
+      );
+      expect(
+        built.abnormal,
+        "regeneration hung past the wall-clock guard",
+      ).toBe(false);
+      expect(built.status, built.stderr).toBe(0);
+      expect(existsSync(tmpOut)).toBe(true);
+      // Functional parity of the NEW mechanic across both probes (byte
+      // parity NOT claimed - the established bar).
+      const probe = recordSpawn(tmpOut, ["--probe"], HELPER_TIMEOUT_MS);
+      expect(probe.status).toBe(0);
+      const p = parseProbeLine(probe.stdout.slice(0, -1));
+      if (p === null || p.status !== "ok") {
+        throw new Error(
+          `tmp rebuild probe line off-contract: ${JSON.stringify(probe.stdout)}`,
+        );
+      }
+      expect(p.abi).toBe(p.pin);
+      const ovpRoot = mkdtempSync(path.join(os.tmpdir(), "llh-h13v-"));
+      try {
+        const arm = recordSpawn(
+          tmpOut,
+          ["--overlay-probe", ovpRoot],
+          HELPER_TIMEOUT_MS,
+        );
+        assertSound(arm);
+        expect(arm.stdout).toBe("landlock-helper overlay realm=ok status=ok\n");
+        expect(arm.status).toBe(0);
+        expect(arm.stderr).toBe("");
+        expect(existsSync(path.join(ovpRoot, ".llh-overlay-probe"))).toBe(
+          false,
+        ); // cleanup receipt
+        expect(existsSync(ovpRoot)).toBe(true);
+      } finally {
+        // Both minted roots torn down (the reggen output dir included -
+        // the suite leaves no scratch behind).
+        purgeTree(ovpRoot);
+        purgeTree(regenRoot);
+      }
+    },
+    150_000,
+  );
+
+  // Inducibility ledger (suite comment, not test rows): 106 (clone),
+  // 109 (unshare), and 111 (umount - arm-only by construction), and the
+  // untargetable 108 map-window are NOT hermetically inducible on a healthy
+  // kernel - their presence/distinctness ride the A-group band-integrity
+  // row (TWELVE pairwise-distinct) + the vendor README defensiveness note
+  // (the 103 treatment, verbatim precedent). 107/108 gain executable
+  // coverage where the H12 physics lands them.
 });

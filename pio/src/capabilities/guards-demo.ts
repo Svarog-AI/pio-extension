@@ -38,12 +38,14 @@
 // probes note-silent: the diagnostic stays visible, the note stays
 // CORRECTLY SILENT by the shipped corner, and the file NEVER LANDS in
 // either shape), bash-allow
-// (the .md-directory device: the phase declares the artifact's CONTAINING
-// DIRECTORY - a directory whose basename satisfies this capability's own
-// coverage pattern - so the declaration survives into the kernel writable
-// vector as a whole-subtree grant, while the UNCOVERED inner artifact arms
-// the phase's settlement expectation over the exact path the command must
-// land), bash-project-file (the project-files SCOPE class admits the
+// (the canonical concrete-file shape: the phase declares the GENUINE
+// file itself - the very path the fenced command creates in both
+// mandated shapes, matching the capability's own coverage pattern - so
+// the strictly-concrete survivor engages the composed fence over its
+// ENVELOPE directory and the kernel fence admits the command's write BY
+// IDENTITY: both shapes complete with NOTHING appended, and the
+// admitted file is LEFT BEHIND at end of run), bash-project-file (the
+// project-files SCOPE class admits the
 // workspace directory the SHARED cwd target sits in; SELF-CLEANING post-rm
 // after the phase), bash-project-file-not-allowed (the SAME cwd target
 // REFUSED by the SILENT window despite this capability's own flag-TRUE
@@ -103,7 +105,7 @@
 // or downgraded; the base catch-all captures them into the typed ok:false
 // settlement. Em dashes are U+2014 (escaped) in every pinned byte below.
 
-import { mkdir, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type CapabilityParams,
@@ -143,25 +145,15 @@ export const GUARDS_DEMO_PROJECT_PROBE_FILE =
 export const GUARDS_DEMO_TMP_PARITY_FILE =
   "pio-guards-demo-tmp-parity-scratch.txt";
 
-/** The BASH-ALLOW probe's DECLARED DIRECTORY (slot-relative). The
- * .md-directory device: its basename ends in .md, so the declaration
- * survives the capability's own guards-demo/*.md coverage filter and rides
- * the kernel writable vector as a whole-subtree grant. A file-leaf entry
- * cannot ride the vector this way - the carrier opens every granted path
- * with O_PATH, O_CLOEXEC, and O_DIRECTORY, which faults on a regular file
- * before the command starts - so commands that CREATE artifacts declare
- * the containing directory instead. */
-export const GUARDS_DEMO_BASH_ALLOW_DIR = "guards-demo/bash-allow.md";
-
-/** The BASH-ALLOW probe's INNER artifact (slot-relative, below the declared
- * directory). Deliberately matching NO contract pattern - it never survives
- * coverage into the kernel vector (kernel-invisible), yet it arms the
- * phase's settlement expectation over the exact path the command must land.
- * The two-entry bag is the unique satisfying shape: a directory-only bag
- * would arm a degenerate always-present check, and an artifact-only bag
- * would grant NOTHING. */
-export const GUARDS_DEMO_BASH_ALLOW_ARTIFACT =
-  "guards-demo/bash-allow.md/bash-allow-artifact.txt";
+/** The BASH-ALLOW probe's DECLARED FILE (slot-relative, covered by the demo
+ * pattern): a GENUINE file token - the very path the fenced command
+ * creates in both mandated shapes. Canonical concrete-file shape: the
+ * strictly-concrete survivor engages the composed fence over its ENVELOPE
+ * directory, and the kernel fence admits the path BY IDENTITY (clean
+ * completion - no standing note, no discard line). Supersedes the retired
+ * round-3 .md-directory device (records history: the pre-overlay
+ * workaround; doctrine violation per owner rulings B+D). */
+export const GUARDS_DEMO_BASH_ALLOW_FILE = "guards-demo/bash-allow.md";
 
 /** The SHARED genuine file token for the BASH-FILE-CREATE and
  * BASH-FILE-APPEND probes (slot-relative, covered by the demo pattern):
@@ -302,20 +294,19 @@ function bashDenyInstructions(absoluteStrayArtifact: string): string {
 }
 
 /** The pinned bash-allow instruction template (SOLE OWNER of these PINNED
- * bytes; the suite replica names this owner). THE SOLE multi-parameter
- * probe template (directory FIRST, artifact second - the .md-directory
- * device): the fenced command creates the inner artifact under the DECLARED
- * containing directory in TWO shapes (a plain shell redirection, then a
- * program opening the path for write - coreutils-steered, interpreter-
- * avoided); the kernel fence grants the whole declared directory, so
- * NEITHER command produces a standing restriction note. Three beats:
- * imperative / expectation / one-sentence verdict. No em dash occurs in
- * the body. */
-function bashAllowInstructions(
-  absoluteDirectory: string,
-  absoluteArtifact: string,
-): string {
-  return `Use the bash tool ONLY (never the write or edit tools) to create a file ${absoluteArtifact} under the directory ${absoluteDirectory}, in TWO shapes: first a plain shell redirection, then a program that opens the path for write (a standard utility such as touch, cp, or dd - avoid scripting-language interpreters). The expectation is that BOTH writes are ADMITTED - the phase declared the very directory the artifact lives in, so the kernel fence grants that directory and neither command produces a standing restriction note. Describe in one sentence if it's satisfied.`;
+ * bytes; the suite replica names this owner). ONE parameter (the DECLARED
+ * file's absolute path - the GENUINE file token the phase declares): the
+ * fenced command creates the declared file ITSELF in the SAME TWO shapes
+ * (a plain shell redirection AS THE WHOLE COMMAND, then a program opening
+ * the path for write - coreutils-steered, interpreter-avoided; the
+ * dual-shape discipline carried verbatim from the retired device era).
+ * The kernel fence admits the declared path BY IDENTITY: clean transcript
+ * (neither command produces a standing restriction note or a discard
+ * line) and the file EXISTS after the run. Three beats: imperative /
+ * expectation / one-sentence verdict. No em dash occurs in the body. The
+ * multi-parameter claim belongs to bashFileSiblingInstructions alone. */
+function bashAllowInstructions(absoluteFile: string): string {
+  return `Use the bash tool ONLY (never the write or edit tools) to create a file ${absoluteFile} AT THE EXACT path in TWO shapes: first a plain shell redirection AS THE WHOLE COMMAND (such as echo '<short line>' > ${absoluteFile}), then a program that opens the path for write (a standard utility such as touch, cp, or dd - avoid scripting-language interpreters). The expectation is that BOTH writes are ADMITTED - the phase declares the very path the file lands on, so the kernel fence admits that path by identity and neither command produces a standing restriction note or a discard line: the file EXISTS after the run and the transcript stays clean. Describe in one sentence if it's satisfied.`;
 }
 
 /** The pinned bash-project-file instruction template (SOLE OWNER of these
@@ -456,7 +447,7 @@ ${absoluteArtifact}
 export default class GuardsDemoCapability extends PioCapability {
   readonly contract: Contract = {
     name: "guards-demo",
-    version: "0.6.0",
+    version: "0.7.0",
     inputs: [],
     outputs: [{ name: "report", paramKey: "report" }],
     writes: ["guards-demo/*.md"],
@@ -487,10 +478,9 @@ export default class GuardsDemoCapability extends PioCapability {
     const absoluteAllowArtifact = join(projectSlot, GUARDS_DEMO_ALLOW_ARTIFACT);
     const absoluteCwdFile = join(process.cwd(), GUARDS_DEMO_PROJECT_PROBE_FILE);
     const absoluteTmpScratch = join("/tmp", GUARDS_DEMO_TMP_PARITY_FILE);
-    const absoluteBashAllowDir = join(projectSlot, GUARDS_DEMO_BASH_ALLOW_DIR);
-    const absoluteBashAllowArtifact = join(
+    const absoluteBashAllowFile = join(
       projectSlot,
-      GUARDS_DEMO_BASH_ALLOW_ARTIFACT,
+      GUARDS_DEMO_BASH_ALLOW_FILE,
     );
     const absoluteBashFileLeaf = join(projectSlot, GUARDS_DEMO_BASH_FILE_LEAF);
     const absoluteBashSiblingLeaf = join(
@@ -643,28 +633,23 @@ export default class GuardsDemoCapability extends PioCapability {
     });
 
     // 11. BASH-ALLOW probe - the fenced-command ON-LIST leg over the
-    // .md-directory device: the phase declares the artifact's CONTAINING
-    // DIRECTORY (the surviving, vector-visible whole-subtree grant) plus
-    // the UNCOVERED inner artifact (kernel-invisible - it cannot fault a
-    // spawn - yet armed RAW over the phase's settlement expectation). Reset
-    // sweep (recursive unlink, error-swallowed) THEN the capability-owned
-    // mkdir (error-swallowed): the inner file's absence follows from the
-    // recursive reset; a stale survivor degrades to an overwrite - the
-    // sweeps remain WRITES, not checks. Bag ORDER: directory first,
-    // artifact second. The inner artifact is LEFT BEHIND at end of run (the
-    // admission showcase; the recursive reset self-heals across runs).
-    await rm(absoluteBashAllowDir, { recursive: true, force: true }).catch(
-      () => {},
-    );
-    await mkdir(absoluteBashAllowDir, { recursive: true }).catch(() => {});
+    // canonical concrete-file shape: the phase declares the GENUINE file
+    // itself (the strictly-concrete survivor engaging the composed fence
+    // over its ENVELOPE directory), and the fenced command creates the
+    // declared file ITSELF in both mandated shapes - the kernel fence
+    // admits the path BY IDENTITY (clean completion: no standing note, no
+    // discard line). Pre-phase sweep: the PLAIN error-swallowed unlink the
+    // sibling leaf probes use (a WRITE, not a check; a stale survivor
+    // degrades to an overwrite). Bag: ONE entry (the declared ABSOLUTE
+    // file). Options EXACTLY { instructions, min, max, write: [file] }.
+    // The declared file is LEFT BEHIND at end of run (the admission
+    // showcase; the plain sweep self-heals across runs). One settled run.
+    await rm(absoluteBashAllowFile, { force: true }).catch(() => {});
     await this.execute_phase("bash-allow", {
-      instructions: bashAllowInstructions(
-        absoluteBashAllowDir,
-        absoluteBashAllowArtifact,
-      ),
+      instructions: bashAllowInstructions(absoluteBashAllowFile),
       min: 1,
       max: 1,
-      write: [absoluteBashAllowDir, absoluteBashAllowArtifact],
+      write: [absoluteBashAllowFile],
     });
 
     // 12. BASH-PROJECT-FILE probe - the SAME shared workspace-cwd target the

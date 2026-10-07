@@ -86,8 +86,7 @@ import { composeSpawnPlan } from "../tools/bash/landlock-ruleset.ts";
 import GuardsDemoCapability, {
   GUARDS_DEMO_ALLOW_ARTIFACT,
   GUARDS_DEMO_ARTIFACT,
-  GUARDS_DEMO_BASH_ALLOW_ARTIFACT,
-  GUARDS_DEMO_BASH_ALLOW_DIR,
+  GUARDS_DEMO_BASH_ALLOW_FILE,
   GUARDS_DEMO_BASH_FILE_LEAF,
   GUARDS_DEMO_BASH_SIBLING_IN_PAT,
   GUARDS_DEMO_BASH_SIBLING_LEAF,
@@ -361,15 +360,15 @@ const bashDenyReplica = (absoluteStrayArtifact: string): string =>
   `Use the bash tool ONLY (never the write or edit tools) to attempt a shell write of a file ${absoluteStrayArtifact} in TWO shapes, each attempted exactly once: first the redirection AS THE WHOLE COMMAND (a bare invocation such as echo x > ${absoluteStrayArtifact}), then the SAME redirection followed by a semicolon and a trailing successful statement (such as echo x > ${absoluteStrayArtifact}; echo ok - the failed redirection fails only its own statement, so the compound exits zero). The expectation is that BOTH commands come back REFUSED - the phase-permissions context of this run names NO writable targets (this phase declares NOTHING), and the kernel fence denies the write at attempt time: the first exits non-zero with a permission error in its own output and ends with a standing restriction note whose allowed-targets listing is NONE, while the second shows the same permission error but exits zero with no trailing restriction note, and the file never exists after either attempt. Do not attempt the target beyond these two shapes. Describe in one sentence if it's satisfied.`;
 
 /** Pinned bash-allow instruction template replica (SOLE OWNER: the
- * bashAllowInstructions owner in ./guards-demo.ts - the SOLE multi-parameter
- * probe template: directory FIRST, artifact second - the .md-directory
- * device over the declared containing directory, with TWO mandated write
- * shapes over the same path). No em dash occurs in the body. */
-const bashAllowReplica = (
-  absoluteDirectory: string,
-  absoluteArtifact: string,
-): string =>
-  `Use the bash tool ONLY (never the write or edit tools) to create a file ${absoluteArtifact} under the directory ${absoluteDirectory}, in TWO shapes: first a plain shell redirection, then a program that opens the path for write (a standard utility such as touch, cp, or dd - avoid scripting-language interpreters). The expectation is that BOTH writes are ADMITTED - the phase declared the very directory the artifact lives in, so the kernel fence grants that directory and neither command produces a standing restriction note. Describe in one sentence if it's satisfied.`;
+ * bashAllowInstructions owner in ./guards-demo.ts - the canonical concrete-
+ * file shape over the DECLARED file itself: ONE parameter, the fenced
+ * command creates the declared file ITSELF in the SAME TWO mandated shapes
+ * (dual-shape discipline carried verbatim from the retired device era);
+ * identity admission of the declared path - clean transcript). No em dash
+ * occurs in the body. The multi-parameter claim belongs to
+ * bashFileSiblingInstructions alone. */
+const bashAllowReplica = (absoluteFile: string): string =>
+  `Use the bash tool ONLY (never the write or edit tools) to create a file ${absoluteFile} AT THE EXACT path in TWO shapes: first a plain shell redirection AS THE WHOLE COMMAND (such as echo '<short line>' > ${absoluteFile}), then a program that opens the path for write (a standard utility such as touch, cp, or dd - avoid scripting-language interpreters). The expectation is that BOTH writes are ADMITTED - the phase declares the very path the file lands on, so the kernel fence admits that path by identity and neither command produces a standing restriction note or a discard line: the file EXISTS after the run and the transcript stays clean. Describe in one sentence if it's satisfied.`;
 
 /** Pinned bash-project-file instruction template replica (SOLE OWNER: the
  * bashProjectFileInstructions owner in ./guards-demo.ts - the DECLARED
@@ -586,14 +585,8 @@ const tmpNegativePromptText = (absoluteScratchFile: string): string =>
   `${renderPhaseMarker("tmp-negative")}\n${tmpNegativeReplica(absoluteScratchFile)}\n\n${disclosureReplica()}`;
 const bashDenyPromptText = (absoluteStrayArtifact: string): string =>
   `${renderPhaseMarker("bash-deny")}\n${bashDenyReplica(absoluteStrayArtifact)}\n\n${disclosureReplica()}`;
-const bashAllowPromptText = (
-  absoluteDirectory: string,
-  absoluteArtifact: string,
-): string =>
-  `${renderPhaseMarker("bash-allow")}\n${bashAllowReplica(
-    absoluteDirectory,
-    absoluteArtifact,
-  )}\n\n${disclosureReplica([absoluteDirectory])}`;
+const bashAllowPromptText = (absoluteFile: string): string =>
+  `${renderPhaseMarker("bash-allow")}\n${bashAllowReplica(absoluteFile)}\n\n${disclosureReplica([absoluteFile])}`;
 const bashProjectFilePromptText = (absoluteCwdFile: string): string =>
   `${renderPhaseMarker("bash-project-file")}\n${bashProjectFileReplica(absoluteCwdFile)}\n\n${disclosureReplica(undefined, process.cwd())}`;
 const bashProjectFileNotAllowedPromptText = (
@@ -807,8 +800,7 @@ function probePlacements(): {
   absAllowArtifact: string;
   absCwdFile: string;
   absTmpScratch: string;
-  absBashAllowDir: string;
-  absBashAllowArtifact: string;
+  absBashAllowFile: string;
   absBashFileLeaf: string;
   absBashSiblingLeaf: string;
   absBashSiblingOutPattern: string;
@@ -822,8 +814,7 @@ function probePlacements(): {
     absAllowArtifact: join(projectSlot, GUARDS_DEMO_ALLOW_ARTIFACT),
     absCwdFile: join(process.cwd(), GUARDS_DEMO_PROJECT_PROBE_FILE),
     absTmpScratch: join("/tmp", GUARDS_DEMO_TMP_PARITY_FILE),
-    absBashAllowDir: join(projectSlot, GUARDS_DEMO_BASH_ALLOW_DIR),
-    absBashAllowArtifact: join(projectSlot, GUARDS_DEMO_BASH_ALLOW_ARTIFACT),
+    absBashAllowFile: join(projectSlot, GUARDS_DEMO_BASH_ALLOW_FILE),
     absBashFileLeaf: join(projectSlot, GUARDS_DEMO_BASH_FILE_LEAF),
     absBashSiblingLeaf: join(projectSlot, GUARDS_DEMO_BASH_SIBLING_LEAF),
     absBashSiblingOutPattern: join(
@@ -854,7 +845,7 @@ async function seedArtifact(
 // ─── C rows: the expectation-guard demonstration flow ───────────────────
 
 describe("expectation-guard demonstration flow (C rows)", () => {
-  it("C1 full happy chain (BINDING leg): pass one skips the write => the engine denies settlement and the pass-two prompt carries the IDENTICAL baseline PLUS the pinned DELIMITED corrective block (delimiter line above the unchanged body; run count 1, naming the tmpdir-ABSOLUTE path) => pass two commits the REAL fs write and settles at iterations === 2, then the FIFTEEN PLAIN-PHASE gate probes run in pinned order under ONE span (write-tool family: deny REFUSAL-ONLY, allow, project-file, the SILENT flag-less project-file-not-allowed phase, declared-scratch tmp-parity, the SILENT scratch-refusal tmp-negative; bash-command family: bash-deny over the SHARED stray target, bash-allow over the .md-directory device, bash-project-file under the DECLARED scope class, the SILENT bash-project-file-not-allowed over the SAME cwd target, bash-tmp-parity under the phase's OWN scratch flag, the SILENT bash-tmp-negative, and the engaged-path file-leaf family: bash-file-create the create state over the GENUINE file token, bash-file-append the pre-existing state over the SAME leaf with no restart between frames, and bash-file-sibling the file-exactness leg over the declared leaf with BOTH undeclared siblings discarded (the pattern-matching one among them) LAST) with their MID-PASS consults (real-predicate verdicts: stray + scratch REFUSED on the UNIVERSAL byte in the declare-nothing deny window, admission undefined, exclusive scope-element-only listing, the silent-phase FULL-LINE refusal on the UNIVERSAL byte with the phase observed NULL, scratch ADMITTED in the declared-flag window, the SAME scratch target REFUSED on the UNIVERSAL byte in the silent tmp-negative window with the phase observed NULL, /tmp/ healing vantage; kernel-vector consults: the MINIMUM fence over the SILENT bash-deny window, the declared token's ENVELOPE first beside the machine allowance over bash-allow (files-only reading), the workspace-cwd class appended over bash-project-file, back to the MINIMUM fence over the SILENT bash-project-file-not-allowed window - the late-binding flip over the SAME stamped state - and the /tmp/ class appended over bash-tmp-parity; the leaf's ENVELOPE engages in each of the THREE new windows (equal by construction over the shared envelope value, asserted independently per window) and the sibling-window VERDICT consults refuse BOTH sibling targets with the phase named and the survivor-only listing (the in-pattern reading byte-identical to the out-pattern reading)) => ok:true with the ABSOLUTE settled outputs.report, the end-of-run scratch state ABSENT BY DESIGN, the ADMITTED artifacts LEFT BEHIND with the leaf's FINAL content byte-exact, the terminal record carries version 0.6.0 and exit 0, EXACTLY 19 prompts + EXACTLY ONE span stamp strictly before the first prompt = 20 unified-timeline entries", async () => {
+  it("C1 full happy chain (BINDING leg): pass one skips the write => the engine denies settlement and the pass-two prompt carries the IDENTICAL baseline PLUS the pinned DELIMITED corrective block (delimiter line above the unchanged body; run count 1, naming the tmpdir-ABSOLUTE path) => pass two commits the REAL fs write and settles at iterations === 2, then the FIFTEEN PLAIN-PHASE gate probes run in pinned order under ONE span (write-tool family: deny REFUSAL-ONLY, allow, project-file, the SILENT flag-less project-file-not-allowed phase, declared-scratch tmp-parity, the SILENT scratch-refusal tmp-negative; bash-command family: bash-deny over the SHARED stray target, bash-allow over the CANONICALLY DECLARED FILE (identity admission, clean transcript), bash-project-file under the DECLARED scope class, the SILENT bash-project-file-not-allowed over the SAME cwd target, bash-tmp-parity under the phase's OWN scratch flag, the SILENT bash-tmp-negative, and the engaged-path file-leaf family: bash-file-create the create state over the GENUINE file token, bash-file-append the pre-existing state over the SAME leaf with no restart between frames, and bash-file-sibling the file-exactness leg over the declared leaf with BOTH undeclared siblings discarded (the pattern-matching one among them) LAST) with their MID-PASS consults (real-predicate verdicts: stray + scratch REFUSED on the UNIVERSAL byte in the declare-nothing deny window, admission undefined, exclusive scope-element-only listing, the silent-phase FULL-LINE refusal on the UNIVERSAL byte with the phase observed NULL, scratch ADMITTED in the declared-flag window, the SAME scratch target REFUSED on the UNIVERSAL byte in the silent tmp-negative window with the phase observed NULL, /tmp/ healing vantage; kernel-vector consults: the MINIMUM fence over the SILENT bash-deny window, the declared token's ENVELOPE first beside the machine allowance over bash-allow (files-only reading), the workspace-cwd class appended over bash-project-file, back to the MINIMUM fence over the SILENT bash-project-file-not-allowed window - the late-binding flip over the SAME stamped state - and the /tmp/ class appended over bash-tmp-parity; the leaf's ENVELOPE engages in each of the THREE new windows (equal by construction over the shared envelope value, asserted independently per window) and the sibling-window VERDICT consults refuse BOTH sibling targets with the phase named and the survivor-only listing (the in-pattern reading byte-identical to the out-pattern reading)) => ok:true with the ABSOLUTE settled outputs.report, the end-of-run scratch state ABSENT BY DESIGN, the ADMITTED artifacts LEFT BEHIND with the leaf's FINAL content byte-exact, the terminal record carries version 0.7.0 and exit 0, EXACTLY 19 prompts + EXACTLY ONE span stamp strictly before the first prompt = 20 unified-timeline entries", async () => {
     const placement = artifactPlacement();
     const probes = probePlacements();
     const { instance, round, state } = await host();
@@ -1012,16 +1003,15 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       bashDenyVector = planBasedProjection(state);
     });
     round.passes.push(async (): Promise<void> => {
-      // Disk-truth duty: the production mkdir already created the DECLARED
-      // directory in the fixture state root; the pass commits the REAL fs
-      // write of the inner artifact (the subtree grant over the declared
-      // directory ADMITS both shapes live).
-      await writeFile(probes.absBashAllowArtifact, "# Bash allow\n");
-      emit(round, ...writeSettle(probes.absBashAllowArtifact, "w-bash-allow"));
-      // MID-PASS KERNEL-VECTOR consult: the DECLARED TOKEN'S ENVELOPE rides
-      // the vector FIRST (files-only reading - every surviving declaration
-      // is a leaf, assembly order: envelopes before the class additions);
-      // the uncovered inner artifact contributes NOTHING (kernel-invisible).
+      // Disk-truth duty: the pass commits the REAL fs write of the
+      // DECLARED FILE itself (parent dirs included via the seed idiom).
+      await seedArtifact(probes.absBashAllowFile, "# Bash allow\n");
+      emit(round, ...writeSettle(probes.absBashAllowFile, "w-bash-allow"));
+      // MID-PASS KERNEL-VECTOR consult: the surviving strictly-concrete
+      // file ENGAGES over its ENVELOPE directory (files-only reading - the
+      // kernel fence admits the declared path BY IDENTITY, clean
+      // completion); the vector value is IDENTICAL to the pre-respec
+      // reading (same absolute string under either interpretation).
       bashAllowVector = planBasedProjection(state);
     });
     round.passes.push(async (): Promise<void> => {
@@ -1141,7 +1131,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     // corrective blocks reach them on the happy trajectory).
     expect(sentAt(round, 9)).toBe(bashDenyPromptText(probes.absDenyStray));
     expect(sentAt(round, 10)).toBe(
-      bashAllowPromptText(probes.absBashAllowDir, probes.absBashAllowArtifact),
+      bashAllowPromptText(probes.absBashAllowFile),
     );
     expect(sentAt(round, 11)).toBe(
       bashProjectFilePromptText(probes.absCwdFile),
@@ -1211,13 +1201,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
       { kind: "prompt", text: tmpParityPromptText(probes.absTmpScratch) },
       { kind: "prompt", text: tmpNegativePromptText(probes.absTmpScratch) },
       { kind: "prompt", text: bashDenyPromptText(probes.absDenyStray) },
-      {
-        kind: "prompt",
-        text: bashAllowPromptText(
-          probes.absBashAllowDir,
-          probes.absBashAllowArtifact,
-        ),
-      },
+      { kind: "prompt", text: bashAllowPromptText(probes.absBashAllowFile) },
       {
         kind: "prompt",
         text: bashProjectFilePromptText(probes.absCwdFile),
@@ -1309,7 +1293,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     // MINIMUM fence over ANY non-engaged window is exactly ["/dev"]; assembly
     // order keeps the surviving envelopes FIRST):
     expect(bashDenyVector).toEqual(["/dev"]);
-    expect(bashAllowVector).toEqual([dirname(probes.absBashAllowDir), "/dev"]);
+    expect(bashAllowVector).toEqual([dirname(probes.absBashAllowFile), "/dev"]);
     expect(bashProjectFileVector).toEqual(["/dev", probes.cwd]);
     expect(bashSilentVector).toEqual(["/dev"]);
     expect(bashTmpParityVector).toEqual(["/dev", "/tmp"]);
@@ -1378,7 +1362,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(record.ok).toBe(true);
     expect(record.capability).toEqual({
       name: "guards-demo",
-      version: "0.6.0",
+      version: "0.7.0",
       source: "builtin",
     });
     expect(record.outputs).toEqual({
@@ -1388,8 +1372,8 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     // Disk truth (post-run): the committed guard-probe content; the deny
     // stray ABSENT (refused by the write gate AND by the kernel - nothing
     // written; neither deny target is seeded); the allow artifact PRESENT;
-    // the bash-allow directory + inner artifact LEFT BEHIND (the admission
-    // showcase - no post-rm; the recursive reset self-heals across runs);
+    // the bash-allow file LEFT BEHIND (the admission showcase - no post-rm;
+    // the plain sweep self-heals across runs);
     // the project-file probe file GONE (the SELF-CLEANING post-rm removed
     // it and both silent-window refusals held); the /tmp/ scratch ABSENT
     // BY DESIGN (the last probe's pre-phase sweep removed the admitted
@@ -1399,8 +1383,10 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     );
     expect(existsSync(probes.absDenyStray)).toBe(false);
     expect(existsSync(probes.absAllowArtifact)).toBe(true);
-    expect(existsSync(probes.absBashAllowDir)).toBe(true);
-    expect(existsSync(probes.absBashAllowArtifact)).toBe(true);
+    expect(existsSync(probes.absBashAllowFile)).toBe(true);
+    expect(readFileSync(probes.absBashAllowFile, "utf8")).toBe(
+      "# Bash allow\n",
+    );
     expect(existsSync(probes.absCwdFile)).toBe(false);
     expect(existsSync(probes.absTmpScratch)).toBe(false);
     // End-of-run ADMITTED artifacts LEFT BEHIND (the admission showcase -
@@ -1460,12 +1446,11 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     round.passes.push(async (): Promise<void> => {
       emit(round, ...quietSettle());
     });
-    // BASH-ALLOW: commits the REAL fs write of the inner artifact (the
-    // production mkdir already created the declared directory in the
-    // fixture state root).
+    // BASH-ALLOW: commits the REAL fs write of the DECLARED FILE itself
+    // (disk-truth duty - parent dirs included via the seed idiom).
     round.passes.push(async (): Promise<void> => {
-      await writeFile(probes.absBashAllowArtifact, "# Bash allow\n");
-      emit(round, ...writeSettle(probes.absBashAllowArtifact, "w-bash-allow"));
+      await seedArtifact(probes.absBashAllowFile, "# Bash allow\n");
+      emit(round, ...writeSettle(probes.absBashAllowFile, "w-bash-allow"));
     });
     // BASH-PROJECT-FILE: commits the REAL fs write of the SHARED cwd target
     // (SELF-CLEANING post-rm after the phase).
@@ -1536,9 +1521,7 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     expect(sentAt(round, 6)).toBe(tmpParityPromptText(probes.absTmpScratch));
     expect(sentAt(round, 7)).toBe(tmpNegativePromptText(probes.absTmpScratch));
     expect(sentAt(round, 8)).toBe(bashDenyPromptText(probes.absDenyStray));
-    expect(sentAt(round, 9)).toBe(
-      bashAllowPromptText(probes.absBashAllowDir, probes.absBashAllowArtifact),
-    );
+    expect(sentAt(round, 9)).toBe(bashAllowPromptText(probes.absBashAllowFile));
     expect(sentAt(round, 10)).toBe(
       bashProjectFilePromptText(probes.absCwdFile),
     );
@@ -1745,12 +1728,11 @@ describe("expectation-guard demonstration flow (C rows)", () => {
     round.passes.push(async (): Promise<void> => {
       emit(round, ...quietSettle());
     });
-    // BASH-ALLOW: commits the REAL fs write of the inner artifact (the
-    // production mkdir already created the declared directory in the
-    // fixture state root).
+    // BASH-ALLOW: commits the REAL fs write of the DECLARED FILE itself
+    // (disk-truth duty - parent dirs included via the seed idiom).
     round.passes.push(async (): Promise<void> => {
-      await writeFile(probes.absBashAllowArtifact, "# Bash allow\n");
-      emit(round, ...writeSettle(probes.absBashAllowArtifact, "w-bash-allow"));
+      await seedArtifact(probes.absBashAllowFile, "# Bash allow\n");
+      emit(round, ...writeSettle(probes.absBashAllowFile, "w-bash-allow"));
     });
     // BASH-PROJECT-FILE: commits the REAL fs write of the SHARED cwd target
     // (SELF-CLEANING post-rm after the phase).
@@ -1881,12 +1863,11 @@ describe("instruction framing (F rows)", () => {
     round.passes.push(async (): Promise<void> => {
       emit(round, ...quietSettle());
     });
-    // BASH-ALLOW: commits the REAL fs write of the inner artifact (the
-    // production mkdir already created the declared directory in the
-    // fixture state root).
+    // BASH-ALLOW: commits the REAL fs write of the DECLARED FILE itself
+    // (disk-truth duty - parent dirs included via the seed idiom).
     round.passes.push(async (): Promise<void> => {
-      await writeFile(probes.absBashAllowArtifact, "# Bash allow\n");
-      emit(round, ...writeSettle(probes.absBashAllowArtifact, "w-bash-allow"));
+      await seedArtifact(probes.absBashAllowFile, "# Bash allow\n");
+      emit(round, ...writeSettle(probes.absBashAllowFile, "w-bash-allow"));
     });
     // BASH-PROJECT-FILE: commits the REAL fs write of the SHARED cwd target
     // (SELF-CLEANING post-rm after the phase).
@@ -1955,7 +1936,7 @@ describe("instruction framing (F rows)", () => {
     expect(sentAt(round, 8)).toBe(tmpNegativePromptText(probes.absTmpScratch));
     expect(sentAt(round, 9)).toBe(bashDenyPromptText(probes.absDenyStray));
     expect(sentAt(round, 10)).toBe(
-      bashAllowPromptText(probes.absBashAllowDir, probes.absBashAllowArtifact),
+      bashAllowPromptText(probes.absBashAllowFile),
     );
     expect(sentAt(round, 11)).toBe(
       bashProjectFilePromptText(probes.absCwdFile),
@@ -2003,7 +1984,7 @@ describe("instruction framing (F rows)", () => {
       { scratch: true },
       {},
       {},
-      { files: [probes.absBashAllowDir] },
+      { files: [probes.absBashAllowFile] },
       { projectCwd: process.cwd() },
       {},
       { scratch: true },
@@ -2089,12 +2070,11 @@ describe("instruction framing (F rows)", () => {
     round.passes.push(async (): Promise<void> => {
       emit(round, ...quietSettle());
     });
-    // BASH-ALLOW: commits the REAL fs write of the inner artifact (the
-    // production mkdir already created the declared directory in the
-    // fixture state root).
+    // BASH-ALLOW: commits the REAL fs write of the DECLARED FILE itself
+    // (disk-truth duty - parent dirs included via the seed idiom).
     round.passes.push(async (): Promise<void> => {
-      await writeFile(probes.absBashAllowArtifact, "# Bash allow\n");
-      emit(round, ...writeSettle(probes.absBashAllowArtifact, "w-bash-allow"));
+      await seedArtifact(probes.absBashAllowFile, "# Bash allow\n");
+      emit(round, ...writeSettle(probes.absBashAllowFile, "w-bash-allow"));
     });
     // BASH-PROJECT-FILE: commits the REAL fs write of the SHARED cwd target
     // (SELF-CLEANING post-rm after the phase).
@@ -2187,14 +2167,13 @@ describe("instruction framing (F rows)", () => {
     second.round.passes.push(async (): Promise<void> => {
       emit(second.round, ...quietSettle());
     });
-    // BASH-ALLOW: commits the REAL fs write of the inner artifact (the
-    // production mkdir already created the declared directory in the
-    // fixture state root).
+    // BASH-ALLOW: commits the REAL fs write of the DECLARED FILE itself
+    // (disk-truth duty - parent dirs included via the seed idiom).
     second.round.passes.push(async (): Promise<void> => {
-      await writeFile(secondProbes.absBashAllowArtifact, "# Bash allow\n");
+      await seedArtifact(secondProbes.absBashAllowFile, "# Bash allow\n");
       emit(
         second.round,
-        ...writeSettle(secondProbes.absBashAllowArtifact, "w-bash-allow"),
+        ...writeSettle(secondProbes.absBashAllowFile, "w-bash-allow"),
       );
     });
     // BASH-PROJECT-FILE: commits the REAL fs write of the SHARED cwd target
@@ -2524,7 +2503,7 @@ describe("module surface and mechanical guards", () => {
     // pin meaningful.
     expect(instance.contract).toStrictEqual({
       name: "guards-demo",
-      version: "0.6.0",
+      version: "0.7.0",
       inputs: [],
       outputs: [{ name: "report", paramKey: "report" }],
       writes: ["guards-demo/*.md"],
@@ -2532,13 +2511,12 @@ describe("module surface and mechanical guards", () => {
     });
   });
 
-  it("runtime export surface is EXACTLY THIRTEEN keys: default plus the twelve token constants", async () => {
+  it("runtime export surface is EXACTLY TWELVE keys: default plus the ELEVEN token constants", async () => {
     const mod = await import("./guards-demo.ts");
     expect(Object.keys(mod).sort()).toEqual([
       "GUARDS_DEMO_ALLOW_ARTIFACT",
       "GUARDS_DEMO_ARTIFACT",
-      "GUARDS_DEMO_BASH_ALLOW_ARTIFACT",
-      "GUARDS_DEMO_BASH_ALLOW_DIR",
+      "GUARDS_DEMO_BASH_ALLOW_FILE",
       "GUARDS_DEMO_BASH_FILE_LEAF",
       "GUARDS_DEMO_BASH_SIBLING_IN_PAT",
       "GUARDS_DEMO_BASH_SIBLING_LEAF",
@@ -2556,14 +2534,14 @@ describe("module surface and mechanical guards", () => {
     expect(src.includes("@earendil-works/pi-coding-agent")).toBe(false);
   });
 
-  it("static import-clause discipline per the sibling pattern (post-format reality): VALUE clauses exactly {node:fs/promises (mkdir and rm), node:path (join), ../capability/base.ts (CapabilityParams inline-type + deriveStateRootFromAgentDir + PioCapability), ../sandbox/layout.ts (deriveProjectKey)} in canonical order \u2014 TYPE clauses exactly {../capability/contract.ts (Contract)}", () => {
+  it("static import-clause discipline per the sibling pattern (post-format reality): VALUE clauses exactly {node:fs/promises (rm), node:path (join), ../capability/base.ts (CapabilityParams inline-type + deriveStateRootFromAgentDir + PioCapability), ../sandbox/layout.ts (deriveProjectKey)} in canonical order \u2014 TYPE clauses exactly {../capability/contract.ts (Contract)}", () => {
     const clauses = staticImportClauses(src);
     const valueClauses = clauses.filter((clause) => !clause.typeOnly);
     const typeClauses = clauses.filter((clause) => clause.typeOnly);
     expect(valueClauses).toEqual([
       {
         typeOnly: false,
-        names: ["mkdir", "rm"],
+        names: ["rm"],
         specifier: "node:fs/promises",
       },
       { typeOnly: false, names: ["join"], specifier: "node:path" },
@@ -2595,7 +2573,7 @@ describe("module surface and mechanical guards", () => {
     expect(src.includes("import(")).toBe(false);
   });
 
-  it("the TWELVE-token constant roster holds: each constant's QUOTED value literal occurs EXACTLY ONCE in the module source (quoted-literal split-count idiom - the bash-allow directory token is a strict prefix of the artifact token, so the count binds the quoted form instead of the raw substring; no duplicated literals; every other reference rides the constant identifier; the four new values verified prefix-clean against each other and the existing eight)", () => {
+  it("the ELEVEN-token constant roster holds: each constant's QUOTED value literal occurs EXACTLY ONCE in the module source (quoted-literal split-count idiom - no duplicated literals; every other reference rides the constant identifier; after the bash-allow device retirement NO strict-prefix pair remains among the eleven tokens, so the split-count idiom binds cleanly)", () => {
     const roster = [
       GUARDS_DEMO_ARTIFACT,
       GUARDS_DEMO_DENY_ARTIFACT,
@@ -2603,8 +2581,7 @@ describe("module surface and mechanical guards", () => {
       GUARDS_DEMO_ALLOW_ARTIFACT,
       GUARDS_DEMO_PROJECT_PROBE_FILE,
       GUARDS_DEMO_TMP_PARITY_FILE,
-      GUARDS_DEMO_BASH_ALLOW_DIR,
-      GUARDS_DEMO_BASH_ALLOW_ARTIFACT,
+      GUARDS_DEMO_BASH_ALLOW_FILE,
       GUARDS_DEMO_BASH_FILE_LEAF,
       GUARDS_DEMO_BASH_SIBLING_LEAF,
       GUARDS_DEMO_BASH_SIBLING_OUT_PAT,
@@ -2615,7 +2592,7 @@ describe("module surface and mechanical guards", () => {
     }
   });
 
-  it("shape-prescription fragment pins over the repinned negative bash bytes (quoted-fragment split-count idiom over each extracted owner region): the bare-invocation clause occurs EXACTLY ONCE inside each of the two simple-negative owners AND EXACTLY TWICE inside the sibling owner (once per prescribed attempt), the create owner's plain-redirection prescription binds EXACTLY ONCE in its region, the append owner's append prescription binds EXACTLY ONCE in its region, and the semicolon-compound example occurs EXACTLY ONCE inside the bash-deny owner", () => {
+  it("shape-prescription fragment pins over the repinned negative bash bytes (quoted-fragment split-count idiom over each extracted owner region): the bare-invocation clause occurs EXACTLY ONCE inside each of the two simple-negative owners AND EXACTLY TWICE inside the sibling owner (once per prescribed attempt), the create owner's plain-redirection prescription binds EXACTLY ONCE in its region, the append owner's append prescription binds EXACTLY ONCE in its region, and the semicolon-compound example occurs EXACTLY ONCE inside the bash-deny owner, and the reshaped bash-allow positive owner's whole-command clause AND interpreter-avoidance clause bind EXACTLY ONCE each in its region", () => {
     const ownerRegion = (ownerName: string): string => {
       const start = src.indexOf(`function ${ownerName}(`);
       if (start === -1) throw new Error(`expected owner function ${ownerName}`);
@@ -2656,6 +2633,19 @@ describe("module surface and mechanical guards", () => {
     expect(
       ownerRegion("bashDenyInstructions").split("; echo ok").length - 1,
     ).toBe(1);
+    // The reshaped bash-allow positive owner: its whole-command redirection
+    // clause and its interpreter-avoidance steering clause bind once each
+    // inside its region (steering bytes mechanically pinned).
+    expect(
+      ownerRegion("bashAllowInstructions").split(
+        "first a plain shell redirection AS THE WHOLE COMMAND",
+      ).length - 1,
+    ).toBe(1);
+    expect(
+      ownerRegion("bashAllowInstructions").split(
+        "avoid scripting-language interpreters",
+      ).length - 1,
+    ).toBe(1);
   });
 
   it("zero hop/terminal-takeover machinery tokens (no terminal, lineage, or hop machinery in this module) and the header marks PERMANENT with the temporary-sibling CONTRAST STATEMENT (names the temporary sibling module + its cutover removal) while carrying ZERO uppercase TEMPORARY substrings (deletion-sweep safety), plus the module-scoped retirement sweep (the retired identifiers AND the substring 'child' at zero occurrences)", () => {
@@ -2668,6 +2658,9 @@ describe("module surface and mechanical guards", () => {
       "ProjectFileNotAllowedProbe",
       "GUARDS_DEMO_PROJECT_FILE_NOT_ALLOWED_ARTIFACT",
       "project-file-not-allowed-probe",
+      "GUARDS_DEMO_BASH_ALLOW_DIR",
+      "GUARDS_DEMO_BASH_ALLOW_ARTIFACT",
+      "guards-demo/bash-allow.md/bash-allow-artifact.txt",
     ]) {
       expect(src.includes(token)).toBe(false);
     }

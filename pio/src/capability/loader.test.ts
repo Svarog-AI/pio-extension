@@ -216,7 +216,7 @@ describe("default-table hits (shipped registrations)", () => {
     // pin meaningful.
     expect(cap.contract).toStrictEqual({
       name: "guards-demo",
-      version: "0.6.0",
+      version: "0.7.0",
       inputs: [],
       outputs: [{ name: "report", paramKey: "report" }],
       writes: ["guards-demo/*.md"],
